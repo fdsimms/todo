@@ -165,7 +165,8 @@ export interface GetTaskResult {
    * completing the task record a dose. Neither can be set from here.
    */
   gatesApps?: true;
-  penalty?: { minutes: number; cutoffTime?: string };
+  /** Failing this task blocks the apps the person picked in Settings. Read-only here: only the person sets or changes it. */
+  penalty?: { minutes: number; cutoffTime?: string; chargedAt?: string; creditedAt?: string };
   medication?: { name: string; amount?: number; unit?: string };
   /** "HH:MM" bounds: shown from `start`, expired after `end`. */
   window?: { start?: string; end?: string };
@@ -192,16 +193,9 @@ export interface GetTaskResult {
   };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
   timer?: { minutes: number };
-  healthTarget?: { metric: string; target?: number; followsFitnessGoal?: boolean };
   measuredMinutes?: number;
   /** How often it has been pushed to a later day, and since when. `muted` means the person asked not to be nudged about it. */
   postponed?: { count: number; since?: string; muted?: boolean };
-  /** A consumable counted down by this repeating task. */
-  supply?: { count: number; unit?: string; refillCount?: number; reorderAt?: number; leadDays?: number };
-  /** The named things a daily or weekly target is counting. */
-  rotation?: { members: string[] };
-  /** Failing this task blocks the apps the person picked in Settings. Read-only here: only the person sets or changes it. */
-  penalty?: { blocksAppsMinutes: number; mustBeDoneBy?: string; chargedAt?: string; creditedAt?: string };
   /** Slips logged against a "don't do this" habit on `day`. */
   slips?: { count: number; day: string };
   /** The app's own sentence on a live coin bounty: what it is worth and what moving the task again costs. */
@@ -269,13 +263,6 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   if (Object.keys(onCompletion).length > 0) out.onCompletion = onCompletion;
 
   if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };
-  if (task.healthMetric) {
-    out.healthTarget = {
-      metric: task.healthMetric,
-      ...(task.healthTarget != null ? { target: task.healthTarget } : {}),
-      ...(task.healthFollowGoal ? { followsFitnessGoal: true } : {}),
-    };
-  }
   if (task.actualMinutes != null) out.measuredMinutes = task.actualMinutes;
 
   if ((task.postponeCount ?? 0) > 0 || task.postponeMuted) {
@@ -286,28 +273,6 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
     };
   }
 
-  if (task.supplyCount != null) {
-    out.supply = {
-      count: task.supplyCount,
-      ...(task.supplyUnit ? { unit: task.supplyUnit } : {}),
-      ...(task.supplyRefillCount != null ? { refillCount: task.supplyRefillCount } : {}),
-      reorderAt: task.supplyReorderAt,
-      ...(task.supplyLeadDays != null ? { leadDays: task.supplyLeadDays } : {}),
-    };
-  }
-
-  if (task.rotationEnabled && (task.rotationItems ?? []).length > 0) {
-    out.rotation = { members: task.rotationItems.map(m => m.title) };
-  }
-
-  if (task.penaltyMinutes != null) {
-    out.penalty = {
-      blocksAppsMinutes: task.penaltyMinutes,
-      ...(task.penaltyCutoffTime ? { mustBeDoneBy: task.penaltyCutoffTime } : {}),
-      ...(task.penaltyFiredAt ? { chargedAt: task.penaltyFiredAt } : {}),
-      ...(task.penaltyCreditedAt ? { creditedAt: task.penaltyCreditedAt } : {}),
-    };
-  }
   if ((task.slipCount ?? 0) > 0 && task.slipDate) out.slips = { count: task.slipCount, day: task.slipDate };
   const bounty = replica.describeBounty(task);
   if (bounty) out.bounty = { summary: bounty, pushes: task.bountyPushes ?? 0 };
@@ -360,7 +325,12 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     supply: describeSupplyFields(task) ?? undefined,
     gatesApps: task.gatesApps ? true : undefined,
     penalty: task.penaltyMinutes != null
-      ? { minutes: task.penaltyMinutes, ...(task.penaltyCutoffTime ? { cutoffTime: task.penaltyCutoffTime } : {}) }
+      ? {
+          minutes: task.penaltyMinutes,
+          ...(task.penaltyCutoffTime ? { cutoffTime: task.penaltyCutoffTime } : {}),
+          ...(task.penaltyFiredAt ? { chargedAt: task.penaltyFiredAt } : {}),
+          ...(task.penaltyCreditedAt ? { creditedAt: task.penaltyCreditedAt } : {}),
+        }
       : undefined,
     medication: task.medicationName?.trim()
       ? {
