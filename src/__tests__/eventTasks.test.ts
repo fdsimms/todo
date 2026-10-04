@@ -278,7 +278,8 @@ describe('source ids', () => {
 });
 
 describe('eventTaskContextLabel', () => {
-  const day = (iso: string) => `D${iso.slice(8, 10)}`;
+  // Local parts, never a slice of the UTC ISO string: days here are local ones.
+  const day = (iso: string) => `D${new Date(iso).getDate()}`;
   const time = (iso: string) => `T${new Date(iso).getHours()}`;
   const taskFor = (e: BusyEvent) => ({
     generatedKind: 'eventTask' as const,
