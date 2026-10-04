@@ -19,7 +19,7 @@
  */
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { AnswerEdit, Replica } from './replica';
-import type { TemplatePlan } from './templatePlan';
+import { resolveRef, templateToPlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import {
   describeHealthTarget,
@@ -892,5 +892,25 @@ export function listMedicationLogs(
       unit: log.unit ?? undefined,
       asNeeded: log.asNeeded ? true : undefined,
     })),
+  };
+}
+
+/** One template as the plan that would recreate it, or null when none matches. */
+export function getTemplate(replica: Replica, ref: string) {
+  const found = resolveRef(ref, replica.templates());
+  if (found.length > 1) throw new Error(`"${ref}" names ${found.length} templates. Use an id.`);
+  return found[0] ? templateToPlan(found[0]) : null;
+}
+
+/** Apply an edit to a template. See `Replica.updateTemplate` for the rules. */
+export function updateTemplate(replica: Replica, ref: string, patch: TemplatePatch): CreateTemplateResult {
+  const built = replica.updateTemplate(ref, patch);
+  return {
+    id: built.id,
+    name: built.name,
+    items: built.items.length,
+    groups: built.itemGroups.length,
+    questions: built.questions.length,
+    scheduled: built.schedule !== null,
   };
 }

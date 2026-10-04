@@ -67,7 +67,7 @@ import type { AgentNote } from '../../src/utils/agentNotes';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
-import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
+import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
@@ -512,6 +512,19 @@ export interface Replica {
   createTemplate(plan: TemplatePlan): TaskTemplate;
 
   /**
+   * Change a template, by id or by exact name. Fields left out stay as they
+   * are. `groups`, `questions` and `items` each replace the whole list when
+   * given (the three point at each other, so they are rebuilt together); a
+   * call naming only scalar fields touches nothing else in the template.
+   *
+   * Written through `dbUpdateTemplate` for the reason `createTemplate` is
+   * written through `dbInsertTemplate`: `templates_sync_stamp_update` stamps it
+   * so it syncs like an edit made in the app. Throws, writing nothing, on an
+   * invalid result, and refuses a nested reference that would form a cycle.
+   */
+  updateTemplate(id: string, patch: TemplatePatch): TaskTemplate;
+
+  /**
    * Create one task, exactly as the app's own create path would.
    *
    * Built by `newTaskFromDraft`, which was lifted out of `useTaskStore` for
@@ -823,6 +836,10 @@ function loggedTransport(transport: SyncTransport): SyncTransport {
   };
 }
 
+function stripUndefined<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
 export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Replica {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const db = require('../../src/db/database') as DbModule;
@@ -847,6 +864,70 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const aisles = require('../../src/utils/groceryAisles') as GroceryAislesModule;
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
+
+  /**
+   * The groups, questions and items of a validated plan, with every name
+   * resolved to the id minted here. Shared by create and update so a plan means
+   * the same thing either way.
+   */
+  function buildTemplateParts(
+    plan: TemplatePlan,
+    existing: readonly TaskTemplate[],
+    /** The template being updated: an id it already has is kept rather than minted anew. */
+    base?: TaskTemplate
+  ): Pick<TaskTemplate, 'items' | 'itemGroups' | 'questions'> {
+    // Groups and questions are built first because an item's `groupId` and
+    // its conditions' `questionId`s are ids minted here. The plan names them
+    // by key and by name precisely because the caller cannot know these.
+    const groupIds = new Map<string, string>();
+    const itemGroups = (plan.groups ?? []).map((group, i) => {
+      const id = base?.itemGroups.some(g => g.id === group.key) ? group.key : generateId();
+      groupIds.set(group.key, id);
+      return { id, title: group.title, sortOrder: i + 1, ...(group.checklist ? { checklist: true } : {}) };
+    });
+
+    const questionIds = new Map<string, string>();
+    const questions = (plan.questions ?? []).map(question => {
+      const kept = question.name ? base?.questions.find(q => q.name === question.name) : undefined;
+      const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: kept?.id ?? generateId() });
+      if (stored.name) questionIds.set(stored.name, stored.id);
+      return stored;
+    });
+
+    // Keyed items get their ids now, so an onlyIfAnswer can name one; the
+    // answers are re-spelled as the question offers them (validated above).
+    const itemIds = new Map<string, string>();
+    for (const item of plan.items ?? []) {
+      const key = item.key ?? item.id;
+      if (key !== undefined) itemIds.set(key, item.id ?? generateId());
+    }
+    const offeredBy = new Map((plan.items ?? []).filter(i => (i.key ?? i.id) !== undefined).map(i => [(i.key ?? i.id)!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
+    const items = (plan.items ?? []).map(item => {
+      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, id: keptId, ...fields } = item;
+      const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
+      const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
+      return templateUtils.normalizeTemplateItem({
+        ...fields,
+        ...((key ?? keptId) !== undefined ? { id: itemIds.get((key ?? keptId)!) } : {}),
+        answerGate: onlyIfAnswer
+          ? {
+              itemId: itemIds.get(onlyIfAnswer.item)!,
+              answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
+            }
+          : null,
+        groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
+        conditions: (conditions ?? []).map(c => ({
+          questionId: questionIds.get(c.question) ?? '',
+          values: c.values,
+        })),
+        refTemplateId: ref?.id ?? null,
+        // Carried so a broken reference can still say what it pointed at,
+        // which is what the field is for (see TemplateItem.refTemplateName).
+        refTemplateName: ref?.name ?? '',
+      });
+    });
+    return { items, itemGroups, questions };
+  }
   const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
   const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
@@ -1508,59 +1589,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const errors = validateTemplatePlan(plan, existing);
       if (errors.length > 0) throw new Error(errors.join(' '));
 
-      // Groups and questions are built first because an item's `groupId` and
-      // its conditions' `questionId`s are ids minted here. The plan names them
-      // by key and by name precisely because the caller cannot know these.
-      const groupIds = new Map<string, string>();
-      const itemGroups = (plan.groups ?? []).map((group, i) => {
-        const id = generateId();
-        groupIds.set(group.key, id);
-        return { id, title: group.title, sortOrder: i + 1 };
-      });
-
-      const questionIds = new Map<string, string>();
-      const questions = (plan.questions ?? []).map(question => {
-        const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: generateId() });
-        if (stored.name) questionIds.set(stored.name, stored.id);
-        return stored;
-      });
-
-      // Keyed items get their ids now, so an onlyIfAnswer can name one; the
-      // answers are re-spelled as the question offers them (validated above).
-      const itemIds = new Map<string, string>();
-      for (const item of plan.items ?? []) if (item.key !== undefined) itemIds.set(item.key, generateId());
-      const offeredBy = new Map((plan.items ?? []).filter(i => i.key !== undefined).map(i => [i.key!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
-      const items = (plan.items ?? []).map(item => {
-        const { groupKey, conditions, refTemplate, key, onlyIfAnswer, ...fields } = item;
-        const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
-        const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
-        return templateUtils.normalizeTemplateItem({
-          ...fields,
-          ...(key !== undefined ? { id: itemIds.get(key) } : {}),
-          answerGate: onlyIfAnswer
-            ? {
-                itemId: itemIds.get(onlyIfAnswer.item)!,
-                answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
-              }
-            : null,
-          groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
-          conditions: (conditions ?? []).map(c => ({
-            questionId: questionIds.get(c.question) ?? '',
-            values: c.values,
-          })),
-          refTemplateId: ref?.id ?? null,
-          // Carried so a broken reference can still say what it pointed at,
-          // which is what the field is for (see TemplateItem.refTemplateName).
-          refTemplateName: ref?.name ?? '',
-        });
-      });
-
       const template: TaskTemplate = {
         id: generateId(),
         name: plan.name.trim(),
-        items,
-        itemGroups,
-        questions,
+        ...buildTemplateParts(plan, existing),
         createdAt: new Date().toISOString(),
         sortOrder: existing.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
         category: plan.category ?? null,
@@ -1575,6 +1607,67 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       db.dbInsertTemplate(template);
       return template;
+    },
+
+    updateTemplate(id: string, patch: TemplatePatch): TaskTemplate {
+      const existing = db.dbGetAllTemplates();
+      const found = resolveRef(id, existing);
+      if (found.length === 0) throw new Error(`No template with id or name "${id}".`);
+      if (found.length > 1) throw new Error(`"${id}" names ${found.length} templates. Use an id.`);
+      const before = found[0];
+
+      const structural = patch.groups !== undefined || patch.questions !== undefined || patch.items !== undefined;
+      let parts: Partial<Pick<TaskTemplate, 'items' | 'itemGroups' | 'questions'>> = {};
+      const errors: string[] = [];
+
+      if (structural) {
+        // Whatever the patch leaves out comes from the stored template, and an
+        // item named by id starts from its stored self, so a field the plan has
+        // no name for is never lost to a rebuild.
+        const current = templateToPlan(before);
+        const storedItems = new Map((current.items ?? []).map(i => [i.id!, i]));
+        const plan: TemplatePlan = {
+          ...current,
+          groups: patch.groups ?? current.groups,
+          questions: patch.questions ?? current.questions,
+          items: patch.items === undefined
+            ? current.items
+            : patch.items.map(it => (it.id !== undefined && storedItems.has(it.id) ? { ...storedItems.get(it.id)!, ...stripUndefined(it) } : it)),
+        };
+        errors.push(...validateTemplatePlan({ ...plan, name: patch.name ?? before.name }, existing, before.id));
+        if (errors.length === 0) parts = buildTemplateParts(plan, existing, before);
+      } else if (patch.name !== undefined && !patch.name.trim()) {
+        errors.push('name is required.');
+      }
+      if (patch.container !== undefined && !(CONTAINERS as readonly string[]).includes(patch.container)) {
+        errors.push(`container must be one of ${CONTAINERS.join(', ')}.`);
+      }
+      if (patch.schedule) errors.push(...validateScheduleOf(patch.schedule));
+      if (errors.length > 0) throw new Error(errors.join(' '));
+
+      const schedule = patch.schedule === undefined
+        ? before.schedule
+        : patch.schedule === null ? null : { ...DEFAULT_SCHEDULE, ...patch.schedule };
+      // Same rule as the app's setSchedule: a changed schedule is a new
+      // question about the current period, an unchanged one is not.
+      // Compared by value: the reader and the writer build the object in a
+      // different key order, and a spurious "changed" re-arms a period that
+      // already fired.
+      const sameSchedule = (a: object | null, b: object | null) => JSON.stringify(a && Object.entries(a).sort()) === JSON.stringify(b && Object.entries(b).sort());
+      const scheduleChanged = !sameSchedule(schedule, before.schedule);
+
+      const updated: TaskTemplate = {
+        ...before,
+        name: (patch.name ?? before.name).trim(),
+        category: patch.category === undefined ? before.category : patch.category,
+        applyContainer: patch.container ?? before.applyContainer,
+        anchorsAreAway: patch.anchorsAreAway ?? before.anchorsAreAway,
+        schedule,
+        scheduleLastFiredKey: scheduleChanged ? null : before.scheduleLastFiredKey,
+        ...parts,
+      };
+      db.dbUpdateTemplate(updated);
+      return updated;
     },
 
     createTask(draft: Partial<TaskDraft>): Task {

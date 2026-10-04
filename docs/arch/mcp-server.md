@@ -463,6 +463,26 @@ gains a reference, because the target may already reach back. A template being c
 the target of anything, since nothing that exists can name an id that has not been minted. Whatever
 adds `update_template` has to add the guard with it.
 
+### Editing one: `get_template` and `update_template`
+
+`get_template` returns a template as the plan that would recreate it (`templateToPlan`), and
+`update_template` takes any part of a plan, with what it leaves out unchanged. Three rules hold it:
+
+- **A list is replaced, not patched.** `groups`, `questions` and `items` point at one another, so
+  each replaces its whole list when given. What keeps this from being a rewrite is that **ids
+  survive by being named**: an item passes its `id`, a group uses its id as its `key`, a question
+  keeps its `name`. `{ id }` alone leaves an item exactly as stored.
+- **An item with an `id` starts from the stored item.** The zod item schema names only some of
+  `TemplateItem`'s fields, so a plan that rebuilt each item from what the caller sent would drop
+  the rest (link, chain, rotation, medication...) on every edit. Writing the given fields over the
+  stored item is what makes the edit lossless. An item with no id is new; one left out is removed.
+- **A scalar-only edit never rebuilds the lists.** A rename or a schedule change leaves items
+  untouched, so a stored nested reference that has since gone dangling cannot block it.
+
+The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
+comparison is by value because the db reader and the writer build the object in different key
+orders.
+
 ### Written through the db layer, not the store
 
 This is the opposite of the rule demo seeding follows, and for once that is correct.

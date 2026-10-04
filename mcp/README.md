@@ -105,7 +105,9 @@ only the fallback until the first sync.
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
+| `get_template` | One template in full, in the shape `create_template` and `update_template` take. |
 | `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
+| `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Needs `MCP_WRITE_TOKEN`. |
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |

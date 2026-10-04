@@ -1739,6 +1739,17 @@ describe('Templates', () => {
     expect(tpl.items).toEqual(items);
   });
 
+  it('insert → getAll keeps an item group saved as a checklist', () => {
+    dbInsertTemplate(makeTemplate({
+      itemGroups: [{ id: 'g1', title: 'Clothes', sortOrder: 1, checklist: true }, { id: 'g2', title: 'Misc', sortOrder: 2 }],
+    }));
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.itemGroups).toEqual([
+      { id: 'g1', title: 'Clothes', sortOrder: 1, checklist: true },
+      { id: 'g2', title: 'Misc', sortOrder: 2 },
+    ]);
+  });
+
   it('insert → getAll round-trips a schedule and its last-fired key', () => {
     const schedule = {
       frequency: 'monthly' as const,

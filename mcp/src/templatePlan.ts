@@ -46,6 +46,7 @@ import type {
   TimeOfDay,
 } from '../../src/types';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
+import { wouldCreateCycle } from '../../src/utils/templateUtils';
 
 export const CONTAINERS: readonly TemplateContainer[] = ['none', 'stack', 'project', 'task'];
 export const QUESTION_KINDS: readonly TemplateQuestionKind[] = ['text', 'number', 'choice', 'people'];
@@ -54,9 +55,15 @@ export const SCHEDULE_FREQUENCIES: readonly TemplateScheduleFrequency[] = ['week
 export const ANCHORS: readonly TemplateAnchor[] = ['start', 'end'];
 
 export interface GroupPlan {
-  /** The caller's own handle for this group, referenced by an item's `groupKey`. */
+  /**
+   * The caller's own handle for this group, referenced by an item's `groupKey`.
+   * On an update, the id of an existing group keeps that group (and so the
+   * items filed in it) rather than replacing it with a new one.
+   */
   key: string;
   title: string;
+  /** Run into a project, the section is a checklist. */
+  checklist?: boolean;
 }
 
 export interface QuestionPlan {
@@ -88,8 +95,17 @@ export interface ConditionPlan {
  * a second copy to keep in step.
  */
 export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate'>> {
-  title: string;
-  /** The caller's own handle for this item, which another item's `onlyIfAnswer` names. */
+  /** Required, except on an update where `id` names the item that already has one. */
+  title?: string;
+  /**
+   * Update only: the id of an item this template already has. The stored item
+   * is the starting point and the fields given here are written over it, so a
+   * field this plan has no name for survives, and `{ id }` alone keeps an item
+   * exactly as it is. An item with no id is new; an existing item left out of
+   * `items` is removed.
+   */
+  id?: string;
+  /** The caller's own handle for this item, which another item's `onlyIfAnswer` names. An item with an `id` is also known by it. */
   key?: string;
   /**
    * TemplateItem.answerGate: shown only for these answers to the question
@@ -128,6 +144,13 @@ export interface TemplatePlan {
   items?: ItemPlan[];
 }
 
+/**
+ * An edit to a template: any part of a plan, with what is left out unchanged.
+ * `groups`, `questions` and `items` replace their whole list when given, since
+ * items point at both of the others. `schedule: null` removes the schedule.
+ */
+export type TemplatePatch = Partial<TemplatePlan>;
+
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
@@ -159,10 +182,16 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]): boolean
  * `wouldCreateCycle` matters when an *existing* template gains a reference,
  * because the target may already reach back. A template being created cannot be
  * the target of anything: nothing that exists can name an id that has not been
- * minted. Whatever adds `update_template` has to add the guard with it.
+ * minted. `update_template` passes `selfId`, which is what turns the guard on.
  */
-export function validateTemplatePlan(plan: TemplatePlan, existing: readonly TaskTemplate[]): string[] {
+export function validateTemplatePlan(
+  plan: TemplatePlan,
+  existing: readonly TaskTemplate[],
+  /** The template being updated, if any. Turns on the checks only an edit needs. */
+  selfId?: string
+): string[] {
   const errors: string[] = [];
+  const self = selfId === undefined ? undefined : existing.find(t => t.id === selfId);
 
   if (!plan.name?.trim()) errors.push('name is required.');
   if (plan.container !== undefined && !oneOf(plan.container, CONTAINERS)) {
@@ -223,12 +252,21 @@ export function validateTemplatePlan(plan: TemplatePlan, existing: readonly Task
   const items = plan.items ?? [];
   if (items.length === 0) errors.push('a template needs at least one item.');
 
+  const seenIds = new Set<string>();
+  for (const item of items) {
+    if (item.id === undefined) continue;
+    if (!self?.items.some(i => i.id === item.id)) errors.push(`item id "${item.id}" is not an item of this template.`);
+    else if (seenIds.has(item.id)) errors.push(`item id "${item.id}" is used twice.`);
+    seenIds.add(item.id);
+  }
+
   // Item keys, and what each keyed item offers as answers, for onlyIfAnswer.
   const itemAnswers = new Map<string, string[]>();
   for (const item of items) {
-    if (item.key === undefined) continue;
-    if (itemAnswers.has(item.key)) errors.push(`item key "${item.key}" is used twice.`);
-    itemAnswers.set(item.key, deliverableOptionsFor({
+    const key = item.key ?? item.id;
+    if (key === undefined) continue;
+    if (itemAnswers.has(key)) errors.push(`item key "${key}" is used twice.`);
+    itemAnswers.set(key, deliverableOptionsFor({
       deliverableKind: item.deliverableKind ?? null,
       deliverableOptions: item.deliverableOptions,
       chainEnabled: false,
@@ -249,7 +287,7 @@ export function validateTemplatePlan(plan: TemplatePlan, existing: readonly Task
       errors.push(`item "${label}" names group "${item.groupKey}", which the plan does not define.`);
     }
     errors.push(...conditionErrors(item, label, choices, questionNames));
-    errors.push(...refErrors(item, label, existing));
+    errors.push(...refErrors(item, label, existing, selfId));
     errors.push(...rangeErrors(item, label));
   }
 
@@ -291,13 +329,16 @@ function conditionErrors(
   return errors;
 }
 
-function refErrors(item: ItemPlan, label: string, existing: readonly TaskTemplate[]): string[] {
+function refErrors(item: ItemPlan, label: string, existing: readonly TaskTemplate[], selfId?: string): string[] {
   if (item.refTemplate === undefined) return [];
 
   const matches = resolveRef(item.refTemplate, existing);
   if (matches.length === 0) return [`item "${label}" references template "${item.refTemplate}", which does not exist.`];
   if (matches.length > 1) {
     return [`item "${label}" references "${item.refTemplate}", which names ${matches.length} templates. Use an id.`];
+  }
+  if (selfId !== undefined && wouldCreateCycle(existing as TaskTemplate[], selfId, matches[0].id)) {
+    return [`item "${label}" nests "${matches[0].name}", which would make the template contain itself.`];
   }
   return [];
 }
@@ -368,7 +409,7 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   return errors;
 }
 
-function scheduleErrors(schedule: SchedulePlan | null | undefined): string[] {
+export function scheduleErrors(schedule: SchedulePlan | null | undefined): string[] {
   if (!schedule) return [];
   const errors: string[] = [];
 
@@ -386,4 +427,45 @@ function scheduleErrors(schedule: SchedulePlan | null | undefined): string[] {
     errors.push('schedule month must be 0 to 11.');
   }
   return errors;
+}
+
+/**
+ * A stored template written back as a plan, which is what `get_template`
+ * returns and what `update_template` takes pieces of. Groups are keyed by their
+ * id and items carry theirs, so handing a piece back keeps the thing it names.
+ * An item is also given a `key` when another item's answer gate points at it.
+ */
+export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: string } {
+  const gateTargets = new Set(template.items.map(i => i.answerGate?.itemId).filter((x): x is string => !!x));
+  const questionName = new Map(template.questions.map(q => [q.id, q.name]));
+  return {
+    id: template.id,
+    name: template.name,
+    category: template.category,
+    container: template.applyContainer,
+    anchorsAreAway: template.anchorsAreAway,
+    schedule: template.schedule,
+    groups: template.itemGroups.map(g => ({ key: g.id, title: g.title, ...(g.checklist ? { checklist: true } : {}) })),
+    questions: template.questions.map(q => ({
+      ...(q.name ? { name: q.name } : {}),
+      prompt: q.prompt,
+      kind: q.kind,
+      ...(q.options.length ? { options: q.options } : {}),
+      ...(q.defaultValue ? { defaultValue: q.defaultValue } : {}),
+      ...(q.fromDates !== 'none' ? { fromDates: q.fromDates } : {}),
+    })),
+    items: template.items.map(item => {
+      const { groupId, conditions, refTemplateId, refTemplateName, answerGate, ...fields } = item;
+      return {
+        ...fields,
+        ...(gateTargets.has(item.id) ? { key: item.id } : {}),
+        ...(groupId ? { groupKey: groupId } : {}),
+        ...(conditions.length
+          ? { conditions: conditions.map(c => ({ question: questionName.get(c.questionId) ?? '', values: c.values })) }
+          : {}),
+        ...(answerGate ? { onlyIfAnswer: { item: answerGate.itemId, answers: answerGate.answers } } : {}),
+        ...(refTemplateId ? { refTemplate: refTemplateId } : {}),
+      };
+    }),
+  };
 }

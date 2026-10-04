@@ -319,6 +319,104 @@ describe('the replica', () => {
     expect(() => replica.createTemplate({ name: '', items: [] })).toThrow(/name is required.*at least one item/);
   });
 
+  describe('updateTemplate', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = () => require('../../../src/db/database');
+    beforeEach(() => mockRaw.runSync('DELETE FROM templates'));
+
+    const trip = () => replica.createTemplate({
+      name: 'Trip',
+      groups: [{ key: 'clothes', title: 'Clothes', checklist: true }],
+      questions: [{ name: 'trip', prompt: 'What kind of trip?', kind: 'choice', options: ['Work', 'Holiday'] }],
+      items: [
+        { title: 'Shirts', groupKey: 'clothes', dueOffsetDays: -1, estimatedMinutes: 10 },
+        { title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] },
+      ],
+    });
+
+    it('changes only the scalar fields it is given, leaving the items alone', () => {
+      const built = trip();
+      const updated = replica.updateTemplate(built.id, { name: ' Trip v2 ', category: 'Home', container: 'stack' });
+
+      expect(updated).toMatchObject({ id: built.id, name: 'Trip v2', category: 'Home', applyContainer: 'stack' });
+      expect(updated.items).toEqual(built.items);
+      expect(replica.templates().find(t => t.id === built.id)!.name).toBe('Trip v2');
+    });
+
+    it('finds the template by exact name too', () => {
+      trip();
+      expect(replica.updateTemplate('Trip', { anchorsAreAway: true }).anchorsAreAway).toBe(true);
+    });
+
+    it('clears the fired mark only when the schedule actually changes', () => {
+      const built = trip();
+      replica.updateTemplate(built.id, { schedule: { frequency: 'weekly', weekday: 1 } });
+      const stored = replica.templates().find(t => t.id === built.id)!;
+      // Simulate a period that already fired.
+      stored.scheduleLastFiredKey = '2026-W36';
+      db().dbUpdateTemplate(stored);
+
+      const same = replica.updateTemplate(built.id, { schedule: { frequency: 'weekly', weekday: 1 } });
+      expect(same.scheduleLastFiredKey).toBe('2026-W36');
+      const moved = replica.updateTemplate(built.id, { schedule: { frequency: 'weekly', weekday: 3 } });
+      expect(moved.scheduleLastFiredKey).toBeNull();
+      expect(replica.updateTemplate(built.id, { schedule: null }).schedule).toBeNull();
+    });
+
+    it('keeps an item by id with every field it had, including ones a plan cannot name', () => {
+      const built = trip();
+      const shirts = built.items.find(i => i.title === 'Shirts')!;
+      const laptop = built.items.find(i => i.title === 'Laptop')!;
+
+      const updated = replica.updateTemplate(built.id, {
+        items: [{ id: shirts.id, title: 'Shirts and socks' }, { id: laptop.id }, { title: 'Charger' }],
+      });
+
+      const kept = updated.items.find(i => i.id === shirts.id)!;
+      expect(kept).toMatchObject({ title: 'Shirts and socks', dueOffsetDays: -1, estimatedMinutes: 10, groupId: built.itemGroups[0].id });
+      // The condition still points at the same question, since a kept
+      // question keeps its id.
+      expect(updated.items.find(i => i.id === laptop.id)!.conditions).toEqual(laptop.conditions);
+      expect(updated.items.find(i => i.title === 'Charger')!.id).not.toBe(shirts.id);
+      expect(updated.itemGroups).toEqual(built.itemGroups);
+      expect(updated.questions).toEqual(built.questions);
+    });
+
+    it('removes an item that is left out', () => {
+      const built = trip();
+      const updated = replica.updateTemplate(built.id, { items: [{ id: built.items[0].id }] });
+      expect(updated.items).toHaveLength(1);
+    });
+
+    it('replaces questions and refuses a condition left pointing at a removed one', () => {
+      const built = trip();
+      expect(() => replica.updateTemplate(built.id, { questions: [] })).toThrow(/does not define/);
+      expect(replica.templates().find(t => t.id === built.id)!.questions).toHaveLength(1);
+    });
+
+    it('writes nothing when the edit is invalid', () => {
+      const built = trip();
+      expect(() => replica.updateTemplate(built.id, { name: 'Renamed', items: [{ id: 'nope', title: 'x' }] })).toThrow(/not an item of this template/);
+      expect(replica.templates().find(t => t.id === built.id)!.name).toBe('Trip');
+      expect(() => replica.updateTemplate(built.id, { name: ' ' })).toThrow(/name is required/);
+      expect(() => replica.updateTemplate('missing', { name: 'x' })).toThrow(/No template/);
+    });
+
+    it('refuses to nest a template inside itself, directly or through another', () => {
+      const a = replica.createTemplate({ name: 'A', items: [{ title: 'a1' }] });
+      const b = replica.createTemplate({ name: 'B', items: [{ title: 'Nest A', refTemplate: a.id }] });
+      expect(() => replica.updateTemplate(a.id, { items: [{ title: 'Nest A', refTemplate: a.id }] })).toThrow(/contain itself/);
+      expect(() => replica.updateTemplate(a.id, { items: [{ title: 'Nest B', refTemplate: b.id }] })).toThrow(/contain itself/);
+    });
+
+    it('survives a pre-existing broken nested reference on a rename', () => {
+      const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
+      const outer = replica.createTemplate({ name: 'Outer', items: [{ title: 'Nest', refTemplate: inner.id }] });
+      db().dbDeleteTemplate(inner.id);
+      expect(replica.updateTemplate(outer.id, { name: 'Outer 2' }).items[0].refTemplateName).toBe('Inner');
+    });
+  });
+
   it('creates a task through the app\'s own builder, defaults and all', () => {
     const task = replica.createTask({ title: 'Water the plants', category: 'Home' });
 

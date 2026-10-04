@@ -100,6 +100,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     sync: async () => null,
     templates: () => [],
     createTemplate: () => { throw new Error('not stubbed'); },
+    updateTemplate: () => { throw new Error('not stubbed'); },
     createTask: () => { throw new Error('not stubbed'); },
     completeTask: () => { throw new Error('not stubbed'); },
     completionProblem: () => null,

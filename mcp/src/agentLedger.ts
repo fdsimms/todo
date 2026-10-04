@@ -180,6 +180,12 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return template;
     },
 
+    updateTemplate(id, patch) {
+      const template = replica.updateTemplate(id, patch);
+      log({ action: 'edited', subject: 'template', title: template.name, taskId: null });
+      return template;
+    },
+
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
       if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });

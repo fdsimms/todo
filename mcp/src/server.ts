@@ -49,6 +49,8 @@ import {
   createTask,
   updateTask,
   createTemplate,
+  getTemplate,
+  updateTemplate,
   completeTask,
   updateAnswer,
   deferTask,
@@ -354,6 +356,16 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'get_template',
+    'One template in full, in the same shape create_template and update_template take: its items (each with an id), item groups (keyed by id), questions, schedule and container. Read it before editing a template, since update_template changes only what you name.',
+    { template: z.string().describe('A template id, or its exact name when that names only one (list_templates).') },
+    async ({ template }) => {
+      const found = await withFresh(() => getTemplate(replica, template));
+      return json(found ?? { error: `No template with id or name "${template}".` });
+    }
+  );
+
+  server.tool(
     'get_project',
     'One project in full: its details, every open task in the project\'s own order (with each one\'s checklist and what it waits on), the most recently finished, and every decision: each question a task asked on completion, with its answer and when it was given. Use it before suggesting what to do next on a project, or before re-scoping one.',
     { id: z.string().min(1) },
@@ -615,7 +627,8 @@ const conditionSchema = z.object({
 });
 
 const itemSchema = z.object({
-  title: z.string().min(1),
+  id: z.string().optional().describe('Update only: the id of an item this template already has (get_template). It starts from the stored item and the other fields here change it.'),
+  title: z.string().min(1).optional().describe('Required, except when id names an item that already has one.'),
   notes: z.string().optional(),
   optional: z.boolean().optional().describe('Starts unticked in a run. A condition replaces this rather than stacking with it.'),
   anchor: z.enum(ANCHORS as unknown as [string, ...string[]]).optional().describe('Which anchor date the offsets below count from.'),
@@ -653,6 +666,32 @@ const itemSchema = z.object({
     .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied.'),
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
+
+const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
+  .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
+const anchorsAreAwaySchema = z.boolean().optional().describe('Whether the anchor dates mean a period away from home.');
+const groupsSchema = z.array(z.object({
+  key: z.string().min(1).describe('Your own handle for this group, used by an item groupKey. To keep an existing group when updating, use its id.'),
+  title: z.string().min(1),
+  checklist: z.boolean().optional().describe('Run into a project, the section is a checklist.'),
+})).optional();
+const questionsSchema = z.array(z.object({
+  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none.'),
+  prompt: z.string(),
+  kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
+  options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
+  defaultValue: z.string().optional(),
+  fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
+    .describe('A number question can take its answer off the anchor dates: days or nights.'),
+})).optional();
+const scheduleSchema = z.object({
+  frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
+  weekday: z.number().int().min(0).max(6).optional(),
+  monthDay: z.number().int().min(1).max(31).optional(),
+  month: z.number().int().min(0).max(11).optional(),
+  time: z.string().optional().describe('HH:MM.'),
+  anchorSpanDays: z.number().int().nullable().optional(),
+}).nullable().optional();
 
 /**
  * The task fields create_task and update_task share, described for a caller
@@ -1039,30 +1078,11 @@ function registerWriteTools(
     {
       name: z.string().min(1),
       category: z.string().nullable().optional(),
-      container: z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
-        .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.'),
-      anchorsAreAway: z.boolean().optional().describe('Whether the anchor dates mean a period away from home.'),
-      groups: z.array(z.object({
-        key: z.string().min(1).describe('Your own handle for this group, used by an item groupKey.'),
-        title: z.string().min(1),
-      })).optional(),
-      questions: z.array(z.object({
-        name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none.'),
-        prompt: z.string(),
-        kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
-        options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
-        defaultValue: z.string().optional(),
-        fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
-          .describe('A number question can take its answer off the anchor dates: days or nights.'),
-      })).optional(),
-      schedule: z.object({
-        frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
-        weekday: z.number().int().min(0).max(6).optional(),
-        monthDay: z.number().int().min(1).max(31).optional(),
-        month: z.number().int().min(0).max(11).optional(),
-        time: z.string().optional().describe('HH:MM.'),
-        anchorSpanDays: z.number().int().nullable().optional(),
-      }).nullable().optional(),
+      container: containerSchema,
+      anchorsAreAway: anchorsAreAwaySchema,
+      groups: groupsSchema,
+      questions: questionsSchema,
+      schedule: scheduleSchema,
       items: z.array(itemSchema).min(1),
     },
     async input => {
@@ -1073,6 +1093,30 @@ function registerWriteTools(
         // The validator's whole point is reporting every problem at once, so
         // the message is handed back rather than collapsed into "failed".
         return json({ error: e instanceof Error ? e.message : 'Could not create the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_template',
+    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name. Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused.',
+    {
+      template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
+      name: z.string().min(1).optional(),
+      category: z.string().nullable().optional(),
+      container: containerSchema,
+      anchorsAreAway: anchorsAreAwaySchema,
+      groups: groupsSchema,
+      questions: questionsSchema,
+      schedule: scheduleSchema,
+      items: z.array(itemSchema).min(1).optional(),
+    },
+    async ({ template, ...patch }) => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return json(await withWrite(() => updateTemplate(replica, template, patch as any)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not update the template.' });
       }
     }
   );
