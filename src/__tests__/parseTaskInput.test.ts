@@ -107,7 +107,7 @@ describe('parseTaskInput — one-off dates', () => {
 
   it('reads an unmarked clock already past today as the afternoon', () => {
     const now = new Date(2026, 9, 2, 9, 0);
-    const r = parseTaskInput('Frankie x Cool Alex today at 5:30', now, now)!;
+    const r = parseTaskInput('Maren x Jules today at 5:30', now, now)!;
     expect(r.schedule.explicitClockTime).toEqual({ h: 17, m: 30 });
     expect(r.schedule.timeSegments).toEqual(['afternoon']);
   });
