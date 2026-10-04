@@ -107,6 +107,11 @@ days at your current pace").
   screen named by an icon string uses `COIN_ICON` (`src/constants/coinIcon.ts`, a separate file so
   `navHubs.ts` can name it without importing a component) and draws it through `NamedIcon`.
 
+- **Celebrations are two moments, both on the Rewards screen.** A burst of coins (`CoinBurst`, path in
+  `src/utils/coinBurst.ts`) on claiming a reward, and a larger one with a success haptic when a rise
+  in the balance crosses the goal's price. Only the crossing counts, so opening the screen above the
+  price or choosing a goal you can already afford fires nothing. Nothing celebrates a completion
+  elsewhere (that is `CoinToast`'s quiet pill), and Reduce Motion skips the burst and the hop.
 - **The Rewards screen** (menu row under Tasks): the balance with the goal's progress, the rule
   spelled out, the rewards (add, edit in place, claim, open the link, set as goal, delete), the
   chosen list's items, starter ideas and the history.

@@ -11,6 +11,7 @@ import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
 import { CoinIcon } from '../components/CoinIcon';
+import { CoinBurst } from '../components/CoinBurst';
 import { CountStepper } from '../components/CountStepper';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
@@ -74,6 +75,9 @@ const HISTORY_LIMIT = 50;
 /** The coin beside the balance. A hero, so a literal size like the number's own. */
 const BALANCE_COIN_SIZE = 52;
 
+/** Where a burst launches, below the safe area: around the balance coin. */
+const BURST_ORIGIN_OFFSET = 190;
+
 const KIND_LABELS: Record<CoinEntry['kind'], string> = {
   earn: 'Completed',
   loss: 'Missed',
@@ -110,23 +114,6 @@ export function RewardsScreen() {
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
   const balance = useMemo(() => coinBalance(entries), [entries]);
-
-  // The hero coin hops when coins arrive while the screen is open, so a claim
-  // undone or a completion drained in the background doesn't go unseen. Only a
-  // rise: a spend or a loss moving the number is its own signal.
-  const reduceMotion = useReduceMotion();
-  const coinScale = useSharedValue(1);
-  const lastBalance = useRef(balance);
-  useEffect(() => {
-    if (balance > lastBalance.current && !reduceMotion) {
-      coinScale.value = withSequence(
-        withSpring(1.3, animation.spring.bouncy),
-        withSpring(1, animation.spring.smooth),
-      );
-    }
-    lastBalance.current = balance;
-  }, [balance, reduceMotion, coinScale]);
-  const coinStyle = useAnimatedStyle(() => ({ transform: [{ scale: coinScale.value }] }));
   // Your recent earning rate, which prices a reward by how often you want it
   // and says how often each one comes round. Null with under a week of
   // history, and every reader treats that as "nothing to say".
@@ -142,6 +129,34 @@ export function RewardsScreen() {
     [rewards, entries, sourceOf],
   );
   const goal = openRewards.find(r => r.id === goalId) ?? null;
+
+  // The hero coin hops when coins arrive while the screen is open, so a claim
+  // undone or a completion drained in the background doesn't go unseen. Only a
+  // rise: a spend or a loss moving the number is its own signal. Reaching the
+  // goal's price on that rise is the one moment that also throws a burst, and
+  // only on the crossing itself: opening the screen already above it, or
+  // choosing a goal you can already afford, changes no balance and so fires
+  // nothing.
+  const reduceMotion = useReduceMotion();
+  const coinScale = useSharedValue(1);
+  const lastBalance = useRef(balance);
+  const [burst, setBurst] = useState({ key: 0, big: false });
+  useEffect(() => {
+    const before = lastBalance.current;
+    lastBalance.current = balance;
+    if (balance <= before) return;
+    if (!reduceMotion) {
+      coinScale.value = withSequence(
+        withSpring(1.3, animation.spring.bouncy),
+        withSpring(1, animation.spring.smooth),
+      );
+    }
+    if (goal && before < goal.cost && balance >= goal.cost) {
+      haptics.success();
+      setBurst(b => ({ key: b.key + 1, big: true }));
+    }
+  }, [balance]);
+  const coinStyle = useAnimatedStyle(() => ({ transform: [{ scale: coinScale.value }] }));
 
   const ideas = useMemo(() => rewardIdeas(rewards.map(r => r.title), rate), [rewards, rate]);
   // Ideas are the whole section while you have no rewards, and a button away
@@ -246,6 +261,7 @@ export function RewardsScreen() {
     const entry = useRewardStore.getState().claimReward(reward.id);
     if (!entry) return;
     haptics.success();
+    setBurst(b => ({ key: b.key + 1, big: false }));
     // A list item claimed as a reward is checked off the list: getting it was
     // the point. Neutral, so checking it off earns nothing on top of what was
     // just spent; the undo below takes both back together.
@@ -768,6 +784,9 @@ export function RewardsScreen() {
           </View>
         )}
       </ScrollView>
+      <View style={[styles.burstAnchor, { top: insets.top + BURST_ORIGIN_OFFSET }]} pointerEvents="none">
+        <CoinBurst burstKey={burst.key} big={burst.big} />
+      </View>
       <ProjectPickerSheet
         visible={listPickerOpen}
         onClose={() => setListPickerOpen(false)}
@@ -799,6 +818,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.warningBg,
     alignItems: 'center',
   },
+  burstAnchor: { position: 'absolute', left: 0, right: 0 },
   balanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   // A hero number, which is one of the things a literal font size is for.
   balance: { color: colors.text, fontSize: 48, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
