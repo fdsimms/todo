@@ -144,6 +144,8 @@ export interface ProjectPlanStep {
 
 export interface ProjectPlan {
   title: string;
+  /** Lets `defaultTaskCategory` name a category that doesn't exist yet, creating it. */
+  newCategory?: boolean;
   notes?: string;
   deadline?: string | null;
   /** The day the project is for (Project.eventDate), as an ISO date. */
@@ -164,6 +166,8 @@ export interface ProjectTaskMove {
 }
 
 export interface ProjectPatch {
+  /** Lets `defaultTaskCategory` name a category that doesn't exist yet, creating it. */
+  newCategory?: boolean;
   title?: string;
   notes?: string;
   deadline?: string | null;
@@ -701,25 +705,76 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     return out.length === answers.length ? out : null;
   };
 
+  /**
+   * A category name as the person spelled it, matched ignoring case and outer
+   * spaces, or the name itself when `allowNew` says a new one is meant. Any
+   * other name is refused with the list: a free-text category that matches
+   * nothing files the task under a section the person never made, which is
+   * how a typo becomes a stray heading on Today.
+   */
+  const categoryNamed = (name: string, allowNew: boolean, errors: string[], field = 'category'): string | null => {
+    const wanted = name.trim();
+    if (!wanted) { errors.push(`${field} can't be blank.`); return null; }
+    const match = useCategoryStore.getState().categories.find(c => c.name.toLowerCase() === wanted.toLowerCase());
+    if (match) return match.name;
+    if (allowNew) return wanted;
+    errors.push(`${field}: "${wanted}" isn't one of your categories (${categoryList()}). Use one of those, or pass newCategory: true to create it.`);
+    return null;
+  };
+  const categoryList = (): string => useCategoryStore.getState().categories.map(c => c.name).join(', ') || 'none yet';
+
+  /**
+   * Creates a category a checked patch named with `newCategory`, inside the
+   * write that uses it. Validation only lets an unknown name through with that
+   * flag, so a name missing here is always one the caller asked for.
+   */
+  const ensureCategory = (name: string | null | undefined): void => {
+    if (name && !useCategoryStore.getState().getCategoryByName(name)) useCategoryStore.getState().addCategory(name);
+  };
+
   /** A step or task's fields, checked, with blockers resolved against the live tasks. */
   const taskPatch = (
     input: TaskFieldsInput,
     current: Task | null,
     isSubtask: boolean,
-    extraBlockers: string[] = [],
-    /** The event date to count from, for a project that isn't written yet. Otherwise read off the task's project. */
-    eventDate?: string | null,
+    ctx: {
+      /** The event date to count from, for a project that isn't written yet. Otherwise read off the task's project. */
+      eventDate?: string | null;
+      /** The default task category of a project that isn't written yet. Otherwise read off the task's project. */
+      projectCategory?: string | null;
+    } = {},
   ): Partial<Task> => {
-    const { fields, errors: eventErrors } = resolveEventDays(input, current, eventDate);
+    const { newCategory, ...rest } = input;
+    const { fields, errors: eventErrors } = resolveEventDays(rest, current, ctx.eventDate);
     const { patch, waitsOn, onlyIfAnswer, errors } = taskFieldsPatch(fields, current, {
       newId: generateId,
       emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
     }, { isSubtask });
     errors.unshift(...eventErrors);
-    if (waitsOn !== undefined || extraBlockers.length > 0) {
+
+    // ---- category ------------------------------------------------------------
+    if (typeof fields.category === 'string') {
+      const named = categoryNamed(fields.category, newCategory === true, errors);
+      if (named) patch.category = named;
+    }
+    // Every top-level task created here lands in a category: one named, the
+    // project's own default, or one a title rule of the person's supplies.
+    // A checklist item has no section of its own, so it's exempt.
+    if (!current && !isSubtask && !patch.category) {
+      const projectId = fields.projectId ?? null;
+      const fromProject = ctx.projectCategory !== undefined
+        ? ctx.projectCategory
+        : projectId ? projects().find(p => p.id === projectId)?.defaultTaskCategory ?? null : null;
+      const fromRule = fields.title ? taskDraft.applyTitleRulesToDraft({ title: fields.title }).category ?? null : null;
+      if (!fromProject && !fromRule) {
+        errors.push(`"${fields.title ?? 'This task'}" needs a category. Pick the one it belongs under from yours (${categoryList()}), or name a new one with newCategory: true.`);
+      }
+    }
+
+    if (waitsOn !== undefined) {
       const all = tasks();
       const resolve = blocking.resolverFor(all);
-      const ids = [...(waitsOn ?? []), ...extraBlockers];
+      const ids = waitsOn;
       for (const id of waitsOn ?? []) {
         const candidate = resolve(id);
         if (!candidate) errors.push(`waitsOn: no task with id ${id}.`);
@@ -750,7 +805,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * leaving a project with half its steps. `waitsOn` positions count over the
    * batch itself; a step's own `fields.waitsOn` names tasks that already exist.
    */
-  const checkSteps = (steps: ProjectPlanStep[], eventDate: string | null): CheckedSteps => {
+  const checkSteps = (steps: ProjectPlanStep[], eventDate: string | null, projectCategory: string | null): CheckedSteps => {
     const errors: string[] = [];
     const gates: Record<number, string[]> = {};
     const patches = steps.map((step, i) => {
@@ -759,7 +814,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       if (!step.fields.title?.trim()) errors.push(`steps[${i}] needs a title.`);
       try {
-        return taskPatch({ ...step.fields, projectId: undefined }, null, false, [], eventDate);
+        return taskPatch({ ...step.fields, projectId: undefined }, null, false, { eventDate, projectCategory });
       } catch (e) {
         errors.push(`steps[${i}]: ${e instanceof Error ? e.message : String(e)}`);
         return {};
@@ -807,6 +862,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           : {}),
       } as Partial<TaskDraft>;
       const task = taskDraft.newTaskFromDraft(taskDraft.applyTitleRulesToDraft(draft), now, order++, true);
+      ensureCategory(task.category);
       db.dbInsertTask(task);
       ids.push(task.id);
       created.push(task);
@@ -971,6 +1027,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         // paths in the app do. This is a from-scratch creation.
         true
       );
+      ensureCategory(task.category);
       db.dbInsertTask(task);
       refresh();
       return task;
@@ -1222,6 +1279,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       const siblings = taskUpdate.seriesFanOutRows(updated, patch, all);
       db.dbTransaction(() => {
+        ensureCategory(updated.category);
         db.dbUpdateTask(updated);
         for (const row of siblings) db.dbUpdateTask(row);
       });
@@ -1235,7 +1293,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       const eventDate = plan.eventDate ? eventNoonIso(plan.eventDate) : null;
       if (plan.eventDate && !eventDate) throw new Error(`eventDate: "${plan.eventDate}" is not a date I can read. Use an ISO date like 2027-06-14.`);
-      const checked = checkSteps(plan.steps, eventDate);
+      const categoryErrors: string[] = [];
+      const defaultTaskCategory = plan.defaultTaskCategory
+        ? categoryNamed(plan.defaultTaskCategory, plan.newCategory === true, categoryErrors, 'defaultTaskCategory')
+        : null;
+      if (categoryErrors.length > 0) throw new Error(categoryErrors.join(' '));
+      const checked = checkSteps(plan.steps, eventDate, defaultTaskCategory);
 
       let project: Project | undefined;
       const created: Task[] = [];
@@ -1248,10 +1311,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             category: plan.category ?? null,
             kind: plan.kind ?? 'project',
           });
-          if (plan.notes || plan.defaultTaskCategory) {
+          ensureCategory(defaultTaskCategory);
+          if (plan.notes || defaultTaskCategory) {
             store.updateProject(project.id, {
               ...(plan.notes ? { notes: plan.notes } : {}),
-              ...(plan.defaultTaskCategory ? { defaultTaskCategory: plan.defaultTaskCategory } : {}),
+              ...(defaultTaskCategory ? { defaultTaskCategory } : {}),
             });
           }
           created.push(...writeSteps(project.id, plan.steps, checked));
@@ -1267,7 +1331,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const project = projects().find(p => p.id === projectId);
       if (!project) throw new Error(`No project with id ${projectId}.`);
       if (steps.length === 0) throw new Error('Nothing to add: name at least one step.');
-      const checked = checkSteps(steps, project.eventDate ?? null);
+      const checked = checkSteps(steps, project.eventDate ?? null, project.defaultTaskCategory ?? null);
       let created: Task[] = [];
       try {
         db.dbTransaction(() => {
@@ -1283,13 +1347,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const store = useProjectStore.getState();
       if (!store.projects.some(p => p.id === id)) throw new Error(`No project with id ${id}.`);
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A project title cannot be blank.');
-      const { completed, archived, ...content } = patch;
+      const { completed, archived, newCategory, ...content } = patch;
+      if (content.defaultTaskCategory) {
+        const errors: string[] = [];
+        const named = categoryNamed(content.defaultTaskCategory, newCategory === true, errors, 'defaultTaskCategory');
+        if (!named) throw new Error(errors.join(' '));
+        content.defaultTaskCategory = named;
+      }
       if (content.eventDate) {
         const noon = eventNoonIso(content.eventDate);
         if (!noon) throw new Error(`eventDate: "${content.eventDate}" is not a date I can read. Use an ISO date like 2027-06-14.`);
         content.eventDate = noon;
       }
       db.dbTransaction(() => {
+        ensureCategory(content.defaultTaskCategory);
         if (Object.keys(content).length > 0) {
           store.updateProject(id, { ...content, ...(content.title ? { title: content.title.trim() } : {}) });
         }

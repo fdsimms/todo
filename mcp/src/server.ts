@@ -56,6 +56,7 @@ import {
   setGroceryChecked,
   removeFromGroceryList,
   listProjects,
+  listCategories,
   listTasks,
   listTemplates,
   searchTasks,
@@ -223,6 +224,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       const result = await withFresh(() => getTask(replica, id));
       return result ? json(withLink(result, LINKS?.task(id))) : json({ error: `No task with id ${id}.` });
     }
+  );
+
+  server.tool(
+    'list_categories',
+    'The task categories, in the user\'s own order, each with how many open tasks it holds and a few of them as examples. Every task you create needs one of these (or a new one, flagged with newCategory), so check here first and pick the one the task belongs under.',
+    {},
+    async () => json(await withFresh(() => listCategories(replica)))
   );
 
   server.tool('list_projects', "Active projects and how far through each one is. The counts are the app's own: a recurring member counts once however many times it has recurred, and a dated series counts once rather than once per date.", {}, async () =>
@@ -404,7 +412,8 @@ const itemSchema = z.object({
 const isoDateTime = z.string().nullable().optional();
 const taskFieldsShape = {
   notes: z.string().optional(),
-  category: z.string().nullable().optional().describe('A task category, by name.'),
+  category: z.string().nullable().optional().describe('A task category, by name, from list_categories. Required when creating a top-level task unless its project has a default category; a name that isn\'t one of the user\'s is refused unless newCategory is set.'),
+  newCategory: z.boolean().optional().describe('Create category as a new category. Only when none of the existing ones fits; say so to the user.'),
   tags: z.array(z.string()).optional(),
   projectId: z.string().nullable().optional().describe('File it in a project (see list_projects), or null to take it out.'),
   dueDate: isoDateTime.describe('ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
@@ -497,7 +506,7 @@ function registerWriteTools(
 ): void {
   server.tool(
     'create_task',
-    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. The app's own defaults apply (a default category, its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
+    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. It needs a category (see list_categories) unless its project has a default one; the app's other defaults apply (its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
     {
       title: z.string().min(1),
       ...taskFieldsShape,
@@ -695,7 +704,8 @@ function registerWriteTools(
       deadline: z.string().nullable().optional().describe('ISO date to finish by. Shown on the project; schedules nothing.'),
       eventDate: z.string().nullable().optional().describe('ISO date of the day the project is for: the wedding, the move, the party. Separate from the deadline, since work happens on both sides of it. Steps can be dated from it with dueDaysFromEvent.'),
       category: z.string().nullable().optional().describe('A project category, for grouping on the Projects page.'),
-      defaultTaskCategory: z.string().nullable().optional().describe('A task category every step gets unless it names its own.'),
+      defaultTaskCategory: z.string().nullable().optional().describe('A task category (from list_categories) every step gets unless it names its own. Without it, every step needs its own category.'),
+      newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       kind: z.enum(['project', 'list']).optional(),
       steps: z.array(planStep).optional(),
     },
@@ -738,6 +748,7 @@ function registerWriteTools(
       moveTasksFrom: z.string().optional().describe('Move the dated tasks after the event date has already been changed: the old event date. They move by the days from it to the event date now.'),
       category: z.string().nullable().optional(),
       defaultTaskCategory: z.string().nullable().optional(),
+      newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),

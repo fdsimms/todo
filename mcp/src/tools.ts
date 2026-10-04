@@ -244,6 +244,28 @@ export interface SerializedProject {
   outstanding: number;
 }
 
+export interface SerializedCategory {
+  name: string;
+  /** Open top-level tasks filed under it. */
+  openTasks: number;
+  /** A few of them, so what belongs here can be judged from more than the name. */
+  examples?: string[];
+}
+
+/**
+ * The person's task categories, in their own order, for choosing where a new
+ * task goes: create_task and the project tools refuse a task with none, and a
+ * name that isn't one of these unless it's flagged as new.
+ */
+export function listCategories(replica: Replica): SerializedCategory[] {
+  const open = replica.tasks().filter(t => !t.parentId && !t.completed && !t.archived);
+  return replica.categories().map(c => {
+    const mine = open.filter(t => t.category === c.name);
+    const examples = mine.slice(0, 3).map(t => replica.displayTitle(t));
+    return { name: c.name, openTasks: mine.length, ...(examples.length > 0 ? { examples } : {}) };
+  });
+}
+
 export function listProjects(replica: Replica): SerializedProject[] {
   // Archiving is an explicit "keep this, out of my way", so an archived project
   // is not part of the answer to "what am I working on".

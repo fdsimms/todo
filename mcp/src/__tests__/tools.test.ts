@@ -18,6 +18,7 @@ import {
   removeFromGroceryList,
   resolveRange,
   searchTasks,
+  listCategories,
   setGroceryChecked,
   createTask,
   updateTask,
@@ -27,7 +28,7 @@ import {
   MAX_LOG_DAYS,
 } from '../tools';
 import type { Replica } from '../replica';
-import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
+import type { Category, FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
 
 const task = (over: Partial<Task> & { id: string; title: string }): Task =>
   ({
@@ -225,6 +226,23 @@ describe('getTask', () => {
 
     const hidden = task({ id: 'later-1', title: 'Deferred' });
     expect(getTask(withTasks([hidden]), 'later-1')!.hiddenUntil).toBe('2099-01-01T00:00:00.000Z');
+  });
+});
+
+describe('listCategories', () => {
+  it('lists each category with its open tasks counted and a few named, in the user\'s order', () => {
+    const result = listCategories(stubReplica({
+      categories: () => [{ name: 'Home' }, { name: 'Wedding' }] as Category[],
+      tasks: () => [
+        task({ id: 'a', title: 'Fix the gate', category: 'Home' }),
+        task({ id: 'b', title: 'Done one', category: 'Home', completed: true }),
+        task({ id: 'c', title: 'Roses', category: 'Home', parentId: 'a' }),
+      ],
+    }));
+    expect(result).toEqual([
+      { name: 'Home', openTasks: 1, examples: ['Fix the gate'] },
+      { name: 'Wedding', openTasks: 0 },
+    ]);
   });
 });
 
