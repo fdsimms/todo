@@ -231,6 +231,64 @@ describe('the replica', () => {
     expect(replica.medicationSummary(doses[0])).toContain('Ibuprofen');
   });
 
+  describe('correcting and deleting log entries', () => {
+    beforeEach(() => {
+      mockRaw.runSync('DELETE FROM food_logs');
+      mockRaw.runSync('DELETE FROM mood_logs');
+      mockRaw.runSync('DELETE FROM medication_logs');
+    });
+
+    it('restates an estimated food entry, and leaves its day alone', () => {
+      const entry = replica.logFood({ label: 'Burrito', quantity: '1', amounts: { calorieKcal: 600 } });
+      const updated = replica.updateFoodEntry(entry.id, { label: 'Chicken burrito', amounts: { calorieKcal: 750, proteinG: 40 }, slot: 'lunch' });
+
+      expect(updated).toMatchObject({ label: 'Chicken burrito', slot: 'lunch', dayKey: entry.dayKey, atISO: entry.atISO });
+      expect(updated.nutrition.amounts).toMatchObject({ calorieKcal: 750, proteinG: 40 });
+      expect(() => replica.updateFoodEntry(entry.id, { label: ' ' })).toThrow(/needs a name/);
+      expect(() => replica.updateFoodEntry('nope', {})).toThrow(/No food entry/);
+    });
+
+    it('will not restate figures that were measured, or touch one already in Apple Health', () => {
+      const measured = replica.logFood({ label: 'Oats', amounts: { calorieKcal: 300 } });
+      mockRaw.runSync("UPDATE food_logs SET nutrition = json_set(nutrition, '$.source', 'openFoodFacts') WHERE id = ?", [measured.id]);
+      expect(() => replica.updateFoodEntry(measured.id, { amounts: { calorieKcal: 1 } })).toThrow(/measured/);
+      // A rename is not a figure, so it still goes through.
+      expect(replica.updateFoodEntry(measured.id, { label: 'Porridge oats' }).label).toBe('Porridge oats');
+
+      const synced = replica.logFood({ label: 'Soup', amounts: { calorieKcal: 200 } });
+      mockRaw.runSync("UPDATE food_logs SET health_sample_ids = '[\"s1\"]' WHERE id = ?", [synced.id]);
+      expect(() => replica.deleteFoodEntry(synced.id)).toThrow(/Apple Health/);
+      expect(() => replica.updateFoodEntry(synced.id, { amounts: { calorieKcal: 1 } })).toThrow(/Apple Health/);
+    });
+
+    it('deletes a food entry', () => {
+      const entry = replica.logFood({ label: 'Toast', amounts: { calorieKcal: 100 } });
+      expect(replica.deleteFoodEntry(entry.id).label).toBe('Toast');
+      expect(replica.foodLogEntries(entry.dayKey, entry.dayKey)).toEqual([]);
+    });
+
+    it('corrects a mood check-in in the spelling already used, and refuses to empty it', () => {
+      const log = replica.logMood({ mood: 3, symptoms: [{ name: 'Headache', severity: 2 }], note: 'meh' });
+      const updated = replica.updateMoodLog(log.id, { mood: 4, symptoms: [{ name: 'headache', severity: 3 }], note: null });
+
+      expect(updated).toMatchObject({ mood: 4, note: null, dayKey: log.dayKey });
+      expect(updated.symptoms).toEqual([{ name: 'Headache', severity: 3 }]);
+      expect(() => replica.updateMoodLog(log.id, { mood: null, symptoms: [] })).toThrow(/empty/);
+      expect(() => replica.updateMoodLog(log.id, { mood: 9 })).toThrow(/1 \(low\) to 5/);
+      expect(replica.deleteMoodLog(log.id).id).toBe(log.id);
+      expect(() => replica.deleteMoodLog(log.id)).toThrow(/No mood check-in/);
+    });
+
+    it('corrects a dose, keeping amount and unit together', () => {
+      const dose = replica.logMedication({ name: 'Ibuprofen', amount: 200, unit: 'mg' });
+      expect(replica.updateMedicationLog(dose.id, { amount: 400 })).toMatchObject({ amount: 400, unit: 'mg', name: 'Ibuprofen' });
+      expect(() => replica.updateMedicationLog(dose.id, { unit: null })).toThrow(/together/);
+      expect(replica.updateMedicationLog(dose.id, { name: 'ibuprofen', note: 'with food' })).toMatchObject({ name: 'Ibuprofen', note: 'with food' });
+      expect(replica.deleteMedicationLog(dose.id).id).toBe(dose.id);
+      expect(() => replica.deleteMedicationLog(dose.id)).toThrow(/No dose/);
+    });
+  });
+
   it('bounds a log range on the logical day rather than the calendar one', () => {
     // getLogicalToday honours dayResetTime, so a read at 1am under a 2am reset
     // asks about the day the user would name. Only the shape is asserted here;

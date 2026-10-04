@@ -91,7 +91,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
-import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, saveRecipe } from './logTools';
+import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
@@ -949,6 +949,106 @@ function registerWriteTools(
         return json(await withWrite(() => logMedication(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not record that dose.' });
+      }
+    }
+  );
+
+  const entryId = z.string().min(1).describe('The id from the matching list tool.');
+  const dayNote = ' It cannot move an entry to another day; for a wrong date, delete it and log it again.';
+
+  server.tool(
+    'update_food_entry',
+    'Correct a food log entry: its name, its meal slot, and, for an entry that was estimated, its quantity and figures (amounts replaces every figure, so give the full set). An entry measured against a food\'s own label or database record is corrected in the app, which re-measures it, and one already written to Apple Health only on the phone.' + dayNote,
+    {
+      id: entryId,
+      label: z.string().min(1).optional(),
+      quantity: z.string().optional(),
+      amounts: z.record(z.number().nonnegative()).optional(),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateFoodEntry(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not correct that entry.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_food_entry',
+    'Delete a food log entry. Not undoable from here. Refused for an entry already written to Apple Health, which only the phone can remove.',
+    { id: entryId },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteFoodEntry(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that entry.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_mood_log',
+    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
+    {
+      id: entryId,
+      mood: z.number().int().min(1).max(5).nullable().optional(),
+      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
+      contextTags: z.array(z.string().min(1)).optional(),
+      note: z.string().nullable().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateMoodLog(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not correct that check-in.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_mood_log',
+    'Delete a mood check-in. Not undoable from here.',
+    { id: entryId },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteMoodLog(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that check-in.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_medication_log',
+    'Correct a recorded dose: the medication, the amount and unit together (or neither), whether it was as-needed, or the note. The name is matched to the spelling already in their log, never folded into a different medicine or strength.' + dayNote,
+    {
+      id: entryId,
+      name: z.string().min(1).optional(),
+      amount: z.number().positive().nullable().optional(),
+      unit: z.string().nullable().optional(),
+      asNeeded: z.boolean().optional(),
+      note: z.string().nullable().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateMedicationLog(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not correct that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_medication_log',
+    'Delete a recorded dose. Not undoable from here. A dose recorded by completing a task leaves the task completed; reopen the task instead to take both back.',
+    { id: entryId },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteMedicationLog(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that dose.' });
       }
     }
   );

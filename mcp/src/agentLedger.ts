@@ -209,6 +209,42 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return ordered;
     },
 
+    updateFoodEntry(id, patch) {
+      const entry = replica.updateFoodEntry(id, patch);
+      log({ action: 'edited', subject: 'food', title: entry.label, taskId: null, note: `Correct the food log entry "${entry.label}"` });
+      return entry;
+    },
+
+    deleteFoodEntry(id) {
+      const entry = replica.deleteFoodEntry(id);
+      log({ action: 'cleared', subject: 'food', title: entry.label, taskId: null, note: `Delete "${entry.label}" from the food log` });
+      return entry;
+    },
+
+    updateMoodLog(id, patch) {
+      const entry = replica.updateMoodLog(id, patch);
+      log({ action: 'edited', subject: 'mood', title: entry.dayKey, taskId: null, note: `Correct the mood check-in from ${entry.dayKey}` });
+      return entry;
+    },
+
+    deleteMoodLog(id) {
+      const entry = replica.deleteMoodLog(id);
+      log({ action: 'cleared', subject: 'mood', title: entry.dayKey, taskId: null, note: `Delete the mood check-in from ${entry.dayKey}` });
+      return entry;
+    },
+
+    updateMedicationLog(id, patch) {
+      const entry = replica.updateMedicationLog(id, patch);
+      log({ action: 'edited', subject: 'medication', title: entry.name, taskId: null, note: `Correct the ${entry.name} dose from ${entry.dayKey}` });
+      return entry;
+    },
+
+    deleteMedicationLog(id) {
+      const entry = replica.deleteMedicationLog(id);
+      log({ action: 'cleared', subject: 'medication', title: entry.name, taskId: null, note: `Delete the ${entry.name} dose from ${entry.dayKey}` });
+      return entry;
+    },
+
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
       if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });

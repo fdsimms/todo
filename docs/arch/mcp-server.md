@@ -753,6 +753,25 @@ every meal they have eaten is health data in the sense a privacy label means it,
 replica puts all of it on a machine with a public address. The read surface is one bearer token
 for everything, which is adequate for a laptop and is not adequate for that.
 
+### Correcting and deleting a log entry
+
+`update_` and `delete_` for food, mood and medication entries exist because a log written from a
+conversation is otherwise uncorrectable: a wrong figure or a doubled dose stayed until somebody
+opened the app. Three rules:
+
+- **An entry never changes day.** `dayKey` is stamped with the instant, as in the app, so a wrong
+  date is delete-and-log-again. Mood and medication reuse the stores' own `updateLog`, which already
+  refuses re-dating.
+- **Food figures are restated only on an estimated entry.** A measured one (a scan, a database
+  food) is re-measured against its own panel in the app, and a restated quantity there would
+  disagree with the figures beside it. A rename or a slot change is always fine.
+- **An entry already written to Apple Health is refused for figure edits and delete.** The server
+  cannot reach HealthKit, so removing the row would strand the sample in somebody's medical record,
+  the case `docs/arch/health-data.md` is arranged around. The refusal says to do it in the app.
+
+A mood check-in cannot be edited down to nothing (delete it), and a dose recorded by completing a
+task does not reopen the task: `reopen_task` takes both back.
+
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and

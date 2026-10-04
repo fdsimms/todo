@@ -215,6 +215,18 @@ export interface MoodInput {
   at?: Date;
 }
 
+export interface FoodPatch {
+  label?: string;
+  quantity?: string;
+  /** Replaces every figure. Only an estimated entry has figures an agent may restate. */
+  amounts?: Record<string, number>;
+  slot?: MealSlot | null;
+}
+
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+
+export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
+
 export interface DoseInput {
   name: string;
   amount?: number | null;
@@ -472,6 +484,18 @@ export interface Replica {
   logMood(input: MoodInput): MoodLog;
   /** A dose through the medication store, the name in the spelling already in the log. */
   logMedication(input: DoseInput): MedicationLog;
+  /**
+   * Edit or delete an entry in the three health logs. None of these can move an
+   * entry to another day (`dayKey` is stamped with the instant, as in the app),
+   * so a wrong date means delete and log again. Food refuses what only the
+   * phone can finish: an entry already written to Apple Health.
+   */
+  updateFoodEntry(id: string, patch: FoodPatch): FoodLogEntry;
+  deleteFoodEntry(id: string): FoodLogEntry;
+  updateMoodLog(id: string, patch: MoodPatch): MoodLog;
+  deleteMoodLog(id: string): MoodLog;
+  updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
+  deleteMedicationLog(id: string): MedicationLog;
   /** Every automation rule list, as the settings store holds it. */
   ruleLists(): RuleLists;
   /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
@@ -922,6 +946,24 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    */
   function registerTemplateCategory(name: string | null): void {
     if (name && !db.dbGetAllTemplateCategories().some(c => c.name === name)) db.dbInsertTemplateCategory(name);
+  }
+
+  /**
+   * Symptom and context-tag spellings already in the log, so "headache" lands
+   * on the existing "Headache" rather than starting a second symptom the
+   * insights would count apart. Shared by logging and editing a check-in.
+   */
+  function moodSpelling(): { symptom: (n: string) => string; tag: (n: string) => string } {
+    const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const logs = db.dbGetAllMoodLogs();
+    const spelled = (vocab: string[], key: (s: string) => string) => {
+      const byKey = new Map(vocab.map(v => [key(v), v]));
+      return (name: string) => byKey.get(key(name)) ?? name.trim();
+    };
+    return {
+      symptom: spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey),
+      tag: spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey),
+    };
   }
 
   function buildTemplateParts(
@@ -1555,21 +1597,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     logMood(input: MoodInput): MoodLog {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore');
-      const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog');
       /* eslint-enable @typescript-eslint/no-require-imports */
       if (input.mood != null && (!Number.isInteger(input.mood) || input.mood < 1 || input.mood > 5)) {
         throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
       }
-      // The spelling already in the log, so "headache" lands on the existing
-      // "Headache" rather than starting a second symptom the insights would
-      // count apart.
-      const logs = db.dbGetAllMoodLogs();
-      const spelled = (vocab: string[], key: (s: string) => string) => {
-        const byKey = new Map(vocab.map(v => [key(v), v]));
-        return (name: string) => byKey.get(key(name)) ?? name.trim();
-      };
-      const symptom = spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey);
-      const tag = spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey);
+      const { symptom, tag } = moodSpelling();
       const symptoms = (input.symptoms ?? []).map(s => ({
         name: symptom(s.name),
         severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
@@ -1604,6 +1636,110 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       if (!log) throw new Error('A dose needs the medication\'s name.');
       return log;
+    },
+
+    updateFoodEntry(id: string, patch: FoodPatch): FoodLogEntry {
+      const entry = db.dbGetFoodLogEntry(id);
+      if (!entry) throw new Error(`No food entry with id ${id}.`);
+      const estimated = entry.nutrition.source === 'estimated';
+      const touchesFigures = patch.amounts !== undefined || patch.quantity !== undefined;
+      if (touchesFigures && !estimated) {
+        throw new Error('Only an estimated entry has figures to restate. This one was measured against a food\'s own label or database record, so correct it in the app, which re-measures it.');
+      }
+      if (touchesFigures && entry.healthSampleIds.length > 0) {
+        throw new Error('That entry was written to Apple Health, which only the phone can correct. Edit it in the app.');
+      }
+      if (patch.label !== undefined && !patch.label.trim()) throw new Error('A food entry needs a name.');
+
+      let nutrition = entry.nutrition;
+      if (patch.amounts !== undefined) {
+        const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, basis: 'typical', confidence: 'medium' });
+        const panel = read && estimate.estimateToPanel(read);
+        if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
+        nutrition = panel;
+      }
+      const updated: FoodLogEntry = {
+        ...entry,
+        label: patch.label !== undefined ? patch.label.trim() : entry.label,
+        quantity: patch.quantity !== undefined ? patch.quantity.trim() : entry.quantity,
+        slot: patch.slot === undefined ? entry.slot : patch.slot,
+        nutrition,
+      };
+      db.dbUpdateFoodLogEntry(updated);
+      return updated;
+    },
+
+    deleteFoodEntry(id: string): FoodLogEntry {
+      const entry = db.dbGetFoodLogEntry(id);
+      if (!entry) throw new Error(`No food entry with id ${id}.`);
+      if (entry.healthSampleIds.length > 0) {
+        throw new Error('That entry was written to Apple Health, which only the phone can remove it from. Delete it in the app.');
+      }
+      db.dbDeleteFoodLogEntry(id);
+      return entry;
+    },
+
+    updateMoodLog(id: string, patch: MoodPatch): MoodLog {
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMoodLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No mood check-in with id ${id}.`);
+      if (patch.mood != null && (!Number.isInteger(patch.mood) || patch.mood < 1 || patch.mood > 5)) {
+        throw new Error('mood is a whole number from 1 (low) to 5 (great), or null to clear it.');
+      }
+      const spelling = moodSpelling();
+      const next: Partial<MoodLog> = {};
+      if (patch.mood !== undefined) next.mood = patch.mood as MoodLog['mood'];
+      if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
+      if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
+      if (patch.note !== undefined) next.note = patch.note;
+      // An edit may not empty the entry: a check-in recording nothing is a day
+      // marked as logged with nothing on it. Delete it instead.
+      const after = { ...existing, ...next };
+      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+        throw new Error('That would leave the check-in empty. Delete it instead.');
+      }
+      useMoodStore.getState().updateLog(id, next);
+      return db.dbGetAllMoodLogs().find(l => l.id === id)!;
+    },
+
+    deleteMoodLog(id: string): MoodLog {
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMoodLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No mood check-in with id ${id}.`);
+      useMoodStore.getState().removeLog(id);
+      return existing;
+    },
+
+    updateMedicationLog(id: string, patch: DosePatch): MedicationLog {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMedicationLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No dose with id ${id}.`);
+      const amount = patch.amount !== undefined ? patch.amount : existing.amount;
+      const unit = patch.unit !== undefined ? patch.unit : existing.unit;
+      if ((amount == null) !== (unit == null || unit === '')) {
+        throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
+      }
+      if (patch.name !== undefined && !patch.name.trim()) throw new Error('A dose needs the medication\'s name.');
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const name = patch.name === undefined ? undefined
+        : known.find(n => medication.medicationKey(n) === medication.medicationKey(patch.name!)) ?? patch.name.trim();
+      meds.getState().updateLog(id, {
+        ...(name !== undefined ? { name } : {}),
+        ...(patch.amount !== undefined ? { amount: patch.amount } : {}),
+        ...(patch.unit !== undefined ? { unit: patch.unit } : {}),
+        ...(patch.asNeeded !== undefined ? { asNeeded: patch.asNeeded } : {}),
+        ...(patch.note !== undefined ? { note: patch.note } : {}),
+      } as import('../../src/store/useMedicationStore').MedicationLogPatch);
+      return db.dbGetAllMedicationLogs().find(l => l.id === id)!;
+    },
+
+    deleteMedicationLog(id: string): MedicationLog {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMedicationLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No dose with id ${id}.`);
+      meds.getState().removeLog(id);
+      return existing;
     },
 
     ruleLists(): RuleLists {
