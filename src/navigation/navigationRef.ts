@@ -357,11 +357,20 @@ export function resetToWeightGoal(): void {
 
 export function resetToPeople(personId?: string | null): void {
   runWhenReady(() => {
+    // Read before navigating away. `PersonDetail` takes it as `returnTo` so its
+    // back chevron hands the user back to the tab (and the task row) they tapped
+    // from, rather than leaving them on the People list they never asked for.
+    const returnTo = personId ? currentTabName() : undefined;
     // The list first, always, so the back chevron on the detail screen has
     // somewhere to go — a birthday task tapped from Today would otherwise push
     // a card onto whatever tab happened to be underneath.
     navigateToTab('People', personId ? { openPerson: Date.now(), personId } : undefined);
-    if (personId) navigationRef.navigate({ name: 'PersonDetail', params: { personId } });
+    if (personId) {
+      navigationRef.navigate({
+        name: 'PersonDetail',
+        params: { personId, returnTo: returnTo !== 'People' ? returnTo : undefined },
+      });
+    }
   });
 }
 
