@@ -34,7 +34,7 @@ import {
 import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings } from './useCategoryStore';
-import { anyRuleCategory, renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
+import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
@@ -6759,8 +6759,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const sourceId = weatherSourceId(dayKey, rule.id);
       const existing = liveGeneratedTask(tasks, 'weather', sourceId);
       if (considered && !existing) return;
-      // No early return on an empty category, unlike the other three rule kinds:
-      // this one has always written its task loose when nothing is set.
       const category = ruleCategoryFor(rule, settings.weatherTaskCategory);
       if (!ruleMatchesToday(rule, dayConditions)) return;
 
@@ -6878,7 +6876,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // to match against — and, more to the point, that the user has said not to
     // read one.
     if (!settings.calendarReadEnabled) return;
-    if (!anyRuleCategory(settings.eventRules, settings.eventTaskCategory)) return;
 
     const calendar = useCalendarStore.getState();
     // Not the same question as `events` being empty (see CalendarState.loaded).
@@ -6915,11 +6912,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const nextHandled: HandledEventTasks = { ...handled };
 
     for (const match of matches) {
-      // A rule with no category of its own and no kind-level one has nowhere to
-      // file, which is the same as the kind-level setting being empty: nothing
-      // written, and the occurrence stays unhandled.
       const category = ruleCategoryFor(match.rule, settings.eventTaskCategory);
-      if (!category) continue;
       reconcileGeneratedTask({
         kind: 'eventTask',
         sourceId: match.sourceId,
@@ -7093,7 +7086,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // gate (screenTimeBridge) already refuses to drain in demo mode; this is
     // the second half of the same rule.
     if (isDemoModeActive()) return;
-    if (!anyRuleCategory(settings.screenTimeRules, settings.screenTimeTaskCategory)) return;
 
     const todayKey = dayKeyOf(getCurrentDayStart());
     const tasks = get().tasks;
@@ -7129,7 +7121,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const rule = rulesById.get(crossing.ruleId);
       if (!rule || !crossingWantsTask(rule, todayKey)) continue;
       const category = ruleCategoryFor(rule, settings.screenTimeTaskCategory);
-      if (!category) continue;
 
       const sourceId = screenTimeSourceId(todayKey, rule.id);
       reconcileGeneratedTask({
@@ -7203,7 +7194,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // would be a claim about their body sitting in a database about to be
     // thrown away. `healthBridge` refuses the read too; this is the other half.
     if (isDemoModeActive()) return;
-    if (!anyRuleCategory(settings.healthRules, settings.healthTaskCategory)) return;
 
     const dayStart = getCurrentDayStart();
     const todayKey = dayKeyOf(dayStart);
@@ -7242,7 +7232,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (rule.lastFiredDayKey === todayKey) return rule;
 
       const category = ruleCategoryFor(rule, settings.healthTaskCategory);
-      if (!category) return rule;
 
       const matched = ruleShortfallToday(rule, reading);
       if (matched) {

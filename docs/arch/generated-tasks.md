@@ -1432,6 +1432,5 @@ The four rule kinds (weather, Screen Time, Health, calendar events) each have on
 (`src/utils/ruleCategory.ts`). A rule with none uses the setting, so older rules read back
 unchanged. `ruleCategoryFor` is the one place that decides, and it is what each
 generator's draft calls. A rename follows through `renameInRuleCategories`, called from
-`renameCategory`. The three gated kinds (Screen Time, Health, events) still write nothing
-when neither the rule nor the setting names a category; weather has always written loose and
-still does.
+`renameCategory`. A rule with neither files loose at the top of Today, which is what the setting's None says. (Events,
+Screen Time and Health used to write nothing in that case; the hint never said so.)

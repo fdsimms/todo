@@ -26,11 +26,6 @@ export function ruleCategoryFor(rule: RuleTaskCategory, fallback: string | null)
   return rule.category || fallback || null;
 }
 
-/** Whether any rule would file somewhere, for a pass's early return. */
-export function anyRuleCategory(rules: readonly RuleTaskCategory[], fallback: string | null): boolean {
-  return !!fallback || rules.some(r => !!r.category);
-}
-
 /**
  * The rules with a renamed category followed, or the same array by identity
  * when none names it, so the caller can skip the settings write.

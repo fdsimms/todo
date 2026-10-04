@@ -1,4 +1,4 @@
-import { anyRuleCategory, parseRuleCategory, renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
+import { parseRuleCategory, renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { parseEventRules } from '../utils/eventTasks';
 import { parseWeatherRules } from '../utils/weatherTasks';
 
@@ -18,14 +18,6 @@ describe('ruleCategoryFor', () => {
     expect(ruleCategoryFor({ category: 'Travel' }, 'Calendar Events')).toBe('Travel');
     expect(ruleCategoryFor({}, 'Calendar Events')).toBe('Calendar Events');
     expect(ruleCategoryFor({}, null)).toBeNull();
-  });
-});
-
-describe('anyRuleCategory', () => {
-  it('is true when either the setting or some rule names a category', () => {
-    expect(anyRuleCategory([{}], null)).toBe(false);
-    expect(anyRuleCategory([{}], 'Work')).toBe(true);
-    expect(anyRuleCategory([{}, { category: 'Travel' }], null)).toBe(true);
   });
 });
 
