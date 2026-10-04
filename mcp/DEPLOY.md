@@ -90,12 +90,29 @@ Then tap **Sync now**. The first sync sends your whole database, so it can take 
 ## 6. Connect Claude Code
 
 ```bash
-claude mcp add --transport http todo https://dundundun-mcp.fly.dev/mcp \
+claude mcp add --scope user --transport http todo https://dundundun-mcp.fly.dev/mcp \
   --header "Authorization: Bearer <Claude read token>"
 ```
 
 Use the write token instead if you want Claude to create, complete and reschedule tasks and edit
 the grocery list. Then ask Claude Code something like "what's on my list today?"
+
+## 7. Claude Code on your phone
+
+A Claude Code session started from the Claude iOS app or claude.ai/code runs in the cloud against
+this repo, so your laptop's config doesn't reach it. The repo's `.mcp.json` names the server for
+those sessions and reads the token from an environment variable, so no token is ever committed.
+Two settings on claude.ai make it work, both on the cloud environment your sessions use:
+
+- **Environment variable:** `TODO_MCP_TOKEN` set to the Claude read token (or the write token, if
+  you want phone sessions to make changes).
+- **Network access:** the environment's policy has to allow `dundundun-mcp.fly.dev`. The default
+  policy refuses it, and a refused host looks like the server being down.
+
+Start a new session after changing either; a running one keeps the settings it started with. On
+your laptop, Claude Code asks whether to use the repo's `dundundun` server the first time you open
+the repo. Decline it there: the `todo` server from step 6 already covers the laptop, and without
+`TODO_MCP_TOKEN` set locally the repo's copy can only get a 401.
 
 ## Afterwards
 
