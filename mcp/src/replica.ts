@@ -45,7 +45,7 @@ import type {
   TaskDraft,
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
-import type { SyncSummary } from '../../src/utils/syncEngine';
+import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
 import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 
@@ -380,6 +380,35 @@ export function installExpoSqliteShim(filePath: string): void {
  * `canBlock(undefined)` is false, and a task waiting on another one reads as
  * ready to do.
  */
+/**
+ * The transport with a log line per request: what it was, how long it took,
+ * and how big. A sync that stalls on the server shows as a request with a
+ * start line and no end, which is the one question a hang otherwise leaves
+ * nobody able to answer from outside the machine.
+ */
+function loggedTransport(transport: SyncTransport): SyncTransport {
+  const timed = async <T>(what: string, call: () => Promise<T>, size: (r: T) => string): Promise<T> => {
+    const started = Date.now();
+    console.error(`replica sync: ${what} started`);
+    try {
+      const result = await call();
+      console.error(`replica sync: ${what} done in ${Date.now() - started}ms${size(result)}`);
+      return result;
+    } catch (e) {
+      console.error(`replica sync: ${what} failed after ${Date.now() - started}ms`);
+      throw e;
+    }
+  };
+  return {
+    ...transport,
+    push: payload => timed(`push (${payload.length} chars)`, () => transport.push(payload), () => ''),
+    pull: since =>
+      timed(`pull since ${since ?? 'start'}`, () => transport.pull(since), r =>
+        `, ${r.payloads.length} payloads, ${r.payloads.reduce((n, p) => n + p.length, 0)} chars`
+      ),
+  };
+}
+
 export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Replica {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const db = require('../../src/db/database') as DbModule;
@@ -783,7 +812,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!httpTransport.isHttpSyncConfigured(config)) return null;
 
       const runs = await syncEngine.runSyncAll(
-        [httpTransport.httpSyncTransport(config)],
+        [loggedTransport(httpTransport.httpSyncTransport(config))],
         syncLocal.databaseSyncLocal()
       );
       // Whatever a pull applied is now in the database and not in the caches

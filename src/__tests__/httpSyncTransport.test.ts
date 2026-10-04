@@ -4,6 +4,8 @@ import {
   isHttpSyncConfigured,
   readPullBody,
   HTTP_SYNC_SOURCE,
+  SYNC_BODY_TIMEOUT_MS,
+  SYNC_REQUEST_TIMEOUT_MS,
 } from '../utils/httpSyncTransport';
 
 const config = { url: 'https://sync.example.com', token: 'secret' };
@@ -76,6 +78,40 @@ describe('the transport', () => {
 
     mockFetch({ ok: false, status: 502 });
     await expect(httpSyncTransport(config).push('x')).rejects.toThrow('returned 502');
+  });
+});
+
+describe('timeouts', () => {
+  afterEach(() => jest.useRealTimers());
+
+  // The wait used to end when headers arrived, so a body that never finished
+  // left the sync, and every tool call queued behind it on the MCP server,
+  // waiting for ever.
+  it('fails a pull whose body never finishes, instead of waiting for ever', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async (_url: string, init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: () =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener('abort', () => {
+            const e = new Error('aborted');
+            e.name = 'AbortError';
+            reject(e);
+          });
+        }),
+    })) as unknown as typeof fetch;
+
+    const pulled = httpSyncTransport(config).pull(null);
+    const settled = expect(pulled).rejects.toThrow('did not respond');
+    await jest.advanceTimersByTimeAsync(SYNC_BODY_TIMEOUT_MS);
+    await settled;
+  });
+
+  it('gives a body longer than it gives the server to start answering', () => {
+    // A 16 MB page on a slow phone connection; too short and the same page
+    // times out on every retry.
+    expect(SYNC_BODY_TIMEOUT_MS).toBeGreaterThan(SYNC_REQUEST_TIMEOUT_MS);
   });
 });
 

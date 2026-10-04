@@ -77,6 +77,39 @@ describe('fresh', () => {
   });
 });
 
+describe('a sync that never finishes', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('holds a read only as long as readWaitMs, then lets it answer', async () => {
+    jest.useFakeTimers();
+    const onSlow = jest.fn();
+    const gate = createSyncGate(() => new Promise(() => {}), 10_000, Date.now, () => {}, 20_000, onSlow);
+
+    let answered = false;
+    const read = gate.fresh().then(() => { answered = true; });
+    await jest.advanceTimersByTimeAsync(19_999);
+    expect(answered).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    await read;
+    expect(answered).toBe(true);
+    expect(onSlow).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a second run beside the stuck one when the next read comes', async () => {
+    jest.useFakeTimers();
+    const sync = jest.fn(() => new Promise<void>(() => {}));
+    const gate = createSyncGate(sync, 10_000, Date.now, () => {}, 20_000);
+
+    const first = gate.fresh();
+    await jest.advanceTimersByTimeAsync(20_000);
+    await first;
+    const second = gate.fresh();
+    await jest.advanceTimersByTimeAsync(20_000);
+    await second;
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('afterWrite', () => {
   it('ignores the throttle', async () => {
     const sync = jest.fn(async () => {});

@@ -19,6 +19,7 @@ export interface SyncGate {
   /**
    * Before a read: wait out a run already going, which is the freshness the
    * read wants, or start one if the last began longer ago than the throttle.
+   * Either wait ends at `readWaitMs`, and the read answers from what is there.
    */
   fresh(): Promise<void>;
   /**
@@ -28,11 +29,21 @@ export interface SyncGate {
   afterWrite(): Promise<void>;
 }
 
+/**
+ * How long a read waits for a sync before answering from the database as it
+ * stands. A sync that never finished used to hold every read behind it for
+ * ever, so one stuck request froze every tool. Writes still queue behind the
+ * run in flight, since what they push depends on its order.
+ */
+export const READ_WAIT_MS = 20_000;
+
 export function createSyncGate(
   sync: () => Promise<unknown>,
   throttleMs: number,
   now: () => number = Date.now,
-  onError: (e: unknown) => void = () => {}
+  onError: (e: unknown) => void = () => {},
+  readWaitMs: number = READ_WAIT_MS,
+  onSlow: () => void = () => {}
 ): SyncGate {
   let lastStartedAt: number | null = null;
   let inFlight: Promise<void> | null = null;
@@ -55,11 +66,23 @@ export function createSyncGate(
     return run;
   };
 
+  // The run itself carries on; only this read stops waiting for it.
+  const atMost = (run: Promise<void>): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const gaveUp = new Promise<void>(resolve => {
+      timer = setTimeout(() => {
+        onSlow();
+        resolve();
+      }, readWaitMs);
+    });
+    return Promise.race([run, gaveUp]).finally(() => clearTimeout(timer));
+  };
+
   return {
     fresh() {
-      if (inFlight) return inFlight;
+      if (inFlight) return atMost(inFlight);
       if (lastStartedAt !== null && now() - lastStartedAt <= throttleMs) return Promise.resolve();
-      return queue();
+      return atMost(queue());
     },
     afterWrite: queue,
   };

@@ -25,7 +25,7 @@ import { z } from 'zod';
 import { authorize, scopeFor, type AuthScope } from './auth';
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
-import { createSyncGate, type SyncGate } from './syncGate';
+import { createSyncGate, READ_WAIT_MS, type SyncGate } from './syncGate';
 import {
   MAX_LOG_DAYS,
   TASK_VIEWS,
@@ -79,8 +79,13 @@ const syncGateByReplica = new WeakMap<Replica, SyncGate>();
 function syncGateFor(replica: Replica): SyncGate {
   let gate = syncGateByReplica.get(replica);
   if (!gate) {
-    gate = createSyncGate(() => replica.sync(), SYNC_THROTTLE_MS, Date.now, e =>
-      console.error('Replica sync failed; answering from the database as it stands', e)
+    gate = createSyncGate(
+      () => replica.sync(),
+      SYNC_THROTTLE_MS,
+      Date.now,
+      e => console.error('Replica sync failed; answering from the database as it stands', e),
+      READ_WAIT_MS,
+      () => console.error(`Replica sync still running after ${READ_WAIT_MS / 1000}s; answering from the database as it stands`)
     );
     syncGateByReplica.set(replica, gate);
   }
