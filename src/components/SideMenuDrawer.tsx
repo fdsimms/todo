@@ -26,9 +26,10 @@ import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
-  hubSubtitle, menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleMenuRows,
-  type NavMenuRow, type NavSearchResult,
+  hubEntryRoute, hubSubtitle, menuDestinations, menuSearchTerms, recentMenuDestinations, searchMenu,
+  visibleMenuRows, type NavDestination, type NavHub, type NavMenuRow, type NavSearchResult,
 } from '../utils/navHubs';
+import { currentTabName } from '../navigation/navigationRef';
 import { tipsFor } from '../utils/tips';
 import { useFilterField } from '../hooks/useFilterField';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
@@ -60,9 +61,10 @@ interface Props {
  *
  * Two things carry the weight of the collapse:
  *
- * - **A hub row names its members underneath it.** "Organize" on its own is a
- *   guess; "Categories, Tags, People, Stacks, Templates" is an answer, and it
- *   stays honest under simplified mode because the subtitle is built from the
+ * - **A hub row names its members underneath it, as chips.** "Organize" on
+ *   its own is a guess; "Categories, Tags, People, Stacks, Templates" is an
+ *   answer, and each name is also the way to that screen (see HubRow). It
+ *   stays honest under simplified mode because the chips are built from the
  *   members that survived rather than written out.
  * - **The find field reaches the members directly.** A hub hides four or five
  *   destinations behind one label, so without this, consolidating the menu
@@ -84,11 +86,29 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const unreadTipCount = useSettingsStore(s =>
     tipsFor(s.simpleMode).filter(tip => !s.seenTips.includes(tip.id)).length);
 
+  // Its own array until a visit changes it, so it needs no useShallow.
+  const recentScreens = useSettingsStore(s => s.recentScreens);
+
+  // The screen actually on show, read as the drawer opens. `activeTab` alone
+  // isn't it: a hub's own pill row and a link both switch screens without
+  // going through the menu, and the highlight (and now the lit chip) would
+  // stay on wherever the menu last sent you.
+  const currentRoute = useMemo(
+    () => (visible ? currentTabName() ?? activeTab : activeTab),
+    [visible, activeTab],
+  );
+
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   // Shared with the pull-down quick search, which searches the same screens.
   const menuOptions = useNavMenuOptions();
   const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
+  // Recent skips whatever has a tab button right now, which is the user's choice.
+  const tabRoutes = useSettingsStore(s => s.tabRoutes);
+  const recentDestinations = useMemo(
+    () => recentMenuDestinations(recentScreens, menuOptions, currentRoute, tabRoutes),
+    [recentScreens, menuOptions, currentRoute, tabRoutes],
+  );
   const terms = useMemo(() => menuSearchTerms(query), [query]);
   const results = useMemo(
     () => (terms.length === 0 ? [] : searchMenu(menuDestinations(menuOptions), terms)),
@@ -215,13 +235,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   /** A row is lit for its own screen, and a hub row for any screen inside it. */
   const isRowActive = (row: NavMenuRow) =>
     row.kind === 'screen'
-      ? activeTab === row.destination.route
-      : row.hub.members.some(m => m.route === activeTab);
+      ? currentRoute === row.destination.route
+      : row.hub.members.some(m => m.route === currentRoute);
 
-  const badgeFor = (row: NavMenuRow): number => {
-    if (row.kind === 'hub') return row.hub.id === 'kitchen' ? groceryCount : 0;
-    return row.destination.route === 'Tips' ? unreadTipCount : 0;
-  };
+  // A hub's counts ride on its chips (see MenuChip), so only a plain row has one here.
+  const badgeFor = (row: NavMenuRow): number =>
+    row.kind === 'screen' && row.destination.route === 'Tips' ? unreadTipCount : 0;
 
   if (!isRendered) return null;
 
@@ -291,74 +310,101 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                   <DrawerItemAppear key={`r:${result.route}`} index={index}>
                     <ResultRow
                       result={result}
-                      active={activeTab === result.route}
+                      active={currentRoute === result.route}
                       colors={colors}
                       onPress={() => handleNavigate(result.route)}
                     />
                   </DrawerItemAppear>
                 ))
-              : menuRows.map((row, index) => {
-                  const isActive = isRowActive(row);
-                  const badge = badgeFor(row);
-                  const label = row.kind === 'screen' ? row.destination.label : row.hub.label;
-                  const icon = row.kind === 'screen' ? row.destination.icon : row.hub.icon;
-                  const subtitle = row.kind === 'hub' ? hubSubtitle(row.hub) : null;
-                  return (
-                    <DrawerItemAppear key={label} index={index}>
-                      <TouchableOpacity
-                        style={[
-                          styles.item,
-                          isActive && { backgroundColor: colors.accent + '18' },
-                        ]}
-                        onPress={() => handleNavigate(rowEntryRoute(row))}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isActive }}
-                        accessibilityLabel={subtitle ? `${label}. Holds ${subtitle}` : label}
-                      >
-                        <View
-                          style={[
-                            styles.iconWrap,
-                            { backgroundColor: isActive ? colors.accent + '22' : colors.bgTertiary },
-                          ]}
-                        >
-                          <Ionicons
-                            name={icon as React.ComponentProps<typeof Ionicons>['name']}
-                            size={20}
-                            color={isActive ? colors.accent : colors.textSecondary}
-                          />
+              : (
+                <>
+                  {/* Where you were a moment ago, a tap away rather than a
+                      hub and a pill away. Leaves out the screen you're on and
+                      the tab bar's own screens (see recentMenuDestinations). */}
+                  {recentDestinations.length > 0 && (
+                    <DrawerItemAppear index={0}>
+                      <View style={styles.recent}>
+                        <Text style={[styles.recentLabel, { color: colors.textSecondary }]}>Recent</Text>
+                        <View style={styles.chips}>
+                          {recentDestinations.map(destination => (
+                            <MenuChip
+                              key={destination.route}
+                              destination={destination}
+                              active={false}
+                              size="recent"
+                              colors={colors}
+                              onPress={() => handleNavigate(destination.route)}
+                            />
+                          ))}
                         </View>
-                        <View style={styles.itemBody}>
-                          <Text
+                      </View>
+                    </DrawerItemAppear>
+                  )}
+                  {menuRows.map((row, index) => {
+                    const isActive = isRowActive(row);
+                    if (row.kind === 'hub') {
+                      return (
+                        <DrawerItemAppear key={row.hub.label} index={index + 1}>
+                          <HubRow
+                            hub={row.hub}
+                            active={isActive}
+                            currentRoute={currentRoute}
+                            recentScreens={recentScreens}
+                            groceryCount={groceryCount}
+                            colors={colors}
+                            onNavigate={handleNavigate}
+                          />
+                        </DrawerItemAppear>
+                      );
+                    }
+                    const badge = badgeFor(row);
+                    const { label, icon, route } = row.destination;
+                    return (
+                      <DrawerItemAppear key={label} index={index + 1}>
+                        <TouchableOpacity
+                          style={[
+                            styles.item,
+                            isActive && { backgroundColor: colors.accent + '18' },
+                          ]}
+                          onPress={() => handleNavigate(route)}
+                          activeOpacity={interaction.activeOpacity}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isActive }}
+                          accessibilityLabel={label}
+                        >
+                          <View
                             style={[
-                              styles.itemLabel,
-                              { color: isActive ? colors.accent : colors.text },
+                              styles.iconWrap,
+                              { backgroundColor: isActive ? colors.accent + '22' : colors.bgTertiary },
                             ]}
                           >
-                            {label}
-                          </Text>
-                          {subtitle && (
-                            // Wraps rather than truncating: a list of members
-                            // cut off after three is a row that names some of
-                            // what it holds and hides the rest, which is the
-                            // problem the subtitle exists to solve.
-                            <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>
-                              {subtitle}
-                            </Text>
-                          )}
-                        </View>
-                        {badge > 0 && (
-                          <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
-                            <Text style={[styles.badgeText, { color: colors.accent }]}>{badge}</Text>
+                            <Ionicons
+                              name={icon as React.ComponentProps<typeof Ionicons>['name']}
+                              size={20}
+                              color={isActive ? colors.accent : colors.textSecondary}
+                            />
                           </View>
-                        )}
-                        {subtitle && (
-                          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-                        )}
-                      </TouchableOpacity>
-                    </DrawerItemAppear>
-                  );
-                })}
+                          <View style={styles.itemBody}>
+                            <Text
+                              style={[
+                                styles.itemLabel,
+                                { color: isActive ? colors.accent : colors.text },
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </View>
+                          {badge > 0 && (
+                            <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
+                              <Text style={[styles.badgeText, { color: colors.accent }]}>{badge}</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </DrawerItemAppear>
+                    );
+                  })}
+                </>
+              )}
             {searching && results.length === 0 && (
               <Text style={[styles.noResults, { color: colors.textSecondary }]}>
                 No screen matches that.
@@ -439,6 +485,134 @@ function ResultRow({
         )}
       </View>
     </TouchableOpacity>
+  );
+}
+
+/**
+ * One screen inside a hub, or one recent screen: a small pill that goes
+ * straight there. The current screen's is lit the way the row itself is.
+ *
+ * `count` is the badge a screen carries (what's left to buy, on Groceries).
+ * It sits on the chip rather than at the row's end, because a hub row is now
+ * several destinations and the count belongs to one of them.
+ */
+function MenuChip({
+  destination, active, count, size, colors, onPress,
+}: {
+  destination: NavDestination;
+  active: boolean;
+  count?: number;
+  size: 'hub' | 'recent';
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}) {
+  const tint = active ? colors.accent : size === 'recent' ? colors.text : colors.textSecondary;
+  return (
+    <TouchableOpacity
+      style={[
+        styles.chip,
+        size === 'recent' && styles.chipRecent,
+        { backgroundColor: active ? colors.accentSubtle : colors.bgTertiary },
+      ]}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={count ? `${destination.label}, ${count}` : destination.label}
+    >
+      <Ionicons
+        name={destination.icon as React.ComponentProps<typeof Ionicons>['name']}
+        size={size === 'recent' ? 13 : 12}
+        color={active ? colors.accent : colors.textSecondary}
+      />
+      <Text
+        style={[
+          styles.chipText,
+          size === 'recent' && styles.chipTextRecent,
+          { color: tint },
+          active && styles.chipTextActive,
+        ]}
+      >
+        {destination.label}
+      </Text>
+      {count !== undefined && count > 0 && (
+        <View style={[styles.chipCount, { backgroundColor: colors.accentSubtle }]}>
+          <Text style={[styles.chipCountText, { color: colors.accent }]}>{count}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * A hub row: its name, and every screen it holds as a chip underneath.
+ *
+ * The chips used to be a line of text naming the members, which answered
+ * "what's in Organize" and then made you tap the row, land on its first
+ * screen, and tap a pill to get to the one you meant. Each name is now the
+ * way there. The name itself opens the screen you used last in the hub
+ * (`hubEntryRoute`), so a hub you always use for one screen opens on it.
+ *
+ * Not one touchable wrapping the chips: a TouchableOpacity is `accessible` by
+ * default, which would fold every chip into the row's single element and hide
+ * them from VoiceOver. The icon and the name are their own touchables instead.
+ */
+function HubRow({
+  hub, active, currentRoute, recentScreens, groceryCount, colors, onNavigate,
+}: {
+  hub: NavHub;
+  active: boolean;
+  currentRoute: string | null;
+  recentScreens: readonly string[];
+  groceryCount: number;
+  colors: ReturnType<typeof useColors>;
+  onNavigate: (route: string) => void;
+}) {
+  const entry = hubEntryRoute(hub, recentScreens);
+  const entryLabel = hub.members.find(m => m.route === entry)?.label ?? hub.label;
+  return (
+    <View style={[styles.item, active && { backgroundColor: colors.accent + '18' }]}>
+      <TouchableOpacity
+        onPress={() => onNavigate(entry)}
+        activeOpacity={interaction.activeOpacity}
+        accessible={false}
+        importantForAccessibility="no"
+      >
+        <View style={[styles.iconWrap, { backgroundColor: active ? colors.accent + '22' : colors.bgTertiary }]}>
+          <Ionicons
+            name={hub.icon as React.ComponentProps<typeof Ionicons>['name']}
+            size={20}
+            color={active ? colors.accent : colors.textSecondary}
+          />
+        </View>
+      </TouchableOpacity>
+      <View style={styles.itemBody}>
+        <TouchableOpacity
+          onPress={() => onNavigate(entry)}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityState={{ selected: active }}
+          accessibilityLabel={`${hub.label}. Holds ${hubSubtitle(hub)}`}
+          accessibilityHint={`Opens ${entryLabel}`}
+        >
+          <Text style={[styles.itemLabel, { color: active ? colors.accent : colors.text }]}>{hub.label}</Text>
+        </TouchableOpacity>
+        <View style={styles.chips}>
+          {hub.members.map(member => (
+            <MenuChip
+              key={member.route}
+              destination={member}
+              active={member.route === currentRoute}
+              count={member.route === 'Groceries' ? groceryCount : undefined}
+              size="hub"
+              colors={colors}
+              onPress={() => onNavigate(member.route)}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -548,6 +722,56 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
+  },
+  // A hub's screens, and the Recent row's, as pills that wrap. `font.xs` with
+  // a 4pt pad keeps a hub's chips to two lines in the drawer's width.
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xsm,
+    marginTop: spacing.xsm,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+  },
+  chipRecent: {
+    paddingVertical: spacing.xsm,
+    paddingHorizontal: 10,
+  },
+  chipText: {
+    fontSize: font.xs,
+  },
+  chipTextRecent: {
+    fontSize: font.sm,
+  },
+  chipTextActive: {
+    fontWeight: fontWeight.semibold,
+  },
+  chipCount: {
+    minWidth: 18,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.full,
+    alignItems: 'center',
+  },
+  chipCountText: {
+    fontSize: font.xxs,
+    fontWeight: fontWeight.semibold,
+  },
+  recent: {
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.smd,
+  },
+  recentLabel: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   noResults: {
     fontSize: font.sm,

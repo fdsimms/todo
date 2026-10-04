@@ -197,8 +197,11 @@ export interface SettingsEntry {
    * mistake its own header warns about. The screen holds the store, so it
    * passes `visibleSettingsEntries` the set of gating rows currently on and the
    * index just does the lookup.
+   *
+   * A list means any one of them: "Limit use-up tasks" renders while either
+   * use-up generator is on, and "Sync now" while either sync destination is.
    */
-  requires?: string;
+  requires?: string | readonly string[];
 }
 
 /**
@@ -455,9 +458,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow'] },
   { id: 'remindersList', groupId: 'capture', label: 'List', section: 'Apple Reminders',
     keywords: ['which list', 'default list'] },
-  { id: 'remindersImportReview', groupId: 'capture', label: 'Review before applying', section: 'Apple Reminders',
+  { id: 'remindersImportReview', requires: 'remindersImport', groupId: 'capture', label: 'Review before applying', section: 'Apple Reminders',
     keywords: ['approve', 'confirm', 'schedule', 'date', 'repeat', 'alarm', 'inbox'] },
-  { id: 'remindersImportDelete', groupId: 'capture', label: 'Delete after importing', section: 'Apple Reminders',
+  { id: 'remindersImportDelete', requires: 'remindersImport', groupId: 'capture', label: 'Delete after importing', section: 'Apple Reminders',
     keywords: ['remove', 'keep', 'leave', 'duplicate', 'copy', 'one-way', 'mirror'] },
   { id: 'groceryImport', groupId: 'capture', label: 'Send a list to Groceries', section: 'Apple Reminders',
     keywords: ['siri', 'shopping', 'voice', 'apple', 'milk', 'hey siri'], kitchen: true },
@@ -492,15 +495,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'google'] },
   { id: 'calendarList', groupId: 'capture', label: 'Calendars', section: 'Calendar',
     keywords: ['which calendar', 'google', 'work', 'shared', 'subscribed'] },
-  { id: 'calendarToday', groupId: 'capture', label: 'Today', section: 'Calendar',
+  { id: 'calendarToday', requires: 'calendarRead', groupId: 'capture', label: 'Today', section: 'Calendar',
     keywords: ['events', 'booked', 'busy', 'free', 'google'] },
-  { id: 'calendarSyncNow', groupId: 'capture', label: 'Sync now', section: 'Calendar',
+  { id: 'calendarSyncNow', requires: 'calendarRead', groupId: 'capture', label: 'Sync now', section: 'Calendar',
     keywords: ['refresh', 'force', 'manual', 'reload', 'events', 'stale'] },
   { id: 'calendarVacationHidden', groupId: 'capture', label: 'Hide during vacation', section: 'Calendar',
     keywords: ['away', 'exclude', 'work calendar', 'trip'] },
-  { id: 'calendarEventCategory', groupId: 'capture', label: 'Show events under', section: 'Calendar',
+  { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'capture', label: 'Show events under', section: 'Calendar',
     keywords: ['category', 'section', 'today', 'events on today', 'hide events', 'file', 'where'] },
-  { id: 'reminderMeetingNudge', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
+  { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
   { id: 'mapsApp', groupId: 'capture', label: 'Directions', section: 'Calendar',
     keywords: ['maps', 'apple maps', 'google maps', 'waze', 'navigation', 'navigate', 'location', 'address', 'route'] },
@@ -508,7 +511,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
   { id: 'savedPlaces', groupId: 'capture', label: 'Saved places', section: 'Calendar',
     keywords: ['home', 'work', 'location', 'address', 'event', 'name', 'bookmark', 'favorite'] },
-  { id: 'calendarPeopleHistory', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
+  { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
@@ -520,21 +523,21 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 
   { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
     keywords: ['steps', 'fitness', 'activity', 'healthkit', 'walking', 'watch'] },
-  { id: 'healthAccess', groupId: 'health', label: 'Health access', section: 'Apple Health',
+  { id: 'healthAccess', requires: 'healthRead', groupId: 'health', label: 'Health access', section: 'Apple Health',
     keywords: ['permission', 'allow', 'authorize', 'grant'] },
-  { id: 'healthToday', groupId: 'health', label: 'Steps today', section: 'Apple Health',
+  { id: 'healthToday', requires: 'healthRead', groupId: 'health', label: 'Steps today', section: 'Apple Health',
     keywords: ['count', 'reading', 'walked'] },
-  { id: 'healthCategory', groupId: 'health', label: 'Show Health readings under', section: 'Apple Health',
+  { id: 'healthCategory', requires: 'healthRead', groupId: 'health', label: 'Show Health readings under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere', 'steps', 'rings', 'calories', 'activity'] },
   { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
     keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit', 'food', 'meal', 'nutrition'] },
-  { id: 'healthWriteAccess', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
+  { id: 'healthWriteAccess', requires: 'healthWrite', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing'] },
-  { id: 'healthWeightWriteAccess', groupId: 'health', label: 'Weight-write access', section: 'Log to Health',
+  { id: 'healthWeightWriteAccess', requires: 'healthWrite', groupId: 'health', label: 'Weight-write access', section: 'Log to Health',
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'body', 'mass'] },
-  { id: 'healthNutritionWriteAccess', groupId: 'health', label: 'Nutrition-write access', section: 'Log to Health',
+  { id: 'healthNutritionWriteAccess', requires: 'healthWrite', groupId: 'health', label: 'Nutrition-write access', section: 'Log to Health',
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'food', 'meal', 'calories', 'macros'] },
-  { id: 'healthWriteNutrients', groupId: 'health', label: 'Nutrients written per meal', section: 'Log to Health',
+  { id: 'healthWriteNutrients', requires: 'healthWrite', groupId: 'health', label: 'Nutrients written per meal', section: 'Log to Health',
     keywords: ['optional', 'choose', 'select', 'exclude', 'protein', 'sodium', 'fat', 'fiber', 'sugar', 'calcium', 'iron', 'potassium', 'caffeine', 'water', 'macros'] },
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
@@ -595,30 +598,30 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Sits under the generator's own section, beside gen:weather and
   // gen:weather:category (see GENERATED_ENTRIES) — this is the row that opens
   // the rule editor those two can't.
-  { id: 'weatherRules', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
+  { id: 'weatherRules', requires: 'gen:weather', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
     keywords: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat',
       'forecast', 'location', 'condition', 'weather rule'] },
-  { id: 'eventRules', groupId: 'generated', label: 'Rules', section: 'Calendar event tasks',
+  { id: 'eventRules', requires: 'gen:eventTask', groupId: 'generated', label: 'Rules', section: 'Calendar event tasks',
     keywords: ['calendar', 'event', 'meeting', 'appointment', 'flight', 'travel', 'title',
       'word', 'match', 'days before', 'lead time', 'prep', 'pack', 'event rule'] },
-  { id: 'travelEstimates', groupId: 'generated', label: 'Estimate travel time', section: 'Leave-by reminders',
+  { id: 'travelEstimates', requires: 'gen:travel', groupId: 'generated', label: 'Estimate travel time', section: 'Leave-by reminders',
     keywords: ['apple maps', 'eta', 'commute', 'traffic', 'driving', 'transit', 'walking', 'how long', 'leave'] },
-  { id: 'travelOrigin', groupId: 'generated', label: 'Start from', section: 'Leave-by reminders',
+  { id: 'travelOrigin', requires: 'travelEstimates', groupId: 'generated', label: 'Start from', section: 'Leave-by reminders',
     keywords: ['home', 'work', 'saved place', 'starting point', 'origin', 'where i am', 'location', 'commute', 'leave', 'apple maps'] },
-  { id: 'travelLeadMinutes', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
+  { id: 'travelLeadMinutes', requires: 'gen:travel', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
     keywords: ['travel time', 'commute', 'minutes before', 'lead time', 'leave', 'when to leave',
       'reminder', 'notification', 'trip'] },
-  { id: 'travelLeadByCalendar', groupId: 'generated', label: 'Per calendar', section: 'Leave-by reminders',
+  { id: 'travelLeadByCalendar', requires: 'gen:travel', groupId: 'generated', label: 'Per calendar', section: 'Leave-by reminders',
     keywords: ['work calendar', 'different time', 'travel time', 'commute', 'minutes before', 'leave'] },
-  { id: 'transitAlerts', groupId: 'generated', label: 'Subway alerts', section: 'Leave-by reminders',
+  { id: 'transitAlerts', requires: 'gen:travel', groupId: 'generated', label: 'Subway alerts', section: 'Leave-by reminders',
     keywords: ['mta', 'train', 'delay', 'delays', 'planned work', 'service change',
       'transit', 'commute', 'new york', 'nyc'] },
-  { id: 'transitLines', groupId: 'generated', label: 'Lines', section: 'Leave-by reminders',
+  { id: 'transitLines', requires: 'transitAlerts', groupId: 'generated', label: 'Lines', section: 'Leave-by reminders',
     keywords: ['mta', 'subway', 'train', 'route', 'which train', 'transit'] },
-  { id: 'screenTimeRules', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
+  { id: 'screenTimeRules', requires: 'gen:screenTime', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },
-  { id: 'healthRules', groupId: 'generated', label: 'Rules', section: 'Health tasks',
+  { id: 'healthRules', requires: 'gen:health', groupId: 'generated', label: 'Rules', section: 'Health tasks',
     keywords: ['apple health', 'steps', 'sleep', 'walk', 'sodium', 'salt', 'protein',
       'saturated fat', 'fiber', 'sugar', 'caffeine', 'water', 'hydration', 'calories',
       'nutrition', 'diet', 'threshold', 'under', 'over', 'ceiling', 'floor'] },
@@ -698,6 +701,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // The other master switch, and unflagged for the same reason. Keyworded for
   // the features it removes as well as for what it is: someone who wants
   // chains or the focus timer gone will search for those, not for "simplified".
+  { id: 'tabRoutes', groupId: 'featureAreas', label: 'Tab bar', section: 'Tab bar',
+    keywords: ['tabs', 'bottom bar', 'customize', 'shortcut', 'quick access', 'first tab',
+      'second tab', 'third tab', 'pin a screen', 'navigation', 'buttons along the bottom'] },
   { id: 'simpleMode', groupId: 'featureAreas', label: 'Simplified mode', section: 'Feature areas',
     keywords: ['simple', 'simplify', 'basic', 'minimal', 'declutter', 'overwhelming', 'advanced',
       'hide', 'remove', 'disable', 'turn off', 'chains', 'timed', 'daily target', 'quota',
@@ -719,36 +725,36 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     section: 'Automatic tasks',
     keywords: ['background', 'background refresh', 'overnight', 'away', 'wake',
       'catch up', 'top up', 'widget', 'stale', 'battery'] },
-  { id: 'mealSlotsEnabled', groupId: 'generated', label: 'Meals you eat', section: 'Meal tasks',
+  { id: 'mealSlotsEnabled', requires: 'gen:mealSlot', groupId: 'generated', label: 'Meals you eat', section: 'Meal tasks',
     keywords: ['breakfast', 'lunch', 'dinner', 'snack', 'skip', 'which ones'], kitchen: true },
-  { id: 'groceryUseUpLeadDays', groupId: 'generated', label: 'Show the task', section: 'Use-up tasks for groceries',
+  { id: 'groceryUseUpLeadDays', requires: 'gen:groceryUseUp', groupId: 'generated', label: 'Show the task', section: 'Use-up tasks for groceries',
     keywords: ['expiry', 'use by', 'days before', 'lead', 'warning', 'grocery'], kitchen: true },
-  { id: 'mealShortfallLeadDays', groupId: 'generated', label: 'Show the task', section: 'Shopping tasks for planned meals',
+  { id: 'mealShortfallLeadDays', requires: 'gen:mealShortfall', groupId: 'generated', label: 'Show the task', section: 'Shopping tasks for planned meals',
     keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
-  { id: 'birthdayLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday reminders',
+  { id: 'birthdayLeadDays', requires: 'gen:birthday', groupId: 'generated', label: 'Show the task', section: 'Birthday reminders',
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
+  { id: 'weekendNudgeLeadDays', requires: 'gen:weekendNudge', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'weekendNudgePlanThreshold', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',
+  { id: 'weekendNudgePlanThreshold', requires: 'gen:weekendNudge', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'threshold', 'bare', 'already planned', 'movie'] },
-  { id: 'weighInEveryDays', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
+  { id: 'weighInEveryDays', requires: 'gen:weighIn', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
     keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
-  { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
+  { id: 'birthdayGiftLeadDays', requires: 'gen:birthdayGift', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Add the task on', section: 'Plan meals for the week',
+  { id: 'mealPlanNudgeTime', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Add the task on', section: 'Plan meals for the week',
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when', 'nudge'], kitchen: true },
-  { id: 'mealPlanNudgeIgnoresVacation', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
+  { id: 'mealPlanNudgeIgnoresVacation', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
-  { id: 'mealPlanNudgeSlots', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
+  { id: 'mealPlanNudgeSlots', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
     keywords: ['meal plan', 'breakfast', 'lunch', 'dinner', 'snack', 'which meals', 'only dinner'], kitchen: true },
-  { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
+  { id: 'calendarReviewTimeSegment', requires: 'gen:calendarReview', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
-  { id: 'moodLogTimeSegments', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
+  { id: 'moodLogTimeSegments', requires: 'gen:moodLog', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
       'mood', 'feeling', 'multiple', 'several', 'twice'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
-  { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
+  { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
 
   // `kitchen`-gated to match the row itself, which is hidden with the
@@ -831,7 +837,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Data & reset
   { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',
     keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
-  { id: 'syncNow', groupId: 'dataReset', label: 'Sync now', section: 'Sync',
+  { id: 'syncNow', requires: ['syncEnabled', 'syncServerToken'], groupId: 'dataReset', label: 'Sync now', section: 'Sync',
     keywords: ['refresh', 'update', 'fetch'] },
   { id: 'syncServerUrl', groupId: 'dataReset', label: 'Sync server', section: 'Sync',
     keywords: ['self-hosted', 'url', 'address', 'mcp', 'claude', 'computer', 'replica', 'privacy', 'copy'] },
@@ -879,6 +885,12 @@ export function visibleSettingsGroups(platformOS: string, kitchenEnabled = true)
  * doesn't care (a test, a platform check) gets the whole index, the way it did
  * before either setting existed.
  */
+function requiredRowOn(requires: string | readonly string[], activeEntryIds: ReadonlySet<string>): boolean {
+  return typeof requires === 'string'
+    ? activeEntryIds.has(requires)
+    : requires.some(id => activeEntryIds.has(id));
+}
+
 export function visibleSettingsEntries(
   platformOS: string,
   kitchenEnabled = true,
@@ -897,7 +909,7 @@ export function visibleSettingsEntries(
     && (kitchenEnabled || !e.kitchen)
     && (!simpleMode || !e.simple)
     && (!e.iosOnly || platformOS === 'ios')
-    && (!e.requires || !activeEntryIds || activeEntryIds.has(e.requires)));
+    && (!e.requires || !activeEntryIds || requiredRowOn(e.requires, activeEntryIds)));
 }
 
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {

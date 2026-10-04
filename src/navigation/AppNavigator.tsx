@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
+import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -68,7 +68,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hasRunningRecipeTimer, isCookTimerRunning } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
-import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
+import { MENU_ROUTES, NAV_HUBS, NAV_MENU_ROWS, visibleTabRoutes, type NavDestination } from '../utils/navHubs';
+import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -96,29 +97,64 @@ const EDGE_WIDTH = 20;
 // nobody can see.
 const HIDDEN = { tabBarButton: () => null, tabBarItemStyle: { display: 'none' as const } };
 
-// Derived from the menu rather than written out again: every route the side
-// menu can reach, minus the three that have a bottom tab of their own. A hub
-// contributes all of its members, not just the one its row opens, which is
-// what makes the pill row's siblings restorable too.
-const MENU_ROUTES: ReadonlySet<string> = new Set(
-  NAV_MENU_ROWS.flatMap(row =>
-    row.kind === 'screen' ? [row.destination.route] : row.hub.members.map(m => m.route))
-);
-// `More` is last and isn't a screen (its press opens the drawer), so it's
-// deliberately not in VISIBLE_TABS below.
-const VISIBLE_TABS: ReadonlySet<string> = new Set(['Today', 'Groceries', 'Projects']);
-const DRAWER_TABS: ReadonlySet<string> = new Set(
-  [...MENU_ROUTES].filter(r => !VISIBLE_TABS.has(r))
+// Every screen it's safe to reopen the app directly on: every route the side
+// menu reaches, which includes whichever of them are tabs right now. None of
+// them take a route param. Excludes 'More' (not a real screen — its tabPress
+// just opens the drawer) and every PUSHED_ROUTES entry below (RecipeDetail,
+// ProjectDetail, … need an id the app can't invent on a cold launch). Backs
+// the lastVisitedScreen setting (useSettingsStore) so the app reopens where it
+// was left rather than always on Today — see initialRouteName below.
+const RESTORABLE_SCREENS: ReadonlySet<string> = new Set(MENU_ROUTES);
+
+// Every bottom-tab route and its screen, frozen while blurred. One table rather
+// than a Tab.Screen written out per route, because which of them have a
+// visible button (and in what order) is the user's choice now (`tabRoutes`).
+// Cookbooks is reached only from Recipes and has no menu row, so it can never
+// be a visible tab; it's here because it's still a tab route.
+const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
+  Today: freezeWhenBlurred(TodayScreen),
+  Groceries: freezeWhenBlurred(GroceryScreen),
+  Projects: freezeWhenBlurred(ProjectsScreen),
+  Search: freezeWhenBlurred(SearchScreen),
+  Recipes: freezeWhenBlurred(RecipesScreen),
+  Cookbooks: freezeWhenBlurred(CookbooksScreen),
+  MealPlan: freezeWhenBlurred(MealPlanScreen),
+  Kitchen: freezeWhenBlurred(KitchenScreen),
+  Calendar: freezeWhenBlurred(CalendarScreen),
+  Categories: freezeWhenBlurred(CategoriesScreen),
+  Tags: freezeWhenBlurred(TagsScreen),
+  People: freezeWhenBlurred(PeopleScreen),
+  Stacks: freezeWhenBlurred(StacksScreen),
+  Templates: freezeWhenBlurred(TemplatesScreen),
+  Logbook: freezeWhenBlurred(LogbookScreen),
+  Stats: freezeWhenBlurred(StatsScreen),
+  Mood: freezeWhenBlurred(MoodScreen),
+  Medications: freezeWhenBlurred(MedicationScreen),
+  Weight: freezeWhenBlurred(WeightScreen),
+  FoodLog: freezeWhenBlurred(FoodLogScreen),
+  Stuck: freezeWhenBlurred(StuckScreen),
+  Backfill: freezeWhenBlurred(BackfillScreen),
+  Reminders: freezeWhenBlurred(RemindersScreen),
+  Archived: freezeWhenBlurred(ArchivedScreen),
+  UnattendedLog: freezeWhenBlurred(UnattendedLogScreen),
+  Rewards: freezeWhenBlurred(RewardsScreen),
+  Tips: freezeWhenBlurred(TipsScreen),
+};
+
+const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
+  NAV_MENU_ROWS.flatMap(row => row.kind === 'screen' ? [row.destination] : row.hub.members)
+    .map(d => [d.route, d] as const)
 );
 
-// Every screen it's safe to reopen the app directly on: the visible bottom
-// tabs plus every drawer screen, none of which take a route param. Excludes
-// 'More' (not a real screen — its tabPress just opens the drawer) and every
-// PUSHED_ROUTES entry below (RecipeDetail, ProjectDetail, … need an id the
-// app can't invent on a cold launch). Backs the lastVisitedScreen setting
-// (useSettingsStore) so the app reopens where it was left rather than always
-// on Today — see initialRouteName below.
-const RESTORABLE_SCREENS = new Set([...VISIBLE_TABS, ...DRAWER_TABS]);
+/**
+ * A menu screen's icon as a tab: the filled glyph where Ionicons has one
+ * ("cart" for the menu's "cart-outline"), which is what the tab bar has always
+ * drawn. A glyph with no filled twin is used as it is.
+ */
+function tabIconFor(icon: string): React.ComponentProps<typeof Ionicons>['name'] {
+  const filled = icon.replace(/-outline$/, '');
+  return (filled in Ionicons.glyphMap ? filled : icon) as React.ComponentProps<typeof Ionicons>['name'];
+}
 
 // The Groceries/Recipes/Meal plan/Kitchen hub (SideMenuDrawer's
 // GROCERIES_HUB_TABS) drops out of the drawer entirely while kitchenEnabled is
@@ -195,6 +231,12 @@ const MainTabs = React.memo(function MainTabs({
   // and a dot on the menu button pointing at a screen the menu no longer lists
   // is a notification with nowhere to go.
   const kitchenEnabled = useSettingsStore(state => state.kitchenEnabled);
+  // Which screens get a button, through the same rule the menu uses, so a
+  // tab whose screen the kitchen switch or simplified mode took away drops
+  // out of the bar rather than pointing at something the menu no longer lists.
+  const tabRoutes = useSettingsStore(state => state.tabRoutes);
+  const menuOptions = useNavMenuOptions();
+  const visibleTabs = useMemo(() => visibleTabRoutes(tabRoutes, menuOptions), [tabRoutes, menuOptions]);
   const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   const timerRunning = kitchenEnabled && anyTimerRunning;
   // Which recipe the dot means, when it means a *cook* specifically: tapping
@@ -206,37 +248,27 @@ const MainTabs = React.memo(function MainTabs({
   const cookingRecipeId = kitchenEnabled ? runningCookRecipeId : undefined;
   return (
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
-      <Tab.Screen
-        name="Today"
-        component={freezeWhenBlurred(TodayScreen)}
-        listeners={tabPressHaptic}
-        options={{
-          tabBarAccessibilityLabel: 'Today',
-          tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Groceries"
-        component={freezeWhenBlurred(GroceryScreen)}
-        listeners={tabPressHaptic}
-        // Drops out of the tab bar (rather than losing its icon/label) while
-        // kitchenEnabled is off, same gate SideMenuDrawer's "Groceries &
-        // Meals" row uses — a tab pointing at a feature the user just turned
-        // off in Settings would be a dead button.
-        options={kitchenEnabled ? {
-          tabBarAccessibilityLabel: 'Groceries',
-          tabBarIcon: ({ color, size }) => <Ionicons name="cart" size={size} color={color} />,
-        } : HIDDEN}
-      />
-      <Tab.Screen
-        name="Projects"
-        component={freezeWhenBlurred(ProjectsScreen)}
-        listeners={tabPressHaptic}
-        options={{
-          tabBarAccessibilityLabel: 'Projects',
-          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
-        }}
-      />
+      {/* The chosen tabs, in the chosen order, then More, then every other
+          route hidden. The bar draws its buttons in route order, so this
+          order is the bar's. Tab.Screen children are keyed by name, so a
+          reorder moves screens rather than remounting them. */}
+      {visibleTabs.map(route => {
+        const destination = DESTINATION_BY_ROUTE.get(route);
+        return (
+          <Tab.Screen
+            key={route}
+            name={route}
+            component={TAB_SCREENS[route]}
+            listeners={tabPressHaptic}
+            options={{
+              tabBarAccessibilityLabel: destination?.label ?? route,
+              tabBarIcon: ({ color, size }) => (
+                <Ionicons name={tabIconFor(destination?.icon ?? 'ellipse-outline')} size={size} color={color} />
+              ),
+            }}
+          />
+        );
+      })}
       <Tab.Screen
         name="More"
         component={MorePlaceholder}
@@ -265,32 +297,11 @@ const MainTabs = React.memo(function MainTabs({
           ),
         }}
       />
-
-      {/* Drawer-only screens — not visible in the tab bar */}
-      <Tab.Screen name="Search" component={freezeWhenBlurred(SearchScreen)} options={HIDDEN} />
-      <Tab.Screen name="Recipes" component={freezeWhenBlurred(RecipesScreen)} options={HIDDEN} />
-      <Tab.Screen name="Cookbooks" component={freezeWhenBlurred(CookbooksScreen)} options={HIDDEN} />
-      <Tab.Screen name="MealPlan" component={freezeWhenBlurred(MealPlanScreen)} options={HIDDEN} />
-      <Tab.Screen name="Kitchen" component={freezeWhenBlurred(KitchenScreen)} options={HIDDEN} />
-      <Tab.Screen name="Calendar" component={freezeWhenBlurred(CalendarScreen)} options={HIDDEN} />
-      <Tab.Screen name="Categories" component={freezeWhenBlurred(CategoriesScreen)} options={HIDDEN} />
-      <Tab.Screen name="Tags" component={freezeWhenBlurred(TagsScreen)} options={HIDDEN} />
-      <Tab.Screen name="People" component={freezeWhenBlurred(PeopleScreen)} options={HIDDEN} />
-      <Tab.Screen name="Stacks" component={freezeWhenBlurred(StacksScreen)} options={HIDDEN} />
-      <Tab.Screen name="Templates" component={freezeWhenBlurred(TemplatesScreen)} options={HIDDEN} />
-      <Tab.Screen name="Logbook" component={freezeWhenBlurred(LogbookScreen)} options={HIDDEN} />
-      <Tab.Screen name="Stats" component={freezeWhenBlurred(StatsScreen)} options={HIDDEN} />
-      <Tab.Screen name="Mood" component={freezeWhenBlurred(MoodScreen)} options={HIDDEN} />
-      <Tab.Screen name="Medications" component={freezeWhenBlurred(MedicationScreen)} options={HIDDEN} />
-      <Tab.Screen name="Weight" component={freezeWhenBlurred(WeightScreen)} options={HIDDEN} />
-      <Tab.Screen name="FoodLog" component={freezeWhenBlurred(FoodLogScreen)} options={HIDDEN} />
-      <Tab.Screen name="Stuck" component={freezeWhenBlurred(StuckScreen)} options={HIDDEN} />
-      <Tab.Screen name="Backfill" component={freezeWhenBlurred(BackfillScreen)} options={HIDDEN} />
-      <Tab.Screen name="Reminders" component={freezeWhenBlurred(RemindersScreen)} options={HIDDEN} />
-      <Tab.Screen name="Archived" component={freezeWhenBlurred(ArchivedScreen)} options={HIDDEN} />
-      <Tab.Screen name="UnattendedLog" component={freezeWhenBlurred(UnattendedLogScreen)} options={HIDDEN} />
-      <Tab.Screen name="Rewards" component={freezeWhenBlurred(RewardsScreen)} options={HIDDEN} />
-      <Tab.Screen name="Tips" component={freezeWhenBlurred(TipsScreen)} options={HIDDEN} />
+      {/* Every other route: reachable from the menu, a link or a hub's pill
+          row, with no button of its own. */}
+      {Object.keys(TAB_SCREENS).filter(route => !visibleTabs.includes(route)).map(route => (
+        <Tab.Screen key={route} name={route} component={TAB_SCREENS[route]} options={HIDDEN} />
+      ))}
     </Tab.Navigator>
   );
 });
@@ -326,15 +337,12 @@ export default function AppNavigator() {
   const { isDark } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [initialRouteName] = useState(initialScreenFromSettings);
-  const [activeTab, setActiveTab] = useState(() =>
-    (initialRouteName === 'Today' || initialRouteName === 'Groceries' || initialRouteName === 'Projects')
-      ? initialRouteName
-      : 'Today'
-  );
+  const [activeTab, setActiveTab] = useState(initialRouteName);
   // Stable function reference (Zustand actions never change identity), so
   // selecting only this doesn't subscribe AppNavigator to lastVisitedScreen
   // itself — see initialScreenFromSettings above.
   const setLastVisitedScreen = useSettingsStore(s => s.setLastVisitedScreen);
+  const pushRecentScreen = useSettingsStore(s => s.pushRecentScreen);
   const navRef = navigationRef;
 
 
@@ -365,8 +373,14 @@ export default function AppNavigator() {
   ).current;
 
   const handleDrawerNavigate = useCallback((tabName: string) => {
-    if (!PUSHED_ROUTES.has(tabName)) setActiveTab(tabName);
-    navRef.current?.navigate(tabName as never);
+    // The left-edge strip that opens the drawer sits over pushed cards too,
+    // so a tab picked here may be under one — see navigateToTab.
+    if (PUSHED_ROUTES.has(tabName)) {
+      navRef.current?.navigate(tabName as never);
+    } else {
+      setActiveTab(tabName);
+      navigateToTab(tabName);
+    }
   }, []);
 
   const handleStateChange = useCallback(() => {
@@ -376,10 +390,10 @@ export default function AppNavigator() {
     // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
     // so no further check is needed on write.
     setLastVisitedScreen(currentName);
-    if (!DRAWER_TABS.has(currentName)) {
-      setActiveTab(currentName);
-    }
-  }, [setLastVisitedScreen]);
+    // The side menu's Recent row, and which screen a hub row opens.
+    pushRecentScreen(currentName);
+    setActiveTab(currentName);
+  }, [setLastVisitedScreen, pushRecentScreen]);
 
   const screenOptions = useMemo(() => ({
     headerShown: false,

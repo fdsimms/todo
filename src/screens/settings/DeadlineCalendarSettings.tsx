@@ -137,7 +137,6 @@ export function DeadlineCalendarSettings() {
           <View style={styles.sep} />
           {permission === 'denied' ? (
             <SettingsRow
-              entryId="calendarPermission"
               icon="lock-closed-outline"
               iconColor={colors.warning}
               label="Calendar access"

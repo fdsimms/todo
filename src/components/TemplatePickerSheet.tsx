@@ -21,7 +21,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { groupTemplatesByCategory } from '../utils/templateGrouping';
 import type { TaskTemplate } from '../types';
-import { useNavigation } from '@react-navigation/native';
+import { navigateToTab } from '../navigation/navigationRef';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
@@ -44,7 +44,6 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const templates = useTemplateStore(useShallow(s => s.templates));
-  const navigation = useNavigation();
   const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
 
   const categoryOrder = useMemo(
@@ -123,9 +122,9 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
                 subtitle="Build a reusable checklist once, then add it all here in one tap"
                 // A way there, rather than directions to it.
                 actionLabel="Make a template"
-                // Through MainTabs, so it resolves from a pushed screen (a
+                // navigateToTab, so it resolves from a pushed screen (a
                 // project's page) as well as from a tab.
-                onAction={() => dismiss(() => (navigation as any).navigate('MainTabs', { screen: 'Templates' }))}
+                onAction={() => dismiss(() => navigateToTab('Templates'))}
               />
             </View>
           ) : (

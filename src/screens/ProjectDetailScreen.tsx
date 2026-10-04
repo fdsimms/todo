@@ -14,6 +14,7 @@ import { SortableList } from '../components/SortableList';
 import { ProgressBar } from '../components/ProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { navigateToTab } from '../navigation/navigationRef';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
@@ -1816,10 +1817,7 @@ export function ProjectDetailScreen() {
                           variant="neutral"
                           onPress={() => {
                             haptics.tap();
-                            (navigation as any).navigate('MainTabs', {
-                              screen: 'Logbook',
-                              params: { projectId, openProjectHistory: Date.now() },
-                            });
+                            navigateToTab('Logbook', { projectId, openProjectHistory: Date.now() });
                           }}
                           accessibilityLabel="Open this project's history"
                         />

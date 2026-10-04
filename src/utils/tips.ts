@@ -856,15 +856,6 @@ export const TIPS: Tip[] = [
     keywords: ['preferences', 'find', 'options', 'configuration'],
   },
   {
-    id: 'feature-wheel',
-    area: 'app',
-    icon: 'radio-button-on-outline',
-    title: 'Drag from the handle above the tab bar for a wheel of your main screens',
-    body: 'Press the small handle above the tab bar and drag, and a fan of six screens opens under your thumb. Let go over one to go there, or let go without moving to cancel. Choose which six in Settings, under Feature areas.',
-    link: { label: 'Open Settings', screen: 'Settings' },
-    keywords: ['radial', 'pie', 'ring', 'fan', 'shortcut', 'gesture', 'jump', 'switch', 'navigate'],
-  },
-  {
     id: 'widget',
     area: 'app',
     icon: 'phone-portrait-outline',

@@ -846,7 +846,7 @@ Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-s
 
 ### Navigation
 
-`src/navigation/AppNavigator.tsx` uses a bottom tab bar with 4 visible tabs (Today, Groceries, Projects, More). Every other screen is registered as a hidden tab and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. The Groceries tab drops out (falling back to `tabBarButton: () => null`, same as any drawer-only tab) while `kitchenEnabled` is off in Settings, mirroring the drawer's own "Groceries & Meals" row.
+`src/navigation/AppNavigator.tsx` uses a bottom tab bar with three tabs the user picks (`tabRoutes`, default Today, Groceries, Projects; Settings › Feature areas › Tab bar) plus More. Every screen is a tab route in `TAB_SCREENS`; the ones without a button are hidden and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. A chosen tab whose screen is switched off (`kitchenEnabled`, simplified mode) drops out of the bar (`visibleTabRoutes`), mirroring the drawer. Jumping to a tab route from code goes through `navigateToTab` (`noBareTabNavigate.test.ts`).
 
 **What the menu contains is `src/utils/navHubs.ts`, not the drawer component.** Read it for the
 current rows: some are single destinations and some are **hubs**, one menu row standing in for
@@ -862,9 +862,9 @@ are worth not re-deriving:
   `menuDestinations` builds the index from the same rows the menu draws, so a screen the menu is
   hiding is not findable either: a result opening a feature you switched off is a way back into
   it that the switch didn't intend.
-- **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and
+- **Route sets are derived, not listed twice.** `MENU_ROUTES`, `RESTORABLE_SCREENS` and
   `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one
-  edit.
+  edit, plus its line in `TAB_SCREENS`.
 - **A hub row drops out when every member is gone** (simplified mode, or `kitchenEnabled` off for
   Groceries & Meals). A member hidden by a feature says so as `screen:` on that feature in
   `simpleMode.ts`, so one gate answers for the menu row, the pill and the cold-launch restore.
