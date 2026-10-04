@@ -497,6 +497,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Natural-language suggestion measurements: mirror-text widths locate the
   // highlighted phrase so the tooltip can point at it.
   const [inputW, setInputW] = useState(0);
+  // The title's natural single-line width, measured only while a highlight wants drawing.
+  const [titleW, setTitleW] = useState(0);
   const [prefixW, setPrefixW] = useState<number | null>(null);
   const [matchW, setMatchW] = useState<number | null>(null);
   const [tooltipRowW, setTooltipRowW] = useState(0);
@@ -1112,7 +1114,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (activeMatch && !activeMatch.wholeLine) ranges.push([activeMatch.matchStart, matchEnd]);
     return mergeRanges(ranges);
   }, [personMentions, activeMatch, matchEnd]);
-  const hasOverlay = highlightRanges.length > 0;
+  // The overlay is a wrapping Text laid over a single-line input that scrolls
+  // sideways, so it can only stand in for the input while the whole line fits.
+  // Past that the two disagree about where the text is, and the caret lands off
+  // the visible text. A line that has outgrown the field shows the plain input
+  // (highlights are lost, but what's typed stays where the caret is).
+  const wantsOverlay = highlightRanges.length > 0;
+  const titleFits = inputW === 0 || titleW <= inputW;
+  const hasOverlay = wantsOverlay && titleFits;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
   // while a schedule/link phrase is detected so the list doesn't fight the
@@ -2245,6 +2254,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
               />
               {/* Invisible mirrors of the input text — their widths locate the
                   highlighted phrase so the tooltip can point at it. */}
+              {wantsOverlay && (
+                <View style={[styles.measureWrap, styles.measureWide]} pointerEvents="none">
+                  <Text style={[styles.measureText, styles.measureNatural]} onLayout={e => setTitleW(e.nativeEvent.layout.width)}>
+                    {title}
+                  </Text>
+                </View>
+              )}
               {activeMatch && (
                 <View style={styles.measureWrap} pointerEvents="none">
                   <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
@@ -3507,6 +3523,14 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   },
   measureText: {
     fontSize: font.md,
+  },
+  // Wide enough that the title never wraps while it's being measured, with the
+  // text shrink-wrapped so its reported width is the line's own.
+  measureWide: {
+    width: 10000,
+  },
+  measureNatural: {
+    alignSelf: 'flex-start',
   },
   addBtn: {
     width: interaction.pillHeight,
