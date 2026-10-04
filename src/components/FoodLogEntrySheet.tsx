@@ -386,8 +386,9 @@ export function FoodLogEntrySheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   // The search half's results list is a FlatList, so it needs its own: without
   // one the last rows sit behind the keyboard with nothing to scroll them
-  // clear.
-  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
+  // clear. `fieldAbove` because the search field sits over the list rather than
+  // in it, and carries the Done bar (see the hook's note on that option).
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   // The search field, refocused after a burst save — see handleSave.
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.
