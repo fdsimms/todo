@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -1129,21 +1129,26 @@ export function FoodLogScreen() {
       </View>
 
       {dayEntries.length === 0 ? (
-        <>
-        <View style={styles.plannedAlone}>
-          {plannedCard}
-          {totalsCard}
-          {waterCard}
-        </View>
-        <EmptyState
-          icon="restaurant-outline"
-          title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
-          subtitle={emptySubtitle}
-          actionLabel="Log something"
-          onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
-          bottomOffset={tabBarHeight}
-        />
-        </>
+        // Scrolls, because the cards above can take more than the screen: with
+        // a tip showing, a planned meal and every nutrient open, a plain View
+        // left the empty state centered in negative space, drawn over the
+        // water card with its button under the tab bar. `flexGrow` keeps it
+        // centered in what's left whenever there is room.
+        <ScrollView style={styles.emptyScroll} contentContainerStyle={styles.emptyScrollContent}>
+          <View style={styles.plannedAlone}>
+            {plannedCard}
+            {totalsCard}
+            {waterCard}
+          </View>
+          <EmptyState
+            icon="restaurant-outline"
+            title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
+            subtitle={emptySubtitle}
+            actionLabel="Log something"
+            onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
+            bottomOffset={tabBarHeight + FAB_SIZE + spacing.md}
+          />
+        </ScrollView>
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <ReorderableList
@@ -1473,6 +1478,8 @@ function makeStyles(colors: Colors) {
     },
     // The card is the only one on screen when the day is empty, so it needs the
     // side gutter the list's own contentContainerStyle would otherwise give it.
+    emptyScroll: { flex: 1 },
+    emptyScrollContent: { flexGrow: 1 },
     plannedAlone: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
     plannedHeader: {
       flexDirection: 'row',

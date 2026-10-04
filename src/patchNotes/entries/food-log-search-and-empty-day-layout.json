@@ -1,0 +1,1 @@
+{ "message": "Fixed the food log search results jumping up under the search field when the keyboard opened. An empty day in the food log now scrolls when there isn't room, instead of drawing its message over the water row.", "date": "2026-10-04" }

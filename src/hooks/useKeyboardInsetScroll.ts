@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
   Keyboard,
   type FocusEvent,
   type NativeScrollEvent,
@@ -140,8 +141,20 @@ export function useScrollFieldIntoView() {
   );
 }
 
+/**
+ * `fieldAbove`: the field this list makes room for sits *outside* it, above
+ * (a search box over its results). RN's own handler is wrong for that shape
+ * whenever the field carries an `inputAccessoryViewID` (the Done bar): it reads
+ * an outside field with an accessory as a chat composer docked to the keyboard
+ * and moves the list's offset by the keyboard's whole travel
+ * (`RCTScrollViewComponentView.mm`, `_firstResponderViewOutsideScrollView`), so
+ * the results jump up under the search box as the keyboard opens and back down
+ * as it closes. In this mode the native handler is off and the bottom inset is
+ * set from the keyboard events instead: the same room to scroll results out
+ * from under the keyboard, with the offset left where the user put it.
+ */
 export function useKeyboardInsetScroll<T extends ScrollHandle>(
-  { ownsSheet = false }: { ownsSheet?: boolean } = {},
+  { ownsSheet = false, fieldAbove = false }: { ownsSheet?: boolean; fieldAbove?: boolean } = {},
 ) {
   const routeFocused = useIsFocused();
   const level = useContext(PresentationLevelContext);
@@ -233,11 +246,27 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
     unstrand(false, 0);
   }, [unstrand]);
 
+  // `fieldAbove` only: the keyboard's overlap with the bottom of the screen,
+  // which is where a sheet's list ends. Zero whenever this list isn't the one
+  // being typed over, for the same reason the native handler is gated on focus.
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  useEffect(() => {
+    if (!fieldAbove || !focused) {
+      setKeyboardInset(0);
+      return;
+    }
+    const frame = Keyboard.addListener('keyboardWillChangeFrame', e => {
+      setKeyboardInset(Math.max(0, Dimensions.get('window').height - e.endCoordinates.screenY));
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardInset(0));
+    return () => { frame.remove(); hide.remove(); };
+  }, [fieldAbove, focused]);
+
   // Named apart from the `contentInset` the scroll event reports in `record`,
   // which is the live native value rather than this assertion about it.
   const insetProp = useMemo(
-    () => ({ top: 0, left: 0, bottom: noInset, right: 0 }),
-    [noInset],
+    () => ({ top: 0, left: 0, bottom: fieldAbove ? keyboardInset : noInset, right: 0 }),
+    [fieldAbove, keyboardInset, noInset],
   );
 
   // See `useScrollFieldIntoView`'s doc comment — this is what it calls through
@@ -257,7 +286,7 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
     clearStaleInset,
     focusInput,
     props: {
-      automaticallyAdjustKeyboardInsets: focused,
+      automaticallyAdjustKeyboardInsets: focused && !fieldAbove,
       contentInset: insetProp,
       // A drag can end mid rubber-band; recording without clamping lets the
       // bounce finish (onMomentumScrollEnd then settles it) while still
