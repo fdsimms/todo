@@ -284,6 +284,11 @@ function NewLineField({
 export function ProjectDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  // A task row's category chip opens that category's page. Stable, because
+  // TaskItem is memoized.
+  const handleOpenCategory = useCallback((category: string) => {
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [navigation]);
   const route = useRoute<RouteProp<RootStackParamList, 'ProjectDetail'>>();
   const { projectId, addLine } = route.params;
   const colors = useColors();
@@ -1211,6 +1216,7 @@ export function ProjectDetailScreen() {
         onSwipeSelect={handleRowSwipeSelect}
         indented={opts.indented}
         showCategory={!isList}
+        onOpenCategory={handleOpenCategory}
         showGroup={!opts.indented}
         // A list's members are undated by construction, so the date affordance
         // is an empty control on every row. Turning it off is most of what
@@ -2174,6 +2180,7 @@ export function ProjectDetailScreen() {
                           // finished lines don't grow the chips its open ones
                           // leave out.
                           showCategory={!isList}
+                          onOpenCategory={handleOpenCategory}
                           showDate={!isList}
                           showGroup
                           showPin={false}

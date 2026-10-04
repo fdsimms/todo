@@ -626,6 +626,11 @@ export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  // A task row's category chip opens that category's page. Stable, because
+  // TaskItem is memoized.
+  const handleOpenCategory = useCallback((category: string) => {
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [navigation]);
   const route = useRoute<any>();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
@@ -3180,6 +3185,7 @@ export function TodayScreen() {
         task={task}
         indented={opts?.indented}
         showCategory={opts?.showCategory}
+        onOpenCategory={handleOpenCategory}
         duplicateRow={opts?.duplicateRow}
         // Unconditional, unlike showCategory: Today's sections *are* the
         // categories, so a category chip only earns its place on a row outside
@@ -3371,6 +3377,7 @@ export function TodayScreen() {
         task={task}
         indented={opts?.indented}
         showCategory
+        onOpenCategory={handleOpenCategory}
         showProject
         onOpenProject={handleOpenProject}
         onPress={handleRowPress}
@@ -4233,6 +4240,7 @@ export function TodayScreen() {
                     onSelect={toggleSelection}
                     onSwipeSelect={handleRowSwipeSelect}
                     showCategory
+                    onOpenCategory={handleOpenCategory}
                     showProject
                     onOpenProject={handleOpenProject}
                     showGroup
@@ -4554,6 +4562,7 @@ export function TodayScreen() {
                     onSelect={toggleSelection}
                     onSwipeSelect={handleRowSwipeSelect}
                     showCategory
+                    onOpenCategory={handleOpenCategory}
                     showProject
                     onOpenProject={handleOpenProject}
                     highlighted={item.id === flashTaskId}
