@@ -238,6 +238,7 @@ const itemSchema = z.object({
   category: z.string().nullable().optional(),
   priority: z.number().int().min(0).max(4).optional(),
   effort: z.number().int().min(0).max(6).optional(),
+  difficulty: z.enum(['easy', 'normal', 'hard']).optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   recurrenceType: z.string().optional(),
   recurrenceInterval: z.number().int().positive().optional(),
@@ -274,6 +275,8 @@ function registerWriteTools(
       timeSegments: z.array(z.enum(['morning', 'afternoon', 'evening'])).optional(),
       priority: z.number().int().min(0).max(4).optional(),
       effort: z.number().int().min(0).max(6).optional(),
+      difficulty: z.enum(['easy', 'normal', 'hard']).optional()
+        .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
       estimatedMinutes: z.number().int().positive().nullable().optional(),
       recurrenceType: z.string().optional().describe("'none', 'daily', 'weekly', 'monthly', 'yearly' and the app's other rule kinds."),
       recurrenceInterval: z.number().int().positive().optional(),

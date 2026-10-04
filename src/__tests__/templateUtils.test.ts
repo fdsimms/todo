@@ -97,6 +97,12 @@ describe('normalizeTemplateItem', () => {
     expect(item.category).toBeNull();
     expect(item.priority).toBe(0);
     expect(item.effort).toBe(0);
+    expect(item.difficulty).toBe('normal');
+  });
+
+  it('reads an unknown difficulty as normal and keeps a known one', () => {
+    expect(normalizeTemplateItem({ difficulty: 'hard' }).difficulty).toBe('hard');
+    expect(normalizeTemplateItem({ difficulty: 'brutal' as never }).difficulty).toBe('normal');
   });
 
   it('preserves provided fields', () => {
@@ -241,9 +247,15 @@ describe('resolveOffsetDate', () => {
 });
 
 describe('buildDraftsFromTemplate', () => {
+
   const start = new Date('2026-06-20T09:00:00');
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
+
+  it('seeds the task with the item difficulty', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ difficulty: 'hard' })], noAnchors);
+    expect(draft.difficulty).toBe('hard');
+  });
 
   it('carries a link onto the draft, and an older item without one reads as none', () => {
     const [draft] = buildDraftsFromTemplate([makeItem({ linkUrl: 'https://example.com/book' })], noAnchors);

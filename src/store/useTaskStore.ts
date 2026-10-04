@@ -379,7 +379,7 @@ import {
 // because each already has exactly one sensible interpretation (see
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
-  'title', 'notes', 'tags', 'category', 'priority', 'effort',
+  'title', 'notes', 'tags', 'category', 'priority', 'effort', 'difficulty',
   'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
@@ -8927,6 +8927,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: task.linkUrl,
           vacationPause: task.vacationPause,
           excludeFromSuggestions: task.excludeFromSuggestions,
+          difficulty: task.difficulty ?? 'normal',
           pinEachOccurrence: task.pinEachOccurrence,
           projectId: created.id,
           groupId,

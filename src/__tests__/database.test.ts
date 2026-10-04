@@ -1163,6 +1163,17 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(after.slipDate).toBe('2026-01-11T00:00:00.000Z');
   });
 
+  it('round-trips difficulty, reading a row without one as normal', () => {
+    dbInsertTask(makeTask({ id: 'hard', difficulty: 'hard' }));
+    dbInsertTask(makeTask({ id: 'plain' }));
+    const tasks = dbGetAllTasks();
+    expect(tasks.find(t => t.id === 'hard')!.difficulty).toBe('hard');
+    expect(tasks.find(t => t.id === 'plain')!.difficulty).toBe('normal');
+    const hard = tasks.find(t => t.id === 'hard')!;
+    dbUpdateTask({ ...hard, difficulty: 'easy' });
+    expect(dbGetAllTasks().find(t => t.id === 'hard')!.difficulty).toBe('easy');
+  });
+
   it('round-trips showStreak', () => {
     dbInsertTask(makeTask({ id: 'habit', showStreak: true }));
     dbInsertTask(makeTask({ id: 'plain' }));
@@ -1673,7 +1684,7 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, difficulty: 'normal',
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,

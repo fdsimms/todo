@@ -301,7 +301,7 @@ export function RewardsScreen() {
         <EmptyState
           icon="trophy-outline"
           title="Coins and rewards"
-          subtitle="Completing a task earns coins, more for bigger tasks and long streaks. Marking one missed or logging a slip costs coins. Spend them on rewards you set yourself."
+          subtitle="Completing a task earns coins, more for bigger or harder tasks and long streaks. Marking one missed or logging a slip costs coins. Spend them on rewards you set yourself."
           actionLabel="Turn on"
           onAction={() => {
             haptics.tap();
@@ -577,7 +577,7 @@ export function RewardsScreen() {
             </View>
           )}
           <Text style={styles.rule}>
-            {`A task earns 1 to 12 coins depending on its effort, plus 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs its effort amount. Unchecking a task takes its coins back.`}
+            {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
           </Text>
         </View>
 

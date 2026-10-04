@@ -15,7 +15,7 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   (`spawnSeed.coinEarn`/`coinMiss`), so the same occurrence completed on two phones is one row and a
   redo rewrites the row an undo removed.
 - **What earns:** a task's effort bucket (`COINS_BY_EFFORT`, read through `estimatedMinutesFor` so a
-  chain pays for the live step), plus one coin per `STREAK_BONUS_EVERY` on the streak this completion
+  chain pays for the live step) scaled by its difficulty (`DIFFICULTY_MULTIPLIER`), plus one coin per `STREAK_BONUS_EVERY` on the streak this completion
   reaches, capped at `STREAK_BONUS_CAP`. Subtasks earn nothing, or splitting a task would be the way
   to earn more.
 - **Only a person moves it.** `neutral` completions (the overshoot and interval sweeps), the quota
@@ -37,6 +37,25 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **Off means nothing is written.** Every `record*` action and `claimReward` is a no-op while
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
+
+## Difficulty
+
+`Task.difficulty` (Easy / Normal / Hard) says how hard a task is to make yourself do, which the time
+estimate can't: a two-minute call you dread and an hour of something you enjoy. Hard doubles the
+effort bucket's value and Easy halves it, never below 1. Offered in the editor only while rewards are
+on, since nothing else reads it.
+
+- **Normal is the column default and changes nothing**, so every task that predates it earns exactly
+  what it did. Absent reads as Normal too.
+- **It carries to the next occurrence** (a `CONTENT_FIELD`), unlike a bounty. A bounty is for the one
+  task you've been putting off; a rating is for the kind of task that is always hard.
+- **Nothing sets it but the person.** Inferring it from `postponeCount` would pay more for a task that
+  waited, which is the rule bounties exist to keep.
+- **A miss costs the effort bucket's value or what doing it would earn, whichever is less**
+  (`coinsForLoss`). A hard task costing double to miss would raise the stake on trying the tasks the
+  rating is meant to get done.
+- **Rating everything Hard is not much of a cheat.** Reward prices are suggested from the earning rate,
+  which scales with it; what the rating changes is how tasks pay relative to each other.
 
 ## Bounties
 
