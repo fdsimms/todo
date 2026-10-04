@@ -8,6 +8,8 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types
 import { cleanRecipeName, recipeByName, recipeNameKey } from './recipeUtils';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
+import type { MealPlanDraft } from '../store/useMealPlanStore';
+import { householdScale } from './recipeScale';
 
 /**
  * Everything decidable about a week plan, kept store-free and node-testable —
@@ -643,4 +645,70 @@ export function describeAddedToList(
   if (isSameDay(d, subDays(now, 1))) return 'Added yesterday';
   if (isSameWeek(d, now, { weekStartsOn })) return `Added ${format(d, 'EEEE')}`;
   return `Added ${format(d, d.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
+}
+
+/** What `buildMealPlanEntry` needs that isn't in the draft. */
+export interface MealPlanEntryContext {
+  id: string;
+  /** The title already through `cleanMealTitle`, which the caller checks for blank first. */
+  title: string;
+  /** The recipe the draft names, if any, for its servings. */
+  recipe?: Pick<Recipe, 'servings' | 'servingsMax'>;
+  /** What's already planned on the draft's day, so this lands at the end of its slot. */
+  sameDay: readonly MealPlanEntry[];
+  householdServings: number;
+  now: string;
+}
+
+/**
+ * The row planning a meal writes, shared by the meal plan store and the MCP
+ * server so the two can't build it differently. Device work (the slot's task,
+ * the calendar event, undo) stays with the store.
+ */
+export function buildMealPlanEntry(draft: MealPlanDraft, ctx: MealPlanEntryContext): MealPlanEntry {
+  return {
+    id: ctx.id,
+    date: draft.date,
+    slot: draft.slot,
+    recipeId: draft.recipeId ?? null,
+    title: ctx.title,
+    // Ordered against SQLite's answer for that slot rather than against
+    // `entries`, so planning into a day outside the loaded window still lands
+    // at the end of it instead of colliding on 1.
+    sortOrder: nextSortOrder(ctx.sameDay, draft.date, draft.slot),
+    createdAt: ctx.now,
+    cookedAt: null,
+    // Planning against a leftover deliberately does *not* close it out — see
+    // Leftover.finishedAt. Nothing here touches the leftover store at all;
+    // the "was that the last of it?" offer is the picker's, and it's an
+    // offer.
+    leftoverId: draft.leftoverId ?? null,
+    // Nothing picked yet, which resolves to every choice group's default —
+    // planning a meal must never be gated on answering "mash or roast?", the
+    // same call MealPlanEntry.recipeId makes about naming a recipe at all.
+    recipeChoices: [],
+    // As written, for the same reason: how much of it you're making is a
+    // question a plan is allowed not to have answered. Unless the person has
+    // answered it once for every meal (#2910): "Usually cooking for 4" starts
+    // a recipe that serves 2 at 2x, through householdScale, which stays as
+    // written whenever the recipe states no servings or already covers them.
+    // A leftover or a typed meal has no recipe and no servings to scale.
+    recipeScale: householdScale(
+      ctx.householdServings,
+      ctx.recipe?.servings,
+      ctx.recipe?.servingsMax,
+    ),
+    // Unanswered, so the setting decides — see MealPlanEntry.cookTask. The
+    // picker can pass an explicit answer, which is how "add a cook task" is
+    // said at plan time.
+    cookTask: draft.cookTask ?? null,
+    // Unanswered too, so mealShortfallTasks decides — see
+    // MealPlanEntry.shopTask.
+    shopTask: draft.shopTask ?? null,
+    // Unanswered too, so mealLogPrompt decides — see MealPlanEntry.logMeal.
+    logMeal: draft.logMeal ?? null,
+    // Nothing on the device yet. reconcileMealEvent below writes the id
+    // back if a calendar is picked.
+    calendarEventId: null,
+  };
 }

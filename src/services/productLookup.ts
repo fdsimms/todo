@@ -187,7 +187,8 @@ async function fetchFromOff(gtin: string, now: Date): Promise<ProductRecord | nu
       // `readOffNutrition`.
       + `?fields=product_name,generic_name,brands,quantity,categories_tags`
       + `,nutriments,serving_size,serving_quantity,serving_quantity_unit`,
-      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: controller.signal }
+      // Cast for the reason httpSyncTransport.ts gives (mcp/ reaches this file).
+      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: controller.signal as unknown as RequestInit['signal'] }
     );
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw new ProductLookupError('Request timed out');
@@ -233,7 +234,7 @@ export async function getJson(url: string, headers: Record<string, string>): Pro
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(url, { headers: { Accept: 'application/json', ...headers }, signal: controller.signal });
+    response = await fetch(url, { headers: { Accept: 'application/json', ...headers }, signal: controller.signal as unknown as RequestInit['signal'] });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw new ProductLookupError('Request timed out');
     throw new ProductLookupError('Lookup failed');

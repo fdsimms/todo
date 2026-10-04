@@ -912,6 +912,41 @@ describe('the monthly/yearly day-of-month anchor', () => {
     expect(useTaskStore.getState().tasks[0].recurrenceAnchorDay).toBe(5);
   });
 
+  // A task once pulled forward (keeping its grid) carries the grid's date in
+  // recurrenceAnchorDate. Restarting the schedule from a new day must anchor on
+  // that day, which is what pullForwardChoice's preview promised; reading the
+  // old grid date instead brought the 31st back.
+  it('anchors on the new day when a pulled-forward task restarts its schedule there', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 2, 28, 12, 0, 0).toISOString(),
+        recurrenceAnchorDate: new Date(2026, 2, 31, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: 31,
+      })],
+    });
+    useTaskStore.getState().bulkSetWhen(['rent'], new Date(2026, 2, 15, 12, 0, 0), [], { restartSchedules: true });
+    const rent = useTaskStore.getState().tasks[0];
+    expect(rent.recurrenceAnchorDate).toBeNull();
+    expect(rent.recurrenceAnchorDay).toBe(15);
+  });
+
+  it('keeps the grid day when a pulled-forward task is re-saved on the same day', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 2, 28, 12, 0, 0).toISOString(),
+        recurrenceAnchorDate: new Date(2026, 2, 31, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: 31,
+      })],
+    });
+    // The editor writes dueDate on every save, here with a new time of day.
+    useTaskStore.getState().updateTask('rent', { dueDate: new Date(2026, 2, 28, 17, 0, 0).toISOString() });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDay).toBe(31);
+  });
+
   it('is dropped when the rule stops being one the anchor means anything to', () => {
     useTaskStore.setState({
       tasks: [makeTask({

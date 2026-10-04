@@ -20,7 +20,7 @@
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
-import type { TaskDraft } from '../../src/types';
+import { describeRepeat, type RepeatInput, type TaskFieldsInput } from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
@@ -122,12 +122,31 @@ export function searchTasks(replica: Replica, input: SearchTasksInput): SearchTa
   };
 }
 
+export interface ChainStepDetail {
+  title: string;
+  estimatedMinutes?: number;
+  asks?: string;
+  answerSchedulesNextStep?: boolean;
+}
+
 export interface GetTaskResult {
   task: SerializedTask;
   /** The task's own subtasks, in stored order. */
   subtasks: SerializedTask[];
   /** Every step, when the task is a chain, so the shape is visible at once. */
-  chain?: { index: number; steps: string[] };
+  chain?: { index: number; steps: ChainStepDetail[]; stepsFollowSchedule?: boolean };
+  /** The repeat rule, in the shape `create_task` and `update_task` take it. */
+  repeat?: RepeatInput;
+  /** A count to reach per day or week, and how far today's (or this week's) has got. */
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean };
+  /** "HH:MM" bounds: shown from `start`, expired after `end`. */
+  window?: { start?: string; end?: string };
+  /** Present only for a "don't do this" habit, which is never completed. */
+  habit?: 'avoid';
+  /** The tasks this one is waiting on. */
+  waitsOn?: { id: string; title: string; done: boolean }[];
+  /** "Every Nth completion, add this task." */
+  followUp?: { everyN: number; title: string; oneAtATime?: boolean; completionsSoFar: number };
   project?: { id: string; title: string };
   /**
    * Why the task is not on Today, when it is not. Null when it is visible.
@@ -152,7 +171,48 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
       replica,
       replica.tasks().filter(t => t.parentId === task.id)
     ),
-    chain: steps.length > 1 ? { index: task.chainIndex ?? 0, steps: steps.map(s => s.title) } : undefined,
+    chain: steps.length > 1
+      ? {
+          index: task.chainIndex ?? 0,
+          steps: steps.map(s => ({
+            title: s.title,
+            ...(s.estimatedMinutes != null ? { estimatedMinutes: s.estimatedMinutes } : {}),
+            ...(s.deliverableKind ? { asks: s.deliverableKind } : {}),
+            ...(s.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}),
+          })),
+          ...(task.chainStepOnSchedule ? { stepsFollowSchedule: true } : {}),
+        }
+      : undefined,
+    repeat: describeRepeat(task) ?? undefined,
+    target: task.targetCount != null && task.targetCount >= 2
+      ? {
+          count: task.targetCount,
+          per: task.quotaPeriod === 'week' ? 'week' : 'day',
+          done: task.progressCount ?? 0,
+          ...(task.targetUnit ? { unit: task.targetUnit } : {}),
+          ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
+        }
+      : undefined,
+    window: task.windowStart || task.windowEnd
+      ? { ...(task.windowStart ? { start: task.windowStart } : {}), ...(task.windowEnd ? { end: task.windowEnd } : {}) }
+      : undefined,
+    habit: task.polarity === 'negative' ? 'avoid' : undefined,
+    waitsOn: (() => {
+      const ids = [task.blockedById, ...(task.blockedByIds ?? [])].filter((id): id is string => !!id);
+      if (ids.length === 0) return undefined;
+      return ids.map(id => {
+        const b = replica.taskById(id);
+        return { id, title: b ? replica.displayTitle(b) : '(deleted task)', done: b ? b.completed : true };
+      });
+    })(),
+    followUp: task.followUpTaskEveryN != null && task.followUpTaskTitle
+      ? {
+          everyN: task.followUpTaskEveryN,
+          title: task.followUpTaskTitle,
+          ...(task.followUpTaskOneAtATime ? { oneAtATime: true } : {}),
+          completionsSoFar: task.followUpTaskTally ?? 0,
+        }
+      : undefined,
     project: project ? { id: project.id, title: project.title } : undefined,
     hiddenUntil: visible ? undefined : replica.visibleAt(task).toISOString(),
   };
@@ -462,8 +522,35 @@ export function createTemplate(replica: Replica, plan: TemplatePlan): CreateTemp
  * time-of-day segment from that category, a title the rules rewrote — and a
  * caller that cannot see those cannot tell the user what it made.
  */
-export function createTask(replica: Replica, draft: Partial<TaskDraft>): SerializedTask {
-  return serializeTasks(replica, [replica.createTask(draft)])[0];
+export function createTask(replica: Replica, input: TaskFieldsInput & { parentId?: string | null }): GetTaskResult {
+  const { parentId, ...fields } = input;
+  if (parentId && !replica.taskById(parentId)) throw new Error(`No task with id ${parentId} to add a subtask to.`);
+  const patch = replica.taskPatch(fields, null, !!parentId);
+  const task = replica.createTask({ ...patch, ...(parentId ? { parentId } : {}) });
+  return getTask(replica, task.id)!;
+}
+
+export interface UpdateTaskResult extends GetTaskResult {
+  /**
+   * How many later dates of the same dated series took the edit too. The app's
+   * editor applies a content edit to "this and later dates" by default, and
+   * this does the same, so a caller should say so rather than report one task.
+   */
+  alsoUpdatedLaterDates?: number;
+}
+
+/**
+ * Edit a task. Only the fields named change; `null` clears a field that can be
+ * empty. The result is the task in full, the same shape `get_task` returns, so
+ * a caller can check what the rules made of the edit.
+ */
+export function updateTask(replica: Replica, id: string, input: TaskFieldsInput): UpdateTaskResult {
+  const current = replica.taskById(id);
+  if (!current) throw new Error(`No task with id ${id}.`);
+  const patch = replica.taskPatch(input, current, !!current.parentId);
+  if (Object.keys(patch).length === 0) throw new Error('Nothing to change: name at least one field.');
+  const { alsoUpdated } = replica.updateTask(id, patch);
+  return { ...getTask(replica, id)!, ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}) };
 }
 
 export interface CompleteTaskResult {
