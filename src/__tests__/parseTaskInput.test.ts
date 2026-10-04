@@ -944,9 +944,17 @@ describe('parseChainInput', () => {
     expect(parseChainInput('')).toBeNull();
   });
 
-  it('refuses a doubled or trailing arrow rather than dropping a step', () => {
+  it('refuses a doubled arrow rather than dropping a step', () => {
     expect(parseChainInput('call mom -> -> walk the dog')).toBeNull();
-    expect(parseChainInput('call mom -> buy milk ->')).toBeNull();
+    expect(parseChainInput('call mom -> -> ')).toBeNull();
+  });
+
+  it('ignores a trailing arrow, which is the next step not typed yet', () => {
+    const result = parseChainInput('call mom -> buy milk ->')!;
+    expect(result.steps.map(s => s.title)).toEqual(['call mom', 'buy milk']);
+    expect(parseChainInput('call mom -> buy milk -> ')!.steps).toHaveLength(2);
+    // One step plus a dangling arrow is still not a chain.
+    expect(parseChainInput('call mom ->')).toBeNull();
   });
 
   it('refuses a step that is only a duration or link phrase with no title of its own', () => {
