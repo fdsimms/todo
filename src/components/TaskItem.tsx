@@ -107,6 +107,7 @@ import {
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { liveBlockersOf } from '../utils/blocking';
 import { isDriftingTask } from '../utils/postpone';
+import { bountyCoinsFor, formatCoins, isBountyLive } from '../utils/rewards';
 import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
@@ -1480,6 +1481,10 @@ export const TaskItem = React.memo(function TaskItem({
   // go looking for it.
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const isDrifting = isDriftingTask(task, postponeCheckThreshold);
+  // What a live bounty would pay right now (utils/rewards.ts), shown so the
+  // reason to do it today sits on the row you'd otherwise push.
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const bountyCoins = rewardsEnabled && isBountyLive(task) ? bountyCoinsFor(task) : 0;
 
   const activeChainItem =
     !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
@@ -2566,7 +2571,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2703,6 +2708,17 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   Moved {task.postponeCount}×
+                </Text>
+              </View>
+            )}
+            {bountyCoins > 0 && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Bounty, ${formatCoins(bountyCoins)} extra when done`}
+              >
+                <Ionicons name="trophy-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  +{bountyCoins} bounty
                 </Text>
               </View>
             )}

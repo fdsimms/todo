@@ -51,6 +51,7 @@ import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { BOUNTY_WITHDRAWN, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -345,6 +346,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const updateTask = useTaskStore(s => s.updateTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const markMissed = useTaskStore(s => s.markMissed);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const bountyLimit = useSettingsStore(s => s.bountyLimit);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -557,6 +560,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
+  // Whether a live bounty is posted on this task (utils/rewards.ts). A switch
+  // in the draft; save turns it into a post or a withdrawal.
+  const [bounty, setBounty] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
@@ -893,6 +899,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
+      setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
       setPolarity(task.polarity ?? 'positive');
       setQuotaPeriod(task.quotaPeriod ?? 'day');
@@ -1081,6 +1088,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
+      bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
       showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
@@ -1540,6 +1548,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       excludeFromSuggestions,
+      // Only the edge is written: posting starts the count at 0, and turning a
+      // live bounty off spends it. Anything else leaves the row's count to
+      // updateTask, which takes a step off it if this same save pushes the date.
+      ...(task && bounty && !isBountyLive(task) && canPostBounty(task) ? { bountyPushes: 0 } : {}),
+      ...(task && !bounty && isBountyLive(task) ? { bountyPushes: BOUNTY_WITHDRAWN } : {}),
       polarity,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
@@ -2175,6 +2188,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
       pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
+      bounty,
       polarity,
       showStreak,
       streakRequiresWindow,
@@ -6061,6 +6075,53 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
+            key: 'bounty', label: 'Bounty',
+            keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!bounty && !isBountyLive(task)) {
+                  // The slot check is made here, where the switch is, rather
+                  // than refused silently on save.
+                  const taken = liveBountyCount(useTaskStore.getState().tasks);
+                  if (taken >= bountyLimit) {
+                    haptics.warning();
+                    Alert.alert(
+                      bountyLimit === 1 ? 'You already have a bounty out' : `You already have ${taken} bounties out`,
+                      'Finish or withdraw one first, or allow more on the Rewards screen.',
+                    );
+                    return;
+                  }
+                }
+                haptics.tap();
+                setBounty(v => !v);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Bounty"
+              accessibilityState={{ checked: bounty }}
+            >
+              <Ionicons name="trophy-outline" size={18} color={bounty ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Bounty</Text>
+                <Text style={styles.optionHint}>
+                  {bounty && isBountyLive(task)
+                    ? describeBounty(task)
+                    : bounty
+                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it's moved to a later day, the bounty gets smaller.`
+                      : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
+                </Text>
+              </View>
+              <View style={[styles.toggle, bounty && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, bounty && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          }] : []),
           {
             key: 'excludeFromSuggestions', label: 'Skip in suggestions',
             keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],

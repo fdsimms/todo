@@ -18445,3 +18445,95 @@ describe('coins', () => {
     expect(useRewardStore.getState().entries).toEqual([]);
   });
 });
+
+// ─── bounties ───────────────────────────────────────────────────────────────
+//
+// The values are tested in rewards.test.ts; these cover the wiring: the slot
+// limit, the decay riding on a push, what a successor and an undo do with it.
+describe('bounties', () => {
+  const settingsMock = useSettingsStore.getState as jest.Mock;
+  const base = settingsMock.getMockImplementation()!;
+  const balance = () => useRewardStore.getState().balance();
+  const TODAY = new Date(2025, 5, 10, 12, 0, 0);
+  const TOMORROW = new Date(2025, 5, 11, 12, 0, 0);
+  const dueToday = (over: Partial<Task> = {}) =>
+    makeTask({ id: 'a', dueDate: TODAY.toISOString(), estimatedMinutes: 480, ...over });
+  const get = (id = 'a') => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 9, 0, 0));
+    settingsMock.mockImplementation(() => ({ ...base(), rewardsEnabled: true, bountyLimit: 1 }));
+    useRewardStore.setState({ entries: [], rewards: [], initialized: true });
+  });
+  afterEach(() => {
+    settingsMock.mockImplementation(base);
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('posts one and refuses a second while the slot is taken', () => {
+    useTaskStore.setState({ tasks: [dueToday(), dueToday({ id: 'b' })] });
+    expect(useTaskStore.getState().postBounty('a')).toBe('posted');
+    expect(get().bountyPushes).toBe(0);
+    expect(useTaskStore.getState().postBounty('b')).toBe('full');
+    expect(get('b').bountyPushes ?? null).toBeNull();
+  });
+
+  it('frees the slot once the bounty is done', () => {
+    useTaskStore.setState({ tasks: [dueToday(), dueToday({ id: 'b' })] });
+    useTaskStore.getState().postBounty('a');
+    useTaskStore.getState().completeTask('a');
+    expect(useTaskStore.getState().postBounty('b')).toBe('posted');
+  });
+
+  it('pays the bounty on top of the base value, and the undo takes it all back', () => {
+    useTaskStore.setState({ tasks: [dueToday()] });
+    useTaskStore.getState().postBounty('a');
+    useTaskStore.getState().completeTask('a');
+    expect(balance()).toBe(12 + 12);
+    useTaskStore.getState().uncompleteTask('a');
+    expect(balance()).toBe(0);
+  });
+
+  it('loses a step on each push, and posting first does not count as one', () => {
+    useTaskStore.setState({ tasks: [dueToday({ postponeCount: 9 })] });
+    useTaskStore.getState().postBounty('a');
+    expect(get().postponeCount).toBe(9);
+    useTaskStore.getState().updateTask('a', { dueDate: TOMORROW.toISOString() });
+    expect(get().bountyPushes).toBe(1);
+    expect(get().postponeCount).toBe(10);
+  });
+
+  it('keeps the lost step when the task is pulled back to today', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: TOMORROW.toISOString(), bountyPushes: 1, postponeCount: 1 })],
+    });
+    useTaskStore.getState().updateTask('a', { dueDate: TODAY.toISOString() });
+    expect(get().postponeCount).toBe(0);
+    expect(get().bountyPushes).toBe(1);
+  });
+
+  it('counts a bulk push too', () => {
+    useTaskStore.setState({ tasks: [dueToday({ bountyPushes: 0 })] });
+    useTaskStore.getState().bulkDefer(['a'], TOMORROW);
+    expect(get().bountyPushes).toBe(1);
+  });
+
+  it('spends a withdrawn bounty so it cannot be reposted', () => {
+    useTaskStore.setState({ tasks: [dueToday()] });
+    useTaskStore.getState().postBounty('a');
+    useTaskStore.getState().withdrawBounty('a');
+    expect(useTaskStore.getState().postBounty('a')).toBe('not-allowed');
+  });
+
+  it('does not carry onto the next occurrence', () => {
+    useTaskStore.setState({
+      tasks: [dueToday({ recurrenceType: 'daily', recurrenceInterval: 1 })],
+    });
+    useTaskStore.getState().postBounty('a');
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'a')!;
+    expect(next.bountyPushes ?? null).toBeNull();
+  });
+});

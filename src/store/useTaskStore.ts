@@ -141,7 +141,15 @@ import { useMoodStore } from './useMoodStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
-import { coinsForCompletion, coinsForLoss, taskEarnsCoins } from '../utils/rewards';
+import {
+  canPostBounty,
+  coinsForCompletion,
+  coinsForLoss,
+  liveBountyCount,
+  nextBountyPushes,
+  taskEarnsCoins,
+  BOUNTY_WITHDRAWN,
+} from '../utils/rewards';
 import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
@@ -1370,16 +1378,17 @@ function bulkPostponeCounts(
   // task's due date.
   next: Partial<Pick<Task, 'dueDate' | 'deferUntil'>>,
   dayResetTime: string,
-): Map<string, { postponeCount: number; driftingSince: string | null }> {
+): Map<string, { postponeCount: number; driftingSince: string | null; bountyPushes: number | null }> {
   const idSet = new Set(ids);
-  const counts = new Map<string, { postponeCount: number; driftingSince: string | null }>();
+  const counts = new Map<string, { postponeCount: number; driftingSince: string | null; bountyPushes: number | null }>();
   for (const t of tasks) {
     if (!idSet.has(t.id)) continue;
     const outcome = postponeOutcome(t, { ...t, ...next }, dayResetTime);
     const postponeCount = nextPostponeCount(t.postponeCount, outcome);
     const driftingSince = nextDriftingSince(t.driftingSince, t.postponeCount, outcome, t, dayResetTime);
-    if (postponeCount !== t.postponeCount || driftingSince !== t.driftingSince) {
-      counts.set(t.id, { postponeCount, driftingSince });
+    const bountyPushes = nextBountyPushes(t.bountyPushes, outcome === 'pushed');
+    if (postponeCount !== t.postponeCount || driftingSince !== t.driftingSince || bountyPushes !== (t.bountyPushes ?? null)) {
+      counts.set(t.id, { postponeCount, driftingSince, bountyPushes });
     }
   }
   return counts;
@@ -1990,6 +1999,15 @@ interface TaskStore extends UndoHistoryActions {
    */
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;
+  /**
+   * Post a bounty on a task (see "Bounties" in utils/rewards.ts). Refused with
+   * 'full' when every slot (`bountyLimit`) is taken, and 'not-allowed' when the
+   * task can't hold one: done, a subtask, a negative habit, or already posted
+   * on this occurrence.
+   */
+  postBounty: (id: string) => 'posted' | 'full' | 'not-allowed';
+  /** Take a live bounty down. Spends it: it can't be posted again on this occurrence. */
+  withdrawBounty: (id: string) => void;
   // Hides a recurring task indefinitely (unlike vacationPause, not tied to
   // vacation mode) without touching its completion history. Streak fields
   // are left as-is on archive; unarchiveTask is what breaks the streak.
@@ -3001,6 +3019,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       postponeCount: 0,
       postponeMuted: false,
       driftingSince: null,
+      bountyPushes: null,
       // deadlineOnCalendar (the preference) carries via ...original, same as
       // every other setting on the copy, but the device event does not —
       // two tasks pointing at one event means editing either one's deadline
@@ -3235,6 +3254,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
                   t,
                   dayResetTime,
                 ),
+                // A bounty loses a step on the same pushes the count climbs on.
+                // Left out when the update names it (posting or withdrawing in
+                // the same save), since this spread lands after `updates`.
+                ...('bountyPushes' in updates
+                  ? {}
+                  : { bountyPushes: nextBountyPushes(t.bountyPushes, outcome === 'pushed') }),
               };
             })();
 
@@ -4881,6 +4906,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
         driftingSince: null,
+        bountyPushes: null,
         // A neutral close (see nextStreak above) carries the live streak
         // forward exactly as it stood — a non-work day never happened, so
         // the successor picking it up must not read as day one either.
@@ -5186,7 +5212,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // user never resolved. See utils/postpone.ts.
     const snapshots = applied.map(m => {
       const t = byId.get(m.id)!;
-      return { id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil, postponeCount: t.postponeCount };
+      return {
+        id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil,
+        postponeCount: t.postponeCount, bountyPushes: t.bountyPushes ?? null,
+      };
     });
 
     // Deliberately counted, unlike every other engine-proposed move here:
@@ -5203,7 +5232,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved`,
       redo: () => get().deloadTasks(moves),
       undo: () => snapshots.forEach(s =>
-        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount })
+        get().updateTask(s.id, {
+          dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount, bountyPushes: s.bountyPushes,
+        })
       ),
     });
   },
@@ -7670,6 +7701,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // taking its place.
         postponeCount: 0,
         driftingSince: null,
+        bountyPushes: null,
       }, SKIP_POSTPONE);
       return;
     }
@@ -7699,7 +7731,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // against it yet.
       postponeCount: 0,
       driftingSince: null,
+      bountyPushes: null,
     }, SKIP_POSTPONE);
+  },
+
+  postBounty(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !canPostBounty(task)) return 'not-allowed';
+    if (liveBountyCount(get().tasks) >= useSettingsStore.getState().bountyLimit) return 'full';
+    get().updateTask(id, { bountyPushes: 0 }, SKIP_POSTPONE);
+    return 'posted';
+  },
+
+  withdrawBounty(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.bountyPushes == null) return;
+    get().updateTask(id, { bountyPushes: BOUNTY_WITHDRAWN }, SKIP_POSTPONE);
   },
 
   togglePin(id) {
@@ -8118,6 +8165,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       postponeCount: 0,
       postponeMuted: false,
       driftingSince: null,
+      bountyPushes: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -8337,6 +8385,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       postponeCount: 0,
       postponeMuted: false,
       driftingSince: null,
+      bountyPushes: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));

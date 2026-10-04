@@ -87,7 +87,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { frequencyTrend, medicationFor } from '../utils/medicationLog';
-import { canClaimReward } from '../utils/rewards';
+import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
@@ -2016,6 +2016,11 @@ describe('demo seed — people', () => {
     const fromList = rewards.find(r => r.taskId);
     expect(useTaskStore.getState().tasks.find(t => t.id === fromList?.taskId)?.projectId).toBe(listId);
     expect(rewards.some(r => r.id === useSettingsStore.getState().rewardGoalId)).toBe(true);
+    // A bounty, on a task that has already been put off.
+    const bounty = useTaskStore.getState().tasks.find(t => isBountyLive(t));
+    expect(bounty?.title).toBe('Clear the gutters');
+    expect(bounty?.bountyPushes).toBe(0);
+    expect(bounty?.postponeCount).toBeGreaterThan(0);
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {

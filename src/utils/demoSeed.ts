@@ -2545,6 +2545,12 @@ function seedRewards(today: Date): void {
   });
   rewards.recordMiss('demo-coin-miss', 3, 'Stretch', setHours(subDays(today, 3), 21).toISOString());
   if (episode) rewards.claimReward(episode.id, setHours(subDays(today, 1), 20));
+
+  // A bounty on the task the seed has already been putting off, posted after
+  // its pushes so it starts at full value. Through postBounty, which holds the
+  // slot limit, rather than a stamped count.
+  const gutters = useTaskStore.getState().tasks.find(t => t.title === 'Clear the gutters' && !t.completed);
+  if (gutters) useTaskStore.getState().postBounty(gutters.id);
 }
 
 function seedAsNeededDoses(today: Date): void {

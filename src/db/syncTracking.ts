@@ -352,6 +352,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // mean the same thing on every device.
   'rewardGoalId',
   'rewardListProjectId',
+  // Synced with the bounties it limits, which ride on synced task rows.
+  'bountyLimit',
   'autoRemoveExpiredTasks',
   'completedRetentionDays',
   'postponeCheckEnabled',

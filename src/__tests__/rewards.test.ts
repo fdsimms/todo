@@ -27,6 +27,18 @@ import {
   sortCoinEntries,
   streakBonusFor,
   taskEarnsCoins,
+  BOUNTY_MIN_COINS,
+  BOUNTY_PUSHES_TO_EXPIRE,
+  BOUNTY_WITHDRAWN,
+  DEFAULT_BOUNTY_LIMIT,
+  MAX_BOUNTY_LIMIT,
+  bountyCoinsFor,
+  canPostBounty,
+  describeBounty,
+  isBountyLive,
+  liveBountyCount,
+  nextBountyPushes,
+  parseBountyLimit,
 } from '../utils/rewards';
 import type { CoinEntry, ChainItem, Effort } from '../types';
 
@@ -361,5 +373,72 @@ describe('a reward on the list', () => {
     expect(goalProgress(500, 120)).toBe(1);
     expect(goalProgress(-10, 120)).toBe(0);
     expect(goalProgress(10, 0)).toBe(0);
+  });
+});
+
+describe('bounties', () => {
+  const open = { completed: false, archived: false, parentId: null, polarity: 'positive' as const };
+  const withBounty = (minutes: number | null, bountyPushes: number | null) => ({
+    ...task(minutes), ...open, bountyPushes,
+  });
+
+  it('pays nothing without a bounty', () => {
+    expect(bountyCoinsFor(withBounty(30, null))).toBe(0);
+    expect(bountyCoinsFor(task(30))).toBe(0);
+  });
+
+  it('is never worth more after a push, and is gone at the expiry', () => {
+    const values = [0, 1, 2, 3, 4].map(p => bountyCoinsFor(withBounty(480, p)));
+    expect(values).toEqual([12, 8, 4, 0, 0]);
+    for (let i = 1; i < values.length; i++) expect(values[i]).toBeLessThanOrEqual(values[i - 1]);
+  });
+
+  it('floors a small task at the minimum, and every live step pays something', () => {
+    const values = [0, 1, 2].map(p => bountyCoinsFor(withBounty(5, p)));
+    expect(values[0]).toBe(BOUNTY_MIN_COINS);
+    expect(values).toEqual([3, 2, 1]);
+  });
+
+  it('adds the bounty to a completion but not to a loss', () => {
+    expect(coinsForCompletion(withBounty(30, 0), 0)).toBe(3 + 3);
+    expect(coinsForLoss(withBounty(30, 0))).toBe(3);
+  });
+
+  it('counts pushes from the post and never resets on a pull', () => {
+    expect(nextBountyPushes(null, true)).toBeNull();
+    expect(nextBountyPushes(undefined, true)).toBeNull();
+    expect(nextBountyPushes(0, true)).toBe(1);
+    expect(nextBountyPushes(2, false)).toBe(2);
+    expect(nextBountyPushes(BOUNTY_PUSHES_TO_EXPIRE, true)).toBe(BOUNTY_PUSHES_TO_EXPIRE);
+  });
+
+  it('takes a slot only while it is live', () => {
+    expect(isBountyLive(withBounty(30, 0))).toBe(true);
+    expect(isBountyLive(withBounty(30, BOUNTY_WITHDRAWN))).toBe(false);
+    expect(isBountyLive({ ...withBounty(30, 0), completed: true })).toBe(false);
+    expect(liveBountyCount([withBounty(30, 0), withBounty(30, 2), withBounty(30, 3), withBounty(30, null)])).toBe(2);
+  });
+
+  it('refuses a repost on the same occurrence, a subtask and a negative habit', () => {
+    expect(canPostBounty(withBounty(30, null))).toBe(true);
+    expect(canPostBounty(withBounty(30, BOUNTY_WITHDRAWN))).toBe(false);
+    expect(canPostBounty({ ...withBounty(30, null), parentId: 'p' })).toBe(false);
+    expect(canPostBounty({ ...withBounty(30, null), polarity: 'negative' })).toBe(false);
+    expect(canPostBounty({ ...withBounty(30, null), completed: true })).toBe(false);
+  });
+
+  it('reads a stored limit back, clamped', () => {
+    expect(parseBountyLimit(null)).toBe(DEFAULT_BOUNTY_LIMIT);
+    expect(parseBountyLimit('')).toBe(DEFAULT_BOUNTY_LIMIT);
+    expect(parseBountyLimit('nope')).toBe(DEFAULT_BOUNTY_LIMIT);
+    expect(parseBountyLimit('0')).toBe(1);
+    expect(parseBountyLimit('99')).toBe(MAX_BOUNTY_LIMIT);
+    expect(parseBountyLimit('3')).toBe(3);
+  });
+
+  it('says what the next push costs', () => {
+    expect(describeBounty(withBounty(480, 0))).toBe('+12 coins extra when done. Moving it again drops it to +8 coins.');
+    expect(describeBounty(withBounty(480, 2))).toBe('+4 coins extra when done. Moving it again ends the bounty.');
+    expect(describeBounty(withBounty(480, null))).toBeNull();
   });
 });
