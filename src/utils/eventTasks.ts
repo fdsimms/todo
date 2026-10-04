@@ -330,6 +330,20 @@ function occurrenceStartOf(occurrenceKey: string): string | null {
 }
 
 /**
+ * The calendar event a rule-written task was made for, or null when the task
+ * isn't one or the event is no longer in `events`. The widget uses this alone,
+ * since it ships the title and leaves the words about when to Swift.
+ */
+export function eventTaskEventOf(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
+  events: readonly BusyEvent[],
+): BusyEvent | null {
+  const parsed = parseEventTaskSourceId(generatedSourceOf(task, 'eventTask'));
+  if (!parsed) return null;
+  return events.find(e => eventOccurrenceKey(e) === parsed.occurrenceKey) ?? null;
+}
+
+/**
  * The line a rule-written task shows so it reads as being about something:
  * "Interview with Acme · Tomorrow 3:00 PM" under "Prep for interview".
  *

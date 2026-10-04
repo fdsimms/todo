@@ -86,7 +86,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
-import { eventTaskContextLabel } from '../utils/eventTasks';
+import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { isNoticeTask } from '../utils/generatedTasks';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -1089,22 +1089,8 @@ export const TaskItem = React.memo(function TaskItem({
   );
 
   // The calendar event a rule-written task ("Prep for interview") came from,
-  // read back off the calendar store so the row says what it is about. Same
-  // gate as the calendarReview read above: only an eventTask row gets the live
-  // array, so every other row's subscription is the stable empty reference.
-  const isEventTask = task.generatedKind === 'eventTask';
-  const eventTaskEvents = useCalendarStore(s => (isEventTask ? s.events : EMPTY_BUSY_EVENTS));
-  const eventTaskContext = useMemo(
-    () => (isEventTask
-      ? eventTaskContextLabel(
-          task,
-          eventTaskEvents,
-          iso => formatScheduledDate(iso),
-          iso => formatTimeOfDay(new Date(iso)),
-        )
-      : null),
-    [isEventTask, task, eventTaskEvents]
-  );
+  // so the row says what it is about. Null for every other row.
+  const eventTaskContext = useEventTaskContext(task);
 
   // A notice rather than a piece of work: something the app is telling you,
   // with a tick box on it. Which kinds are one, and why the rest aren't, is
