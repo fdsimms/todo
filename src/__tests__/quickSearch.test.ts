@@ -415,6 +415,18 @@ describe('quickSearch', () => {
       expect(overflow).toBe(3);
     });
 
+    it('lets a task containing the whole phrase beat stacks that only match by scattered letters', () => {
+      const groups = ['Clothes', 'Kitchen', 'Plan the week'].map((title, i) =>
+        makeGroup({ id: `g${i}`, title })
+      );
+      const tasks = [makeTask({ id: 't1', title: 'Use the $250 cloud session credits' })];
+      const { results, groupResults } = quickSearch(
+        tasks, 'use the', new Map(), 2, new Set(), groups
+      );
+      expect(titles(results)).toEqual(['Use the $250 cloud session credits']);
+      expect(groupResults).toHaveLength(1);
+    });
+
     it('leaves stacks and projects out when none are supplied, exactly as before', () => {
       const tasks = [makeTask({ id: 'a', title: 'Renew passport' })];
       const { groupResults, projectResults } = quickSearch(tasks, 'renew');
