@@ -88,6 +88,13 @@ export interface WeatherSnapshot {
    * them.
    */
   tomorrowHours: WeatherHour[] | null;
+  /**
+   * The whole daily forecast the request returned, today first, about two weeks
+   * long. A task waiting for a kind of day reads it (see `weatherWait.ts`).
+   * Days that failed to parse are dropped, and null when none parsed, on the
+   * same terms as the fields above.
+   */
+  forecast: ForecastDay[] | null;
 }
 
 /**
@@ -125,6 +132,21 @@ function parseHoursOn(hourly: unknown, date: string | null): WeatherHour[] | nul
   return out.length > 0 ? out : null;
 }
 
+/** The `daily` block as forecast days, dropping any day missing a field. */
+function parseForecastDays(daily: any): ForecastDay[] | null {
+  const days: unknown[] = Array.isArray(daily?.time) ? daily.time : [];
+  const out: ForecastDay[] = [];
+  days.forEach((dayKey, i) => {
+    const weatherCode = daily?.weather_code?.[i];
+    const highF = daily?.temperature_2m_max?.[i];
+    const lowF = daily?.temperature_2m_min?.[i];
+    if (typeof dayKey !== 'string') return;
+    if (typeof weatherCode !== 'number' || typeof highF !== 'number' || typeof lowF !== 'number') return;
+    out.push({ dayKey, weatherCode, highF, lowF });
+  });
+  return out.length > 0 ? out : null;
+}
+
 /**
  * Today's weather at `location`, or null for every reason it might not be
  * available — demo mode, no network, a bad response, or a request that timed
@@ -145,7 +167,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
       '&current=temperature_2m,weather_code' +
       '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
       '&hourly=weather_code,temperature_2m' +
-      '&forecast_days=2&temperature_unit=fahrenheit&timezone=auto';
+      '&forecast_days=14&temperature_unit=fahrenheit&timezone=auto';
     // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
     // against Node's AbortSignal, which disagrees with React Native's.
     const response = await fetch(url, { signal: controller.signal as unknown as RequestInit['signal'] });
@@ -186,6 +208,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
       todayHours: parseHoursOn(body?.hourly, dayDate(0)),
       tomorrow,
       tomorrowHours: parseHoursOn(body?.hourly, dayDate(1)),
+      forecast: parseForecastDays(daily),
     };
   } catch {
     return null;

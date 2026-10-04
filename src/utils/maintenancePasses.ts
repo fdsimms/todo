@@ -163,6 +163,11 @@ export function catchUpPasses(): MaintenanceStep[] {
     // when-in-use permission string promises it never happens in the
     // background. It refuses on the snapshot's own day key instead.
     ['check weather tasks', () => tasks().checkWeatherTasks()],
+    // Beside it, reading the same snapshot's two-week forecast. Releasing a
+    // task whose matching day has arrived needs no forecast, so that half also
+    // works in a background run; moving a hold to a new day waits for a
+    // snapshot, and useWeatherWaitSync re-runs it when one lands.
+    ['apply weather waits', () => tasks().applyWeatherWaits()],
     // Beside it, and unlike the three around it this one *can* do real work at
     // cold launch: the window it reads is whatever useCalendarSync last left
     // behind, exactly as checkCalendarReviewTasks' is, and it refuses on

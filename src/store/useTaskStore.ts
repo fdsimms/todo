@@ -334,6 +334,7 @@ import { timeBlockFieldsFor, timeBlockUpdateFor, type TimeBlockFields } from '..
 import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
+import { decideWeatherWait } from '../utils/weatherWait';
 import {
   weatherSourceId,
   parseWeatherSourceId,
@@ -1859,6 +1860,13 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkCalendarReviewTasks: () => void;
   checkWeatherTasks: () => void;
+  /**
+   * Moves every one-off task that is waiting for a kind of day to the first
+   * forecast day that matches, and lets it go once that day arrives. Reads the
+   * forecast `useWeatherStore` already holds and never fetches; see
+   * `src/utils/weatherWait.ts` for the decision.
+   */
+  applyWeatherWaits: () => void;
   checkEventTasks: () => void;
   /**
    * "Leave for X" for each upcoming event with a location, its reminder at the
@@ -6270,6 +6278,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  applyWeatherWaits() {
+    // Nothing here is written for the demo database: the forecast is a fact
+    // about the real world, and a held task would outlive the session.
+    if (isDemoModeActive()) return;
+    const waiting = get().tasks.filter(t => t.weatherWait);
+    if (waiting.length === 0) return;
+
+    // A snapshot from an earlier logical day is not an answer for today. A held
+    // task whose day has arrived is still released without one (see
+    // decideWeatherWait), so a missing forecast only stops new decisions.
+    const weather = useWeatherStore.getState();
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const forecast = weather.snapshotDayKey === todayKey ? weather.snapshot?.forecast ?? [] : [];
+
+    for (const task of waiting) {
+      const decision = decideWeatherWait(task, forecast, todayKey);
+      if (decision.kind === 'release') {
+        get().updateTask(task.id, { weatherWait: null, deferUntil: null });
+      } else if (decision.kind === 'defer') {
+        // Idempotent: a pass that finds the hold already on this day writes
+        // nothing, which is what keeps the task-store subscription that
+        // triggers this from re-running it forever.
+        if (task.deferUntil && dayKeyOf(new Date(task.deferUntil)) === decision.dayKey) continue;
+        get().updateTask(task.id, { deferUntil: dayKeyToDate(decision.dayKey).toISOString() });
+      }
+    }
   },
 
   /**

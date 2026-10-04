@@ -556,6 +556,26 @@ one. Those three rules and the reasoning behind them are in
     already granted rather than prompting; asking is a Settings action, from a row in the rule
     sheet, the same "a background sweep doesn't ask, a person does" line `useCalendarSync`'s own
     `refresh()` draws.
+  - **A task can wait for a kind of day, and that is not a rule.** `Task.weatherWait`
+    (`src/utils/weatherWait.ts`, applied by `applyWeatherWaits` in `useTaskStore`) holds an existing
+    one-off task until the first forecast day that is sunny, rainy, snowy, cold or hot. It creates
+    nothing, so it has no source id and no mark; it rides the same snapshot (now carrying the
+    two-week daily `forecast`) and the same `weatherTasks` switch.
+    - **The task's own `deferUntil` is the hold.** Hiding a task until a day is what a defer
+      already is, so no visibility rule knows about weather. While `weatherWait` is set the pass
+      owns `deferUntil` and rewrites it as the forecast moves.
+    - **A matched day releases the task for good.** Once `deferUntil` arrives the pass clears
+      `weatherWait` rather than re-deciding, because a forecast that turns on the day itself must
+      not push a task back off Today. A forecast with no match holds the task to the day after the
+      forecast ends and looks again on every refresh; the row chip says so (`weatherWaitChipText`).
+    - **One-offs only** (`canWaitForWeather`): a repeat, a chain step or a series member has a
+      schedule of its own, and the editor does not offer the row for them. A task's own Date is a
+      floor: the search starts from it.
+    - **It re-runs when its inputs change, from a hook** (`useWeatherWaitSync`), not from
+      `useWeatherStore`, since the task store already imports that one. The pass is idempotent,
+      which is what stops the write it makes coming back through the task subscription forever.
+    - **Cold and hot read the day's high**, since someone waiting on either is asking about the day
+      rather than an instant.
   - **It ships off**, like `pantryCheck` and `pantryReview`, and for a reason of its own on top of
     theirs: it's the one generator that also wants a location fix, which is not something to start
     reading without being asked.

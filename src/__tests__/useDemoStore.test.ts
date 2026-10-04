@@ -929,6 +929,18 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Nothing seeded waiting on weather reads as a feature the app doesn't have.
+  it('seeds a task waiting for a sunny day', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const books = tasks.find(t => t.title === 'Leave books on the curb');
+    expect(books?.weatherWait).toBe('sunny');
+    expect(books?.deferUntil).not.toBeNull();
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // Same reasoning: nothing seeded carrying logCompletionToCalendar reads as
   // a feature the app doesn't have.
   it('seeds a task that logs its completion to the calendar', () => {
