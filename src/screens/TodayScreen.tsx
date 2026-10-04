@@ -851,8 +851,9 @@ export function TodayScreen() {
   };
   // One per view mode: only ever one of these lists is mounted at a time, but
   // each needs its own ref and its own record of where it last settled.
-  const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
-  const inboxScroll = useKeyboardInsetScroll<FlatList>();
+  // Both carry the pull-to-search RefreshControl; see the hook's `refreshing`.
+  const unscheduledScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullingToSearch });
+  const inboxScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullingToSearch });
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
