@@ -16,7 +16,7 @@
  */
 import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { getCurrentDayStart, recurrenceAnchorDayFor } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
 import { quotaRunSpan, quotaTargetForInterval } from './quotaSchedule';
 import { isRotationTask } from './rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
@@ -151,6 +151,13 @@ export function nextPinnedOrder(tasks: Task[]): number {
 
 export function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
   target[key] = source[key];
+}
+
+/** Whether `updates` puts the due date on a different logical day from the one it was on. */
+function movesToAnotherDay(t: Task, updates: Partial<Task>, dayResetTime: string): boolean {
+  if (!('dueDate' in updates) || !updates.dueDate || !t.dueDate) return false;
+  return getTaskDayStart(new Date(updates.dueDate), dayResetTime).getTime()
+    !== getTaskDayStart(new Date(t.dueDate), dayResetTime).getTime();
 }
 
 /** What the caller knows that the merge can't work out from the two rows. */
@@ -328,8 +335,24 @@ export function mergeTaskUpdate(t: Task, updates: Partial<Task>, ctx: TaskUpdate
     // would read the clamped Feb 28 back off it and put the drift straight
     // back. An update that names the field itself wins outright, which is
     // what keeps a whole-snapshot undo faithful. See Task.recurrenceAnchorDay.
+    //
+    // A due date moved to a different day, with no grid anchor beside it, is
+    // read off that day rather than off the grid the row used to step from:
+    // "count from the new date" is exactly that write, and reading the old
+    // anchor date brought the grid's 31st straight back, so the task landed
+    // somewhere other than where pullForwardChoice's preview said. A re-save
+    // on the same day (the editor writes dueDate every time) still reads the
+    // grid, which is what keeps a pulled-forward task's day.
     ...(!('recurrenceAnchorDay' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
-      ? { recurrenceAnchorDay: recurrenceAnchorDayFor({ ...t, ...updates }) }
+      ? {
+          recurrenceAnchorDay: recurrenceAnchorDayFor({
+            ...t,
+            ...updates,
+            ...(movesToAnotherDay(t, updates, ctx.dayResetTime) && !('recurrenceAnchorDate' in updates)
+              ? { recurrenceAnchorDate: null }
+              : {}),
+          }),
+        }
       : {}),
     // A schedule field written without the anchor beside it is "this is the
     // schedule now", so the grid's separate anchor goes with it (#1953) —
