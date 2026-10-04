@@ -383,6 +383,16 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   positive(item.recurrenceInterval, 'recurrenceInterval');
   positive(item.estimatedMinutes, 'estimatedMinutes');
   positive(item.completionTimerMinutes, 'completionTimerMinutes');
+  positive(item.recurrenceCount, 'recurrenceCount');
+  if (item.recurrenceMonth != null && (item.recurrenceMonth < 1 || item.recurrenceMonth > 12)) {
+    errors.push(`item "${label}" recurrenceMonth must be 1 to 12.`);
+  }
+  if (item.polarity !== undefined && !['positive', 'negative'].includes(item.polarity)) {
+    errors.push(`item "${label}" polarity must be positive or negative.`);
+  }
+  if (item.weatherWait != null && !['sunny', 'rainy', 'snowy', 'cold', 'hot'].includes(item.weatherWait)) {
+    errors.push(`item "${label}" weatherWait must be sunny, rainy, snowy, cold or hot.`);
+  }
 
   if (item.recurrenceMonthDay != null && (item.recurrenceMonthDay < 1 || item.recurrenceMonthDay > 31)) {
     errors.push(`item "${label}" recurrenceMonthDay must be 1 to 31.`);

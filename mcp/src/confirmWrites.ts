@@ -128,6 +128,10 @@ export function describeEffects(effects: readonly AgentLedgerEntry[]): string[] 
       case 'automation': return `Change automations: ${e.title}`;
       case 'note': return e.action === 'cleared' ? `Forget the note ${t}` : `Remember the note ${t}`;
       case 'meal': return `Plan ${t} on the meal plan`;
+      case 'template':
+        if (e.action === 'cleared') return `Delete the template ${t}. It cannot be restored from here.`;
+        if (e.action === 'moved') return `Reorder ${t}`;
+        break;
       default: break;
     }
     const noun = SUBJECT_NOUN[e.subject] ?? e.subject;

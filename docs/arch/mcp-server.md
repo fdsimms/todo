@@ -479,6 +479,20 @@ adds `update_template` has to add the guard with it.
 - **A scalar-only edit never rebuilds the lists.** A rename or a schedule change leaves items
   untouched, so a stored nested reference that has since gone dangling cannot block it.
 
+`delete_template` has no archive to fall back on (a template has no archived state in the app), so
+it is the one delete the server offers. It leans on the preview every write already has: the dry
+run reports "Delete the template ... It cannot be restored from here" before anything is removed,
+and the result names any template that nested it, since the app leaves those references broken
+rather than rewriting them. `reorder_templates` puts the listed ids first and keeps the rest in
+their order, because the app's own reorder needs the whole list and a model rarely has it.
+A template's category is also registered in `template_categories`, which the editor lists from.
+
+**`templateItemCoverage.test.ts` is the `taskFieldCoverage` of template items**: every
+`TemplateItem` field is in the zod item schema or in a named not-exposed group with the reason.
+The item schema was about twenty fields behind when it was added. The groups are the same
+decisions as on a task: gates, penalties and a medication are withheld, and chain and rotation
+need the converters `taskFields.ts` has and are not wired to template items yet.
+
 The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
 comparison is by value because the db reader and the writer build the object in different key
 orders.

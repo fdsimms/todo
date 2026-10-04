@@ -49,7 +49,9 @@ import {
   createTask,
   updateTask,
   createTemplate,
+  deleteTemplate,
   getTemplate,
+  reorderTemplates,
   updateTemplate,
   completeTask,
   updateAnswer,
@@ -649,7 +651,15 @@ const itemSchema = z.object({
   recurrenceInterval: z.number().int().positive().optional(),
   recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
   recurrenceMonthDay: z.number().int().min(1).max(31).nullable().optional(),
+  recurrenceMonth: z.number().int().min(1).max(12).nullable().optional().describe('Yearly: the month, 1 to 12.'),
+  recurrenceCount: z.number().int().positive().nullable().optional().describe('Stop repeating after this many occurrences.'),
   recurrenceFromCompletion: z.boolean().optional(),
+  polarity: z.enum(['positive', 'negative']).optional().describe('negative makes it a habit of not doing something.'),
+  linkUrl: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional().describe('Hold the task until the next day with this forecast. Only for a one-off item.'),
+  pinEachOccurrence: z.boolean().optional(),
+  deliverableSetsAway: z.boolean().optional().describe('Update-only detail of a date question: its answer sets the away dates.'),
   vacationPause: z.boolean().optional(),
   excludeFromSuggestions: z.boolean().optional(),
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
@@ -1117,6 +1127,32 @@ function registerWriteTools(
         return json(await withWrite(() => updateTemplate(replica, template, patch as any)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_template',
+    'Delete a template. Templates have no archive, so this cannot be undone from here. Templates that nest it keep an item whose reference is now broken; the result names them. Prefer update_template when the person only wants it changed.',
+    { template: z.string().describe('A template id, or its exact name when that names only one (list_templates).') },
+    async ({ template }) => {
+      try {
+        return json(await withWrite(() => deleteTemplate(replica, template)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_templates',
+    'Put templates in a new order. The ids listed go first, in the order given; every other template follows in the order it already had. To move one to a different category use update_template.',
+    { ids: z.array(z.string()).min(1).describe('Template ids from list_templates, first to last.') },
+    async ({ ids }) => {
+      try {
+        return json(await withWrite(() => reorderTemplates(replica, ids)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder the templates.' });
       }
     }
   );

@@ -186,6 +186,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return template;
     },
 
+    deleteTemplate(id) {
+      const result = replica.deleteTemplate(id);
+      log({ action: 'cleared', subject: 'template', title: result.template.name, taskId: null });
+      return result;
+    },
+
+    reorderTemplates(ids) {
+      const ordered = replica.reorderTemplates(ids);
+      log({ action: 'moved', subject: 'template', title: `${ordered.length} templates`, taskId: null });
+      return ordered;
+    },
+
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
       if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });

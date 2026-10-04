@@ -89,6 +89,8 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   assign_to_stack: { title: 'File tasks in a stack', destructive: true, idempotent: true },
   create_template: { title: 'Create a template', destructive: false, idempotent: false },
   update_template: { title: 'Edit a template', destructive: true, idempotent: true },
+  delete_template: { title: 'Delete a template', destructive: true, idempotent: true },
+  reorder_templates: { title: 'Reorder templates', destructive: true, idempotent: true },
   plan_meal: { title: 'Plan a meal', destructive: false, idempotent: false },
   add_person_history: { title: 'Record time with someone', destructive: false, idempotent: false },
   add_grocery_item: { title: 'Add to the grocery list', destructive: false, idempotent: false },

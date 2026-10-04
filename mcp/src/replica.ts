@@ -525,6 +525,21 @@ export interface Replica {
   updateTemplate(id: string, patch: TemplatePatch): TaskTemplate;
 
   /**
+   * Delete a template, by id or exact name. Nothing is archived: a template has
+   * no archived state in the app, so this is the app's own delete and cannot be
+   * undone from here. Other templates that nest it are left as they are, which
+   * is what the app does too (the reference keeps its label and shows as
+   * broken); their names are returned so the caller can say so.
+   */
+  deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] };
+
+  /**
+   * Put the named templates first, in the order given, and leave the rest
+   * after them in the order they were in. Unknown ids are an error.
+   */
+  reorderTemplates(ids: string[]): TaskTemplate[];
+
+  /**
    * Create one task, exactly as the app's own create path would.
    *
    * Built by `newTaskFromDraft`, which was lifted out of `useTaskStore` for
@@ -870,6 +885,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * resolved to the id minted here. Shared by create and update so a plan means
    * the same thing either way.
    */
+  /**
+   * A template's category is a name in the `template_categories` registry that
+   * the editor's picker lists. A name written without registering it still
+   * groups correctly in the picker, but is missing from the editor's list.
+   */
+  function registerTemplateCategory(name: string | null): void {
+    if (name && !db.dbGetAllTemplateCategories().some(c => c.name === name)) db.dbInsertTemplateCategory(name);
+  }
+
   function buildTemplateParts(
     plan: TemplatePlan,
     existing: readonly TaskTemplate[],
@@ -1605,6 +1629,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         anchorsAreAway: plan.anchorsAreAway ?? false,
       };
 
+      registerTemplateCategory(template.category);
       db.dbInsertTemplate(template);
       return template;
     },
@@ -1666,7 +1691,34 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         scheduleLastFiredKey: scheduleChanged ? null : before.scheduleLastFiredKey,
         ...parts,
       };
+      registerTemplateCategory(updated.category);
       db.dbUpdateTemplate(updated);
+      return updated;
+    },
+
+    deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] } {
+      const existing = db.dbGetAllTemplates();
+      const found = resolveRef(id, existing);
+      if (found.length === 0) throw new Error(`No template with id or name "${id}".`);
+      if (found.length > 1) throw new Error(`"${id}" names ${found.length} templates. Use an id.`);
+      const template = found[0];
+      const nestedIn = existing
+        .filter(t => t.id !== template.id && t.items.some(i => i.refTemplateId === template.id))
+        .map(t => t.name);
+      db.dbDeleteTemplate(template.id);
+      return { template, nestedIn };
+    },
+
+    reorderTemplates(ids: string[]): TaskTemplate[] {
+      const existing = [...db.dbGetAllTemplates()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const byId = new Map(existing.map(t => [t.id, t]));
+      const unknown = ids.filter(id => !byId.has(id));
+      if (unknown.length > 0) throw new Error(`No template with id ${unknown.join(', ')}.`);
+      if (new Set(ids).size !== ids.length) throw new Error('A template is listed twice.');
+      const listed = new Set(ids);
+      const ordered = [...ids.map(id => byId.get(id)!), ...existing.filter(t => !listed.has(t.id))];
+      const updated = ordered.map((t, i) => ({ ...t, sortOrder: i + 1 }));
+      updated.filter(t => byId.get(t.id)!.sortOrder !== t.sortOrder).forEach(t => db.dbUpdateTemplate(t));
       return updated;
     },
 

@@ -28,6 +28,16 @@ describe('confirm tokens', () => {
 });
 
 describe('describeEffects', () => {
+  it('says plainly that a deleted template is not an archive', () => {
+    expect(describeEffects([
+      { action: 'cleared', subject: 'template', title: 'Trip', taskId: null },
+      { action: 'moved', subject: 'template', title: '3 templates', taskId: null },
+    ])).toEqual([
+      'Delete the template "Trip". It cannot be restored from here.',
+      'Reorder "3 templates"',
+    ]);
+  });
+
   it('says each effect in plain words, field by field for an edit', () => {
     expect(describeEffects([
       { action: 'created', subject: 'task', title: 'Pay rent', taskId: 't' },

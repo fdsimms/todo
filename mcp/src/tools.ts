@@ -914,3 +914,20 @@ export function updateTemplate(replica: Replica, ref: string, patch: TemplatePat
     scheduled: built.schedule !== null,
   };
 }
+
+export interface DeleteTemplateResult {
+  deleted: { id: string; name: string; items: number };
+  /** Templates that nested it. Each now has an item whose reference is broken. */
+  nestedIn: string[];
+}
+
+/** Delete a template. Not undoable from here, so the write tool previews it first. */
+export function deleteTemplate(replica: Replica, ref: string): DeleteTemplateResult {
+  const { template, nestedIn } = replica.deleteTemplate(ref);
+  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn };
+}
+
+/** The templates in their new order, as the template list shows them. */
+export function reorderTemplates(replica: Replica, ids: string[]): { id: string; name: string }[] {
+  return replica.reorderTemplates(ids).map(t => ({ id: t.id, name: t.name }));
+}

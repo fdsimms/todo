@@ -409,6 +409,32 @@ describe('the replica', () => {
       expect(() => replica.updateTemplate(a.id, { items: [{ title: 'Nest B', refTemplate: b.id }] })).toThrow(/contain itself/);
     });
 
+    it('registers a template category the editor can list', () => {
+      const built = trip();
+      replica.updateTemplate(built.id, { category: 'Travel' });
+      expect(db().dbGetAllTemplateCategories().map((c: { name: string }) => c.name)).toContain('Travel');
+    });
+
+    it('deletes a template and names the ones that nested it', () => {
+      const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
+      replica.createTemplate({ name: 'Outer', items: [{ title: 'Nest', refTemplate: inner.id }] });
+      const result = replica.deleteTemplate('Inner');
+      expect(result.nestedIn).toEqual(['Outer']);
+      expect(replica.templates().map(t => t.name)).toEqual(['Outer']);
+      expect(() => replica.deleteTemplate('Inner')).toThrow(/No template/);
+    });
+
+    it('reorders: the listed ones first, the rest after in their old order', () => {
+      const a = replica.createTemplate({ name: 'A', items: [{ title: 'x' }] });
+      const b = replica.createTemplate({ name: 'B', items: [{ title: 'x' }] });
+      const c = replica.createTemplate({ name: 'C', items: [{ title: 'x' }] });
+      expect(replica.reorderTemplates([c.id]).map(t => t.name)).toEqual(['C', 'A', 'B']);
+      expect(replica.templates().sort((x, y) => x.sortOrder - y.sortOrder).map(t => t.name)).toEqual(['C', 'A', 'B']);
+      expect(() => replica.reorderTemplates([a.id, a.id])).toThrow(/twice/);
+      expect(() => replica.reorderTemplates(['nope'])).toThrow(/No template/);
+      void b;
+    });
+
     it('survives a pre-existing broken nested reference on a rename', () => {
       const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
       const outer = replica.createTemplate({ name: 'Outer', items: [{ title: 'Nest', refTemplate: inner.id }] });
