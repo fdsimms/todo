@@ -4,14 +4,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { addDays } from 'date-fns/addDays';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
 import { useSettingsStore, type MapsApp } from '../../store/useSettingsStore';
-import { useCalendarStore } from '../../store/useCalendarStore';
+import { CALENDAR_WINDOW_DAYS, useCalendarStore } from '../../store/useCalendarStore';
 import {
   getCalendarPermission,
   listEventCalendars,
   requestCalendarPermission,
   type CalendarPermission,
 } from '../../utils/calendarSync';
-import { busyMinutesIn, eventsIn, nextEventAfter } from '../../utils/calendarBusy';
+import { busyMinutesIn, eventsIn, isLiveEvent, nextEventAfter } from '../../utils/calendarBusy';
+import { calendarStatusLine, failedCalendarsLabel, todayFallback } from '../../utils/calendarReadSummary';
 import { formatDuration } from '../../utils/effort';
 import { getDayStart, formatTimeOfDay } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -71,6 +72,7 @@ export function CalendarSettings() {
   const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
   const events = useCalendarStore(s => s.events);
   const loaded = useCalendarStore(s => s.loaded);
+  const readFailed = useCalendarStore(s => s.readFailed);
   const perCalendar = useCalendarStore(s => s.perCalendar);
   const refreshEvents = useCalendarStore(s => s.refresh);
 
@@ -164,11 +166,20 @@ export function CalendarSettings() {
    * in the picker tray below, and rolled up into the warning row further
    * down for when the tray itself is collapsed.
    */
-  const calendarStatusSubtitle = (id: string): string | undefined => {
-    const status = perCalendar[id];
-    if (!status) return undefined;
-    return status.ok ? `${status.eventCount} event${status.eventCount === 1 ? '' : 's'}` : "Couldn't read";
-  };
+  // The calendars the read actually asks about: vacation mode leaves the
+  // ones hidden for it out, and those say so rather than saying nothing.
+  const isHiddenForVacation = (id: string) => vacationMode && vacationHiddenCalendarIds.includes(id);
+  const readCount = selected.filter(c => !isHiddenForVacation(c.id)).length;
+  // Counted from the events rather than perCalendar's eventCount, so a canceled
+  // event doesn't count here when it doesn't count on Today either.
+  const calendarStatusSubtitle = (id: string): string | undefined =>
+    calendarStatusLine({
+      status: perCalendar[id],
+      liveCount: events.filter(e => e.calendarId === id && isLiveEvent(e)).length,
+      hiddenForVacation: isHiddenForVacation(id),
+      readFailed,
+      windowDays: CALENDAR_WINDOW_DAYS,
+    });
   const failedIds = Object.keys(perCalendar).filter(id => !perCalendar[id].ok);
 
   /**
@@ -177,7 +188,8 @@ export function CalendarSettings() {
    * screen, so without it turning the switch on shows nothing at all.
    */
   const todaySummary = (): string => {
-    if (!loaded) return 'Checking…';
+    const fallback = todayFallback({ loaded, readFailed, readCount });
+    if (fallback !== null) return fallback;
     const start = getDayStart(new Date(), dayResetTime);
     const end = addDays(start, 1);
     const today = eventsIn(events, start, end);
@@ -413,15 +425,13 @@ export function CalendarSettings() {
           missingCount above, which is about a calendar gone entirely. Shown
           even with the picker collapsed, since that's where this is easy to
           miss otherwise. */}
-      {calendarReadEnabled && permission === 'granted' && failedIds.length > 0 && (
+      {calendarReadEnabled && permission === 'granted' && !readFailed && failedIds.length > 0 && (
         <>
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
             iconColor={colors.warning}
-            label={failedIds.length === selected.length
-              ? 'None of your calendars could be read just now'
-              : `${failedIds.length} calendar${failedIds.length === 1 ? '' : 's'} couldn’t be read just now`}
+            label={failedCalendarsLabel(failedIds.length, readCount)}
             hint="Often temporary. Try again later, or check the account in the Settings app under Calendar › Accounts."
           />
         </>

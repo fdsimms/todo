@@ -38,6 +38,7 @@ beforeEach(() => {
   (isDemoModeActive as jest.Mock).mockReturnValue(false);
   useCalendarStore.setState({
     events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false,
+    readFailed: false,
     pastEvents: [], pastLoaded: false, pastReadAt: null, handledHistory: {}, handledLoaded: false,
     aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
   });
@@ -66,6 +67,34 @@ describe('refresh', () => {
     const state = useCalendarStore.getState();
     expect(state.events).toEqual([]);
     expect(state.loaded).toBe(false);
+  });
+
+  // #1744: a read that keeps failing used to look exactly like one still in
+  // flight ("Checking…" for ever), because both only ever set loaded: false.
+  it('marks a failed read as failed, keeping what an earlier read left', async () => {
+    (fetchEvents as jest.Mock).mockResolvedValueOnce(readResult());
+    await useCalendarStore.getState().refresh();
+    (fetchEvents as jest.Mock).mockResolvedValueOnce(null);
+    await useCalendarStore.getState().refresh();
+    const state = useCalendarStore.getState();
+    expect(state.loaded).toBe(false);
+    expect(state.readFailed).toBe(true);
+    expect(state.events.map(e => e.id)).toEqual(['e-1']);
+  });
+
+  it('clears the failure once a read gets through again', async () => {
+    useCalendarStore.setState({ readFailed: true });
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult());
+    await useCalendarStore.getState().refresh();
+    expect(useCalendarStore.getState().readFailed).toBe(false);
+    expect(useCalendarStore.getState().loaded).toBe(true);
+  });
+
+  it('clears the failure when the read is turned off', async () => {
+    useCalendarStore.setState({ readFailed: true });
+    useSettingsStore.setState({ calendarReadEnabled: false });
+    await useCalendarStore.getState().refresh();
+    expect(useCalendarStore.getState().readFailed).toBe(false);
   });
 
   it('clears everything with no calendars chosen', async () => {
