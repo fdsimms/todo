@@ -21,6 +21,7 @@ import { dayKeyOf, dayKeyToDate, getLogicalDayKey } from '../utils/dateUtils';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { openHealthApp } from '../utils/healthBridge';
 import {
+  averageSleepStages,
   formatClockMinutes,
   formatSleepDuration,
   nightsInWindow,
@@ -34,7 +35,7 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl } from '../components/SegmentedControl';
-import { SleepHoursChart, SleepTimesChart } from '../components/SleepChart';
+import { SleepHoursChart, SleepStagesBar, SleepTimesChart } from '../components/SleepChart';
 import { SleepGoalSheet } from '../components/SleepGoalSheet';
 import { InlineAction } from '../components/InlineAction';
 
@@ -102,6 +103,7 @@ export function SleepScreen() {
   }, [todayKey, rangeDays]);
   const visible = useMemo(() => nightsInWindow(nights, rangeDays, todayKey), [nights, rangeDays, todayKey]);
   const summary = useMemo(() => sleepSummary(visible, goal), [visible, goal]);
+  const stageAverage = useMemo(() => averageSleepStages(visible), [visible]);
   const latest: SleepNight | null = nights.length > 0 ? nights[nights.length - 1] : null;
 
   // Sleep against what you got done and how you felt, over the whole read
@@ -238,6 +240,11 @@ export function SleepScreen() {
               {goal !== null && (
                 <Text style={styles.chartCaption}>{describeAgainstGoal(latest.minutes, goal)}</Text>
               )}
+              {latest.stages !== null && (
+                <View style={styles.stages}>
+                  <SleepStagesBar stages={latest.stages} label="Most recent sleep" />
+                </View>
+              )}
             </View>
           </>
         )}
@@ -296,6 +303,20 @@ export function SleepScreen() {
                 A blank day is one with nothing recorded.
               </Text>
             </View>
+
+            {stageAverage !== null && (
+              <>
+                <Text style={styles.sectionTitle}>STAGES</Text>
+                <View style={styles.card}>
+                  <SleepStagesBar stages={stageAverage.stages} label="Average" />
+                  <Text style={styles.chartCaption}>
+                    Average of the main stretch, over the {stageAverage.nights}{' '}
+                    {stageAverage.nights === 1 ? 'day' : 'days'} in this range that recorded stages.
+                    Stages come from Apple Watch; sleep tracked by the iPhone alone has none.
+                  </Text>
+                </View>
+              </>
+            )}
 
             <Text style={styles.sectionTitle}>HOURS ASLEEP</Text>
             <View style={styles.card}>
@@ -432,6 +453,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   latestRange: { fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text, marginTop: spacing.xxs },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22, marginTop: spacing.xxs },
   goalLine: { marginTop: spacing.smd },
+  stages: { marginTop: spacing.md },
   goalAction: { flexDirection: 'row', marginTop: spacing.smd },
   chartCaption: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.sm },
   healthLinkRow: {

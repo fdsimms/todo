@@ -14,6 +14,8 @@ import {
   sleepReadings,
   sleepSummary,
   type SleepEpisode,
+  type SleepStages,
+  averageSleepStages,
 } from '@/utils/sleepLog';
 
 /** Local wall-clock instants, so the tests read the same in every zone. */
@@ -21,8 +23,8 @@ function at(day: string, hhmm: string): Date {
   return new Date(`${day}T${hhmm}:00`);
 }
 
-function episode(start: Date, end: Date, minutes?: number, source = 0): SleepEpisode {
-  return { start, end, minutes: minutes ?? (end.getTime() - start.getTime()) / 60000, source };
+function episode(start: Date, end: Date, minutes?: number, source = 0, stages: SleepStages | null = null): SleepEpisode {
+  return { start, end, minutes: minutes ?? (end.getTime() - start.getTime()) / 60000, source, stages };
 }
 
 describe('parseSleepEpisodes', () => {
@@ -31,8 +33,22 @@ describe('parseSleepEpisodes', () => {
       { start: at('2026-10-03', '23:10').toISOString(), end: at('2026-10-04', '07:00').toISOString(), minutes: 455, source: 1 },
     ]);
     expect(parseSleepEpisodes(json)).toEqual([
-      { start: at('2026-10-03', '23:10'), end: at('2026-10-04', '07:00'), minutes: 455, source: 1 },
+      { start: at('2026-10-03', '23:10'), end: at('2026-10-04', '07:00'), minutes: 455, source: 1, stages: null },
     ]);
+  });
+
+  it('reads stages, and an episode with none staged as unstaged rather than zeros', () => {
+    const base = { start: at('2026-10-03', '23:00').toISOString(), end: at('2026-10-04', '07:00').toISOString(), minutes: 460, source: 0 };
+    const [staged, unstaged, wakesOnly, legacy] = parseSleepEpisodes(JSON.stringify([
+      { ...base, core: 260, deep: 80, rem: 120, awake: 15 },
+      { ...base, core: 0, deep: 0, rem: 0, awake: 0 },
+      { ...base, core: 0, deep: 0, rem: 0, awake: 20 },
+      base,
+    ]));
+    expect(staged.stages).toEqual({ core: 260, deep: 80, rem: 120, awake: 15 });
+    expect(unstaged.stages).toBeNull();
+    expect(wakesOnly.stages).toBeNull();
+    expect(legacy.stages).toBeNull();
   });
 
   it('drops malformed entries and answers [] for anything unreadable', () => {
@@ -130,6 +146,32 @@ describe('sleepReadings', () => {
       episode(at('2026-10-04', '14:00'), at('2026-10-04', '15:00')),
     ], '00:00');
     expect(sleepReadings(nights)).toEqual([{ dayKey: '2026-10-04', steps: null, sleepHours: 8 }]);
+  });
+});
+
+describe('stages', () => {
+  const staged = (core: number, deep: number, rem: number, awake: number): SleepStages => ({ core, deep, rem, awake });
+
+  it("carries the main stretch's stages onto the night", () => {
+    const nights = sleepNights([
+      episode(at('2026-10-03', '23:00'), at('2026-10-04', '07:00'), 470, 0, staged(270, 80, 120, 10)),
+      episode(at('2026-10-04', '14:00'), at('2026-10-04', '14:30'), 30, 0, staged(30, 0, 0, 0)),
+    ], '00:00');
+    expect(nights[0].stages).toEqual(staged(270, 80, 120, 10));
+  });
+
+  it('averages only the staged nights, so a phone night is not a night of zero deep sleep', () => {
+    const nights = sleepNights([
+      episode(at('2026-10-01', '23:00'), at('2026-10-02', '07:00'), 480, 0, staged(280, 80, 120, 10)),
+      episode(at('2026-10-02', '23:00'), at('2026-10-03', '07:00'), 480, 0, null),
+      episode(at('2026-10-03', '23:00'), at('2026-10-04', '07:00'), 460, 0, staged(260, 60, 140, 20)),
+    ], '00:00');
+    expect(averageSleepStages(nights)).toEqual({ stages: staged(270, 70, 130, 15), nights: 2 });
+  });
+
+  it('has no average with no staged nights', () => {
+    const nights = sleepNights([episode(at('2026-10-03', '23:00'), at('2026-10-04', '07:00'))], '00:00');
+    expect(averageSleepStages(nights)).toBeNull();
   });
 });
 

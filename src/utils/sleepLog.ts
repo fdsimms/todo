@@ -42,6 +42,39 @@ export interface SleepEpisode {
   minutes: number;
   /** Which app recorded it. Only meaningful compared with another episode's. */
   source: number;
+  /** Null when the recording app doesn't stage sleep (see `SleepStages`). */
+  stages: SleepStages | null;
+}
+
+/**
+ * Minutes in each sleep stage, as an Apple Watch records them (iOS 16+).
+ *
+ * `awake` is time marked awake *between* two asleep stretches of the night,
+ * never before falling asleep or after the final wake. An iPhone's sleep
+ * schedule, and most third-party apps, record only "asleep", so a night from
+ * them has no stages at all rather than a night of zeros: absent stays absent
+ * here as everywhere in the health layer. Nothing ranks the stages or says
+ * how much of one is enough; they are drawn as recorded.
+ */
+export interface SleepStages {
+  core: number;
+  deep: number;
+  rem: number;
+  awake: number;
+}
+
+/** Display order, the order Health itself lists them: awake at the top, deep at the bottom. */
+export const SLEEP_STAGE_ORDER: readonly (keyof SleepStages)[] = ['awake', 'rem', 'core', 'deep'];
+
+export const SLEEP_STAGE_LABEL: Record<keyof SleepStages, string> = {
+  awake: 'Awake',
+  rem: 'REM',
+  core: 'Core',
+  deep: 'Deep',
+};
+
+function stageMinutes(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 /**
@@ -58,7 +91,7 @@ export function parseSleepEpisodes(json: string): SleepEpisode[] {
     const out: SleepEpisode[] = [];
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const { start, end, minutes, source } = entry as Record<string, unknown>;
+      const { start, end, minutes, source, core, deep, rem, awake } = entry as Record<string, unknown>;
       if (typeof start !== 'string' || typeof end !== 'string') continue;
       const startAt = new Date(start);
       const endAt = new Date(end);
@@ -70,12 +103,23 @@ export function parseSleepEpisodes(json: string): SleepEpisode[] {
         end: endAt,
         minutes,
         source: typeof source === 'number' && Number.isFinite(source) ? source : 0,
+        stages: parseStages(core, deep, rem, awake),
       });
     }
     return out;
   } catch {
     return [];
   }
+}
+
+/**
+ * The wire's four stage fields as stages, or null for an unstaged episode.
+ * Awake time alone doesn't make an episode staged: a source that marks wakes
+ * but not stages still can't say what the sleep was made of.
+ */
+function parseStages(core: unknown, deep: unknown, rem: unknown, awake: unknown): SleepStages | null {
+  const stages = { core: stageMinutes(core), deep: stageMinutes(deep), rem: stageMinutes(rem), awake: stageMinutes(awake) };
+  return stages.core + stages.deep + stages.rem > 0 ? stages : null;
 }
 
 /** One logical day's sleep. */
@@ -93,6 +137,8 @@ export interface SleepNight {
   wokeAt: Date;
   /** Time asleep in the main stretch alone. Less than `minutes` on a day with a nap. */
   mainMinutes: number;
+  /** The main stretch's stages, or null when its source doesn't record them. */
+  stages: SleepStages | null;
 }
 
 /**
@@ -140,6 +186,7 @@ export function sleepNights(episodes: readonly SleepEpisode[], dayResetTime: str
       asleepAt: main.start,
       wokeAt: main.end,
       mainMinutes: main.minutes,
+      stages: main.stages,
     });
   }
   return nights.sort((a, b) => (a.dayKey < b.dayKey ? -1 : a.dayKey > b.dayKey ? 1 : 0));
@@ -193,6 +240,27 @@ export function averageClockMinutes(dates: readonly Date[]): number | null {
   let angle = Math.atan2(y, x);
   if (angle < 0) angle += 2 * Math.PI;
   return Math.round((angle / (2 * Math.PI)) * 1440) % 1440;
+}
+
+/** Average stage minutes over the nights that have stages, and how many did. */
+export interface SleepStageAverage {
+  stages: SleepStages;
+  nights: number;
+}
+
+/**
+ * The average main-stretch stages across a window, counting only the nights
+ * that were staged, or null when none were. A phone night isn't a night of
+ * zero deep sleep, so it can't pull the average down.
+ */
+export function averageSleepStages(nights: readonly SleepNight[]): SleepStageAverage | null {
+  const staged = nights.filter((n): n is SleepNight & { stages: SleepStages } => n.stages !== null);
+  if (staged.length === 0) return null;
+  const mean = (key: keyof SleepStages) => Math.round(staged.reduce((sum, n) => sum + n.stages[key], 0) / staged.length);
+  return {
+    stages: { core: mean('core'), deep: mean('deep'), rem: mean('rem'), awake: mean('awake') },
+    nights: staged.length,
+  };
 }
 
 /** What a window of nights adds up to. Null figures mean there was nothing to average. */

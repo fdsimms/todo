@@ -1091,6 +1091,15 @@ edit button.
   reaching it completes nothing.
 - **Still no "last night".** Every label names the day the sleep ended in, for
   the reason the Mood axis section gives.
+- **Stages are drawn as recorded, and absent stays absent.** A Watch stages
+  sleep (Core, Deep, REM, plus awake time); a phone's sleep schedule and most
+  other apps record only "asleep". An unstaged episode has `stages: null`, not
+  zeros, and `averageSleepStages` averages only staged nights, so a phone
+  night can't read as a night of no deep sleep. Awake time counts only
+  *between* two asleep samples (Swift's `pendingAwake`), and awake samples
+  never start, extend or split an episode, so the totals above are unchanged
+  by them. No stage is coloured as good or bad and nothing says how much of
+  one is enough.
 - **"With your days" is the Mood axis, not a second one.** It runs
   `healthInsight` for sleep against finished tasks and mood, with the same
   copy and the same `MIN_PAIRED_DAYS` floor, fed this screen's own nights

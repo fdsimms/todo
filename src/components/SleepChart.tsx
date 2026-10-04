@@ -3,10 +3,13 @@ import { View, Text, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, type Colors } from '../theme';
+import { spacing, font, fontWeight, type Colors } from '../theme';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { formatHour } from '../utils/rhythms';
 import {
+  SLEEP_STAGE_LABEL,
+  SLEEP_STAGE_ORDER,
+  type SleepStages,
   axisToClockMinutes,
   formatClockMinutes,
   formatSleepDuration,
@@ -186,6 +189,59 @@ export function SleepHoursChart({ dayKeys, nights, goalMinutes }: HoursProps) {
   );
 }
 
+/**
+ * A stage's colour. Four hues that read as four things rather than as a
+ * scale, so no stage looks like the "good" one: there is deliberately no
+ * green and no red, and nothing here says how much of a stage is enough.
+ */
+export function sleepStageColor(stage: keyof SleepStages, colors: Colors): string {
+  switch (stage) {
+    case 'awake': return colors.orange;
+    case 'rem': return colors.tagPalette[7];
+    case 'core': return colors.accent;
+    case 'deep': return colors.timeNight;
+  }
+}
+
+interface StagesProps {
+  stages: SleepStages;
+  /** Read out ahead of the figures, e.g. "Most recent sleep" or "Average". */
+  label: string;
+}
+
+/**
+ * One night's (or an average night's) stages as a single stacked bar, with a
+ * legend giving each stage's time. The legend carries the figures, so the bar
+ * is an aid to reading them, the rule `ContrastBars` states for its own pair.
+ */
+export function SleepStagesBar({ stages, label }: StagesProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const total = SLEEP_STAGE_ORDER.reduce((sum, k) => sum + stages[k], 0);
+  if (total <= 0) return null;
+  const spoken = SLEEP_STAGE_ORDER
+    .map(k => `${SLEEP_STAGE_LABEL[k]} ${formatSleepDuration(stages[k])}`)
+    .join(', ');
+  return (
+    <View accessible accessibilityLabel={`${label} stages: ${spoken}.`}>
+      <View style={styles.stageTrack}>
+        {SLEEP_STAGE_ORDER.map(k => stages[k] > 0 && (
+          <View key={k} style={{ flex: stages[k], backgroundColor: sleepStageColor(k, colors) }} />
+        ))}
+      </View>
+      <View style={styles.stageLegend}>
+        {SLEEP_STAGE_ORDER.map(k => (
+          <View key={k} style={styles.stageItem}>
+            <View style={[styles.stageDot, { backgroundColor: sleepStageColor(k, colors) }]} />
+            <Text style={styles.stageName}>{SLEEP_STAGE_LABEL[k]}</Text>
+            <Text style={styles.stageValue}>{formatSleepDuration(stages[k])}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 /** The window's first and last day under the plot. */
 function DayAxis({ dayKeys, styles }: { dayKeys: readonly string[]; styles: ReturnType<typeof makeStyles> }) {
   if (dayKeys.length === 0) return null;
@@ -214,4 +270,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   dayLabel: { fontSize: font.xxs, color: colors.textSecondary },
+  stageTrack: {
+    flexDirection: 'row',
+    height: 10,
+    borderRadius: 5,
+    overflow: 'hidden',
+    backgroundColor: colors.bgTertiary,
+    gap: 2,
+  },
+  stageLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.smd, rowGap: spacing.sm },
+  stageItem: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+  stageDot: { width: 8, height: 8, borderRadius: 4 },
+  stageName: { fontSize: font.sm, color: colors.textSecondary },
+  stageValue: { fontSize: font.sm, color: colors.text, fontWeight: fontWeight.semibold },
 });
