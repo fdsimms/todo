@@ -13,6 +13,7 @@
  */
 import type { Person } from '../../src/types';
 import type { Replica } from './replica';
+import { localDateInput } from './timeZone';
 
 export const HISTORY_LIMIT = 20;
 export const DEFAULT_BIRTHDAY_DAYS = 30;
@@ -127,7 +128,7 @@ export function addPersonHistory(
   replica: Replica,
   input: { personIds: string[]; title: string; date?: string },
 ): { added: { title: string; date: string; people: string[] } } {
-  const at = input.date ? new Date(input.date) : new Date();
+  const at = input.date ? new Date(localDateInput(input.date)) : new Date();
   if (Number.isNaN(at.getTime())) throw new Error('date must be an ISO date or date-time.');
   const task = replica.addPersonHistory(input.personIds, input.title, at);
   const names = new Map(replica.people().map(p => [p.id, p.nickname || p.name]));

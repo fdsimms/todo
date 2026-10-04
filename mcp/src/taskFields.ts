@@ -30,6 +30,7 @@ import type {
   Task,
   TimeOfDay,
 } from '../../src/types';
+import { localDateInput } from './timeZone';
 
 export const REPEAT_EVERY = ['never', 'hours', 'day', 'week', 'month', 'year'] as const;
 export type RepeatEvery = (typeof REPEAT_EVERY)[number];
@@ -211,7 +212,7 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
     // Picking hourly or daily in the app's picker turns this on, so a daily
     // repeat counts from when it's done unless the caller says otherwise.
     recurrenceFromCompletion: r.every === 'hours' ? true : r.fromCompletion ?? r.every === 'day',
-    recurrenceEndDate: r.endDate ?? null,
+    recurrenceEndDate: r.endDate == null ? null : localDateInput(r.endDate),
     recurrenceCount: r.count ?? null,
   };
 }
@@ -243,7 +244,7 @@ export function taskFieldsPatch(
     const v = input[key];
     if (v === undefined) continue;
     if (v !== null && !isIsoDate(v)) errors.push(`${key} must be an ISO date-time, or null.`);
-    else patch[key] = v;
+    else patch[key] = v === null ? null : localDateInput(v);
   }
   if (input.timeSegments !== undefined) {
     if (input.timeSegments.some(s => !TIME_SEGMENTS.includes(s))) errors.push(`timeSegments must be from ${TIME_SEGMENTS.join(', ')}.`);

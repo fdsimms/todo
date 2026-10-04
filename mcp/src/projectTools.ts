@@ -7,6 +7,7 @@ import type { Project, Task } from '../../src/types';
 import type { ProjectPatch, ProjectPlan, Replica } from './replica';
 import { serializeTask, type SerializedTask } from './serialize';
 import type { TaskFieldsInput } from './taskFields';
+import { localDateInput } from './timeZone';
 
 /** A plan step as the tool takes it: task fields, plus a checklist and the earlier steps it waits on. */
 export interface ProjectPlanStepInput extends TaskFieldsInput {
@@ -110,6 +111,7 @@ export function createProject(replica: Replica, input: CreateProjectInput): GetP
   const { steps = [], ...rest } = input;
   const { project } = replica.createProjectPlan({
     ...rest,
+    ...(rest.deadline ? { deadline: localDateInput(rest.deadline) } : {}),
     steps: steps.map(({ subtasks, after, ...fields }) => ({ fields, subtasks, waitsOn: after })),
   });
   return getProject(replica, project.id)!;
@@ -117,6 +119,6 @@ export function createProject(replica: Replica, input: CreateProjectInput): GetP
 
 export function updateProject(replica: Replica, id: string, patch: ProjectPatch): GetProjectResult {
   if (Object.keys(patch).length === 0) throw new Error('Nothing to change: name at least one field.');
-  replica.updateProject(id, patch);
+  replica.updateProject(id, patch.deadline ? { ...patch, deadline: localDateInput(patch.deadline) } : patch);
   return getProject(replica, id)!;
 }

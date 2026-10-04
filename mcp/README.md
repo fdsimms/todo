@@ -59,6 +59,9 @@ and annotates every tool as read-only or not (`src/toolAnnotations.ts`), so the 
 reads without asking. A new tool needs a line in that table; `toolAnnotations.test.ts` fails
 without one.
 
+Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
+`inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project` and `how_do_i`.
+
 It answers in the phone's time zone, which the app syncs as a setting. `TZ` in the environment is
 only the fallback until the first sync.
 
@@ -69,6 +72,12 @@ only the fallback until the first sync.
 | `completion_history` | What got done over a range, with a summary by day, weekday, hour, category, project and tag. Missed occurrences are counted separately. |
 | `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects and the most-missed repeats. Lists, does not judge. |
 | `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
+| `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
+| `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
+| `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
+| `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
+| `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
+| `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. |

@@ -211,6 +211,37 @@ them rather than the few hundred the app ships. These are the two records kept t
 (a test for the index, a fragment per user-facing PR for the notes), so neither drifts the way a
 hand-written help corpus would.
 
+**Patterns are the Stats and Mood screens' own reads** (`patternTools.ts`). `habit_patterns` is
+`rhythms.ts` and `estimateCalibration.ts` over each habit's occurrences, plus the streak and pace
+the rows carry; `mood_insights` composes `moodInsights.ts` the way `MoodScreen` does, with the same
+retention clipping and kitchen gate. So the floors (`MIN_PAIRED_DAYS`, `MIN_SAMPLES`), the
+no-coefficient rule and the missing medication-against-symptom contrast hold here by construction,
+and the result carries the rules in words so the model stays inside them when it explains a
+finding. The replica hands these modules out through `lib()`, one lazily required handle rather
+than a pass-through method per function, for the static-import reason at the top of `replica.ts`.
+
+**Changing several things has one path, and it previews** (`agentTools.ts`). `batch_update_tasks`
+and `quick_add` write nothing without `apply: true`, and a batch with any change that would be
+refused is refused whole, before a write, naming the row. Each write still goes through the
+single-task function, so a batch can do nothing one call could not, and `completionProblem` runs
+`completeTask`'s own refusals without writing so the preview refuses what the write would.
+`quick_add` runs the quick-add sheet's parsers (sigils first, then the date phrase, the order the
+sheet peels them off) and says in the row what it read but did not use. `plan_day` and
+`rebalance_week` only propose: today's rebalance is the app's own `buildDeloadPlan`, later days a
+plainer rule over the same blockers and loads, and applying either is a batch.
+
+**Prompts are scripts over the tools** (`prompts.ts`): weekly review, Inbox triage, plan my day
+and week, clean up a project, and how do I. They exist because the useful things to do with the
+app are sequences, and each puts "show me first" where it cannot be skipped. `prompts.test.ts`
+fails on a script naming a tool the server does not register.
+
+### Dates an agent writes are the person's days
+
+A bare `YYYY-MM-DD` was stored as written, and `new Date('2026-10-06')` is UTC midnight, which in
+New York is 8pm on the 5th, so a task dated by an agent landed a day early on the phone.
+`localDateInput` (`timeZone.ts`) turns a bare date into that day's local midnight, in the zone
+adopted below, and every date a tool writes goes through it.
+
 ### The server answers in the phone's time zone
 
 Every logical-day computation runs on the process's local clock, and a host like Fly starts the

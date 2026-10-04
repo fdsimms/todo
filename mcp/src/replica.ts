@@ -35,6 +35,7 @@ import type {
   Cookbook,
   DeliverableKind,
   FoodLogEntry,
+  Milestone,
   GroceryItem,
   GroceryListEntry,
   MealPlanEntry,
@@ -104,6 +105,14 @@ export interface ReplicaSettings {
   dayResetTime: string;
   /** 0 = Sunday, 1 = Monday. */
   weekStartsOn: number;
+  /** "HH:MM" boundaries of the four parts of the day. */
+  morningStart: string;
+  afternoonStart: string;
+  eveningStart: string;
+  nightStart: string;
+  /** "HH:MM": the hours the person counts as their day, for reminders and planning. */
+  activeHoursStart: string;
+  activeHoursEnd: string;
   vacationMode: boolean;
   vacationEnd: string | null;
   /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
@@ -113,6 +122,34 @@ export interface ReplicaSettings {
   rewardsEnabled: boolean;
   /** Days completed tasks are kept, or null for for ever. */
   completedRetentionDays: number | null;
+}
+
+/**
+ * The app's pure reader modules, for tools that compose several of them.
+ *
+ * Handed out through the replica for the reason every other value is: each
+ * reaches `database.ts` somewhere down its imports, so a static import from
+ * `mcp/src` would evaluate it before the shim is in place (see the rule at the
+ * top of this file). One handle rather than a method per function, because a
+ * report built from eight readers would otherwise add eight pass-throughs here
+ * and a stub for each in every test. Only modules with no store writes and no
+ * device calls belong in it.
+ */
+export interface ReplicaLib {
+  rhythms: typeof import('../../src/utils/rhythms');
+  calibration: typeof import('../../src/utils/estimateCalibration');
+  moodInsights: typeof import('../../src/utils/moodInsights');
+  moodLog: typeof import('../../src/utils/moodLog');
+  nutritionStats: typeof import('../../src/utils/nutritionStats');
+  retention: typeof import('../../src/utils/retention');
+  taskInstances: typeof import('../../src/utils/taskInstances');
+  visibility: typeof import('../../src/utils/visibilityUtils');
+  parse: typeof import('../../src/utils/parseTaskInput');
+  taskMoves: typeof import('../../src/utils/taskMoves');
+  deloadPlan: typeof import('../../src/utils/deloadPlan');
+  dayLoad: typeof import('../../src/utils/dayLoad');
+  awayDates: typeof import('../../src/utils/awayDates');
+  dates: typeof import('../../src/utils/dateUtils');
 }
 
 /** One Settings row, located the way a person would have to walk to it. */
@@ -301,6 +338,13 @@ export interface Replica {
   searchSettings(query: string): SettingsHit[];
   /** When the replica last finished a sync, or null if it has not since starting. */
   lastSyncedAt(): string | null;
+  /** See `ReplicaLib`. */
+  lib(): ReplicaLib;
+  /** Every mood check-in, unfiltered: the insights need the whole log. */
+  allMoodLogs(): MoodLog[];
+  milestones(): Milestone[];
+  /** Every tag the person has, used or not. */
+  tagRegistry(): string[];
   /**
    * Apply a validated plan, returning the template it built.
    *
@@ -369,6 +413,8 @@ export interface Replica {
    * it asks a question that was not answered. See `deliverableRefusal`.
    */
   completeTask(id: string, options?: CompletionOptions): CompletedResult;
+  /** What `completeTask` would refuse, without writing anything; null when it would go through. */
+  completionProblem(id: string, options?: CompletionOptions): string | null;
 
   /**
    * Move a task to a date, as the app's own reschedule does.
@@ -638,6 +684,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   let personCache: Person[] | null = null;
   let projectCache: Project[] | null = null;
   let syncedAt: string | null = null;
+  let libCache: ReplicaLib | null = null;
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
@@ -676,6 +723,40 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     if (errors.length > 0) throw new Error(errors.join(' '));
     return patch;
+  };
+
+  /**
+   * The refusals a completion makes before it builds anything, and the answer
+   * as it will be stored. Shared by `completeTask` and `completionProblem`, so
+   * a preview refuses exactly what the write would.
+   */
+  const vetCompletion = (task: Task, options?: CompletionOptions): CompletionOptions | undefined => {
+    const refusal = completion.completionRefusal(task);
+    if (refusal) throw new Error(refusal);
+
+    // Asked before the rows are built rather than after, so a task that
+    // cannot be completed at all reports that instead of reporting a
+    // missing answer it was never going to use.
+    const unanswered = deliverableRefusal(
+      deliverables.deliverableKindFor(task),
+      options !== undefined && 'deliverableValue' in options,
+      deliverables.chainStepDatedByAnswer(task)?.title ?? null,
+    );
+    if (unanswered) throw new Error(unanswered);
+
+    // A question with a fixed set of answers takes one of them, stored in
+    // the option's own spelling so the project's tally counts it. Anything
+    // else would be recorded and then counted as "no answer".
+    const offered = deliverables.deliverableOptionsFor(task);
+    const given = options?.deliverableValue;
+    if (offered.length > 0 && typeof given === 'string') {
+      const match = offered.find(o => o.toLowerCase() === given.trim().toLowerCase());
+      if (!match) {
+        throw new Error(`That task's answer is one of: ${offered.join(', ')}. Pass one of those as deliverableValue, or null to complete it without an answer.`);
+      }
+      options = { ...options, deliverableValue: match };
+    }
+    return options;
   };
 
   /** The next free `sortOrder` across every task, which is where a new one goes. */
@@ -746,6 +827,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return {
         dayResetTime: s.dayResetTime,
         weekStartsOn: s.weekStartsOn,
+        morningStart: s.morningStart,
+        afternoonStart: s.afternoonStart,
+        eveningStart: s.eveningStart,
+        nightStart: s.nightStart,
+        activeHoursStart: s.activeHoursStart,
+        activeHoursEnd: s.activeHoursEnd,
         vacationMode: s.vacationMode,
         vacationEnd: s.vacationEnd,
         kitchenEnabled: s.kitchenEnabled,
@@ -790,6 +877,30 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
 
     lastSyncedAt: () => syncedAt,
+
+    lib(): ReplicaLib {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      return (libCache ??= {
+        rhythms: require('../../src/utils/rhythms'),
+        calibration: require('../../src/utils/estimateCalibration'),
+        moodInsights: require('../../src/utils/moodInsights'),
+        moodLog: require('../../src/utils/moodLog'),
+        nutritionStats: require('../../src/utils/nutritionStats'),
+        retention: require('../../src/utils/retention'),
+        taskInstances: require('../../src/utils/taskInstances'),
+        visibility,
+        parse: require('../../src/utils/parseTaskInput'),
+        taskMoves: moves,
+        deloadPlan: require('../../src/utils/deloadPlan'),
+        dayLoad: require('../../src/utils/dayLoad'),
+        awayDates: require('../../src/utils/awayDates'),
+        dates,
+      });
+      /* eslint-enable @typescript-eslint/no-require-imports */
+    },
+    allMoodLogs: () => db.dbGetAllMoodLogs(),
+    milestones: () => db.dbGetAllMilestones(),
+    tagRegistry: () => db.dbGetTagRegistry(),
 
     createTemplate(plan: TemplatePlan): TaskTemplate {
       const existing = db.dbGetAllTemplates();
@@ -869,35 +980,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return task;
     },
 
+    completionProblem(id: string, options?: CompletionOptions): string | null {
+      const task = tasks().find(t => t.id === id);
+      if (!task) return `No task with id ${id}.`;
+      try {
+        vetCompletion(task, options);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+    },
+
     completeTask(id: string, options?: CompletionOptions): CompletedResult {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-
-      const refusal = completion.completionRefusal(task);
-      if (refusal) throw new Error(refusal);
-
-      // Asked before the rows are built rather than after, so a task that
-      // cannot be completed at all reports that instead of reporting a
-      // missing answer it was never going to use.
-      const unanswered = deliverableRefusal(
-        deliverables.deliverableKindFor(task),
-        options !== undefined && 'deliverableValue' in options,
-        deliverables.chainStepDatedByAnswer(task)?.title ?? null,
-      );
-      if (unanswered) throw new Error(unanswered);
-
-      // A question with a fixed set of answers takes one of them, stored in
-      // the option's own spelling so the project's tally counts it. Anything
-      // else would be recorded and then counted as "no answer".
-      const offered = deliverables.deliverableOptionsFor(task);
-      const given = options?.deliverableValue;
-      if (offered.length > 0 && typeof given === 'string') {
-        const match = offered.find(o => o.toLowerCase() === given.trim().toLowerCase());
-        if (!match) {
-          throw new Error(`That task's answer is one of: ${offered.join(', ')}. Pass one of those as deliverableValue, or null to complete it without an answer.`);
-        }
-        options = { ...options, deliverableValue: match };
-      }
+      options = vetCompletion(task, options);
 
       const settings = useSettingsStore.getState();
       const built = completion.buildCompletion(task, options, {

@@ -31,6 +31,10 @@ export const READ_TOOLS: Record<string, string> = {
   completion_history: 'What got done',
   review_tasks: 'Tasks worth a second look',
   app_help: 'How the app works',
+  habit_patterns: 'How habits are going',
+  mood_insights: 'Mood insights',
+  plan_day: 'Plan the day',
+  rebalance_week: 'Rebalance the week',
   list_tasks: 'List tasks',
   search_tasks: 'Search tasks',
   get_task: 'Task details',
@@ -58,6 +62,8 @@ export const READ_TOOLS: Record<string, string> = {
  */
 export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; idempotent: boolean }> = {
   create_task: { title: 'Create a task', destructive: false, idempotent: false },
+  batch_update_tasks: { title: 'Change several tasks', destructive: true, idempotent: false },
+  quick_add: { title: 'Quick add tasks', destructive: false, idempotent: false },
   update_task: { title: 'Edit a task', destructive: true, idempotent: true },
   complete_task: { title: 'Complete a task', destructive: false, idempotent: false },
   defer_task: { title: 'Reschedule a task', destructive: false, idempotent: true },

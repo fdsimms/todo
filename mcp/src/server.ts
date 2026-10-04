@@ -76,6 +76,9 @@ import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGEN
 import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
+import { PROMPTS } from './prompts';
+import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
+import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
@@ -386,7 +389,59 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async input => json(await withFresh(() => appHelp(replica, input)))
   );
 
+  server.tool(
+    'habit_patterns',
+    `How each repeating task and habit is going over the last N days (default ${DEFAULT_PATTERN_DAYS}): its streak, a daily or weekly target and whether it is on pace, how often it was done or missed, the hours it actually gets done in, and where that disagrees with the part of the day it is set to. Also the overall rhythm of when things get done, and how timed work compares with its estimates. Each pattern needs a minimum number of completions before it is reported.`,
+    { days: z.number().int().min(7).max(730).optional() },
+    async input => json(await withFresh(() => habitPatterns(replica, input)))
+  );
+
+  server.tool(
+    'mood_insights',
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    {},
+    async () => json(await withFresh(() => moodInsights(replica)))
+  );
+
+  server.tool(
+    'plan_day',
+    "Proposes an order and a time for each task on today's list, fitted between startAt and endAt (default: now, or the start of their active hours, until the end of their active hours) and around busy blocks you pass in. Pinned first, then anything with a deadline today, then priority. It never places a task before the app would show it or past its time window, and lists what does not fit. The server cannot see the calendar: ask the person about meetings, or read them with a calendar tool, and pass them as busy. Writes nothing; apply what they agree to with batch_update_tasks.",
+    {
+      startAt: z.string().optional().describe('HH:MM, 24-hour.'),
+      endAt: z.string().optional().describe('HH:MM, 24-hour.'),
+      busy: z.array(z.object({ start: z.string(), end: z.string(), label: z.string().optional() })).optional()
+        .describe('Times already taken today, HH:MM.'),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => planDay(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not plan the day.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rebalance_week',
+    'Proposes moves that bring each heavy day in the coming days (default 7) under the app\'s "busy" line: for today, the app\'s own Lighten today plan; for later days, the biggest movable tasks to the lightest later day that keeps them before their deadline. Lists what it would leave in place and why (pinned, running, on a streak, due before a deadline). Writes nothing; apply the moves the person agrees to with batch_update_tasks using action "defer".',
+    { days: z.number().int().min(2).max(21).optional() },
+    async input => json(await withFresh(() => rebalanceWeek(replica, input)))
+  );
+
   if (scope === 'write') registerWriteTools(server, replica, withWrite);
+
+  // Prompts are scripts over the tools (prompts.ts). Registered for every
+  // caller: a read-scoped one can still review, and each script says to ask
+  // before changing anything, which is all a write-scoped one needs.
+  for (const prompt of PROMPTS) {
+    const argsSchema = Object.fromEntries((prompt.args ?? []).map(arg => [
+      arg.name,
+      arg.required ? z.string().describe(arg.description) : z.string().optional().describe(arg.description),
+    ]));
+    server.registerPrompt(prompt.name, { title: prompt.title, description: prompt.description, argsSchema }, (args: Record<string, string | undefined>) => ({
+      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: prompt.text(args ?? {}) } }],
+    }));
+  }
 
   return server;
 }
@@ -447,8 +502,8 @@ const taskFieldsShape = {
   category: z.string().nullable().optional().describe('A task category, by name.'),
   tags: z.array(z.string()).optional(),
   projectId: z.string().nullable().optional().describe('File it in a project (see list_projects), or null to take it out.'),
-  dueDate: isoDateTime.describe('ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
-  deferUntil: isoDateTime.describe('ISO date-time. Hides the task until then.'),
+  dueDate: isoDateTime.describe('YYYY-MM-DD (read as that day in their own time zone) or an ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
+  deferUntil: isoDateTime.describe('YYYY-MM-DD or an ISO date-time. Hides the task until then.'),
   deadline: isoDateTime.describe('ISO date-time. Shown on the task; does not hide or move it.'),
   reminderTime: isoDateTime.describe('ISO date-time of a reminder.'),
   timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional()
@@ -552,6 +607,42 @@ function registerWriteTools(
         return json(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'batch_update_tasks',
+    `Edit, complete or reschedule up to ${MAX_BATCH} tasks in one call. Without apply: true it is a preview: each row says exactly what would change (field by field, before and after), and nothing is written. Show the preview to the person, then send the same changes with apply: true. If any change would be refused, the whole batch is refused before anything is written, and that row says why. "defer" moves one occurrence of a repeating task without moving its schedule, the same as defer_task. "complete" on a task that asks a question needs deliverableValue (or null to skip the question).`,
+    {
+      changes: z.array(z.discriminatedUnion('action', [
+        z.object({ id: z.string().min(1), action: z.literal('update'), fields: z.object({ title: z.string().optional(), ...taskFieldsShape }) }),
+        z.object({ id: z.string().min(1), action: z.literal('complete'), deliverableValue: z.string().nullable().optional() }),
+        z.object({ id: z.string().min(1), action: z.literal('defer'), date: z.string().nullable().describe('YYYY-MM-DD, or null to clear the date.') }),
+      ])).min(1).max(MAX_BATCH),
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => batchUpdateTasks(replica, input as { changes: BatchChange[]; apply?: boolean })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not apply the batch.' });
+      }
+    }
+  );
+
+  server.tool(
+    'quick_add',
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    {
+      lines: z.array(z.string()).min(1),
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => quickAdd(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add those.' });
       }
     }
   );

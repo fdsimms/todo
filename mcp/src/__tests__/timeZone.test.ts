@@ -1,4 +1,4 @@
-import { adoptTimeZone } from '../timeZone';
+import { adoptTimeZone, localDateInput } from '../timeZone';
 
 describe('adoptTimeZone', () => {
   it('sets TZ to a real zone that is not already in effect', () => {
@@ -19,5 +19,15 @@ describe('adoptTimeZone', () => {
     expect(adoptTimeZone(null, env)).toBe(false);
     expect(adoptTimeZone('Not/AZone', env)).toBe(false);
     expect(env.TZ).toBe('UTC');
+  });
+});
+
+describe('localDateInput', () => {
+  it('reads a bare date as that day\'s local midnight, and leaves a full instant alone', () => {
+    const iso = localDateInput('2026-10-06');
+    const d = new Date(iso);
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([2026, 9, 6, 0]);
+    expect(localDateInput('2026-10-06T15:30:00.000Z')).toBe('2026-10-06T15:30:00.000Z');
+    expect(localDateInput('next tuesday')).toBe('next tuesday');
   });
 });

@@ -41,6 +41,22 @@ export function adoptTimeZone(zone: string | null | undefined, env: Record<strin
   return true;
 }
 
+/**
+ * A bare `YYYY-MM-DD` as the ISO instant of that day's local midnight; anything
+ * else unchanged.
+ *
+ * The app stores a task's day as local midnight, and `new Date('2026-10-06')`
+ * is *UTC* midnight, which in New York is 8pm on the 5th. A model passes bare
+ * dates more often than not, and stored as written one landed on the day before
+ * on the phone. With the person's zone adopted above, the local midnight here
+ * is theirs. Every date a tool writes goes through this.
+ */
+export function localDateInput(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) return value;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toISOString();
+}
+
 /** The zone the process is answering in right now. */
 export function activeTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;

@@ -22,6 +22,7 @@ import type { Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
 import { describeRepeat, type RepeatInput, type TaskFieldsInput } from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
+import { localDateInput } from './timeZone';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
 export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all'] as const;
@@ -663,7 +664,7 @@ export function removeFromGroceryList(replica: Replica, id: string): GroceryWrit
 }
 
 export function deferTask(replica: Replica, id: string, date: string | null): SerializedTask {
-  const parsed = date === null ? null : new Date(date);
+  const parsed = date === null ? null : new Date(localDateInput(date));
   if (parsed !== null && Number.isNaN(parsed.getTime())) {
     throw new Error(`"${date}" is not a date I can read. Use an ISO date like 2026-03-14.`);
   }
