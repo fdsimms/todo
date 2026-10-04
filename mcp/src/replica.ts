@@ -69,7 +69,7 @@ import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan }
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
-import { toLedgerEntries, withAgentLedger } from './agentLedger';
+import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -461,6 +461,12 @@ export interface Replica {
   /** Whether an automation is on, by its settings key (`GeneratedKindSpec.enabledKey`). */
   generatorEnabled(key: string): boolean;
   setGeneratorEnabled(key: string, on: boolean): void;
+  /**
+   * Run a write, record what it would change, and roll all of it back: the
+   * preview behind every write tool (see confirmWrites.ts). The result is what
+   * the write returned; `effects` are the Activity entries it would have made.
+   */
+  dryRun<T>(fn: () => T): { result: T; effects: AgentLedgerEntry[] };
   /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
   agentNotes(): AgentNote[];
   writeAgentNotes(notes: readonly AgentNote[]): void;
@@ -1410,6 +1416,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       refresh();
     },
 
+    // Replaced once the replica is wrapped, below: a dry run has to capture
+    // what the ledger wrapper records, so it lives outside this object.
+    dryRun: () => { throw new Error('dryRun is only available on the wrapped replica.'); },
+
     agentNotes: () => notesModule().readAgentNotes(),
     writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
 
@@ -1948,6 +1958,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   };
 
   // Every write recorded in the Activity ledger, where the phone shows it and
-  // can take it back. See agentLedger.ts.
-  return withAgentLedger(replica, entries => db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId)));
+  // can take it back. See agentLedger.ts. While a dry run is capturing, the
+  // entries are collected instead, which is what a preview describes.
+  let capturing: AgentLedgerEntry[] | null = null;
+  const wrapped = withAgentLedger(replica, entries => {
+    if (capturing) capturing.push(...entries);
+    else db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId));
+  });
+
+  /** Thrown to roll a dry run back. Never escapes `dryRun`. */
+  const DRY_RUN = Symbol('dry run');
+  wrapped.dryRun = <T>(fn: () => T): { result: T; effects: AgentLedgerEntry[] } => {
+    if (capturing) throw new Error('A dry run is already in progress.');
+    const effects: AgentLedgerEntry[] = [];
+    capturing = effects;
+    let result!: T;
+    try {
+      // Everything the write does lands inside one transaction that is then
+      // thrown away: a nested dbTransaction becomes a savepoint inside it
+      // (better-sqlite3 nests them), and a write outside one is still inside
+      // this. So the preview is the real write, measured and undone.
+      db.dbTransaction(() => {
+        result = fn();
+        throw DRY_RUN;
+      });
+    } catch (e) {
+      if (e !== DRY_RUN) throw e;
+    } finally {
+      capturing = null;
+      // The stores the write touched in memory (settings, categories,
+      // projects) go back to what the database says again.
+      refresh();
+    }
+    return { result, effects };
+  };
+  return wrapped;
 }

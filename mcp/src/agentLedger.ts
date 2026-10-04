@@ -219,6 +219,14 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       log({ action: 'edited', subject: 'automation', title: `${spec?.label ?? key} turned ${on ? 'on' : 'off'}`, taskId: null });
     },
 
+    writeAgentNotes(notes) {
+      const before = new Set(replica.agentNotes().map(n => n.text));
+      replica.writeAgentNotes(notes);
+      const after = new Set(notes.map(n => n.text));
+      for (const text of after) if (!before.has(text)) log({ action: 'created', subject: 'note', title: text, taskId: null });
+      for (const text of before) if (!after.has(text)) log({ action: 'cleared', subject: 'note', title: text, taskId: null });
+    },
+
     addPersonHistory(personIds, title, at) {
       const task = replica.addPersonHistory(personIds, title, at);
       log({ action: 'created', subject: 'person', title: task.title, taskId: task.id });

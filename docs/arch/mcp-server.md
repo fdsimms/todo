@@ -235,6 +235,28 @@ and week, clean up a project, and how do I. They exist because the useful things
 app are sequences, and each puts "show me first" where it cannot be skipped. `prompts.test.ts`
 fails on a script naming a tool the server does not register.
 
+### Every write is previewed, and confirmed by the person, before it happens
+
+`mcp/src/confirmWrites.ts`, wired in `server.ts` the way the annotations are, so a write tool cannot
+be registered without it. A write tool called without `apply` runs the real write inside a
+transaction that is then rolled back (`replica.dryRun`: a nested `dbTransaction` becomes a savepoint,
+and the stores re-hydrate after), collects the Activity entries it would have made, and returns them
+as `willDo` lines with a `confirmToken`. The write happens only on a second call carrying that token,
+which is single-use, expires, and is bound to the tool and the exact arguments, so what runs is what
+was shown.
+
+A dry run rather than a description each tool writes for itself, because a write's effect is not
+predictable from its request: a reschedule may move the defer and not the date, a completion spawns
+the next occurrence, a title rule refiles a new task. Reading back what the write did is the one
+description that cannot disagree with it. The preview's own result is returned too, minus ids and
+links, since everything it created was rolled back.
+
+What the server can guarantee is that a change was described before it was made; it cannot see
+whether the model showed the description to the person. The Claude apps' per-tool approval
+(driven by the annotations) is the guarantee on that side. Elicitation, where the server would ask
+the person itself, needs session-based transport and is supported by Claude Code but not
+documented for the Claude apps, so it is not used yet.
+
 ### Every agent write is in Activity, and a task write can be undone there
 
 An agent's writes land on the phone by sync with nobody looking at the app, which is the

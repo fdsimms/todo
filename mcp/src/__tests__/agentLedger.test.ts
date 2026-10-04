@@ -77,3 +77,27 @@ describe('the agent ledger', () => {
     expect(ledger().map(e => [e.subject, e.action])).toEqual([['grocery', 'completed'], ['grocery', 'created']]);
   });
 });
+
+describe('dryRun', () => {
+  it('runs the write, reports what it would record, and keeps none of it', () => {
+    const { result, effects } = replica.dryRun(() => replica.createTask({ title: 'Only a preview' }));
+    expect(result.title).toBe('Only a preview');
+    expect(effects).toEqual([expect.objectContaining({ action: 'created', subject: 'task', title: 'Only a preview' })]);
+    replica.refresh();
+    expect(replica.tasks().map(t => t.title)).not.toContain('Only a preview');
+    expect(ledger()).toEqual([]);
+  });
+
+  it('measures an edit against the row as it stands, and rolls it back', () => {
+    const task = replica.createTask({ title: 'Real task' });
+    mockRaw.runSync('DELETE FROM unattended_log');
+    const { effects } = replica.dryRun(() => replica.updateTask(task.id, { title: 'Renamed' }));
+    expect(effects[0].revert?.after).toMatchObject({ title: 'Renamed' });
+    expect(replica.taskById(task.id)!.title).toBe('Real task');
+  });
+
+  it('lets a refused write throw as it would for real', () => {
+    expect(() => replica.dryRun(() => replica.updateTask('nope', { title: 'x' }))).toThrow(/No task/);
+  });
+});
+

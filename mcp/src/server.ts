@@ -79,6 +79,8 @@ import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGEN
 import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
+import { createConfirmTokens, describeEffects, type ConfirmTokens } from './confirmWrites';
+import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
@@ -113,6 +115,55 @@ const SYNC_THROTTLE_MS = 10_000;
  * throttle above never applied.
  */
 const syncGateByReplica = new WeakMap<Replica, SyncGate>();
+
+/**
+ * Each replica's outstanding preview tokens (confirmWrites.ts). Module scope for
+ * the sync gate's reason: a preview and its confirm arrive as two requests,
+ * and this file builds a fresh server for each.
+ */
+const confirmTokensByReplica = new WeakMap<Replica, ConfirmTokens>();
+
+function confirmTokensFor(replica: Replica): ConfirmTokens {
+  let tokens = confirmTokensByReplica.get(replica);
+  if (!tokens) {
+    tokens = createConfirmTokens();
+    confirmTokensByReplica.set(replica, tokens);
+  }
+  return tokens;
+}
+
+/** Said once on every write tool, after its own description. */
+const CONFIRM_NOTE = 'Every write previews first: called without apply it changes nothing and returns willDo (what would change, in plain words) and a confirmToken. Show the person willDo and wait for their yes before calling again with apply: true and the confirmToken.';
+
+/** A tool result's JSON back as a value, or undefined when it is not JSON. */
+function parseToolText(out: { content: { type: string; text?: string }[] }): unknown {
+  const text = out.content.find(c => c.type === 'text')?.text;
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A preview's result without ids or links: everything it created was rolled
+ * back, so an id in it names nothing, and a model holding one would try to
+ * use it.
+ */
+function withoutIds(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutIds);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        // `applied` too: the write inside a preview ran, so a tool reporting on
+        // itself says it applied, and that is exactly what did not happen.
+        .filter(([k]) => !['id', 'openInApp', 'taskId', 'applied', 'note'].includes(k))
+        .map(([k, v]) => [k, withoutIds(v)]),
+    );
+  }
+  return value;
+}
 
 function syncGateFor(replica: Replica): SyncGate {
   let gate = syncGateByReplica.get(replica);
@@ -207,10 +258,20 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
    */
   const withWrite = async <T>(fn: () => T): Promise<T> => {
     replica.refresh();
+    // Previewing (see confirmWrites.ts): the same write, measured and rolled
+    // back, and nothing pushed, since nothing changed.
+    if (previewing) {
+      const { result, effects } = replica.dryRun(fn);
+      previewing.push(...effects);
+      return result;
+    }
     const result = fn();
     await gate.afterWrite();
     return result;
   };
+
+  /** Set while a write tool is previewing; collects what the write would record in Activity. */
+  let previewing: AgentLedgerEntry[] | null = null;
 
   server.tool(
     'list_tasks',
@@ -459,7 +520,61 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async input => json(await withFresh(() => rebalanceWeek(replica, input)))
   );
 
-  if (scope === 'write') registerWriteTools(server, replica, withWrite);
+  if (scope === 'write') {
+    // Every write tool previews before it writes (confirmWrites.ts). Applied
+    // on the way through `server.tool`, as the annotations are, so a write
+    // tool added to registerWriteTools cannot skip it.
+    const tokens = confirmTokensFor(replica);
+    const plain = server.tool.bind(server) as (...args: unknown[]) => RegisteredTool;
+    type WriteCallback = (args: Record<string, unknown>, extra: unknown) => Promise<{ content: { type: 'text'; text: string }[] }>;
+    const guarded = (
+      name: string,
+      description: string,
+      shape: Record<string, z.ZodTypeAny>,
+      cb: WriteCallback,
+    ) => plain(
+      name,
+      `${description} ${CONFIRM_NOTE}`,
+      {
+        ...shape,
+        apply: z.boolean().optional().describe('Leave out to preview. true, with confirmToken, to make the change.'),
+        confirmToken: z.string().optional().describe('From the preview of this exact request.'),
+      },
+      async (args: Record<string, unknown>, extra: unknown) => {
+        const { apply, confirmToken, ...request } = args;
+        if (!apply) {
+          previewing = [];
+          let out: Awaited<ReturnType<typeof cb>>;
+          let effects: AgentLedgerEntry[];
+          try {
+            out = await cb({ ...request, apply: true }, extra);
+          } finally {
+            effects = previewing ?? [];
+            previewing = null;
+          }
+          const details = parseToolText(out);
+          if (details && typeof details === 'object' && 'error' in details) return out;
+          const willDo = describeEffects(effects);
+          return json({
+            preview: true,
+            willDo: willDo.length > 0 ? willDo : ['Nothing in the app would change.'],
+            ...(details !== undefined ? { details: withoutIds(details) } : {}),
+            confirmToken: tokens.issue(name, request, willDo),
+            next: 'Nothing has changed yet. Tell the person, in plain words, what willDo says, and wait for a yes. Then call this tool again with exactly the same arguments, apply: true and this confirmToken.',
+          });
+        }
+        if (typeof confirmToken !== 'string') {
+          return json({ error: 'Preview first: call this tool without apply, show the person what willDo says, then confirm with the confirmToken it returns.' });
+        }
+        const redeemed = tokens.redeem(confirmToken, name, request);
+        if (!redeemed.ok) return json({ error: redeemed.reason });
+        return cb({ ...request, apply: true }, extra);
+      },
+    );
+    (server as unknown as { tool: unknown }).tool = guarded;
+    registerWriteTools(server, replica, withWrite);
+    (server as unknown as { tool: typeof plain }).tool = plain;
+  }
 
   // Prompts are scripts over the tools (prompts.ts). Registered for every
   // caller: a read-scoped one can still review, and each script says to ask

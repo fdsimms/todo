@@ -62,6 +62,10 @@ without one.
 Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
 `inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project` and `how_do_i`.
 
+Every write previews first: without `apply` it changes nothing and returns `willDo` and a
+`confirmToken`, and the write happens only when called again with `apply: true` and that token
+for the identical request (`src/confirmWrites.ts`).
+
 Every write shows in the app's Activity screen under "Claude", and a task write can be undone
 there while the task is still how Claude left it (`src/agentLedger.ts`).
 
