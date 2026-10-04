@@ -25,11 +25,17 @@ import type {
   Difficulty,
   Effort,
   FollowUpTaskDraft,
+  HealthTargetMetric,
   Priority,
   RecurrenceType,
+  RotationItem,
   Task,
   TimeOfDay,
 } from '../../src/types';
+import { minutesToEffort } from '../../src/utils/effort';
+import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
+import { isRotationTask, MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
+import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { localDateInput } from './timeZone';
 
 export const REPEAT_EVERY = ['never', 'hours', 'day', 'week', 'month', 'year'] as const;
@@ -45,7 +51,20 @@ export const LIMITS = {
   target: [2, 99],
   followUpEveryN: [2, 99],
   chainSteps: 2,
+  /** The editor has no ceiling on a countdown; a day is the most one can mean. */
+  timedMinutes: [1, 1440],
+  /**
+   * `LIMITS.supplyCount[1]` in src/utils/supply.ts, copied rather than imported:
+   * supply.ts reaches the settings store through dateUtils, and this module
+   * must load before the SQLite shim is installed (see replica.ts's requires).
+   * taskFields.test.ts pins the two together.
+   */
+  supplyCount: [0, 999],
+  supplyReorderAt: [1, 999],
 } as const;
+
+/** `DEFAULT_SUPPLY_REORDER_AT`: on the last one. Pinned in taskFields.test.ts like the limits above. */
+const DEFAULT_SUPPLY_REORDER_AT = 1;
 
 const EVERY_TO_TYPE: Record<RepeatEvery, RecurrenceType> = {
   never: 'none',
@@ -89,6 +108,35 @@ export interface TargetInput {
   per: 'day' | 'week';
   unit?: string | null;
   allowOvershoot?: boolean;
+}
+
+/** A countdown the task runs once started. Subtask stretches are not settable here. */
+export interface TimedInput {
+  minutes: number;
+}
+
+/** A set of named things, each done once a week in any order. */
+export interface RotationInput {
+  /** Titles, in the order to show them, at least two and each different. */
+  members: string[];
+}
+
+/** Ready-to-check-off once Apple Health reaches a number. Configuration only: the server cannot read a reading. */
+export interface HealthTargetInput {
+  metric: HealthTargetMetric;
+  /** In the metric's own unit; defaults to the editor's starting value for it. */
+  target?: number;
+  /** Ring metrics only: follow the goal set in Fitness instead of `target`. */
+  followGoal?: boolean;
+}
+
+/** A stock that runs down as a repeating task is completed. Needs a repeat. */
+export interface SupplyInput {
+  count: number;
+  unit?: string | null;
+  refillCount?: number | null;
+  reorderAt?: number;
+  leadDays?: number | null;
 }
 
 export interface WindowInput {
@@ -141,6 +189,10 @@ export interface TaskFieldsInput {
   repeat?: RepeatInput;
   chain?: ChainInput | null;
   target?: TargetInput | null;
+  timed?: TimedInput | null;
+  rotation?: RotationInput | null;
+  healthTarget?: HealthTargetInput | null;
+  supply?: SupplyInput | null;
   window?: WindowInput | null;
   habit?: 'do' | 'avoid';
   waitsOn?: string[];
@@ -371,6 +423,130 @@ export function taskFieldsPatch(
     }
   }
 
+  // ---- timed, rotation, health target -------------------------------------
+  // The kinds are exclusive in the app: choosing one clears the fields of the
+  // others (`bakedFields`). Only checked when this call sets one of the three
+  // new kinds, so a chain-and-target pair the older tools already accept is
+  // left alone.
+  const settingKind = [input.timed, input.rotation, input.healthTarget].some(v => v != null);
+  if (settingKind) {
+    const clearing = (v: unknown) => v === null;
+    const active: string[] = [];
+    if (input.chain !== undefined ? input.chain !== null : !!current?.chainEnabled) active.push('chain');
+    if (input.target !== undefined ? input.target !== null : !!current && !current.rotationEnabled && (current.targetCount ?? 0) >= 2) active.push('target');
+    if (input.timed !== undefined ? input.timed !== null : (current?.timedMinutes ?? 0) > 0) active.push('timed');
+    if (input.healthTarget !== undefined ? input.healthTarget !== null : !!current && hasHealthTarget(current)) active.push('healthTarget');
+    if (input.rotation !== undefined ? input.rotation !== null : !!current && isRotationTask(current)) active.push('rotation');
+    if (active.length > 1) {
+      errors.push(`A task is one kind of thing, and this would make it ${active.join(' and ')}. Set the ones to drop to null (${active.filter(k => !clearing((input as Record<string, unknown>)[k])).map(k => `${k}: null`).join(', ')}).`);
+    }
+  }
+
+  if (input.timed !== undefined) {
+    if (input.timed === null) {
+      patch.timedMinutes = null;
+    } else {
+      const mins = input.timed.minutes;
+      if (!inRange(mins, LIMITS.timedMinutes)) errors.push(`timed.minutes must be a whole number from ${LIMITS.timedMinutes[0]} to ${LIMITS.timedMinutes[1]}.`);
+      // A subtask's stretch is its share of the parent's run, and the parent's
+      // total is the sum of them (docs/arch/timed-tasks.md). This writer has no
+      // way to keep that sum, so it refuses rather than become a third one.
+      if (context.isSubtask) errors.push('A subtask cannot be timed here: its minutes are a share of its parent\'s countdown. Set timed on the parent.');
+      patch.timedMinutes = mins;
+      // The editor hides Effort and Estimate for a timed task and derives both
+      // from the countdown, so a caller that doesn't name them gets the same.
+      if (input.effort === undefined) patch.effort = minutesToEffort(mins);
+      if (input.estimatedMinutes === undefined) patch.estimatedMinutes = mins;
+    }
+  }
+
+  if (input.rotation !== undefined) {
+    if (input.rotation === null) {
+      Object.assign(patch, { rotationEnabled: false, rotationItems: [] } satisfies Partial<Task>);
+      // The count was derived from the set, so it goes with it.
+      if (current?.rotationEnabled && input.target === undefined) Object.assign(patch, { targetCount: null, quotaPeriod: 'day' } satisfies Partial<Task>);
+    } else {
+      const titles = (input.rotation.members ?? []).map(m => (typeof m === 'string' ? m.trim() : ''));
+      if (titles.length < MIN_ROTATION_ITEMS) errors.push(`A rotation needs at least ${MIN_ROTATION_ITEMS} members. One is just a task.`);
+      if (titles.some(t => !t)) errors.push('rotation.members cannot contain a blank title.');
+      if (new Set(titles.map(t => t.toLowerCase())).size !== titles.length) errors.push('rotation.members must all be different, or the picker would show the same name twice.');
+      if (context.isSubtask) errors.push('A subtask cannot be a rotation.');
+      // A member keeps its id when its title is kept: this week's ledger and
+      // each member's "last done" are both keyed by it.
+      const old = current?.rotationItems ?? [];
+      const items: RotationItem[] = titles.map(title => {
+        const kept = old.find(o => o.title.trim().toLowerCase() === title.toLowerCase());
+        return kept ? { ...kept, title } : { id: deps.newId(), title, linkUrl: null };
+      });
+      // A weekly period is the rotation's own, and the repeat is what spawns
+      // next week's row, so a task with no rule becomes weekly. A rule already
+      // there is kept, as the editor keeps it.
+      if (recurrence === 'none') {
+        Object.assign(patch, { ...NO_REPEAT, recurrenceType: 'weekly' });
+        recurrence = 'weekly';
+      }
+      Object.assign(patch, {
+        rotationEnabled: true,
+        rotationItems: items,
+        targetCount: items.length,
+        quotaPeriod: 'week',
+      } satisfies Partial<Task>);
+    }
+  }
+
+  if (input.healthTarget !== undefined) {
+    if (input.healthTarget === null) {
+      Object.assign(patch, { healthMetric: null, healthTarget: null, healthFollowGoal: false } satisfies Partial<Task>);
+    } else {
+      const h = input.healthTarget;
+      if (!HEALTH_TARGET_METRICS.includes(h.metric)) {
+        errors.push(`healthTarget.metric must be one of ${HEALTH_TARGET_METRICS.join(', ')}.`);
+      } else {
+        const range = HEALTH_TARGET_RANGES[h.metric];
+        const target = h.target ?? range.default;
+        if (!(isInt(target) && target >= range.min && target <= range.max)) errors.push(`healthTarget.target for ${h.metric} must be a whole number from ${range.min} to ${range.max}.`);
+        if (h.followGoal && !followsRingGoal(h.metric)) errors.push(`healthTarget.followGoal only applies to exerciseMinutes, activeEnergyKcal and standHours, not ${h.metric}.`);
+        Object.assign(patch, {
+          healthMetric: h.metric,
+          healthTarget: target,
+          healthFollowGoal: followsRingGoal(h.metric) ? !!h.followGoal : false,
+        } satisfies Partial<Task>);
+      }
+    }
+  }
+
+  // ---- supply ("12 filters left, reorder at 2") ------------------------------
+  if (input.supply !== undefined) {
+    if (input.supply === null) {
+      Object.assign(patch, {
+        supplyCount: null,
+        supplyUnit: null,
+        supplyRefillCount: null,
+        supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+        supplyLeadDays: null,
+        supplyDeclinedAtCount: null,
+      } satisfies Partial<Task>);
+    } else {
+      const sp = input.supply;
+      if (!inRange(sp.count, LIMITS.supplyCount)) errors.push(`supply.count must be a whole number from ${LIMITS.supplyCount[0]} to ${LIMITS.supplyCount[1]}. 0 means it has run out.`);
+      if (sp.reorderAt !== undefined && !inRange(sp.reorderAt, LIMITS.supplyReorderAt)) errors.push(`supply.reorderAt must be a whole number from ${LIMITS.supplyReorderAt[0]} to ${LIMITS.supplyReorderAt[1]}. Zero would ask only once it had run out.`);
+      if (sp.refillCount != null && !(isInt(sp.refillCount) && sp.refillCount >= 1)) errors.push('supply.refillCount must be a whole number of at least 1, or null.');
+      if (sp.leadDays != null && !(isInt(sp.leadDays) && sp.leadDays >= 0 && sp.leadDays <= 365)) errors.push('supply.leadDays must be 0 to 365, or null.');
+      // A unit count goes down when a completion spawns the next row, so a task
+      // that spawns none has nowhere to count down. The editor offers the card
+      // only on a repeating task, and a subtask can't hold one at all.
+      if (context.isSubtask) errors.push('A subtask cannot track a supply.');
+      else if (recurrence === 'none') errors.push('A supply counts down as a repeating task is completed, so it needs a repeat. Give the task a repeat first.');
+      Object.assign(patch, {
+        supplyCount: sp.count,
+        ...(sp.unit !== undefined ? { supplyUnit: normalizeTargetUnit(sp.unit) } : {}),
+        ...(sp.refillCount !== undefined ? { supplyRefillCount: sp.refillCount } : {}),
+        ...(sp.reorderAt !== undefined ? { supplyReorderAt: sp.reorderAt } : {}),
+        ...(sp.leadDays !== undefined ? { supplyLeadDays: sp.leadDays } : {}),
+      } satisfies Partial<Task>);
+    }
+  }
+
   // ---- habit ("don't do X") ------------------------------------------------
   if (input.habit !== undefined) {
     if (input.habit === 'avoid') {
@@ -470,4 +646,35 @@ export function describeRepeat(t: Task): RepeatInput | null {
   if (t.recurrenceEndDate) out.endDate = t.recurrenceEndDate;
   if (t.recurrenceCount != null) out.count = t.recurrenceCount;
   return out;
+}
+
+/** A rotation as `get_task` shows it: the members, and which this week's picks cover. */
+export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; lastDone?: string }[] } | null {
+  if (!isRotationTask(t)) return null;
+  const last = t.rotationLastDone ?? {};
+  return {
+    members: (t.rotationItems ?? []).map(m => ({
+      title: m.title,
+      doneThisWeek: doneIds.has(m.id),
+      ...(last[m.id] ? { lastDone: last[m.id] } : {}),
+    })),
+  };
+}
+
+/** A supply as `get_task` shows it. Null when the task tracks none. */
+export function describeSupplyFields(t: Task): SupplyInput | null {
+  if (t.supplyCount === null || t.supplyCount === undefined) return null;
+  return {
+    count: t.supplyCount,
+    ...(t.supplyUnit ? { unit: t.supplyUnit } : {}),
+    ...(t.supplyRefillCount != null ? { refillCount: t.supplyRefillCount } : {}),
+    reorderAt: t.supplyReorderAt,
+    ...(t.supplyLeadDays != null ? { leadDays: t.supplyLeadDays } : {}),
+  };
+}
+
+/** A health target as `get_task` shows it. Null when the task has none. */
+export function describeHealthTarget(t: Task): HealthTargetInput | null {
+  if (!hasHealthTarget(t) || t.healthMetric === null || t.healthTarget === null) return null;
+  return { metric: t.healthMetric, target: t.healthTarget, ...(t.healthFollowGoal ? { followGoal: true } : {}) };
 }

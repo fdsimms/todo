@@ -20,7 +20,18 @@
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { AnswerEdit, Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
-import { describeRepeat, type RepeatInput, type TaskFieldsInput } from './taskFields';
+import { isRotationTask } from '../../src/utils/rotation';
+import {
+  describeHealthTarget,
+  describeRepeat,
+  describeRotation,
+  describeSupplyFields,
+  type HealthTargetInput,
+  type RepeatInput,
+  type SupplyInput,
+  type TaskFieldsInput,
+  type TimedInput,
+} from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
 
@@ -140,6 +151,22 @@ export interface GetTaskResult {
   repeat?: RepeatInput;
   /** A count to reach per day or week, and how far today's (or this week's) has got. */
   target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean };
+  /** A countdown the task runs once started, in minutes. */
+  timed?: TimedInput;
+  /** The members of a rotation, and which this week's picks have covered. */
+  rotation?: { members: { title: string; doneThisWeek: boolean; lastDone?: string }[] };
+  /** Configuration only: the server cannot read Apple Health, so it never says whether the target is reached. */
+  healthTarget?: HealthTargetInput;
+  /** A stock that counts down as the repeating task is completed. */
+  supply?: SupplyInput;
+  /**
+   * Read-only, deliberately. Each of these changes something outside the task:
+   * a gate or penalty blocks apps on the phone, and a medication makes
+   * completing the task record a dose. Neither can be set from here.
+   */
+  gatesApps?: true;
+  penalty?: { minutes: number; cutoffTime?: string };
+  medication?: { name: string; amount?: number; unit?: string };
   /** "HH:MM" bounds: shown from `start`, expired after `end`. */
   window?: { start?: string; end?: string };
   /** Present only for a "don't do this" habit, which is never completed. */
@@ -192,13 +219,28 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         }
       : undefined,
     repeat: describeRepeat(task) ?? undefined,
-    target: task.targetCount != null && task.targetCount >= 2
+    target: task.targetCount != null && task.targetCount >= 2 && !isRotationTask(task)
       ? {
           count: task.targetCount,
           per: task.quotaPeriod === 'week' ? 'week' : 'day',
           done: task.progressCount ?? 0,
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
+        }
+      : undefined,
+    timed: task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,
+    rotation: describeRotation(task, new Set(isRotationTask(task) ? replica.rotationDoneIds(task) : [])) ?? undefined,
+    healthTarget: describeHealthTarget(task) ?? undefined,
+    supply: describeSupplyFields(task) ?? undefined,
+    gatesApps: task.gatesApps ? true : undefined,
+    penalty: task.penaltyMinutes != null
+      ? { minutes: task.penaltyMinutes, ...(task.penaltyCutoffTime ? { cutoffTime: task.penaltyCutoffTime } : {}) }
+      : undefined,
+    medication: task.medicationName?.trim()
+      ? {
+          name: task.medicationName.trim(),
+          ...(task.medicationAmount != null ? { amount: task.medicationAmount } : {}),
+          ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
         }
       : undefined,
     window: task.windowStart || task.windowEnd

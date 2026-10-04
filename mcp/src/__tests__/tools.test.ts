@@ -61,6 +61,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
   return {
     path: ':stub:',
     refresh: () => {},
+    rotationDoneIds: () => [],
     tasks: () => tasks,
     taskById: (id: string) => tasks.find(t => t.id === id) ?? null,
     projects: () => [],

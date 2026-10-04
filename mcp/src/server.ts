@@ -630,7 +630,6 @@ const itemSchema = z.object({
   recurrenceFromCompletion: z.boolean().optional(),
   vacationPause: z.boolean().optional(),
   excludeFromSuggestions: z.boolean().optional(),
-  gatesApps: z.boolean().optional(),
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional(),
@@ -711,6 +710,28 @@ const taskFieldsShape = {
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
   }).nullable().optional()
     .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
+  timed: z.object({
+    minutes: z.number().int().describe('1 to 1440.'),
+  }).nullable().optional()
+    .describe('A countdown the task runs once it is started, e.g. "stretch for 15 minutes". Also sets the estimate and effort from the countdown unless you name them. Not for a subtask. null removes it.'),
+  rotation: z.object({
+    members: z.array(z.string()).describe('At least two different names, in the order to show them.'),
+  }).nullable().optional()
+    .describe('A set of things each done once a week, in any order ("a podcast in each of my five languages"). The weekly target is the number of members. A task with no repeat becomes weekly. Re-sending a member\'s name keeps its history. null removes it.'),
+  healthTarget: z.object({
+    metric: z.enum(['steps', 'sleepHours', 'exerciseMinutes', 'activeEnergyKcal', 'standHours']),
+    target: z.number().int().optional().describe('In the metric\'s own unit. Defaults to the app\'s starting value: 8000 steps, 8 hours, 30 minutes, 500 kcal, 12 hours.'),
+    followGoal: z.boolean().optional().describe('exerciseMinutes, activeEnergyKcal and standHours only: use the goal set in Fitness instead of target.'),
+  }).nullable().optional()
+    .describe('The task becomes ready to check off once Apple Health reaches a number today. This only sets it up: it cannot be read from here, so never say whether it has been reached. It never completes the task. null removes it.'),
+  supply: z.object({
+    count: z.number().int().describe('How many are left now, 0 to 999. 0 means it has run out.'),
+    unit: z.string().nullable().optional().describe('E.g. "filters".'),
+    refillCount: z.number().int().nullable().optional().describe('How many arrive per restock.'),
+    reorderAt: z.number().int().optional().describe('Offer to reorder when this many are left. At least 1; default 1.'),
+    leadDays: z.number().int().nullable().optional().describe('Days a delivery takes, 0 to 365.'),
+  }).nullable().optional()
+    .describe('A stock that goes down by one each time this repeating task is completed ("12 filters left"), and asks to reorder as it runs low. Needs a repeat, and not for a subtask. null removes it.'),
   window: z.object({
     start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time.'),
     end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day.'),
@@ -749,7 +770,7 @@ function registerWriteTools(
 ): void {
   server.tool(
     'create_task',
-    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. It needs a category (see list_categories) unless its project has a default one; the app's other defaults apply (its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
+    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a countdown (timed), a weekly rotation of named things, an Apple Health target, a supply that counts down, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. It needs a category (see list_categories) unless its project has a default one; the app's other defaults apply (its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
     {
       title: z.string().min(1),
       ...taskFieldsShape,
@@ -767,7 +788,7 @@ function registerWriteTools(
 
   server.tool(
     'update_task',
-    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
+    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, timed, rotation, healthTarget, supply, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
     {
       id: z.string().min(1),
       title: z.string().optional(),

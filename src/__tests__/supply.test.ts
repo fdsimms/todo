@@ -28,6 +28,7 @@ import {
   wantedSupplyReorders,
 } from '../utils/supply';
 import { dayKeyOf } from '../utils/dateUtils';
+import { LIMITS, taskFieldsPatch } from '../../mcp/src/taskFields';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -696,5 +697,18 @@ describe('supplyReorderSourceId', () => {
     // id would restock a task that does not exist.
     expect(supplyReorderSourceId({ generatedKind: 'pantryCheck', generatedSourceId: 'item-1' }))
       .toBeNull();
+  });
+});
+
+// mcp/src/taskFields.ts copies these two rather than importing them (supply.ts
+// reaches the settings store, and that module must load before the SQLite
+// shim), so this is what keeps the copies from drifting.
+describe('the MCP\'s copy of the supply limits', () => {
+  it('matches the app\'s', () => {
+    expect(LIMITS.supplyCount).toEqual([0, MAX_SUPPLY_COUNT]);
+    expect(LIMITS.supplyReorderAt).toEqual([1, MAX_SUPPLY_COUNT]);
+    expect(clampSupplyReorderAt(0)).toBe(LIMITS.supplyReorderAt[0]);
+    const cleared = taskFieldsPatch({ supply: null }, null, { newId: () => 'x', emptyFollowUpDraft: () => ({}) as never }).patch;
+    expect(cleared.supplyReorderAt).toBe(DEFAULT_SUPPLY_REORDER_AT);
   });
 });

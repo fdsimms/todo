@@ -635,6 +635,27 @@ asked for in so many words (`newCategory: true`), and is created inside the writ
 `list_categories` is what the model chooses from, with a few open tasks per category so it can
 judge what belongs where. A checklist item is exempt: it has no section of its own.
 
+### The task kinds it can set, and the two it can only read about
+
+`create_task`/`update_task` take `timed`, `rotation`, `healthTarget` and `supply` beside the older
+`chain` and `target`, translated in `mcp/src/taskFields.ts` by the rules the editor applies at kind
+switch (`bakedFields`). Four things are not obvious from the code:
+
+- **A task is one kind.** A call that would leave it two (a timer on a chain) is refused, naming the
+  one to clear with `null`. Only checked when the call sets one of the new kinds, so the older
+  chain-and-target pair is unchanged.
+- **No subtask stretches, no readings.** A countdown on a subtask is a share of its parent's, and the
+  parent's total has exactly two writers (`docs/arch/timed-tasks.md`), so this refuses rather than be a
+  third. A health target is configuration only: a Node process cannot reach HealthKit, so the result
+  never says whether it was reached.
+- **Gates, penalties and a task's medication are read-only.** `get_task` reports `gatesApps`, `penalty`
+  and `medication`; nothing here sets them. The first two block apps on the phone and the third makes a
+  completion write a dose, and an agent should not do either on a task nobody looked at. `create_template`
+  does not take `gatesApps` either, for the same reason.
+- **`taskFields.ts` copies the supply limits instead of importing them.** `supply.ts` reaches the
+  settings store, and this module has to load before the SQLite shim is installed.
+  `supply.test.ts` pins the copies to the app's.
+
 ### Writes have their own token
 
 `MCP_WRITE_TOKEN`, separate from `MCP_AUTH_TOKEN`. The write token buys both scopes so one
