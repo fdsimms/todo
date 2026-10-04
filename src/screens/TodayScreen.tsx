@@ -4087,14 +4087,6 @@ export function TodayScreen() {
   const viewFilterCount = viewMode === 'today' ? activeFilterCount : (filterHasReminder ? 1 : 0);
 
   const headerActions: ScreenHeaderAction[] = [
-    // The same card the pull opens. A pull is invisible until somebody
-    // stumbles on it, and search reaches far past this screen now (settings,
-    // people, recipes, groceries), so it gets a button too.
-    {
-      icon: 'search' as const,
-      onPress: () => { haptics.tap(); setQuickSearchVisible(true); },
-      accessibilityLabel: 'Search everything',
-    },
     {
       icon: 'funnel' as const,
       onPress: () => setFilterVisible(true),
