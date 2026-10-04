@@ -5,7 +5,7 @@
 # whole setup.
 
 # Fly app names are global, so this may need changing to one that's free.
-app = "fdsimms-todo-mcp"
+app = "dundundun-mcp"
 primary_region = "iad"
 
 [build]

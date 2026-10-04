@@ -24,12 +24,12 @@ fly auth login
 
 ## 2. Create the app and its volume
 
-App names are global. If `fdsimms-todo-mcp` is taken, change `app` in `mcp/fly.toml` first.
+App names are global. If `dundundun-mcp` is taken, change `app` in `mcp/fly.toml` first.
 `primary_region` is `iad` (Virginia); change it to the region nearest you (`fly platform
 regions` lists them), and use the same region for the volume.
 
 ```bash
-fly apps create fdsimms-todo-mcp
+fly apps create dundundun-mcp
 fly volumes create todo_data --size 1 --region iad --config mcp/fly.toml
 ```
 
@@ -72,7 +72,7 @@ Fly builds the image on its own builders, so you don't need Docker installed. Th
 takes a few minutes. Check it's up:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://fdsimms-todo-mcp.fly.dev/sync/pull
+curl -s -o /dev/null -w '%{http_code}\n' https://dundundun-mcp.fly.dev/sync/pull
 # 401 means it's running and refusing requests without a token, which is right.
 ```
 
@@ -80,7 +80,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://fdsimms-todo-mcp.fly.dev/sync/p
 
 In the app: **Settings → Data & reset → Sync**.
 
-- **Sync server:** `https://fdsimms-todo-mcp.fly.dev`
+- **Sync server:** `https://dundundun-mcp.fly.dev`
 - **Sync server token:** the phone sync token from step 3
 - **Include health logs:** leave it off unless you want Claude to see your mood, medication and
   food logs and your milestones.
@@ -90,7 +90,7 @@ Then tap **Sync now**. The first sync sends your whole database, so it can take 
 ## 6. Connect Claude Code
 
 ```bash
-claude mcp add --transport http todo https://fdsimms-todo-mcp.fly.dev/mcp \
+claude mcp add --transport http todo https://dundundun-mcp.fly.dev/mcp \
   --header "Authorization: Bearer <Claude read token>"
 ```
 
@@ -104,5 +104,5 @@ the grocery list. Then ask Claude Code something like "what's on my list today?"
   volume survives a deploy.
 - **Changing a token:** run `fly secrets set` with the new value (it restarts the machine), then
   update whichever device or Claude Code config uses it.
-- **Starting over:** `fly apps destroy fdsimms-todo-mcp` deletes the app, the volume and the copy
+- **Starting over:** `fly apps destroy dundundun-mcp` deletes the app, the volume and the copy
   of your data on it.
