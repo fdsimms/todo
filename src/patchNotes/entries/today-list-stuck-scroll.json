@@ -1,1 +1,1 @@
-{ "message": "Fixed the Today list getting stuck below the Pinned Tasks section, with no way to scroll back up to it.", "date": "2026-10-04" }
+{ "message": "Fixed the task list getting stuck below its top after pulling down to search, with no way to scroll back up to the Pinned Tasks section.", "date": "2026-10-04" }
