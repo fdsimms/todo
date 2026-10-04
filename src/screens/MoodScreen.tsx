@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -94,7 +94,6 @@ export function MoodScreen() {
   const tabBarHeight = useBottomTabBarHeight();
 
   const logs = useMoodStore(s => s.logs);
-  const removeLog = useMoodStore(s => s.removeLog);
   const milestones = useMilestoneStore(s => s.milestones);
   const tasks = useTaskStore(s => s.tasks);
   // Apple Health's trailing window, read on demand rather than on the app's
@@ -404,21 +403,6 @@ export function MoodScreen() {
       navigateToTab(returnTo);
       setReturnTo(undefined);
     }
-  };
-
-  const confirmDelete = (log: MoodLog) => {
-    Alert.alert(
-      'Delete this entry?',
-      'It will be removed from your history and from every number on this screen.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => { haptics.warning(); removeLog(log.id); },
-        },
-      ],
-    );
   };
 
   const openNewMilestone = () => { haptics.tap(); setEditingMilestone(null); setMilestoneSheetOpen(true); };
@@ -904,7 +888,6 @@ export function MoodScreen() {
               key={log.id}
               log={log}
               onPress={() => openEdit(log)}
-              onLongPress={() => confirmDelete(log)}
             />
           ))}
           {logs.length > recent.length && (

@@ -196,6 +196,7 @@ import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings } from '../hooks/useScreenSettings';
+import { stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
 import { emitNowTick } from '../utils/nowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
@@ -300,7 +301,7 @@ function SectionHeader({
   colors,
   collapsed,
   onToggle,
-  onLongPress,
+  onPin,
   allPinned,
   count,
 }: {
@@ -309,7 +310,8 @@ function SectionHeader({
   colors: Colors;
   collapsed?: boolean;
   onToggle?: () => void;
-  onLongPress?: () => void;
+  /** Pins (or, when all already are, unpins) every task shown under it. */
+  onPin?: () => void;
   allPinned?: boolean;
   count?: number;
 }) {
@@ -323,26 +325,45 @@ function SectionHeader({
       </View>
     );
   }
+  // Two touchables side by side rather than the pin nested inside the row's
+  // own: a TouchableOpacity is `accessible` by default, which would fold the
+  // pin button into the row and hide it from VoiceOver.
   return (
-    <TouchableOpacity
-      style={styles.categorySectionHeader}
-      onPress={onToggle}
-      onLongPress={onLongPress}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-      accessibilityHint={onLongPress ? `Double tap and hold to ${allPinned ? 'unpin' : 'pin'} the tasks shown under ${label}` : undefined}
-    >
-      <View style={styles.categorySectionHeaderLeft}>
-        {allPinned && <PinIcon filled size={13} color={colors.orange} />}
-        <Text style={styles.sectionHeaderText}>
-          {label}
-          {collapsed && count !== undefined ? ` (${count})` : ''}
-        </Text>
-        <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
-      </View>
+    <View style={styles.categorySectionHeader}>
+      <TouchableOpacity
+        style={styles.categorySectionToggle}
+        onPress={onToggle}
+        // Still pins all, for anyone who learned it before the button below.
+        onLongPress={onPin}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+      >
+        <View style={styles.categorySectionHeaderLeft}>
+          <Text style={styles.sectionHeaderText}>
+            {label}
+            {collapsed && count !== undefined ? ` (${count})` : ''}
+          </Text>
+          <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        </View>
+      </TouchableOpacity>
+      {/* Pinning a whole category was a long press on this header and
+          nothing on screen said so. The button is that, visible; it's lit
+          (filled, orange) when every task shown here is already pinned,
+          which is also what the old leading pin said. */}
+      {onPin && (
+        <TouchableOpacity
+          onPress={onPin}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={allPinned ? `Unpin the tasks shown under ${label}` : `Pin the tasks shown under ${label}`}
+        >
+          <PinIcon filled={!!allPinned} size={iconSize.sm} color={allPinned ? colors.orange : colors.textTertiary} />
+        </TouchableOpacity>
+      )}
       {scrim}
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -3069,14 +3090,17 @@ export function TodayScreen() {
     enterSelectionMode(ids);
   }, [groupRosterOf, enterSelectionMode]);
 
-  const handleGroupComplete = useCallback((groupId: string) => {
+  const handleGroupComplete = useCallback((groupId: string, onlyIds?: string[]) => {
     // A stack's cascade is a bulk completion like any other, so it gets the
     // same question. skipIds is what keeps the members being asked about out
     // of the cascade until they've been answered.
     const roster = useTaskStore.getState().groupRosterOf(groupId);
+    // Today's work only (see stackCompletionScope); the rest goes in
+    // completeGroup's skip list beside whatever the answer prompt skips.
+    const { ids, skip } = stackCompletionScope(roster.filter(t => !t.completed), onlyIds);
     requestComplete({
-      ids: roster.filter(t => !t.completed).map(t => t.id),
-      complete: skipIds => completeGroup(groupId, { skipIds }),
+      ids,
+      complete: skipIds => completeGroup(groupId, { skipIds: [...skipIds, ...skip] }),
     });
   }, [completeGroup, requestComplete]);
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
@@ -3261,7 +3285,7 @@ export function TodayScreen() {
             colors={colors}
             collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
-            onLongPress={isCategory ? () => handlePinCategory(item.label) : undefined}
+            onPin={isCategory ? () => handlePinCategory(item.label) : undefined}
             allPinned={isCategory ? allPinned : undefined}
             count={isCategory ? sectionDisplayCounts.get(item.label) ?? 0 : undefined}
           />
@@ -4990,6 +5014,7 @@ export function TodayScreen() {
             setGroupEditorVisible(false);
             setEditingGroup(null);
           }}
+          onCompleteToday={handleGroupComplete}
         />
 
         {selectionMode && (
@@ -5122,6 +5147,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
   },
+  categorySectionToggle: { flex: 1 },
   categorySectionHeaderLeft: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xsm,
   },

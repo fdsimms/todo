@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, SectionList, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -48,7 +48,6 @@ export function MoodHistoryScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const logs = useMoodStore(s => s.logs);
-  const removeLog = useMoodStore(s => s.removeLog);
 
   const [filter, setFilter] = useState<MoodFilter>(EMPTY_MOOD_FILTER);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -83,21 +82,6 @@ export function MoodHistoryScreen() {
     () => sections.reduce((n, s) => n + s.data.length, 0),
     [sections],
   );
-
-  const confirmDelete = (log: MoodLog) => {
-    Alert.alert(
-      'Delete this entry?',
-      'It will be removed from your history and from every number on the Mood screen.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => { haptics.warning(); removeLog(log.id); },
-        },
-      ],
-    );
-  };
 
   const groups: ChipFilterGroup[] = [
     {
@@ -216,7 +200,6 @@ export function MoodHistoryScreen() {
               log={item}
               showDate={false}
               onPress={() => { haptics.tap(); setEditing(item); setSheetOpen(true); }}
-              onLongPress={() => confirmDelete(item)}
             />
           )}
         />

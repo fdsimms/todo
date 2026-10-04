@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -84,6 +85,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   const logs = useMoodStore(s => s.logs);
   const addLog = useMoodStore(s => s.addLog);
   const updateLog = useMoodStore(s => s.updateLog);
+  const removeLog = useMoodStore(s => s.removeLog);
   const renameContextTag = useMoodStore(s => s.renameContextTag);
   const completeMoodLogTaskForToday = useTaskStore(s => s.completeMoodLogTaskForToday);
   // The one source this offers a suggestion from — see docs/arch/mood-log.md.
@@ -316,6 +318,23 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     accessibilityLabel: level.label,
   }));
 
+  const confirmDelete = () => {
+    if (!editing) return;
+    const id = editing.id;
+    Alert.alert(
+      'Delete this entry?',
+      'It will be removed from your history and from every number on the Mood screen.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => { haptics.warning(); removeLog(id); onClose(); },
+        },
+      ],
+    );
+  };
+
   return (
     <EditorSheet
       visible={visible}
@@ -429,6 +448,23 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
         />
       </View>
 
+      {/* Where an entry is deleted: a row you can see, in the sheet that's
+          about that entry. It used to be a long press on the entry's row in
+          three lists, which nothing on screen mentioned and which a held
+          scroll could set off. */}
+      {editing && (
+        <TouchableOpacity
+          style={[styles.card, styles.deleteRow]}
+          onPress={confirmDelete}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel="Delete entry"
+        >
+          <Ionicons name="trash-outline" size={iconSize.md} color={colors.red} />
+          <Text style={styles.deleteText}>Delete entry</Text>
+        </TouchableOpacity>
+      )}
+
       {/* allowFuture={false}: an entry records how a day went, and Thursday
           has not gone yet. showTimeOfDay/showSuggest off because this is not a
           task's schedule — there is nothing to place and nothing to suggest. */}
@@ -457,6 +493,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
+  deleteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+  },
+  deleteText: {
+    color: colors.red,
+    fontSize: font.md,
+  },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
