@@ -18,6 +18,7 @@
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { MENU_ROUTES } from '../utils/navHubs';
 
 const SRC = join(__dirname, '..');
 const NAVIGATOR = readFileSync(join(SRC, 'navigation', 'AppNavigator.tsx'), 'utf8');
@@ -34,7 +35,10 @@ function sourceFiles(dir: string, found: string[] = []): string[] {
 
 const files = sourceFiles(SRC).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
 
-const TAB_ROUTES = [...NAVIGATOR.matchAll(/<Tab\.Screen\s+name="(\w+)"/g)].map(m => m[1]);
+// Every tab route is a key of AppNavigator's TAB_SCREENS table, which is what
+// it renders its Tab.Screens from.
+const TAB_SCREENS_BLOCK = NAVIGATOR.slice(NAVIGATOR.indexOf('const TAB_SCREENS'), NAVIGATOR.indexOf('};', NAVIGATOR.indexOf('const TAB_SCREENS')));
+const TAB_ROUTES = [...TAB_SCREENS_BLOCK.matchAll(/^\s+(\w+): freezeWhenBlurred\(/gm)].map(m => m[1]);
 const CARD_ROUTES = [...NAVIGATOR.matchAll(/<RootStack\.Screen\s+name="(\w+)"/g)]
   .map(m => m[1])
   .filter(name => name !== 'MainTabs');
@@ -50,6 +54,12 @@ describe('navigating to a tab route', () => {
     expect(TAB_ROUTES).toEqual(expect.arrayContaining(['Today', 'Groceries', 'Weight', 'MealPlan']));
     expect(CARD_ROUTES).toEqual(expect.arrayContaining(['Settings', 'RecipeDetail', 'ProjectDetail']));
     expect(TAB_ROUTES.length).toBeGreaterThan(20);
+  });
+
+  // A menu row with no screen behind it would open nothing, and so would a tab
+  // slot set to it. TAB_SCREENS is the one table both are drawn from.
+  it('has a screen for every route the menu reaches', () => {
+    expect(MENU_ROUTES.filter(route => !TAB_ROUTES.includes(route))).toEqual([]);
   });
 
   it('still catches the bare form', () => {

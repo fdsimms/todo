@@ -71,7 +71,7 @@ import {
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
-import { addRecentScreen, parseRecentScreens } from '../utils/navHubs';
+import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, DEFAULT_TAB_ROUTES } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
@@ -1609,6 +1609,11 @@ interface SettingsStore {
    * want a standing task for dinner).
    */
   mealPlanNudgeSlots: MealSlot[];
+  // The three screens with a button of their own in the bottom tab bar, beside
+  // More, in order (see normalizeTabRoutes in utils/navHubs.ts). Any route the
+  // side menu reaches can be one. Device-local, like the rest of how this
+  // phone's screen is laid out.
+  tabRoutes: string[];
   // Idempotency state, not a preference — the day-key of the week the nudge
   // last fired in. Read only by dueMealPlanNudge, which compares it against
   // the current week rather than testing it for existence, so it "expires"
@@ -1923,6 +1928,9 @@ interface SettingsStore {
   setTitleRules: (rules: TitleRule[]) => void;
   setLastVisitedScreen: (screen: string | null) => void;
   pushRecentScreen: (screen: string) => void;
+  /** Puts `route` in tab slot `slot` (0-based), swapping if it was already a tab. */
+  setTabSlot: (slot: number, route: string) => void;
+  resetTabRoutes: () => void;
   resetToDefaults: () => void;
 }
 
@@ -2029,6 +2037,7 @@ const DEFAULT_SETTINGS = {
   mealPlanNudgeEnabled: false,
   mealPlanNudgeIgnoresVacation: false,
   mealPlanNudgeSlots: [...MEAL_PLAN_NUDGE_SLOTS],
+  tabRoutes: [...DEFAULT_TAB_ROUTES],
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -2542,6 +2551,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealPlanNudgeEnabled: false,
   mealPlanNudgeIgnoresVacation: false,
   mealPlanNudgeSlots: [...MEAL_PLAN_NUDGE_SLOTS],
+  tabRoutes: [...DEFAULT_TAB_ROUTES],
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
@@ -3009,6 +3019,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealPlanNudgeEnabled = dbGetSetting('mealPlanNudgeEnabled') === 'true';
     const mealPlanNudgeIgnoresVacation = dbGetSetting('mealPlanNudgeIgnoresVacation') === 'true';
     const mealPlanNudgeSlots = parseMealPlanNudgeSlots(dbGetSetting('mealPlanNudgeSlots'));
+    const tabRoutes = parseTabRoutes(dbGetSetting('tabRoutes'));
     const storedNudgeWeekday = Number(dbGetSetting('mealPlanNudgeWeekday'));
     const mealPlanNudgeWeekday =
       Number.isInteger(storedNudgeWeekday) && storedNudgeWeekday >= 0 && storedNudgeWeekday <= 6
@@ -3276,6 +3287,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       sortOption,
       supplyReorderTaskCategory,
       supplyReorderTasks,
+      tabRoutes,
       themeMode,
       timerLiveActivity,
       tipsEnabled,
@@ -4773,6 +4785,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLastVisitedScreen(screen: string | null) {
     dbSetSetting('lastVisitedScreen', screen ?? '');
     set({ lastVisitedScreen: screen });
+  },
+
+  setTabSlot(slot: number, route: string) {
+    const next = setTabSlot(get().tabRoutes, slot, route);
+    dbSetSetting('tabRoutes', JSON.stringify(next));
+    set({ tabRoutes: next });
+  },
+
+  resetTabRoutes() {
+    const next = [...DEFAULT_TAB_ROUTES];
+    dbSetSetting('tabRoutes', JSON.stringify(next));
+    set({ tabRoutes: next });
   },
 
   pushRecentScreen(screen: string) {

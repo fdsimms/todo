@@ -2,7 +2,8 @@ import {
   NAV_HUBS, NAV_MENU_ROWS, hubForRoute, hubSubtitle,
   menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleHubMembers,
   visibleMenuRows, addRecentScreen, parseRecentScreens, recentMenuDestinations, hubEntryRoute,
-  RECENT_SCREEN_LIMIT,
+  RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot,
+  visibleTabRoutes, tabPickerGroups,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
@@ -260,5 +261,65 @@ describe('where a hub row opens', () => {
   it("can't reopen a member the visible hub no longer holds", () => {
     const visible = { ...health, members: health.members.filter(m => m.route !== 'Weight') };
     expect(hubEntryRoute(visible, ['Weight', 'Medications'])).toBe('Medications');
+  });
+});
+
+describe('tab slots', () => {
+  it('reads back three distinct menu routes, filling a short value from the defaults', () => {
+    expect(normalizeTabRoutes(['Weight', 'Mood', 'Stats'])).toEqual(['Weight', 'Mood', 'Stats']);
+    expect(normalizeTabRoutes(['Weight'])).toEqual(['Weight', 'Today', 'Groceries']);
+    expect(normalizeTabRoutes(['Weight', 'Weight', 'Nowhere', 3, 'Mood'])).toEqual(['Weight', 'Mood', 'Today']);
+    expect(normalizeTabRoutes(['A', 'B', 'C', 'D'].map(() => 'Stats').concat(['Mood', 'Tags', 'Logbook'])))
+      .toEqual(['Stats', 'Mood', 'Tags']);
+    expect(normalizeTabRoutes('junk')).toEqual([...DEFAULT_TAB_ROUTES]);
+  });
+
+  it('falls back to the default tabs for anything stored it cannot read', () => {
+    expect(parseTabRoutes(null)).toEqual([...DEFAULT_TAB_ROUTES]);
+    // resetToDefaults writes String(array), which isn't JSON.
+    expect(parseTabRoutes('Today,Groceries,Projects')).toEqual([...DEFAULT_TAB_ROUTES]);
+    expect(parseTabRoutes('["Weight","Mood","Stats"]')).toEqual(['Weight', 'Mood', 'Stats']);
+  });
+
+  it('only ever holds routes the menu reaches', () => {
+    for (const route of DEFAULT_TAB_ROUTES) expect(MENU_ROUTES).toContain(route);
+  });
+
+  it('puts a screen in a slot', () => {
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 1, 'Weight')).toEqual(['Today', 'Weight', 'Projects']);
+  });
+
+  it('swaps when the screen is already another tab, so none shows twice or goes missing', () => {
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 0, 'Projects')).toEqual(['Projects', 'Groceries', 'Today']);
+  });
+
+  it('ignores a slot out of range or a route the menu does not reach', () => {
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 5, 'Weight')).toEqual(['Today', 'Groceries', 'Projects']);
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 1, 'RecipeDetail')).toEqual(['Today', 'Groceries', 'Projects']);
+  });
+
+  it('drops a tab whose screen is switched off, without refilling its slot', () => {
+    expect(visibleTabRoutes(['Today', 'Groceries', 'Projects'], { ...FULL, kitchenEnabled: false }))
+      .toEqual(['Today', 'Projects']);
+    expect(visibleTabRoutes(['Today', 'Groceries', 'Projects'], FULL)).toEqual(['Today', 'Groceries', 'Projects']);
+  });
+
+  it('offers every menu screen to pick from, grouped like the menu', () => {
+    const groups = tabPickerGroups(FULL);
+    expect(groups[0].label).toBeNull();
+    expect(groups.map(g => g.label)).toEqual([null, 'Groceries & Meals', 'Organize', 'History', 'Health']);
+    const offered = groups.flatMap(g => g.destinations.map(d => d.route)).sort();
+    expect(offered).toEqual([...MENU_ROUTES].sort());
+  });
+
+  it('leaves the switched-off screens out of the picker', () => {
+    const labels = tabPickerGroups({ ...FULL, kitchenEnabled: false }).map(g => g.label);
+    expect(labels).not.toContain('Groceries & Meals');
+  });
+
+  it('keeps chosen tabs out of Recent, whatever they are', () => {
+    const recent = ['Weight', 'Recipes', 'Logbook', 'Mood'];
+    expect(recentMenuDestinations(recent, FULL, null, ['Weight', 'Today', 'Projects']).map(d => d.route))
+      .toEqual(['Recipes', 'Logbook', 'Mood']);
   });
 });

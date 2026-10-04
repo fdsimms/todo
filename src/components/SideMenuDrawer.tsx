@@ -103,9 +103,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // Shared with the pull-down quick search, which searches the same screens.
   const menuOptions = useNavMenuOptions();
   const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
+  // Recent skips whatever has a tab button right now, which is the user's choice.
+  const tabRoutes = useSettingsStore(s => s.tabRoutes);
   const recentDestinations = useMemo(
-    () => recentMenuDestinations(recentScreens, menuOptions, currentRoute),
-    [recentScreens, menuOptions, currentRoute],
+    () => recentMenuDestinations(recentScreens, menuOptions, currentRoute, tabRoutes),
+    [recentScreens, menuOptions, currentRoute, tabRoutes],
   );
   const terms = useMemo(() => menuSearchTerms(query), [query]);
   const results = useMemo(

@@ -701,6 +701,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // The other master switch, and unflagged for the same reason. Keyworded for
   // the features it removes as well as for what it is: someone who wants
   // chains or the focus timer gone will search for those, not for "simplified".
+  { id: 'tabRoutes', groupId: 'featureAreas', label: 'Tab bar', section: 'Tab bar',
+    keywords: ['tabs', 'bottom bar', 'customize', 'shortcut', 'quick access', 'first tab',
+      'second tab', 'third tab', 'pin a screen', 'navigation', 'buttons along the bottom'] },
   { id: 'simpleMode', groupId: 'featureAreas', label: 'Simplified mode', section: 'Feature areas',
     keywords: ['simple', 'simplify', 'basic', 'minimal', 'declutter', 'overwhelming', 'advanced',
       'hide', 'remove', 'disable', 'turn off', 'chains', 'timed', 'daily target', 'quota',

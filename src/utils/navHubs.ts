@@ -391,12 +391,89 @@ export function searchMenu(destinations: NavSearchResult[], terms: string[]): Na
   });
 }
 
+/** How many screens get a button of their own in the bottom tab bar, beside More. */
+export const TAB_SLOT_COUNT = 3;
+
+/** The tabs a fresh install has, and what "Use the default tabs" goes back to. */
+export const DEFAULT_TAB_ROUTES: readonly string[] = ['Today', 'Groceries', 'Projects'];
+
+/** Every route the side menu can reach: a screen row's own, and every hub member. */
+export const MENU_ROUTES: readonly string[] = NAV_MENU_ROWS.flatMap(row =>
+  row.kind === 'screen' ? [row.destination.route] : row.hub.members.map(m => m.route));
+
 /**
- * The routes with a button of their own in the bottom tab bar, beside More.
- * Recent leaves them out: a tab is already one tap away from anywhere, so a
- * chip for it spends one of three slots repeating the tab bar.
+ * The chosen tabs, read back from storage: menu routes only, no repeats,
+ * exactly `TAB_SLOT_COUNT` of them. Anything short is filled from the default
+ * tabs not already chosen, so a damaged or older value still gives three
+ * buttons rather than a bar with a hole in it.
  */
-export const BOTTOM_TAB_ROUTES: readonly string[] = ['Today', 'Groceries', 'Projects'];
+export function normalizeTabRoutes(raw: unknown): string[] {
+  const chosen: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const route of raw) {
+      if (typeof route !== 'string' || !MENU_ROUTES.includes(route) || chosen.includes(route)) continue;
+      chosen.push(route);
+      if (chosen.length === TAB_SLOT_COUNT) break;
+    }
+  }
+  for (const route of DEFAULT_TAB_ROUTES) {
+    if (chosen.length === TAB_SLOT_COUNT) break;
+    if (!chosen.includes(route)) chosen.push(route);
+  }
+  return chosen;
+}
+
+/** `normalizeTabRoutes` over the stored JSON. */
+export function parseTabRoutes(raw: string | null): string[] {
+  if (!raw) return [...DEFAULT_TAB_ROUTES];
+  try {
+    return normalizeTabRoutes(JSON.parse(raw));
+  } catch {
+    return [...DEFAULT_TAB_ROUTES];
+  }
+}
+
+/**
+ * Puts a screen in one tab slot. A screen that's already in another slot
+ * swaps with whatever this slot held, so the bar never shows one screen twice
+ * and never loses one without saying so.
+ */
+export function setTabSlot(current: readonly string[], slot: number, route: string): string[] {
+  const next = normalizeTabRoutes(current);
+  if (slot < 0 || slot >= TAB_SLOT_COUNT || !MENU_ROUTES.includes(route)) return next;
+  const existing = next.indexOf(route);
+  if (existing === slot) return next;
+  if (existing >= 0) next[existing] = next[slot];
+  next[slot] = route;
+  return next;
+}
+
+/**
+ * The chosen tabs the bar can actually show: one whose screen the kitchen
+ * switch or simplified mode has taken away drops out, the way Groceries always
+ * has with the kitchen off. Its slot isn't refilled behind your back; the bar
+ * just has one fewer button until the screen comes back.
+ */
+export function visibleTabRoutes(tabRoutes: readonly string[], options: NavMenuOptions): string[] {
+  const reachable = new Set(menuDestinations(options).map(d => d.route));
+  return normalizeTabRoutes(tabRoutes).filter(route => reachable.has(route));
+}
+
+export interface TabPickerGroup {
+  /** The hub's name, or null for the screens that stand alone in the menu. */
+  label: string | null;
+  destinations: NavDestination[];
+}
+
+/** What a tab slot can be set to, grouped the way the side menu groups it. */
+export function tabPickerGroups(options: NavMenuOptions): TabPickerGroup[] {
+  const groups: TabPickerGroup[] = [{ label: null, destinations: [] }];
+  for (const row of visibleMenuRows(options)) {
+    if (row.kind === 'screen') groups[0].destinations.push(row.destination);
+    else groups.push({ label: row.hub.label, destinations: row.hub.members });
+  }
+  return groups.filter(g => g.destinations.length > 0);
+}
 
 /**
  * How many recently visited screens are kept. More than Recent shows, because
@@ -438,7 +515,8 @@ export function parseRecentScreens(raw: string | null, limit: number = RECENT_SC
 /**
  * The menu's Recent chips: screens visited lately that the menu can still
  * reach, newest first, leaving out the screen you're on and the ones the tab
- * bar already has a button for.
+ * bar already has a button for (a tab is one tap away from anywhere, so a chip
+ * for it spends one of three slots repeating the tab bar).
  *
  * Built from `menuDestinations`, so a screen simplified mode or the kitchen
  * switch has since taken away drops out of Recent too, the same symmetry the
@@ -448,13 +526,14 @@ export function recentMenuDestinations(
   recent: readonly string[],
   options: NavMenuOptions,
   currentRoute: string | null,
+  tabRoutes: readonly string[] = DEFAULT_TAB_ROUTES,
   limit: number = RECENT_MENU_LIMIT,
 ): NavSearchResult[] {
   const byRoute = new Map(menuDestinations(options).map(d => [d.route, d]));
   const out: NavSearchResult[] = [];
   for (const route of recent) {
     if (out.length >= limit) break;
-    if (route === currentRoute || BOTTOM_TAB_ROUTES.includes(route)) continue;
+    if (route === currentRoute || tabRoutes.includes(route)) continue;
     const destination = byRoute.get(route);
     if (destination) out.push(destination);
   }
