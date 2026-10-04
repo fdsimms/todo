@@ -78,6 +78,7 @@ import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
+import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 
@@ -608,6 +609,93 @@ function registerWriteTools(
         return json(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_recipe',
+    'Save a recipe to the app: from a page, a photo, or a conversation. Give ingredients as the lines a recipe prints ("2 cloves garlic, minced"), one per entry; the app reads the amount, the name and the prep out of each. Put a heading in section ("For the sauce"), and give lines that are alternatives ("serrano or jalapeño") the same alternativeGroup, one line each, never one line with "or". Refused if a recipe with that name is already in that cookbook. The result counts the ingredient lines the app could read.',
+    {
+      name: z.string().min(1),
+      cookbook: z.string().nullable().optional().describe('A cookbook by title. Created if there is none by that name.'),
+      ingredients: z.array(z.object({
+        text: z.string().min(1),
+        section: z.string().nullable().optional(),
+        alternativeGroup: z.string().nullable().optional(),
+      })).optional(),
+      steps: z.array(z.object({ text: z.string().min(1), section: z.string().nullable().optional() })).optional(),
+      servings: z.number().int().positive().nullable().optional(),
+      estimatedMinutes: z.number().int().positive().nullable().optional().describe('Total time, start to table.'),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).nullable().optional(),
+      tags: z.array(z.string()).optional(),
+      sourceUrl: z.string().nullable().optional(),
+      notes: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveRecipe(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_food',
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${NUTRIENT_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated, and it is not written to Apple Health (only the phone a meal is logged on does that).`,
+    {
+      label: z.string().min(1),
+      quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
+      amounts: z.record(z.number().nonnegative()),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
+      at: z.string().optional().describe('When it was eaten: an ISO date-time, or YYYY-MM-DD. Default now.'),
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logFood(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_mood',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep") and a note. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    {
+      mood: z.number().int().min(1).max(5).nullable().optional(),
+      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
+      contextTags: z.array(z.string().min(1)).optional(),
+      note: z.string().nullable().optional(),
+      at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logMood(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not record that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_medication',
+    'Record a dose taken: the medication, the amount and unit together (or neither), whether it was as-needed, and when. The name is matched to the spelling already in their log, but never folded into a different medicine or strength.',
+    {
+      name: z.string().min(1),
+      amount: z.number().positive().nullable().optional(),
+      unit: z.string().nullable().optional(),
+      asNeeded: z.boolean().optional(),
+      note: z.string().nullable().optional(),
+      at: z.string().optional().describe('When it was taken: an ISO date-time, or YYYY-MM-DD. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logMedication(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not record that dose.' });
       }
     }
   );

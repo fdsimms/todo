@@ -153,6 +153,49 @@ export interface ReplicaLib {
   awayDates: typeof import('../../src/utils/awayDates');
   dates: typeof import('../../src/utils/dateUtils');
   agentNotes: typeof import('../../src/utils/agentNotes');
+  nutritionEstimate: typeof import('../../src/utils/nutritionEstimate');
+}
+
+/** A recipe as a tool states it. Ingredients are typed lines ("2 cloves garlic, minced"). */
+export interface RecipeInput {
+  name: string;
+  /** A cookbook by title, created when there is none by that name. */
+  cookbook?: string | null;
+  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null }[];
+  steps?: { text: string; section?: string | null }[];
+  servings?: number | null;
+  estimatedMinutes?: number | null;
+  mealType?: string | null;
+  tags?: string[];
+  sourceUrl?: string | null;
+  notes?: string;
+}
+
+export interface FoodInput {
+  label: string;
+  /** How much, in words: "1 bowl", "2 slices". */
+  quantity?: string;
+  /** Estimated amounts for the whole of what was eaten, by nutrient key. */
+  amounts: Record<string, number>;
+  slot?: MealSlot | null;
+  at?: Date;
+}
+
+export interface MoodInput {
+  mood?: number | null;
+  symptoms?: { name: string; severity?: number }[];
+  contextTags?: string[];
+  note?: string | null;
+  at?: Date;
+}
+
+export interface DoseInput {
+  name: string;
+  amount?: number | null;
+  unit?: string | null;
+  asNeeded?: boolean;
+  note?: string | null;
+  at?: Date;
 }
 
 /** One Settings row, located the way a person would have to walk to it. */
@@ -348,6 +391,21 @@ export interface Replica {
   milestones(): Milestone[];
   /** Every tag the person has, used or not. */
   tagRegistry(): string[];
+  /**
+   * A recipe, through the recipe store's own add and setters, the same calls
+   * the app's create sheet makes. Refused when the name is taken in that book.
+   */
+  createRecipe(input: RecipeInput): Recipe;
+  /**
+   * A food entry with an estimated panel, through `readNutritionEstimate`,
+   * `estimateToPanel` and `buildFoodLogEntry`. Marked estimated for good, and
+   * never written to Apple Health: only the device a meal is logged on may.
+   */
+  logFood(input: FoodInput): FoodLogEntry;
+  /** A mood check-in through the mood store, symptoms and tags in the spellings already in the log. */
+  logMood(input: MoodInput): MoodLog;
+  /** A dose through the medication store, the name in the spelling already in the log. */
+  logMedication(input: DoseInput): MedicationLog;
   /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
   agentNotes(): AgentNote[];
   writeAgentNotes(notes: readonly AgentNote[]): void;
@@ -904,12 +962,124 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         awayDates: require('../../src/utils/awayDates'),
         dates,
         agentNotes: require('../../src/utils/agentNotes'),
+        nutritionEstimate: require('../../src/utils/nutritionEstimate'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
     milestones: () => db.dbGetAllMilestones(),
     tagRegistry: () => db.dbGetTagRegistry(),
+    createRecipe(input: RecipeInput): Recipe {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
+      const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      // Loaded here rather than on every refresh: only this write reads it, and
+      // the library is the largest thing a refresh would otherwise re-read.
+      useRecipeStore.getState().initialize();
+      const store = useRecipeStore.getState();
+
+      const book = input.cookbook?.trim() ? store.ensureCookbook(input.cookbook.trim()) : null;
+      const recipe = store.addRecipe(input.name, book?.id ?? null);
+      if (!recipe) {
+        throw new Error(recipeUtils.cleanRecipeName(input.name)
+          ? `There is already a recipe called "${input.name.trim()}"${book ? ` in ${book.title}` : ''}.`
+          : 'A recipe needs a name.');
+      }
+      const id = recipe.id;
+      const ingredients = (input.ingredients ?? [])
+        .map(line => {
+          const made = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
+          return made ? { ...made, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      if (ingredients.length > 0) useRecipeStore.getState().addStructuredIngredients(id, ingredients);
+      for (const step of input.steps ?? []) useRecipeStore.getState().addStep(id, step.text, step.section ?? null);
+      const after = useRecipeStore.getState();
+      if (input.servings != null) after.setServings(id, input.servings);
+      if (input.estimatedMinutes != null) after.setEstimatedMinutes(id, input.estimatedMinutes);
+      if (input.mealType) after.setMealType(id, input.mealType as Recipe['mealType']);
+      if (input.tags?.length) after.setTags(id, input.tags);
+      if (input.sourceUrl) after.setSourceUrl(id, input.sourceUrl);
+      if (input.notes?.trim()) after.setNotes(id, input.notes.trim());
+      return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    logFood(input: FoodInput): FoodLogEntry {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate');
+      const builder = require('../../src/utils/foodLogEntry') as typeof import('../../src/utils/foodLogEntry');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      // The app's own reader for a model's estimate: unknown keys dropped, a
+      // figure nobody stated left absent rather than zero.
+      const read = estimate.readNutritionEstimate({ label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium' });
+      if (!read) throw new Error('A food entry needs a name and at least one nutrient amount (calorieKcal, proteinG, carbsG, fatG, ...).');
+      const panel = estimate.estimateToPanel(read);
+      if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
+      const entry = builder.buildFoodLogEntry(
+        { label: read.label, quantity: input.quantity ?? '', grams: null, nutrition: panel, slot: input.slot ?? null, at: input.at },
+        dayKey => db.dbGetFoodLogEntries(dayKey, dayKey),
+        generateId,
+      );
+      if (!entry) throw new Error('That entry could not be logged.');
+      db.dbInsertFoodLogEntry(entry);
+      return entry;
+    },
+
+    logMood(input: MoodInput): MoodLog {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore');
+      const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      if (input.mood != null && (!Number.isInteger(input.mood) || input.mood < 1 || input.mood > 5)) {
+        throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
+      }
+      // The spelling already in the log, so "headache" lands on the existing
+      // "Headache" rather than starting a second symptom the insights would
+      // count apart.
+      const logs = db.dbGetAllMoodLogs();
+      const spelled = (vocab: string[], key: (s: string) => string) => {
+        const byKey = new Map(vocab.map(v => [key(v), v]));
+        return (name: string) => byKey.get(key(name)) ?? name.trim();
+      };
+      const symptom = spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey);
+      const tag = spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey);
+      const symptoms = (input.symptoms ?? []).map(s => ({
+        name: symptom(s.name),
+        severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
+      }));
+      const log = useMoodStore.getState().addLog(
+        (input.mood ?? null) as MoodLog['mood'],
+        symptoms,
+        input.note ?? null,
+        input.at,
+        (input.contextTags ?? []).map(tag),
+      );
+      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      return log;
+    },
+
+    logMedication(input: DoseInput): MedicationLog {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const name = known.find(n => medication.medicationKey(n) === medication.medicationKey(input.name)) ?? input.name.trim();
+      if ((input.amount == null) !== (input.unit == null || input.unit === '')) {
+        throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
+      }
+      const log = meds.getState().addLog({
+        name,
+        amount: input.amount ?? undefined,
+        unit: input.unit ?? undefined,
+        asNeeded: input.asNeeded,
+        note: input.note ?? undefined,
+        at: input.at ?? new Date(),
+      });
+      if (!log) throw new Error('A dose needs the medication\'s name.');
+      return log;
+    },
+
     agentNotes: () => notesModule().readAgentNotes(),
     writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
 

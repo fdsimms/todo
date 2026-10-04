@@ -13,11 +13,12 @@ import {
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth, type FoodWriteResult } from '../utils/healthFoodSync';
 import { useSettingsStore } from './useSettingsStore';
 import { useHealthStore } from './useHealthStore';
 import { useTaskStore } from './useTaskStore';
+import { buildFoodLogEntry } from '../utils/foodLogEntry';
 
 /**
  * The food log — what was eaten, and when.
@@ -585,50 +586,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   addEntry(draft) {
-    const label = draft.label.trim();
-    // An entry with nothing to call it renders as a blank row on a day's list,
-    // which is a thing eaten that nobody can identify. Refused rather than
-    // stored, the same call addLog makes about an entry recording nothing.
-    if (!label) return null;
-    if (Object.keys(draft.nutrition.amounts).length === 0) return null;
-
-    const at = draft.at ?? new Date();
-    const dayKey = getLogicalDayKey(at);
-    // Appended to the bottom of the day's one running order, same "max + 1"
-    // rule Task.sortOrder and TaskGroup.sortOrder both stamp a new row with —
-    // never 0, or a manual reorder would be re-shuffled by the next add.
-    //
-    // Read from SQLite rather than from `entries`, which holds only the loaded
-    // window: a meal logged from `LogMealPrompt` while the day view sits on
-    // another day would otherwise find no siblings at all, take 0, and tie with
-    // the day's first row — landing in the middle of a day it should have been
-    // appended to.
-    const daySiblings = dbGetFoodLogEntries(dayKey, dayKey);
-    const sortOrder = daySiblings.length
-      ? Math.max(...daySiblings.map(e => e.sortOrder)) + 1
-      : 0;
-    const entry: FoodLogEntry = {
-      id: generateId(),
-      dayKey,
-      atISO: at.toISOString(),
-      slot: draft.slot ?? null,
-      label,
-      recipeId: draft.recipeId ?? null,
-      itemId: draft.itemId ?? null,
-      productId: draft.productId ?? null,
-      mealPlanEntryId: draft.mealPlanEntryId ?? null,
-      quantity: draft.quantity.trim(),
-      grams: draft.grams,
-      nutrition: draft.nutrition,
-      sourcePanel: draft.sourcePanel ?? null,
-      // Empty at insert and filled in by the Health write below once it comes
-      // back, rather than awaited: this action is synchronous because every
-      // caller uses the entry it returns to close a sheet, and a meal must land
-      // in the log whether or not Health accepts it.
-      healthSampleIds: [],
-      sortOrder,
-      createdAt: new Date().toISOString(),
-    };
+    // The row itself, and its refusals, are `buildFoodLogEntry`'s, which the
+    // MCP server shares. Everything after the insert is this store's.
+    const entry = buildFoodLogEntry(draft, dayKey => dbGetFoodLogEntries(dayKey, dayKey), generateId);
+    if (!entry) return null;
     dbInsertFoodLogEntry(entry);
     set(s => ({ totalCount: s.totalCount + 1 }));
 

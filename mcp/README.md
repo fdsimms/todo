@@ -79,6 +79,9 @@ only the fallback until the first sync.
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
+| `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
+| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; not sent to Apple Health. |
+| `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
 | `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |

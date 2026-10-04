@@ -148,6 +148,32 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    createRecipe(input) {
+      const recipe = replica.createRecipe(input);
+      log({ action: 'created', subject: 'recipe', title: recipe.name, taskId: null });
+      return recipe;
+    },
+
+    logFood(input) {
+      const entry = replica.logFood(input);
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null });
+      return entry;
+    },
+
+    // Named for what it is and not for what it says: a rating or a symptom in
+    // the Activity list would put somebody's health on a screen about the app.
+    logMood(input) {
+      const entry = replica.logMood(input);
+      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null });
+      return entry;
+    },
+
+    logMedication(input) {
+      const entry = replica.logMedication(input);
+      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null });
+      return entry;
+    },
+
     addPersonHistory(personIds, title, at) {
       const task = replica.addPersonHistory(personIds, title, at);
       log({ action: 'created', subject: 'person', title: task.title, taskId: task.id });

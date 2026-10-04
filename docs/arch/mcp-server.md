@@ -253,6 +253,28 @@ keeps the ledger write-once and makes a second tap (or a revert made on the othe
 the store's own `uncompleteTask`. Grocery, project, meal and template entries are records only:
 each is a tap to change in the app.
 
+### Recording: a recipe, food, mood and a dose
+
+`save_recipe`, `log_food`, `log_mood` and `log_medication` (`mcp/src/logTools.ts`) each build
+their row with the app's own code. A recipe goes through `useRecipeStore` (`addRecipe` and the
+setters the create sheet calls, ingredient lines through `makeIngredient`), loaded only when one is
+saved. Mood and doses go through their stores, with a symptom, tag or medicine matched to the
+spelling already in the log by its own key function, so "headache" lands on "Headache" and never on
+a different medicine or strength. Food goes through `readNutritionEstimate` and `estimateToPanel`
+and then `buildFoodLogEntry` (`src/utils/foodLogEntry.ts`), which is `addEntry`'s row lifted out of
+the store, because the store reaches Apple Health and cannot load here.
+
+Two rules from the food log shape `log_food`. **The model proposes and a person confirms**
+(`nutritionEstimate.ts`), so it previews until `apply: true`, and the entry is
+`source: 'estimated'` for good. And **only the device a meal is logged on writes it to Apple
+Health** (`logFoodEntryToHealth`'s single-writer rule), so an agent's entry stays out of Health,
+and the tool says so rather than leaving the person to wonder why it is missing there.
+
+Health rows written here reach the phone whatever its "Include health logs" switch says: the switch
+governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not what it accepts.
+The Activity entry for a mood check-in or a dose names the kind of record and not its content,
+since the Activity list is about the app and should not show somebody's health.
+
 ### Notes for Claude
 
 `src/utils/agentNotes.ts`: a short synced list (`agentNotes`, the `savedPlaces` shape) of what the
