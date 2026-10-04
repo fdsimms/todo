@@ -32,7 +32,7 @@ import {
 function contact(over: Partial<ExistingContact> = {}): ExistingContact {
   return {
     id: 'c1',
-    name: 'Dustin Reyes',
+    name: 'Gideon Reyes',
     contactType: 'person',
     ...over,
   } as ExistingContact;
@@ -98,7 +98,7 @@ describe('searchContacts', () => {
   // on a screen handed to somebody else.
   it('reads nothing in demo mode', async () => {
     mockDemoActive = true;
-    await expect(searchContacts('dustin')).resolves.toEqual([]);
+    await expect(searchContacts('gideon')).resolves.toEqual([]);
     expect(mockGetContacts).not.toHaveBeenCalled();
     expect(mockGetPermissions).not.toHaveBeenCalled();
   });
@@ -113,17 +113,17 @@ describe('searchContacts', () => {
 
   it('reads nothing without permission', async () => {
     mockGetPermissions.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: false });
-    await expect(searchContacts('dustin')).resolves.toEqual([]);
+    await expect(searchContacts('gideon')).resolves.toEqual([]);
     expect(mockGetContacts).not.toHaveBeenCalled();
   });
 
   it('passes the name to the native query rather than filtering afterwards', async () => {
-    await searchContacts('  dustin  ');
-    expect(mockGetContacts).toHaveBeenCalledWith(expect.objectContaining({ name: 'dustin' }));
+    await searchContacts('  gideon  ');
+    expect(mockGetContacts).toHaveBeenCalledWith(expect.objectContaining({ name: 'gideon' }));
   });
 
   it('asks for a bounded page, so a slack query cannot pull a book into memory', async () => {
-    await searchContacts('dustin');
+    await searchContacts('gideon');
     const options = mockGetContacts.mock.calls[0][0] as { pageSize: number };
     expect(options.pageSize).toBeGreaterThan(0);
     expect(options.pageSize).toBeLessThanOrEqual(100);
@@ -137,9 +137,9 @@ describe('searchContacts', () => {
         birthday: { month: 2, day: 14, year: 1992 },
       } as Partial<ExistingContact>)],
     });
-    await expect(searchContacts('dustin')).resolves.toEqual([{
+    await expect(searchContacts('gideon')).resolves.toEqual([{
       id: 'c1',
-      name: 'Dustin Reyes',
+      name: 'Gideon Reyes',
       phoneNumber: '555 0148',
       email: 'd@example.com',
       birthdayMonth: 3,
@@ -150,12 +150,12 @@ describe('searchContacts', () => {
 
   it('is empty rather than throwing when the read fails', async () => {
     mockGetContacts.mockRejectedValue(new Error('boom'));
-    await expect(searchContacts('dustin')).resolves.toEqual([]);
+    await expect(searchContacts('gideon')).resolves.toEqual([]);
   });
 
   it('reads nothing off iOS', async () => {
     mockPlatform = 'android';
-    await expect(searchContacts('dustin')).resolves.toEqual([]);
+    await expect(searchContacts('gideon')).resolves.toEqual([]);
   });
 });
 
@@ -229,7 +229,7 @@ describe('fetchLimitedContacts', () => {
     });
     await expect(fetchLimitedContacts()).resolves.toEqual([{
       id: 'c1',
-      name: 'Dustin Reyes',
+      name: 'Gideon Reyes',
       phoneNumber: '555 0148',
       email: null,
       birthdayMonth: null,

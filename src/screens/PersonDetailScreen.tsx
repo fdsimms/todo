@@ -136,7 +136,7 @@ export function PersonDetailScreen() {
   const upcoming = useMemo(() => personUpcoming(tasks), [tasks]);
 
   // Everybody, archived included, because ambiguity has to be judged against
-  // the whole list: with two Dustins on file, "Dinner w/ Dustin" names neither,
+  // the whole list: with two Gideons on file, "Dinner w/ Gideon" names neither,
   // and filing one away doesn't make the title any clearer about which.
   const allPeople = usePersonStore(useShallow(s => s.people));
   const notePendingReachOut = usePersonStore(s => s.notePendingReachOut);
@@ -328,7 +328,7 @@ export function PersonDetailScreen() {
    * Yes, that was us.
    *
    * The event's own title and time, and **everybody the title named** rather
-   * than just the person whose screen this is: "Dinner w/ Dustin and Ansley" is
+   * than just the person whose screen this is: "Dinner w/ Gideon and Tessa" is
    * one evening, and recording it twice from two screens would put the same
    * dinner in the Logbook as two. The title is right there to read before
    * tapping, which is the guard against a false positive.

@@ -5208,7 +5208,7 @@ describe('checkWaitingFollowUpTasks', () => {
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
   const person = (overrides: Partial<Person> = {}): Person => ({
-    id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+    id: 'p1', name: 'Gideon', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
     archived: false, archivedAt: null, createdAt: daysAgo(60),
     birthdayMonth: null, birthdayDay: null, birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -5240,7 +5240,7 @@ describe('checkWaitingFollowUpTasks', () => {
   it('writes a follow-up task once a wait has gone on long enough', () => {
     useTaskStore.getState().checkWaitingFollowUpTasks();
     expect(followUps()).toHaveLength(1);
-    expect(followUps()[0].title).toBe('Follow up with Dustin about "Get the quote back"');
+    expect(followUps()[0].title).toBe('Follow up with Gideon about "Get the quote back"');
   });
 
   it('does nothing while the wait is younger than the threshold', () => {
@@ -11093,7 +11093,7 @@ describe('pinnedTasks', () => {
     const people = usePersonStore.getState().people;
     usePersonStore.setState({
       people: [{
-        id: 'p-1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+        id: 'p-1', name: 'Gideon', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
         archived: false, archivedAt: null, createdAt: new Date().toISOString(),
         birthdayMonth: null, birthdayDay: null, birthYear: null,
         birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,

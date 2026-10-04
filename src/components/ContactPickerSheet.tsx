@@ -119,7 +119,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
 
   // Debounced, and the token guards against an earlier search landing after a
   // later one: the field is typed into fast and the native read is async, so
-  // without it "dus" can overwrite the results for "dustin". Full access
+  // without it "dus" can overwrite the results for "gideon". Full access
   // only — a limited grant filters the set it already fetched, locally.
   // Covers every case that lands on the search field: a fresh grant this
   // session (askPermission's own focus call below still fires first for

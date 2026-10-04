@@ -34,8 +34,8 @@ beforeEach(() => {
 
 describe('a new person', () => {
   it('starts with nothing claimed about them but a name', () => {
-    const person = blankPerson('Dustin', 1);
-    expect(person.name).toBe('Dustin');
+    const person = blankPerson('Gideon', 1);
+    expect(person.name).toBe('Gideon');
     expect(person.nickname).toBe('');
     expect(person.notes).toBe('');
     expect(person.birthdayMonth).toBeNull();
@@ -48,7 +48,7 @@ describe('a new person', () => {
   // neglecting" a question the app never asks: with no cadence on anybody,
   // there is nothing to compare people against.
   it('is opted out of every nudge surface, which is the whole design', () => {
-    const person = blankPerson('Dustin', 1);
+    const person = blankPerson('Gideon', 1);
     expect(person.nudgeOptIn).toBe(false);
     expect(person.cadenceDays).toBe(0);
     expect(person.reachOutDeclinedAt).toBeNull();
@@ -57,16 +57,16 @@ describe('a new person', () => {
   });
 
   it('trims the name it was given', () => {
-    expect(blankPerson('  Ansley  ', 1).name).toBe('Ansley');
+    expect(blankPerson('  Tessa  ', 1).name).toBe('Tessa');
   });
 
   it('belongs to no group', () => {
-    expect(blankPerson('Dustin', 1).groupId).toBeNull();
+    expect(blankPerson('Gideon', 1).groupId).toBeNull();
   });
 
   it('is written to the database and put in the store', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
-    expect(dbInsertPerson).toHaveBeenCalledWith(expect.objectContaining({ name: 'Dustin' }));
+    const person = usePersonStore.getState().createPerson('Gideon');
+    expect(dbInsertPerson).toHaveBeenCalledWith(expect.objectContaining({ name: 'Gideon' }));
     expect(usePersonStore.getState().people).toEqual([person]);
   });
 
@@ -79,21 +79,21 @@ describe('a new person', () => {
 
 describe('what to call somebody', () => {
   it('is their name', () => {
-    expect(displayNameOf({ name: 'Ansley', nickname: '' })).toBe('Ansley');
+    expect(displayNameOf({ name: 'Tessa', nickname: '' })).toBe('Tessa');
   });
 
   it('is their nickname when they have one', () => {
-    expect(displayNameOf({ name: 'Ansley Brown', nickname: 'Ans' })).toBe('Ans');
+    expect(displayNameOf({ name: 'Tessa Brown', nickname: 'Tess' })).toBe('Tess');
   });
 
   it('ignores a nickname that is only whitespace', () => {
-    expect(displayNameOf({ name: 'Ansley', nickname: '   ' })).toBe('Ansley');
+    expect(displayNameOf({ name: 'Tessa', nickname: '   ' })).toBe('Tessa');
   });
 });
 
 describe('editing', () => {
   it('writes the patch through to the database', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().updatePerson(person.id, { birthdayMonth: 3, birthdayDay: 14 });
     expect(dbUpdatePerson).toHaveBeenCalledWith(
       expect.objectContaining({ id: person.id, birthdayMonth: 3, birthdayDay: 14 })
@@ -128,7 +128,7 @@ describe('the order', () => {
 
 describe('archiving', () => {
   it('stamps the day it happened', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().applyPersonArchived(person.id, true);
     const stored = usePersonStore.getState().getPersonById(person.id)!;
     expect(stored.archived).toBe(true);
@@ -136,20 +136,20 @@ describe('archiving', () => {
   });
 
   it('keeps the original day when an unarchive is undone', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().applyPersonArchived(person.id, true, '2026-01-01T00:00:00.000Z');
     expect(usePersonStore.getState().getPersonById(person.id)?.archivedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 
   it('clears the stamp on the way back out', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().applyPersonArchived(person.id, true);
     usePersonStore.getState().applyPersonArchived(person.id, false);
     expect(usePersonStore.getState().getPersonById(person.id)?.archivedAt).toBeNull();
   });
 
   it('takes them out of the active list without deleting anything', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().applyPersonArchived(person.id, true);
     expect(usePersonStore.getState().activePeople()).toEqual([]);
     expect(usePersonStore.getState().people).toHaveLength(1);
@@ -158,7 +158,7 @@ describe('archiving', () => {
 
 describe('deleting', () => {
   it('removes the row', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().removePersonRow(person.id);
     expect(dbDeletePerson).toHaveBeenCalledWith(person.id);
     expect(usePersonStore.getState().people).toEqual([]);
@@ -173,7 +173,7 @@ describe('deleting', () => {
   });
 
   it('can be undone, notes and all', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonNoteStore.getState().addNote(person.id, 'note', 'Loves margaritas');
 
     usePersonStore.getState().removePersonRow(person.id);
@@ -187,7 +187,7 @@ describe('deleting', () => {
   });
 
   it('can be redone after an undo', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().removePersonRow(person.id);
     usePersonStore.getState().undoLastAction();
     usePersonStore.getState().redoLastUndone();
@@ -301,7 +301,7 @@ describe('the pending reach-out stamp', () => {
   // Nothing about the stamp may touch the person's own row: it is a fact about
   // a tap, never one about them.
   it('writes nothing to the person', () => {
-    const person = usePersonStore.getState().createPerson('Dustin');
+    const person = usePersonStore.getState().createPerson('Gideon');
     usePersonStore.getState().notePendingReachOut(person.id, 'call');
     expect(dbUpdatePerson).not.toHaveBeenCalled();
   });

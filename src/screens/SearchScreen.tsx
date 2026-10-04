@@ -99,8 +99,8 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
   // doc comment) and is tinted the same as a matched query term — merged
-  // into one range set since the two can overlap (searching "brittany" with
-  // "@Brittany" in the title), and HighlightedText needs disjoint ranges.
+  // into one range set since the two can overlap (searching "kelsey" with
+  // "@Kelsey" in the title), and HighlightedText needs disjoint ranges.
   const titleRanges = useMemo(
     () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds)).map((m): [number, number] => [m.start, m.end])]),
     [titleMatches, displayTitle, task.personIds]

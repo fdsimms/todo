@@ -22,7 +22,7 @@ const project = (over: Partial<Project>): Project => ({
 } as unknown as Project);
 
 const person = (over: Partial<Person>): Person => ({
-  id: 'a', name: 'Ansley', nickname: '', archived: false, birthdayMonth: null, birthdayDay: null, ...over,
+  id: 'a', name: 'Tessa', nickname: '', archived: false, birthdayMonth: null, birthdayDay: null, ...over,
 } as unknown as Person);
 
 const task = (over: Partial<Task>): Task => ({
@@ -79,12 +79,12 @@ describe('buildDayExtras', () => {
     const extras = buildDayExtras(newYear, {
       ...empty,
       people: [
-        person({ id: 'a', name: 'Ansley', birthdayMonth: 1, birthdayDay: 2 }),
+        person({ id: 'a', name: 'Tessa', birthdayMonth: 1, birthdayDay: 2 }),
         person({ id: 'b', name: 'Bo', nickname: 'Bobby', birthdayMonth: 12, birthdayDay: 30 }),
         person({ id: 'c', name: 'Gone', archived: true, birthdayMonth: 12, birthdayDay: 31 }),
       ],
     });
-    expect(extras.get('2027-01-02')?.birthdays).toEqual([{ personId: 'a', title: "Ansley's birthday" }]);
+    expect(extras.get('2027-01-02')?.birthdays).toEqual([{ personId: 'a', title: "Tessa's birthday" }]);
     expect(extras.get('2026-12-30')?.birthdays).toEqual([{ personId: 'b', title: "Bobby's birthday" }]);
     expect(extras.get('2026-12-31')).toBeUndefined();
   });

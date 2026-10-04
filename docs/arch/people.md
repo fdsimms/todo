@@ -76,7 +76,7 @@ and `cadenceDays` is 0 on a new row, and nothing about a person may appear in
 any nudge surface until that is explicitly changed. This is what keeps "who am
 I neglecting" a question the app never asks, since most people have no cadence
 to compare. *(`Project.nudgeOptIn`, word for word.)* The one carve-out is
-`waitingFollowUp` ("Follow up with Dustin about…"): its subject is a task you
+`waitingFollowUp` ("Follow up with Gideon about…"): its subject is a task you
 yourself marked as waiting on that person, not the friendship, and it ships off
 behind its own setting.
 
@@ -94,7 +94,7 @@ Nothing about people ever becomes a banner, a tab badge, or a count in a
 header. *(The whole argument of `projectReviewTasks.ts`.)*
 
 **7. Prefer remembering over measuring.** The valuable thing is not "maintain
-relationship #4", it is "Ansley starts the new job in September, ask her about
+relationship #4", it is "Tessa starts the new job in September, ask her about
 it". Wherever a nudge can take its content from something you wrote rather than
 from the clock, it should. The clock is only the trigger; the note is the
 message.
@@ -153,7 +153,7 @@ Contacts" below for exactly where that read is gated and how it lands.
 first is out. Attendees is a broad structured sweep of everyone you sit in a
 room with, twelve-person work meetings included. A title is *what you typed
 about your own plans*, and it is where the social ones actually live: most
-dinners with a friend are "Dinner w/ Dustin" in your own calendar, not an
+dinners with a friend are "Dinner w/ Gideon" in your own calendar, not an
 invite with an attendee list. The app already reads titles — `BusyEvent.title`
 renders on Today as a context row — so this is a new read of data already in
 memory rather than a new capability or a new permission.
@@ -179,7 +179,7 @@ A join table needs explicit copy logic at each, and the failure mode is silent:
 a recurring "Sunday call with Mom" that quietly stops being about Mom at the
 second occurrence.
 
-The price is that "every task naming Dustin" has no index behind it, and that is
+The price is that "every task naming Gideon" has no index behind it, and that is
 what `peopleRegistry.ts` is for — the `blockerRegistry.ts` shape, a memoized
 index rebuilt only when the store replaces its array. Answered by scanning it
 would be O(n) per row per render, the same O(n²) `waitingCountFor` exists to
@@ -197,7 +197,7 @@ and the retention note makes the same call about `previousOccurrenceId`.
 quick-add parser that doesn't strip its match. `#category`, a pasted link, a
 phone number — all metadata, and all read fine gone from the title once
 they're a structured field. A person is frequently the sentence's own object:
-"Call Brittany" parsed the usual way leaves "Call", which is worse than doing
+"Call Kelsey" parsed the usual way leaves "Call", which is worse than doing
 nothing. So an "@name" resolves into `personIds` the same as any other
 mention, but the text stays, and every surface naming a task renders the
 matched span as a tinted token in place instead — `TaskItem`, `LogbookScreen`,
@@ -210,7 +210,7 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   mentions are currently in the title; delete the "@name" and the link goes
   with it.
 - **The rendering is purely visual and reads only `peopleOn(task)`, never the
-  whole roster.** A saved task's title might say "@Brittany" for a Brittany
+  whole roster.** A saved task's title might say "@Kelsey" for a Kelsey
   who was later removed from `personIds` some other way (the People picker in
   `TaskEditor`, a template's `'people'` question) — that shouldn't relight.
   Matching against only the people the task actually names keeps the token
@@ -225,7 +225,7 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   text.
 - **A token can also resolve by a unique prefix, and an ambiguous one gets a
   pick-one list instead of only refusing.** `matchPersonMentions` itself still
-  only ever returns a token that resolves cleanly — "@brit" matches "Brittany"
+  only ever returns a token that resolves cleanly — "@kel" matches "Kelsey"
   on its own once no one else answers to that prefix, and "@sam" with two Sams
   on file still resolves to nothing. `findAmbiguousMention` is the other half:
   it finds the first token more than one person answers to (exact or by
@@ -304,7 +304,7 @@ about on the day is one you have already half missed.
   no `projectId`. A task naming somebody is the record that something happened
   *with* them, and the app writing that on its own behalf would put its own rows
   into a history meant to hold yours — and once the reach-out nudge reads that
-  history, ticking off "Ansley's birthday" would reset a clock you never
+  history, ticking off "Tessa's birthday" would reset a clock you never
   actually reached out on. It points at its person through `generatedSourceId`
   like every generator points at its source.
 - **There is no cap.** A cap exists on the generators whose qualifying set is
@@ -340,7 +340,7 @@ A generator of its own (`birthdayGift` in the registry), living beside
 `birthday` in `birthdayTasks.ts` rather than in a file of its own — it reuses
 every rule above except the lead time and the title. Getting somebody a gift
 and marking their birthday are two different questions, and the row that used
-to carry both ("Ansley's birthday", with the gift ideas riding along as its
+to carry both ("Tessa's birthday", with the gift ideas riding along as its
 notes) had no honest way to be ticked off for one without the other.
 
 - **Its own lead time, longer by default.** `DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS`
@@ -404,7 +404,7 @@ person cannot.
   cadence is not silenced for seven, which is the objection to cadence-scoped declines pointed the only
   way it actually bites.
 - **The note beats the clock.** `Person.askAbout` turns the title into "Ask
-  Ansley about the new job" instead of "Catch up with Ansley" — a reason to get
+  Tessa about the new job" instead of "Catch up with Tessa" — a reason to get
   in touch rather than a prompt to. Rule 7, in one field.
 - **It carries no `personIds`**, for the reason the birthday task carries none:
   ticking it off would otherwise reset the very clock that wrote it, without
@@ -523,8 +523,8 @@ assertion.
   completed task carrying `personIds`, through the same helper the manual "Add
   to history" row uses, backdated to the event. No second kind of record, and
   once you have confirmed it, it is not a guess any more.
-- **An accepted offer carries everybody the title named.** "Beach with Dustin and
-  Ansley" is one afternoon, and recording it once from each of their screens
+- **An accepted offer carries everybody the title named.** "Beach with Gideon and
+  Tessa" is one afternoon, and recording it once from each of their screens
   would put one afternoon in the Logbook twice.
 - **The answered record is keyed by event, not by pair, and both answers share
   it.** Accepted and dismissed both mean "don't ask again", so there is one
@@ -558,8 +558,8 @@ assertion.
   event into something in the mounted database (`eventTasks`, `calendarReview`).
   A reader that only shows calendar events as calendar events is honest
   whichever database is mounted; this one's output is a claim *about a demo
-  row*, and the seed invents a Dustin. Without the gate a real event
-  mentioning a real Dustin would be offered as history for the invented one, on
+  row*, and the seed invents a Gideon. Without the gate a real event
+  mentioning a real Gideon would be offered as history for the invented one, on
   a screen handed to somebody else. `enterDemoMode` deliberately does not
   re-initialize the settings store, so the real calendar settings are live
   inside a demo and the gate has to be explicit. The second half is a plain bug
@@ -619,7 +619,7 @@ events sheet, or by starting the event from a person's page ("Plan something").
 ### Typing an event
 
 `src/utils/quickEvent.ts` + `QuickEventSheet`, behind the Today add button's
-"Event". One line ("lunch w/ @dustin sat 12pm") read by quick add's own two
+"Event". One line ("lunch w/ @gideon sat 12pm") read by quick add's own two
 parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
 "@name"), so it reads exactly as a task line does, refusals included. It fills
 the card and saves straight into the calendar (`saveEventDirect`), with no
@@ -877,7 +877,7 @@ system contact book already has it.
 
 `PersonNote` and `personNotes.ts`. **Rule 7 in full, and the part that makes the
 feature a thing you like rather than a thing you tolerate.** The valuable thing
-is not "maintain relationship #4", it is "Ansley starts the new job in September,
+is not "maintain relationship #4", it is "Tessa starts the new job in September,
 ask her about it". `Person.askAbout` shipped a one-field slice of this early, so
 the first nudge anybody sees is warm rather than clock-driven; this is the rest.
 
@@ -970,16 +970,16 @@ the Stuck screen's waiting half whole.
   "N waiting" badge and the person header deliberately does not: a number under
   somebody's name reads as a tally against them rather than as a fact about your
   own list. The name alone.
-- **Independent of `personIds`.** Waiting on Dustin for the photos is not time
-  spent with Dustin, and it must never land in his history. A task carrying both
+- **Independent of `personIds`.** Waiting on Gideon for the photos is not time
+  spent with Gideon, and it must never land in his history. A task carrying both
   is filed under its blocker task, so one row never appears twice.
 
 ## Deload leaves people alone
 
 `deloadBlockerFor` reports a **soft** blocker for a task carrying `personIds`,
 joining `streak`, `started` and `high-priority`. Other people are involved, so
-moving it has a social cost the day-load math cannot see: "beach with Dustin and
-Ansley" is not the same thing to push to Saturday as "clean the bathroom", even
+moving it has a social cost the day-load math cannot see: "beach with Gideon and
+Tessa" is not the same thing to push to Saturday as "clean the bathroom", even
 when the minutes agree.
 
 Soft rather than hard, because the day might genuinely need to get lighter and
@@ -1199,8 +1199,8 @@ doc's own mechanisms assumed one without saying so.
 - **A company name isn't "first name, last name".** The "@" mention index
   (`buildPersonNameIndex` in `parseTaskInput.ts`) and the calendar-title guess
   (`nameTokensOf` in `calendarHistory.ts`) both answer to a name's first word
-  on the assumption that it *is* a first name — "Dustin Reyes" answering to
-  "@dustin" is the whole point of that fallback. Read a business's name the
+  on the assumption that it *is* a first name — "Gideon Reyes" answering to
+  "@gideon" is the whole point of that fallback. Read a business's name the
   same way and "Eye Q" answers to "@eye" and to any event mentioning "eye
   exam", as though "Eye" were somebody's given name. Both skip the fallback
   for a business. The mention index goes one step further for a multi-word
@@ -1237,7 +1237,7 @@ doc's own mechanisms assumed one without saying so.
 
 `PersonGroup`, `Person.groupId`, `usePersonGroupStore`. The feature request
 this answers is plain: two people you never think to catch up with apart
-shouldn't cost two separate nudges, or need "@dustin @ansley" spelled out
+shouldn't cost two separate nudges, or need "@gideon @tessa" spelled out
 every time you mean the pair. A group is a lightweight, renameable label —
 the `TaskGroup` ("Stacks") shape, one shelf over — that changes three
 things: how the reach-out nudge batches people, how an "@" mention resolves,
@@ -1250,7 +1250,7 @@ to score or rank anybody.
   this doc already makes for `Task.personIds` over a join table: a person row
   is simple to query by group (there are never more than a handful of
   people, unlike tasks), and a single-valued pointer makes "which group is
-  Dustin in" unambiguous by construction rather than a rule to enforce.
+  Gideon in" unambiguous by construction rather than a rule to enforce.
   Membership is looked up by scanning `people` for a matching `groupId`
   (`groupMembers` in `peopleRegistry.ts`), which is fine at this scale the
   same way `groupChildrenOf` would be expensive at task scale and this
@@ -1311,7 +1311,7 @@ no person answers to at all — never as a second opinion once a person has,
 so a group whose name happens to share a member's own first word can never
 shadow that person's own mention. A resolved group expands into one
 `PersonMention` per member, all sharing the token's span: "@household"
-naming two people renders and saves exactly as "@dustin @ansley" would have,
+naming two people renders and saves exactly as "@gideon @tessa" would have,
 which is what lets every downstream reader (the tinted-token rendering,
 `personIds`) stay ignorant that groups exist at all — the same "stays in the
 title, resolves live, no lift-out" mention design the section above
@@ -1320,7 +1320,7 @@ describes, reused rather than duplicated.
 One real limitation, inherited rather than introduced: the "@" grammar only
 ever matches a single word (`PERSON_TOKEN_PATTERN`), the same ceiling that
 already keeps two people who share a full name from ever being one-word
-mentionable. A group named "Dustin & Ansley" is not typeable as one token at
+mentionable. A group named "Gideon & Tessa" is not typeable as one token at
 all, and a group named "The Ortegas" resolves only by its first word, "The"
 — generic enough to collide with any other group starting the same way. A
 group meant to be tagged wants a single tag-friendly word for a name, the

@@ -328,7 +328,7 @@ export function blockedReviewRows(
 /**
  * A pasted ingredient list into ingredients, deduped the way mergeIngredients
  * is (ingredientDedupeKey) so a paste listing salt twice doesn't carry it
- * twice, while "flour" and "flour for dusting" stay two lines.
+ * twice, while "flour" and "flour for gideong" stay two lines.
  *
  * splitGroceryLines already strips bullets and caps the paste; this adds only
  * the parse and the empty-name guard. `section` is passed through to every

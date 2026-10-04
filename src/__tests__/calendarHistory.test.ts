@@ -23,14 +23,14 @@ jest.mock('../store/useSettingsStore', () => ({
   },
 }));
 
-const dustin: PersonName = { id: 'p1', name: 'Dustin Reyes', nickname: '' };
-const ansley: PersonName = { id: 'p2', name: 'Ansley', nickname: '' };
+const gideon: PersonName = { id: 'p1', name: 'Gideon Reyes', nickname: '' };
+const tessa: PersonName = { id: 'p2', name: 'Tessa', nickname: '' };
 const mom: PersonName = { id: 'p3', name: 'Marianne Fields', nickname: 'Mom' };
 
 function event(over: Partial<BusyEvent> = {}): BusyEvent {
   return {
     id: 'e1',
-    title: 'Dinner w/ Dustin',
+    title: 'Dinner w/ Gideon',
     start: '2026-08-20T18:00:00.000Z',
     end: '2026-08-20T20:00:00.000Z',
     allDay: false,
@@ -46,11 +46,11 @@ const now = new Date('2026-08-25T12:00:00.000Z');
 
 describe('peopleNamedInTitle', () => {
   it('finds a first name inside an ordinary title', () => {
-    expect(peopleNamedInTitle('Dinner w/ Dustin', [dustin])).toEqual(['p1']);
+    expect(peopleNamedInTitle('Dinner w/ Gideon', [gideon])).toEqual(['p1']);
   });
 
   it('finds a full name', () => {
-    expect(peopleNamedInTitle('Coffee with Dustin Reyes', [dustin])).toEqual(['p1']);
+    expect(peopleNamedInTitle('Coffee with Gideon Reyes', [gideon])).toEqual(['p1']);
   });
 
   it('finds a nickname', () => {
@@ -58,21 +58,21 @@ describe('peopleNamedInTitle', () => {
   });
 
   it('is case insensitive', () => {
-    expect(peopleNamedInTitle('DINNER W/ DUSTIN', [dustin])).toEqual(['p1']);
+    expect(peopleNamedInTitle('DINNER W/ GIDEON', [gideon])).toEqual(['p1']);
   });
 
   it('names everybody a title mentions', () => {
-    expect(peopleNamedInTitle('Beach with Dustin and Ansley', [dustin, ansley]).sort())
+    expect(peopleNamedInTitle('Beach with Gideon and Tessa', [gideon, tessa]).sort())
       .toEqual(['p1', 'p2']);
   });
 
   it('matches whole words only', () => {
-    expect(peopleNamedInTitle('Dust the shelves', [dustin])).toEqual([]);
-    expect(peopleNamedInTitle('Dustinism reading group', [dustin])).toEqual([]);
+    expect(peopleNamedInTitle('Dust the shelves', [gideon])).toEqual([]);
+    expect(peopleNamedInTitle('Gideonism reading group', [gideon])).toEqual([]);
   });
 
   it('treats an apostrophe as a boundary', () => {
-    expect(peopleNamedInTitle("Dustin's place", [dustin])).toEqual(['p1']);
+    expect(peopleNamedInTitle("Gideon's place", [gideon])).toEqual(['p1']);
   });
 
   it('never matches a name shorter than the floor', () => {
@@ -101,7 +101,7 @@ describe('peopleNamedInTitle', () => {
   });
 
   it('never invents a person it was not given', () => {
-    expect(peopleNamedInTitle('Dinner w/ Priya', [dustin, ansley])).toEqual([]);
+    expect(peopleNamedInTitle('Dinner w/ Priya', [gideon, tessa])).toEqual([]);
   });
 
   // A business's name isn't "first name, last name" — matching its first word
@@ -114,8 +114,8 @@ describe('peopleNamedInTitle', () => {
   });
 
   it('handles an empty title and an empty list', () => {
-    expect(peopleNamedInTitle('', [dustin])).toEqual([]);
-    expect(peopleNamedInTitle('Dinner w/ Dustin', [])).toEqual([]);
+    expect(peopleNamedInTitle('', [gideon])).toEqual([]);
+    expect(peopleNamedInTitle('Dinner w/ Gideon', [])).toEqual([]);
   });
 
   it('normalises runs of whitespace on both sides', () => {
@@ -155,13 +155,13 @@ describe('pastWindowStart', () => {
 });
 
 describe('suggestedHistoryEvents', () => {
-  const people = [dustin, ansley, mom];
+  const people = [gideon, tessa, mom];
 
   it('offers a past event that named somebody', () => {
     const out = suggestedHistoryEvents([event()], people, {}, now);
     expect(out).toHaveLength(1);
     expect(out[0].personIds).toEqual(['p1']);
-    expect(out[0].title).toBe('Dinner w/ Dustin');
+    expect(out[0].title).toBe('Dinner w/ Gideon');
     expect(out[0].at).toBe('2026-08-20T18:00:00.000Z');
   });
 
@@ -214,7 +214,7 @@ describe('suggestedHistoryEvents', () => {
   });
 
   it('skips all-day events, which are markers rather than afternoons', () => {
-    const birthday = event({ title: "Dustin's birthday", allDay: true });
+    const birthday = event({ title: "Gideon's birthday", allDay: true });
     expect(suggestedHistoryEvents([birthday], people, {}, now)).toEqual([]);
   });
 
@@ -258,7 +258,7 @@ describe('suggestedHistoryEvents', () => {
   });
 
   it('carries every person a title named, so one evening is one record', () => {
-    const shared = event({ title: 'Beach with Dustin and Ansley' });
+    const shared = event({ title: 'Beach with Gideon and Tessa' });
     const out = suggestedHistoryEvents([shared], people, {}, now);
     expect(out).toHaveLength(1);
     expect(out[0].personIds.sort()).toEqual(['p1', 'p2']);
@@ -286,7 +286,7 @@ describe('suggestedHistoryEvents', () => {
       start: '2026-01-02T18:00:00.000Z',
       end: '2026-08-20T20:00:00.000Z',
     });
-    const out = suggestedHistoryEvents([straddling, event()], [dustin], {}, now);
+    const out = suggestedHistoryEvents([straddling, event()], [gideon], {}, now);
     const floorDay = pastWindowStart(now).toISOString().slice(0, 10);
     for (const suggestion of out) {
       expect(suggestion.key.split('#').pop()! >= floorDay).toBe(true);

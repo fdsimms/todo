@@ -5651,7 +5651,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // happened *with* them (see Task.personIds), and the app writing that
           // record on its own behalf would put its own rows into a history
           // meant to hold yours — and, once the reach-out nudge reads that
-          // history (#2046), ticking off "Ansley's birthday" would reset a
+          // history (#2046), ticking off "Tessa's birthday" would reset a
           // clock you never actually reached out on. It points at its person
           // through generatedSourceId, like every generator points at its
           // source.

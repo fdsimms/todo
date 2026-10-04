@@ -80,31 +80,31 @@ describe('deleting a group', () => {
   // the rest of the people layer applies to a dangling pointer.
   it('frees every member rather than deleting them', () => {
     const group = usePersonGroupStore.getState().createGroup('Household');
-    const dustin = usePersonStore.getState().createPerson('Dustin');
-    const ansley = usePersonStore.getState().createPerson('Ansley');
-    usePersonStore.getState().updatePerson(dustin.id, { groupId: group.id });
-    usePersonStore.getState().updatePerson(ansley.id, { groupId: group.id });
+    const gideon = usePersonStore.getState().createPerson('Gideon');
+    const tessa = usePersonStore.getState().createPerson('Tessa');
+    usePersonStore.getState().updatePerson(gideon.id, { groupId: group.id });
+    usePersonStore.getState().updatePerson(tessa.id, { groupId: group.id });
 
     usePersonGroupStore.getState().removeGroupRow(group.id);
 
     expect(usePersonStore.getState().people).toHaveLength(2);
-    expect(usePersonStore.getState().getPersonById(dustin.id)?.groupId).toBeNull();
-    expect(usePersonStore.getState().getPersonById(ansley.id)?.groupId).toBeNull();
+    expect(usePersonStore.getState().getPersonById(gideon.id)?.groupId).toBeNull();
+    expect(usePersonStore.getState().getPersonById(tessa.id)?.groupId).toBeNull();
   });
 
   it('can be undone, members restored to it', () => {
     const group = usePersonGroupStore.getState().createGroup('Household');
-    const dustin = usePersonStore.getState().createPerson('Dustin');
-    usePersonStore.getState().updatePerson(dustin.id, { groupId: group.id });
+    const gideon = usePersonStore.getState().createPerson('Gideon');
+    usePersonStore.getState().updatePerson(gideon.id, { groupId: group.id });
 
     usePersonGroupStore.getState().removeGroupRow(group.id);
     expect(usePersonGroupStore.getState().groups).toEqual([]);
-    expect(usePersonStore.getState().getPersonById(dustin.id)?.groupId).toBeNull();
+    expect(usePersonStore.getState().getPersonById(gideon.id)?.groupId).toBeNull();
 
     usePersonGroupStore.getState().undoLastAction();
 
     expect(usePersonGroupStore.getState().groups.map(g => g.id)).toEqual([group.id]);
-    expect(usePersonStore.getState().getPersonById(dustin.id)?.groupId).toBe(group.id);
+    expect(usePersonStore.getState().getPersonById(gideon.id)?.groupId).toBe(group.id);
   });
 
   it('can be redone after an undo', () => {

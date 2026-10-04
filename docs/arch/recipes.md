@@ -573,7 +573,7 @@ choosable before anything's filed under it.
   had, so carnitas with garlic under "For the marinade" and again under "For the sauce" lost the
   sauce's garlic on import, with both rows shown ticked in the review. The dedupe is now keyed on
   the catalog key plus section, prep and purpose, the three fields that say which *use* a line is;
-  "flour" and "flour for dusting" are two lines as well. The amount is left out on purpose: a new
+  "flour" and "flour for gideong" are two lines as well. The amount is left out on purpose: a new
   amount under the same heading is as likely a correction as a second use, and the add field names
   the row that blocked it instead of guessing. Two rows sharing a key was already a shape every
   reader handles, because a composed recipe produces it: `classifyPlanned` sums them, cost and

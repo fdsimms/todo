@@ -1546,7 +1546,7 @@ export const TaskItem = React.memo(function TaskItem({
   // step doesn't already say.
   const chainName =
     chainStepPreview && task.title !== chainStepPreview.currentTitle ? task.title : null;
-  // "@Brittany" stays literal in the title rather than being lifted into a
+  // "@Kelsey" stays literal in the title rather than being lifted into a
   // separate field (see matchPersonMentions' doc comment), so this is a purely
   // visual pass: find that span in the displayed text and tint it. Matched
   // only against `peopleOn(task)` — the people the task actually names — not

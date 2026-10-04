@@ -89,8 +89,8 @@ export function reachOutPersonId(
  * The row's title.
  *
  * **The note wins when there is one**, which is rule 7 in miniature and most of
- * what keeps this warm: "Ask Ansley about the new job" is a reason to get in
- * touch, where "Catch up with Ansley" is only a prompt to. The clock decides
+ * what keeps this warm: "Ask Tessa about the new job" is a reason to get in
+ * touch, where "Catch up with Tessa" is only a prompt to. The clock decides
  * *when* to speak; what it says should come from something you wrote whenever
  * there is something to use.
  *

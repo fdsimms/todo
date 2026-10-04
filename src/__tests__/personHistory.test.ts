@@ -94,7 +94,7 @@ describe('what is still to come', () => {
     expect(upcoming.map(u => u.title)).toEqual(['Beach', 'Dinner']);
   });
 
-  // "Someday, coffee with Dustin" is a wish rather than a plan, and listing it
+  // "Someday, coffee with Gideon" is a wish rather than a plan, and listing it
   // under Coming up would overstate what has actually been arranged.
   it('leaves out an undated task, which is a wish rather than a plan', () => {
     expect(personUpcoming([make({ dueDate: null })])).toEqual([]);

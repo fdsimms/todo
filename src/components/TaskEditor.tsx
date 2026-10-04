@@ -195,7 +195,7 @@ export interface TaskDraft {
   /** Carried over when quick add parses "pack: socks, charger". */
   subtaskTitles?: string[];
   tags: string[];
-  /** Who the task involves, carried over when quick add parses "@dustin" (#2045). */
+  /** Who the task involves, carried over when quick add parses "@gideon" (#2045). */
   personIds?: string[];
   category: string | null;
   recurrenceType: RecurrenceType;
@@ -5784,7 +5784,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         style={[styles.pill, on && styles.pillActiveNeutral]}
                         // Multi-select, so the field deliberately does not
                         // collapse on a tap the way the single-choice ones do:
-                        // "beach with Dustin and Ansley" is two taps, and
+                        // "beach with Gideon and Tessa" is two taps, and
                         // closing after the first would hide the second.
                         onPress={() => {
                           haptics.tap();
