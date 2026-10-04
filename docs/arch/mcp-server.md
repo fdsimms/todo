@@ -625,6 +625,29 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since
   nobody is there to tick it. Without `moveTasks` it moves nothing and says so.
 
+### Stacks: a label, with one side effect the tools have to say out loud
+
+`list_stacks`, `create_stack` and `assign_to_stack` (`mcp/src/stackTools.ts`) exist because a stack
+is the only grouping that keeps each member a real task: its own schedule, streak and what it
+logs to Health or the medication log, none of which a subtask can carry. Filing a task is the
+app's `addExistingToGroup` / `removeFromGroup`, one live row at a time (`replica.setTaskStack`),
+so the finished occurrences behind a repeating task stay where they were.
+
+- **A stack owns its members' category**, and the app does the same. The category carries a
+  schedule and a vacation setting, so filing a task can change *when it shows*. `create_stack`
+  therefore settles the category before it writes anything (the tasks' shared one, or the
+  caller's `category`, or a refusal naming the clash), and both write tools return each task's
+  `category: {from, to}` plus a note whenever one moved. A stack with no category leaves its
+  members' own alone rather than erasing the field.
+- **Validated in full first.** A subtask, a completed task, an archived one or an unknown id
+  refuses the whole call, so a batch of twelve cannot land eleven.
+- **Taking a task out does not undo the category.** The old category isn't stored anywhere; the
+  Activity screen's revert restores it, since the ledger entry is an ordinary task edit
+  (`groupId`, `sortOrder`, `category`).
+- **The stack itself is logged as `subject: 'stack'`**, a record only like a project's.
+- **No rename, delete or reorder.** Those are a tap in the app, and deleting a stack is a
+  cascade decision (`deleteGroup`) the model should not make.
+
 ### Every task it creates has a category
 
 A task the model files with no category lands in no section on Today, and a free-text name that

@@ -110,6 +110,9 @@ only the fallback until the first sync.
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
 | `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. |
+| `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
+| `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
+| `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
 | `plan_meal` | **Write.** Puts a recipe, or just a title, on the meal plan. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |

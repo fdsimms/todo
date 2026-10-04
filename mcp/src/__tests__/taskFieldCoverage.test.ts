@@ -56,7 +56,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // a project or person page), where the grouping is the answer, not a field on
   // one task.
   'grouping the aggregate tools already answer': [
-    'seriesId', 'groupId', 'personIds',
+    'seriesId', 'personIds',
   ],
 
   // Settings Claude has no reason to read or set per task, or that are only

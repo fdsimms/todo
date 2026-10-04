@@ -159,6 +159,21 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return project;
     },
 
+    createStack(title, category) {
+      const stack = replica.createStack(title, category);
+      log({ action: 'created', subject: 'stack', title: stack.title, taskId: null });
+      return stack;
+    },
+
+    // An edit to the task, so the Activity screen can offer the way back: the
+    // revert carries groupId, sortOrder and the category the stack imposed.
+    setTaskStack(taskId, stackId) {
+      const before = snapshot(taskId);
+      const task = replica.setTaskStack(taskId, stackId);
+      if (before) log({ action: 'edited', subject: 'task', title: task.title, taskId, revert: taskRevert(before, task) });
+      return task;
+    },
+
     createTemplate(plan) {
       const template = replica.createTemplate(plan);
       log({ action: 'created', subject: 'template', title: template.name, taskId: null });
