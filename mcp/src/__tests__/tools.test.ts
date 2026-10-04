@@ -154,6 +154,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     generatorEnabled: () => false,
     setGeneratorEnabled: () => {},
     dryRun: () => { throw new Error('not stubbed'); },
+    withBatch: (_id, fn) => fn(),
     agentNotes: () => [],
     writeAgentNotes: () => {},
     deviceId: () => 'stub-device',

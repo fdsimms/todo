@@ -90,6 +90,7 @@ import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, saveRecipe } from '
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
+import { generateId } from '../../src/utils/id';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
@@ -268,7 +269,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       previewing.push(...effects);
       return result;
     }
-    const result = fn();
+    // One confirmed write is one batch in Activity (UnattendedEntry.batchId).
+    const result = replica.withBatch(generateId(), fn);
     await gate.afterWrite();
     return result;
   };

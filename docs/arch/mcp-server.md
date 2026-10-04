@@ -275,6 +275,14 @@ keeps the ledger write-once and makes a second tap (or a revert made on the othe
 the store's own `uncompleteTask`. Grocery, project, meal and template entries are records only:
 each is a tap to change in the app.
 
+**One confirmed call is one batch.** `withWrite` in `server.ts` runs a confirmed write inside
+`replica.withBatch`, so every entry it records carries the same `batchId`. The Activity screen puts
+"Undo all N" on the newest undoable row of a batch that touched two or more tasks, and `revertBatch`
+(`agentRevert.ts`) runs each entry's own `agentRevertPlan` newest first, re-reading the task between
+steps (two edits to one task only pass the guard in that order). It is the per-row rule applied
+repeatedly, so a task changed since is skipped and reported, never overwritten. A preview records
+nothing and has no batch. Entries written before the column existed have none.
+
 ### Recording: a recipe, food, mood and a dose
 
 `save_recipe`, `log_food`, `log_mood` and `log_medication` (`mcp/src/logTools.ts`) each build

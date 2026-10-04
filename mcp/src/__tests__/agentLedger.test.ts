@@ -101,3 +101,26 @@ describe('dryRun', () => {
   });
 });
 
+
+describe('batches', () => {
+  it('stamps every entry one confirmed write records with the same batch id, and none outside it', () => {
+    const a = replica.createTask({ title: 'Loose' });
+    replica.withBatch('batch-1', () => {
+      replica.updateTask(a.id, { title: 'Renamed' });
+      replica.createTask({ title: 'Second' });
+    });
+    replica.createTask({ title: 'After' });
+
+    const byTitle = Object.fromEntries(ledger().map(e => [`${e.action}:${e.title}`, e.batchId ?? null]));
+    expect(byTitle['edited:Renamed']).toBe('batch-1');
+    expect(byTitle['created:Second']).toBe('batch-1');
+    expect(byTitle['created:Loose']).toBeNull();
+    expect(byTitle['created:After']).toBeNull();
+  });
+
+  it('releases the batch when the write throws', () => {
+    expect(() => replica.withBatch('batch-2', () => replica.updateTask('nope', { title: 'x' }))).toThrow(/No task/);
+    replica.createTask({ title: 'Later' });
+    expect(ledger().find(e => e.title === 'Later')?.batchId ?? null).toBeNull();
+  });
+});

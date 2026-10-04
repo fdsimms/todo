@@ -9,7 +9,7 @@ import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { InlineAction } from '../components/InlineAction';
-import { agentRevertLabel, agentRevertPlan, type AgentRevertPlan } from '../utils/agentRevert';
+import { agentRevertLabel, agentRevertPlan, revertBatch, revertableInBatch, type AgentRevertPlan } from '../utils/agentRevert';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -72,6 +72,61 @@ export function UnattendedLogScreen() {
     () => (hasAgentRows ? new Map(tasks.map(t => [t.id, t])) : null),
     [hasAgentRows, tasks],
   );
+
+  // The newest row of each confirmed agent call that touched more than one
+  // task still open to an undo carries "Undo all", so one action per request
+  // rather than one on every row of it.
+  const batchHeads = useMemo(() => {
+    const heads = new Map<string, number>();
+    if (!taskById) return heads;
+    const getTask = (id: string) => taskById.get(id) ?? null;
+    const seen = new Set<string>();
+    for (const e of entries) {
+      // The head has to be a row that shows an undo of its own, or the button
+      // would have nowhere to sit.
+      if (!e.batchId || !e.taskId || seen.has(e.batchId)) continue;
+      if (agentRevertPlan(e, getTask(e.taskId)).kind === 'none') continue;
+      seen.add(e.batchId);
+      const n = revertableInBatch(entries, e.batchId, getTask);
+      if (n >= 2) heads.set(e.id, n);
+    }
+    return heads;
+  }, [entries, taskById]);
+
+  const handleRevertBatch = useCallback((entry: UnattendedEntry, count: number) => {
+    const batchId = entry.batchId;
+    if (!batchId) return;
+    Alert.alert(
+      `Undo ${count} changes?`,
+      'Puts back everything Claude changed in this request. A task you changed since is left as it is.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo all',
+          onPress: () => {
+            const store = useTaskStore.getState();
+            const result = revertBatch(
+              useUnattendedStore.getState().entries,
+              batchId,
+              id => useTaskStore.getState().tasks.find(t => t.id === id) ?? null,
+              plan => {
+                if (plan.kind === 'delete') store.deleteTask(plan.taskId);
+                else if (plan.kind === 'uncomplete') store.uncompleteTask(plan.taskId);
+                else store.updateTask(plan.taskId, plan.patch);
+              },
+            );
+            haptics.success();
+            if (result.skipped > 0) {
+              Alert.alert(
+                `Undid ${result.reverted}`,
+                `${result.skipped} ${result.skipped === 1 ? 'task was' : 'tasks were'} left as they are because they changed since.`,
+              );
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   const handleRevert = useCallback((entry: UnattendedEntry, plan: AgentRevertPlan) => {
     const store = useTaskStore.getState();
@@ -178,6 +233,8 @@ export function UnattendedLogScreen() {
             entry={item}
             task={item.actor === 'agent' && item.taskId && taskById ? taskById.get(item.taskId) ?? null : null}
             onRevert={handleRevert}
+            batchCount={batchHeads.get(item.id) ?? 0}
+            onRevertBatch={handleRevertBatch}
             styles={styles}
             colors={colors}
           />
@@ -212,12 +269,15 @@ export function UnattendedLogScreen() {
 }
 
 const ActivityRow = React.memo(function ActivityRow({
-  entry, task, onRevert, styles, colors,
+  entry, task, onRevert, batchCount, onRevertBatch, styles, colors,
 }: {
   entry: UnattendedEntry;
   /** The task an agent's entry is about, as it stands now. Null for every other row. */
   task: Task | null;
   onRevert: (entry: UnattendedEntry, plan: AgentRevertPlan) => void;
+  /** How many of this request's changes can still be undone, on the request's newest row only; 0 elsewhere. */
+  batchCount: number;
+  onRevertBatch: (entry: UnattendedEntry, count: number) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
@@ -262,6 +322,16 @@ const ActivityRow = React.memo(function ActivityRow({
               onPress={() => onRevert(entry, plan)}
               accessibilityLabel={`${revertLabel}: ${entry.title}`}
             />
+            {batchCount >= 2 && (
+              <InlineAction
+                label={`Undo all ${batchCount}`}
+                icon="arrow-undo-outline"
+                variant="neutral"
+                surface="card"
+                onPress={() => onRevertBatch(entry, batchCount)}
+                accessibilityLabel={`Undo all ${batchCount} changes Claude made in this request`}
+              />
+            )}
           </View>
         ) : plan && plan.kind === 'none' && plan.reason ? (
           <Text style={styles.rowMeta}>{plan.reason}</Text>
