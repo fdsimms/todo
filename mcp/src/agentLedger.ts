@@ -115,6 +115,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
+    updateAnswer(id, answerEdit) {
+      const before = snapshot(id);
+      const task = replica.updateAnswer(id, answerEdit);
+      if (before) log({ action: 'edited', subject: 'task', title: task.title, taskId: id, revert: taskRevert(before, task) });
+      return task;
+    },
+
     setTaskArchived(id, archived) {
       const before = snapshot(id);
       const task = replica.setTaskArchived(id, archived);

@@ -82,6 +82,7 @@ const FIELD_NAMES: Record<string, string> = {
   archived: 'archived', recurrenceType: 'repeat', recurrenceInterval: 'repeat interval', recurrenceDays: 'repeat days',
   windowStart: 'shown from', windowEnd: 'shown until', targetCount: 'daily target', deliverableKind: 'question on completion',
   polarity: 'habit type', blockedById: 'waits on', blockedByIds: 'waits on', chainItems: 'steps',
+  deliverableValue: 'answer', deliverableWhy: 'reason for the answer', deliverableRevisitIf: 'revisit if',
 };
 
 function show(value: unknown): string {
