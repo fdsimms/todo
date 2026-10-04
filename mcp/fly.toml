@@ -6,7 +6,7 @@
 
 # Fly app names are global, so this may need changing to one that's free.
 app = "dundundun-mcp"
-primary_region = "iad"
+primary_region = "ewr"
 
 [build]
   dockerfile = "Dockerfile"

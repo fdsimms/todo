@@ -25,12 +25,12 @@ fly auth login
 ## 2. Create the app and its volume
 
 App names are global. If `dundundun-mcp` is taken, change `app` in `mcp/fly.toml` first.
-`primary_region` is `iad` (Virginia); change it to the region nearest you (`fly platform
-regions` lists them), and use the same region for the volume.
+`primary_region` is `ewr` (Secaucus, NJ, next to New York); to run somewhere else, change it to
+the region nearest you (`fly platform regions` lists them) and use the same region for the volume.
 
 ```bash
 fly apps create dundundun-mcp
-fly volumes create todo_data --size 1 --region iad --config mcp/fly.toml
+fly volumes create todo_data --size 1 --region ewr --config mcp/fly.toml
 ```
 
 Fly warns that one volume has no redundancy. Answer yes: SQLite can only live on one machine,
