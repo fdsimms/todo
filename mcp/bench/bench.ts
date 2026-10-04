@@ -6,7 +6,9 @@
  * Seeds a throwaway database with N tasks (some blocked, some recurring, a few
  * hundred projects' worth of spread across categories and dates), then times
  * every read tool the way `withFresh` runs it: `replica.refresh()` first, then
- * the tool. Reports p50/p95 per tool, plus the pieces (refresh, the task read)
+ * the tool. "Unchanged" rows are the common case (the replica skips its re-read
+ * when the file hasn't changed); "after a change" rows write from a second
+ * connection first, as a sync landing between two calls would. Reports p50/p95 per tool, plus the pieces (refresh, the task read)
  * so a slow tool can be told apart from a slow floor.
  *
  * It measures the tool layer only. The payload-store sync (`gate.fresh()`) is a
@@ -27,7 +29,7 @@ const WORDS = ['pay', 'call', 'buy', 'email', 'fix', 'book', 'clean', 'read', 'p
 const NOUNS = ['rent', 'dentist', 'milk', 'invoice', 'bike', 'flights', 'garage', 'report', 'party', 'form', 'passport', 'taxes'];
 const CATS = ['Home', 'Work', 'Health', 'Errands', 'Finance'];
 
-function seed(file: string, n: number): string {
+function seed(file: string, from: number, n: number): void {
   const raw = new BetterSqlite3(file);
   const day = (offset: number) => {
     const d = new Date();
@@ -39,11 +41,9 @@ function seed(file: string, n: number): string {
     `INSERT INTO tasks (id, title, notes, created_at, due_date, tags, category, priority, completed, completed_at, recurrence_type, blocked_by_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   );
-  let firstId = '';
   raw.transaction(() => {
-    for (let i = 0; i < n; i++) {
+    for (let i = from; i < n; i++) {
       const id = `bench-${i}`;
-      if (i === 0) firstId = id;
       const done = i % 3 === 0;
       insert.run(
         id,
@@ -62,7 +62,6 @@ function seed(file: string, n: number): string {
     }
   })();
   raw.close();
-  return firstId;
 }
 
 interface Row { name: string; p50: number; p95: number; runs: number }
@@ -82,7 +81,15 @@ function time(name: string, fn: () => unknown, runs: number): Row {
   return row;
 }
 
-function suite(replica: Replica, firstId: string, n: number): Row[] {
+function suite(replica: Replica, firstId: string, n: number, file: string): Row[] {
+  // A write from another connection, as a sync landing between two calls would be.
+  const other = new BetterSqlite3(file);
+  const touch = () => other.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('bench_touch', ?)").run(String(Math.random()));
+  const afterChange = (fn: () => unknown) => () => {
+    touch();
+    replica.refresh();
+    return fn();
+  };
   // Each case is `withFresh` shaped: refresh, then the tool.
   const fresh = (fn: () => unknown) => () => {
     replica.refresh();
@@ -91,8 +98,10 @@ function suite(replica: Replica, firstId: string, n: number): Row[] {
   const runs = n >= 10000 ? 5 : 40;
   return [
     time('refresh()', () => replica.refresh(), runs),
-    time('tasks() cold (db read + rowToTask)', fresh(() => replica.tasks()), runs),
-    time('list_tasks today', fresh(() => listTasks(replica, { view: 'today' })), runs),
+    time('tasks() after a change (db read)', afterChange(() => replica.tasks()), runs),
+    time('tasks() unchanged (cached)', fresh(() => replica.tasks()), runs),
+    time('list_tasks today, after a change', afterChange(() => listTasks(replica, { view: 'today' })), runs),
+    time('list_tasks today, unchanged', fresh(() => listTasks(replica, { view: 'today' })), runs),
     time('list_tasks later', fresh(() => listTasks(replica, { view: 'later' })), runs),
     time('list_tasks all', fresh(() => listTasks(replica, { view: 'all', includeCompleted: true })), runs),
     time('search_tasks', fresh(() => searchTasks(replica, { query: 'pay rent' })), runs),
@@ -111,6 +120,7 @@ function suite(replica: Replica, firstId: string, n: number): Row[] {
     // per task over every task): 14s at 2000 tasks. Opt in with BENCH_SLOW=1.
     ...(n <= 1000 || process.env.BENCH_SLOW ? [time('rebalance_week', fresh(() => rebalanceWeek(replica)), n <= 1000 ? runs : 1)] : []),
   ];
+  // (connection closed by process exit)
 }
 
 function main(): void {
@@ -125,12 +135,13 @@ function main(): void {
     let have = 0;
     for (const n of sizes.length ? sizes : [1000, 10000]) {
       // Top up to n rather than reseeding, so sizes run smallest first.
-      const first = seed(file, n - have).replace(/\d+$/, '0');
+      seed(file, have, n);
+      const first = 'bench-0';
       have = n;
       replica.refresh();
       console.log(`\n=== ${n} tasks ===`);
       console.log('tool'.padEnd(40), 'p50 ms'.padStart(9), 'p95 ms'.padStart(9));
-      suite(replica, first, n);
+      suite(replica, first, n, file);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

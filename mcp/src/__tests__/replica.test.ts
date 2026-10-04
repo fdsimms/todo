@@ -103,6 +103,25 @@ describe('the replica', () => {
     expect(task?.timeSegments).toEqual([]);
   });
 
+  it('keeps its task read across a refresh when nothing changed, and drops it when something did', () => {
+    replica.refresh();
+    const before = replica.tasks();
+    // Same file as far as SQLite can tell: the read is reused, not repeated.
+    replica.refresh();
+    expect(replica.tasks()).toBe(before);
+
+    // A write on this connection moves the token, so the next refresh re-reads.
+    insert({ id: 'refresh-probe', title: 'Probe' });
+    replica.refresh();
+    const after = replica.tasks();
+    expect(after).not.toBe(before);
+    expect(after.some(t => t.id === 'refresh-probe')).toBe(true);
+
+    mockRaw.runSync('DELETE FROM tasks WHERE id = ?', ['refresh-probe']);
+    replica.refresh();
+    expect(replica.tasks().some(t => t.id === 'refresh-probe')).toBe(false);
+  });
+
   it('sorts tasks into the app\'s four lenses, which a date comparison could not', () => {
     insert({ id: 'today', title: 'Due now', dueDate: new Date().toISOString() });
     insert({ id: 'later', title: 'Deferred', deferUntil: '2099-06-01T12:00:00.000Z' });
