@@ -74,7 +74,7 @@ public class TodoCloudKitModule: Module {
           promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
-        self.listImageNames(since: since, accumulated: [], promise: promise)
+        self.listImageNames(since: since, accumulated: [], accumulatedRemoved: [], promise: promise)
       }
     }
 
@@ -90,6 +90,10 @@ public class TodoCloudKitModule: Module {
 
     AsyncFunction("getImage") { (name: String, promise: Promise) in
       self.loadImage(name: name, promise: promise)
+    }
+
+    AsyncFunction("removeImage") { (name: String, promise: Promise) in
+      self.deleteImage(name: name, promise: promise)
     }
   }
 
@@ -325,12 +329,33 @@ public class TodoCloudKitModule: Module {
     }
   }
 
+  /// Removes one photo's record. A record that is already gone, or a zone that
+  /// was never made, is the state asked for, so both succeed.
+  private func deleteImage(name: String, promise: Promise) {
+    let recordID = CKRecord.ID(recordName: name, zoneID: imagesZoneID)
+    database.delete(withRecordID: recordID) { _, error in
+      if let ckError = error as? CKError, ckError.code == .unknownItem || ckError.code == .zoneNotFound {
+        promise.resolve(nil)
+      } else if let error {
+        promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
+      } else {
+        promise.resolve(nil)
+      }
+    }
+  }
+
   /// The photo names the zone holds, from a change token. Asks for no fields
   /// (`desiredKeys = []`), so listing costs record names and not photo
   /// downloads. Follows `moreComing` here, unlike `fetchChanges`: a library of
   /// photos is the first thing in this app likely to span several batches.
-  private func listImageNames(since: String?, accumulated: [String], promise: Promise) {
+  private func listImageNames(
+    since: String?,
+    accumulated: [String],
+    accumulatedRemoved: [String],
+    promise: Promise
+  ) {
     var names = accumulated
+    var removed = accumulatedRemoved
     var failure: Error?
 
     let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
@@ -349,6 +374,11 @@ public class TodoCloudKitModule: Module {
       case .failure(let error):
         failure = error
       }
+    }
+    // A name another device removed, so this device stops believing the zone
+    // has it (and re-uploads a photo it still holds and its recipe still uses).
+    op.recordWithIDWasDeletedBlock = { recordID, _ in
+      removed.append(recordID.recordName)
     }
 
     let handleZoneFetchResult: (
@@ -369,18 +399,20 @@ public class TodoCloudKitModule: Module {
           self.listImageNames(
             since: Self.encodeToken(token),
             accumulated: names,
+            accumulatedRemoved: removed,
             promise: promise
           )
         } else {
           promise.resolve([
             "names": names,
+            "removed": removed,
             "cursor": Self.encodeToken(token) as Any,
           ])
         }
       case .failure(let error):
         // A forgotten token is recoverable once: list everything again.
         if let ckError = error as? CKError, ckError.code == .changeTokenExpired {
-          self.listImageNames(since: nil, accumulated: [], promise: promise)
+          self.listImageNames(since: nil, accumulated: [], accumulatedRemoved: [], promise: promise)
         } else {
           promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
         }

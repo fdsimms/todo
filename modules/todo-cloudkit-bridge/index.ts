@@ -21,6 +21,8 @@ export interface CloudKitPullResult {
 
 export interface CloudKitImageListResult {
   names: string[];
+  /** Names another device deleted from the zone since the last listing. */
+  removed: string[];
   /** A serialised CKServerChangeToken for the images zone, opaque like the payload one. */
   cursor: string | null;
 }
@@ -33,6 +35,7 @@ interface TodoCloudKitNativeModule {
   listImages(since: string | null): Promise<CloudKitImageListResult>;
   putImage(name: string, base64: string): Promise<void>;
   getImage(name: string): Promise<string | null>;
+  removeImage(name: string): Promise<void>;
 }
 
 // Same lazy resolve as todo-alarmkit-bridge, for the same reason:
@@ -113,4 +116,10 @@ export async function putImage(name: string, base64: string): Promise<void> {
 export async function getImage(name: string): Promise<string | null> {
   if (!nativeModule) throw new Error('CloudKit is not available in this build.');
   return nativeModule.getImage(name);
+}
+
+/** Removing a name the zone no longer holds succeeds. */
+export async function removeImage(name: string): Promise<void> {
+  if (!nativeModule) throw new Error('CloudKit is not available in this build.');
+  await nativeModule.removeImage(name);
 }

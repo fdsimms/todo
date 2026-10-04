@@ -66,11 +66,13 @@ export interface SyncImageStore {
    * stored position alone. A position the store has forgotten answers with
    * every name instead.
    */
-  list(since: string | null): Promise<{ names: string[]; cursor: string | null }>;
+  list(since: string | null): Promise<{ names: string[]; removed: string[]; cursor: string | null }>;
   /** Stores a photo's bytes (base64). A name the store already holds is left as it is. */
   put(name: string, base64: string): Promise<void>;
   /** A photo's bytes as base64, or null when the store has nothing under that name. */
   get(name: string): Promise<string | null>;
+  /** Deletes a photo. A name the store doesn't hold succeeds. */
+  remove(name: string): Promise<void>;
 }
 
 /** Tables, and keys of the `settings` table, held back from a transport. */
@@ -231,6 +233,11 @@ async function pushImages(
   return count;
 }
 
+/** The device-local cursor key holding the photo names this device has seen a recipe point at. */
+export function imagesKnownKey(transportName: string): string {
+  return `${transportName}:imagesKnown`;
+}
+
 /** The device-local cursor key holding where this transport's photo listing resumes. */
 export function imagesListedKey(transportName: string): string {
   return `${transportName}:imageList`;
@@ -256,23 +263,69 @@ async function uploadToImageStore(
   const key = imagesSentKey(transport.name);
   const listKey = imagesListedKey(transport.name);
   const has = readNameList(local.getCursor(key));
+  const save = () => local.setCursor(key, JSON.stringify([...has]));
 
   const listed = await store.list(local.getCursor(listKey));
   listed.names.forEach(n => has.add(n));
-  local.setCursor(key, JSON.stringify([...has]));
+  // After the names, so a name added and removed in one window ends removed.
+  listed.removed.forEach(n => has.delete(n));
+  save();
   if (listed.cursor !== null) local.setCursor(listKey, listed.cursor);
 
+  const referenced = new Set(local.imageNames());
+  await removeUnreferenced(transport, store, local, referenced, has, save);
+
   let count = 0;
-  for (const name of local.imageNames()) {
+  for (const name of referenced) {
     if (has.has(name)) continue;
     const data = local.readImage(name);
     if (!data) continue;
     await store.put(name, data);
     has.add(name);
-    local.setCursor(key, JSON.stringify([...has]));
+    save();
     count++;
   }
   return count;
+}
+
+/**
+ * Deletes from the store the photos this device has seen a recipe point at and
+ * none does now, and whose file it has already removed.
+ *
+ * **Only a photo this device itself saw referenced is a candidate.** A name
+ * the store holds that no row here points at proves nothing: the row may
+ * simply not have arrived yet (a peer pushes its rows and then the photo, and
+ * this device can list in between). Deleting on that evidence would take a
+ * peer's photo away. A photo seen referenced and then not is one a delete or
+ * replacement reached this device, which is what the local file cleanup
+ * (`applyWithRecipeImages`) already acts on.
+ *
+ * **And the file must be gone.** A restored backup can drop rows while their
+ * files stay; a photo still on the device is kept in the store.
+ */
+async function removeUnreferenced(
+  transport: SyncTransport,
+  store: SyncImageStore,
+  local: SyncLocal,
+  referenced: ReadonlySet<string>,
+  has: Set<string>,
+  saveHas: () => void
+): Promise<void> {
+  if (!local.hasImage) return;
+  const knownKey = imagesKnownKey(transport.name);
+  const known = readNameList(local.getCursor(knownKey));
+  referenced.forEach(n => known.add(n));
+
+  for (const name of [...known]) {
+    if (referenced.has(name) || local.hasImage(name)) continue;
+    if (has.has(name)) {
+      await store.remove(name);
+      has.delete(name);
+      saveHas();
+    }
+    known.delete(name);
+  }
+  local.setCursor(knownKey, JSON.stringify([...known]));
 }
 
 /**

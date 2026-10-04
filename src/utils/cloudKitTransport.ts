@@ -92,6 +92,11 @@ export function cloudKitTransport(): SyncTransport {
         if (!b) throw new Error('CloudKit is not available in this build.');
         return b.getImage(name);
       },
+      async remove(name: string): Promise<void> {
+        const b = bridge();
+        if (!b) throw new Error('CloudKit is not available in this build.');
+        await b.removeImage(name);
+      },
     },
   };
 }

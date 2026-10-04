@@ -440,7 +440,13 @@ the bytes beside the rows (`Backup.images`), and sync now does the same.
     that exists is a success, since a name is minted once per photo and never reused.
   - **A photo is fetched only when a recipe here points at it** (`downloadFromImageStore`, after the
     rows apply). A recipe a peer deleted leaves a photo nobody downloads.
-  - **Nothing is deleted from the zone yet.** A removed or replaced photo's record stays.
+  - **A photo is deleted from the zone only by a device that saw a recipe use it** (`removeUnreferenced`,
+    names kept under `imagesKnownKey`), **once no row here points at it and its file is gone.** A name in
+    the zone that no row here uses proves nothing: a peer pushes its rows and then the photo, and this
+    device can list in between, so deleting on that evidence would take a peer's photo. The file-gone
+    condition keeps a restored backup that dropped rows from deleting photos still on the device. A
+    listing also reports names other devices deleted (`removed`), so a device still using one uploads it
+    again.
   - Deploy the `RecipeImage` record type and the `TodoImages` zone to Production in the CloudKit
     Dashboard before shipping; the Development schema is created on first save and is not enough.
 - **The sync server gets no photos** (`sendsImages: false`, set in `configuredTransports`). Nothing

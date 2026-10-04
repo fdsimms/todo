@@ -807,12 +807,21 @@ class FakeImageStore {
   listCalls: Array<string | null> = [];
   puts: string[] = [];
   gets: string[] = [];
+  removes: string[] = [];
+  /** Names the next listing reports as deleted by another device. */
+  announceRemoved: string[] = [];
   putThrows = false;
   getThrows = false;
 
   async list(since: string | null) {
     this.listCalls.push(since);
-    return { names: [...this.files.keys()], cursor: `pos-${this.files.size}` };
+    const removed = this.announceRemoved;
+    this.announceRemoved = [];
+    return { names: [...this.files.keys()], removed, cursor: `pos-${this.files.size}` };
+  }
+  async remove(name: string) {
+    this.removes.push(name);
+    this.files.delete(name);
   }
   async put(name: string, base64: string) {
     if (this.putThrows) throw new Error('put blew up');
@@ -965,6 +974,65 @@ describe('recipe photos in a per-photo store', () => {
     a.files.set('p1.jpg', 'AAAA');
     const second = await runSync(cloud, a);
     expect(second.imagesSent).toBe(1);
+  });
+
+  it('removes a photo from the store once its recipe stopped using it here and the file is gone', async () => {
+    const a = new PhotoDevice('a');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new ImageStoreCloud();
+    await runSync(cloud, a);
+
+    // The recipe was deleted (or its photo replaced) and the file cleaned up.
+    a.referenced.delete('p1.jpg');
+    a.files.delete('p1.jpg');
+    await runSync(cloud, a);
+
+    expect(cloud.imageStore.removes).toEqual(['p1.jpg']);
+    expect(cloud.imageStore.files.has('p1.jpg')).toBe(false);
+  });
+
+  it('never removes a photo this device has not seen a recipe use, since the row may not have arrived', async () => {
+    const a = new PhotoDevice('a');
+    const b = new PhotoDevice('b');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new ImageStoreCloud();
+    await runSync(cloud, a);
+
+    // b lists a photo whose recipe row has not reached it yet.
+    await runSync(cloud, b);
+
+    expect(cloud.imageStore.removes).toEqual([]);
+    expect(cloud.imageStore.files.has('p1.jpg')).toBe(true);
+  });
+
+  it('keeps a photo in the store while its file is still on the device', async () => {
+    const a = new PhotoDevice('a');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new ImageStoreCloud();
+    await runSync(cloud, a);
+
+    // Rows lost (a restored backup, say) but the file is still here.
+    a.referenced.delete('p1.jpg');
+    a.files.set('p1.jpg', 'AAAA');
+    a.hasImage = (name: string) => a.files.has(name);
+    a.imageNames = () => [];
+    await runSync(cloud, a);
+
+    expect(cloud.imageStore.removes).toEqual([]);
+  });
+
+  it('uploads again a photo another device removed that this device still uses', async () => {
+    const a = new PhotoDevice('a');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new ImageStoreCloud();
+    await runSync(cloud, a);
+
+    cloud.imageStore.files.delete('p1.jpg');
+    cloud.imageStore.announceRemoved = ['p1.jpg'];
+    const result = await runSync(cloud, a);
+
+    expect(result.imagesSent).toBe(1);
+    expect(cloud.imageStore.files.get('p1.jpg')).toBe('AAAA');
   });
 
   it('still applies a photo payload from a build that predates the store', async () => {
