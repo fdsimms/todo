@@ -29,6 +29,7 @@ import { blockerOf, isWaitingOnPerson, liveBlockersOf } from '../utils/blocking'
 import { resolveBlocker } from '../utils/blockerRegistry';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
+import { bountyCoinsFor, canPostBounty, isBountyLive } from '../utils/rewards';
 import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
@@ -142,6 +143,9 @@ export function StuckScreen() {
   const setLastAction = useTaskStore(s => s.setLastAction);
   const completeTask = useTaskStore(s => s.completeTask);
   const archiveTask = useTaskStore(s => s.archiveTask);
+  const postBounty = useTaskStore(s => s.postBounty);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const bountyLimit = useSettingsStore(s => s.bountyLimit);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const threshold = useSettingsStore(s => s.postponeCheckThreshold);
@@ -316,6 +320,26 @@ export function StuckScreen() {
           );
         },
       },
+      // A bounty is aimed at exactly these tasks (see "Bounties" in
+      // utils/rewards.ts), so it's offered here as well as in the editor.
+      ...(rewardsEnabled && canPostBounty(task)
+        ? [{
+            key: 'bounty',
+            label: `Post +${bountyCoinsFor({ ...task, bountyPushes: 0 })} bounty`,
+            onPress: () => {
+              const result = postBounty(task.id);
+              if (result === 'posted') {
+                haptics.success();
+              } else if (result === 'full') {
+                haptics.warning();
+                Alert.alert(
+                  bountyLimit === 1 ? 'You already have a bounty out' : `You already have ${bountyLimit} bounties out`,
+                  'Finish or withdraw one first, or allow more on the Rewards screen.',
+                );
+              }
+            },
+          }]
+        : []),
       {
         key: 'mute',
         label: 'Stop asking',
@@ -471,6 +495,7 @@ export function StuckScreen() {
                 started before the stamp shipped. */}
             Moved {entry.count} times
             {entry.since ? ` · first put off ${format(new Date(entry.since), 'MMM d')}` : ''}
+            {rewardsEnabled && isBountyLive(entry.task) ? ` · +${bountyCoinsFor(entry.task)} bounty` : ''}
           </Text>
           {(categoryLabel || projectTitle) && (
             <View style={styles.metaRow}>
