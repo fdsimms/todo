@@ -126,7 +126,7 @@ export function deloadBlockerFor(task: Task): { blocker: DeloadBlocker; label: s
   }
   if (task.priority === 3) return { blocker: 'high-priority', label: 'High priority' };
   // Somebody else is involved, so moving this has a social cost the day-load
-  // math can't see: "beach with Dustin and Ansley" is not the same thing to
+  // math can't see: "beach with Gideon and Tessa" is not the same thing to
   // push to Saturday as "clean the bathroom", even when the minutes agree
   // (#2088). Soft rather than hard — the day might genuinely need to get
   // lighter, and refusing outright would be the app deciding you can't

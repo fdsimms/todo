@@ -181,7 +181,7 @@ function scoreContacts(
     if (at < 0) return;
     // 0 for the start of the name, 1 for the start of any other word in it,
     // 2 for anywhere else. Three buckets rather than the index itself, so
-    // "Ansley Reyes" and "Bo Ansley" rank together on "ansley".
+    // "Tessa Reyes" and "Bo Tessa" rank together on "tessa".
     const rank = at === 0 ? 0 : /\s/.test(haystack[at - 1]) ? 1 : 2;
     scored.push({ candidate, rank, order });
   });

@@ -10,7 +10,7 @@ import {
 const ctx: LineParseContext = {
   categories: ['Home', 'Work'],
   tags: ['urgent'],
-  people: [{ id: 'p1', name: 'Dustin Reed', nickname: '' }],
+  people: [{ id: 'p1', name: 'Gideon Reed', nickname: '' }],
   groups: [],
 };
 
@@ -39,9 +39,9 @@ describe('lineMarkerFields', () => {
   });
 
   it('links an @person and keeps the mention in the title, as quick add does', () => {
-    const fields = lineMarkerFields('ask @dustin about the tent', ctx);
+    const fields = lineMarkerFields('ask @gideon about the tent', ctx);
     expect(fields.personIds).toEqual(['p1']);
-    expect(fields.title).toBe('ask @dustin about the tent');
+    expect(fields.title).toBe('ask @gideon about the tent');
   });
 });
 

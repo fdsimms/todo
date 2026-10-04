@@ -15,7 +15,7 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   (`spawnSeed.coinEarn`/`coinMiss`), so the same occurrence completed on two phones is one row and a
   redo rewrites the row an undo removed.
 - **What earns:** a task's effort bucket (`COINS_BY_EFFORT`, read through `estimatedMinutesFor` so a
-  chain pays for the live step), plus one coin per `STREAK_BONUS_EVERY` on the streak this completion
+  chain pays for the live step) scaled by its difficulty (`DIFFICULTY_MULTIPLIER`), plus one coin per `STREAK_BONUS_EVERY` on the streak this completion
   reaches, capped at `STREAK_BONUS_CAP`. Subtasks earn nothing, or splitting a task would be the way
   to earn more.
 - **Only a person moves it.** `neutral` completions (the overshoot and interval sweeps), the quota
@@ -37,6 +37,30 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **Off means nothing is written.** Every `record*` action and `claimReward` is a no-op while
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
+
+## Difficulty
+
+`Task.difficulty` (Easy / Normal / Hard) says how hard a task is to make yourself do, which the time
+estimate can't: a two-minute call you dread and an hour of something you enjoy. Hard doubles the
+effort bucket's value and Easy halves it, never below 1. Every place it can be set (the task, template
+item and follow-up task editors, quick add's chip, the bulk bar, Backfill) offers it only while
+rewards are on, since nothing else reads it.
+
+- **Null is "never rated" and earns as Normal does**, so every task that predates the column earns
+  exactly what it did. It is kept apart from an explicit Normal because Backfill asks about the
+  unrated ones, and a rating someone gave is an answer. Every picker but Backfill's leads with "Not
+  set", since a segmented control can't be tapped off.
+- **There is no new-task default and no title rule for it.** A default would rate every task without
+  anyone deciding, which is the null the backfill queue exists to ask about.
+- **It carries to the next occurrence** (a `CONTENT_FIELD`), unlike a bounty. A bounty is for the one
+  task you've been putting off; a rating is for the kind of task that is always hard.
+- **Nothing sets it but the person.** Inferring it from `postponeCount` would pay more for a task that
+  waited, which is the rule bounties exist to keep.
+- **A miss costs the effort bucket's value or what doing it would earn, whichever is less**
+  (`coinsForLoss`). A hard task costing double to miss would raise the stake on trying the tasks the
+  rating is meant to get done.
+- **Rating everything Hard is not much of a cheat.** Reward prices are suggested from the earning rate,
+  which scales with it; what the rating changes is how tasks pay relative to each other.
 
 ## Bounties
 
@@ -100,6 +124,18 @@ days at your current pace").
 
 ## Where it shows
 
+- **The coin is the feature's icon, not the trophy.** `CoinIcon` (`src/components/CoinIcon.tsx`) is
+  drawn, like `PinIcon` and `TargetIcon`, because Ionicons has no coin. Filled gold (`colors.warning`
+  with `onWarning` marks) where a coin is the point (the balance, an empty state, a reward's cost, a
+  history row), outlined where it sits beside Ionicons (the menu row, the toast, a bounty's chip). A
+  screen named by an icon string uses `COIN_ICON` (`src/constants/coinIcon.ts`, a separate file so
+  `navHubs.ts` can name it without importing a component) and draws it through `NamedIcon`.
+
+- **Celebrations are two moments, both on the Rewards screen.** A burst of coins (`CoinBurst`, path in
+  `src/utils/coinBurst.ts`) on claiming a reward, and a larger one with a success haptic when a rise
+  in the balance crosses the goal's price. Only the crossing counts, so opening the screen above the
+  price or choosing a goal you can already afford fires nothing. Nothing celebrates a completion
+  elsewhere (that is `CoinToast`'s quiet pill), and Reduce Motion skips the burst and the hop.
 - **The Rewards screen** (menu row under Tasks): the balance with the goal's progress, the rule
   spelled out, the rewards (add, edit in place, claim, open the link, set as goal, delete), the
   chosen list's items, starter ideas and the history.

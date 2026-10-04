@@ -34,15 +34,15 @@ afterEach(() => {
 
 describe('resolving a person', () => {
   it('finds one the store knows about', () => {
-    registerPersonSource(() => [person('a', 'Ansley')]);
-    expect(resolvePerson('a')?.name).toBe('Ansley');
+    registerPersonSource(() => [person('a', 'Tessa')]);
+    expect(resolvePerson('a')?.name).toBe('Tessa');
   });
 
   // Ids in Task.personIds are deliberately never cleaned up when a person is
   // deleted — see docs/arch/people.md. Every reader has to shrug rather than
   // throw, the same way canBlock(undefined) is false.
   it('shrugs at an id whose person has gone', () => {
-    registerPersonSource(() => [person('a', 'Ansley')]);
+    registerPersonSource(() => [person('a', 'Tessa')]);
     expect(resolvePerson('gone')).toBeUndefined();
   });
 
@@ -51,25 +51,25 @@ describe('resolving a person', () => {
   });
 
   it('re-reads once the store replaces its array', () => {
-    let people = [person('a', 'Ansley')];
+    let people = [person('a', 'Tessa')];
     registerPersonSource(() => people);
     expect(resolvePerson('b')).toBeUndefined();
-    people = [...people, person('b', 'Dustin')];
-    expect(resolvePerson('b')?.name).toBe('Dustin');
+    people = [...people, person('b', 'Gideon')];
+    expect(resolvePerson('b')?.name).toBe('Gideon');
   });
 });
 
 describe('the people a task names', () => {
   beforeEach(() => {
-    registerPersonSource(() => [person('a', 'Ansley'), person('b', 'Dustin')]);
+    registerPersonSource(() => [person('a', 'Tessa'), person('b', 'Gideon')]);
   });
 
   it('comes back in the order the task names them', () => {
-    expect(peopleOn({ personIds: ['b', 'a'] }).map(p => p.name)).toEqual(['Dustin', 'Ansley']);
+    expect(peopleOn({ personIds: ['b', 'a'] }).map(p => p.name)).toEqual(['Gideon', 'Tessa']);
   });
 
   it('skips one who has been deleted rather than rendering a gap', () => {
-    expect(peopleOn({ personIds: ['a', 'gone'] }).map(p => p.name)).toEqual(['Ansley']);
+    expect(peopleOn({ personIds: ['a', 'gone'] }).map(p => p.name)).toEqual(['Tessa']);
   });
 
   it('is empty for a task naming nobody', () => {
@@ -138,22 +138,22 @@ describe('resolving a group', () => {
 describe('a group\'s members', () => {
   it('is everyone currently filed under it, in their own order', () => {
     registerPersonSource(() => [
-      { ...person('a', 'Ansley', 'g1'), sortOrder: 2 },
-      { ...person('b', 'Dustin', 'g1'), sortOrder: 1 },
+      { ...person('a', 'Tessa', 'g1'), sortOrder: 2 },
+      { ...person('b', 'Gideon', 'g1'), sortOrder: 1 },
       person('c', 'Mom', null),
     ]);
-    expect(groupMembers('g1').map(p => p.name)).toEqual(['Dustin', 'Ansley']);
+    expect(groupMembers('g1').map(p => p.name)).toEqual(['Gideon', 'Tessa']);
   });
 
   it('is empty for a group nobody is in', () => {
-    registerPersonSource(() => [person('a', 'Ansley', null)]);
+    registerPersonSource(() => [person('a', 'Tessa', null)]);
     expect(groupMembers('g1')).toEqual([]);
   });
 });
 
 describe('group mention tokens', () => {
   beforeEach(() => {
-    registerPersonSource(() => [person('a', 'Ansley', 'g1'), person('b', 'Dustin', 'g1'), person('c', 'Mom', null)]);
+    registerPersonSource(() => [person('a', 'Tessa', 'g1'), person('b', 'Gideon', 'g1'), person('c', 'Mom', null)]);
     registerPersonGroupSource(() => [group('g1', 'Household'), group('g2', 'Empty')]);
   });
 

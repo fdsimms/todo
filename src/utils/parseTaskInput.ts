@@ -1885,7 +1885,7 @@ function buildPersonNameIndex(people: PersonToken[]) {
     // a single-word business name (or nickname) still indexes normally.
     if (person.kind !== 'business' || !/\s/.test(name)) add(name, person.id);
     add(person.nickname, person.id);
-    // First word only, so "Dustin Reyes" answers to "@dustin". Skipped when the
+    // First word only, so "Gideon Reyes" answers to "@gideon". Skipped when the
     // name is one word already, which the map above has covered, and skipped
     // outright for a business — its name's first word isn't a first name, and
     // matching it would read "Eye Q" as though "Eye" were somebody given name.
@@ -1971,11 +1971,11 @@ function buildGroupNameIndex(groups: GroupMentionToken[]) {
 
 /**
  * Finds every "@name" token in a title and resolves it against the given
- * people, so "beach with @dustin @ansley sat" names both. Returns every match
+ * people, so "beach with @gideon @tessa sat" names both. Returns every match
  * with its position in the string, in order — not just the first — since
  * unlike the sigil-based parsers beside this one, a mention is never stripped
  * out of the title. It is data about who the sentence is about, and the
- * sentence usually needs it grammatically ("call @dustin" is "call Dustin");
+ * sentence usually needs it grammatically ("call @gideon" is "call Gideon");
  * "#category"/a URL/a phone number are metadata that reads fine gone, a name
  * often is not. So the caller's job is to render the matched span as a token
  * in place, not to lift it out — the mention lives in the title for good.
@@ -1986,10 +1986,10 @@ function buildGroupNameIndex(groups: GroupMentionToken[]) {
  * `docs/arch/people.md` is largely about. See rule 3 there.
  *
  * Matches a name or a nickname, exactly and case-insensitively, and also the
- * first word of a name so "@dustin" finds "Dustin Reyes" — full names are how
+ * first word of a name so "@gideon" finds "Gideon Reyes" — full names are how
  * people arrive from a contact card, and nobody types a surname mid-sentence.
  * Short of an exact match, a token of at least `MIN_PREFIX_LENGTH` characters
- * also matches a unique prefix, so "@brit" finds "Brittany" while it's still
+ * also matches a unique prefix, so "@kel" finds "Kelsey" while it's still
  * being typed rather than only once the last letter lands.
  *
  * A token more than one person answers to — "@sam" with two Sams registered —
@@ -2013,7 +2013,7 @@ function buildGroupNameIndex(groups: GroupMentionToken[]) {
  * member's own first word (a group literally named after them) can never
  * shadow the person. A resolved group expands into one `PersonMention` per
  * member, all sharing the token's span: "@household" naming two people is the
- * same shape on the page as typing "@dustin @ansley" would have been, which is
+ * same shape on the page as typing "@gideon @tessa" would have been, which is
  * what lets every downstream reader (tinting, `personIds`) stay ignorant that
  * groups exist at all. A group more than one group answers to is left
  * unresolved, the same refusal an ambiguous person gets.
@@ -2085,7 +2085,7 @@ export function matchPersonMentions(
 /**
  * The first "@name" token `matchPersonMentions` couldn't resolve because more
  * than one person answers to it — exact ("@sam" with two Sams on file) or by
- * prefix ("@bri" with a Brittany and a Brittney still both in the running).
+ * prefix ("@kel" with a Kelsey and a Kelsie still both in the running).
  * Surfaced so a caller can offer a pick-one list rather than only refusing:
  * typing further can narrow a shared prefix, but two people who share an
  * entire first name or nickname (two Sams) can never become unique that way

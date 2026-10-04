@@ -191,7 +191,7 @@ describe('typeSummary', () => {
 
 describe('QUICK_ADD_CHIP_LABELS', () => {
   const ALL_CHIPS: QuickAddChip[] = [
-    'date', 'repeat', 'segment', 'priority', 'effort', 'tags', 'category', 'project', 'link', 'phone', 'email',
+    'date', 'repeat', 'segment', 'priority', 'effort', 'difficulty', 'tags', 'category', 'project', 'link', 'phone', 'email',
     'supply',
   ];
 

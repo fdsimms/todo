@@ -464,7 +464,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
             style={styles.fieldInput}
             value={email}
             onChangeText={setEmail}
-            placeholder="e.g. ansley@example.com"
+            placeholder="e.g. tessa@example.com"
             placeholderTextColor={colors.textTertiary}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -495,7 +495,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
             style={styles.fieldInput}
             value={nickname}
             onChangeText={setNickname}
-            placeholder="e.g. Ans"
+            placeholder="e.g. Tess"
             placeholderTextColor={colors.textTertiary}
             maxLength={TITLE_MAX_LENGTH}
           />

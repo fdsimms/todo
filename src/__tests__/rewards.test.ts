@@ -20,6 +20,8 @@ import {
   suggestRewardCost,
   coinsForCompletion,
   coinsForLoss,
+  fullBountyFor,
+  DIFFICULTY_MULTIPLIER,
   formatCoins,
   latestLossFor,
   parseRewardCost,
@@ -84,6 +86,45 @@ describe('baseCoinsFor', () => {
       { id: 'b', title: 'Run', estimatedMinutes: 90 },
     ];
     expect(baseCoinsFor(task(240, 0, chain))).toBe(1);
+  });
+});
+
+describe('difficulty', () => {
+  const rated = (estimatedMinutes: number | null, difficulty: 'easy' | 'normal' | 'hard') =>
+    ({ ...task(estimatedMinutes), difficulty });
+
+  it('leaves a normal or unrated task exactly as it was', () => {
+    expect(DIFFICULTY_MULTIPLIER.normal).toBe(1);
+    expect(baseCoinsFor(rated(30, 'normal'))).toBe(baseCoinsFor(task(30)));
+    expect(baseCoinsFor(rated(600, 'normal'))).toBe(12);
+    expect(baseCoinsFor({ ...task(30), difficulty: null })).toBe(3);
+  });
+
+  it('doubles a hard task, so a quick dreaded call is worth more than a coin', () => {
+    expect(baseCoinsFor(rated(1, 'hard'))).toBe(2);
+    expect(baseCoinsFor(rated(30, 'hard'))).toBe(6);
+    expect(baseCoinsFor(rated(600, 'hard'))).toBe(24);
+  });
+
+  it('halves an easy task, rounding, and never below 1', () => {
+    expect(baseCoinsFor(rated(600, 'easy'))).toBe(6);
+    expect(baseCoinsFor(rated(90, 'easy'))).toBe(3);
+    expect(baseCoinsFor(rated(1, 'easy'))).toBe(1);
+  });
+
+  it('carries into a completion and a bounty', () => {
+    expect(coinsForCompletion(rated(30, 'hard'), 0)).toBe(6);
+    expect(fullBountyFor(rated(30, 'hard'))).toBe(6);
+  });
+
+  it('never makes a miss cost more than the time amount', () => {
+    expect(coinsForLoss(rated(30, 'hard'))).toBe(3);
+    expect(coinsForLoss(rated(30, 'normal'))).toBe(3);
+  });
+
+  it('never makes an easy task cost more to miss than it earns', () => {
+    expect(coinsForLoss(rated(600, 'easy'))).toBe(6);
+    expect(coinsForLoss(rated(600, 'easy'))).toBeLessThanOrEqual(baseCoinsFor(rated(600, 'easy')));
   });
 });
 

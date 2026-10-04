@@ -8,7 +8,7 @@ import type { PersonNote, PersonNoteKind } from '../types';
  *
  * **Rule 7 in full, and the part that makes the feature a thing you like
  * rather than a thing you tolerate.** The most valuable thing an app can do
- * here is not "remind me to maintain relationship #4", it is "Ansley starts the
+ * here is not "remind me to maintain relationship #4", it is "Tessa starts the
  * new job in September, ask her about it". `Person.askAbout` was a one-field
  * slice of this, shipped early so the first nudge anybody sees is warm; this is
  * the rest of it.
@@ -59,7 +59,7 @@ export function isLiveNote(note: PersonNote): boolean {
 /**
  * Whether a note's day has been and gone.
  *
- * **Stale is a display state, never a delete.** "Ansley starts the new job in
+ * **Stale is a display state, never a delete.** "Tessa starts the new job in
  * September" stops being a thing to ask about once September has passed, and
  * the honest thing is to show it quieter rather than to remove something the
  * user wrote or to keep presenting it as news. Nothing in the app deletes a
@@ -131,7 +131,7 @@ export function describeNoteDay(relevantOn: string, today: Date): string {
  *
  * **This is the whole point of having written them down in March.** A birthday
  * task that arrives carrying "the pottery class, a proper chef's knife" is the
- * memory layer paying off; one that arrives saying only "Ansley's birthday" is
+ * memory layer paying off; one that arrives saying only "Tessa's birthday" is
  * a reminder you already had.
  *
  * Stale gift ideas are dropped rather than sunk: a dated gift idea whose day

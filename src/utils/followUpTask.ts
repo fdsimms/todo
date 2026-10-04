@@ -1,4 +1,4 @@
-import type { Effort, FollowUpTaskDraft, Priority, Task, TimeOfDay } from '../types';
+import type { Difficulty, Effort, FollowUpTaskDraft, Priority, Task, TimeOfDay } from '../types';
 import { ordinal } from './ordinal';
 import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
 import { capitalize } from './capitalize';
@@ -180,6 +180,7 @@ export function emptyFollowUpTaskDraft(): FollowUpTaskDraft {
     tags: [],
     priority: 0,
     effort: 0,
+    difficulty: null,
     estimatedMinutes: null,
     timeSegments: [],
     vacationPause: false,
@@ -210,6 +211,7 @@ export function parseFollowUpTaskDraft(raw: string | null | undefined): FollowUp
     tags: Array.isArray(d.tags) ? d.tags.filter((t): t is string => typeof t === 'string') : [],
     priority: isPriority(d.priority) ? d.priority : base.priority,
     effort: isEffort(d.effort) ? d.effort : base.effort,
+    difficulty: d.difficulty === 'easy' || d.difficulty === 'normal' || d.difficulty === 'hard' ? d.difficulty : null,
     estimatedMinutes: typeof d.estimatedMinutes === 'number' ? d.estimatedMinutes : null,
     timeSegments: Array.isArray(d.timeSegments)
       ? d.timeSegments.filter((t): t is TimeOfDay => TIME_SEGMENTS.includes(t as TimeOfDay))
@@ -225,6 +227,8 @@ export function parseFollowUpTaskDraft(raw: string | null | undefined): FollowUp
       : [],
   };
 }
+
+const DIFFICULTY_LABELS: Record<Difficulty, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
 
 const TIME_SEGMENTS: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
 
@@ -252,6 +256,7 @@ export function followUpTaskDraftIsEmpty(draft: FollowUpTaskDraft | null): boole
     && draft.tags.length === 0
     && draft.priority === 0
     && draft.effort === 0
+    && (draft.difficulty ?? null) === null
     && draft.estimatedMinutes === null
     && draft.timeSegments.length === 0
     && !draft.vacationPause
@@ -284,6 +289,7 @@ export function describeFollowUpTaskDraft(
   if (draft.priority > 0) parts.push(PRIORITY_LABELS[draft.priority]);
   if (draft.estimatedMinutes !== null) parts.push(`${draft.estimatedMinutes} min`);
   else if (draft.effort > 0) parts.push(EFFORT_LABELS[draft.effort]);
+  if (draft.difficulty) parts.push(DIFFICULTY_LABELS[draft.difficulty]);
   if (draft.tags.length > 0) parts.push(draft.tags.length === 1 ? '1 tag' : `${draft.tags.length} tags`);
   if (draft.subtasks.length > 0) {
     parts.push(draft.subtasks.length === 1 ? '1 subtask' : `${draft.subtasks.length} subtasks`);

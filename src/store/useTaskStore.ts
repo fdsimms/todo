@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry, FoodLogEntry } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -13,6 +13,7 @@ import {
   dbBatchUpdateSortOrders,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
+  dbBulkSetDifficulty,
   dbBulkSetDefer,
   dbBulkSetTimeSegments,
   dbBulkSetCategory,
@@ -379,7 +380,7 @@ import {
 // because each already has exactly one sensible interpretation (see
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
-  'title', 'notes', 'tags', 'category', 'priority', 'effort',
+  'title', 'notes', 'tags', 'category', 'priority', 'effort', 'difficulty',
   'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
@@ -2156,6 +2157,8 @@ interface TaskStore extends UndoHistoryActions {
   /** A list's "Delete checked": every checked item on it, one Undo step. */
   deleteCheckedListItems: (projectId: string) => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
+  /** The bulk bar's Difficulty. Null clears the rating back to unrated. */
+  bulkSetDifficulty: (ids: string[], difficulty: Difficulty | null) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
@@ -5651,7 +5654,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // happened *with* them (see Task.personIds), and the app writing that
           // record on its own behalf would put its own rows into a history
           // meant to hold yours — and, once the reach-out nudge reads that
-          // history (#2046), ticking off "Ansley's birthday" would reset a
+          // history (#2046), ticking off "Tessa's birthday" would reset a
           // clock you never actually reached out on. It points at its person
           // through generatedSourceId, like every generator points at its
           // source.
@@ -8927,6 +8930,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: task.linkUrl,
           vacationPause: task.vacationPause,
           excludeFromSuggestions: task.excludeFromSuggestions,
+          difficulty: task.difficulty ?? null,
           pinEachOccurrence: task.pinEachOccurrence,
           projectId: created.id,
           groupId,
@@ -9433,6 +9437,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     dbBulkSetPriority(ids, priority);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { priority }) }));
+  },
+
+  bulkSetDifficulty(ids, difficulty) {
+    if (ids.length === 0) return;
+    dbBulkSetDifficulty(ids, difficulty);
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { difficulty }) }));
   },
 
   // Mixed selections pin (same rule as pinGroup/pinCategory): a selection is

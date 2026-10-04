@@ -27,6 +27,7 @@ import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
+import { CoinIcon } from './CoinIcon';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
@@ -45,14 +46,14 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey, MealSlot } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, NutrientKey, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
-import { BOUNTY_WITHDRAWN, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
+import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -190,12 +191,14 @@ export interface TaskDraft {
   windowEnd?: string | null;
   /** Carried over when quick add reads "don't …" or "no snacking" as a habit to avoid. */
   polarity?: Polarity;
+  /** Carried over from quick add's Difficulty chip. */
+  difficulty?: Difficulty | null;
   /** What it waits on, carried over when quick add parses "after <another task>". */
   blockerIds?: string[];
   /** Carried over when quick add parses "pack: socks, charger". */
   subtaskTitles?: string[];
   tags: string[];
-  /** Who the task involves, carried over when quick add parses "@dustin" (#2045). */
+  /** Who the task involves, carried over when quick add parses "@gideon" (#2045). */
   personIds?: string[];
   category: string | null;
   recurrenceType: RecurrenceType;
@@ -270,7 +273,7 @@ type DraftSubtask = { id: string; title: string; completed: boolean; timedMinute
 /** A medication name is a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
 
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -562,6 +565,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   // Whether a live bounty is posted on this task (utils/rewards.ts). A switch
   // in the draft; save turns it into a post or a withdrawal.
   const [bounty, setBounty] = useState(false);
@@ -901,6 +905,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
+      setDifficulty(task.difficulty ?? null);
       setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
       setPolarity(task.polarity ?? 'positive');
@@ -958,6 +963,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRotationEnabled(initialDraft?.rotationEnabled ?? false); setRotationItems(initialDraft?.rotationItems ?? []);
       setVacationPause(false);
       setExcludeFromSuggestions(false);
+      setDifficulty(initialDraft?.difficulty ?? null);
       // A new task starts as "Do this" unless the draft says otherwise: left
       // unset, it kept whatever the last task edited had.
       setPolarity(initialDraft?.polarity ?? 'positive');
@@ -1090,6 +1096,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
+      difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
       showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
@@ -1550,6 +1557,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       excludeFromSuggestions,
+      difficulty,
       // Only the edge is written: posting starts the count at 0, and turning a
       // live bounty off spends it. Anything else leaves the row's count to
       // updateTask, which takes a step off it if this same save pushes the date.
@@ -2190,6 +2198,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
       pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
+      difficulty,
       bounty,
       polarity,
       showStreak,
@@ -5784,7 +5793,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         style={[styles.pill, on && styles.pillActiveNeutral]}
                         // Multi-select, so the field deliberately does not
                         // collapse on a tap the way the single-choice ones do:
-                        // "beach with Dustin and Ansley" is two taps, and
+                        // "beach with Gideon and Tessa" is two taps, and
                         // closing after the first would hide the second.
                         onPress={() => {
                           haptics.tap();
@@ -6033,6 +6042,32 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Only the coin rules read it, so it's offered only while they run:
+          // a rating that changes nothing on screen is a question with no
+          // answer. A rating set earlier stays put while rewards are off.
+          ...(rewardsEnabled && polarity !== 'negative' ? [{
+            key: 'difficulty', label: 'Difficulty', set: difficulty !== null,
+            keywords: ['hard', 'easy', 'dread', 'avoid', 'coins', 'reward', 'aversion'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Difficulty"
+            summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+            emptySummary="Not set"
+            hint={DIFFICULTY_HINT}
+            expanded={fieldOpen('difficulty')}
+            onToggle={() => toggleField('difficulty')}
+          >
+            <SegmentedControl
+              label="Difficulty"
+              value={difficulty}
+              onChange={d => { setDifficulty(d); closeField('difficulty'); }}
+              options={DIFFICULTY_PICKER_SEGMENTS}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          }] : []),
           {
             key: 'pin', label: 'Pin to Today',
             keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
@@ -6106,7 +6141,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               accessibilityLabel="Bounty"
               accessibilityState={{ checked: bounty }}
             >
-              <Ionicons name="trophy-outline" size={18} color={bounty ? colors.accent : colors.textSecondary} />
+              <CoinIcon size={18} color={bounty ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Bounty</Text>
                 <Text style={styles.optionHint}>

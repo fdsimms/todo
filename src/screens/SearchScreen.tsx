@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from '../components/CoinIcon';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -46,6 +47,7 @@ import { InlineAction } from '../components/InlineAction';
 import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useStableCallback } from '../hooks/useStableCallback';
+import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
@@ -98,8 +100,8 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
   // doc comment) and is tinted the same as a matched query term — merged
-  // into one range set since the two can overlap (searching "brittany" with
-  // "@Brittany" in the title), and HighlightedText needs disjoint ranges.
+  // into one range set since the two can overlap (searching "kelsey" with
+  // "@Kelsey" in the title), and HighlightedText needs disjoint ranges.
   const titleRanges = useMemo(
     () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds)).map((m): [number, number] => [m.start, m.end])]),
     [titleMatches, displayTitle, task.personIds]
@@ -116,9 +118,12 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   // What this row stands for besides itself, when it's one date of a repeat
   // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
   const countLabel = formatOccurrenceCount(occurrenceCount);
+  // Which calendar event a rule wrote this row for; null on any other task.
+  const eventContext = useEventTaskContext(task);
 
   const a11yLabel = [
     displayTitle,
+    eventContext,
     projectName ? `in ${projectName}` : null,
     task.category ? `in ${task.category}` : null,
     task.archived ? 'archived' : null,
@@ -252,6 +257,9 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           {quotaNext && (
             <Text style={styles.metaText}>Next {quotaNext}</Text>
           )}
+          {eventContext && (
+            <Text style={styles.metaText} numberOfLines={1}>{eventContext}</Text>
+          )}
           {/* Last of the chips and first of the wrapping ones: it's the least
               specific fact on the row, but it's the one that explains why the
               other twenty occurrences aren't here. */}
@@ -347,7 +355,7 @@ const ElsewhereResultItem = React.memo(function ElsewhereResultItem({ result, on
     >
       <View style={styles.statusIcon}>
         <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
-          <Ionicons name={described.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+          <NamedIcon name={described.icon} size={iconSize.sm} color={colors.accent} />
         </View>
       </View>
       <View style={styles.resultContent}>

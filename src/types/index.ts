@@ -32,6 +32,12 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
 export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 
 /**
+ * How hard a task is to make yourself do, apart from how long it takes — see
+ * `Task.difficulty`.
+ */
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+/**
  * Which direction a task's success runs in — see `Task.polarity`.
  *
  * 'positive' is every task that has ever existed here: something to do, and
@@ -236,6 +242,9 @@ export interface FollowUpTaskDraft {
   tags: string[];
   priority: Priority;
   effort: Effort;
+  // Same field and meaning as `Task.difficulty`. Optional so a draft stored
+  // before it existed reads as unrated.
+  difficulty?: Difficulty | null;
   estimatedMinutes: number | null;
   timeSegments: TimeOfDay[];
   // Same field and meaning as `Task.vacationPause`, and the one field of the
@@ -1363,7 +1372,7 @@ export interface Person {
   // person — an optometrist, a vet, a dry cleaner — so the app stops reading
   // its name the way it reads a person's: the "@" mention index and the
   // calendar-title guess in calendarHistory.ts both answer to a name's first
-  // word on the assumption that it's a first name ("@dustin" for "Dustin
+  // word on the assumption that it's a first name ("@gideon" for "Gideon
   // Reyes"), which turns a company name like "Eye Q" into "Eye" as though it
   // were somebody's given name. Business entries skip that fallback. It also
   // turns the reach-out nudge off outright — see docs/arch/people.md,
@@ -1455,8 +1464,8 @@ export interface Person {
    * Something to ask them about next time — "the new job", "how the move went".
    *
    * Rule 7 in miniature, and the field that keeps the nudge from being purely a
-   * clock: when it is set, the reach-out task's title becomes "Ask Ansley about
-   * the new job" instead of "Catch up with Ansley". A reason to get in touch
+   * clock: when it is set, the reach-out task's title becomes "Ask Tessa about
+   * the new job" instead of "Catch up with Tessa". A reason to get in touch
    * beats a prompt to.
    *
    * Empty on every person and never filled in by the app. It is a note you
@@ -1542,7 +1551,7 @@ export const PERSON_NOTE_KINDS: readonly PersonNoteKind[] = ['note', 'gift', 'fo
  *
  * Rule 7 in full, and the only genuinely novel part of the feature: the most
  * valuable thing an app can do here is not "maintain relationship #4", it is
- * "Ansley starts the new job in September, ask her about it". A note like that,
+ * "Tessa starts the new job in September, ask her about it". A note like that,
  * resurfaced at the right moment, makes you a better friend, and it cannot be
  * read as ranking anybody.
  *
@@ -1572,7 +1581,7 @@ export interface PersonNote {
    * The day this note is *about*, or null for one that is always true.
    *
    * **This is the whole distinction from `Person.notes`**, which is a static
-   * description. A dated note can go stale: "Ansley starts the new job in
+   * description. A dated note can go stale: "Tessa starts the new job in
    * September" stops being a thing to ask about once you have asked, and the
    * app's job is to show it quieter rather than to delete it or to nag. Null is
    * the common case and is not missing data — "no shellfish" is not about a day.
@@ -2646,7 +2655,7 @@ export interface Task {
   blockedByIds?: string[];
 
   /**
-   * Somebody you are waiting on — "Waiting on Dustin to send the photos"
+   * Somebody you are waiting on — "Waiting on Gideon to send the photos"
    * (#2087). Null on every ordinary task.
    *
    * The same shape as `blockedById` with a person on the other end, and it
@@ -2664,7 +2673,7 @@ export interface Task {
    * how this becomes a way to lose one.
    *
    * Independent of `personIds`, which says a task is *with* somebody. Waiting
-   * on Dustin for the photos is not time spent with Dustin, and it must never
+   * on Gideon for the photos is not time spent with Gideon, and it must never
    * land in his history.
    */
   waitingOnPersonId: string | null;
@@ -2908,6 +2917,24 @@ export interface Task {
    *   the *failure* report, and it breaks the run.
    */
   polarity: Polarity;
+
+  /**
+   * How hard this is to make yourself do, which the time estimate can't say:
+   * a two-minute phone call you dread and an hour of something you enjoy.
+   * Only the coin rules read it (`difficultyMultiplier` in `rewards.ts`); it
+   * scales the effort bucket's value and nothing else.
+   *
+   * - **Null is "never rated" and earns as 'normal' does**, so every task that
+   *   existed before the field earns exactly what it did. It is kept apart
+   *   from an explicit 'normal' because the backfill queue asks about the
+   *   unrated ones, and a rating someone gave is an answer. Absent is null.
+   * - **It is the person's own rating and nothing writes it on their behalf.**
+   *   Inferring it from `postponeCount` would pay more for a task that waited,
+   *   which is the one thing the bounty rules exist to refuse.
+   * - **It carries to the next occurrence** (a `CONTENT_FIELD`), unlike a
+   *   bounty: a call you dread this week is one you'll dread next week.
+   */
+  difficulty?: Difficulty | null;
 
   /**
    * Slips logged against a negative task on the day named by `slipDate`, and 0
@@ -3610,6 +3637,10 @@ export interface TemplateItem {
   // here. A "quit smoking" template that could only produce positive tasks
   // would be a template that can't express the one thing it's for.
   polarity: Polarity;
+  // Seeds Task.difficulty. Null (the default through normalizeTemplateItem,
+  // which is also what stored JSON from before the field reads as) seeds an
+  // unrated task.
+  difficulty?: Difficulty | null;
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
@@ -5872,7 +5903,7 @@ export interface RecipeIngredient {
   // prep clause changed. null means the line didn't have one, same as aisle.
   prep: string | null;
   // Why it's on the list, not what to do to it — "margaritas" from "Limes for
-  // margaritas", "dusting" from "flour for dusting". Split out by
+  // margaritas", "gideong" from "flour for gideong". Split out by
   // splitPurpose() for the same reason prep is: nameKey is the catalog
   // bridge, so a purpose clause staying in `name` would mint a separate
   // catalog row every time the dish it's for changed. null means the line

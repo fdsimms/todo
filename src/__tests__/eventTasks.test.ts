@@ -7,6 +7,7 @@ import {
   describeRuleMatches,
   eventIsRuleEligible,
   eventOccurrenceKey,
+  eventTaskContextLabel,
   eventTaskRuleIdOf,
   eventTaskSourceId,
   leadTimeReached,
@@ -273,6 +274,46 @@ describe('source ids', () => {
     // generator's source id being read as this one's.
     expect(eventTaskRuleIdOf({ generatedKind: 'weather', generatedSourceId: sourceId })).toBeNull();
     expect(eventTaskRuleIdOf({ generatedKind: null, generatedSourceId: null })).toBeNull();
+  });
+});
+
+describe('eventTaskContextLabel', () => {
+  // Local parts, never a slice of the UTC ISO string: days here are local ones.
+  const day = (iso: string) => `D${new Date(iso).getDate()}`;
+  const time = (iso: string) => `T${new Date(iso).getHours()}`;
+  const taskFor = (e: BusyEvent) => ({
+    generatedKind: 'eventTask' as const,
+    generatedSourceId: eventTaskSourceId(eventOccurrenceKey(e), 'r1'),
+  });
+
+  it('names the event and when it is', () => {
+    const e = event({ title: 'Interview with Acme' });
+    expect(eventTaskContextLabel(taskFor(e), [e], day, time)).toBe('Interview with Acme · D20 T14');
+  });
+
+  it('leaves the time off an all-day event', () => {
+    const e = event({ title: 'Conference', allDay: true });
+    expect(eventTaskContextLabel(taskFor(e), [e], day, time)).toBe('Conference · D20');
+  });
+
+  // Recurring instances share one id, so the start is what picks the right one.
+  it('picks the occurrence, not just the event id', () => {
+    const first = event({ title: 'Standup', start: localIso('2026-09-20T09:00') });
+    const second = event({ title: 'Standup', start: localIso('2026-09-27T09:00') });
+    expect(eventTaskContextLabel(taskFor(second), [first, second], day, time)).toBe('Standup · D27 T9');
+  });
+
+  // The event has left the window, so the day is all the key can vouch for.
+  it('falls back to the day once the event is gone', () => {
+    const e = event();
+    expect(eventTaskContextLabel(taskFor(e), [], day, time)).toBe('Event on D20');
+  });
+
+  it('is null for a task of any other kind', () => {
+    const e = event();
+    const other = { generatedKind: 'weather' as const, generatedSourceId: taskFor(e).generatedSourceId };
+    expect(eventTaskContextLabel(other, [e], day, time)).toBeNull();
+    expect(eventTaskContextLabel({ generatedKind: null, generatedSourceId: null }, [e], day, time)).toBeNull();
   });
 });
 

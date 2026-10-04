@@ -10,7 +10,7 @@ import { isRealCompletion } from './missed';
  * **There is no interactions table, and this is why there doesn't need to be.**
  * A completed task carrying somebody's id *is* the record that something
  * happened with them, so the history writes itself out of ordinary use: you
- * type "beach with @dustin sat" because you are making a plan, and ticking it
+ * type "beach with @gideon sat" because you are making a plan, and ticking it
  * off is the logging. Everything here is derived at read time from those rows.
  *
  * Nothing in this module scores, ranks or grades anybody. It answers "what did
@@ -81,7 +81,7 @@ export interface UpcomingEntry {
  *
  * The counterpart to the history and the reason the screen does not read as an
  * obituary: a person you are seeing on Saturday should say so, above whatever
- * you last did. Undated live tasks are left out — "someday, coffee with Dustin"
+ * you last did. Undated live tasks are left out — "someday, coffee with Gideon"
  * is a wish rather than a plan, and listing it under something called Coming up
  * would be the app overstating what you have arranged.
  */

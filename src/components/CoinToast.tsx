@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { CoinIcon } from './CoinIcon';
 import { useRewardStore } from '../store/useRewardStore';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { useTheme } from '../theme/ThemeContext';
@@ -72,7 +72,7 @@ export function CoinToast() {
         accessibilityLiveRegion="polite"
         accessibilityLabel={earned ? `Earned ${formatCoins(shown.amount)}` : `Lost ${formatCoins(shown.amount)}`}
       >
-        <Ionicons name="trophy-outline" size={iconSize.sm} color={tint} />
+        <CoinIcon size={iconSize.sm} color={tint} />
         <Text style={[styles.label, { color: tint }]}>{text}</Text>
       </Animated.View>
     </View>

@@ -932,6 +932,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       tags: ['upkeep'],
       priority: 2 as const,
       effort: 1 as const,
+      difficulty: 'hard' as const,
       estimatedMinutes: 5,
       timeSegments: ['evening' as const],
       vacationPause: false,
@@ -1161,6 +1162,17 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(after.polarity).toBe('negative');
     expect(after.slipCount).toBe(1);
     expect(after.slipDate).toBe('2026-01-11T00:00:00.000Z');
+  });
+
+  it('round-trips difficulty, reading a row without one as unrated', () => {
+    dbInsertTask(makeTask({ id: 'hard', difficulty: 'hard' }));
+    dbInsertTask(makeTask({ id: 'plain' }));
+    const tasks = dbGetAllTasks();
+    expect(tasks.find(t => t.id === 'hard')!.difficulty).toBe('hard');
+    expect(tasks.find(t => t.id === 'plain')!.difficulty).toBeNull();
+    const hard = tasks.find(t => t.id === 'hard')!;
+    dbUpdateTask({ ...hard, difficulty: 'normal' });
+    expect(dbGetAllTasks().find(t => t.id === 'hard')!.difficulty).toBe('normal');
   });
 
   it('round-trips showStreak', () => {
@@ -1673,7 +1685,7 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, difficulty: null,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,

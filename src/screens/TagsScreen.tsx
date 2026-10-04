@@ -16,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
@@ -61,6 +62,8 @@ export function TagsScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const colors = useColors();
@@ -397,6 +400,7 @@ export function TagsScreen() {
                 onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
                 onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
                 onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+                onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}
                 onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
                 onSelectAll={() => selectAll(tagTasks.map(t => t.id))}
                 onDeselectAll={deselectAll}

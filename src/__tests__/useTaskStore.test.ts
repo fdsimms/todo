@@ -47,6 +47,7 @@ import {
   dbBatchUpdatePostponeCounts,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
+  dbBulkSetDifficulty,
   dbBulkSetDefer,
   dbBulkSetPinned,
   dbBulkSetCategory,
@@ -175,6 +176,7 @@ jest.mock('../db/database', () => ({
   dbBatchUpdatePostponeCounts: jest.fn(),
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
+  dbBulkSetDifficulty: jest.fn(),
   dbBulkSetDefer: jest.fn(),
   dbBulkSetWhen: jest.fn(),
   dbBulkSetCategory: jest.fn(),
@@ -5208,7 +5210,7 @@ describe('checkWaitingFollowUpTasks', () => {
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
   const person = (overrides: Partial<Person> = {}): Person => ({
-    id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+    id: 'p1', name: 'Gideon', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
     archived: false, archivedAt: null, createdAt: daysAgo(60),
     birthdayMonth: null, birthdayDay: null, birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -5240,7 +5242,7 @@ describe('checkWaitingFollowUpTasks', () => {
   it('writes a follow-up task once a wait has gone on long enough', () => {
     useTaskStore.getState().checkWaitingFollowUpTasks();
     expect(followUps()).toHaveLength(1);
-    expect(followUps()[0].title).toBe('Follow up with Dustin about "Get the quote back"');
+    expect(followUps()[0].title).toBe('Follow up with Gideon about "Get the quote back"');
   });
 
   it('does nothing while the wait is younger than the threshold', () => {
@@ -10674,6 +10676,22 @@ describe('bulkSetPriority', () => {
   });
 });
 
+describe('bulkSetDifficulty', () => {
+  it('rates only the selected tasks, and null clears a rating', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b', difficulty: 'hard' }), makeTask({ id: 'c' })],
+    });
+    useTaskStore.getState().bulkSetDifficulty(['a'], 'hard');
+    useTaskStore.getState().bulkSetDifficulty(['b'], null);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.difficulty).toBe('hard');
+    expect(tasks.find(t => t.id === 'b')?.difficulty).toBeNull();
+    expect(tasks.find(t => t.id === 'c')?.difficulty).toBeUndefined();
+    expect(dbBulkSetDifficulty).toHaveBeenCalledWith(['a'], 'hard');
+    expect(dbBulkSetDifficulty).toHaveBeenCalledWith(['b'], null);
+  });
+});
+
 describe('bulkSetCategory', () => {
   const routines = {
     id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
@@ -11093,7 +11111,7 @@ describe('pinnedTasks', () => {
     const people = usePersonStore.getState().people;
     usePersonStore.setState({
       people: [{
-        id: 'p-1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+        id: 'p-1', name: 'Gideon', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
         archived: false, archivedAt: null, createdAt: new Date().toISOString(),
         birthdayMonth: null, birthdayDay: null, birthYear: null,
         birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -16137,6 +16155,7 @@ describe('completeTask: followUp task every Nth completion', () => {
             tags: ['upkeep'],
             priority: 3,
             effort: 1,
+            difficulty: 'hard',
             estimatedMinutes: 5,
             timeSegments: ['evening'],
             vacationPause: false,
@@ -16154,6 +16173,7 @@ describe('completeTask: followUp task every Nth completion', () => {
       expect(followUp.tags).toEqual(['upkeep']);
       expect(followUp.priority).toBe(3);
       expect(followUp.effort).toBe(1);
+      expect(followUp.difficulty).toBe('hard');
       expect(followUp.estimatedMinutes).toBe(5);
       expect(followUp.timeSegments).toEqual(['evening']);
     });

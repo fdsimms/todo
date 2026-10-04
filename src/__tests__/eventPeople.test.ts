@@ -25,7 +25,7 @@ jest.mock('../store/useSettingsStore', () => ({
 function event(over: Partial<BusyEvent> = {}): BusyEvent {
   return {
     id: 'e1',
-    title: 'Dinner w/ Dustin',
+    title: 'Dinner w/ Gideon',
     start: new Date(2026, 7, 20, 18).toISOString(),
     end: new Date(2026, 7, 20, 20).toISOString(),
     allDay: false,
@@ -37,8 +37,8 @@ function event(over: Partial<BusyEvent> = {}): BusyEvent {
   };
 }
 
-const dustin = { id: 'p1', name: 'Dustin Reyes', nickname: '' };
-const ansley = { id: 'p2', name: 'Ansley', nickname: '' };
+const gideon = { id: 'p1', name: 'Gideon Reyes', nickname: '' };
+const tessa = { id: 'p2', name: 'Tessa', nickname: '' };
 
 const link = (over: Partial<EventPeopleLink> = {}): EventPeopleLink => ({
   id: 'r1',
@@ -168,11 +168,11 @@ describe('legacyEventPeopleRows', () => {
 
 describe('suggestedEventPeople', () => {
   it('suggests people the title names who are not linked yet', () => {
-    expect(suggestedEventPeople('Dinner w/ Dustin and Ansley', [dustin, ansley], ['p2'])).toEqual(['p1']);
+    expect(suggestedEventPeople('Dinner w/ Gideon and Tessa', [gideon, tessa], ['p2'])).toEqual(['p1']);
   });
 
   it('suggests nobody for a title naming nobody on the list', () => {
-    expect(suggestedEventPeople('Dentist', [dustin, ansley], [])).toEqual([]);
+    expect(suggestedEventPeople('Dentist', [gideon, tessa], [])).toEqual([]);
   });
 });
 

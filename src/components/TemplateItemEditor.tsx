@@ -19,7 +19,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, MealSlot } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -59,6 +59,7 @@ import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -95,7 +96,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location';
 
 interface Props {
   visible: boolean;
@@ -184,6 +185,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -203,6 +205,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -265,6 +268,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
+    setDifficulty(item?.difficulty ?? draft?.difficulty ?? null);
     setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
@@ -426,6 +430,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
       vacationPause,
       excludeFromSuggestions,
+      difficulty,
       // Cleared with the schedule: it only means anything on a repeating task.
       pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
       // Belt and braces with the row above being hidden for a chain: the two
@@ -1953,6 +1958,29 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             )}
           </View>
         </CollapsibleField>
+
+        {/* Seeds Task.difficulty, and offered on the same terms the task
+            editor offers it: only while the coin rules that read it run. */}
+        {rewardsEnabled && polarity !== 'negative' && (
+          <>
+            <View style={styles.cardSep} />
+            <CollapsibleField
+              label="Difficulty"
+              summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+              emptySummary="Not set"
+              hint={DIFFICULTY_HINT}
+              expanded={fieldOpen('difficulty')}
+              onToggle={() => toggleField('difficulty')}
+            >
+              <SegmentedControl
+                label="Difficulty"
+                value={difficulty}
+                onChange={d => { setDifficulty(d); closeField('difficulty'); }}
+                options={DIFFICULTY_PICKER_SEGMENTS}
+              />
+            </CollapsibleField>
+          </>
+        )}
       </View>
     </EditorSheet>
   );

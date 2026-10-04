@@ -40,7 +40,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity } from '../types';
+import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -106,6 +106,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
+import { DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
@@ -171,7 +172,7 @@ interface Props {
 // inside this one, the way the date chip opens WhenPicker. The sheet has room
 // to list every category, which this sheet — capped to the space above the
 // keyboard — does not.
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | 'supply' | null;
+type ActivePanel = 'priority' | 'effort' | 'difficulty' | 'tags' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | 'supply' | null;
 
 /** One attribute chip in the quick-add toolbar. See `chipDescriptors`. */
 interface ToolChipDescriptor {
@@ -402,6 +403,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const titleCaret = useTitleSelection(title);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  // Null is unrated, the same as a task made anywhere else. No new-task
+  // default seeds it: a rating is an answer about this task.
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortText, setCustomEffortText] = useState('');
   const [dueDate, setDueDate] = useState<Date | null>(null);
@@ -555,6 +560,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     titleCaret.resetCaret(nextTitle);
     setPriority(newTaskDefaults.priority ?? 0);
     setEffort(newTaskDefaults.effort ?? 0);
+    setDifficulty(null);
     setEstimatedMinutes(null);
     setCustomEffortText('');
     setDueDate(defaultDueDate(listTarget));
@@ -784,7 +790,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       : null),
     [title, parsed, categories, allTags]
   );
-  // "beach with @bri" where a Brittany and a Brittney both answer to it — the
+  // "beach with @kel" where a Kelsey and a Kelsie both answer to it — the
   // one case a "@name" token can't resolve on its own (see matchPersonMentions'
   // doc comment) and so still needs the tooltip slot, right after the
   // category/tag token for the same reason peopleParsed used to sit here: a
@@ -1083,7 +1089,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const activeMatch = matchDismissed ? null : rawMatch;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
-  // "beach with @dustin @ansley sat" — every "@name" token that resolves to
+  // "beach with @gideon @tessa sat" — every "@name" token that resolves to
   // somebody already added. Unlike the tooltip chain above, a mention is never
   // stripped out of the title (see matchPersonMentions' doc comment) and needs
   // no tap to accept: nothing about the typed text changes, so there is
@@ -1647,6 +1653,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const task = addTask({
       title: finalTitle,
       priority,
+      difficulty: avoidsHere ? null : difficulty,
       ...baked,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
@@ -1833,6 +1840,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     onOpenFull({
       title: (categoryTagsParsed?.cleanTitle ?? title).trim(),
       priority,
+      difficulty: avoidsHere ? null : difficulty,
       ...baked,
       dueDate,
       deadline,
@@ -2081,6 +2089,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort])
         : null,
     },
+    // Only while the coin rules that read it run, and not on an avoid-habit,
+    // which earns nothing: the editor's own terms. Kept while a value is set
+    // so a rating can't be stranded with no way back to it.
+    ...((rewardsEnabled && !avoidsHere) || difficulty !== null ? [{
+      key: 'difficulty' as const, icon: 'speedometer-outline' as const, panel: 'difficulty' as const,
+      value: DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label ?? null,
+    }] : []),
     {
       key: 'tags', icon: 'pricetag-outline', panel: 'tags',
       value: tags.length > 0 ? tags.slice(0, 2).join(', ') : null,
@@ -2848,6 +2863,19 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   onChange={setPriority}
                   columns={3}
                   options={PRIORITY_SEGMENTS}
+                />
+              </View>
+            </View>
+          )}
+
+          {activePanel === 'difficulty' && (
+            <View style={styles.panel}>
+              <View style={styles.segmentRow}>
+                <SegmentedControl<Difficulty | null>
+                  label="Difficulty"
+                  value={difficulty}
+                  onChange={setDifficulty}
+                  options={DIFFICULTY_PICKER_SEGMENTS}
                 />
               </View>
             </View>

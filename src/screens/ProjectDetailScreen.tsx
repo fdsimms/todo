@@ -394,6 +394,8 @@ export function ProjectDetailScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const groupTasks = useTaskStore(s => s.groupTasks);
@@ -2361,6 +2363,7 @@ export function ProjectDetailScreen() {
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             // Same majority-category rule TodayScreen's onGroup uses: the new
             // stack takes the category its members most often already have,

@@ -37,6 +37,8 @@ export interface SerializedTask {
   timeSegments?: string[];
   /** 'Low' | 'Medium' | 'High' | 'Urgent'. Absent for the 'None' default. */
   priority?: string;
+  /** 'easy' | 'normal' | 'hard'. Absent when the task was never rated. */
+  difficulty?: string;
   estimatedMinutes?: number;
   /** Present only mid-chain, and then it is where `title` came from. */
   chainStep?: string;
@@ -92,6 +94,7 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     deferUntil: task.deferUntil ?? undefined,
     timeSegments: task.timeSegments,
     priority: task.priority > 0 ? PRIORITY_LABELS[task.priority] : undefined,
+    difficulty: task.difficulty ?? undefined,
     estimatedMinutes: replica.estimatedMinutes(task) ?? undefined,
     chainStep: step?.title,
     asksOnCompletion: replica.deliverableKind(task) ?? undefined,

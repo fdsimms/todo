@@ -118,9 +118,14 @@ struct TaskRowView: View {
             // to show and everything beside it is short and fixed. A row that
             // lets its trailing pieces claim width first truncates the title
             // instead — see the same rule in CLAUDE.md's design section.
-            Text(task.title)
-                .font(.system(size: 12))
+            // The event a rule wrote this task for follows the title in the
+            // dimmer colour, on the same line, so a row's height never changes.
+            // Truncation takes the event's name before the task's own.
+            (Text(task.title)
                 .foregroundColor(isPendingCompletion ? palette.textTertiary : palette.text)
+                + Text(task.eventTitle.map { " · " + $0 } ?? "")
+                .foregroundColor(palette.textTertiary))
+                .font(.system(size: 12))
                 .strikethrough(isPendingCompletion)
                 .lineLimit(1)
                 .truncationMode(.tail)

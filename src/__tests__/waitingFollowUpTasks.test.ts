@@ -27,7 +27,7 @@ const TODAY = new Date(2026, 2, 20, 12);
 const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
 
 const person = (o: Partial<Person> = {}): Person => ({
-  id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
+  id: 'p1', name: 'Gideon', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
@@ -96,13 +96,13 @@ const waitingTask = (o: Partial<Task> = {}) => makeTask({
 describe('the title', () => {
   it('names the person and the task in one sentence', () => {
     expect(waitingFollowUpTitle(person(), waitingTask())).toBe(
-      'Follow up with Dustin about "Get the quote back"'
+      'Follow up with Gideon about "Get the quote back"'
     );
   });
 
   it('prefers what you actually call them', () => {
-    expect(waitingFollowUpTitle(person({ name: 'Dustin Ridley', nickname: 'Dusty' }), waitingTask()))
-      .toBe('Follow up with Dusty about "Get the quote back"');
+    expect(waitingFollowUpTitle(person({ name: 'Gideon Ridley', nickname: 'Gid' }), waitingTask()))
+      .toBe('Follow up with Gid about "Get the quote back"');
   });
 });
 
@@ -121,7 +121,7 @@ describe('wantedWaitingFollowUps', () => {
     const wants = wantedWaitingFollowUps([task], [person()], TODAY);
     expect(wants).toEqual([{
       taskId: 't1', personId: 'p1',
-      title: 'Follow up with Dustin about "Get the quote back"',
+      title: 'Follow up with Gideon about "Get the quote back"',
       phoneNumber: null,
       projectId: null,
     }]);

@@ -39,6 +39,7 @@ import { activeMealSlotStepId } from '../utils/mealSlotTasks';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
+import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
   isFieldMissing, ESTIMATE_EFFORTS, backfillFieldsFor, type BackfillFieldId,
@@ -84,13 +85,14 @@ import { shorterNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
+  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
 } from '../types';
 import { TextField } from '../components/TextField';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
   priority: 'flag-outline',
+  difficulty: 'speedometer-outline',
   category: 'folder-outline',
   streak: 'flame-outline',
   vacation: 'airplane-outline',
@@ -360,6 +362,7 @@ export function BackfillScreen() {
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const [active, setActive] = useState<ActiveField | null>(null);
   // Redo-from-scratch (task fields only): widens the queue to every live
@@ -456,7 +459,7 @@ export function BackfillScreen() {
   // comment describes.
   const suggestRoute = useAiRoute('backfillSuggestions');
 
-  const taskFields = useMemo(() => backfillFieldsFor(simpleMode), [simpleMode]);
+  const taskFields = useMemo(() => backfillFieldsFor(simpleMode, rewardsEnabled), [simpleMode, rewardsEnabled]);
   const entitySegments = useMemo(
     () => ENTITY_KIND_SEGMENTS.filter(seg => kitchenEnabled || !KITCHEN_ENTITY_KINDS.has(seg.value)),
     [kitchenEnabled]
@@ -1909,6 +1912,7 @@ export function BackfillScreen() {
               styles={styles}
               onEstimate={applyEstimate}
               onPriority={p => apply({ priority: p }, PRIORITY_OPTIONS.find(o => o.value === p)?.label ?? 'Priority set')}
+              onDifficulty={d => apply({ difficulty: d }, DIFFICULTY_SEGMENTS.find(o => o.value === d)?.label ?? 'Difficulty set')}
               onCategory={applyTaskCategory}
               onStreak={() => apply({ showStreak: true }, 'Streak shown')}
               onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
@@ -3075,6 +3079,7 @@ interface FieldControlProps {
   onVacation: () => void;
   onReminder: () => void;
   onSuggestions: () => void;
+  onDifficulty: (difficulty: Difficulty) => void;
   customOpen: boolean;
   customText: string;
   customUnit: 'min' | 'hr';
@@ -3085,7 +3090,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onCategory, onStreak, onVacation, onReminder, onSuggestions,
+  field, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -3159,6 +3164,20 @@ function FieldControl({
         onChange={onPriority}
         columns={2}
         options={PRIORITY_OPTIONS}
+        surface="page"
+      />
+    );
+  }
+
+  // All three stay on offer, unlike Priority's None: the missing value here is
+  // null, which no segment holds, so Normal is a real answer and tappable.
+  if (field === 'difficulty') {
+    return (
+      <SegmentedControl<Difficulty | null>
+        label="Difficulty"
+        value={null}
+        onChange={d => { if (d) onDifficulty(d); }}
+        options={DIFFICULTY_SEGMENTS}
         surface="page"
       />
     );

@@ -13,7 +13,7 @@ import type { TimeOfDay } from '../types';
 import type { ClockTime } from './parseNaturalDate';
 
 /**
- * One typed line ("lunch w/ @dustin fri 12p") turned into a new calendar
+ * One typed line ("lunch w/ @gideon fri 12p") turned into a new calendar
  * event, the event counterpart of quick add. Nothing here writes anything: it
  * reads the line into a draft that `quickEventSaveFields` turns into the write
  * (`saveEventDirect`), and names who to link it to afterward.
@@ -421,7 +421,7 @@ export function parseQuickEvent(
 
 /**
  * The marker that turns a regular quick add line into an event: a leading
- * "event:" ("event: lunch w/ @dustin sat 12pm"). Returns the rest of the line
+ * "event:" ("event: lunch w/ @gideon sat 12pm"). Returns the rest of the line
  * when it is there, or null. A leading word and a colon, so it can't be hit by
  * accident mid-title, and "event" alone without the colon stays a task title.
  */

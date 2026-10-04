@@ -20,6 +20,7 @@ import { PersonNoteSheet } from '../components/PersonNoteSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { navigateToTab } from '../navigation/navigationRef';
 import { animateLayout } from '../utils/layoutAnimation';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import type { PersonNote, PersonNoteKind } from '../types';
@@ -53,7 +54,9 @@ import {
 } from '../utils/personHistory';
 
 type RootStackParamList = {
-  PersonDetail: { personId: string };
+  // `returnTo` is the tab a task row's people link was tapped from (see
+  // `resetToPeople`). Absent when opened from the People list itself.
+  PersonDetail: { personId: string; returnTo?: string };
 };
 
 /** How many calendar offers show before the rest go behind "Show N more". */
@@ -111,7 +114,14 @@ export function PersonDetailScreen() {
   const [editing, setEditing] = useState(false);
 
   const personId = route.params.personId;
-  const tasks = useMemo(() => tasksNaming(personId), [personId, allTasks]);
+  const returnTo = route.params.returnTo;
+  // A bare `goBack` lands on the People tab that `resetToPeople` switched to on
+  // the way in. When the person was opened from another tab, go back there.
+  const handleBack = () => {
+    if (returnTo) navigateToTab(returnTo);
+    else navigation.goBack();
+  };
+  const tasks =useMemo(() => tasksNaming(personId), [personId, allTasks]);
   // Projects that name this person (Project.personIds): the trip with them,
   // the party they're helping with. Active first, then finished; filed-away
   // ones left out. In the projects' own order, never ranked.
@@ -126,7 +136,7 @@ export function PersonDetailScreen() {
   const upcoming = useMemo(() => personUpcoming(tasks), [tasks]);
 
   // Everybody, archived included, because ambiguity has to be judged against
-  // the whole list: with two Dustins on file, "Dinner w/ Dustin" names neither,
+  // the whole list: with two Gideons on file, "Dinner w/ Gideon" names neither,
   // and filing one away doesn't make the title any clearer about which.
   const allPeople = usePersonStore(useShallow(s => s.people));
   const notePendingReachOut = usePersonStore(s => s.notePendingReachOut);
@@ -226,7 +236,7 @@ export function PersonDetailScreen() {
     // with a name it can no longer resolve.
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <DetailHeader title="" onBack={() => navigation.goBack()} />
+        <DetailHeader title="" onBack={handleBack} />
         <EmptyState icon="person-outline" title="This person is gone" subtitle="They were deleted from another screen" />
       </View>
     );
@@ -318,7 +328,7 @@ export function PersonDetailScreen() {
    * Yes, that was us.
    *
    * The event's own title and time, and **everybody the title named** rather
-   * than just the person whose screen this is: "Dinner w/ Dustin and Ansley" is
+   * than just the person whose screen this is: "Dinner w/ Gideon and Tessa" is
    * one evening, and recording it twice from two screens would put the same
    * dinner in the Logbook as two. The title is right there to read before
    * tapping, which is the guard against a false positive.
@@ -356,7 +366,7 @@ export function PersonDetailScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader
         title={name}
-        onBack={() => navigation.goBack()}
+        onBack={handleBack}
         actions={
           <TouchableOpacity
             onPress={() => { haptics.tap(); setEditing(true); }}

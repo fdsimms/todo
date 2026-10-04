@@ -6,14 +6,14 @@ import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { displayTitleFor } from './visibilityUtils';
 
 /**
- * "Follow up with Dustin about 'Get the quote back'" — a task waiting on
+ * "Follow up with Gideon about 'Get the quote back'" — a task waiting on
  * somebody (`Task.waitingOnPersonId`), waited on long enough, becomes a task
  * of its own.
  *
  * Structurally this is `reachOutTasks.ts` one shelf over, sourced on the
  * waiting task rather than the person: a person can be the far end of several
- * independent waits at once ("waiting on Dustin for the photos" and "waiting
- * on Dustin to confirm Saturday" are two different things to be nudged
+ * independent waits at once ("waiting on Gideon for the photos" and "waiting
+ * on Gideon to confirm Saturday" are two different things to be nudged
  * about), and it's the *task* that stops wanting a nudge — released,
  * completed, archived, deleted — not the person. See `GeneratedKind`'s own
  * note on 'waitingFollowUp' for why the source is the task.
@@ -64,7 +64,7 @@ function declinedRecently(task: Pick<Task, 'waitingFollowUpDeclinedAt'>, today: 
  * Ticking a follow-up off leaves no live task, so without this the next sweep
  * writes an identical one straight back — the same blind spot
  * `reachOutsHandledRecently` covers, and for the same reason: completing
- * "Follow up with Dustin about the quote" answers *this* nudge, not the wait
+ * "Follow up with Gideon about the quote" answers *this* nudge, not the wait
  * itself, which is still open until the task it names is released or done.
  * Held for the decline window rather than the day, matching reachOut.
  */

@@ -129,7 +129,7 @@ interface Props {
 }
 
 /**
- * Quick add for a calendar event: one line ("lunch w/ @dustin sat 12pm") in
+ * Quick add for a calendar event: one line ("lunch w/ @gideon sat 12pm") in
  * the same floating card as task quick add (`QuickAddModal`), with the same
  * reading aids: the schedule phrase and each "@name" highlighted as you type,
  * a tooltip under the phrase to set it or say "not that", the pick-one pills

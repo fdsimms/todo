@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
@@ -20,6 +21,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { useShallow } from 'zustand/react/shallow';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
+import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -128,6 +130,8 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   // what the row is for is when the next unit comes due.
   const quotaNext = quotaNextDueLabel(task);
   const countLabel = formatOccurrenceCount(occurrenceCount);
+  // Which calendar event a rule wrote this row for; null on any other task.
+  const eventContext = useEventTaskContext(task);
 
   // Built as a list so the dots between the parts can be interleaved rather
   // than each part having to know what's beside it. A generic-sounding title
@@ -158,6 +162,8 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
     // Search screen's rows already use for a category beside a project chip.
     meta.push(<Text style={styles.categoryText} numberOfLines={1}>{category}</Text>);
   }
+  // Shrinks and truncates like the category, so the date stays whole.
+  if (eventContext) meta.push(<Text style={styles.categoryText} numberOfLines={1}>{eventContext}</Text>);
   if (dateLabel) meta.push(<Text style={styles.dateText}>{dateLabel}</Text>);
   if (hoursUnlock) meta.push(<Text style={styles.dateText}>Unlocks {hoursUnlock}</Text>);
   if (quotaNext) meta.push(<Text style={styles.dateText}>Next {quotaNext}</Text>);
@@ -180,6 +186,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
         accessibilityRole="button"
         accessibilityLabel={[
           displayTitle,
+          eventContext,
           projectName ? `in ${projectName}` : null,
           task.category ? `in ${task.category}` : null,
           task.archived ? 'archived' : null,
@@ -319,7 +326,7 @@ function QuickSearchElsewhereRow({ result, onSelect, styles, colors }: {
       accessibilityHint="Double tap to open"
     >
       <View style={styles.entityIcon}>
-        <Ionicons name={described.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+        <NamedIcon name={described.icon} size={iconSize.sm} color={colors.accent} />
       </View>
       <View style={styles.resultTap}>
         <HighlightedText

@@ -7,7 +7,7 @@ import type { Person } from '../types';
 
 const basePerson: Person = {
   id: 'p1',
-  name: 'Dustin Reyes',
+  name: 'Gideon Reyes',
   kind: 'individual',
   nickname: '',
   notes: '',
@@ -81,7 +81,7 @@ describe('personBackfillCandidates', () => {
   it('runs in the user’s own sortOrder, not alphabetically', () => {
     const people: Person[] = [
       { ...basePerson, id: 'a', name: 'Zoe', sortOrder: 1 },
-      { ...basePerson, id: 'b', name: 'Ansley', sortOrder: 2 },
+      { ...basePerson, id: 'b', name: 'Tessa', sortOrder: 2 },
       { ...basePerson, id: 'c', name: 'Mom', sortOrder: 3 },
     ];
     expect(personBackfillCandidates(people, 'birthday').map(p => p.id)).toEqual(['a', 'b', 'c']);

@@ -545,6 +545,9 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     phoneNumber: '(555) 123-4567',
     effort: 1,
+    // A five-minute call nobody wants to make: the case a time estimate can't
+    // price, and what puts a rating in the editor's Difficulty row.
+    difficulty: 'hard',
   });
 
   // A place on a task is what the Location row in the editor is for — same
@@ -2188,8 +2191,8 @@ function seedPeople(today: Date): void {
   const bdayNear = addDays(today, 2);
   const bdayFar = addDays(today, 154);
 
-  const dustin = createPerson('Dustin');
-  updatePerson(dustin.id, {
+  const gideon = createPerson('Gideon');
+  updatePerson(gideon.id, {
     birthdayMonth: bdayNear.getMonth() + 1,
     birthdayDay: bdayNear.getDate(),
     // A year on one of the two, so the seed shows the field exists without
@@ -2201,11 +2204,11 @@ function seedPeople(today: Date): void {
     location: 'Denver, CO',
   });
 
-  const ansley = createPerson('Ansley');
-  updatePerson(ansley.id, {
+  const tessa = createPerson('Tessa');
+  updatePerson(tessa.id, {
     birthdayMonth: bdayFar.getMonth() + 1,
     birthdayDay: bdayFar.getDate(),
-    nickname: 'Ans',
+    nickname: 'Tess',
     phoneNumber: '555 0172',
   });
 
@@ -2213,15 +2216,15 @@ function seedPeople(today: Date): void {
   // rather than reading as a feature the app doesn't have. Named single-word
   // on purpose: the "@" mention grammar only ever matches one word at a time
   // (see matchPersonMentions), so a group meant to be taggable needs a name
-  // that's tag-friendly, the same way a person's own name already is. Dustin
-  // and Ansley already share a task below, which is exactly the kind of pair
+  // that's tag-friendly, the same way a person's own name already is. Gideon
+  // and Tessa already share a task below, which is exactly the kind of pair
   // this feature exists for.
   const household = createGroup('Household');
   // Catch up separately, so the seed shows the switch is on a group rather than
   // every pair being one reminder: a couple you see together but call apart.
   usePersonGroupStore.getState().updateGroup(household.id, { catchUpSeparately: true });
-  updatePerson(dustin.id, { groupId: household.id });
-  updatePerson(ansley.id, { groupId: household.id });
+  updatePerson(gideon.id, { groupId: household.id });
+  updatePerson(tessa.id, { groupId: household.id });
 
   // No birthday at all, which is the state most people are added in: a name is
   // enough and everything else is optional. She is the one person opted into a
@@ -2263,9 +2266,9 @@ function seedPeople(today: Date): void {
   // The title carries the "@" tag itself, same as a real quick-add would have
   // resolved it — proof the tag renders as a tinted token in place rather than
   // getting stripped out, and that tagging the group set personIds for both
-  // members at once instead of needing "@dustin @ansley" written out.
+  // members at once instead of needing "@gideon @tessa" written out.
   const beach = addTask({ title: 'Beach day with @Household', dueDate: addDays(today, 5).toISOString() });
-  updateTask(beach.id, { personIds: [dustin.id, ansley.id] });
+  updateTask(beach.id, { personIds: [gideon.id, tessa.id] });
 
   // A row you can actually tap Call on (#2046). It needs a number *and* exactly
   // one person named: "Call the dentist about the crown" above has the number
@@ -2309,9 +2312,9 @@ function seedPeople(today: Date): void {
   // Waiting screen's person sections read as a feature the app doesn't have —
   // and unlike a task blocker, nothing ends this on its own.
   // Who a project is with (Project.personIds): the party is being planned
-  // with Ansley, shown on its page and opening her page from there.
+  // with Tessa, shown on its page and opening her page from there.
   const partyProject = useProjectStore.getState().projects.find(p => p.title === "Maya's birthday party");
-  if (partyProject) useProjectStore.getState().updateProject(partyProject.id, { personIds: [ansley.id] });
+  if (partyProject) useProjectStore.getState().updateProject(partyProject.id, { personIds: [tessa.id] });
 
   // A wait with its own follow-up day (Task.followUpOn): the follow-up task
   // arrives that day rather than after a week, whatever the setting says
@@ -2320,10 +2323,10 @@ function seedPeople(today: Date): void {
     title: 'Hear back about the cake order',
     ...(partyProject ? { projectId: partyProject.id } : {}),
   }, undefined, { skipTitleRules: true });
-  updateTask(cake.id, { waitingOnPersonId: ansley.id, followUpOn: dayKeyOf(addDays(today, 3)) });
+  updateTask(cake.id, { waitingOnPersonId: tessa.id, followUpOn: dayKeyOf(addDays(today, 3)) });
 
   const photos = addTask({ title: 'Photos from the trip' });
-  updateTask(photos.id, { waitingOnPersonId: dustin.id });
+  updateTask(photos.id, { waitingOnPersonId: gideon.id });
   // Backdated past WAITING_FOLLOW_UP_THRESHOLD_DAYS, so the follow-up task
   // below is a real answer to "how long has this been going on" rather than
   // a wait that only just started.
@@ -2334,26 +2337,26 @@ function seedPeople(today: Date): void {
   // only to somebody who had already turned it on. Its title comes from the
   // generator's own function so the two can never disagree about the words.
   addTask({
-    title: waitingFollowUpTitle(dustin, photos),
+    title: waitingFollowUpTitle(gideon, photos),
     dueDate: today.toISOString(),
-    linkUrl: personLinkUrl(dustin.id),
-    phoneNumber: dustin.phoneNumber,
+    linkUrl: personLinkUrl(gideon.id),
+    phoneNumber: gideon.phoneNumber,
     category: 'People',
     ...generatedBy('waitingFollowUp', photos.id),
   });
 
   // The memory layer (#2047), which is rule 7 and the part that makes this a
   // feature you like rather than one you tolerate. Every kind gets one, and
-  // each one lands somewhere: the gift ideas ride onto Dustin's birthday task
+  // each one lands somewhere: the gift ideas ride onto Gideon's birthday task
   // (his birthday is two days away, so that task genuinely exists), the food
   // notes show on each person's own page, and the dated one is what a note
   // able to go stale actually looks like.
   const { addNote } = usePersonNoteStore.getState();
-  addNote(dustin.id, 'gift', 'The bouldering gym membership');
-  addNote(dustin.id, 'gift', 'A proper chalk bag');
-  addNote(dustin.id, 'food', 'No shellfish');
-  addNote(ansley.id, 'note', 'Starts the new job in September, ask how it went', addDays(today, 16).toISOString());
-  addNote(ansley.id, 'food', "Doesn't drink");
+  addNote(gideon.id, 'gift', 'The bouldering gym membership');
+  addNote(gideon.id, 'gift', 'A proper chalk bag');
+  addNote(gideon.id, 'food', 'No shellfish');
+  addNote(tessa.id, 'note', 'Starts the new job in September, ask how it went', addDays(today, 16).toISOString());
+  addNote(tessa.id, 'food', "Doesn't drink");
   addNote(mom.id, 'food', 'No shellfish');
   // Its day has been and gone, which is the other half of the treatment: shown
   // quieter, sunk below the live ones, and never deleted by the app.
@@ -2368,16 +2371,16 @@ function seedPeople(today: Date): void {
   // so a demo relying on it would show the feature only to people who had
   // already found it. Its source id is copied off the birthday task's own
   // rather than recomputed, so the two can never disagree about which year.
-  const dustinBirthdayTask = useTaskStore.getState().tasks
-    .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(`${dustin.id}#`));
-  if (dustinBirthdayTask?.generatedSourceId) {
+  const gideonBirthdayTask = useTaskStore.getState().tasks
+    .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(`${gideon.id}#`));
+  if (gideonBirthdayTask?.generatedSourceId) {
     addTask({
-      title: birthdayGiftTitle(dustin),
+      title: birthdayGiftTitle(gideon),
       dueDate: today.toISOString(),
-      linkUrl: personLinkUrl(dustin.id),
-      category: dustinBirthdayTask.category,
-      notes: giftIdeasText(usePersonNoteStore.getState().notes, dustin.id, today),
-      ...generatedBy('birthdayGift', dustinBirthdayTask.generatedSourceId),
+      linkUrl: personLinkUrl(gideon.id),
+      category: gideonBirthdayTask.category,
+      notes: giftIdeasText(usePersonNoteStore.getState().notes, gideon.id, today),
+      ...generatedBy('birthdayGift', gideonBirthdayTask.generatedSourceId),
     });
   }
   // And the reminder, through the same pass the app runs at launch. It finds
