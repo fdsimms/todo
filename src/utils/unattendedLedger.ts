@@ -53,10 +53,19 @@ export const UNATTENDED_ACTION_SPECS: Record<UnattendedAction, UnattendedActionS
   cleared: { action: 'cleared', verb: 'Cleared', icon: 'close-circle-outline', adds: false },
   expired: { action: 'expired', verb: 'Expired', icon: 'hourglass-outline', adds: false },
   purged: { action: 'purged', verb: 'Purged', icon: 'trash-outline', adds: false },
+  // The three only an agent writes (see UnattendedActor). An edit or a move
+  // neither adds nor takes away, so neither is drawn as news.
+  edited: { action: 'edited', verb: 'Edited', icon: 'create-outline', adds: false },
+  moved: { action: 'moved', verb: 'Moved', icon: 'calendar-outline', adds: false },
+  completed: { action: 'completed', verb: 'Completed', icon: 'checkmark-circle-outline', adds: false },
 };
 
+/** The name an agent's rows go under. The MCP server is reached from the Claude apps. */
+export const AGENT_SOURCE = 'Claude';
+
 /** The glyph for a row: the generator's own where there is one, else the action's. */
-export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'>): string {
+export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'> & Partial<Pick<UnattendedEntry, 'actor'>>): string {
+  if (entry.actor === 'agent') return UNATTENDED_ACTION_SPECS[entry.action].icon;
   if (entry.kind !== null) return GENERATED_KIND_SPECS[entry.kind].icon;
   return UNATTENDED_ACTION_SPECS[entry.action].icon;
 }
@@ -70,7 +79,8 @@ export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'>):
  * being left blank: "the app deleted this" with no attribution is exactly the
  * unaccountability this feature exists to end.
  */
-export function unattendedSource(entry: Pick<UnattendedEntry, 'action' | 'kind'>): string {
+export function unattendedSource(entry: Pick<UnattendedEntry, 'action' | 'kind'> & Partial<Pick<UnattendedEntry, 'actor'>>): string {
+  if (entry.actor === 'agent') return AGENT_SOURCE;
   if (entry.kind !== null) return GENERATED_KIND_SPECS[entry.kind].label;
   return entry.action === 'purged' ? 'Completed task cleanup' : 'Expired task sweep';
 }

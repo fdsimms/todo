@@ -65,6 +65,11 @@ function toEntries(records: readonly UnattendedRecord[]): UnattendedEntry[] {
     title: r.title,
     taskId: r.taskId,
     count: r.count ?? 1,
+    // The store is only ever the app writing about its own passes. An agent's
+    // entries are written by the MCP server and arrive by sync.
+    actor: 'app',
+    subject: 'task',
+    revert: null,
   }));
 }
 

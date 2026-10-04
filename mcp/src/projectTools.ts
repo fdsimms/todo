@@ -7,6 +7,7 @@ import type { Project, Task } from '../../src/types';
 import type { ProjectPatch, ProjectPlan, ProjectPlanStep, Replica } from './replica';
 import { serializeTask, type SerializedTask } from './serialize';
 import { eventNoonIso, type TaskFieldsInput } from './taskFields';
+import { localDateInput } from './timeZone';
 
 /** A plan step as the tool takes it: task fields, plus a checklist and the earlier steps it waits on. */
 export interface ProjectPlanStepInput extends TaskFieldsInput {
@@ -150,6 +151,7 @@ export function createProject(replica: Replica, input: CreateProjectInput): GetP
   const { steps = [], ...rest } = input;
   const { project } = replica.createProjectPlan({
     ...rest,
+    ...(rest.deadline ? { deadline: localDateInput(rest.deadline) } : {}),
     steps: steps.map(toPlanStep),
   });
   return getProject(replica, project.id)!;
@@ -207,7 +209,9 @@ export function updateProject(
     prior = eventNoonIso(opts.moveTasksFrom!);
     if (!prior) throw new Error(`moveTasksFrom: "${opts.moveTasksFrom}" is not a date I can read.`);
   }
-  const project = Object.keys(patch).length > 0 ? replica.updateProject(id, patch) : before;
+  // A bare deadline is a local day, as every date a tool writes is (localDateInput).
+  const dated = patch.deadline ? { ...patch, deadline: localDateInput(patch.deadline) } : patch;
+  const project = Object.keys(dated).length > 0 ? replica.updateProject(id, dated) : before;
   const next = project.eventDate ?? null;
   const result = getProject(replica, id)!;
   if (moveLater && !next) throw new Error('moveTasksFrom counts to the project\'s event date, and it has none.');

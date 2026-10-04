@@ -18,7 +18,7 @@
  * phone. docs/arch/mcp-server.md has the reasoning.
  */
 import express, { type Request, type Response } from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js';
@@ -76,6 +76,18 @@ import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, get
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
+import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
+import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
+import { SERVER_INSTRUCTIONS } from './instructions';
+import { annotationsFor } from './toolAnnotations';
+import { createConfirmTokens, describeEffects, type ConfirmTokens } from './confirmWrites';
+import type { AgentLedgerEntry } from './agentLedger';
+import { PROMPTS } from './prompts';
+import { forget, remember } from './memoryTools';
+import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
+import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, saveRecipe } from './logTools';
+import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
+import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
@@ -105,6 +117,55 @@ const SYNC_THROTTLE_MS = 10_000;
  */
 const syncGateByReplica = new WeakMap<Replica, SyncGate>();
 
+/**
+ * Each replica's outstanding preview tokens (confirmWrites.ts). Module scope for
+ * the sync gate's reason: a preview and its confirm arrive as two requests,
+ * and this file builds a fresh server for each.
+ */
+const confirmTokensByReplica = new WeakMap<Replica, ConfirmTokens>();
+
+function confirmTokensFor(replica: Replica): ConfirmTokens {
+  let tokens = confirmTokensByReplica.get(replica);
+  if (!tokens) {
+    tokens = createConfirmTokens();
+    confirmTokensByReplica.set(replica, tokens);
+  }
+  return tokens;
+}
+
+/** Said once on every write tool, after its own description. */
+const CONFIRM_NOTE = 'Every write previews first: called without apply it changes nothing and returns willDo (what would change, in plain words) and a confirmToken. Show the person willDo and wait for their yes before calling again with apply: true and the confirmToken.';
+
+/** A tool result's JSON back as a value, or undefined when it is not JSON. */
+function parseToolText(out: { content: { type: string; text?: string }[] }): unknown {
+  const text = out.content.find(c => c.type === 'text')?.text;
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A preview's result without ids or links: everything it created was rolled
+ * back, so an id in it names nothing, and a model holding one would try to
+ * use it.
+ */
+function withoutIds(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutIds);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        // `applied` too: the write inside a preview ran, so a tool reporting on
+        // itself says it applied, and that is exactly what did not happen.
+        .filter(([k]) => !['id', 'openInApp', 'taskId', 'applied', 'note'].includes(k))
+        .map(([k, v]) => [k, withoutIds(v)]),
+    );
+  }
+  return value;
+}
+
 function syncGateFor(replica: Replica): SyncGate {
   let gate = syncGateByReplica.get(replica);
   if (!gate) {
@@ -121,8 +182,14 @@ function syncGateFor(replica: Replica): SyncGate {
   return gate;
 }
 
+/**
+ * Compact rather than indented. The reader is a model, which needs no
+ * whitespace to follow nesting, and indentation was a fifth or more of every
+ * result: tokens spent on spaces in a list of fifty tasks are tasks that did not
+ * fit in the same context.
+ */
 function json(value: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
 
 /**
@@ -145,19 +212,20 @@ function withLink<T extends object>(result: T, link: string | undefined): T | (T
   return link ? { ...result, openInApp: link } : result;
 }
 
-/**
- * What the server tells a client about itself, once, at connection. The links
- * are only worth anything if the model offers them, and a tool description is
- * the wrong place to say so: it would be repeated on every tool.
- */
-const INSTRUCTIONS = [
-  "This server reads and changes the user's dundundun app: tasks, projects, groceries, recipes, the meal plan and people.",
-  'Results about one thing carry openInApp, a link that opens that thing in the app on their phone.',
-  'After creating or changing something, offer it as a markdown link such as [Open in dundundun](openInApp), once, at the end of your reply.',
-].join(' ');
-
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0' }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: 'todo', version: '0.1.0' }, { instructions: SERVER_INSTRUCTIONS });
+
+  // Every tool gets its title and read/write hints from one table
+  // (toolAnnotations.ts) rather than an argument at each of thirty call sites.
+  // Applied on the way through `server.tool` so a tool added below picks them
+  // up with no change here, and one missing from the table claims nothing.
+  const register = server.tool.bind(server) as (...args: unknown[]) => RegisteredTool;
+  (server as unknown as { tool: (...args: unknown[]) => RegisteredTool }).tool = (...args: unknown[]) => {
+    const tool = register(...args);
+    const annotations = annotationsFor(String(args[0]));
+    if (Object.keys(annotations).length > 0) tool.update({ annotations, title: annotations.title });
+    return tool;
+  };
 
   // Every handler refreshes first. The replica caches reads for the length of a
   // request so the blocker registry does not re-read the task table once per
@@ -191,10 +259,20 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
    */
   const withWrite = async <T>(fn: () => T): Promise<T> => {
     replica.refresh();
+    // Previewing (see confirmWrites.ts): the same write, measured and rolled
+    // back, and nothing pushed, since nothing changed.
+    if (previewing) {
+      const { result, effects } = replica.dryRun(fn);
+      previewing.push(...effects);
+      return result;
+    }
     const result = fn();
     await gate.afterWrite();
     return result;
   };
+
+  /** Set while a write tool is previewing; collects what the write would record in Activity. */
+  let previewing: AgentLedgerEntry[] | null = null;
 
   server.tool(
     'list_tasks',
@@ -346,7 +424,171 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async ({ days }) => json(await withFresh(() => upcomingBirthdays(replica, days)))
   );
 
-  if (scope === 'write') registerWriteTools(server, replica, withWrite);
+  server.tool(
+    'get_overview',
+    "Start here. The person's time zone and logical today (their day can start after midnight), how many tasks are in each of Today, Later, Unscheduled and Inbox and how many are overdue, their categories (with any hours a category is limited to), most-used tags, active projects, which areas of the app are switched off, whether health logs reach this server, and whether you can write.",
+    {},
+    async () => json(await withFresh(() => getOverview(replica, scope)))
+  );
+
+  server.tool(
+    'get_agenda',
+    `The coming days as the app sees them, from today (default ${DEFAULT_AGENDA_DAYS} days, up to ${MAX_AGENDA_DAYS}): each day's tasks, repeats expected that day that have no task yet, estimated minutes, the app's own "busy"/"full" cue, trip days, what is carried over from before today, and deadlines that will not fit in the time left. The server cannot see the calendar, so meetings are unknown.`,
+    { days: z.number().int().positive().max(MAX_AGENDA_DAYS).optional() },
+    async input => json(await withFresh(() => getAgenda(replica, input)))
+  );
+
+  server.tool(
+    'completion_history',
+    `What got done over a range of days (default the last ${DEFAULT_HISTORY_DAYS}): completed tasks newest first, and a summary by day, weekday, hour of the day, category, project and tag, with estimated minutes, deadlines met, and how many occurrences were missed rather than done. Use it for reviews ("what did I get done this week"), patterns ("when do I actually do my workouts") and progress. Filter by category, projectId or tag.`,
+    {
+      ...logRange,
+      category: z.string().optional(),
+      projectId: z.string().optional(),
+      tag: z.string().optional(),
+      limit: z.number().int().positive().max(500).optional().describe('How many tasks to list. The summary always covers all of them.'),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => completionHistory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the history.' });
+      }
+    }
+  );
+
+  server.tool(
+    'review_tasks',
+    `Things in the list worth a second look, for a cleanup or weekly review: overdue tasks (oldest first), Inbox items left untriaged over a week, Unscheduled tasks older than staleDays (default ${DEFAULT_STALE_DAYS}), open tasks that look like duplicates, active projects with nothing finished in three weeks, and the repeating tasks missed most often. It lists, it does not judge: ask the person what they want done with any of it before changing anything.`,
+    { staleDays: z.number().int().positive().max(3650).optional() },
+    async input => json(await withFresh(() => reviewTasks(replica, input)))
+  );
+
+  server.tool(
+    'app_help',
+    `How the app works, in the app's own words. Pass the person's question or a few keywords ("repeat every other week", "day start", "pin"). Returns matching Settings rows with the path to tap to reach each, and dated release notes describing the features (a later note supersedes an earlier one). Use it before explaining a feature or pointing someone at a setting, rather than guessing. Bug-fix notes are left out unless includeFixes is true. Returns up to ${DEFAULT_HELP_LIMIT} of each by default.`,
+    {
+      query: z.string().min(1),
+      limit: z.number().int().positive().max(40).optional(),
+      includeFixes: z.boolean().optional(),
+    },
+    async input => json(await withFresh(() => appHelp(replica, input)))
+  );
+
+  server.tool(
+    'habit_patterns',
+    `How each repeating task and habit is going over the last N days (default ${DEFAULT_PATTERN_DAYS}): its streak, a daily or weekly target and whether it is on pace, how often it was done or missed, the hours it actually gets done in, and where that disagrees with the part of the day it is set to. Also the overall rhythm of when things get done, and how timed work compares with its estimates. Each pattern needs a minimum number of completions before it is reported.`,
+    { days: z.number().int().min(7).max(730).optional() },
+    async input => json(await withFresh(() => habitPatterns(replica, input)))
+  );
+
+  server.tool(
+    'mood_insights',
+    "The Mood screen's findings: mood against what got done, by category, by repeating task, by symptom, by context tag, by food, by time of day, and before and after each milestone the person marked. Every comparison is held to the app's minimum number of days and reports both sides' day counts. They are associations, never causes; read the rules field and stay inside it when explaining. Empty unless health logs reach this server.",
+    {},
+    async () => json(await withFresh(() => moodInsights(replica)))
+  );
+
+  server.tool(
+    'list_automations',
+    "Everything that adds tasks on its own: each automation (birthdays, weather, calendar events, Health, Screen Time, meal and pantry tasks, and the rest), whether it is on, what it does, and what it needs on the phone. Also every rule the person wrote for the ones that take rules, plus title rules, which file a new task by a word in its title. Use it before suggesting or changing an automation.",
+    {},
+    async () => json(await withFresh(() => listAutomations(replica)))
+  );
+
+  server.tool(
+    'plan_day',
+    "Proposes an order and a time for each task on today's list, fitted between startAt and endAt (default: now, or the start of their active hours, until the end of their active hours) and around busy blocks you pass in. Pinned first, then anything with a deadline today, then priority. It never places a task before the app would show it or past its time window, and lists what does not fit. The server cannot see the calendar: ask the person about meetings, or read them with a calendar tool, and pass them as busy. Writes nothing; apply what they agree to with batch_update_tasks.",
+    {
+      startAt: z.string().optional().describe('HH:MM, 24-hour.'),
+      endAt: z.string().optional().describe('HH:MM, 24-hour.'),
+      busy: z.array(z.object({ start: z.string(), end: z.string(), label: z.string().optional() })).optional()
+        .describe('Times already taken today, HH:MM.'),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => planDay(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not plan the day.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rebalance_week',
+    'Proposes moves that bring each heavy day in the coming days (default 7) under the app\'s "busy" line: for today, the app\'s own Lighten today plan; for later days, the biggest movable tasks to the lightest later day that keeps them before their deadline. Lists what it would leave in place and why (pinned, running, on a streak, due before a deadline). Writes nothing; apply the moves the person agrees to with batch_update_tasks using action "defer".',
+    { days: z.number().int().min(2).max(21).optional() },
+    async input => json(await withFresh(() => rebalanceWeek(replica, input)))
+  );
+
+  if (scope === 'write') {
+    // Every write tool previews before it writes (confirmWrites.ts). Applied
+    // on the way through `server.tool`, as the annotations are, so a write
+    // tool added to registerWriteTools cannot skip it.
+    const tokens = confirmTokensFor(replica);
+    const plain = server.tool.bind(server) as (...args: unknown[]) => RegisteredTool;
+    type WriteCallback = (args: Record<string, unknown>, extra: unknown) => Promise<{ content: { type: 'text'; text: string }[] }>;
+    const guarded = (
+      name: string,
+      description: string,
+      shape: Record<string, z.ZodTypeAny>,
+      cb: WriteCallback,
+    ) => plain(
+      name,
+      `${description} ${CONFIRM_NOTE}`,
+      {
+        ...shape,
+        apply: z.boolean().optional().describe('Leave out to preview. true, with confirmToken, to make the change.'),
+        confirmToken: z.string().optional().describe('From the preview of this exact request.'),
+      },
+      async (args: Record<string, unknown>, extra: unknown) => {
+        const { apply, confirmToken, ...request } = args;
+        if (!apply) {
+          previewing = [];
+          let out: Awaited<ReturnType<typeof cb>>;
+          let effects: AgentLedgerEntry[];
+          try {
+            out = await cb({ ...request, apply: true }, extra);
+          } finally {
+            effects = previewing ?? [];
+            previewing = null;
+          }
+          const details = parseToolText(out);
+          if (details && typeof details === 'object' && 'error' in details) return out;
+          const willDo = describeEffects(effects);
+          return json({
+            preview: true,
+            willDo: willDo.length > 0 ? willDo : ['Nothing in the app would change.'],
+            ...(details !== undefined ? { details: withoutIds(details) } : {}),
+            confirmToken: tokens.issue(name, request, willDo),
+            next: 'Nothing has changed yet. Tell the person, in plain words, what willDo says, and wait for a yes. Then call this tool again with exactly the same arguments, apply: true and this confirmToken.',
+          });
+        }
+        if (typeof confirmToken !== 'string') {
+          return json({ error: 'Preview first: call this tool without apply, show the person what willDo says, then confirm with the confirmToken it returns.' });
+        }
+        const redeemed = tokens.redeem(confirmToken, name, request);
+        if (!redeemed.ok) return json({ error: redeemed.reason });
+        return cb({ ...request, apply: true }, extra);
+      },
+    );
+    (server as unknown as { tool: unknown }).tool = guarded;
+    registerWriteTools(server, replica, withWrite);
+    (server as unknown as { tool: typeof plain }).tool = plain;
+  }
+
+  // Prompts are scripts over the tools (prompts.ts). Registered for every
+  // caller: a read-scoped one can still review, and each script says to ask
+  // before changing anything, which is all a write-scoped one needs.
+  for (const prompt of PROMPTS) {
+    const argsSchema = Object.fromEntries((prompt.args ?? []).map(arg => [
+      arg.name,
+      arg.required ? z.string().describe(arg.description) : z.string().optional().describe(arg.description),
+    ]));
+    server.registerPrompt(prompt.name, { title: prompt.title, description: prompt.description, argsSchema }, (args: Record<string, string | undefined>) => ({
+      messages: [{ role: 'user' as const, content: { type: 'text' as const, text: prompt.text(args ?? {}) } }],
+    }));
+  }
 
   return server;
 }
@@ -417,8 +659,8 @@ const taskFieldsShape = {
   newCategory: z.boolean().optional().describe('Create category as a new category. Only when none of the existing ones fits; say so to the user.'),
   tags: z.array(z.string()).optional(),
   projectId: z.string().nullable().optional().describe('File it in a project (see list_projects), or null to take it out.'),
-  dueDate: isoDateTime.describe('ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
-  deferUntil: isoDateTime.describe('ISO date-time. Hides the task until then.'),
+  dueDate: isoDateTime.describe('YYYY-MM-DD (read as that day in their own time zone) or an ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
+  deferUntil: isoDateTime.describe('YYYY-MM-DD or an ISO date-time. Hides the task until then.'),
   deadline: isoDateTime.describe('ISO date-time. Shown on the task; does not hide or move it.'),
   reminderTime: isoDateTime.describe('ISO date-time of a reminder.'),
   timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional()
@@ -536,6 +778,223 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_recipe',
+    'Save a recipe to the app: from a page, a photo, or a conversation. Give ingredients as the lines a recipe prints ("2 cloves garlic, minced"), one per entry; the app reads the amount, the name and the prep out of each. Put a heading in section ("For the sauce"), and give lines that are alternatives ("serrano or jalapeño") the same alternativeGroup, one line each, never one line with "or". Refused if a recipe with that name is already in that cookbook. The result counts the ingredient lines the app could read.',
+    {
+      name: z.string().min(1),
+      cookbook: z.string().nullable().optional().describe('A cookbook by title. Created if there is none by that name.'),
+      ingredients: z.array(z.object({
+        text: z.string().min(1),
+        section: z.string().nullable().optional(),
+        alternativeGroup: z.string().nullable().optional(),
+      })).optional(),
+      steps: z.array(z.object({ text: z.string().min(1), section: z.string().nullable().optional() })).optional(),
+      servings: z.number().int().positive().nullable().optional(),
+      estimatedMinutes: z.number().int().positive().nullable().optional().describe('Total time, start to table.'),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).nullable().optional(),
+      tags: z.array(z.string()).optional(),
+      sourceUrl: z.string().nullable().optional(),
+      notes: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveRecipe(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_food',
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${NUTRIENT_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated, and it is not written to Apple Health (only the phone a meal is logged on does that).`,
+    {
+      label: z.string().min(1),
+      quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
+      amounts: z.record(z.number().nonnegative()),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
+      at: z.string().optional().describe('When it was eaten: an ISO date-time, or YYYY-MM-DD. Default now.'),
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logFood(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_mood',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep") and a note. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    {
+      mood: z.number().int().min(1).max(5).nullable().optional(),
+      symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
+      contextTags: z.array(z.string().min(1)).optional(),
+      note: z.string().nullable().optional(),
+      at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logMood(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not record that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_medication',
+    'Record a dose taken: the medication, the amount and unit together (or neither), whether it was as-needed, and when. The name is matched to the spelling already in their log, but never folded into a different medicine or strength.',
+    {
+      name: z.string().min(1),
+      amount: z.number().positive().nullable().optional(),
+      unit: z.string().nullable().optional(),
+      asNeeded: z.boolean().optional(),
+      note: z.string().nullable().optional(),
+      at: z.string().optional().describe('When it was taken: an ISO date-time, or YYYY-MM-DD. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logMedication(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not record that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_automation',
+    'Turn an automation on or off, by its kind from list_automations. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
+    { kind: z.string().min(1), on: z.boolean() },
+    async ({ kind, on }) => {
+      try {
+        return json(await withWrite(() => setAutomation(replica, kind, on)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that automation.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_rule',
+    'Add a rule, or change one by passing its id from list_automations (only the fields you give change). title: file a new task by a word in its title ("pay" → Bills, high priority). weather: add a task when the forecast is sunny, rainy, snowy, cold or hot. event: add a task ahead of a calendar event whose title has one of these words. health: add a task when an Apple Health reading is under (or over) a number by a given hour. screenTime: add a task after this many minutes in the watched apps. The app checks every rule the way its own rule sheets do; the result is the rule as saved, and says when a value was adjusted. The matching automation must be on for a rule to fire.',
+    {
+      type: z.enum(RULE_TYPES as unknown as [string, ...string[]]),
+      rule: z.object({
+        id: z.string().optional(),
+        enabled: z.boolean().optional(),
+        title: z.string().optional().describe('The task the rule adds (all but title rules).'),
+        estimatedMinutes: z.number().int().positive().nullable().optional(),
+        category: z.string().optional().describe('Files the task it adds under this category (all but title rules).'),
+        keywords: z.array(z.string()).optional().describe('title: words that trigger it, 3+ letters each.'),
+        match: z.enum(['startsWith', 'contains']).optional().describe('title: where the word must be.'),
+        fileUnder: z.string().nullable().optional().describe('title: the category a matching task is filed under.'),
+        projectId: z.string().nullable().optional().describe('title: the project a matching task goes in.'),
+        tags: z.array(z.string()).optional().describe('title: tags to add.'),
+        priority: z.number().int().min(0).max(4).optional().describe('title: 0 (none) to 4 (urgent).'),
+        linkUrl: z.string().nullable().optional().describe('title: a link to attach.'),
+        stripKeyword: z.boolean().optional().describe('title: remove the word from the title.'),
+        condition: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).optional().describe('weather.'),
+        matches: z.array(z.string()).optional().describe('event: 1 to 6 words or phrases looked for in event titles.'),
+        leadDays: z.number().int().min(0).max(14).optional().describe('event: days before the event to add the task.'),
+        metric: z.enum(['steps', 'sleepHours', 'exerciseMinutes', 'sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal']).optional().describe('health.'),
+        threshold: z.number().optional().describe('health: in the metric\'s own unit.'),
+        direction: z.enum(['under', 'over']).optional().describe('health: which side of the threshold fires it. Each metric has a usual one.'),
+        checkpointHour: z.number().int().min(0).max(23).optional().describe('health: the hour of the day it is judged from.'),
+        thresholdMinutes: z.number().int().min(5).max(480).optional().describe('screenTime.'),
+      }),
+    },
+    async ({ type, rule }) => {
+      try {
+        // A title rule's own field for its category is `category`, which every
+        // other rule uses for the task it adds; the tool names them apart.
+        const { fileUnder, ...rest } = rule;
+        const fields = type === 'title' && fileUnder !== undefined ? { ...rest, category: fileUnder } : rest;
+        return json(await withWrite(() => saveRule(replica, type as never, fields)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that rule.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_rule',
+    'Delete a rule by its type and id from list_automations. To stop one firing but keep it, save it with enabled: false instead.',
+    { type: z.enum(RULE_TYPES as unknown as [string, ...string[]]), id: z.string().min(1) },
+    async ({ type, id }) => {
+      try {
+        return json(await withWrite(() => deleteRule(replica, type as never, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that rule.' });
+      }
+    }
+  );
+
+  server.tool(
+    'remember',
+    'Keep a note the person wants you to remember in every conversation ("errands happen on Saturdays", "never schedule anything after 6pm"). It is saved in their app, where they can read, edit and remove it (Settings › Data & reset › Sync › Notes for Claude), and get_overview returns all of them. Use it when they say to remember something, or offer to when they state a lasting preference. One idea per note, in their words.',
+    { text: z.string().min(1).max(500) },
+    async ({ text }) => {
+      try {
+        return json(await withWrite(() => remember(replica, text)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'forget',
+    'Remove one of the notes get_overview lists under notesForClaude, by id. Use it when the person says a note is no longer true.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => forget(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not remove that note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'batch_update_tasks',
+    `Edit, complete or reschedule up to ${MAX_BATCH} tasks in one call. Without apply: true it is a preview: each row says exactly what would change (field by field, before and after), and nothing is written. Show the preview to the person, then send the same changes with apply: true. If any change would be refused, the whole batch is refused before anything is written, and that row says why. "defer" moves one occurrence of a repeating task without moving its schedule, the same as defer_task. "complete" on a task that asks a question needs deliverableValue (or null to skip the question).`,
+    {
+      changes: z.array(z.discriminatedUnion('action', [
+        z.object({ id: z.string().min(1), action: z.literal('update'), fields: z.object({ title: z.string().optional(), ...taskFieldsShape }) }),
+        z.object({ id: z.string().min(1), action: z.literal('complete'), deliverableValue: z.string().nullable().optional() }),
+        z.object({ id: z.string().min(1), action: z.literal('defer'), date: z.string().nullable().describe('YYYY-MM-DD, or null to clear the date.') }),
+      ])).min(1).max(MAX_BATCH),
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => batchUpdateTasks(replica, input as { changes: BatchChange[]; apply?: boolean })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not apply the batch.' });
+      }
+    }
+  );
+
+  server.tool(
+    'quick_add',
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    {
+      lines: z.array(z.string()).min(1),
+      apply: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => quickAdd(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add those.' });
       }
     }
   );

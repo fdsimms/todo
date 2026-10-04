@@ -16,6 +16,7 @@ jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
 }));
 jest.mock('../utils/notifications', () => ({ rescheduleAllReminders: jest.fn() }));
+jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: jest.fn() }));
 
 import { catchUpPasses, expiryPasses, retentionPasses } from '../utils/maintenancePasses';
 
@@ -28,6 +29,7 @@ describe('the three maintenance groups', () => {
     // to precede the per-item checks it suppresses, and so on. Pinned as a
     // whole so a reorder has to be deliberate.
     expect(names(catchUpPasses())).toEqual([
+      'record time zone',
       'check vacation expiry',
       'check away vacation',
       'check away grocery list',

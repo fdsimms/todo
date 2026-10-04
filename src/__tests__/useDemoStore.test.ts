@@ -31,6 +31,7 @@ import { filterTasksForView } from '../utils/savedViews';
 import { calibrationFrom, MIN_CALIBRATION_SAMPLES } from '../utils/estimateCalibration';
 import { useFocusStore } from '../store/useFocusStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
+import { readAgentNotes } from '../utils/agentNotes';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
 import { cartBudgetStanding, describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
@@ -584,6 +585,13 @@ describe('demo mode', () => {
   // The Stats section says nothing below MIN_CALIBRATION_SAMPLES, so seeding
   // four timed tasks would look identical to seeding none. Asserting the
   // derived read rather than the row count is what pins that.
+  it('seeds notes for Claude, so the Settings rows have something to show', () => {
+    useDemoStore.getState().enterDemoMode();
+    expect(readAgentNotes().map(n => n.text)).toContain('Errands happen on Saturdays.');
+    useDemoStore.getState().exitDemoMode();
+    expect(readAgentNotes()).toEqual([]);
+  });
+
   it('seeds enough timed history for a calibration to exist', () => {
     useDemoStore.getState().enterDemoMode();
     const calibration = calibrationFrom(useTaskStore.getState().tasks);

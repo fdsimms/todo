@@ -124,6 +124,35 @@ describe('the replica', () => {
     expect(replica.visibleAt(replica.taskById('later')!).getFullYear()).toBe(2099);
   });
 
+  it('reads the look-ahead in Node: rows on their day, a carried-over task and a projection', () => {
+    const at = (days: number) => {
+      const d = new Date();
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() + days);
+      return d.toISOString();
+    };
+    insert({ id: 'soon', title: 'Dentist', dueDate: at(2) });
+    insert({ id: 'late', title: 'Taxes', dueDate: at(-3) });
+    mockRaw.runSync("INSERT INTO tasks (id, title, created_at, due_date, recurrence_type) VALUES ('daily', 'Stretch', '2026-01-01T00:00:00.000Z', ?, 'daily')", [at(0)]);
+    replica.refresh();
+
+    const la = replica.lookAhead(5);
+    expect(la.days).toHaveLength(5);
+    expect(la.days[2].tasks.map(t => t.id)).toContain('soon');
+    expect(la.carriedOver.map(t => t.id)).toEqual(['late']);
+    // A daily task has one real row today and a projected occurrence after it.
+    expect(la.days[1].expected.map(e => e.taskId)).toContain('daily');
+  });
+
+  it('finds a Settings row by a word that is not in its label, with the path to it', () => {
+    const hits = replica.searchSettings('midnight');
+    expect(hits[0]).toMatchObject({ label: 'Morning', path: 'Settings › Day & time › When the day turns over › Morning' });
+  });
+
+  it('reports the settings a reader needs to talk about the day', () => {
+    expect(replica.settings()).toMatchObject({ dayResetTime: '00:00', weekStartsOn: 0, kitchenEnabled: true });
+  });
+
   it('ranks a search with the app\'s own ranking', () => {
     insert({ id: 'a', title: 'Water the plants' });
     insert({ id: 'b', title: 'Call the plumber' });

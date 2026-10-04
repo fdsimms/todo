@@ -49,6 +49,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { rescheduleAllReminders } from './notifications';
+import { recordDeviceTimeZone } from './deviceTimeZone';
 
 /** A named step, the shape `runStartupSequence` isolates one at a time. */
 export type MaintenanceStep = [string, () => void];
@@ -68,6 +69,10 @@ export function expiryPasses(): MaintenanceStep[] {
 export function catchUpPasses(): MaintenanceStep[] {
   const tasks = () => useTaskStore.getState();
   return [
+    // The zone a sync server answers "today" in (see deviceTimeZone.ts). Here
+    // rather than once at launch so a background run after a flight lands
+    // records the new zone before the next sync carries it.
+    ['record time zone', () => { recordDeviceTimeZone(); }],
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     ['check vacation expiry', () => tasks().checkVacationExpiry()],

@@ -61,7 +61,7 @@ components below.
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, PaintSelection, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SelectionDot, +3 more
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, ScreenSettingsSheet, SearchField, TipHost
 - `src/screens/TodayScreen.tsx` — AddTaskFab, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, DropTargetChannel, EmptyState, +36 more
-- `src/screens/UnattendedLogScreen.tsx` — EmptyState, HubPills, PillGroup, ScreenHeader, ScreenSettingsSheet
+- `src/screens/UnattendedLogScreen.tsx` — EmptyState, HubPills, InlineAction, PillGroup, ScreenHeader, ScreenSettingsSheet
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl, WeightChart, WeightGoalSheet
 
 ## Components
@@ -328,6 +328,7 @@ Where each component can appear.
 - `src/components/WeightGoalSheet.tsx` — on WeightScreen
 - `src/components/WhenPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PersonDetailScreen, +15 more
 - `src/screens/settings/AboutSettings.tsx` — on SettingsGroupScreen
+- `src/screens/settings/AgentNotesRows.tsx` — on SettingsGroupScreen
 - `src/screens/settings/AppearanceSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/CalendarSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/CompletionCalendarSettings.tsx` — on SettingsGroupScreen

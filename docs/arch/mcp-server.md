@@ -167,6 +167,179 @@ Tasks are serialized by `mcp/src/serialize.ts` rather than handed over as raw `T
 budget on `supplyDeclinedAtCount` is a tool result with no room left for the task list. What the
 model gets is what a row shows, plus the state a question could be about.
 
+## Working as an agent's surface, not only a data API
+
+The tools above answer "show me X". Once the server was reachable from the Claude apps it became a
+way people *use* the app, which asks more of it: an agent needs to know what the app is before it
+can explain it, needs the questions that cut across records answered without re-deriving the app's
+rules, and needs the client to know which calls are safe to make without asking.
+
+**The instructions are the app's model, said once** (`mcp/src/instructions.ts`). MCP's
+`instructions` reach the model before any tool does, so that is where the cross-cutting rules go:
+the four lenses are disjoint, the day starts at `dayResetTime`, a reschedule is a defer, a
+completion that asks a question needs the person's answer, a missed occurrence is not a completion,
+and nothing is graded. Keep it short, since every conversation pays for its length; a rule that a
+single tool's description or result can carry belongs there instead.
+
+**Every tool is annotated from one table** (`mcp/src/toolAnnotations.ts`). The Claude apps decide
+from `readOnlyHint` whether a call needs approval, so an unannotated read asked permission to look
+at a task list. `server.ts` applies the table as tools register, and `toolAnnotations.test.ts`
+reads the tool names out of `server.ts` and fails on one that is not classified. A name missing
+from the table claims nothing, which the protocol reads as "may write": the safe direction.
+
+**Results are compact JSON.** Indentation was a fifth or more of every result, and the reader is a
+model.
+
+**The cross-cutting reads are projections of readers the app already has** (`insightTools.ts`):
+
+- `get_overview` is where an agent starts: the zone, the logical today, counts per lens, categories
+  with their hours, tags, projects, which areas are switched off, and whether health logs arrive.
+- `get_agenda` is `buildLookAhead`, the same window the app's look-ahead reads, so a recurring
+  task's future occurrences are projected by `projectOccurrences` and its refusals rather than by a
+  second walk. The calendar is unknown here and the result says so in words, since a day with no
+  tasks reads as free otherwise.
+- `completion_history` counts real completions only (`isRealCompletion`), on the logical day they
+  landed on, and reports missed occurrences separately.
+- `review_tasks` lists what has sat a long time and what looks duplicated. It is deliberately a
+  list and not a verdict, and leaves lists, paused projects and dated series out of the places they
+  would otherwise be false positives.
+
+**`app_help` reads what the app already says about itself** (`helpTools.ts`): the Settings index
+through the app's own Settings search, with the person's kitchen and simplified-mode gates applied,
+and every patch note in `src/patchNotes/entries/`. The server has the checkout, so it reads all of
+them rather than the few hundred the app ships. These are the two records kept true by other means
+(a test for the index, a fragment per user-facing PR for the notes), so neither drifts the way a
+hand-written help corpus would.
+
+**Patterns are the Stats and Mood screens' own reads** (`patternTools.ts`). `habit_patterns` is
+`rhythms.ts` and `estimateCalibration.ts` over each habit's occurrences, plus the streak and pace
+the rows carry; `mood_insights` composes `moodInsights.ts` the way `MoodScreen` does, with the same
+retention clipping and kitchen gate. So the floors (`MIN_PAIRED_DAYS`, `MIN_SAMPLES`), the
+no-coefficient rule and the missing medication-against-symptom contrast hold here by construction,
+and the result carries the rules in words so the model stays inside them when it explains a
+finding. The replica hands these modules out through `lib()`, one lazily required handle rather
+than a pass-through method per function, for the static-import reason at the top of `replica.ts`.
+
+**Changing several things has one path, and it previews** (`agentTools.ts`). `batch_update_tasks`
+and `quick_add` write nothing without `apply: true`, and a batch with any change that would be
+refused is refused whole, before a write, naming the row. Each write still goes through the
+single-task function, so a batch can do nothing one call could not, and `completionProblem` runs
+`completeTask`'s own refusals without writing so the preview refuses what the write would.
+`quick_add` runs the quick-add sheet's parsers (sigils first, then the date phrase, the order the
+sheet peels them off) and says in the row what it read but did not use. `plan_day` and
+`rebalance_week` only propose: today's rebalance is the app's own `buildDeloadPlan`, later days a
+plainer rule over the same blockers and loads, and applying either is a batch.
+
+**Prompts are scripts over the tools** (`prompts.ts`): weekly review, Inbox triage, plan my day
+and week, clean up a project, and how do I. They exist because the useful things to do with the
+app are sequences, and each puts "show me first" where it cannot be skipped. `prompts.test.ts`
+fails on a script naming a tool the server does not register.
+
+### Every write is previewed, and confirmed by the person, before it happens
+
+`mcp/src/confirmWrites.ts`, wired in `server.ts` the way the annotations are, so a write tool cannot
+be registered without it. A write tool called without `apply` runs the real write inside a
+transaction that is then rolled back (`replica.dryRun`: a nested `dbTransaction` becomes a savepoint,
+and the stores re-hydrate after), collects the Activity entries it would have made, and returns them
+as `willDo` lines with a `confirmToken`. The write happens only on a second call carrying that token,
+which is single-use, expires, and is bound to the tool and the exact arguments, so what runs is what
+was shown.
+
+A dry run rather than a description each tool writes for itself, because a write's effect is not
+predictable from its request: a reschedule may move the defer and not the date, a completion spawns
+the next occurrence, a title rule refiles a new task. Reading back what the write did is the one
+description that cannot disagree with it. The preview's own result is returned too, minus ids and
+links, since everything it created was rolled back.
+
+What the server can guarantee is that a change was described before it was made; it cannot see
+whether the model showed the description to the person. The Claude apps' per-tool approval
+(driven by the annotations) is the guarantee on that side. Elicitation, where the server would ask
+the person itself, needs session-based transport and is supported by Claude Code but not
+documented for the Claude apps, so it is not used yet.
+
+### Every agent write is in Activity, and a task write can be undone there
+
+An agent's writes land on the phone by sync with nobody looking at the app, which is the
+situation the Activity ledger (`unattended_log`) exists for, and the ledger already syncs. So the
+replica is wrapped once (`mcp/src/agentLedger.ts`, `withAgentLedger`): every write method records
+its effect after it returns, under `actor: 'agent'`, and a new write cannot skip it because the
+wrapper is the replica every tool is handed. A write that throws records nothing.
+
+An edit or a move records the fields it changed, before and after (`UnattendedRevert`), and
+nothing else of the task. That is what the phone's undo needs: `agentRevertPlan`
+(`src/utils/agentRevert.ts`) offers a revert **only while the task's touched fields still match the
+agent's "after"**, because restoring "before" over an edit the person made since would throw away
+their change to put back one they never saw. It is derived on every read rather than stored, which
+keeps the ledger write-once and makes a second tap (or a revert made on the other phone) read as
+"Undone". A created task can be removed while it is still open, a completed one reopened through
+the store's own `uncompleteTask`. Grocery, project, meal and template entries are records only:
+each is a tap to change in the app.
+
+### Recording: a recipe, food, mood and a dose
+
+`save_recipe`, `log_food`, `log_mood` and `log_medication` (`mcp/src/logTools.ts`) each build
+their row with the app's own code. A recipe goes through `useRecipeStore` (`addRecipe` and the
+setters the create sheet calls, ingredient lines through `makeIngredient`), loaded only when one is
+saved. Mood and doses go through their stores, with a symptom, tag or medicine matched to the
+spelling already in the log by its own key function, so "headache" lands on "Headache" and never on
+a different medicine or strength. Food goes through `readNutritionEstimate` and `estimateToPanel`
+and then `buildFoodLogEntry` (`src/utils/foodLogEntry.ts`), which is `addEntry`'s row lifted out of
+the store, because the store reaches Apple Health and cannot load here.
+
+Two rules from the food log shape `log_food`. **The model proposes and a person confirms**
+(`nutritionEstimate.ts`), so it previews until `apply: true`, and the entry is
+`source: 'estimated'` for good. And **only the device a meal is logged on writes it to Apple
+Health** (`logFoodEntryToHealth`'s single-writer rule), so an agent's entry stays out of Health,
+and the tool says so rather than leaving the person to wonder why it is missing there.
+
+Health rows written here reach the phone whatever its "Include health logs" switch says: the switch
+governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not what it accepts.
+The Activity entry for a mood check-in or a dose names the kind of record and not its content,
+since the Activity list is about the app and should not show somebody's health.
+
+### Automations, now that they sync
+
+`list_automations`, `set_automation`, `save_rule` and `delete_rule` (`mcp/src/automationTools.ts`)
+change the generators' switches and the rules people write for them, plus title rules. None of
+these synced before, so a change on the server would never have reached the phone; they are on
+`SYNCED_SETTING_KEYS` now (see `docs/arch/generated-tasks.md`). The server only writes them: the
+generators still run on the phone, the one place with a forecast, a calendar, Health and Screen
+Time to read, and the list says what each needs there.
+
+The rule parsers are tolerant, because their job is reading a stored blob from an older build:
+they drop an unreadable rule and clamp or trim the rest. So a save runs the parser and then
+compares. A rule that did not survive is refused with the reason, and one the parser changed comes
+back as stored with an `adjusted` line, so the agent cannot report a rule as saved the way it was
+asked when the app kept something else. An edit that changes what a weather or health rule asks
+clears its day mark through the sheets' own helpers.
+
+### Notes for Claude
+
+`src/utils/agentNotes.ts`: a short synced list (`agentNotes`, the `savedPlaces` shape) of what the
+person wants an agent to keep in mind. `get_overview` returns them as `notesForClaude`, `remember`
+and `forget` change them, and Settings › Data & reset › Sync shows, edits and removes them. They
+live in the app rather than in an assistant's own memory so the person can see exactly what is
+kept about them, in one place, whichever assistant reads it.
+
+### Dates an agent writes are the person's days
+
+A bare `YYYY-MM-DD` was stored as written, and `new Date('2026-10-06')` is UTC midnight, which in
+New York is 8pm on the 5th, so a task dated by an agent landed a day early on the phone.
+`localDateInput` (`timeZone.ts`) turns a bare date into that day's local midnight, in the zone
+adopted below, and every date a tool writes goes through it.
+
+### The server answers in the phone's time zone
+
+Every logical-day computation runs on the process's local clock, and a host like Fly starts the
+process in UTC. So for somebody in New York, from 8pm on, the server's "today" was tomorrow: the
+Today lens, a log range's end and every agenda day were a day ahead. The phone writes its IANA zone
+to the synced `deviceTimeZone` setting (`src/utils/deviceTimeZone.ts`, from the catch-up passes, so
+a background run after a flight updates it), and the replica adopts it into `process.env.TZ` on
+opening and after every sync (`mcp/src/timeZone.ts`), before the stores re-hydrate. Node resets its
+zone cache on that assignment, which is what makes this one line rather than a clock threaded
+through every app module. An operator's own `TZ` is the fallback until the first sync carries a
+zone. With two phones in different zones, the one opened last wins.
+
 ## The part that is blocked on infrastructure
 
 Everything above runs on a laptop against a file. Reaching Claude on a phone needs three things

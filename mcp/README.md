@@ -54,8 +54,43 @@ OAuth instead, which is on when `MCP_OAUTH_PASSWORD` (16+ characters) and `PUBLI
 
 Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 
+The server sends the model a short primer on connect (MCP `instructions`, in `src/instructions.ts`)
+and annotates every tool as read-only or not (`src/toolAnnotations.ts`), so the Claude apps can run
+reads without asking. A new tool needs a line in that table; `toolAnnotations.test.ts` fails
+without one.
+
+Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
+`inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project` and `how_do_i`.
+
+Every write previews first: without `apply` it changes nothing and returns `willDo` and a
+`confirmToken`, and the write happens only when called again with `apply: true` and that token
+for the identical request (`src/confirmWrites.ts`).
+
+Every write shows in the app's Activity screen under "Claude", and a task write can be undone
+there while the task is still how Claude left it (`src/agentLedger.ts`).
+
+It answers in the phone's time zone, which the app syncs as a setting. `TZ` in the environment is
+only the fallback until the first sync.
+
 | Tool | What it answers |
 |---|---|
+| `get_overview` | Where an agent starts: the person's time zone and logical today, counts per list, categories, tags, projects, what is switched off, and whether health logs arrive. |
+| `get_agenda` | The coming days: each day's tasks, repeats expected that day, estimated minutes, what is carried over, and deadlines that will not fit. |
+| `completion_history` | What got done over a range, with a summary by day, weekday, hour, category, project and tag. Missed occurrences are counted separately. |
+| `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects and the most-missed repeats. Lists, does not judge. |
+| `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
+| `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
+| `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
+| `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
+| `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
+| `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
+| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; not sent to Apple Health. |
+| `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
+| `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
+| `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
+| `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
+| `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
+| `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. |

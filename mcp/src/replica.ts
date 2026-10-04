@@ -36,7 +36,13 @@ import type {
   Category,
   Cookbook,
   DeliverableKind,
+  EventTaskRule,
   FoodLogEntry,
+  HealthRule,
+  Milestone,
+  ScreenTimeRule,
+  TitleRule,
+  WeatherRule,
   GroceryItem,
   GroceryListEntry,
   MealPlanEntry,
@@ -54,10 +60,16 @@ import type {
   TaskDraft,
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
+import type { LookAhead } from '../../src/utils/lookAhead';
+import type { AgentNote } from '../../src/utils/agentNotes';
+import type { MostMissedGroup } from '../../src/utils/missed';
+import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
 import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
+import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
+import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -86,6 +98,138 @@ type FollowUpModule = typeof import('../../src/utils/followUpTask');
 type MealPlanModule = typeof import('../../src/utils/mealPlan');
 type PersonHistoryModule = typeof import('../../src/utils/personHistory');
 type BirthdayModule = typeof import('../../src/utils/birthdayTasks');
+type LookAheadModule = typeof import('../../src/utils/lookAhead');
+type MissedModule = typeof import('../../src/utils/missed');
+type StatsModule = typeof import('../../src/utils/stats');
+type SettingsIndexModule = typeof import('../../src/utils/settingsIndex');
+type SettingsSearchModule = typeof import('../../src/utils/settingsSearch');
+
+/**
+ * The handful of settings a reader needs to talk about the user's day the way
+ * the app does. Not the whole store: most of it is device configuration that
+ * no answer about the person's tasks turns on.
+ */
+export interface ReplicaSettings {
+  /** "HH:MM", when the logical day turns over. */
+  dayResetTime: string;
+  /** 0 = Sunday, 1 = Monday. */
+  weekStartsOn: number;
+  /** "HH:MM" boundaries of the four parts of the day. */
+  morningStart: string;
+  afternoonStart: string;
+  eveningStart: string;
+  nightStart: string;
+  /** "HH:MM": the hours the person counts as their day, for reminders and planning. */
+  activeHoursStart: string;
+  activeHoursEnd: string;
+  vacationMode: boolean;
+  vacationEnd: string | null;
+  /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
+  kitchenEnabled: boolean;
+  /** Simplified mode: the advanced half of the app is hidden. */
+  simpleMode: boolean;
+  rewardsEnabled: boolean;
+  /** Days completed tasks are kept, or null for for ever. */
+  completedRetentionDays: number | null;
+}
+
+/**
+ * The app's pure reader modules, for tools that compose several of them.
+ *
+ * Handed out through the replica for the reason every other value is: each
+ * reaches `database.ts` somewhere down its imports, so a static import from
+ * `mcp/src` would evaluate it before the shim is in place (see the rule at the
+ * top of this file). One handle rather than a method per function, because a
+ * report built from eight readers would otherwise add eight pass-throughs here
+ * and a stub for each in every test. Only modules with no store writes and no
+ * device calls belong in it.
+ */
+export interface ReplicaLib {
+  rhythms: typeof import('../../src/utils/rhythms');
+  calibration: typeof import('../../src/utils/estimateCalibration');
+  moodInsights: typeof import('../../src/utils/moodInsights');
+  moodLog: typeof import('../../src/utils/moodLog');
+  nutritionStats: typeof import('../../src/utils/nutritionStats');
+  retention: typeof import('../../src/utils/retention');
+  taskInstances: typeof import('../../src/utils/taskInstances');
+  visibility: typeof import('../../src/utils/visibilityUtils');
+  parse: typeof import('../../src/utils/parseTaskInput');
+  taskMoves: typeof import('../../src/utils/taskMoves');
+  deloadPlan: typeof import('../../src/utils/deloadPlan');
+  dayLoad: typeof import('../../src/utils/dayLoad');
+  awayDates: typeof import('../../src/utils/awayDates');
+  dates: typeof import('../../src/utils/dateUtils');
+  agentNotes: typeof import('../../src/utils/agentNotes');
+  nutritionEstimate: typeof import('../../src/utils/nutritionEstimate');
+  generatedTasks: typeof import('../../src/utils/generatedTasks');
+  titleRules: typeof import('../../src/utils/titleRules');
+  weatherTasks: typeof import('../../src/utils/weatherTasks');
+  eventTasks: typeof import('../../src/utils/eventTasks');
+  healthRules: typeof import('../../src/utils/healthRules');
+  screenTimeRules: typeof import('../../src/utils/screenTimeRules');
+}
+
+/** The rule lists an agent may edit, by the name the tools use. */
+export type RuleListType = 'title' | 'weather' | 'event' | 'health' | 'screenTime';
+
+export interface RuleLists {
+  title: TitleRule[];
+  weather: WeatherRule[];
+  event: EventTaskRule[];
+  health: HealthRule[];
+  screenTime: ScreenTimeRule[];
+}
+
+/** A recipe as a tool states it. Ingredients are typed lines ("2 cloves garlic, minced"). */
+export interface RecipeInput {
+  name: string;
+  /** A cookbook by title, created when there is none by that name. */
+  cookbook?: string | null;
+  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null }[];
+  steps?: { text: string; section?: string | null }[];
+  servings?: number | null;
+  estimatedMinutes?: number | null;
+  mealType?: string | null;
+  tags?: string[];
+  sourceUrl?: string | null;
+  notes?: string;
+}
+
+export interface FoodInput {
+  label: string;
+  /** How much, in words: "1 bowl", "2 slices". */
+  quantity?: string;
+  /** Estimated amounts for the whole of what was eaten, by nutrient key. */
+  amounts: Record<string, number>;
+  slot?: MealSlot | null;
+  at?: Date;
+}
+
+export interface MoodInput {
+  mood?: number | null;
+  symptoms?: { name: string; severity?: number }[];
+  contextTags?: string[];
+  note?: string | null;
+  at?: Date;
+}
+
+export interface DoseInput {
+  name: string;
+  amount?: number | null;
+  unit?: string | null;
+  asNeeded?: boolean;
+  note?: string | null;
+  at?: Date;
+}
+
+/** One Settings row, located the way a person would have to walk to it. */
+export interface SettingsHit {
+  label: string;
+  /** "Settings › Day & time › When the day turns over › Morning". */
+  path: string;
+  /** Why it matched when the label did not: a keyword or the section name. */
+  matchedVia?: string;
+}
 
 /** What a caller may say about a completion. `CompletionOptions` without the miss. */
 export type CompletionOptions = Pick<
@@ -273,6 +417,66 @@ export interface Replica {
 
   /** Every stored template, for listing and for resolving a nested reference. */
   templates(): TaskTemplate[];
+
+  /** See `ReplicaSettings`. Read fresh from the settings store, so it follows a sync. */
+  settings(): ReplicaSettings;
+  /**
+   * The app's own look-ahead (`buildLookAhead`) from the start of the logical
+   * today across `days` days: per-day rows, projected recurring occurrences,
+   * each day's load, what is carried over, and deadlines that will not fit.
+   */
+  lookAhead(days: number): LookAhead;
+  /** The logical day an instant falls on, under the user's `dayResetTime`. */
+  logicalDayKeyOf(iso: string): string;
+  /** Completed by a person, as opposed to swept as missed. Every statistic counts only these. */
+  isRealCompletion(task: Task): boolean;
+  onTimeSummary(tasks: readonly Task[]): OnTimeSummary;
+  mostMissed(tasks: readonly Task[]): MostMissedGroup[];
+  /**
+   * The Settings search the app's own search field runs, over the rows this
+   * person can actually see (the kitchen and simplified-mode gates applied).
+   */
+  searchSettings(query: string): SettingsHit[];
+  /** When the replica last finished a sync, or null if it has not since starting. */
+  lastSyncedAt(): string | null;
+  /** See `ReplicaLib`. */
+  lib(): ReplicaLib;
+  /** Every mood check-in, unfiltered: the insights need the whole log. */
+  allMoodLogs(): MoodLog[];
+  milestones(): Milestone[];
+  /** Every tag the person has, used or not. */
+  tagRegistry(): string[];
+  /**
+   * A recipe, through the recipe store's own add and setters, the same calls
+   * the app's create sheet makes. Refused when the name is taken in that book.
+   */
+  createRecipe(input: RecipeInput): Recipe;
+  /**
+   * A food entry with an estimated panel, through `readNutritionEstimate`,
+   * `estimateToPanel` and `buildFoodLogEntry`. Marked estimated for good, and
+   * never written to Apple Health: only the device a meal is logged on may.
+   */
+  logFood(input: FoodInput): FoodLogEntry;
+  /** A mood check-in through the mood store, symptoms and tags in the spellings already in the log. */
+  logMood(input: MoodInput): MoodLog;
+  /** A dose through the medication store, the name in the spelling already in the log. */
+  logMedication(input: DoseInput): MedicationLog;
+  /** Every automation rule list, as the settings store holds it. */
+  ruleLists(): RuleLists;
+  /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
+  setRuleList<T extends RuleListType>(type: T, rules: RuleLists[T]): void;
+  /** Whether an automation is on, by its settings key (`GeneratedKindSpec.enabledKey`). */
+  generatorEnabled(key: string): boolean;
+  setGeneratorEnabled(key: string, on: boolean): void;
+  /**
+   * Run a write, record what it would change, and roll all of it back: the
+   * preview behind every write tool (see confirmWrites.ts). The result is what
+   * the write returned; `effects` are the Activity entries it would have made.
+   */
+  dryRun<T>(fn: () => T): { result: T; effects: AgentLedgerEntry[] };
+  /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
+  agentNotes(): AgentNote[];
+  writeAgentNotes(notes: readonly AgentNote[]): void;
   /**
    * Apply a validated plan, returning the template it built.
    *
@@ -341,6 +545,8 @@ export interface Replica {
    * it asks a question that was not answered. See `deliverableRefusal`.
    */
   completeTask(id: string, options?: CompletionOptions): CompletedResult;
+  /** What `completeTask` would refuse, without writing anything; null when it would go through. */
+  completionProblem(id: string, options?: CompletionOptions): string | null;
 
   /**
    * Move a task to a date, as the app's own reschedule does.
@@ -623,9 +829,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const mealPlanUtils = require('../../src/utils/mealPlan') as MealPlanModule;
   const personHistoryUtils = require('../../src/utils/personHistory') as PersonHistoryModule;
   const birthdays = require('../../src/utils/birthdayTasks') as BirthdayModule;
+  const lookAheadUtils = require('../../src/utils/lookAhead') as LookAheadModule;
+  const missed = require('../../src/utils/missed') as MissedModule;
+  const stats = require('../../src/utils/stats') as StatsModule;
+  const settingsIndex = require('../../src/utils/settingsIndex') as SettingsIndexModule;
+  const settingsSearch = require('../../src/utils/settingsSearch') as SettingsSearchModule;
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   db.initDatabase();
+  // Before anything computes a day: the stores below read "today" as they
+  // hydrate. See timeZone.ts.
+  adoptTimeZone(db.dbGetSetting(DEVICE_TIME_ZONE_KEY));
   useSettingsStore.getState().initialize();
   useCategoryStore.getState().initialize();
   // Loaded rather than left empty: `newTaskFromDraft` reads a project's default
@@ -639,6 +853,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   let taskCache: Task[] | null = null;
   let personCache: Person[] | null = null;
   let projectCache: Project[] | null = null;
+  let syncedAt: string | null = null;
+  let libCache: ReplicaLib | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const notesModule = () => require('../../src/utils/agentNotes') as typeof import('../../src/utils/agentNotes');
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
@@ -816,6 +1034,40 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   };
 
   /**
+   * The refusals a completion makes before it builds anything, and the answer
+   * as it will be stored. Shared by `completeTask` and `completionProblem`, so
+   * a preview refuses exactly what the write would.
+   */
+  const vetCompletion = (task: Task, options?: CompletionOptions): CompletionOptions | undefined => {
+    const refusal = completion.completionRefusal(task);
+    if (refusal) throw new Error(refusal);
+
+    // Asked before the rows are built rather than after, so a task that
+    // cannot be completed at all reports that instead of reporting a
+    // missing answer it was never going to use.
+    const unanswered = deliverableRefusal(
+      deliverables.deliverableKindFor(task),
+      options !== undefined && 'deliverableValue' in options,
+      deliverables.chainStepDatedByAnswer(task)?.title ?? null,
+    );
+    if (unanswered) throw new Error(unanswered);
+
+    // A question with a fixed set of answers takes one of them, stored in
+    // the option's own spelling so the project's tally counts it. Anything
+    // else would be recorded and then counted as "no answer".
+    const offered = deliverables.deliverableOptionsFor(task);
+    const given = options?.deliverableValue;
+    if (offered.length > 0 && typeof given === 'string') {
+      const match = offered.find(o => o.toLowerCase() === given.trim().toLowerCase());
+      if (!match) {
+        throw new Error(`That task's answer is one of: ${offered.join(', ')}. Pass one of those as deliverableValue, or null to complete it without an answer.`);
+      }
+      options = { ...options, deliverableValue: match };
+    }
+    return options;
+  };
+
+  /**
    * A batch of project steps, checked in full before anything is written, so
    * a bad step fails the whole batch with all its problems listed rather than
    * leaving a project with half its steps. `waitsOn` positions count over the
@@ -902,7 +1154,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // Today here while the app hides them.
   registerPausedProjectSource(projects);
 
-  return {
+  const replica: Replica = {
     path,
 
     refresh,
@@ -956,6 +1208,236 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
 
     templates: () => db.dbGetAllTemplates(),
+
+    settings(): ReplicaSettings {
+      const s = useSettingsStore.getState();
+      return {
+        dayResetTime: s.dayResetTime,
+        weekStartsOn: s.weekStartsOn,
+        morningStart: s.morningStart,
+        afternoonStart: s.afternoonStart,
+        eveningStart: s.eveningStart,
+        nightStart: s.nightStart,
+        activeHoursStart: s.activeHoursStart,
+        activeHoursEnd: s.activeHoursEnd,
+        vacationMode: s.vacationMode,
+        vacationEnd: s.vacationEnd,
+        kitchenEnabled: s.kitchenEnabled,
+        simpleMode: s.simpleMode,
+        rewardsEnabled: s.rewardsEnabled,
+        completedRetentionDays: s.completedRetentionDays,
+      };
+    },
+
+    // No calendar events: a Node process cannot read EventKit, so every day
+    // comes back `busyKnown: false`, which is the module's own word for "not
+    // known" rather than "free".
+    lookAhead(days: number): LookAhead {
+      const { dayResetTime } = useSettingsStore.getState();
+      return lookAheadUtils.buildLookAhead(tasks(), {
+        cutoff: addDays(dates.getLogicalToday(dayResetTime), days),
+        dayResetTime,
+      });
+    },
+
+    logicalDayKeyOf: (iso: string) =>
+      dates.getLogicalDayKey(new Date(iso), useSettingsStore.getState().dayResetTime),
+    isRealCompletion: (task: Task) => missed.isRealCompletion(task),
+    onTimeSummary: (list: readonly Task[]) => stats.onTimeSummary(list),
+    mostMissed: (list: readonly Task[]) => missed.mostMissed(list),
+
+    searchSettings(query: string): SettingsHit[] {
+      const { kitchenEnabled, simpleMode } = useSettingsStore.getState();
+      // 'ios' because that is the only platform the app ships on. No active-row
+      // set: a row behind a switch that is off is still the answer to "where is
+      // the setting for X", and the path says which switch to look under.
+      const entries = settingsIndex.visibleSettingsEntries('ios', kitchenEnabled, simpleMode);
+      return settingsSearch.searchSettings(entries, query).map(r => {
+        const group = settingsIndex.settingsGroup(r.entry.groupId);
+        const where = group?.screen ? `Menu › ${group.title}` : `Settings › ${group?.title ?? r.entry.groupId}`;
+        return {
+          label: r.entry.label,
+          path: `${where} › ${r.entry.section} › ${r.entry.label}`,
+          ...(r.matchedVia ? { matchedVia: r.matchedVia } : {}),
+        };
+      });
+    },
+
+    lastSyncedAt: () => syncedAt,
+
+    lib(): ReplicaLib {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      return (libCache ??= {
+        rhythms: require('../../src/utils/rhythms'),
+        calibration: require('../../src/utils/estimateCalibration'),
+        moodInsights: require('../../src/utils/moodInsights'),
+        moodLog: require('../../src/utils/moodLog'),
+        nutritionStats: require('../../src/utils/nutritionStats'),
+        retention: require('../../src/utils/retention'),
+        taskInstances: require('../../src/utils/taskInstances'),
+        visibility,
+        parse: require('../../src/utils/parseTaskInput'),
+        taskMoves: moves,
+        deloadPlan: require('../../src/utils/deloadPlan'),
+        dayLoad: require('../../src/utils/dayLoad'),
+        awayDates: require('../../src/utils/awayDates'),
+        dates,
+        agentNotes: require('../../src/utils/agentNotes'),
+        nutritionEstimate: require('../../src/utils/nutritionEstimate'),
+        generatedTasks: require('../../src/utils/generatedTasks'),
+        titleRules: require('../../src/utils/titleRules'),
+        weatherTasks: require('../../src/utils/weatherTasks'),
+        eventTasks: require('../../src/utils/eventTasks'),
+        healthRules: require('../../src/utils/healthRules'),
+        screenTimeRules: require('../../src/utils/screenTimeRules'),
+      });
+      /* eslint-enable @typescript-eslint/no-require-imports */
+    },
+    allMoodLogs: () => db.dbGetAllMoodLogs(),
+    milestones: () => db.dbGetAllMilestones(),
+    tagRegistry: () => db.dbGetTagRegistry(),
+    createRecipe(input: RecipeInput): Recipe {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
+      const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      // Loaded here rather than on every refresh: only this write reads it, and
+      // the library is the largest thing a refresh would otherwise re-read.
+      useRecipeStore.getState().initialize();
+      const store = useRecipeStore.getState();
+
+      const book = input.cookbook?.trim() ? store.ensureCookbook(input.cookbook.trim()) : null;
+      const recipe = store.addRecipe(input.name, book?.id ?? null);
+      if (!recipe) {
+        throw new Error(recipeUtils.cleanRecipeName(input.name)
+          ? `There is already a recipe called "${input.name.trim()}"${book ? ` in ${book.title}` : ''}.`
+          : 'A recipe needs a name.');
+      }
+      const id = recipe.id;
+      const ingredients = (input.ingredients ?? [])
+        .map(line => {
+          const made = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
+          return made ? { ...made, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      if (ingredients.length > 0) useRecipeStore.getState().addStructuredIngredients(id, ingredients);
+      for (const step of input.steps ?? []) useRecipeStore.getState().addStep(id, step.text, step.section ?? null);
+      const after = useRecipeStore.getState();
+      if (input.servings != null) after.setServings(id, input.servings);
+      if (input.estimatedMinutes != null) after.setEstimatedMinutes(id, input.estimatedMinutes);
+      if (input.mealType) after.setMealType(id, input.mealType as Recipe['mealType']);
+      if (input.tags?.length) after.setTags(id, input.tags);
+      if (input.sourceUrl) after.setSourceUrl(id, input.sourceUrl);
+      if (input.notes?.trim()) after.setNotes(id, input.notes.trim());
+      return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    logFood(input: FoodInput): FoodLogEntry {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate');
+      const builder = require('../../src/utils/foodLogEntry') as typeof import('../../src/utils/foodLogEntry');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      // The app's own reader for a model's estimate: unknown keys dropped, a
+      // figure nobody stated left absent rather than zero.
+      const read = estimate.readNutritionEstimate({ label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium' });
+      if (!read) throw new Error('A food entry needs a name and at least one nutrient amount (calorieKcal, proteinG, carbsG, fatG, ...).');
+      const panel = estimate.estimateToPanel(read);
+      if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
+      const entry = builder.buildFoodLogEntry(
+        { label: read.label, quantity: input.quantity ?? '', grams: null, nutrition: panel, slot: input.slot ?? null, at: input.at },
+        dayKey => db.dbGetFoodLogEntries(dayKey, dayKey),
+        generateId,
+      );
+      if (!entry) throw new Error('That entry could not be logged.');
+      db.dbInsertFoodLogEntry(entry);
+      return entry;
+    },
+
+    logMood(input: MoodInput): MoodLog {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore');
+      const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      if (input.mood != null && (!Number.isInteger(input.mood) || input.mood < 1 || input.mood > 5)) {
+        throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
+      }
+      // The spelling already in the log, so "headache" lands on the existing
+      // "Headache" rather than starting a second symptom the insights would
+      // count apart.
+      const logs = db.dbGetAllMoodLogs();
+      const spelled = (vocab: string[], key: (s: string) => string) => {
+        const byKey = new Map(vocab.map(v => [key(v), v]));
+        return (name: string) => byKey.get(key(name)) ?? name.trim();
+      };
+      const symptom = spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey);
+      const tag = spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey);
+      const symptoms = (input.symptoms ?? []).map(s => ({
+        name: symptom(s.name),
+        severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
+      }));
+      const log = useMoodStore.getState().addLog(
+        (input.mood ?? null) as MoodLog['mood'],
+        symptoms,
+        input.note ?? null,
+        input.at,
+        (input.contextTags ?? []).map(tag),
+      );
+      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      return log;
+    },
+
+    logMedication(input: DoseInput): MedicationLog {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const name = known.find(n => medication.medicationKey(n) === medication.medicationKey(input.name)) ?? input.name.trim();
+      if ((input.amount == null) !== (input.unit == null || input.unit === '')) {
+        throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
+      }
+      const log = meds.getState().addLog({
+        name,
+        amount: input.amount ?? undefined,
+        unit: input.unit ?? undefined,
+        asNeeded: input.asNeeded,
+        note: input.note ?? undefined,
+        at: input.at ?? new Date(),
+      });
+      if (!log) throw new Error('A dose needs the medication\'s name.');
+      return log;
+    },
+
+    ruleLists(): RuleLists {
+      const s = useSettingsStore.getState();
+      return { title: s.titleRules, weather: s.weatherRules, event: s.eventRules, health: s.healthRules, screenTime: s.screenTimeRules };
+    },
+
+    setRuleList(type, rules) {
+      const s = useSettingsStore.getState();
+      switch (type) {
+        case 'title': s.setTitleRules(rules as TitleRule[]); break;
+        case 'weather': s.setWeatherRules(rules as WeatherRule[]); break;
+        case 'event': s.setEventRules(rules as EventTaskRule[]); break;
+        case 'health': s.setHealthRules(rules as HealthRule[]); break;
+        case 'screenTime': s.setScreenTimeRules(rules as ScreenTimeRule[]); break;
+      }
+    },
+
+    generatorEnabled: (key: string) => (useSettingsStore.getState() as unknown as Record<string, unknown>)[key] === true,
+
+    setGeneratorEnabled(key: string, on: boolean) {
+      // The stored form every switch's own setter writes; the store re-reads it
+      // on the refresh below, defaults and all.
+      db.dbSetSetting(key, on ? 'true' : 'false');
+      refresh();
+    },
+
+    // Replaced once the replica is wrapped, below: a dry run has to capture
+    // what the ledger wrapper records, so it lives outside this object.
+    dryRun: () => { throw new Error('dryRun is only available on the wrapped replica.'); },
+
+    agentNotes: () => notesModule().readAgentNotes(),
+    writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
 
     createTemplate(plan: TemplatePlan): TaskTemplate {
       const existing = db.dbGetAllTemplates();
@@ -1049,35 +1531,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return task;
     },
 
+    completionProblem(id: string, options?: CompletionOptions): string | null {
+      const task = tasks().find(t => t.id === id);
+      if (!task) return `No task with id ${id}.`;
+      try {
+        vetCompletion(task, options);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+    },
+
     completeTask(id: string, options?: CompletionOptions): CompletedResult {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-
-      const refusal = completion.completionRefusal(task);
-      if (refusal) throw new Error(refusal);
-
-      // Asked before the rows are built rather than after, so a task that
-      // cannot be completed at all reports that instead of reporting a
-      // missing answer it was never going to use.
-      const unanswered = deliverableRefusal(
-        deliverables.deliverableKindFor(task),
-        options !== undefined && 'deliverableValue' in options,
-        deliverables.chainStepDatedByAnswer(task)?.title ?? null,
-      );
-      if (unanswered) throw new Error(unanswered);
-
-      // A question with a fixed set of answers takes one of them, stored in
-      // the option's own spelling so the project's tally counts it. Anything
-      // else would be recorded and then counted as "no answer".
-      const offered = deliverables.deliverableOptionsFor(task);
-      const given = options?.deliverableValue;
-      if (offered.length > 0 && typeof given === 'string') {
-        const match = offered.find(o => o.toLowerCase() === given.trim().toLowerCase());
-        if (!match) {
-          throw new Error(`That task's answer is one of: ${offered.join(', ')}. Pass one of those as deliverableValue, or null to complete it without an answer.`);
-        }
-        options = { ...options, deliverableValue: match };
-      }
+      options = vetCompletion(task, options);
 
       const settings = useSettingsStore.getState();
       const built = completion.buildCompletion(task, options, {
@@ -1521,10 +1989,51 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         [loggedTransport(httpTransport.httpSyncTransport(config))],
         syncLocal.databaseSyncLocal()
       );
+      // A pull can carry the phone's zone, and it has to be in effect before
+      // the refresh below re-hydrates the stores that read "today".
+      adoptTimeZone(db.dbGetSetting(DEVICE_TIME_ZONE_KEY));
       // Whatever a pull applied is now in the database and not in the caches
       // above, so the next read has to go back to SQLite for it.
       refresh();
+      syncedAt = new Date().toISOString();
       return syncEngine.summarizeRuns(runs);
     },
   };
+
+  // Every write recorded in the Activity ledger, where the phone shows it and
+  // can take it back. See agentLedger.ts. While a dry run is capturing, the
+  // entries are collected instead, which is what a preview describes.
+  let capturing: AgentLedgerEntry[] | null = null;
+  const wrapped = withAgentLedger(replica, entries => {
+    if (capturing) capturing.push(...entries);
+    else db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId));
+  });
+
+  /** Thrown to roll a dry run back. Never escapes `dryRun`. */
+  const DRY_RUN = Symbol('dry run');
+  wrapped.dryRun = <T>(fn: () => T): { result: T; effects: AgentLedgerEntry[] } => {
+    if (capturing) throw new Error('A dry run is already in progress.');
+    const effects: AgentLedgerEntry[] = [];
+    capturing = effects;
+    let result!: T;
+    try {
+      // Everything the write does lands inside one transaction that is then
+      // thrown away: a nested dbTransaction becomes a savepoint inside it
+      // (better-sqlite3 nests them), and a write outside one is still inside
+      // this. So the preview is the real write, measured and undone.
+      db.dbTransaction(() => {
+        result = fn();
+        throw DRY_RUN;
+      });
+    } catch (e) {
+      if (e !== DRY_RUN) throw e;
+    } finally {
+      capturing = null;
+      // The stores the write touched in memory (settings, categories,
+      // projects) go back to what the database says again.
+      refresh();
+    }
+    return { result, effects };
+  };
+  return wrapped;
 }

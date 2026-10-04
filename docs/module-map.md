@@ -20,6 +20,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/activityRings.ts` — ActivityRing, RingId, ActivityRings, RING_META, RING_ORDER, parseActivitySummary, ringFraction, isRingClosed, describeRing, ringsAccessibilityLabel, +1 more
 - `src/utils/agendaSpeech.ts` — AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda
+- `src/utils/agentNotes.ts` — AGENT_NOTES_KEY, AGENT_NOTES_LIMIT, AGENT_NOTE_MAX_LENGTH, AgentNote, parseAgentNotes, AgentNoteChange, addAgentNote, editAgentNote, removeAgentNote, readAgentNotes, +1 more
+- `src/utils/agentRevert.ts` — AgentRevertPlan, agentRevertPlan, agentRevertLabel
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
@@ -91,6 +93,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
+- `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +6 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
@@ -117,6 +120,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow, FOCUS_MEETING_LEAD_MINUTES, FOCUS_MEETING_HORIZON_MINUTES, FocusMeetingHeadsUp, focusMeetingHeadsUp
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, followUpTaskSuppressedBy, completionsUntilFollowUpTask, followUpTaskSummary, +5 more
 - `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +39 more
+- `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, RECENT_HELPING_LIMIT, recentUnlinkedHelpings, HelpingAgain, helpingAgain
 - `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, CatalogPanelWrite, catalogPanelWrite, describeFoodPanel, NUTRIENT_LABEL, ML_PER_FL_OZ, mlToFlOz, +2 more
@@ -369,7 +373,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
-- `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, unattendedKinds, +1 more
+- `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +2 more
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, UndoHistoryActions, UndoHistoryState, +6 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, unitFactor, +3 more
 - `src/utils/useReduceMotion.ts` — useReduceMotion

@@ -9,6 +9,7 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { describeLastSynced } from '../../utils/syncStatus';
 import { TextField } from '../../components/TextField';
+import { AgentNotesRows } from './AgentNotesRows';
 
 /**
  * Turning sync on, and saying honestly what it has done.
@@ -161,6 +162,8 @@ export function SyncSettings() {
         onPress={() => setServerHealthLogs(!serverHealthLogs)}
         accessibilityLabel="Include health logs on the sync server"
       />
+
+      <AgentNotesRows />
 
       {anyDestination && (
         <SettingsRow
