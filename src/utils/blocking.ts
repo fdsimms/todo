@@ -1,4 +1,5 @@
-import type { Person, Task } from '../types';
+import type { AnswerGate, Person, Task } from '../types';
+import { deliverableOptionsFor } from './deliverables';
 
 /**
  * "Waiting on" — task-to-task blocking (see Task.blockedById). A task can wait
@@ -57,9 +58,84 @@ export function blockerFields(ids: readonly string[]): Pick<Task, 'blockedById'>
   return { blockedById: unique[0] ?? null, blockedByIds: unique.slice(1) };
 }
 
-/** The tasks still holding this one back, in order: every blocker that can still block. */
+/**
+ * Every task this one waits for: its blockers, then the question its
+ * `answerGate` waits on. A read for holding back only — never write this back
+ * through `blockerFields`, which would turn the question into a blocker.
+ */
+export function waitIdsOf(task: Pick<Task, 'blockedById' | 'answerGate'> & { blockedByIds?: readonly string[] }): string[] {
+  const ids = blockerIdsOf(task);
+  const gate = task.answerGate?.taskId;
+  if (gate && !ids.includes(gate)) ids.push(gate);
+  return ids;
+}
+
+/**
+ * Whether a recorded answer is one of the answers a gate opens on. Matched as
+ * the option's text, ignoring case and outer spaces, the way template
+ * conditions compare (see `TemplateItemCondition`).
+ */
+export function answerOpensGate(gate: AnswerGate, value: string | null | undefined): boolean {
+  if (value == null) return false;
+  const v = value.trim().toLowerCase();
+  return gate.answers.some(a => a.trim().toLowerCase() === v);
+}
+
+/**
+ * True when a task belongs to a branch that was not taken, so it will never
+ * be done: "Book City Hall" once "Ceremony format?" was answered "Officiant".
+ *
+ * **Derived, never stored**, the same call `canBlock` makes and for the same
+ * reason: answers get corrected after the fact (`setDeliverableValue`), and a
+ * stored flag would need a cascade at every place an answer or a completion
+ * changes. Worked out here, a corrected answer swaps the branches on its own.
+ *
+ * Three ways in:
+ * - its `answerGate` question was answered with something else. A question
+ *   completed *without* an answer, archived or deleted opens the gate instead:
+ *   nobody chose a branch, and a hidden task with no way back is the failure
+ *   `canBlock` exists to prevent.
+ * - its gate question is itself not needed, so it will never be answered.
+ * - everything it still waits on is not needed. "Pay the City Hall fee",
+ *   waiting only on "Book City Hall", goes with it. A task also waiting on
+ *   something live waits for that alone (see `isBlocked`), which is what lets
+ *   "Send invitations" wait on whichever venue branch was taken.
+ */
+export function isNotNeeded(task: Task, resolve: TaskResolver, seen: Set<string> = new Set()): boolean {
+  if (task.completed || task.archived) return false;
+  // A loop that arrived some other way would otherwise spin; on the way back
+  // round, a task in it isn't evidence either way.
+  if (seen.has(task.id)) return false;
+  seen.add(task.id);
+
+  const gate = task.answerGate;
+  if (gate) {
+    const question = resolve(gate.taskId);
+    if (question && !question.archived) {
+      if (question.completed) {
+        if (question.deliverableValue != null && !answerOpensGate(gate, question.deliverableValue)) return true;
+      } else if (isNotNeeded(question, resolve, seen)) {
+        return true;
+      }
+    }
+  }
+
+  const live = blockerIdsOf(task).map(resolve).filter((t): t is Task => canBlock(t));
+  return live.length > 0 && live.every(b => isNotNeeded(b, resolve, new Set(seen)));
+}
+
+/** Whether a waiting task still has to wait for `t`: open, and on a branch that's still live. */
+function holds(t: Task | undefined, resolve: TaskResolver): t is Task {
+  return canBlock(t) && !isNotNeeded(t!, resolve);
+}
+
+/**
+ * The tasks still holding this one back, in order: every blocker that can
+ * still block, then an unanswered gate question. A blocker on a branch not
+ * taken holds nothing.
+ */
 export function liveBlockersOf(task: Task, resolve: TaskResolver): Task[] {
-  return blockerIdsOf(task).map(resolve).filter((t): t is Task => canBlock(t));
+  return waitIdsOf(task).map(resolve).filter((t): t is Task => holds(t, resolve));
 }
 
 /**
@@ -76,7 +152,7 @@ export function blockerOf(task: Task, resolve: TaskResolver): Task | undefined {
  * several blockers it waits for all of them: any one still open holds it.
  */
 export function isBlocked(task: Task, resolve: TaskResolver): boolean {
-  return blockerIdsOf(task).some(id => canBlock(resolve(id)));
+  return waitIdsOf(task).some(id => holds(resolve(id), resolve));
 }
 
 /** Resolves a person id to their row, or undefined. `peopleRegistry` supplies it. */
@@ -137,7 +213,9 @@ export function wouldCycle(taskId: string, blockerId: string, resolve: TaskResol
     if (seen.has(current)) continue; // pre-existing loop, doesn't reach taskId
     seen.add(current);
     const row = resolve(current);
-    if (row) stack.push(...blockerIdsOf(row));
+    // Through the gate question too: a task can't wait on the answer to a
+    // question that itself waits on it.
+    if (row) stack.push(...waitIdsOf(row));
   }
   return false;
 }
@@ -210,6 +288,22 @@ export function waitingOn(taskId: string, tasks: Task[]): Task[] {
 export function canBeBlockerOf(candidate: Task, taskId: string | null, resolve: TaskResolver): boolean {
   if (candidate.parentId || candidate.completed || candidate.archived) return false;
   if (candidate.id === taskId) return false;
+  return !(taskId && wouldCycle(taskId, candidate.id, resolve));
+}
+
+/**
+ * Whether `candidate` can be the question task `taskId`'s answer gate rides on.
+ *
+ * It has to ask a pick-one question ('choice' with options, or 'yesno'), since
+ * a gate opens on listed answers and a free-text or number answer has none to
+ * list. Unlike a blocker it may already be done: gating on a decision already
+ * made is fine, and is simply settled the moment it's saved. The cycle check
+ * is the same one, since an unanswered question holds its gated tasks back.
+ */
+export function canBeGateOf(candidate: Task, taskId: string | null, resolve: TaskResolver): boolean {
+  if (candidate.parentId || candidate.archived) return false;
+  if (candidate.id === taskId) return false;
+  if (deliverableOptionsFor(candidate).length < 2) return false;
   return !(taskId && wouldCycle(taskId, candidate.id, resolve));
 }
 

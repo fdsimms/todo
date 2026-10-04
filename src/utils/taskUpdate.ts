@@ -61,6 +61,8 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   'blockedById',
   // The rest of the set, for the same reason: see Task.blockedByIds.
   'blockedByIds',
+  // "Only if that question gets this answer" is a gate like the two above.
+  'answerGate',
   // Deliberately NOT here: postponeCount / postponeMuted. A scope:'occurrence'
   // edit captures every content field into seriesDefaults, which is applied on
   // top of the row that spawns the next occurrence — so listing them would hand
@@ -526,6 +528,8 @@ export function seriesFanOutRows(edited: Task, updates: Partial<Task>, tasks: re
       ...(('blockedById' in fanOut || 'blockedByIds' in fanOut) && blockers().includes(t.id)
         ? blockerFields(blockers().filter(id => id !== t.id))
         : {}),
+      // The same for a gate pointing at one of this set's own dates.
+      ...('answerGate' in fanOut && fanOut.answerGate?.taskId === t.id ? { answerGate: null } : {}),
     };
   });
 }

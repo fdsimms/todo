@@ -220,6 +220,7 @@ import {
   isTaskDeferred,
   isUpcomingToday,
   isHeldBack,
+  isTaskNotNeeded,
   isHiddenForVacation,
   isWithheld,
   isInPausedProject,
@@ -2231,6 +2232,21 @@ function reconcileWaterShortfall(args: {
   });
 }
 
+/**
+ * The reminders of the tasks whose answer gate rides on `questionId`, put in
+ * step with its answer: a branch that was just ruled out has its reminder
+ * cancelled, and one an answer correction brought back has it rescheduled.
+ * `rescheduleAllReminders` would get there on the next launch; this is so the
+ * phone doesn't buzz for "Book City Hall" an hour after you chose otherwise.
+ */
+function syncGatedReminders(questionId: string, tasks: Task[]): void {
+  for (const t of tasks) {
+    if (t.answerGate?.taskId !== questionId || !t.reminderTime || t.completed || t.archived) continue;
+    if (isTaskNotNeeded(t)) cancelTaskReminder(t.id);
+    else scheduleTaskReminder(t);
+  }
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -3705,6 +3721,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    syncGatedReminders(id, get().tasks);
+
     // The tasks this was the last thing holding back, if they have no day of
     // their own: ready now, but an undated task goes nowhere by itself, so
     // nothing on screen would say so. ReadyOfferBar offers them a day. Not for
@@ -3712,7 +3730,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed && !neutral) {
       const freed = get().tasks.filter(t =>
         !t.completed && !t.archived && !t.parentId &&
-        blockerIdsOf(t).includes(id) &&
+        (blockerIdsOf(t).includes(id) || t.answerGate?.taskId === id) &&
         !isHeldBack(t) && !isInPausedProject(t) &&
         t.dueDate == null && t.deferUntil == null
       );
@@ -4010,6 +4028,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, deliverableValue: value };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    syncGatedReminders(id, get().tasks);
     get().setLastAction({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous),
@@ -8535,6 +8554,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       for (const { task } of blueprint.entries) {
         const mapped = blockerIdsOf(task).map(id => copyOf.get(id)).filter((id): id is string => !!id);
         if (mapped.length > 0) get().updateTask(copyOf.get(task.id)!, blockerFields(mapped));
+        // A branch rides on this copy's own question, which starts unanswered.
+        const question = task.answerGate ? copyOf.get(task.answerGate.taskId) : undefined;
+        if (question) get().updateTask(copyOf.get(task.id)!, { answerGate: { taskId: question, answers: task.answerGate!.answers } });
       }
       // Sections with nothing in them keep their place at the end.
       for (const id of sectionFor.values()) if (!childrenOf.has(id)) order.push(id);

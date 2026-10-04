@@ -55,7 +55,7 @@ import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
 import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
-import { taskFieldsPatch, type TaskFieldsInput } from './taskFields';
+import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -136,12 +136,16 @@ export interface ProjectPlanStep {
   fields: TaskFieldsInput;
   subtasks?: string[];
   waitsOn?: number[];
+  /** Shown only for these answers to an earlier step's question, by position. */
+  onlyIfAnswerTo?: { step: number; answers: string[] };
 }
 
 export interface ProjectPlan {
   title: string;
   notes?: string;
   deadline?: string | null;
+  /** The day the project is for (Project.eventDate), as an ISO date. */
+  eventDate?: string | null;
   /** A project category (the Projects page's grouping), by name. */
   category?: string | null;
   /** The task category every step falls back to, by name. */
@@ -150,10 +154,18 @@ export interface ProjectPlan {
   steps: ProjectPlanStep[];
 }
 
+/** What `moveProjectTasks` did. */
+export interface ProjectTaskMove {
+  deltaDays: number;
+  moved: Task[];
+  skipped: { task: Task; reason: string }[];
+}
+
 export interface ProjectPatch {
   title?: string;
   notes?: string;
   deadline?: string | null;
+  eventDate?: string | null;
   category?: string | null;
   defaultTaskCategory?: string | null;
   kind?: ProjectKind;
@@ -186,6 +198,12 @@ export interface Replica {
    * own imports are clean of anything native.
    */
   projectProgress(projectId: string): { done: number; total: number };
+  /**
+   * The project's answered questions, newest first: `projectDecisions`, the
+   * same read as the Decisions block on the project's page, so a repeating
+   * question lists its latest answer once and a chain step's answer counts.
+   */
+  projectDecisions(projectId: string): Task[];
   categories(): Category[];
   groceryItems(): GroceryItem[];
   /**
@@ -200,6 +218,8 @@ export interface Replica {
   isUnscheduled(task: Task): boolean;
   isInbox(task: Task): boolean;
   isBlocked(task: Task): boolean;
+  /** On a branch that wasn't taken: its answer gate's question got another answer (`isTaskNotNeeded`). */
+  isNotNeeded(task: Task): boolean;
   visibleAt(task: Task): Date;
   search(query: string): ReplicaSearchHit[];
 
@@ -326,6 +346,18 @@ export interface Replica {
   deferTask(id: string, date: Date | null): Task;
 
   /**
+   * Archive a task, or restore an archived one, as the app's own
+   * `archiveTask` / `unarchiveTask` do. This is the replica's only way to take
+   * a task back off every list: there is deliberately no delete, since an
+   * archived row can be restored in the app and a deleted one cannot.
+   *
+   * Archiving unpins. Restoring breaks the streak (the gap is real) and folds
+   * the run into `priorBestStreak`, as the app's resume does. A subtask is
+   * refused: it goes with its parent.
+   */
+  setTaskArchived(id: string, archived: boolean): Task;
+
+  /**
    * Put a name on the shopping list, exactly as typing it into the app would.
    *
    * `planGroceryAdd` (`src/utils/groceryAdd.ts`) decides everything; this only
@@ -408,8 +440,23 @@ export interface Replica {
    * earlier steps by position, written as real blockers once their ids exist.
    */
   createProjectPlan(plan: ProjectPlan): { project: Project; tasks: Task[] };
+  /**
+   * Steps added to a project that already exists, checked and written together
+   * the way `createProjectPlan` writes a new one's. A step's `waitsOn` names
+   * earlier steps in this batch by position; its `fields.waitsOn` names tasks
+   * already in the app by id.
+   */
+  addProjectSteps(projectId: string, steps: ProjectPlanStep[]): Task[];
   /** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. */
   updateProject(id: string, patch: ProjectPatch): Project;
+  /**
+   * Move a project's dated tasks by the days its event (or any date) moved,
+   * as the app's own offer does when the date is changed in the editor:
+   * `buildAwayShiftPlan` decides each row, and a row the app would offer
+   * unticked (pinned, urgent, a running timer, a streak, someone's task) is
+   * left where it is and reported, since nobody is here to tick it.
+   */
+  moveProjectTasks(projectId: string, from: Date, to: Date): ProjectTaskMove;
 
   recipes(): Recipe[];
   cookbooks(): Cookbook[];
@@ -534,6 +581,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const taskDraft = require('../../src/utils/taskDraft') as TaskDraftModule;
   const completion = require('../../src/utils/taskCompletion') as TaskCompletionModule;
   const moves = require('../../src/utils/taskMoves') as TaskMovesModule;
+  const awayShift = require('../../src/utils/awayShift') as typeof import('../../src/utils/awayShift');
   const groceryAdd = require('../../src/utils/groceryAdd') as GroceryAddModule;
   const aisles = require('../../src/utils/groceryAisles') as GroceryAislesModule;
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
@@ -545,8 +593,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
-  const { projectProgress, useProjectStore } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
+  const { projectProgress, projectDecisions, useProjectStore } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
   const taskUpdate = require('../../src/utils/taskUpdate') as TaskUpdateModule;
+  const streakRecord = require('../../src/utils/streakRecord') as typeof import('../../src/utils/streakRecord');
   const blocking = require('../../src/utils/blocking') as BlockingModule;
   const followUp = require('../../src/utils/followUpTask') as FollowUpModule;
   const mealPlanUtils = require('../../src/utils/mealPlan') as MealPlanModule;
@@ -585,12 +634,74 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     useProjectStore.getState().initialize();
   };
 
+  /**
+   * `dueDaysFromEvent` / `deadlineDaysFromEvent` turned into the dates they
+   * name, counted from the event date of the project the task is in (or is
+   * going into). Midday, like every date the app places.
+   */
+  const resolveEventDays = (
+    input: TaskFieldsInput,
+    current: Task | null,
+    eventDate: string | null | undefined,
+  ): { fields: TaskFieldsInput; errors: string[] } => {
+    const { dueDaysFromEvent, deadlineDaysFromEvent, ...fields } = input;
+    const errors: string[] = [];
+    if (dueDaysFromEvent === undefined && deadlineDaysFromEvent === undefined) return { fields, errors };
+    const projectId = fields.projectId !== undefined ? fields.projectId : current?.projectId ?? null;
+    const event = eventDate !== undefined ? eventDate : projects().find(p => p.id === projectId)?.eventDate ?? null;
+    if (!event) {
+      errors.push('dueDaysFromEvent and deadlineDaysFromEvent count from the project\'s event date, and this task\'s project has none. Set one with update_project, or give a date.');
+      return { fields, errors };
+    }
+    const at = (days: number): string => {
+      const d = addDays(new Date(event), days);
+      d.setHours(12, 0, 0, 0);
+      return d.toISOString();
+    };
+    for (const [days, key] of [[dueDaysFromEvent, 'dueDate'], [deadlineDaysFromEvent, 'deadline']] as const) {
+      if (days === undefined) continue;
+      if (!Number.isInteger(days)) errors.push(`${key === 'dueDate' ? 'dueDaysFromEvent' : 'deadlineDaysFromEvent'} must be a whole number of days.`);
+      else if (fields[key] !== undefined) errors.push(`Give ${key} or ${key === 'dueDate' ? 'dueDaysFromEvent' : 'deadlineDaysFromEvent'}, not both.`);
+      else fields[key] = at(days);
+    }
+    return { fields, errors };
+  };
+
+  /** A batch's checked step fields, and each gated step's answers (by position) as the question spells them. */
+  interface CheckedSteps {
+    patches: Partial<Task>[];
+    gates: Record<number, string[]>;
+  }
+
+  /**
+   * The answers a gate opens on, spelled as the question offers them, or null
+   * with a reason in `errors` for any the question doesn't offer: a gate on
+   * "Cityhall" would never open, and the task would be not needed for good.
+   */
+  const gateFor = (answers: string[], offered: string[], errors: string[]): string[] | null => {
+    const out: string[] = [];
+    for (const a of answers) {
+      const match = offered.find(o => o.toLowerCase() === a.toLowerCase());
+      if (match) { if (!out.includes(match)) out.push(match); } else errors.push(`onlyIfAnswer: "${a}" isn't one of its answers (${offered.join(', ')}).`);
+    }
+    return out.length === answers.length ? out : null;
+  };
+
   /** A step or task's fields, checked, with blockers resolved against the live tasks. */
-  const taskPatch = (input: TaskFieldsInput, current: Task | null, isSubtask: boolean, extraBlockers: string[] = []): Partial<Task> => {
-    const { patch, waitsOn, errors } = taskFieldsPatch(input, current, {
+  const taskPatch = (
+    input: TaskFieldsInput,
+    current: Task | null,
+    isSubtask: boolean,
+    extraBlockers: string[] = [],
+    /** The event date to count from, for a project that isn't written yet. Otherwise read off the task's project. */
+    eventDate?: string | null,
+  ): Partial<Task> => {
+    const { fields, errors: eventErrors } = resolveEventDays(input, current, eventDate);
+    const { patch, waitsOn, onlyIfAnswer, errors } = taskFieldsPatch(fields, current, {
       newId: generateId,
       emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
     }, { isSubtask });
+    errors.unshift(...eventErrors);
     if (waitsOn !== undefined || extraBlockers.length > 0) {
       const all = tasks();
       const resolve = blocking.resolverFor(all);
@@ -604,8 +715,95 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       Object.assign(patch, blocking.blockerFields(ids));
     }
+    if (onlyIfAnswer && errors.length === 0) {
+      const resolve = blocking.resolverFor(tasks());
+      const question = resolve(onlyIfAnswer.taskId);
+      if (!question) errors.push(`onlyIfAnswer: no task with id ${onlyIfAnswer.taskId}.`);
+      else if (!blocking.canBeGateOf(question, current?.id ?? null, resolve)) {
+        errors.push(`onlyIfAnswer: "${question.title}" can't decide this task: it has to ask a Yes/No or pick-one question, be a live top-level task, and not wait on this one.`);
+      } else {
+        const gate = gateFor(onlyIfAnswer.answers, deliverables.deliverableOptionsFor(question), errors);
+        if (gate) patch.answerGate = { taskId: question.id, answers: gate };
+      }
+    }
     if (errors.length > 0) throw new Error(errors.join(' '));
     return patch;
+  };
+
+  /**
+   * A batch of project steps, checked in full before anything is written, so
+   * a bad step fails the whole batch with all its problems listed rather than
+   * leaving a project with half its steps. `waitsOn` positions count over the
+   * batch itself; a step's own `fields.waitsOn` names tasks that already exist.
+   */
+  const checkSteps = (steps: ProjectPlanStep[], eventDate: string | null): CheckedSteps => {
+    const errors: string[] = [];
+    const gates: Record<number, string[]> = {};
+    const patches = steps.map((step, i) => {
+      for (const n of step.waitsOn ?? []) {
+        if (!Number.isInteger(n) || n < 0 || n >= i) errors.push(`steps[${i}].waitsOn: ${n} is not an earlier step. Steps can only wait on steps before them.`);
+      }
+      if (!step.fields.title?.trim()) errors.push(`steps[${i}] needs a title.`);
+      try {
+        return taskPatch({ ...step.fields, projectId: undefined }, null, false, [], eventDate);
+      } catch (e) {
+        errors.push(`steps[${i}]: ${e instanceof Error ? e.message : String(e)}`);
+        return {};
+      }
+    });
+    // Checked once every step's own fields are, since the question is another
+    // step's patch: it has to be earlier and ask something with listed answers.
+    steps.forEach((step, i) => {
+      const to = step.onlyIfAnswerTo;
+      if (!to) return;
+      if (!Number.isInteger(to.step) || to.step < 0 || to.step >= i) {
+        errors.push(`steps[${i}].onlyIfAnswerTo: ${to.step} is not an earlier step.`);
+        return;
+      }
+      const offered = deliverables.deliverableOptionsFor(patches[to.step] as Task);
+      if (offered.length < 2) {
+        errors.push(`steps[${i}].onlyIfAnswerTo: step ${to.step} has to ask a Yes/No or pick-one question.`);
+        return;
+      }
+      const answers = [...new Set((to.answers ?? []).map(a => a.trim()).filter(Boolean))];
+      if (answers.length === 0) errors.push(`steps[${i}].onlyIfAnswerTo needs at least one answer.`);
+      const gate = gateFor(answers, offered, errors);
+      if (gate && gate.length > 0) gates[i] = gate;
+    });
+    if (errors.length > 0) throw new Error(errors.join(' '));
+    return { patches, gates };
+  };
+
+  /** Writes checked steps (and their checklists) into a project. Call inside a transaction. */
+  const writeSteps = (projectId: string, steps: ProjectPlanStep[], { patches, gates }: CheckedSteps): Task[] => {
+    const created: Task[] = [];
+    const now = new Date().toISOString();
+    let order = nextTaskOrder();
+    const ids: string[] = [];
+    steps.forEach((step, i) => {
+      const blockers = (step.waitsOn ?? []).map(n => ids[n]);
+      // The question is an earlier step of this batch, so its id exists now.
+      const answers = gates[i];
+      const draft = {
+        ...patches[i],
+        ...(answers ? { answerGate: { taskId: ids[steps[i].onlyIfAnswerTo!.step], answers } } : {}),
+        projectId,
+        ...(blockers.length > 0
+          ? blocking.blockerFields([...blocking.blockerIdsOf({ blockedById: patches[i].blockedById ?? null, blockedByIds: patches[i].blockedByIds }), ...blockers])
+          : {}),
+      } as Partial<TaskDraft>;
+      const task = taskDraft.newTaskFromDraft(taskDraft.applyTitleRulesToDraft(draft), now, order++, true);
+      db.dbInsertTask(task);
+      ids.push(task.id);
+      created.push(task);
+      (step.subtasks ?? []).forEach((subtitle, j) => {
+        if (!subtitle.trim()) return;
+        const sub = taskDraft.newTaskFromDraft({ title: subtitle.trim(), parentId: task.id }, now, j + 1, false, undefined, true);
+        db.dbInsertTask(sub);
+        created.push(sub);
+      });
+    });
+    return created;
   };
 
   /** The next free `sortOrder` across every task, which is where a new one goes. */
@@ -626,6 +824,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     tasks,
     projects,
     projectProgress: (projectId: string) => projectProgress(projectId, tasks()),
+    projectDecisions: (projectId: string) => projectDecisions(projectId, tasks()),
     taskById: (id: string) => tasks().find(t => t.id === id) ?? null,
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
@@ -635,6 +834,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),
+    isNotNeeded: (task: Task) => visibility.isTaskNotNeeded(task),
     visibleAt: (task: Task) => visibility.getVisibleAt(task),
 
     displayTitle: (task: Task) => visibility.displayTitleFor(task),
@@ -855,6 +1055,31 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return moved;
     },
 
+    setTaskArchived(id: string, archived: boolean): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.parentId) throw new Error('That is a checklist item. Archive the task it belongs to instead.');
+      if (task.archived === archived) return task;
+
+      const patch: Partial<Task> = archived
+        ? { archived: true, archivedAt: new Date().toISOString(), pinned: false }
+        : {
+            archived: false,
+            archivedAt: null,
+            streakCount: 0,
+            streakDate: null,
+            priorBestStreak: streakRecord.nextStreakRecord(task, 0),
+          };
+      const updated = taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
+    },
+
     addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome {
       if (!name.trim()) throw new Error('An item needs a name.');
 
@@ -981,23 +1206,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const title = plan.title?.trim();
       if (!title) throw new Error('A project needs a title.');
 
-      // Every step checked before anything is written, so a bad step fails the
-      // whole plan with all its problems listed rather than leaving a project
-      // with half its steps.
-      const errors: string[] = [];
-      const patches = plan.steps.map((step, i) => {
-        for (const n of step.waitsOn ?? []) {
-          if (!Number.isInteger(n) || n < 0 || n >= i) errors.push(`steps[${i}].waitsOn: ${n} is not an earlier step. Steps can only wait on steps before them.`);
-        }
-        if (!step.fields.title?.trim()) errors.push(`steps[${i}] needs a title.`);
-        try {
-          return taskPatch({ ...step.fields, projectId: undefined }, null, false);
-        } catch (e) {
-          errors.push(`steps[${i}]: ${e instanceof Error ? e.message : String(e)}`);
-          return {};
-        }
-      });
-      if (errors.length > 0) throw new Error(errors.join(' '));
+      const eventDate = plan.eventDate ? eventNoonIso(plan.eventDate) : null;
+      if (plan.eventDate && !eventDate) throw new Error(`eventDate: "${plan.eventDate}" is not a date I can read. Use an ISO date like 2027-06-14.`);
+      const checked = checkSteps(plan.steps, eventDate);
 
       let project: Project | undefined;
       const created: Task[] = [];
@@ -1006,6 +1217,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const store = useProjectStore.getState();
           project = store.createProject(title, {
             deadline: plan.deadline ?? null,
+            eventDate,
             category: plan.category ?? null,
             kind: plan.kind ?? 'project',
           });
@@ -1015,29 +1227,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
               ...(plan.defaultTaskCategory ? { defaultTaskCategory: plan.defaultTaskCategory } : {}),
             });
           }
-          const now = new Date().toISOString();
-          let order = nextTaskOrder();
-          const ids: string[] = [];
-          plan.steps.forEach((step, i) => {
-            const blockers = (step.waitsOn ?? []).map(n => ids[n]);
-            const draft = {
-              ...patches[i],
-              projectId: project!.id,
-              ...(blockers.length > 0
-                ? blocking.blockerFields([...blocking.blockerIdsOf({ blockedById: patches[i].blockedById ?? null, blockedByIds: patches[i].blockedByIds }), ...blockers])
-                : {}),
-            } as Partial<TaskDraft>;
-            const task = taskDraft.newTaskFromDraft(taskDraft.applyTitleRulesToDraft(draft), now, order++, true);
-            db.dbInsertTask(task);
-            ids.push(task.id);
-            created.push(task);
-            (step.subtasks ?? []).forEach((subtitle, j) => {
-              if (!subtitle.trim()) return;
-              const sub = taskDraft.newTaskFromDraft({ title: subtitle.trim(), parentId: task.id }, now, j + 1, false, undefined, true);
-              db.dbInsertTask(sub);
-              created.push(sub);
-            });
-          });
+          created.push(...writeSteps(project.id, plan.steps, checked));
         });
       } finally {
         // Also what puts the store back if the transaction rolled back.
@@ -1046,11 +1236,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { project: projects().find(p => p.id === project!.id)!, tasks: created };
     },
 
+    addProjectSteps(projectId: string, steps: ProjectPlanStep[]): Task[] {
+      const project = projects().find(p => p.id === projectId);
+      if (!project) throw new Error(`No project with id ${projectId}.`);
+      if (steps.length === 0) throw new Error('Nothing to add: name at least one step.');
+      const checked = checkSteps(steps, project.eventDate ?? null);
+      let created: Task[] = [];
+      try {
+        db.dbTransaction(() => {
+          created = writeSteps(projectId, steps, checked);
+        });
+      } finally {
+        refresh();
+      }
+      return created;
+    },
+
     updateProject(id: string, patch: ProjectPatch): Project {
       const store = useProjectStore.getState();
       if (!store.projects.some(p => p.id === id)) throw new Error(`No project with id ${id}.`);
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A project title cannot be blank.');
       const { completed, archived, ...content } = patch;
+      if (content.eventDate) {
+        const noon = eventNoonIso(content.eventDate);
+        if (!noon) throw new Error(`eventDate: "${content.eventDate}" is not a date I can read. Use an ISO date like 2027-06-14.`);
+        content.eventDate = noon;
+      }
       db.dbTransaction(() => {
         if (Object.keys(content).length > 0) {
           store.updateProject(id, { ...content, ...(content.title ? { title: content.title.trim() } : {}) });
@@ -1060,6 +1271,35 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       refresh();
       return projects().find(p => p.id === id)!;
+    },
+
+    moveProjectTasks(projectId: string, from: Date, to: Date): ProjectTaskMove {
+      const { dayResetTime } = useSettingsStore.getState();
+      const members = tasks().filter(t => t.projectId === projectId);
+      const plan = awayShift.buildAwayShiftPlan(members, from, to, dayResetTime);
+      const moved: Task[] = [];
+      const skipped: { task: Task; reason: string }[] = [];
+      db.dbTransaction(() => {
+        for (const proposal of plan.proposals) {
+          const updates = proposal.selected ? awayShift.awayShiftUpdates(proposal, dayResetTime) : null;
+          if (!updates) {
+            skipped.push({ task: proposal.task, reason: proposal.blockerLabel ?? 'Not moved' });
+            continue;
+          }
+          // No postpone count: the event moving isn't the person putting the
+          // task off, the same exemption the app's shiftAwayTasks makes.
+          const next = taskUpdate.mergeTaskUpdate(proposal.task, updates, {
+            scope: 'series',
+            freshPinnedOrder: 0,
+            dayResetTime,
+            skipPostponeCount: true,
+          });
+          db.dbUpdateTask(next);
+          moved.push(next);
+        }
+      });
+      refresh();
+      return { deltaDays: plan.deltaDays, moved, skipped };
     },
 
     recipes: () => db.dbGetAllRecipes(),

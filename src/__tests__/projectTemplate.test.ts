@@ -51,6 +51,18 @@ describe('templateFromProject', () => {
     expect(draft.items[0]).toEqual(expect.objectContaining({ title: 'Send invites', anchor: 'end', dueOffsetDays: -14 }));
   });
 
+  it('counts from the event date ahead of the deadline, so tasks after the event keep their place', () => {
+    const tasks = [
+      task({ id: 'a', title: 'Get the license', dueDate: new Date(2026, 4, 1, 12).toISOString() }),
+      task({ id: 'b', title: 'Thank-you notes', dueDate: new Date(2026, 5, 21, 12).toISOString() }),
+    ];
+    const draft = templateFromProject(project({
+      eventDate: new Date(2026, 5, 14, 12).toISOString(),
+      deadline: new Date(2026, 6, 31, 12).toISOString(),
+    }), tasks, []);
+    expect(draft.items.map(i => i.dueOffsetDays)).toEqual([-44, 7]);
+  });
+
   it("counts from a trip's departure and marks the template as a trip", () => {
     const tasks = [task({ id: 'a', title: 'Renew passport', dueDate: new Date(2026, 4, 1, 12).toISOString() })];
     const draft = templateFromProject(project({ awayStart: new Date(2026, 5, 12, 12).toISOString() }), tasks, []);

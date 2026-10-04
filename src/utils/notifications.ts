@@ -11,7 +11,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isInPausedProject, isWithheld } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isInPausedProject, isTaskNotNeeded, isWithheld } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -211,6 +211,8 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   // A paused project's tasks are held until the pause lifts; the reschedule
   // pass after that day puts a still-future reminder back.
   if (isInPausedProject(task)) return;
+  // A task on a branch that wasn't taken will never be done (Task.answerGate).
+  if (isTaskNotNeeded(task)) return;
   let triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
 
@@ -354,7 +356,7 @@ export const MAX_PENDING_REMINDERS = 64;
  */
 export function upcomingReminders(tasks: Task[], now: Date = new Date()): Task[] {
   return tasks
-    .filter(t => t.reminderTime && !t.completed && !t.archived && !isInPausedProject(t) && new Date(t.reminderTime) > now)
+    .filter(t => t.reminderTime && !t.completed && !t.archived && !isInPausedProject(t) && !isTaskNotNeeded(t) && new Date(t.reminderTime) > now)
     .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime());
 }
 

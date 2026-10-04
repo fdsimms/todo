@@ -26,7 +26,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
-import { canBeBlockedBy, canBeBlockerOf, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
+import { canBeBlockedBy, canBeBlockerOf, canBeGateOf, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
@@ -37,7 +37,7 @@ import { useFilterField } from '../hooks/useFilterField';
  * Which end of the relationship is being filled in: the task being edited is
  * either the one waiting, or the one everything else is waiting on.
  */
-export type TaskRelation = 'waitingOn' | 'blocks';
+export type TaskRelation = 'waitingOn' | 'blocks' | 'answer';
 
 interface Props {
   visible: boolean;
@@ -95,6 +95,13 @@ const COPY: Record<TaskRelation, {
     emptySub: 'Tasks that would end up waiting on each other are left out.',
     action: title => `Block ${title}`,
   },
+  answer: {
+    title: 'Only if',
+    hint: 'Pick a task that asks a question. You choose which answers show this task next.',
+    emptyTitle: 'No questions to pick',
+    emptySub: 'Only tasks that ask Yes/No or Pick one when completed are listed.',
+    action: title => `Only if ${title}`,
+  },
 };
 
 /**
@@ -134,7 +141,9 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
       !excluded.has(t.id) &&
       (relation === 'waitingOn'
         ? canBeBlockerOf(t, taskId, resolve)
-        : canBeBlockedBy(t, taskId, resolve))
+        : relation === 'answer'
+          ? canBeGateOf(t, taskId, resolve)
+          : canBeBlockedBy(t, taskId, resolve))
     );
     // Rank before truncating, so a neighbour buried deep in the list still
     // reaches the visible rows.

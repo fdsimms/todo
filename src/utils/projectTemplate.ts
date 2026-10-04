@@ -112,8 +112,9 @@ export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGr
  *
  * The date it counts from is the trip's departure when there is one (the
  * template is then marked as a trip, so it asks for Leaving and Coming back)
- * and otherwise the deadline, as "N days before the end date". A project with
- * neither gives a template with no dates, which is what it had.
+ * and otherwise the event date or, failing that, the deadline, as "N days
+ * before the end date". A project with none gives a template with no dates,
+ * which is what it had.
  */
 export function templateFromProject(
   project: Project,
@@ -124,7 +125,7 @@ export function templateFromProject(
   const blueprint = projectBlueprint(project.id, tasks, groups);
   const anchorsAreAway = project.awayStart !== null;
   const anchor: TemplateAnchor = anchorsAreAway ? 'start' : 'end';
-  const anchorIso = anchorsAreAway ? project.awayStart : project.deadline;
+  const anchorIso = anchorsAreAway ? project.awayStart : (project.eventDate ?? project.deadline);
   // getTaskDayStart, not getDayStart: these are stored dates, and a date kept
   // at midnight under a later dayResetTime would read as the day before.
   const anchorDay = anchorIso ? getTaskDayStart(new Date(anchorIso), dayResetTime) : null;

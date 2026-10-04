@@ -16,6 +16,7 @@ import { generateId } from '../utils/id';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
+import { isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -73,7 +74,13 @@ function memberKey(task: Task, byId: Map<string, Task>): string {
 // what this paragraph fixes. Don't loosen the gate without deciding the
 // question first.
 export function projectProgress(projectId: string, tasks: Task[]): { done: number; total: number } {
-  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  // A task on a branch that wasn't taken ("Book City Hall" once the answer was
+  // "Officiant") will never be done, so it isn't work left on the project.
+  // Resolved against every task, since the question may sit outside it.
+  let resolve: TaskResolver | null = null;
+  const notNeeded = (t: Task): boolean =>
+    (!!t.answerGate || !!t.blockedById) && isNotNeeded(t, (resolve ??= resolverFor(tasks)));
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived && !notNeeded(t));
   const byId = new Map(members.map(t => [t.id, t]));
 
   const groups = new Map<string, Task[]>();
@@ -322,7 +329,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'eventDate' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -365,6 +372,8 @@ interface ProjectStore {
  */
 export interface CreateProjectOptions {
   deadline?: string | null;
+  /** The day the project is for. See Project.eventDate. */
+  eventDate?: string | null;
   /** Presentation only. See Project.kind. */
   kind?: ProjectKind;
   category?: string | null;
@@ -410,6 +419,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       title,
       notes: '',
       deadline: options.deadline ?? null,
+      eventDate: options.eventDate ?? null,
       category: options.category ?? null,
       // No default until somebody nominates one in the editor. See
       // Project.defaultTaskCategory.

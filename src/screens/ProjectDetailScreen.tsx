@@ -30,7 +30,7 @@ import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
-import { groupRoster, isHeldBack } from '../utils/visibilityUtils';
+import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
 import { Alert, InteractionManager, Linking, Share } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
@@ -1484,13 +1484,21 @@ export function ProjectDetailScreen() {
     : null;
   // How many open tasks here are waiting on something, said on the summary
   // line so a page of dimmed rows has its count.
-  const waitingHere = useMemo(
-    () => incompleteProjectTasks.filter(t => isHeldBack(t)).length,
+  // Not needed (a branch that wasn't taken, see Task.answerGate) is counted
+  // apart: those rows aren't waiting for anything, and the progress figure
+  // already leaves them out.
+  const notNeededHere = useMemo(
+    () => incompleteProjectTasks.filter(t => isTaskNotNeeded(t)).length,
     [incompleteProjectTasks],
+  );
+  const waitingHere = useMemo(
+    () => incompleteProjectTasks.filter(t => isHeldBack(t)).length - notNeededHere,
+    [incompleteProjectTasks, notNeededHere],
   );
   const summaryProgress = project && progress.total > 0
     ? (projectProgressNote(project, progress) ?? `${progress.done} of ${progress.total} done`)
       + (waitingHere > 0 ? ` · ${waitingHere} waiting` : '')
+      + (notNeededHere > 0 ? ` · ${notNeededHere} not needed` : '')
     : null;
   // The trip's own dates, which the card's "Leaves in 45 days" never names.
   const tripLine = project?.awayStart

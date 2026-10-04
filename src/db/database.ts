@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: a list every new type is added to, so one line is a guaranteed conflict.
 import type {
+  AnswerGate,
   HealthTargetMetric,
   Cookbook,
   CookbookIndexEntry,
@@ -1800,6 +1801,8 @@ export function initDatabase(): void {
     // Off on every existing list: checked lines fold away, as they always
     // have. See Project.showChecked.
     'ALTER TABLE projects ADD COLUMN show_checked INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing project: no event. See Project.eventDate.
+    'ALTER TABLE projects ADD COLUMN event_date TEXT',
     // Off on every existing section. See TaskGroup.checklist.
     'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
     // Empty on every existing recipe: a method heading declared ahead of any
@@ -1850,6 +1853,9 @@ export function initDatabase(): void {
     // NULL on every existing row: never rated, which earns exactly what every
     // task did before the column. See Task.difficulty.
     'ALTER TABLE tasks ADD COLUMN difficulty TEXT',
+    // NULL on every existing row: shown whatever any question is answered.
+    // JSON `{ taskId, answers }`. See Task.answerGate.
+    'ALTER TABLE tasks ADD COLUMN answer_gate TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3298,6 +3304,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     pinEachOccurrence: Boolean(row.pin_each_occurrence),
     bountyPushes: (row.bounty_pushes as number | null) ?? null,
     difficulty: row.difficulty === 'easy' || row.difficulty === 'normal' || row.difficulty === 'hard' ? row.difficulty : null,
+    answerGate: parseAnswerGate(row.answer_gate),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
@@ -3429,8 +3436,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3547,6 +3554,7 @@ export function dbInsertTask(task: Task): void {
       task.pinEachOccurrence ? 1 : 0,
       task.bountyPushes ?? null,
       task.difficulty ?? null,
+      task.answerGate ? JSON.stringify(task.answerGate) : null,
     ]
   );
 }
@@ -3583,7 +3591,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3701,6 +3709,7 @@ export function dbUpdateTask(task: Task): void {
       task.pinEachOccurrence ? 1 : 0,
       task.bountyPushes ?? null,
       task.difficulty ?? null,
+      task.answerGate ? JSON.stringify(task.answerGate) : null,
       task.id,
     ]
   );
@@ -7071,6 +7080,23 @@ export function dbSetTrip(
 
 // ─── Projects ───────────────────────────────────────────────────────────────
 
+/**
+ * `Task.answerGate` out of its JSON column, or null for anything that isn't
+ * one: no gate, a bad write, or a gate with nothing left to open on (which
+ * would hide the task for every answer).
+ */
+function parseAnswerGate(raw: unknown): AnswerGate | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.taskId !== 'string' || !parsed.taskId) return null;
+    const answers = parseStringList(JSON.stringify(parsed.answers ?? null));
+    return answers.length > 0 ? { taskId: parsed.taskId, answers } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A JSON array of strings, or empty for anything else: a missing column, a bad write. */
 function parseStringList(raw: unknown): string[] {
   if (typeof raw !== 'string') return [];
@@ -7138,6 +7164,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     links: parseProjectLinks(row.links),
     inOrder: row.in_order === 1,
     showChecked: row.show_checked === 1,
+    eventDate: (row.event_date as string) ?? null,
   };
 }
 
@@ -7148,7 +7175,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, event_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7160,13 +7187,14 @@ export function dbInsertProject(project: Project): void {
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
       JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0,
+      project.eventDate ?? null,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, event_date=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7178,6 +7206,7 @@ export function dbUpdateProject(project: Project): void {
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
       project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
       JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0,
+      project.eventDate ?? null,
       project.id,
     ]
   );
