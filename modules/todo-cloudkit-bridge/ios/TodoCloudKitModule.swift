@@ -19,10 +19,20 @@ public class TodoCloudKitModule: Module {
   private static let recordType = "SyncPayload"
   private static let payloadKey = "payload"
 
+  // Recipe photos: one record per photo, in a zone of their own. Not in
+  // `TodoSync`, because a build from before this fails its whole pull on any
+  // record there that has no `payload` asset (see `fetchChanges`).
+  private static let imagesZoneName = "TodoImages"
+  private static let imageRecordType = "RecipeImage"
+  private static let imageKey = "image"
+
   private let container = CKContainer(identifier: "iCloud.com.fdsimms.dundundun")
   private var database: CKDatabase { container.privateCloudDatabase }
   private var zoneID: CKRecordZone.ID {
     CKRecordZone.ID(zoneName: Self.zoneName, ownerName: CKCurrentUserDefaultName)
+  }
+  private var imagesZoneID: CKRecordZone.ID {
+    CKRecordZone.ID(zoneName: Self.imagesZoneName, ownerName: CKCurrentUserDefaultName)
   }
 
   public func definition() -> ModuleDefinition {
@@ -39,7 +49,7 @@ public class TodoCloudKitModule: Module {
     }
 
     AsyncFunction("push") { (payload: String, promise: Promise) in
-      self.ensureZone { error in
+      self.ensureZone(self.zoneID) { error in
         if let error {
           promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
@@ -49,13 +59,41 @@ public class TodoCloudKitModule: Module {
     }
 
     AsyncFunction("pull") { (since: String?, promise: Promise) in
-      self.ensureZone { error in
+      self.ensureZone(self.zoneID) { error in
         if let error {
           promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
         self.fetchChanges(since: since, promise: promise)
       }
+    }
+
+    AsyncFunction("listImages") { (since: String?, promise: Promise) in
+      self.ensureZone(self.imagesZoneID) { error in
+        if let error {
+          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          return
+        }
+        self.listImageNames(since: since, accumulated: [], accumulatedRemoved: [], promise: promise)
+      }
+    }
+
+    AsyncFunction("putImage") { (name: String, base64: String, promise: Promise) in
+      self.ensureZone(self.imagesZoneID) { error in
+        if let error {
+          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          return
+        }
+        self.saveImage(name: name, base64: base64, promise: promise)
+      }
+    }
+
+    AsyncFunction("getImage") { (name: String, promise: Promise) in
+      self.loadImage(name: name, promise: promise)
+    }
+
+    AsyncFunction("removeImage") { (name: String, promise: Promise) in
+      self.deleteImage(name: name, promise: promise)
     }
   }
 
@@ -64,8 +102,8 @@ public class TodoCloudKitModule: Module {
   /// A custom zone, because the default zone does not support change tokens —
   /// and the token is what makes "everything since last time" a cheap query
   /// rather than a full scan the client has to filter.
-  private func ensureZone(completion: @escaping (Error?) -> Void) {
-    let zone = CKRecordZone(zoneID: zoneID)
+  private func ensureZone(_ id: CKRecordZone.ID, completion: @escaping (Error?) -> Void) {
+    let zone = CKRecordZone(zoneID: id)
     let op = CKModifyRecordZonesOperation(recordZonesToSave: [zone], recordZoneIDsToDelete: nil)
     op.modifyRecordZonesResultBlock = { result in
       switch result {
@@ -218,6 +256,163 @@ public class TodoCloudKitModule: Module {
         // Reporting it as an error instead would wedge sync permanently.
         if let ckError = error as? CKError, ckError.code == .changeTokenExpired {
           self.fetchChanges(since: nil, promise: promise)
+        } else {
+          promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
+        }
+      }
+    }
+    op.recordZoneFetchResultBlock = handleZoneFetchResult
+
+    database.add(op)
+  }
+
+  // MARK: - Images
+
+  /// Saves one photo as a record named by its filename. A name is minted once
+  /// per photo and never reused, so a record that already exists *is* this
+  /// photo: `serverRecordChanged` (the name is taken) is a success, not a
+  /// conflict to resolve.
+  private func saveImage(name: String, base64: String, promise: Promise) {
+    guard let bytes = Data(base64Encoded: base64) else {
+      promise.reject("ERR_CLOUDKIT_WRITE", "The photo could not be decoded.")
+      return
+    }
+
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("jpg")
+    do {
+      try bytes.write(to: fileURL, options: .atomic)
+    } catch {
+      promise.reject("ERR_CLOUDKIT_WRITE", error.localizedDescription)
+      return
+    }
+
+    let recordID = CKRecord.ID(recordName: name, zoneID: imagesZoneID)
+    let record = CKRecord(recordType: Self.imageRecordType, recordID: recordID)
+    record[Self.imageKey] = CKAsset(fileURL: fileURL)
+
+    database.save(record) { _, error in
+      try? FileManager.default.removeItem(at: fileURL)
+
+      if let ckError = error as? CKError, ckError.code == .serverRecordChanged {
+        promise.resolve(nil)
+      } else if let error {
+        promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
+      } else {
+        promise.resolve(nil)
+      }
+    }
+  }
+
+  /// One photo's bytes as base64, or nil when no record has that name.
+  private func loadImage(name: String, promise: Promise) {
+    let recordID = CKRecord.ID(recordName: name, zoneID: imagesZoneID)
+    database.fetch(withRecordID: recordID) { record, error in
+      if let ckError = error as? CKError, ckError.code == .unknownItem || ckError.code == .zoneNotFound {
+        promise.resolve(nil)
+        return
+      }
+      if let error {
+        promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
+        return
+      }
+      guard let asset = record?[Self.imageKey] as? CKAsset, let url = asset.fileURL else {
+        promise.resolve(nil)
+        return
+      }
+      do {
+        promise.resolve(try Data(contentsOf: url).base64EncodedString())
+      } catch {
+        promise.reject("ERR_CLOUDKIT_DECODE", "A photo from iCloud could not be read.")
+      }
+    }
+  }
+
+  /// Removes one photo's record. A record that is already gone, or a zone that
+  /// was never made, is the state asked for, so both succeed.
+  private func deleteImage(name: String, promise: Promise) {
+    let recordID = CKRecord.ID(recordName: name, zoneID: imagesZoneID)
+    database.delete(withRecordID: recordID) { _, error in
+      if let ckError = error as? CKError, ckError.code == .unknownItem || ckError.code == .zoneNotFound {
+        promise.resolve(nil)
+      } else if let error {
+        promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
+      } else {
+        promise.resolve(nil)
+      }
+    }
+  }
+
+  /// The photo names the zone holds, from a change token. Asks for no fields
+  /// (`desiredKeys = []`), so listing costs record names and not photo
+  /// downloads. Follows `moreComing` here, unlike `fetchChanges`: a library of
+  /// photos is the first thing in this app likely to span several batches.
+  private func listImageNames(
+    since: String?,
+    accumulated: [String],
+    accumulatedRemoved: [String],
+    promise: Promise
+  ) {
+    var names = accumulated
+    var removed = accumulatedRemoved
+    var failure: Error?
+
+    let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
+    config.previousServerChangeToken = Self.decodeToken(since)
+    config.desiredKeys = []
+
+    let op = CKFetchRecordZoneChangesOperation(
+      recordZoneIDs: [imagesZoneID],
+      configurationsByRecordZoneID: [imagesZoneID: config]
+    )
+
+    op.recordWasChangedBlock = { recordID, result in
+      switch result {
+      case .success:
+        names.append(recordID.recordName)
+      case .failure(let error):
+        failure = error
+      }
+    }
+    // A name another device removed, so this device stops believing the zone
+    // has it (and re-uploads a photo it still holds and its recipe still uses).
+    op.recordWithIDWasDeletedBlock = { recordID, _ in
+      removed.append(recordID.recordName)
+    }
+
+    let handleZoneFetchResult: (
+      CKRecordZone.ID,
+      Result<
+        (serverChangeToken: CKServerChangeToken, clientChangeTokenData: Data?, moreComing: Bool),
+        Error
+      >
+    ) -> Void = { _, result in
+      if let failure {
+        promise.reject("ERR_CLOUDKIT_PULL", failure.localizedDescription)
+        return
+      }
+
+      switch result {
+      case .success(let (token, _, moreComing)):
+        if moreComing {
+          self.listImageNames(
+            since: Self.encodeToken(token),
+            accumulated: names,
+            accumulatedRemoved: removed,
+            promise: promise
+          )
+        } else {
+          promise.resolve([
+            "names": names,
+            "removed": removed,
+            "cursor": Self.encodeToken(token) as Any,
+          ])
+        }
+      case .failure(let error):
+        // A forgotten token is recoverable once: list everything again.
+        if let ckError = error as? CKError, ckError.code == .changeTokenExpired {
+          self.listImageNames(since: nil, accumulated: [], accumulatedRemoved: [], promise: promise)
         } else {
           promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
         }

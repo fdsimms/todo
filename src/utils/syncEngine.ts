@@ -49,6 +49,30 @@ export interface SyncTransport {
    * each photo's path, and a photo it hands back is still written here.
    */
   readonly sendsImages?: boolean;
+  /**
+   * A store that keeps each recipe photo as a file of its own. When present it
+   * replaces the base64 photo payloads: the bytes are not inflated a third,
+   * the store itself says which photos it holds, and a device fetches only
+   * the photos its recipes point at.
+   */
+  readonly imageStore?: SyncImageStore;
+}
+
+/** A transport's per-photo storage, keyed by the photo's filename. */
+export interface SyncImageStore {
+  /**
+   * The photo names added since `since`, and the position to resume from.
+   * Opaque and transport-defined, like `PullResult.cursor`; null leaves the
+   * stored position alone. A position the store has forgotten answers with
+   * every name instead.
+   */
+  list(since: string | null): Promise<{ names: string[]; removed: string[]; cursor: string | null }>;
+  /** Stores a photo's bytes (base64). A name the store already holds is left as it is. */
+  put(name: string, base64: string): Promise<void>;
+  /** A photo's bytes as base64, or null when the store has nothing under that name. */
+  get(name: string): Promise<string | null>;
+  /** Deletes a photo. A name the store doesn't hold succeeds. */
+  remove(name: string): Promise<void>;
 }
 
 /** Tables, and keys of the `settings` table, held back from a transport. */
@@ -123,6 +147,8 @@ export interface SyncLocal {
   readImage?(name: string): string | null;
   /** Stores a photo a peer sent. True when a file was written, false when it was already here or couldn't be. */
   writeImage?(name: string, base64: string): boolean;
+  /** Whether a photo's file is already on this device. */
+  hasImage?(name: string): boolean;
 }
 
 /**
@@ -204,6 +230,123 @@ async function pushImages(
     batchChars += data.length;
   }
   await flush();
+  return count;
+}
+
+/** The device-local cursor key holding the photo names this device has seen a recipe point at. */
+export function imagesKnownKey(transportName: string): string {
+  return `${transportName}:imagesKnown`;
+}
+
+/** The device-local cursor key holding where this transport's photo listing resumes. */
+export function imagesListedKey(transportName: string): string {
+  return `${transportName}:imageList`;
+}
+
+/**
+ * Sends the photos a per-photo store doesn't hold yet. The store is asked what
+ * it has rather than this device remembering what it sent, so a photo another
+ * device already put there is never uploaded twice, and the same name set
+ * (`imagesSentKey`) now means "the store has this".
+ *
+ * - **The listing is written down before the cursor that covers it**, so a
+ *   crash between the two re-lists a window rather than losing one.
+ * - **A photo whose file isn't here is skipped, not recorded**, as in
+ *   `pushImages`: it may arrive from a peer later.
+ */
+async function uploadToImageStore(
+  transport: SyncTransport,
+  store: SyncImageStore,
+  local: SyncLocal
+): Promise<number> {
+  if (!local.imageNames || !local.readImage) return 0;
+  const key = imagesSentKey(transport.name);
+  const listKey = imagesListedKey(transport.name);
+  const has = readNameList(local.getCursor(key));
+  const save = () => local.setCursor(key, JSON.stringify([...has]));
+
+  const listed = await store.list(local.getCursor(listKey));
+  listed.names.forEach(n => has.add(n));
+  // After the names, so a name added and removed in one window ends removed.
+  listed.removed.forEach(n => has.delete(n));
+  save();
+  if (listed.cursor !== null) local.setCursor(listKey, listed.cursor);
+
+  const referenced = new Set(local.imageNames());
+  await removeUnreferenced(transport, store, local, referenced, has, save);
+
+  let count = 0;
+  for (const name of referenced) {
+    if (has.has(name)) continue;
+    const data = local.readImage(name);
+    if (!data) continue;
+    await store.put(name, data);
+    has.add(name);
+    save();
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Deletes from the store the photos this device has seen a recipe point at and
+ * none does now, and whose file it has already removed.
+ *
+ * **Only a photo this device itself saw referenced is a candidate.** A name
+ * the store holds that no row here points at proves nothing: the row may
+ * simply not have arrived yet (a peer pushes its rows and then the photo, and
+ * this device can list in between). Deleting on that evidence would take a
+ * peer's photo away. A photo seen referenced and then not is one a delete or
+ * replacement reached this device, which is what the local file cleanup
+ * (`applyWithRecipeImages`) already acts on.
+ *
+ * **And the file must be gone.** A restored backup can drop rows while their
+ * files stay; a photo still on the device is kept in the store.
+ */
+async function removeUnreferenced(
+  transport: SyncTransport,
+  store: SyncImageStore,
+  local: SyncLocal,
+  referenced: ReadonlySet<string>,
+  has: Set<string>,
+  saveHas: () => void
+): Promise<void> {
+  if (!local.hasImage) return;
+  const knownKey = imagesKnownKey(transport.name);
+  const known = readNameList(local.getCursor(knownKey));
+  referenced.forEach(n => known.add(n));
+
+  for (const name of [...known]) {
+    if (referenced.has(name) || local.hasImage(name)) continue;
+    if (has.has(name)) {
+      await store.remove(name);
+      has.delete(name);
+      saveHas();
+    }
+    known.delete(name);
+  }
+  local.setCursor(knownKey, JSON.stringify([...known]));
+}
+
+/**
+ * Fetches the photos the store holds that this device's recipes point at and
+ * it doesn't have yet. Run after the rows are applied, so a photo is wanted
+ * only once its recipe is here: a recipe a peer deleted leaves a photo nobody
+ * downloads.
+ */
+async function downloadFromImageStore(
+  transport: SyncTransport,
+  store: SyncImageStore,
+  local: SyncLocal
+): Promise<number> {
+  if (!local.imageNames || !local.hasImage || !local.writeImage) return 0;
+  const has = readNameList(local.getCursor(imagesSentKey(transport.name)));
+  let count = 0;
+  for (const name of local.imageNames()) {
+    if (!has.has(name) || local.hasImage(name)) continue;
+    const data = await store.get(name);
+    if (data && local.writeImage(name, data)) count++;
+  }
   return count;
 }
 
@@ -316,7 +459,11 @@ export async function runSync(
   // After the rows, so a peer has the recipe before its photo, and outside
   // the row push's own failure: see `imageProblem`.
   try {
-    imagesSent = transport.sendsImages === false ? 0 : await pushImages(transport, local, pushWindow);
+    if (transport.imageStore) {
+      imagesSent = await uploadToImageStore(transport, transport.imageStore, local);
+    } else if (transport.sendsImages !== false) {
+      imagesSent = await pushImages(transport, local, pushWindow);
+    }
     if (imagesSent > 0) pushed = true;
   } catch (e) {
     imageProblem = messageOf(e, 'Could not send recipe photos.');
@@ -358,6 +505,15 @@ export async function runSync(
     // cursor where it was, so the whole batch is retried — the ones that
     // already landed apply again as no-ops.
     if (result.cursor !== null) local.setCursor(pullKey, result.cursor);
+
+    // After the rows, so the recipes are here to say which photos are wanted.
+    if (transport.imageStore) {
+      try {
+        imagesReceived += await downloadFromImageStore(transport, transport.imageStore, local);
+      } catch (e) {
+        imageProblem ??= messageOf(e, 'Could not receive recipe photos.');
+      }
+    }
   } catch (e) {
     return {
       status: 'failed',

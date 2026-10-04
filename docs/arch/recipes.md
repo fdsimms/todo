@@ -426,6 +426,29 @@ the bytes beside the rows (`Backup.images`), and sync now does the same.
   is edited, and it is also why every photo taken before this existed went on the first sync after
   it, with no separate backfill. A photo that came *from* a transport counts as one it has, so it is
   never echoed back there, and it is still relayed to the other one, the rule rows follow.
+- **iCloud keeps each photo as a record of its own, not inside a payload** (`SyncImageStore` in
+  `syncEngine.ts`, `listImages`/`putImage`/`getImage` in `todo-cloudkit-bridge`). One `RecipeImage`
+  record per photo, named by its filename, with the raw bytes in a `CKAsset`, so nothing is
+  base64-inflated and a device fetches only what it needs. Four rules hold it:
+  - **It lives in its own zone (`TodoImages`), never in `TodoSync`.** A build from before this fails
+    its whole pull on any record in `TodoSync` that has no `payload` asset, so an image record there
+    would break sync on every device that hasn't updated. Those devices see no iCloud photos until
+    they update; a photo payload from one is still applied.
+  - **The store says what it holds, the device doesn't remember what it sent.** `uploadToImageStore`
+    lists the zone from a change token (`imagesListedKey`, names only, no asset download) and puts
+    only what is missing. The `imagesSentKey` set now means "the store has this". A put of a name
+    that exists is a success, since a name is minted once per photo and never reused.
+  - **A photo is fetched only when a recipe here points at it** (`downloadFromImageStore`, after the
+    rows apply). A recipe a peer deleted leaves a photo nobody downloads.
+  - **A photo is deleted from the zone only by a device that saw a recipe use it** (`removeUnreferenced`,
+    names kept under `imagesKnownKey`), **once no row here points at it and its file is gone.** A name in
+    the zone that no row here uses proves nothing: a peer pushes its rows and then the photo, and this
+    device can list in between, so deleting on that evidence would take a peer's photo. The file-gone
+    condition keeps a restored backup that dropped rows from deleting photos still on the device. A
+    listing also reports names other devices deleted (`removed`), so a device still using one uploads it
+    again.
+  - Deploy the `RecipeImage` record type and the `TodoImages` zone to Production in the CloudKit
+    Dashboard before shipping; the Development schema is created on first save and is not enough.
 - **The sync server gets no photos** (`sendsImages: false`, set in `configuredTransports`). Nothing
   on it reads one, the replica's tools least of all, and a store holding every photo is a store
   the replica and every device then page through. iCloud carries them between Apple devices; the

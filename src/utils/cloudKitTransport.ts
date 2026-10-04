@@ -75,5 +75,28 @@ export function cloudKitTransport(): SyncTransport {
       const result = await b.pullPayloads(since);
       return { payloads: result.payloads, cursor: result.cursor };
     },
+
+    imageStore: {
+      async list(since: string | null) {
+        const b = bridge();
+        if (!b) throw new Error('CloudKit is not available in this build.');
+        return b.listImages(since);
+      },
+      async put(name: string, base64: string): Promise<void> {
+        const b = bridge();
+        if (!b) throw new Error('CloudKit is not available in this build.');
+        await b.putImage(name, base64);
+      },
+      async get(name: string): Promise<string | null> {
+        const b = bridge();
+        if (!b) throw new Error('CloudKit is not available in this build.');
+        return b.getImage(name);
+      },
+      async remove(name: string): Promise<void> {
+        const b = bridge();
+        if (!b) throw new Error('CloudKit is not available in this build.');
+        await b.removeImage(name);
+      },
+    },
   };
 }
