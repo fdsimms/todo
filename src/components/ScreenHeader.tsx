@@ -164,7 +164,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: spacing.xs,
   },
-  titleBlock: { flexShrink: 1 },
+  // The right margin is what keeps a wrapping subtitle (Today's workload line)
+  // from running up against the action buttons: the block shrinks to the
+  // space left, so without it the text ends flush with the first button.
+  titleBlock: { flexShrink: 1, marginRight: spacing.md },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
     letterSpacing: 0.3, marginBottom: spacing.xxs,
