@@ -1265,6 +1265,16 @@ default in `normalizeTemplateItem` (`src/utils/templateUtils.ts`, tolerant of ol
 missing it), its pass-through in `buildDraftsFromTemplate`, and a matching toggle in
 `TemplateItemEditor.tsx` alongside whatever `TaskEditor.tsx` grew.
 
+**Nor is a user-facing capability or `Task` field finished until you've decided whether the MCP
+server needs it.** `mcp/` redeploys on every merge that touches what it runs, so a changed util or
+store reaches it for free, but a new field, tool or rule does not: `serialize.ts` shows Claude only
+what it lists, `taskFields.ts` and the tool inputs write only what they name, and
+`mcp/src/instructions.ts` is where a changed cross-cutting rule (what the lenses mean, how a day or
+a reschedule works) has to be restated. For a `Task` field, `mcp/src/__tests__/taskFieldCoverage.test.ts`
+fails until the field is exposed or added to its `NOT_EXPOSED` list. For anything else (a feature,
+a rule, a new area) nothing checks, so ask: does Claude need to read it, write it, or know the rule?
+Update `docs/arch/mcp-server.md` and `mcp/README.md`'s tool table when a tool is added.
+
 ### iOS native extension targets (widgets, and future Watch/Live Activity targets)
 
 The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom config plugins rather than a checked-in `ios/` folder — `plugins/withAppGroup.js` (App Group entitlement on the main app) and `plugins/withWidgetExtension.js` (the WidgetKit extension as a whole new Xcode target, built via the raw `xcode` npm package).
