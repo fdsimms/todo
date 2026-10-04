@@ -1958,7 +1958,14 @@ describe('parseWaitingOnInput', () => {
     expect(parseWaitingOnInput('file taxes after w2 get', tasks)?.taskId).toBe('t1');
   });
 
-  it('needs every word to land, and at least half the title covered', () => {
+  it('takes two words, or one long word, from a longer title', () => {
+    const more = [...tasks, { id: 't6', title: 'Pick out stitch fix items' }, { id: 't7', title: 'Prepare team meeting notes' }];
+    expect(parseWaitingOnInput('schedule pickup after stitch fix', more)?.taskId).toBe('t6');
+    expect(parseWaitingOnInput('schedule pickup after stitch', more)?.taskId).toBe('t6');
+    expect(parseWaitingOnInput('send recap after meeting', more)?.taskId).toBe('t7');
+  });
+
+  it('needs every word to land, and a short lone word to cover half the title', () => {
     expect(parseWaitingOnInput('go for a walk after work', tasks)).toBeNull();
     expect(parseWaitingOnInput('file taxes after w2', tasks)).toBeNull();
     expect(parseWaitingOnInput('file taxes after get the forms', tasks)).toBeNull();

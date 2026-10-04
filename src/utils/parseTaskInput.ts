@@ -1567,6 +1567,9 @@ const WAITING_STOPWORDS = new Set([
   'is', 'are', 'its', "it's", 'done', 'finished', 'complete', 'completed', 'i', 'we',
 ]);
 
+/** A lone word this long is specific enough to pick a task without covering half its title. */
+const WAITING_LONG_WORD = 5;
+
 function waitingWords(text: string): string[] {
   return text.toLowerCase()
     // "W-2" and "W2" are one word, and so are "e-mail" and "email".
@@ -1582,12 +1585,13 @@ function waitingWords(text: string): string[] {
  * task back until the other one is done, which is costly to get silently
  * wrong. A candidate matches when **every** word after "after" starts a
  * different word of its title (order free, so "after w2 get" works too), and
- * those words cover **at least half** of the title's own words. Exactly one
+ * those words either number two or more, or are one word of 5+ letters, or
+ * cover **at least half** of the title's own words. Exactly one
  * candidate has to match: two means the phrase didn't pick one, and nothing
  * is offered. Filler on both sides ("the", "my", "is done") is ignored.
  *
- * The half rule is what keeps "go for a walk after work" from naming "Finish
- * work report" (one word of three). A clock time, a date or "completion" never
+ * The half rule for a short single word is what keeps "go for a walk after
+ * work" from naming "Finish work report" (one word of three). A clock time, a date or "completion" never
  * reaches here: the schedule tooltip claims those first.
  *
  * `candidates` are the tasks the caller is willing to wait on (live, top
@@ -1615,7 +1619,12 @@ export function parseWaitingOnInput(input: string, candidates: { id: string; tit
       if (i < 0) return false;
       used.add(i);
     }
-    return used.size * 2 >= words.length;
+    // Two matched words name a task on their own ("stitch fix" for "Pick out
+    // stitch fix items"), and so does one long word. Only a short single word
+    // ("work") has to cover half the title, or it would claim any task with
+    // that word in it.
+    if (used.size >= 2) return true;
+    return used.size * 2 >= words.length || phrase[0].length >= WAITING_LONG_WORD;
   });
   if (matches.length !== 1) return null;
 
