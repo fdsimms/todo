@@ -4,7 +4,7 @@
  * No mocking: better-sqlite3 is what it runs on in production too, so an
  * in-memory database is the same code path with a different filename.
  */
-import { openSyncStore, parseCursor, DEFAULT_PULL_LIMIT, DEFAULT_PULL_MAX_CHARS, DEFAULT_RETENTION_DAYS } from '../syncStore';
+import { openSyncStore, parseCursor, takeWithinBudget, DEFAULT_PULL_LIMIT, DEFAULT_PULL_MAX_CHARS, DEFAULT_RETENTION_DAYS } from '../syncStore';
 
 const store = () => openSyncStore(':memory:');
 
@@ -30,6 +30,22 @@ describe('push and pull', () => {
     const page = s.pull(null, DEFAULT_PULL_LIMIT, 10);
     expect(page.payloads).toEqual(['x'.repeat(20)]);
     expect(page.cursor).toBe('1');
+  });
+
+  // A page of photo payloads read whole before the budget applied was over a
+  // gigabyte in memory, and the server answered nothing while it was read.
+  it('stops reading rows at the budget rather than reading the whole page first', () => {
+    let handedOut = 0;
+    function* rows() {
+      for (let seq = 1; seq <= 200; seq++) {
+        handedOut++;
+        yield { seq, payload: 'x'.repeat(10) };
+      }
+    }
+    const page = takeWithinBudget(rows(), 25);
+    expect(page.map(r => r.seq)).toEqual([1, 2]);
+    // One past the page: the row that showed the budget was spent.
+    expect(handedOut).toBe(3);
   });
 
   it('caps a default page well under the size a request is allowed', () => {

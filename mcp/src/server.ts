@@ -25,6 +25,7 @@ import { z } from 'zod';
 import { authorize, scopeFor, type AuthScope } from './auth';
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
+import { createSyncGate, type SyncGate } from './syncGate';
 import {
   MAX_LOG_DAYS,
   TASK_VIEWS,
@@ -68,12 +69,23 @@ const PORT = Number(process.env.PORT ?? 8787);
 const SYNC_THROTTLE_MS = 10_000;
 
 /**
- * When each replica last synced. Kept outside `buildMcpServer` because that
- * runs once per HTTP request (the transport is stateless): a `let` inside it
- * started every request at zero, so every tool call synced and the throttle
- * above never applied.
+ * Each replica's sync gate (syncGate.ts). Kept outside `buildMcpServer` because
+ * that runs once per HTTP request (the transport is stateless): state inside
+ * it started every request at zero, so every tool call synced and the
+ * throttle above never applied.
  */
-const lastSyncAtByReplica = new WeakMap<Replica, number>();
+const syncGateByReplica = new WeakMap<Replica, SyncGate>();
+
+function syncGateFor(replica: Replica): SyncGate {
+  let gate = syncGateByReplica.get(replica);
+  if (!gate) {
+    gate = createSyncGate(() => replica.sync(), SYNC_THROTTLE_MS, Date.now, e =>
+      console.error('Replica sync failed; answering from the database as it stands', e)
+    );
+    syncGateByReplica.set(replica, gate);
+  }
+  return gate;
+}
 
 function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
@@ -101,19 +113,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   // because a model reads several tools in a row to answer one question, and
   // three round trips to the payload store inside one thought is latency spent
   // on nothing: nothing can have changed in the second between them that the
-  // next question will not pick up. A failure is swallowed on purpose — a store
-  // that is down should mean slightly stale answers, not no answers.
-  const exchange = async (): Promise<void> => {
-    lastSyncAtByReplica.set(replica, Date.now());
-    try {
-      await replica.sync();
-    } catch (e) {
-      console.error('Replica sync failed; answering from the database as it stands', e);
-    }
-  };
+  // next question will not pick up. syncGate.ts owns the throttle, the queue
+  // that keeps two runs from overlapping, and swallowing a failed sync.
+  const gate = syncGateFor(replica);
 
   const withFresh = async <T>(fn: () => T): Promise<T> => {
-    if (Date.now() - (lastSyncAtByReplica.get(replica) ?? 0) > SYNC_THROTTLE_MS) await exchange();
+    await gate.fresh();
     replica.refresh();
     return fn();
   };
@@ -131,7 +136,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   const withWrite = async <T>(fn: () => T): Promise<T> => {
     replica.refresh();
     const result = fn();
-    await exchange();
+    await gate.afterWrite();
     return result;
   };
 

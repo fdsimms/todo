@@ -103,14 +103,10 @@ export function openSyncStore(filePath: string): SyncStore {
     },
 
     pull(since: string | null, limit = DEFAULT_PULL_LIMIT, maxChars = DEFAULT_PULL_MAX_CHARS): PullPage {
-      const fetched = selectSince.all(parseCursor(since), limit) as { seq: number; payload: string }[];
-      const rows: typeof fetched = [];
-      let chars = 0;
-      for (const row of fetched) {
-        if (rows.length > 0 && chars + row.payload.length > maxChars) break;
-        rows.push(row);
-        chars += row.payload.length;
-      }
+      const rows = takeWithinBudget(
+        selectSince.iterate(parseCursor(since), limit) as IterableIterator<PayloadRow>,
+        maxChars
+      );
       if (rows.length === 0) return { payloads: [], cursor: null };
 
       return {
@@ -128,6 +124,33 @@ export function openSyncStore(filePath: string): SyncStore {
 
     count: () => (countAll.get() as { n: number }).n,
   };
+}
+
+interface PayloadRow {
+  seq: number;
+  payload: string;
+}
+
+/**
+ * The rows of one page: from the front, until the next would take the page past
+ * `maxChars`. Always at least one, so a payload larger than the whole budget
+ * still gets through, alone.
+ *
+ * Takes an iterator and stops pulling from it at the budget, which is the
+ * point. The store used to `.all()` up to the count limit and only then apply
+ * the budget, and a page of recipe-photo payloads read that way is over a
+ * gigabyte: more memory than the machine has, read synchronously, so the
+ * server answered nothing while it ground.
+ */
+export function takeWithinBudget(rows: Iterable<PayloadRow>, maxChars: number): PayloadRow[] {
+  const taken: PayloadRow[] = [];
+  let chars = 0;
+  for (const row of rows) {
+    if (taken.length > 0 && chars + row.payload.length > maxChars) break;
+    taken.push(row);
+    chars += row.payload.length;
+  }
+  return taken;
 }
 
 /**
