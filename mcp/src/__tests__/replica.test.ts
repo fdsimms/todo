@@ -70,6 +70,11 @@ describe('the replica', () => {
   // first requires expo-sqlite.
   beforeAll(() => {
     replica = openReplica(':memory:');
+    // Every task created through taskPatch needs a category; the cases that
+    // aren't about categories file theirs here.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('../../../src/store/useCategoryStore').useCategoryStore.getState().addCategory('Home');
+    replica.refresh();
   });
 
   beforeEach(() => {
@@ -758,7 +763,7 @@ describe('the replica', () => {
   });
 
   it('lists a project\'s decisions, newest first, leaving archived ones out', () => {
-    const { project } = replica.createProjectPlan({
+    const { project } = replica.createProjectPlan({ defaultTaskCategory: 'Home',
       title: 'Wedding',
       steps: [
         { fields: { title: 'Ceremony format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] } },
@@ -778,7 +783,7 @@ describe('the replica', () => {
   });
 
   it('adds a batch of steps to an existing project, waiting on the batch and on what is already there', () => {
-    const { project, tasks: [license] } = replica.createProjectPlan({ title: 'Wedding', steps: [{ fields: { title: 'Get the license' } }] });
+    const { project, tasks: [license] } = replica.createProjectPlan({ defaultTaskCategory: 'Home', title: 'Wedding', steps: [{ fields: { title: 'Get the license' } }] });
     const added = replica.addProjectSteps(project.id, [
       { fields: { title: 'Book City Hall', waitsOn: [license.id] } },
       { fields: { title: 'Tell the guests' }, waitsOn: [0], subtasks: ['Text family'] },
@@ -792,7 +797,7 @@ describe('the replica', () => {
   });
 
   it('adds nothing when one step in the batch is bad', () => {
-    const { project } = replica.createProjectPlan({ title: 'Wedding', steps: [] });
+    const { project } = replica.createProjectPlan({ defaultTaskCategory: 'Home', title: 'Wedding', steps: [] });
     const before = replica.tasks().length;
     expect(() => replica.addProjectSteps(project.id, [
       { fields: { title: 'Fine' } },
@@ -804,7 +809,7 @@ describe('the replica', () => {
   });
 
   it('plans a branch on an earlier step\'s answer, and rules the other branch out once answered', () => {
-    const { project, tasks: created } = replica.createProjectPlan({
+    const { project, tasks: created } = replica.createProjectPlan({ defaultTaskCategory: 'Home',
       title: 'Wedding',
       steps: [
         { fields: { title: 'Ceremony format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] } },
@@ -831,18 +836,18 @@ describe('the replica', () => {
   it('refuses a branch on an answer the question does not offer, or on a question with no listed answers', () => {
     const q = replica.createTask({ title: 'Format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] });
     const free = replica.createTask({ title: 'Notes?', deliverableKind: 'text' });
-    expect(() => replica.taskPatch({ onlyIfAnswer: { taskId: q.id, answers: ['Cityhall'] } }, null, false)).toThrow(/isn't one of its answers \(City Hall, Officiant\)/);
-    expect(() => replica.taskPatch({ onlyIfAnswer: { taskId: free.id, answers: ['x'] } }, null, false)).toThrow(/can't decide this task/);
-    expect(() => replica.taskPatch({ onlyIfAnswer: { taskId: q.id, answers: [] } }, null, false)).toThrow(/at least one answer/);
-    expect(replica.taskPatch({ onlyIfAnswer: { taskId: q.id, answers: ['officiant'] } }, null, false).answerGate)
+    expect(() => replica.taskPatch({ category: 'Home', onlyIfAnswer: { taskId: q.id, answers: ['Cityhall'] } }, null, false)).toThrow(/isn't one of its answers \(City Hall, Officiant\)/);
+    expect(() => replica.taskPatch({ category: 'Home', onlyIfAnswer: { taskId: free.id, answers: ['x'] } }, null, false)).toThrow(/can't decide this task/);
+    expect(() => replica.taskPatch({ category: 'Home', onlyIfAnswer: { taskId: q.id, answers: [] } }, null, false)).toThrow(/at least one answer/);
+    expect(replica.taskPatch({ category: 'Home', onlyIfAnswer: { taskId: q.id, answers: ['officiant'] } }, null, false).answerGate)
       .toEqual({ taskId: q.id, answers: ['Officiant'] });
-    expect(replica.taskPatch({ onlyIfAnswer: null }, null, false).answerGate).toBeNull();
+    expect(replica.taskPatch({ category: 'Home', onlyIfAnswer: null }, null, false).answerGate).toBeNull();
   });
 
   // ==== event date ====
 
   it('dates steps from the event date, before and after it, at midday on the local day', () => {
-    const { project, tasks: [license, thanks] } = replica.createProjectPlan({
+    const { project, tasks: [license, thanks] } = replica.createProjectPlan({ defaultTaskCategory: 'Home',
       title: 'Wedding',
       eventDate: '2027-06-14',
       steps: [
@@ -858,7 +863,7 @@ describe('the replica', () => {
   });
 
   it('dates a step at the end of a month counted from the event', () => {
-    const { tasks: [records, sameMonth] } = replica.createProjectPlan({
+    const { tasks: [records, sameMonth] } = replica.createProjectPlan({ defaultTaskCategory: 'Home',
       title: 'Wedding',
       eventDate: '2027-01-30',
       steps: [
@@ -873,14 +878,14 @@ describe('the replica', () => {
   });
 
   it('refuses event-relative days with no event date, or alongside the date they replace', () => {
-    expect(() => replica.taskPatch({ dueDaysFromEvent: -3 }, null, false)).toThrow(/has none/);
-    const { project } = replica.createProjectPlan({ title: 'Move', eventDate: '2027-03-01', steps: [] });
-    expect(() => replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3, dueDate: '2027-01-01' }, null, false)).toThrow(/not more/);
-    expect(replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3 }, null, false).dueDate).toEqual(expect.any(String));
+    expect(() => replica.taskPatch({ category: 'Home', dueDaysFromEvent: -3 }, null, false)).toThrow(/has none/);
+    const { project } = replica.createProjectPlan({ defaultTaskCategory: 'Home', title: 'Move', eventDate: '2027-03-01', steps: [] });
+    expect(() => replica.taskPatch({ category: 'Home', projectId: project.id, dueDaysFromEvent: -3, dueDate: '2027-01-01' }, null, false)).toThrow(/not more/);
+    expect(replica.taskPatch({ category: 'Home', projectId: project.id, dueDaysFromEvent: -3 }, null, false).dueDate).toEqual(expect.any(String));
   });
 
   it('moves a project\'s dated tasks by the days its event moved, leaving pinned and undated ones', () => {
-    const { project, tasks: [license, pinned, undated] } = replica.createProjectPlan({
+    const { project, tasks: [license, pinned, undated] } = replica.createProjectPlan({ defaultTaskCategory: 'Home',
       title: 'Wedding',
       eventDate: '2027-06-14',
       steps: [
@@ -913,6 +918,32 @@ describe('the replica', () => {
     expect(hall.answerGate).toEqual({ itemId: format.id, answers: ['City Hall'] });
   });
 
+  // ==== categories ====
+
+  it('files every new task under a category: named, the project default, or a title rule', () => {
+    expect(() => replica.taskPatch({ title: 'Call the florist' }, null, false)).toThrow(/needs a category\. Pick the one it belongs under from yours \(.*Home.*\)/);
+    // Spelled as the person spelled it, whatever case it was named in.
+    expect(replica.taskPatch({ title: 'Call the florist', category: 'home' }, null, false).category).toBe('Home');
+    // A checklist item has no section to land in, so it needs none.
+    expect(() => replica.taskPatch({ title: 'Roses' }, null, true)).not.toThrow();
+    const { project } = replica.createProjectPlan({ title: 'Wedding', defaultTaskCategory: 'Home', steps: [] });
+    expect(() => replica.taskPatch({ title: 'Call the florist', projectId: project.id }, null, false)).not.toThrow();
+    // Editing an existing task doesn't demand one.
+    const t = replica.createTask({ title: 'Old one' });
+    expect(() => replica.taskPatch({ notes: 'x' }, t, false)).not.toThrow();
+  });
+
+  it('refuses a category that isn\'t one of the user\'s, unless it is flagged new, and then creates it', () => {
+    expect(() => replica.taskPatch({ title: 'Book the hall', category: 'Weddnig' }, null, false))
+      .toThrow(/"Weddnig" isn't one of your categories \(.*\)\. Use one of those, or pass newCategory: true/);
+    const patch = replica.taskPatch({ title: 'Book the hall', category: 'Wedding', newCategory: true }, null, false);
+    const task = replica.createTask(patch);
+    replica.refresh();
+    expect(task.category).toBe('Wedding');
+    expect(replica.categories().map(c => c.name)).toContain('Wedding');
+    expect(() => replica.createProjectPlan({ title: 'X', defaultTaskCategory: 'Nope', steps: [] })).toThrow(/defaultTaskCategory: "Nope"/);
+  });
+
   it('refuses to reschedule a completed task', () => {
     const task = replica.createTask({ title: 'Done' });
     replica.completeTask(task.id, {});
@@ -922,7 +953,7 @@ describe('the replica', () => {
   describe('editing a task', () => {
     it('re-derives what the app re-derives when the schedule changes', () => {
       const task = replica.createTask({ title: 'Rent', recurrenceType: 'monthly', dueDate: '2026-01-31T12:00:00.000Z' });
-      const patch = replica.taskPatch({ repeat: { every: 'month', monthDay: 15 } }, task, false);
+      const patch = replica.taskPatch({ category: 'Home', repeat: { every: 'month', monthDay: 15 } }, task, false);
       const { task: edited } = replica.updateTask(task.id, patch);
       expect(edited.recurrenceMonthDay).toBe(15);
       // The anchor is cleared by the rule mergeTaskUpdate carries over from the store.
@@ -934,11 +965,11 @@ describe('the replica', () => {
     it('writes blockers the app can read, and refuses a cycle', () => {
       const a = replica.createTask({ title: 'Buy paint' });
       const b = replica.createTask({ title: 'Paint the hall' });
-      replica.updateTask(b.id, replica.taskPatch({ waitsOn: [a.id] }, b, false));
+      replica.updateTask(b.id, replica.taskPatch({ category: 'Home', waitsOn: [a.id] }, b, false));
       replica.refresh();
       expect(replica.isBlocked(replica.taskById(b.id)!)).toBe(true);
-      expect(() => replica.taskPatch({ waitsOn: [b.id] }, replica.taskById(a.id), false)).toThrow(/can't be waited on/);
-      expect(() => replica.taskPatch({ waitsOn: ['nope'] }, null, false)).toThrow(/no task with id nope/);
+      expect(() => replica.taskPatch({ category: 'Home', waitsOn: [b.id] }, replica.taskById(a.id), false)).toThrow(/can't be waited on/);
+      expect(() => replica.taskPatch({ category: 'Home', waitsOn: ['nope'] }, null, false)).toThrow(/no task with id nope/);
     });
 
     it('refuses a completed task', () => {
@@ -969,7 +1000,7 @@ describe('the replica', () => {
         steps: [
           { fields: { title: 'Pick a colour' } },
           { fields: { title: 'Buy paint', estimatedMinutes: 60 }, subtasks: ['Rollers', 'Tape'], waitsOn: [0] },
-          { fields: { title: 'Paint', category: 'Weekend' }, waitsOn: [0, 1] },
+          { fields: { title: 'Paint', category: 'Weekend', newCategory: true }, waitsOn: [0, 1] },
         ],
       });
       expect(project.notes).toBe('Before the party');
@@ -985,7 +1016,7 @@ describe('the replica', () => {
     });
 
     it('writes nothing when any step is wrong, and lists every problem', () => {
-      expect(() => replica.createProjectPlan({
+      expect(() => replica.createProjectPlan({ defaultTaskCategory: 'Home',
         title: 'Broken',
         steps: [
           { fields: { title: 'A' }, waitsOn: [0] },
@@ -999,14 +1030,14 @@ describe('the replica', () => {
     it('rolls the project back if a write fails partway', () => {
       const db = require('../../../src/db/database');
       const spy = jest.spyOn(db, 'dbInsertTask').mockImplementationOnce(() => { throw new Error('disk full'); });
-      expect(() => replica.createProjectPlan({ title: 'Half', steps: [{ fields: { title: 'A' } }] })).toThrow('disk full');
+      expect(() => replica.createProjectPlan({ defaultTaskCategory: 'Home', title: 'Half', steps: [{ fields: { title: 'A' } }] })).toThrow('disk full');
       spy.mockRestore();
       replica.refresh();
       expect(replica.projects().some(p => p.title === 'Half')).toBe(false);
     });
 
     it('completes and archives a project without touching its tasks', () => {
-      const { project, tasks: made } = replica.createProjectPlan({ title: 'Garden', steps: [{ fields: { title: 'Weed' } }] });
+      const { project, tasks: made } = replica.createProjectPlan({ defaultTaskCategory: 'Home', title: 'Garden', steps: [{ fields: { title: 'Weed' } }] });
       const done = replica.updateProject(project.id, { title: 'Garden 2026', completed: true, archived: true });
       expect(done).toMatchObject({ title: 'Garden 2026', completed: true, archived: true });
       expect(replica.taskById(made[0].id)!.completed).toBe(false);

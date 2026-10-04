@@ -450,6 +450,16 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since
   nobody is there to tick it. Without `moveTasks` it moves nothing and says so.
 
+### Every task it creates has a category
+
+A task the model files with no category lands in no section on Today, and a free-text name that
+matches nothing makes a section nobody created. So `taskPatch` refuses both for a new top-level
+task: the category has to be one of the person's (matched ignoring case and saved as they spell
+it), the project's own default, or one a title rule supplies. A new category is allowed only when
+asked for in so many words (`newCategory: true`), and is created inside the write that uses it.
+`list_categories` is what the model chooses from, with a few open tasks per category so it can
+judge what belongs where. A checklist item is exempt: it has no section of its own.
+
 ### Writes have their own token
 
 `MCP_WRITE_TOKEN`, separate from `MCP_AUTH_TOKEN`. The write token buys both scopes so one

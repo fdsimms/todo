@@ -107,6 +107,8 @@ export interface TaskFieldsInput {
   title?: string;
   notes?: string;
   category?: string | null;
+  /** Lets `category` name one that doesn't exist yet; the write creates it. Checked by the replica. */
+  newCategory?: boolean;
   tags?: string[];
   projectId?: string | null;
   dueDate?: string | null;
