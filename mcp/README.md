@@ -133,6 +133,8 @@ only the fallback until the first sync.
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details. Never a cadence, nudge, group or order. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
+| `update_recipe` | **Write.** Changes a recipe; ingredients and steps replace the whole list. |
+| `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |

@@ -92,7 +92,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
-import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
@@ -891,6 +891,47 @@ function registerWriteTools(
         return json(await withWrite(() => saveRecipe(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not save the recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_recipe',
+    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients and steps each replace the whole list, so send the full set, in the same form as save_recipe (one line per ingredient, alternatives sharing an alternativeGroup). A rename is refused if another recipe in that cookbook has the name; planned meals made from it are retitled. Moving it to another cookbook is done in the app.',
+    {
+      id: z.string().min(1),
+      name: z.string().min(1).optional(),
+      ingredients: z.array(z.object({
+        text: z.string().min(1),
+        section: z.string().nullable().optional(),
+        alternativeGroup: z.string().nullable().optional(),
+      })).optional(),
+      steps: z.array(z.object({ text: z.string().min(1), section: z.string().nullable().optional() })).optional(),
+      servings: z.number().int().positive().nullable().optional(),
+      estimatedMinutes: z.number().int().positive().nullable().optional(),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).nullable().optional(),
+      tags: z.array(z.string()).optional(),
+      sourceUrl: z.string().nullable().optional(),
+      notes: z.string().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateRecipe(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_recipe',
+    'Delete a saved recipe. Not undoable from here. Planned meals made from it keep their title but no longer link to a recipe. Prefer update_recipe when the person only wants it changed.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteRecipe(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the recipe.' });
       }
     }
   );

@@ -69,6 +69,8 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   batch_update_tasks: { title: 'Change several tasks', destructive: true, idempotent: false },
   quick_add: { title: 'Quick add tasks', destructive: false, idempotent: false },
   remember: { title: 'Remember a note', destructive: false, idempotent: true },
+  update_recipe: { title: 'Change a recipe', destructive: true, idempotent: true },
+  delete_recipe: { title: 'Delete a recipe', destructive: true, idempotent: true },
   save_recipe: { title: 'Save a recipe', destructive: false, idempotent: false },
   set_automation: { title: 'Turn an automation on or off', destructive: false, idempotent: true },
   save_rule: { title: 'Save an automation rule', destructive: true, idempotent: false },

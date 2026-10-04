@@ -197,6 +197,8 @@ export interface RecipeInput {
   notes?: string;
 }
 
+export type RecipePatch = Partial<Omit<RecipeInput, 'cookbook'>>;
+
 export interface FoodInput {
   label: string;
   /** How much, in words: "1 bowl", "2 slices". */
@@ -508,6 +510,20 @@ export interface Replica {
    * the app's create sheet makes. Refused when the name is taken in that book.
    */
   createRecipe(input: RecipeInput): Recipe;
+  /**
+   * Change a recipe. Only what is given changes. `ingredients` and `steps` each
+   * replace the whole list (ingredient and step ids are new). A rename is
+   * refused when another recipe in the same cookbook has the name, and planned
+   * meals made from it are retitled; their Today tasks and calendar events
+   * catch up on the phone.
+   */
+  updateRecipe(id: string, patch: RecipePatch): Recipe;
+  /**
+   * Delete a recipe. Planned meals made from it keep their title and stop
+   * pointing at a recipe, as in the app; the phone reconciles their tasks.
+   * Not undoable from here.
+   */
+  deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number };
   /**
    * A food entry with an estimated panel, through `readNutritionEstimate`,
    * `estimateToPanel` and `buildFoodLogEntry`. Marked estimated for good, and
@@ -1748,6 +1764,77 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (input.sourceUrl) after.setSourceUrl(id, input.sourceUrl);
       if (input.notes?.trim()) after.setNotes(id, input.notes.trim());
       return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    updateRecipe(id: string, patch: RecipePatch): Recipe {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
+      const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      useRecipeStore.getState().initialize();
+      const recipe = useRecipeStore.getState().recipes.find(r => r.id === id);
+      if (!recipe) throw new Error(`No recipe with id ${id}.`);
+
+      // Everything that can refuse is checked before the first write.
+      let renamed: { name: string; nameKey: string } | null = null;
+      if (patch.name !== undefined) {
+        const clean = recipeUtils.cleanRecipeName(patch.name);
+        if (!clean) throw new Error('A recipe needs a name.');
+        const key = recipeUtils.recipeNameKey(clean);
+        const others = useRecipeStore.getState().recipes.filter(r => r.id !== id);
+        if (key !== recipe.nameKey && recipeUtils.recipeInBook(others, clean, recipe.cookbookId)) {
+          throw new Error(`There is already a recipe called "${clean}" in that cookbook.`);
+        }
+        renamed = { name: clean, nameKey: key };
+      }
+      if (patch.servings != null && (!Number.isInteger(patch.servings) || patch.servings < 1)) throw new Error('servings must be a whole number of 1 or more, or null.');
+
+      const store = () => useRecipeStore.getState();
+      db.dbTransaction(() => {
+        if (patch.servings !== undefined) store().setServings(id, patch.servings);
+        if (patch.estimatedMinutes !== undefined) store().setEstimatedMinutes(id, patch.estimatedMinutes);
+        if (patch.mealType !== undefined) store().setMealType(id, (patch.mealType ?? null) as Recipe['mealType']);
+        if (patch.tags !== undefined) store().setTags(id, patch.tags);
+        if (patch.sourceUrl !== undefined) store().setSourceUrl(id, patch.sourceUrl);
+        if (patch.notes !== undefined) store().setNotes(id, patch.notes);
+        if (patch.ingredients !== undefined) {
+          const made = patch.ingredients
+            .map(line => {
+              const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
+              return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null);
+          store().bulkRemoveIngredients(id, recipe.ingredients.map(i => i.id));
+          if (made.length > 0) store().addStructuredIngredients(id, made);
+        }
+        if (patch.steps !== undefined) {
+          recipe.steps.forEach(s => store().removeStep(id, s.id));
+          for (const step of patch.steps) store().addStep(id, step.text, step.section ?? null);
+        }
+        if (renamed) {
+          // The store's rename also reaches the meal plan store, which Node
+          // cannot load, so the two writes it makes are made here: the recipe
+          // row, and the captured title on each meal planned from it.
+          const current = store().recipes.find(r => r.id === id)!;
+          db.dbUpdateRecipe({ ...current, ...renamed });
+          for (const e of db.dbGetMealPlanEntriesForRecipe(id)) {
+            if (!e.leftoverId && e.title !== renamed.name) db.dbUpdateMealPlanEntry({ ...e, title: renamed.name });
+          }
+        }
+      });
+      // Rehydrated, which also puts the store back if the transaction rolled back.
+      useRecipeStore.getState().initialize();
+      refresh();
+      return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number } {
+      const recipe = db.dbGetAllRecipes().find(r => r.id === id);
+      if (!recipe) throw new Error(`No recipe with id ${id}.`);
+      const plannedMeals = db.dbGetMealPlanEntriesForRecipe(id).length;
+      db.dbDeleteRecipe(id);
+      refresh();
+      return { recipe, plannedMeals };
     },
 
     logFood(input: FoodInput): FoodLogEntry {

@@ -16,7 +16,7 @@
  * Health, because only the device a meal was logged on writes it there.
  */
 import { NUTRIENT_KEYS, type MealSlot, type NutrientKey } from '../../src/types';
-import type { Replica } from './replica';
+import type { RecipePatch, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
@@ -200,4 +200,26 @@ export function updateMedicationLog(
 export function deleteMedicationLog(replica: Replica, id: string) {
   const log = replica.deleteMedicationLog(id);
   return { deleted: { id: log.id, day: log.dayKey, summary: replica.medicationSummary(log) } };
+}
+
+// ---------------------------------------------------------------------------
+// Correcting and deleting a recipe
+// ---------------------------------------------------------------------------
+
+export function updateRecipe(replica: Replica, id: string, patch: RecipePatch): RecipeDetail & { ingredientsRead?: number; ingredientsGiven?: number } {
+  const recipe = replica.updateRecipe(id, patch);
+  const detail = getRecipe(replica, recipe.id)!;
+  return patch.ingredients
+    ? { ...detail, ingredientsGiven: patch.ingredients.length, ingredientsRead: recipe.ingredients.length }
+    : detail;
+}
+
+export function deleteRecipe(replica: Replica, id: string) {
+  const { recipe, plannedMeals } = replica.deleteRecipe(id);
+  return {
+    deleted: { id: recipe.id, name: recipe.name },
+    ...(plannedMeals > 0
+      ? { note: `${plannedMeals} planned ${plannedMeals === 1 ? 'meal' : 'meals'} made from it keep their title and no longer link to a recipe.` }
+      : {}),
+  };
 }

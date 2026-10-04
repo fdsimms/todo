@@ -346,6 +346,52 @@ describe('the replica', () => {
     expect(() => replica.renameStack('nope', 'x')).toThrow(/No stack/);
   });
 
+  describe('changing and deleting a recipe', () => {
+    it('changes scalar fields and replaces the lists, leaving the rest', () => {
+      const recipe = replica.createRecipe({ name: 'Edit Chili', servings: 4, ingredients: [{ text: '1 onion' }, { text: '2 cloves garlic' }], steps: [{ text: 'Chop' }, { text: 'Cook' }], tags: ['soup'] });
+      const updated = replica.updateRecipe(recipe.id, {
+        servings: 6,
+        notes: 'Better next day',
+        ingredients: [{ text: '3 onions' }],
+        steps: [{ text: 'Chop everything' }],
+      });
+
+      expect(updated).toMatchObject({ servings: 6, notes: 'Better next day', tags: ['soup'] });
+      expect(updated.ingredients.map(i => i.name)).toEqual(['onions']);
+      expect(updated.steps.map(s => s.text)).toEqual(['Chop everything']);
+      expect(() => replica.updateRecipe('nope', {})).toThrow(/No recipe/);
+    });
+
+    it('renames, retitles planned meals, and refuses a clash in the same cookbook', () => {
+      const a = replica.createRecipe({ name: 'Rename Soup' });
+      replica.createRecipe({ name: 'Rename Stew' });
+      const meal = replica.planMeal({ date: '2026-09-30', slot: 'dinner', recipeId: a.id });
+
+      expect(() => replica.updateRecipe(a.id, { name: 'rename stew' })).toThrow(/already a recipe/);
+      expect(() => replica.updateRecipe(a.id, { name: ' ' })).toThrow(/needs a name/);
+      const renamed = replica.updateRecipe(a.id, { name: 'Rename Broth' });
+      expect(renamed.name).toBe('Rename Broth');
+      expect(replica.mealPlan('2026-09-30', '2026-09-30').find(e => e.id === meal.id)!.title).toBe('Rename Broth');
+    });
+
+    it('leaves everything alone when the edit is refused', () => {
+      const a = replica.createRecipe({ name: 'Atomic A', servings: 2 });
+      replica.createRecipe({ name: 'Atomic B' });
+      expect(() => replica.updateRecipe(a.id, { servings: 9, name: 'Atomic B' })).toThrow();
+      expect(replica.recipes().find(r => r.id === a.id)!.servings).toBe(2);
+    });
+
+    it('deletes a recipe and says how many planned meals lose the link', () => {
+      const a = replica.createRecipe({ name: 'Delete Me' });
+      replica.planMeal({ date: '2026-10-01', slot: 'dinner', recipeId: a.id });
+      const result = replica.deleteRecipe(a.id);
+      expect(result).toMatchObject({ plannedMeals: 1 });
+      expect(replica.recipes().some(r => r.id === a.id)).toBe(false);
+      expect(replica.mealPlan('2026-10-01', '2026-10-01')[0].title).toBe('Delete Me');
+      expect(() => replica.deleteRecipe(a.id)).toThrow(/No recipe/);
+    });
+  });
+
   it('bounds a log range on the logical day rather than the calendar one', () => {
     // getLogicalToday honours dayResetTime, so a read at 1am under a 2am reset
     // asks about the day the user would name. Only the shape is asserted here;

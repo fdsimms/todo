@@ -36,13 +36,13 @@ const COUNTERPARTS: Record<string, string[]> = {
   plan_meal: ['update_meal', 'remove_meal'],
   add_grocery_item: ['remove_from_grocery_list', 'check_off_grocery_item'],
   save_rule: ['delete_rule'],
+  save_recipe: ['update_recipe', 'delete_recipe'],
   add_person_history: ['reopen_task', 'archive_task'],
 };
 
 /** Creating tools with no counterpart, and why that is the right answer or a known gap. */
 const NO_COUNTERPART: Record<string, string> = {
   plan_day: 'Proposes an order and writes nothing, so there is nothing to put right.',
-  save_recipe: 'KNOWN GAP: a saved recipe can be neither edited nor deleted over MCP yet.',
 };
 
 describe('creating tools and their counterparts', () => {

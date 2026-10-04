@@ -291,6 +291,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return person;
     },
 
+    updateRecipe(id, patch) {
+      const recipe = replica.updateRecipe(id, patch);
+      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${recipe.name}"` });
+      return recipe;
+    },
+
+    deleteRecipe(id) {
+      const result = replica.deleteRecipe(id);
+      log({ action: 'cleared', subject: 'recipe', title: result.recipe.name, taskId: null, note: `Delete the recipe "${result.recipe.name}". It cannot be restored from here.` });
+      return result;
+    },
+
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
       if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });

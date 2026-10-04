@@ -805,6 +805,17 @@ doc opens with; a new person starts with none, as in the app (`blankPerson`). A 
 as a real month and day (29 Feb is allowed) with an optional year, and the year is never turned into
 an age. History is still `add_person_history`.
 
+### Changing and deleting a recipe
+
+`update_recipe` changes scalar fields and replaces `ingredients` and `steps` as whole lists, using
+the same line parsing as `save_recipe` (so a line the app cannot read is counted, not silently
+kept). The recipe store's `renameRecipe` and `deleteRecipe` both end in the meal plan store, which a
+Node process cannot load, so the replica makes their writes itself: the renamed row, and the captured
+title on each meal planned from it. Everything that can refuse (a name clash in the same cookbook, a
+bad servings count) is checked before the first write, and the writes are one transaction.
+`delete_recipe` leaves planned meals as the app does (title kept, link gone) and reports how many;
+their Today tasks and events catch up on the phone. Moving a recipe between cookbooks stays in the app.
+
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and
