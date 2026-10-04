@@ -4,8 +4,10 @@ import {
   groupLogsByDay,
   isMoodFilterActive,
   logsInDayRange,
+  adjacentLogDays,
   logsWithSymptom,
   lookBacks,
+  searchMoodLogs,
   symptomOnLog,
   symptomSeverityOnDay,
   symptomStatFor,
@@ -50,7 +52,7 @@ describe('the filter', () => {
       log({ mood: 2, symptoms: [{ name: 'Headache', severity: 2 }] }),
     ];
     const filtered = filterMoodLogs(logs, {
-      moods: [2], symptomKeys: ['headache'], contextTagKeys: ['travel'],
+      moods: [2], symptomKeys: ['headache'], contextTagKeys: ['travel'], withNote: false,
     });
     expect(filtered).toHaveLength(1);
   });
@@ -242,5 +244,51 @@ describe('looking back', () => {
     expect(lookBacks(logs, '2026-08-17').map(l => l.label)).toEqual([
       'A month ago', '3 months ago', '6 months ago',
     ]);
+  });
+});
+
+describe('searching the notes', () => {
+  const logs = [
+    log({ note: 'Long walk by the river' }),
+    log({ note: 'Slept badly, walk helped' }),
+    log({ note: null, symptoms: [{ name: 'Walk-induced cramp', severity: 1 }] }),
+    log({ note: '   ' }),
+  ];
+
+  it('keeps everything for an empty query', () => {
+    expect(searchMoodLogs(logs, '  ')).toHaveLength(4);
+  });
+
+  it('matches case-insensitively and needs every word, in any order', () => {
+    expect(searchMoodLogs(logs, 'WALK').map(l => l.note)).toEqual([
+      'Long walk by the river', 'Slept badly, walk helped',
+    ]);
+    expect(searchMoodLogs(logs, 'helped walk')).toHaveLength(1);
+  });
+
+  it('reads notes only, never symptoms, and never an empty note', () => {
+    expect(searchMoodLogs(logs, 'cramp')).toEqual([]);
+  });
+});
+
+describe('the has-a-note filter', () => {
+  it('ANDs with the rest and drops blank notes', () => {
+    const logs = [log({ note: 'x', mood: 2 }), log({ note: '  ', mood: 2 }), log({ note: 'y', mood: 5 })];
+    const out = filterMoodLogs(logs, { ...EMPTY_MOOD_FILTER, withNote: true, moods: [2] });
+    expect(out.map(l => l.note)).toEqual(['x']);
+    expect(isMoodFilterActive({ ...EMPTY_MOOD_FILTER, withNote: true })).toBe(true);
+  });
+});
+
+describe('paging between written days', () => {
+  const logs = [log({ dayKey: '2026-08-01' }), log({ dayKey: '2026-08-05' }), log({ dayKey: '2026-08-05' }), log({ dayKey: '2026-08-09' })];
+
+  it('skips days with nothing logged', () => {
+    expect(adjacentLogDays(logs, '2026-08-05')).toEqual({ previous: '2026-08-01', next: '2026-08-09' });
+  });
+
+  it('is null at either end', () => {
+    expect(adjacentLogDays(logs, '2026-08-01').previous).toBeNull();
+    expect(adjacentLogDays(logs, '2026-08-09').next).toBeNull();
   });
 });

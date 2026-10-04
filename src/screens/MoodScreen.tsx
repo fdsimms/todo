@@ -486,7 +486,7 @@ export function MoodScreen() {
                     key={back.dayKey}
                     style={i > 0 ? styles.lookBackNext : undefined}
                     activeOpacity={interaction.activeOpacity}
-                    onPress={() => openEdit(back.logs[0])}
+                    onPress={() => { haptics.tap(); navigation.navigate('MoodDay', { dayKey: back.dayKey }); }}
                     accessibilityRole="button"
                     accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${back.logs.map(l => l.note).join('. ')}`}
                   >

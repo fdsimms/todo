@@ -9,18 +9,20 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useFilterField } from '../hooks/useFilterField';
 import { dayKeyToDate } from '../utils/dateUtils';
 import {
   MOOD_LEVELS, contextTagKey, contextTagVocabulary, moodLabel, symptomKey, symptomVocabulary,
 } from '../utils/moodLog';
 import {
-  EMPTY_MOOD_FILTER, filterMoodLogs, groupLogsByDay, isMoodFilterActive, toggleFilterValue,
+  EMPTY_MOOD_FILTER, filterMoodLogs, groupLogsByDay, isMoodFilterActive, searchMoodLogs, toggleFilterValue,
   type MoodFilter,
 } from '../utils/moodHistory';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodLogSheet } from '../components/MoodLogSheet';
+import { SearchField } from '../components/SearchField';
 import { ChipFilterSheet, type ChipFilterGroup } from '../components/ChipFilterSheet';
 
 /**
@@ -50,6 +52,13 @@ export function MoodHistoryScreen() {
   const logs = useMoodStore(s => s.logs);
 
   const [filter, setFilter] = useState<MoodFilter>(EMPTY_MOOD_FILTER);
+  // Words in the notes. Its own field rather than a chip: it is open text, not a
+  // set to pick from, and it ANDs with the filter the same way the filter's
+  // dimensions AND with each other.
+  const search = useFilterField();
+  const searching = search.query.trim().length > 0;
+  const narrowed = isMoodFilterActive(filter) || searching;
+  const clearAll = () => { setFilter(EMPTY_MOOD_FILTER); search.clear(); };
   const [filterOpen, setFilterOpen] = useState(false);
   const [editing, setEditing] = useState<MoodLog | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -70,12 +79,12 @@ export function MoodHistoryScreen() {
   }, [logs]);
 
   const sections = useMemo(
-    () => groupLogsByDay(filterMoodLogs(logs, filter)).map(day => ({
+    () => groupLogsByDay(searchMoodLogs(filterMoodLogs(logs, filter), search.query)).map(day => ({
       key: day.dayKey,
       title: format(dayKeyToDate(day.dayKey), 'EEEE, MMMM d, yyyy'),
       data: day.logs,
     })),
-    [logs, filter],
+    [logs, filter, search.query],
   );
 
   const matchCount = useMemo(
@@ -84,6 +93,12 @@ export function MoodHistoryScreen() {
   );
 
   const groups: ChipFilterGroup[] = [
+    {
+      label: 'Writing',
+      options: [{ key: 'note', label: 'Has a note' }],
+      selected: filter.withNote ? ['note'] : [],
+      onToggle: () => setFilter(f => ({ ...f, withNote: !f.withNote })),
+    },
     {
       label: 'Mood',
       options: MOOD_LEVELS.map(level => ({
@@ -117,6 +132,11 @@ export function MoodHistoryScreen() {
   // what you just chose — so a wrapping row on the screen is the right shape
   // for it even though the sheet it came from could not be.
   const activePills = [
+    ...(filter.withNote ? [{
+      key: 'with-note',
+      label: 'Has a note',
+      remove: () => setFilter(f => ({ ...f, withNote: false })),
+    }] : []),
     ...filter.moods.map(mood => ({
       key: `mood-${mood}`,
       label: moodLabel(mood),
@@ -158,6 +178,13 @@ export function MoodHistoryScreen() {
         }
       />
 
+      <SearchField
+        field={search}
+        placeholder="Search your notes"
+        accessibilityLabel="Search your notes"
+        style={styles.search}
+      />
+
       {activePills.length > 0 && (
         <View style={styles.pillRow}>
           {activePills.map(pill => (
@@ -178,13 +205,13 @@ export function MoodHistoryScreen() {
 
       {matchCount === 0 ? (
         <EmptyState
-          icon={isMoodFilterActive(filter) ? 'filter-outline' : 'happy-outline'}
-          title={isMoodFilterActive(filter) ? 'Nothing matches' : 'Nothing logged yet'}
-          subtitle={isMoodFilterActive(filter)
-            ? 'No entries match what you picked. Change the filter to see more.'
+          icon={narrowed ? 'filter-outline' : 'happy-outline'}
+          title={narrowed ? 'Nothing matches' : 'Nothing logged yet'}
+          subtitle={narrowed
+            ? 'No entries match your search or filter. Change them to see more.'
             : 'Entries you record show up here, newest first.'}
-          actionLabel={isMoodFilterActive(filter) ? 'Clear the filter' : undefined}
-          onAction={isMoodFilterActive(filter) ? () => setFilter(EMPTY_MOOD_FILTER) : undefined}
+          actionLabel={narrowed ? 'Clear the search and filter' : undefined}
+          onAction={narrowed ? clearAll : undefined}
         />
       ) : (
         <SectionList
@@ -193,7 +220,18 @@ export function MoodHistoryScreen() {
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + spacing.xl }]}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
-            <Text style={styles.dayHeader}>{section.title}</Text>
+            // The day opens as a page: its entries read in order, and a way to
+            // page to the next written day.
+            <TouchableOpacity
+              style={styles.dayHeaderRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); navigation.navigate('MoodDay', { dayKey: section.key }); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Read ${section.title} as a page`}
+            >
+              <Text style={styles.dayHeader}>{section.title}</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+            </TouchableOpacity>
           )}
           renderItem={({ item }) => (
             <MoodEntryRow
@@ -209,7 +247,7 @@ export function MoodHistoryScreen() {
         visible={filterOpen}
         onClose={() => setFilterOpen(false)}
         groups={groups}
-        onClearAll={() => setFilter(EMPTY_MOOD_FILTER)}
+        onClearAll={clearAll}
       />
 
       <MoodLogSheet
@@ -230,9 +268,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  dayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
+  search: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

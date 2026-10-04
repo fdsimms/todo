@@ -700,6 +700,25 @@ you wrote on, a month, three, six and then each year back. Three rules hold it:
   "you were happier then". That would be a claim about the person, and notes
   stay out of `moodInsights.ts` entirely.
 
+The rest of the diary reading is the same posture, not new features:
+
+- **A day opens as a page** (`MoodDayScreen`, from a history day header or a
+  Looking back row): the date, then that day's entries in the order they
+  happened, the mood as a small marker by the time, symptoms and tags as quiet
+  footnotes. **No day average is printed** (a number nobody logged, see
+  `groupLogsByDay`) and nothing is compared with another day. Paging skips days
+  with nothing logged (`adjacentLogDays`) rather than drawing blank pages.
+- **Search reads notes only** (`searchMoodLogs`), by plain substring with every
+  word required. Symptoms and tags already have chips; matching them here too
+  would make "head" answer with every headache whether or not the word was
+  written, and fuzzier matching is the `symptomKey` refusal again. "Has a note"
+  is a switch in the filter that ANDs with the rest.
+- **Writing prompts are questions, offered on request** (`MOOD_PROMPTS`). A
+  "Suggest a prompt" pill shows one as a hint under an empty note on a new
+  entry. It is never written into the note, never shown unasked and gone once
+  there are words. None names a feeling or assumes how the day went (the
+  `moodNudge` rule), and `moodLog.test.ts` pins that.
+
 ## Backdating, and the picker's new ceiling
 
 `addLog` takes an optional instant; the sheet's Day row is how a person reaches
