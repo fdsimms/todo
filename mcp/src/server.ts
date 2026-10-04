@@ -47,6 +47,7 @@ import {
   listMedicationLogs,
   listMoodLogs,
   createTask,
+  updateTask,
   createTemplate,
   completeTask,
   deferTask,
@@ -58,6 +59,18 @@ import {
   listTemplates,
   searchTasks,
 } from './tools';
+import {
+  DELIVERABLE_KINDS,
+  REPEAT_EVERY,
+  STEP_QUESTION_KINDS,
+  TIME_SEGMENTS,
+  type RepeatEvery,
+  type TaskFieldsInput,
+} from './taskFields';
+import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
+import { createProject, getProject, updateProject, type CreateProjectInput } from './projectTools';
+import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
+import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
@@ -227,6 +240,79 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     async () => json(await withFresh(() => listTemplates(replica)))
   );
 
+  server.tool(
+    'get_project',
+    'One project in full: its details, every open task in the project\'s own order (with each one\'s checklist and what it waits on), and the most recently finished. Use it before suggesting what to do next on a project, or before re-scoping one.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      const result = await withFresh(() => getProject(replica, id));
+      return result ? json(result) : json({ error: `No project with id ${id}.` });
+    }
+  );
+
+  server.tool(
+    'list_recipes',
+    'Recipes, alphabetically. query matches the name, a tag or an ingredient ("spinach").',
+    {
+      query: z.string().optional(),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).optional(),
+      upNext: z.boolean().optional().describe('Only the recipes on the "Up next" shelf.'),
+      limit: z.number().int().positive().optional(),
+    },
+    async input => json(await withFresh(() => listRecipes(replica, input)))
+  );
+
+  server.tool(
+    'get_recipe',
+    'One recipe in full: ingredients (with sections and either/or groups: lines sharing oneOf are alternatives), steps, notes and source.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      const result = await withFresh(() => getRecipe(replica, id));
+      return result ? json(result) : json({ error: `No recipe with id ${id}.` });
+    }
+  );
+
+  server.tool(
+    'list_meal_plan',
+    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today.`,
+    {
+      from: dayKey.optional(),
+      to: dayKey.optional(),
+      days: z.number().int().positive().max(MAX_PLAN_DAYS).optional(),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => listMealPlan(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the meal plan.' });
+      }
+    }
+  );
+
+  server.tool(
+    'list_people',
+    "The people the user keeps up with, in their own order. Don't rank or sort them by how recently they were seen, and say when you last saw someone as a date, not a count of days: the app keeps those out on purpose.",
+    {},
+    async () => json(await withFresh(() => listPeople(replica)))
+  );
+
+  server.tool(
+    'get_person',
+    'One person: contact details, birthday, what to ask them about, gift ideas, food notes, and what you did together (newest first).',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      const result = await withFresh(() => getPerson(replica, id));
+      return result ? json(result) : json({ error: `No person with id ${id}.` });
+    }
+  );
+
+  server.tool(
+    'upcoming_birthdays',
+    `Birthdays in the next N days (default ${DEFAULT_BIRTHDAY_DAYS}), soonest first.`,
+    { days: z.number().int().positive().max(MAX_BIRTHDAY_DAYS).optional() },
+    async ({ days }) => json(await withFresh(() => upcomingBirthdays(replica, days)))
+  );
+
   if (scope === 'write') registerWriteTools(server, replica, withWrite);
 
   return server;
@@ -255,7 +341,7 @@ const itemSchema = z.object({
   windowStart: z.string().nullable().optional().describe('HH:MM.'),
   windowEnd: z.string().nullable().optional().describe('HH:MM.'),
   reminderOffsetMinutes: z.number().int().nullable().optional(),
-  timeSegments: z.array(z.enum(['morning', 'afternoon', 'evening'])).optional(),
+  timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
   tags: z.array(z.string()).optional(),
   category: z.string().nullable().optional(),
   priority: z.number().int().min(0).max(4).optional(),
@@ -276,6 +362,88 @@ const itemSchema = z.object({
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
+/**
+ * The task fields create_task and update_task share, described for a caller
+ * that has never seen the app. The rules behind them (which combinations are
+ * allowed, what a change clears) are taskFields.ts's, which is tested; this is
+ * only the shape and the words.
+ */
+const isoDateTime = z.string().nullable().optional();
+const taskFieldsShape = {
+  notes: z.string().optional(),
+  category: z.string().nullable().optional().describe('A task category, by name.'),
+  tags: z.array(z.string()).optional(),
+  projectId: z.string().nullable().optional().describe('File it in a project (see list_projects), or null to take it out.'),
+  dueDate: isoDateTime.describe('ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
+  deferUntil: isoDateTime.describe('ISO date-time. Hides the task until then.'),
+  deadline: isoDateTime.describe('ISO date-time. Shown on the task; does not hide or move it.'),
+  reminderTime: isoDateTime.describe('ISO date-time of a reminder.'),
+  timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional()
+    .describe('The part of the day it shows up in. Usually one.'),
+  priority: z.number().int().min(0).max(4).optional().describe('0 none, 1 low, 2 medium, 3 high, 4 urgent.'),
+  effort: z.number().int().min(0).max(6).optional(),
+  difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional()
+    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
+  estimatedMinutes: z.number().int().positive().nullable().optional(),
+  pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
+  deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
+    .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
+  deliverableOptions: z.array(z.string()).optional()
+    .describe("The options a 'choice' question offers, e.g. ['Yes', 'No', 'Maybe']. Ignored for other kinds."),
+  repeat: z.object({
+    every: z.enum(REPEAT_EVERY as unknown as [RepeatEvery, ...RepeatEvery[]])
+      .describe('"never" removes a repeat. "hours" is "every N hours after it was done".'),
+    interval: z.number().int().optional().describe('Every N of the unit. Default 1. 1 to 99.'),
+    weekdays: z.array(z.number().int()).optional().describe('Weekly only: which days, 0 = Sunday to 6 = Saturday. E.g. [1, 3] for Mondays and Wednesdays.'),
+    monthDay: z.number().int().optional().describe('Monthly or yearly: day of the month, 1 to 31, or -1 for the last day. Omit to use the due date\'s day.'),
+    nthWeekday: z.object({
+      ordinal: z.number().int().describe('1 to 4, or -1 for the last.'),
+      weekday: z.number().int().describe('0 = Sunday to 6 = Saturday.'),
+    }).optional().describe('Monthly only, instead of monthDay: "the 2nd Tuesday" is { ordinal: 2, weekday: 2 }.'),
+    month: z.number().int().optional().describe('Yearly only: 1 to 12. Omit to use the due date\'s month.'),
+    fromCompletion: z.boolean().optional()
+      .describe('Count the next one from when it was done rather than on a fixed schedule. Defaults to true for daily and hourly, as the app does, false otherwise.'),
+    endDate: z.string().nullable().optional().describe('ISO date: stop repeating after this.'),
+    count: z.number().int().nullable().optional().describe('Stop after this many more times, this one included. Give endDate or count, not both.'),
+  }).optional().describe('How it repeats. Replaces the whole rule. The first occurrence sits on dueDate; the rule places the ones after it, so set dueDate to the first matching day.'),
+  chain: z.object({
+    steps: z.array(z.object({
+      title: z.string(),
+      estimatedMinutes: z.number().int().positive().nullable().optional(),
+      asks: z.enum(STEP_QUESTION_KINDS as unknown as [string, ...string[]]).nullable().optional()
+        .describe('Completing this step asks for an answer of this kind.'),
+      answerSchedulesNextStep: z.boolean().optional()
+        .describe('With asks: "date", the answer becomes the next step\'s date ("Book haircut" answered with the appointment puts "Get haircut" on that day).'),
+    })).describe('At least two. One task that becomes each step in turn: completing a step brings up the next.'),
+    stepsFollowSchedule: z.boolean().optional()
+      .describe('On a repeating chain: each step waits for the next date on the schedule, instead of coming up as soon as the last one is done.'),
+  }).nullable().optional()
+    .describe('A sequence of steps done one after another, each appearing when the one before is done. On a repeating task the whole chain starts over on the schedule. Not subtasks: subtasks are a checklist done together. null removes it.'),
+  target: z.object({
+    count: z.number().int().describe('2 to 99.'),
+    per: z.enum(['day', 'week']),
+    unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
+    allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+  }).nullable().optional()
+    .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
+  window: z.object({
+    start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time.'),
+    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day.'),
+  }).nullable().optional().describe('A time of day to do it in. null removes it.'),
+  habit: z.enum(['do', 'avoid']).optional()
+    .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),
+  waitsOn: z.array(z.string()).optional()
+    .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
+  followUp: z.object({
+    everyN: z.number().int().describe('2 to 99.'),
+    title: z.string(),
+    notes: z.string().optional(),
+    estimatedMinutes: z.number().int().positive().nullable().optional(),
+    oneAtATime: z.boolean().optional().describe('Don\'t add another while the last one is still open.'),
+  }).nullable().optional()
+    .describe('Repeating tasks only: every Nth completion also adds a separate task, e.g. every 4th run, "Replace running shoes" or every 10th clean, "Deep clean the oven". null removes it.'),
+};
+
 function registerWriteTools(
   server: McpServer,
   replica: Replica,
@@ -283,41 +451,34 @@ function registerWriteTools(
 ): void {
   server.tool(
     'create_task',
-    "Add a task. The app's own defaults apply (a default category, its time-of-day segment, title rules), so the result reports what the task actually became rather than only its id.",
+    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. The app's own defaults apply (a default category, its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
     {
       title: z.string().min(1),
-      notes: z.string().optional(),
-      category: z.string().nullable().optional(),
-      tags: z.array(z.string()).optional(),
-      projectId: z.string().nullable().optional(),
-      dueDate: z.string().nullable().optional().describe('ISO date-time.'),
-      deferUntil: z.string().nullable().optional().describe('ISO date-time. Hides the task until then.'),
-      deadline: z.string().nullable().optional().describe('ISO date-time. Informational; does not affect visibility.'),
-      reminderTime: z.string().nullable().optional().describe('ISO date-time.'),
-      timeSegments: z.array(z.enum(['morning', 'afternoon', 'evening'])).optional(),
-      priority: z.number().int().min(0).max(4).optional(),
-      effort: z.number().int().min(0).max(6).optional(),
-      difficulty: z.enum(['easy', 'normal', 'hard']).optional()
-        .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
-      estimatedMinutes: z.number().int().positive().nullable().optional(),
-      recurrenceType: z.string().optional().describe("'none', 'daily', 'weekly', 'monthly', 'yearly' and the app's other rule kinds."),
-      recurrenceInterval: z.number().int().positive().optional(),
-      recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
-      parentId: z.string().nullable().optional().describe('Makes this a subtask of that task.'),
-      // Without this no task created here could ever ask a question, which
-      // makes complete_task's whole answer path unreachable for anything but a
-      // task the user made in the app.
-      deliverableKind: z.enum(['text', 'date', 'number', 'yesno', 'choice']).nullable().optional()
-        .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
-      deliverableOptions: z.array(z.string()).optional()
-        .describe("The options a 'choice' question offers, e.g. ['Yes', 'No', 'Maybe']. Ignored for other kinds."),
+      ...taskFieldsShape,
+      parentId: z.string().nullable().optional().describe('Makes this a subtask (a checklist item) of that task.'),
     },
     async input => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return json(await withWrite(() => createTask(replica, input as any)));
+        return json(await withWrite(() => createTask(replica, input as Parameters<typeof createTask>[1])));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_task',
+    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
+    {
+      id: z.string().min(1),
+      title: z.string().optional(),
+      ...taskFieldsShape,
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
       }
     }
   );
@@ -443,6 +604,92 @@ function registerWriteTools(
         return json(await withWrite(() => removeFromGroceryList(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
+      }
+    }
+  );
+  const planStep = z.object({
+    title: z.string().min(1),
+    ...taskFieldsShape,
+    subtasks: z.array(z.string()).optional().describe('A checklist under this step.'),
+    after: z.array(z.number().int().min(0)).optional()
+      .describe('Positions (from 0) of earlier steps in this plan that must be done first. The step stays hidden until they are.'),
+  });
+
+  server.tool(
+    'create_project',
+    'Create a project and its whole plan in one go: the project, its steps (each a full task: dates, estimates, repeats and the rest), each step\'s checklist, and which steps wait on earlier ones. Everything is checked first and written together, so a problem creates nothing and lists every issue. Scope it with the user before calling: agree on the steps, their order and what blocks what, then create it once. kind "list" is a running list with no dates (shopping ideas, questions for the doctor). The result is the project as get_project shows it.',
+    {
+      title: z.string().min(1),
+      notes: z.string().optional(),
+      deadline: z.string().nullable().optional().describe('ISO date to finish by. Shown on the project; schedules nothing.'),
+      category: z.string().nullable().optional().describe('A project category, for grouping on the Projects page.'),
+      defaultTaskCategory: z.string().nullable().optional().describe('A task category every step gets unless it names its own.'),
+      kind: z.enum(['project', 'list']).optional(),
+      steps: z.array(planStep).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createProject(replica, input as CreateProjectInput)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_project',
+    'Change a project: rename it, edit its notes or deadline, re-file it, mark it complete, or archive it. Its tasks are not touched; add steps with create_task (projectId) and edit them with update_task.',
+    {
+      id: z.string().min(1),
+      title: z.string().optional(),
+      notes: z.string().optional(),
+      deadline: z.string().nullable().optional(),
+      category: z.string().nullable().optional(),
+      defaultTaskCategory: z.string().nullable().optional(),
+      kind: z.enum(['project', 'list']).optional(),
+      completed: z.boolean().optional(),
+      archived: z.boolean().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateProject(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'plan_meal',
+    'Put a meal on the plan: a recipe (recipeId) or just a title ("Leftovers", "Takeout"). The app scales a recipe to the household size it is set to.',
+    {
+      date: dayKey,
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]),
+      recipeId: z.string().nullable().optional(),
+      title: z.string().optional().describe('Needed when there is no recipe; otherwise the recipe\'s name is used.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => planMeal(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not plan the meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_person_history',
+    'Record something the user did with one or more people ("Coffee with Sam", "Called Mom"), on a day that has already happened. This is how the app keeps history with someone: it is the only change these tools can make to the people section.',
+    {
+      personIds: z.array(z.string().min(1)).min(1),
+      title: z.string().min(1),
+      date: z.string().optional().describe('ISO date or date-time it happened. Defaults to now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => addPersonHistory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add that to their history.' });
       }
     }
   );

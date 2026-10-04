@@ -743,6 +743,129 @@ describe('the replica', () => {
     replica.refresh();
     expect(() => replica.deferTask(task.id, new Date())).toThrow(/already completed/);
   });
+  describe('editing a task', () => {
+    it('re-derives what the app re-derives when the schedule changes', () => {
+      const task = replica.createTask({ title: 'Rent', recurrenceType: 'monthly', dueDate: '2026-01-31T12:00:00.000Z' });
+      const patch = replica.taskPatch({ repeat: { every: 'month', monthDay: 15 } }, task, false);
+      const { task: edited } = replica.updateTask(task.id, patch);
+      expect(edited.recurrenceMonthDay).toBe(15);
+      // The anchor is cleared by the rule mergeTaskUpdate carries over from the store.
+      expect(edited.recurrenceAnchorDate).toBeNull();
+      replica.refresh();
+      expect(replica.taskById(task.id)!.recurrenceMonthDay).toBe(15);
+    });
+
+    it('writes blockers the app can read, and refuses a cycle', () => {
+      const a = replica.createTask({ title: 'Buy paint' });
+      const b = replica.createTask({ title: 'Paint the hall' });
+      replica.updateTask(b.id, replica.taskPatch({ waitsOn: [a.id] }, b, false));
+      replica.refresh();
+      expect(replica.isBlocked(replica.taskById(b.id)!)).toBe(true);
+      expect(() => replica.taskPatch({ waitsOn: [b.id] }, replica.taskById(a.id), false)).toThrow(/can't be waited on/);
+      expect(() => replica.taskPatch({ waitsOn: ['nope'] }, null, false)).toThrow(/no task with id nope/);
+    });
+
+    it('refuses a completed task', () => {
+      const t = replica.createTask({ title: 'Done' });
+      replica.completeTask(t.id, {});
+      replica.refresh();
+      expect(() => replica.updateTask(t.id, { notes: 'x' })).toThrow(/completed/);
+    });
+
+    it('counts a push in defer_task toward the postpone count, as a push on the phone does', () => {
+      const t = replica.createTask({ title: 'Call the bank', dueDate: new Date().toISOString() });
+      const later = new Date(Date.now() + 3 * 86_400_000);
+      expect(replica.deferTask(t.id, later).postponeCount).toBe(1);
+    });
+  });
+
+  describe('projects', () => {
+    beforeEach(() => {
+      mockRaw.runSync('DELETE FROM projects');
+      replica.refresh();
+    });
+
+    it('creates a project and its plan, with blockers between steps and a checklist', () => {
+      const { project, tasks: made } = replica.createProjectPlan({
+        title: 'Paint the hall',
+        notes: 'Before the party',
+        defaultTaskCategory: 'Home',
+        steps: [
+          { fields: { title: 'Pick a colour' } },
+          { fields: { title: 'Buy paint', estimatedMinutes: 60 }, subtasks: ['Rollers', 'Tape'], waitsOn: [0] },
+          { fields: { title: 'Paint', category: 'Weekend' }, waitsOn: [0, 1] },
+        ],
+      });
+      expect(project.notes).toBe('Before the party');
+      const [pick, buy, paint] = made.filter(t => !t.parentId);
+      expect(made.filter(t => t.parentId === buy.id).map(t => t.title)).toEqual(['Rollers', 'Tape']);
+      expect(buy.blockedById).toBe(pick.id);
+      expect([paint.blockedById, ...(paint.blockedByIds ?? [])]).toEqual([pick.id, buy.id]);
+      // The project's own default category reaches its steps: the store is
+      // loaded now, where it used to be empty and the setting was ignored.
+      expect(pick.category).toBe('Home');
+      expect(paint.category).toBe('Weekend');
+      expect(made.every(t => t.parentId || t.projectId === project.id)).toBe(true);
+    });
+
+    it('writes nothing when any step is wrong, and lists every problem', () => {
+      expect(() => replica.createProjectPlan({
+        title: 'Broken',
+        steps: [
+          { fields: { title: 'A' }, waitsOn: [0] },
+          { fields: { title: 'B', target: { count: 1, per: 'day' } } },
+        ],
+      })).toThrow(/steps\[0\]\.waitsOn.*steps\[1\]/s);
+      replica.refresh();
+      expect(replica.projects().some(p => p.title === 'Broken')).toBe(false);
+    });
+
+    it('rolls the project back if a write fails partway', () => {
+      const db = require('../../../src/db/database');
+      const spy = jest.spyOn(db, 'dbInsertTask').mockImplementationOnce(() => { throw new Error('disk full'); });
+      expect(() => replica.createProjectPlan({ title: 'Half', steps: [{ fields: { title: 'A' } }] })).toThrow('disk full');
+      spy.mockRestore();
+      replica.refresh();
+      expect(replica.projects().some(p => p.title === 'Half')).toBe(false);
+    });
+
+    it('completes and archives a project without touching its tasks', () => {
+      const { project, tasks: made } = replica.createProjectPlan({ title: 'Garden', steps: [{ fields: { title: 'Weed' } }] });
+      const done = replica.updateProject(project.id, { title: 'Garden 2026', completed: true, archived: true });
+      expect(done).toMatchObject({ title: 'Garden 2026', completed: true, archived: true });
+      expect(replica.taskById(made[0].id)!.completed).toBe(false);
+      expect(() => replica.updateProject('nope', { title: 'x' })).toThrow(/No project/);
+    });
+  });
+
+  describe('meals and people', () => {
+    beforeEach(() => {
+      mockRaw.runSync('DELETE FROM meal_plan_entries');
+      mockRaw.runSync('DELETE FROM recipes');
+      mockRaw.runSync('DELETE FROM people');
+    });
+
+    it('plans a recipe, titled with its name, at the end of its slot', () => {
+      mockRaw.runSync("INSERT INTO recipes (id, name, name_key, created_at) VALUES ('r1', 'Chili', 'chili', '2026-01-01T00:00:00.000Z')");
+      const first = replica.planMeal({ date: '2026-10-05', slot: 'dinner', recipeId: 'r1' });
+      const second = replica.planMeal({ date: '2026-10-05', slot: 'dinner', title: 'Salad' });
+      expect(first).toMatchObject({ title: 'Chili', recipeId: 'r1', recipeScale: 1 });
+      expect(second.sortOrder).toBeGreaterThan(first.sortOrder);
+      expect(replica.mealPlan('2026-10-05', '2026-10-05')).toHaveLength(2);
+      expect(() => replica.planMeal({ date: '2026-10-05', slot: 'dinner', recipeId: 'gone' })).toThrow(/No recipe/);
+    });
+
+    it('adds to a person\'s history as a completed task naming them, on that day', () => {
+      mockRaw.runSync("INSERT INTO people (id, name, created_at) VALUES ('p1', 'Sam', '2026-01-01T00:00:00.000Z')");
+      replica.refresh();
+      const at = new Date('2026-09-20T18:00:00.000Z');
+      const task = replica.addPersonHistory(['p1'], 'Coffee', at);
+      expect(task).toMatchObject({ completed: true, completedAt: at.toISOString(), personIds: ['p1'] });
+      expect(replica.personHistory('p1')).toEqual([{ taskId: task.id, title: 'Coffee', at: at.toISOString() }]);
+      expect(() => replica.addPersonHistory(['p1'], 'Later', new Date(Date.now() + 86_400_000))).toThrow(/future/);
+      expect(() => replica.addPersonHistory(['nobody'], 'X', at)).toThrow(/No person/);
+    });
+  });
 });
 
 describe('the expo-sqlite shim', () => {

@@ -38,10 +38,13 @@ export async function fetchTransitSnapshot(): Promise<TransitSnapshot | null> {
   try {
     const response = await fetch(SUBWAY_ALERTS_URL, {
       headers: { Accept: 'application/json' },
-      signal: controller.signal,
+      // Cast and an untyped body for the reason httpSyncTransport.ts gives:
+      // mcp/ reaches this file and typechecks it against Node's fetch.
+      signal: controller.signal as unknown as RequestInit['signal'],
     });
     if (!response.ok) return null;
-    const body = await response.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body: any = await response.json();
     if (!body || !Array.isArray(body.entity)) return null;
     return { alerts: parseSubwayAlerts(body), fetchedAt: new Date().toISOString() };
   } catch {

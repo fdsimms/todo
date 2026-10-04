@@ -67,6 +67,7 @@ import {
   titleForEntry,
   weekCopyDrafts,
   type MealCopyDraft,
+  buildMealPlanEntry,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
 import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } from '../utils/mealSlotTasks';
@@ -936,55 +937,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ? useRecipeStore.getState().recipes.find(r => r.id === draft.recipeId)
       : undefined;
 
-    const entry: MealPlanEntry = {
+    const entry = buildMealPlanEntry(draft, {
       id: generateId(),
-      date: draft.date,
-      slot: draft.slot,
-      recipeId: draft.recipeId ?? null,
       title,
-      // Ordered against SQLite's answer for that slot rather than against
-      // `entries`, so planning into a day outside the loaded window still lands
-      // at the end of it instead of colliding on 1.
-      sortOrder: nextSortOrder(
-        dbGetMealPlanEntries(draft.date, draft.date),
-        draft.date,
-        draft.slot
-      ),
-      createdAt: new Date().toISOString(),
-      cookedAt: null,
-      // Planning against a leftover deliberately does *not* close it out — see
-      // Leftover.finishedAt. Nothing here touches the leftover store at all;
-      // the "was that the last of it?" offer is the picker's, and it's an
-      // offer.
-      leftoverId: draft.leftoverId ?? null,
-      // Nothing picked yet, which resolves to every choice group's default —
-      // planning a meal must never be gated on answering "mash or roast?", the
-      // same call MealPlanEntry.recipeId makes about naming a recipe at all.
-      recipeChoices: [],
-      // As written, for the same reason: how much of it you're making is a
-      // question a plan is allowed not to have answered. Unless the person has
-      // answered it once for every meal (#2910): "Usually cooking for 4" starts
-      // a recipe that serves 2 at 2x, through householdScale, which stays as
-      // written whenever the recipe states no servings or already covers them.
-      // A leftover or a typed meal has no recipe and no servings to scale.
-      recipeScale: householdScale(
-        useSettingsStore.getState().householdServings,
-        recipe?.servings,
-        recipe?.servingsMax,
-      ),
-      // Unanswered, so the setting decides — see MealPlanEntry.cookTask. The
-      // picker can pass an explicit answer, which is how "add a cook task" is
-      // said at plan time.
-      cookTask: draft.cookTask ?? null,
-      // Unanswered too, so mealShortfallTasks decides — see
-      // MealPlanEntry.shopTask.
-      shopTask: draft.shopTask ?? null,
-      // Unanswered too, so mealLogPrompt decides — see MealPlanEntry.logMeal.
-      logMeal: draft.logMeal ?? null,
-      // Nothing on the device yet. reconcileMealEvent below writes the id
-      // back if a calendar is picked.
-      calendarEventId: null,
-    };
+      recipe,
+      sameDay: dbGetMealPlanEntries(draft.date, draft.date),
+      householdServings: useSettingsStore.getState().householdServings,
+      now: new Date().toISOString(),
+    });
 
     dbInsertMealPlanEntry(entry);
     patchInRange(set, get, entry);

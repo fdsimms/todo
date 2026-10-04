@@ -32,14 +32,21 @@ import { addDays } from 'date-fns/addDays';
 import { shimModule } from './expoSqliteShim';
 import type {
   Category,
+  Cookbook,
   DeliverableKind,
   FoodLogEntry,
   GroceryItem,
   GroceryListEntry,
+  MealPlanEntry,
+  MealSlot,
   MedicationLog,
   MoodLog,
   Person,
+  PersonGroup,
+  PersonNote,
   Project,
+  ProjectKind,
+  Recipe,
   TaskTemplate,
   Task,
   TaskDraft,
@@ -48,6 +55,7 @@ import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
 import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
+import { taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -70,6 +78,12 @@ type GroceryAddModule = typeof import('../../src/utils/groceryAdd');
 type GroceryAislesModule = typeof import('../../src/utils/groceryAisles');
 type GroceryParseModule = typeof import('../../src/utils/groceryParse');
 type IdModule = typeof import('../../src/utils/id');
+type TaskUpdateModule = typeof import('../../src/utils/taskUpdate');
+type BlockingModule = typeof import('../../src/utils/blocking');
+type FollowUpModule = typeof import('../../src/utils/followUpTask');
+type MealPlanModule = typeof import('../../src/utils/mealPlan');
+type PersonHistoryModule = typeof import('../../src/utils/personHistory');
+type BirthdayModule = typeof import('../../src/utils/birthdayTasks');
 
 /** What a caller may say about a completion. `CompletionOptions` without the miss. */
 export type CompletionOptions = Pick<
@@ -115,6 +129,36 @@ export interface ReplicaSearchHit {
   task: Task;
   score: number;
   projectName: string | null;
+}
+
+/** One step of a `create_project` plan. `waitsOn` counts from 0 over the plan's own steps. */
+export interface ProjectPlanStep {
+  fields: TaskFieldsInput;
+  subtasks?: string[];
+  waitsOn?: number[];
+}
+
+export interface ProjectPlan {
+  title: string;
+  notes?: string;
+  deadline?: string | null;
+  /** A project category (the Projects page's grouping), by name. */
+  category?: string | null;
+  /** The task category every step falls back to, by name. */
+  defaultTaskCategory?: string | null;
+  kind?: ProjectKind;
+  steps: ProjectPlanStep[];
+}
+
+export interface ProjectPatch {
+  title?: string;
+  notes?: string;
+  deadline?: string | null;
+  category?: string | null;
+  defaultTaskCategory?: string | null;
+  kind?: ProjectKind;
+  completed?: boolean;
+  archived?: boolean;
 }
 
 export interface Replica {
@@ -330,6 +374,68 @@ export interface Replica {
    */
   removeFromGroceryList(id: string): GroceryItem;
 
+  /**
+   * The `Task` fields a `create_task`/`update_task` input stands for, checked
+   * the way the app's editor would check them (see taskFields.ts), with
+   * `waitsOn` resolved here because it needs the other tasks: each blocker has
+   * to exist, be a live top-level task, and not wait on this one in turn.
+   * Throws with every problem at once.
+   */
+  taskPatch(input: TaskFieldsInput, current: Task | null, isSubtask: boolean): Partial<Task>;
+
+  /**
+   * Edit a task, exactly as the app's own `updateTask` would.
+   *
+   * The row is built by `mergeTaskUpdate` (`src/utils/taskUpdate.ts`), which
+   * was lifted out of the store for this: the anchor day a schedule edit
+   * re-derives, the anchor date it clears, the postpone count a date push
+   * bumps, the wait stamp, the pin rank, the clears a dropped repeat implies.
+   * A dated series' later dates get the content fields the edit named, through
+   * `seriesFanOutRows`, as the editor's default "this and later" scope does.
+   *
+   * What it does not do is the device work around the write (reminders, quota
+   * nudges, calendar events), for the reason `createTask` gives. A completed
+   * task is refused: reopening one is a decision about history, and raising a
+   * done target's count is the one edit the store turns into a reopen.
+   */
+  updateTask(id: string, patch: Partial<Task>): { task: Task; alsoUpdated: number };
+
+  /**
+   * A project and its whole plan, in one transaction, so a dropped connection
+   * can't leave half a project. Built by `useProjectStore.createProject` and
+   * `updateProject`, which are reachable here (the store's imports are clean)
+   * and loaded on every refresh. Steps are tasks; a step's `waitsOn` names
+   * earlier steps by position, written as real blockers once their ids exist.
+   */
+  createProjectPlan(plan: ProjectPlan): { project: Project; tasks: Task[] };
+  /** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. */
+  updateProject(id: string, patch: ProjectPatch): Project;
+
+  recipes(): Recipe[];
+  cookbooks(): Cookbook[];
+  /** Planned meals between two day keys, inclusive. */
+  mealPlan(fromDayKey: string, toDayKey: string): MealPlanEntry[];
+  /**
+   * Put a meal on the plan, built by `buildMealPlanEntry` as the app's own
+   * `planMeal` does. Not done: the slot's task and the calendar event, which
+   * are device work and catch up on the next launch there.
+   */
+  planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null }): MealPlanEntry;
+
+  people(): Person[];
+  personGroups(): PersonGroup[];
+  personNotes(): PersonNote[];
+  /** Completed tasks naming this person, newest first: the app's history for them. */
+  personHistory(personId: string): { taskId: string; title: string; at: string }[];
+  /** The next birthday on or after the logical today, or null. */
+  nextBirthday(person: Person): Date | null;
+  /**
+   * Add something to a person's history, exactly as "Add to history" on their
+   * page does: a task naming them, completed at `at`. There is no separate
+   * history table, by design (docs/arch/people.md).
+   */
+  addPersonHistory(personIds: string[], title: string, at: Date): Task;
+
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
   syncable(): boolean;
@@ -439,12 +545,22 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
-  const { projectProgress } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
+  const { projectProgress, useProjectStore } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
+  const taskUpdate = require('../../src/utils/taskUpdate') as TaskUpdateModule;
+  const blocking = require('../../src/utils/blocking') as BlockingModule;
+  const followUp = require('../../src/utils/followUpTask') as FollowUpModule;
+  const mealPlanUtils = require('../../src/utils/mealPlan') as MealPlanModule;
+  const personHistoryUtils = require('../../src/utils/personHistory') as PersonHistoryModule;
+  const birthdays = require('../../src/utils/birthdayTasks') as BirthdayModule;
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   db.initDatabase();
   useSettingsStore.getState().initialize();
   useCategoryStore.getState().initialize();
+  // Loaded rather than left empty: `newTaskFromDraft` reads a project's default
+  // task category from this store, so with it empty a task created into a
+  // project here ignored that setting. createProjectPlan writes through it too.
+  useProjectStore.getState().initialize();
 
   // Read caches, cleared per request by `refresh`. They exist because the
   // blocker registry resolves one id at a time: without them, a list of 200
@@ -466,7 +582,34 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     projectCache = null;
     useSettingsStore.getState().initialize();
     useCategoryStore.getState().initialize();
+    useProjectStore.getState().initialize();
   };
+
+  /** A step or task's fields, checked, with blockers resolved against the live tasks. */
+  const taskPatch = (input: TaskFieldsInput, current: Task | null, isSubtask: boolean, extraBlockers: string[] = []): Partial<Task> => {
+    const { patch, waitsOn, errors } = taskFieldsPatch(input, current, {
+      newId: generateId,
+      emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
+    }, { isSubtask });
+    if (waitsOn !== undefined || extraBlockers.length > 0) {
+      const all = tasks();
+      const resolve = blocking.resolverFor(all);
+      const ids = [...(waitsOn ?? []), ...extraBlockers];
+      for (const id of waitsOn ?? []) {
+        const candidate = resolve(id);
+        if (!candidate) errors.push(`waitsOn: no task with id ${id}.`);
+        else if (!blocking.canBeBlockerOf(candidate, current?.id ?? null, resolve)) {
+          errors.push(`waitsOn: "${candidate.title}" can't be waited on: it is done, archived, a subtask, or already waits on this task.`);
+        }
+      }
+      Object.assign(patch, blocking.blockerFields(ids));
+    }
+    if (errors.length > 0) throw new Error(errors.join(' '));
+    return patch;
+  };
+
+  /** The next free `sortOrder` across every task, which is where a new one goes. */
+  const nextTaskOrder = (): number => db.dbGetAllTasks().reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1;
 
   registerTaskSource(tasks);
   registerPersonSource(people);
@@ -698,8 +841,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!task) throw new Error(`No task with id ${id}.`);
       if (task.completed) throw new Error('That task is already completed, so there is nothing to reschedule.');
 
+      // Through the same merge the app's updateTask runs, so a push here counts
+      // toward the postpone count and re-derives the anchors the way a push on
+      // the phone does. Writing the move straight onto the row skipped both.
       const { dayResetTime } = useSettingsStore.getState();
-      const moved = { ...task, ...moves.scheduleMoveUpdates(task, date, dayResetTime) };
+      const moved = taskUpdate.mergeTaskUpdate(task, moves.scheduleMoveUpdates(task, date, dayResetTime), {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime,
+      });
       db.dbUpdateTask(moved);
       refresh();
       return moved;
@@ -802,6 +952,181 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       refresh();
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
+    },
+
+    taskPatch: (input: TaskFieldsInput, current: Task | null, isSubtask: boolean) => taskPatch(input, current, isSubtask),
+
+    updateTask(id: string, patch: Partial<Task>): { task: Task; alsoUpdated: number } {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.completed) throw new Error('That task is completed. Reopen it in the app before editing it.');
+      if (task.archived) throw new Error('That task is archived. Restore it in the app before editing it.');
+
+      const all = tasks();
+      const updated = taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'series',
+        freshPinnedOrder: patch.pinned === true ? taskUpdate.nextPinnedOrder(all) : 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      const siblings = taskUpdate.seriesFanOutRows(updated, patch, all);
+      db.dbTransaction(() => {
+        db.dbUpdateTask(updated);
+        for (const row of siblings) db.dbUpdateTask(row);
+      });
+      refresh();
+      return { task: updated, alsoUpdated: siblings.length };
+    },
+
+    createProjectPlan(plan: ProjectPlan): { project: Project; tasks: Task[] } {
+      const title = plan.title?.trim();
+      if (!title) throw new Error('A project needs a title.');
+
+      // Every step checked before anything is written, so a bad step fails the
+      // whole plan with all its problems listed rather than leaving a project
+      // with half its steps.
+      const errors: string[] = [];
+      const patches = plan.steps.map((step, i) => {
+        for (const n of step.waitsOn ?? []) {
+          if (!Number.isInteger(n) || n < 0 || n >= i) errors.push(`steps[${i}].waitsOn: ${n} is not an earlier step. Steps can only wait on steps before them.`);
+        }
+        if (!step.fields.title?.trim()) errors.push(`steps[${i}] needs a title.`);
+        try {
+          return taskPatch({ ...step.fields, projectId: undefined }, null, false);
+        } catch (e) {
+          errors.push(`steps[${i}]: ${e instanceof Error ? e.message : String(e)}`);
+          return {};
+        }
+      });
+      if (errors.length > 0) throw new Error(errors.join(' '));
+
+      let project: Project | undefined;
+      const created: Task[] = [];
+      try {
+        db.dbTransaction(() => {
+          const store = useProjectStore.getState();
+          project = store.createProject(title, {
+            deadline: plan.deadline ?? null,
+            category: plan.category ?? null,
+            kind: plan.kind ?? 'project',
+          });
+          if (plan.notes || plan.defaultTaskCategory) {
+            store.updateProject(project.id, {
+              ...(plan.notes ? { notes: plan.notes } : {}),
+              ...(plan.defaultTaskCategory ? { defaultTaskCategory: plan.defaultTaskCategory } : {}),
+            });
+          }
+          const now = new Date().toISOString();
+          let order = nextTaskOrder();
+          const ids: string[] = [];
+          plan.steps.forEach((step, i) => {
+            const blockers = (step.waitsOn ?? []).map(n => ids[n]);
+            const draft = {
+              ...patches[i],
+              projectId: project!.id,
+              ...(blockers.length > 0
+                ? blocking.blockerFields([...blocking.blockerIdsOf({ blockedById: patches[i].blockedById ?? null, blockedByIds: patches[i].blockedByIds }), ...blockers])
+                : {}),
+            } as Partial<TaskDraft>;
+            const task = taskDraft.newTaskFromDraft(taskDraft.applyTitleRulesToDraft(draft), now, order++, true);
+            db.dbInsertTask(task);
+            ids.push(task.id);
+            created.push(task);
+            (step.subtasks ?? []).forEach((subtitle, j) => {
+              if (!subtitle.trim()) return;
+              const sub = taskDraft.newTaskFromDraft({ title: subtitle.trim(), parentId: task.id }, now, j + 1, false, undefined, true);
+              db.dbInsertTask(sub);
+              created.push(sub);
+            });
+          });
+        });
+      } finally {
+        // Also what puts the store back if the transaction rolled back.
+        refresh();
+      }
+      return { project: projects().find(p => p.id === project!.id)!, tasks: created };
+    },
+
+    updateProject(id: string, patch: ProjectPatch): Project {
+      const store = useProjectStore.getState();
+      if (!store.projects.some(p => p.id === id)) throw new Error(`No project with id ${id}.`);
+      if (patch.title !== undefined && !patch.title.trim()) throw new Error('A project title cannot be blank.');
+      const { completed, archived, ...content } = patch;
+      db.dbTransaction(() => {
+        if (Object.keys(content).length > 0) {
+          store.updateProject(id, { ...content, ...(content.title ? { title: content.title.trim() } : {}) });
+        }
+        if (completed !== undefined) useProjectStore.getState().applyProjectCompleted(id, completed);
+        if (archived !== undefined) useProjectStore.getState().applyProjectArchived(id, archived);
+      });
+      refresh();
+      return projects().find(p => p.id === id)!;
+    },
+
+    recipes: () => db.dbGetAllRecipes(),
+    cookbooks: () => db.dbGetAllCookbooks(),
+    mealPlan: (from: string, to: string) => db.dbGetMealPlanEntries(from, to),
+
+    planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null }): MealPlanEntry {
+      const recipe = draft.recipeId ? db.dbGetAllRecipes().find(r => r.id === draft.recipeId) : undefined;
+      if (draft.recipeId && !recipe) throw new Error(`No recipe with id ${draft.recipeId}.`);
+      const title = mealPlanUtils.cleanMealTitle(draft.title ?? recipe?.name ?? '');
+      if (!title) throw new Error('A meal needs a title or a recipe.');
+      const entry = mealPlanUtils.buildMealPlanEntry(
+        { date: draft.date, slot: draft.slot, recipeId: draft.recipeId ?? null, title },
+        {
+          id: generateId(),
+          title,
+          recipe,
+          sameDay: db.dbGetMealPlanEntries(draft.date, draft.date),
+          householdServings: useSettingsStore.getState().householdServings,
+          now: new Date().toISOString(),
+        },
+      );
+      db.dbInsertMealPlanEntry(entry);
+      return entry;
+    },
+
+    people,
+    personGroups: () => db.dbGetAllPersonGroups(),
+    personNotes: () => db.dbGetAllPersonNotes(),
+    personHistory: (personId: string) =>
+      personHistoryUtils
+        .personHistory(tasks().filter(t => (t.personIds ?? []).includes(personId)))
+        .map(e => ({ taskId: e.taskId, title: e.title, at: e.at })),
+    nextBirthday: (person: Person) => birthdays.nextBirthday(person, dates.getLogicalToday()),
+
+    addPersonHistory(personIds: string[], title: string, at: Date): Task {
+      const known = new Set(people().map(p => p.id));
+      const missing = personIds.filter(id => !known.has(id));
+      if (missing.length > 0) throw new Error(`No person with id ${missing.join(', ')}.`);
+      if (personIds.length === 0) throw new Error('Name at least one person.');
+      if (!title.trim()) throw new Error('Say what you did together.');
+      if (at.getTime() > Date.now()) throw new Error('History is for things that already happened; that date is in the future.');
+
+      // The app's own three steps (addCompletedTask): add it on that day, complete
+      // it, then put the completion on that day too.
+      const iso = at.toISOString();
+      const task = taskDraft.newTaskFromDraft(
+        taskDraft.applyTitleRulesToDraft({ title: title.trim(), dueDate: iso, personIds }),
+        new Date().toISOString(),
+        nextTaskOrder(),
+        true
+      );
+      const settings = useSettingsStore.getState();
+      const built = completion.buildCompletion(task, undefined, {
+        dayResetTime: settings.dayResetTime,
+        vacationMode: settings.vacationMode,
+        now: new Date(),
+        allTasks: [...tasks(), task],
+        subtasks: [],
+      });
+      const done = { ...(built?.completed ?? { ...task, completed: true }), completedAt: iso };
+      db.dbTransaction(() => {
+        db.dbInsertTask(task);
+        db.dbUpdateTask(done);
+      });
+      refresh();
+      return done;
     },
 
     deviceId: () => db.dbGetDeviceId(),

@@ -31,6 +31,7 @@ import {
   titleForEntry,
   upcomingDays,
   weekCopyDrafts,
+  buildMealPlanEntry,
 } from '../utils/mealPlan';
 import { recipeNameKey } from '../utils/recipeUtils';
 
@@ -906,5 +907,27 @@ describe('describeAddedToList', () => {
       .toBe('Added Aug 8');
     expect(describeAddedToList(new Date(2025, 11, 20).toISOString(), new Date(2026, 0, 5)))
       .toBe('Added Dec 20, 2025');
+  });
+});
+
+describe('buildMealPlanEntry', () => {
+  const ctx = { id: 'm1', title: 'Chili', sameDay: [], householdServings: 0, now: '2026-10-01T09:00:00.000Z' };
+
+  it('builds the row planMeal writes, with every per-meal question left to its setting', () => {
+    expect(buildMealPlanEntry({ date: '2026-10-05', slot: 'dinner', recipeId: 'r1', title: 'Chili' }, ctx)).toEqual({
+      id: 'm1', date: '2026-10-05', slot: 'dinner', recipeId: 'r1', title: 'Chili', sortOrder: 1,
+      createdAt: '2026-10-01T09:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [], recipeScale: 1,
+      cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+    });
+  });
+
+  it('lands after what is already in the slot, and scales to the household', () => {
+    const existing = buildMealPlanEntry({ date: '2026-10-05', slot: 'dinner', title: 'Soup' }, ctx);
+    const next = buildMealPlanEntry(
+      { date: '2026-10-05', slot: 'dinner', recipeId: 'r1', title: 'Chili' },
+      { ...ctx, id: 'm2', sameDay: [existing], householdServings: 4, recipe: { servings: 2, servingsMax: null } },
+    );
+    expect(next.sortOrder).toBe(2);
+    expect(next.recipeScale).toBe(2);
   });
 });

@@ -90,7 +90,7 @@ Two consequences worth knowing before editing either side:
   Native's**, and CI checks only the second. Pass the abort signal as
   `controller.signal as unknown as RequestInit['signal']`, and give a `json()` result an explicit
   type, since Node's is `unknown` where React Native's is `any`. `httpSyncTransport.ts`,
-  `weatherLookup.ts` and `aiSuggestions.ts` all do this. Run `npm run typecheck` in `mcp/` after
+  `weatherLookup.ts`, `aiSuggestions.ts`, `productLookup.ts` and `transitLookup.ts` all do this. Run `npm run typecheck` in `mcp/` after
   adding one.
 
 ## The replica
@@ -540,7 +540,11 @@ Two obligations apply whatever the label says:
   successor and completes nothing, so it is the write with the least machinery behind it. Then
   `create_task`, which moved `newTaskFromDraft` out of the store, then `complete_task` and
   `defer_task`, which moved the completion core out after it, and then the grocery list, which
-  moved `addByName`'s core out.
+  moved `addByName`'s core out. Then `update_task`, which moved `updateTask`'s merge and its
+  series fan-out out (`src/utils/taskUpdate.ts`), and `plan_meal`, which moved the meal row out
+  (`buildMealPlanEntry`). `create_project` writes through `useProjectStore` itself, which is
+  reachable here because its imports are clean, and is now loaded on every refresh: with it left
+  empty, `newTaskFromDraft` never saw a project's default task category.
 - **Phase 3 (done). Hosting.** OAuth for the chat connector and a Fly deployment
   (`mcp/DEPLOY.md`). The Settings surface that admits to the copy,
   the health logs' own switch and the privacy-label draft are done (see above).

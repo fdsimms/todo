@@ -58,15 +58,25 @@ Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 |---|---|
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
-| `get_task` | One task, with its subtasks, chain steps, project, and why it is not on Today. |
+| `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. |
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion. |
+| `get_project` | One project: its open tasks in order (each with its checklist and blockers) and the most recently finished. |
+| `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
+| `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
+| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |
+| `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
 | `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
-| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
+| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
+| `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
+| `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
+| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. |
+| `plan_meal` | **Write.** Puts a recipe, or just a title, on the meal plan. |
+| `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
@@ -108,6 +118,17 @@ have their own switch" in the arch doc.
 The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple
 Health and the app stores no copy, so a replica over SQLite has nothing to read. See the arch doc.
+
+`create_task` and `update_task` take their richer fields as small objects (`repeat`, `chain`,
+`target`, `window`, `followUp`, `waitsOn`, `habit`) rather than the `Task` columns behind them,
+and [`src/taskFields.ts`](src/taskFields.ts) translates them the way the app's editor does on save:
+it refuses a combination the editor never offers (a month day on a weekly repeat, a one-step
+chain, a follow-up on a task that doesn't repeat) and clears what the editor clears when a rule
+changes type. `newTaskFromDraft` and `updateTask` trust whatever they are handed, so without this
+a model could write a row the app can't render honestly.
+
+The people tools keep `docs/arch/people.md`'s rules: people come back in the user's own order,
+never ranked, and the last time together is a date, never a count of days.
 
 ## Working on it
 

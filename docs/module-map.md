@@ -175,7 +175,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
 - `src/utils/mealLogCoverage.ts` — SlotCoverage, countsAsMealLog, loggedMealSlotKeys, mealDayCoverage, describeSlotLog, describeDayCoverage, unloggedPlannedSlots, describePlannedSlot
 - `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogRecord, isMealLogged, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
-- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +25 more
+- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +27 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, PlannedCatalogIndex, +10 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
@@ -345,6 +345,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
+- `src/utils/taskUpdate.ts` — CONTENT_FIELDS, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, seriesFanOutRows
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, liveConditions, itemMatchesAnswers, initialLeafSelection, reselectForAnswers, personIdsFromAnswer, +6 more
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
@@ -428,7 +429,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SYNC_EPOCH, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, registerSyncReload, useSyncStore, isSyncSupported
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
-- `src/store/useTaskStore.ts` — CONTENT_FIELDS, TimeBlockPlan, derivedTargetCount, useTaskStore
+- `src/store/useTaskStore.ts` — TimeBlockPlan, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore

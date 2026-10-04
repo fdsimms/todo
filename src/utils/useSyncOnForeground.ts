@@ -22,7 +22,11 @@ import { useSyncStore } from '../store/useSyncStore';
  * is already in flight, so a burst of state changes can't stack up runs.
  */
 export function useSyncOnForeground(): void {
-  const enabled = useSyncStore(s => s.enabled);
+  // Either destination, not iCloud's switch alone: `enabled` is iCloud's, and
+  // a device syncing only with a payload store was never synced on foreground,
+  // so a task written by the MCP server waited for a manual Sync now. Same
+  // test SyncSettings uses for whether there is anywhere to sync to.
+  const enabled = useSyncStore(s => s.enabled || (!!s.serverUrl && s.hasServerToken));
   const syncNow = useSyncStore(s => s.syncNow);
 
   useEffect(() => {

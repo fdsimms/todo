@@ -19,6 +19,8 @@ import {
   resolveRange,
   searchTasks,
   setGroceryChecked,
+  createTask,
+  updateTask,
   DEFAULT_LIMIT,
   DEFAULT_LOG_DAYS,
   MAX_LIMIT,
@@ -100,6 +102,20 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     addGroceryItem: () => { throw new Error('not stubbed'); },
     setGroceryChecked: () => { throw new Error('not stubbed'); },
     removeFromGroceryList: () => { throw new Error('not stubbed'); },
+    taskPatch: () => { throw new Error('not stubbed'); },
+    updateTask: () => { throw new Error('not stubbed'); },
+    createProjectPlan: () => { throw new Error('not stubbed'); },
+    updateProject: () => { throw new Error('not stubbed'); },
+    recipes: () => [],
+    cookbooks: () => [],
+    mealPlan: () => [],
+    planMeal: () => { throw new Error('not stubbed'); },
+    people: () => [],
+    personGroups: () => [],
+    personNotes: () => [],
+    personHistory: () => [],
+    nextBirthday: () => null,
+    addPersonHistory: () => { throw new Error('not stubbed'); },
     deviceId: () => 'stub-device',
     syncable: () => true,
     ...over,
@@ -195,7 +211,7 @@ describe('getTask', () => {
     const result = getTask(withTasks([parent, child], { projects: () => [project] }), 'today-1')!;
 
     expect(result.subtasks.map(t => t.id)).toEqual(['today-2']);
-    expect(result.chain).toEqual({ index: 1, steps: ['Book', 'Go'] });
+    expect(result.chain).toEqual({ index: 1, steps: [{ title: 'Book' }, { title: 'Go' }] });
     expect(result.project).toEqual({ id: 'p1', title: 'Errands' });
   });
 
@@ -464,5 +480,28 @@ describe('serializeTask', () => {
   it('reports blocked separately from merely not being due', () => {
     expect(serializeTask(stubReplica(), task({ id: 'blocked-1', title: 'Waiting' })).blocked).toBe(true);
     expect(serializeTask(stubReplica(), task({ id: 'today-1', title: 'Free' })).blocked).toBeUndefined();
+  });
+});
+
+describe('createTask and updateTask', () => {
+  it('refuses a subtask of a task that does not exist, before writing anything', () => {
+    const r = stubReplica({ taskPatch: () => ({}) });
+    expect(() => createTask(r, { title: 'Child', parentId: 'nope' })).toThrow(/No task with id nope/);
+  });
+
+  it('refuses an edit that changes nothing, and an unknown task', () => {
+    const existing = task({ id: 'today-1', title: 'Here' });
+    const r = withTasks([existing], { taskPatch: () => ({}) });
+    expect(() => updateTask(r, 'today-1', {})).toThrow(/Nothing to change/);
+    expect(() => updateTask(r, 'nope', { notes: 'x' })).toThrow(/No task/);
+  });
+
+  it('says how many later dates of a series took the edit', () => {
+    const existing = task({ id: 'today-1', title: 'Here' });
+    const r = withTasks([existing], {
+      taskPatch: () => ({ notes: 'x' }),
+      updateTask: () => ({ task: existing, alsoUpdated: 2 }),
+    });
+    expect(updateTask(r, 'today-1', { notes: 'x' }).alsoUpdatedLaterDates).toBe(2);
   });
 });
