@@ -156,7 +156,7 @@ const HISTORY_HUB: NavHub = {
   ],
 };
 
-// Mood, Medications and Weight used to sit in History alongside Logbook and
+// Mood, Medications and Weight (Sleep joined later) used to sit in History alongside Logbook and
 // Stats, on the reasoning that all five are "things that already happened" —
 // but a completed task and a mood entry aren't the same kind of history, and
 // the pill row was the widest in the app for it. This groups the health logs
@@ -172,6 +172,7 @@ const HEALTH_HUB: NavHub = {
     { route: 'Mood', label: 'Mood', icon: 'happy-outline', keywords: ['feelings', 'symptoms', 'how i feel'] },
     { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', icon: 'scale-outline', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
+    { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
   ],
 };
 

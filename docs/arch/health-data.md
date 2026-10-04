@@ -2,7 +2,7 @@
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
 the Mood screen's health axis, the Activity rings, the `health` generator, the short-night line
-under "Lighten today", the Weight screen and its chart, and the three things
+under "Lighten today", the Weight screen and its chart, the Sleep screen, and the three things
 this app writes back — a nutrient sample, on completion of a task that opted
 into logging one; a body-mass sample, when somebody records a weight; and a
 meal's nutrition, when somebody adds it to the food log — plus the rules any
@@ -13,7 +13,8 @@ Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthWeightSync.ts`, `src/utils/healthFoodSync.ts`,
 `src/utils/weightLog.ts`, `src/store/useFoodLogStore.ts`,
 `src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
-`src/screens/WeightScreen.tsx`, `healthContextRows` in
+`src/screens/WeightScreen.tsx`, `src/utils/sleepLog.ts`,
+`src/screens/SleepScreen.tsx`, `healthContextRows` in
 `src/utils/dayContextRows.ts` or the health half of
 `src/utils/moodInsights.ts` — and before adding any reader *or writer* of a
 health figure anywhere else. Most of what follows is about what a reader is
@@ -1051,6 +1052,48 @@ person's own target checked against a number they picked, not a candidate for
 "no clear pattern". What the person *ate* does join mood, but from the food log
 rather than from Health (`MoodDay.nutrients`/`foodKeys`, `nutrientInsight`),
 under the thin-day rules in `docs/arch/mood-log.md`.
+
+## The Sleep screen
+
+When somebody fell asleep and woke up, how long each day's sleep added up to,
+and a goal they typed in. The Weight screen's shape throughout: a window read
+on focus (`refreshSleep`, `SLEEP_HISTORY_DAYS`), nothing stored, a range picker
+that only re-slices what was read, and a door to the Health app in place of an
+edit button.
+
+- **The native side hands back episodes, not a pair of times per day.**
+  `readSleepSeries` returns every stretch of sleep that ended in the window,
+  with its start, its end, its minutes asleep and an index for the app that
+  recorded it. Which source wins a day, which episode is the main sleep and
+  which day an episode belongs to are decided in `sleepNights`
+  (`src/utils/sleepLog.ts`), because Swift can't be tested from where the
+  app's logic is. The wire carries an index rather than the bundle identifier,
+  so nothing another developer named is spliced into hand-built JSON.
+- **One grouping rule for both sleep reads.** `readDailyHealth`'s total and
+  `readSleepSeries`' episodes both go through the Swift `sleepEpisodes`
+  helper (an hour awake ends an episode), and `sleepNights` repeats the daily
+  read's per-source-then-largest rule, so the hours on this screen and the
+  hours a health rule fired on are the same number. Change one, change both.
+- **A day's main sleep is the winning source's longest episode.** That is the
+  night for nearly everybody and the nap only on a day with nothing else. A
+  night broken by more than an hour awake is two episodes, so its main stretch
+  is the longer half; the card says what the rest added up to rather than
+  hiding it.
+- **Average clock times are circular means** (`averageClockMinutes`), because
+  the plain average of 11 PM and 1 AM is noon. Times scattered too widely to
+  share an average answer null, shown as a dash, rather than a time no night
+  was near.
+- **The goal is typed in and feeds nothing else** (`sleepGoalMinutes` in the
+  settings store, a row in Settings and a sheet on the screen). It is the
+  carve-out the weight goal makes: a line on the hours chart, "N of M days
+  reached it", and a distance on the most recent card, with no colour, no
+  verdict and no suggested figure. It is not a `HealthRuleMetric`, and
+  reaching it completes nothing.
+- **Still no "last night".** Every label names the day the sleep ended in, for
+  the reason the Mood axis section gives.
+
+Bed and wake times needed nothing added to `readTypes`: they come from the same
+`sleepAnalysis` samples the total was already read from.
 
 ## The generator, and the line under "Lighten today"
 
