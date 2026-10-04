@@ -125,6 +125,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const taskCategories = useCategoryStore(useShallow(s => s.categories));
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+  // Project.eventDate: the day it's all for. Its own row, beside the deadline.
+  const [eventDate, setEventDate] = useState<Date | null>(null);
+  const [showEventPicker, setShowEventPicker] = useState(false);
   // The away span (see Project.awayStart). Held as two dates rather than one
   // range because that is what the columns are, and because the end is
   // optional in a way the start is not.
@@ -229,6 +232,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setDefaultTaskCategory(project.defaultTaskCategory);
     setDefaultTaskCategoryOpen(false);
     setDeadline(project.deadline ? new Date(project.deadline) : null);
+    setEventDate(project.eventDate ? new Date(project.eventDate) : null);
     setAwayStart(project.awayStart ? new Date(project.awayStart) : null);
     setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
     setPickingAway(null);
@@ -316,6 +320,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       category: resolveCategory(),
       defaultTaskCategory,
       deadline: deadline ? deadline.toISOString() : null,
+      // Midday, like the away span, so a time zone can't move it a day.
+      eventDate: eventDate ? awayNoonIso(eventDate) : null,
       // Stored at midday so a flight cannot move either boundary by a calendar
       // day, and the end is dropped without a start because on its own it is
       // indistinguishable from the deadline above. See utils/awayDates.
@@ -356,6 +362,13 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       showChecked,
     });
     if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
+    // The same offer when the event moves: the wedding pushed back a month
+    // takes "license 60 days before" and "thank-you notes after" with it.
+    // Ahead of the deadline, since an event is what the dates are counted from.
+    const priorEvent = project.eventDate ? new Date(project.eventDate) : null;
+    if (priorEvent && eventDate && dayKeyOf(priorEvent) !== dayKeyOf(eventDate)) {
+      return { from: priorEvent, to: eventDate };
+    }
     // The same offer when the deadline moves: a party pushed back a week takes
     // its "a week before" tasks with it. The departure wins when both moved,
     // since a trip's prep is counted from the day you leave.
@@ -429,6 +442,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       category !== project.category ||
       defaultTaskCategory !== project.defaultTaskCategory ||
       iso(deadline) !== (project.deadline ? new Date(project.deadline).toISOString() : null) ||
+      (eventDate ? awayNoonIso(eventDate) : null) !== (project.eventDate ?? null) ||
       (awayStart ? awayNoonIso(awayStart) : null) !== project.awayStart ||
       (awayStart && awayEnd ? awayNoonIso(awayEnd) : null) !== project.awayEnd ||
       (awayStart !== null && awayPauses) !== project.awayPauses ||
@@ -569,7 +583,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     Alert.alert(
       'Saved as a template',
       `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
-        saved.awayStart ? ', dated from the day you leave' : saved.deadline ? ', dated from the deadline' : ''
+        saved.awayStart ? ', dated from the day you leave' : saved.eventDate ? ', dated from the event date' : saved.deadline ? ', dated from the deadline' : ''
       }. Apply it from any project's add button, or from Templates.`,
     );
   };
@@ -627,6 +641,16 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       }
       footer={
         <>
+          <WhenPicker
+            visible={showEventPicker}
+            value={eventDate}
+            title="Event date"
+            showTimeOfDay={false}
+            showSuggest={false}
+            onConfirm={(date) => { setEventDate(date); setShowEventPicker(false); }}
+            onClear={() => { setEventDate(null); setShowEventPicker(false); }}
+            onCancel={() => setShowEventPicker(false)}
+          />
           <WhenPicker
             visible={showDeadlinePicker}
             value={deadline}
@@ -730,10 +754,17 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           sheet was a column of unlabelled cards in the order each field was
           added, with the nudge's own switch floating free of the field it
           belongs to. */}
-      {(!isList || deadline !== null) && (
+      {(!isList || deadline !== null || eventDate !== null) && (
       <>
       <Text style={styles.groupLabel}>Schedule</Text>
       <View style={styles.card}>
+        <EditorRow
+          icon="calendar-outline"
+          label="Event date"
+          value={eventDate ? formatDeadlineDate(eventDate.toISOString()) : undefined}
+          onPress={() => setShowEventPicker(true)}
+          onClear={eventDate ? () => setEventDate(null) : undefined}
+        />
         <EditorRow
           icon="flag-outline"
           label="Deadline"
@@ -747,7 +778,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           "Target date" pair whose first half had one reader in its life (see
           Project.deadline). */}
       <Text style={styles.sectionFooter}>
-        Shown on the project's card and flagged once it passes. It doesn't schedule anything.
+        The event date is the day the project is for, like a wedding or a move. Changing it offers to move the project's dated tasks by the same number of days. The deadline is shown on the project's card and flagged once it passes.
       </Text>
       </>
       )}

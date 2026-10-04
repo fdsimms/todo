@@ -51,6 +51,7 @@ import {
   createTemplate,
   completeTask,
   deferTask,
+  archiveTask,
   addGroceryItem,
   setGroceryChecked,
   removeFromGroceryList,
@@ -68,7 +69,7 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
-import { createProject, getProject, updateProject, type CreateProjectInput } from './projectTools';
+import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
@@ -242,7 +243,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_project',
-    'One project in full: its details, every open task in the project\'s own order (with each one\'s checklist and what it waits on), and the most recently finished. Use it before suggesting what to do next on a project, or before re-scoping one.',
+    'One project in full: its details, every open task in the project\'s own order (with each one\'s checklist and what it waits on), the most recently finished, and every decision: each question a task asked on completion, with its answer and when it was given. Use it before suggesting what to do next on a project, or before re-scoping one.',
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getProject(replica, id));
@@ -359,6 +360,15 @@ const itemSchema = z.object({
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional(),
+  key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
+  deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
+    .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
+  deliverableOptions: z.array(z.string()).optional().describe('For a choice question: the options, at least two.'),
+  onlyIfAnswer: z.object({
+    item: z.string().describe('The key of an item in this plan that asks a Yes/No or choice question.'),
+    answers: z.array(z.string()).min(1),
+  }).optional()
+    .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied.'),
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
@@ -432,8 +442,21 @@ const taskFieldsShape = {
   }).nullable().optional().describe('A time of day to do it in. null removes it.'),
   habit: z.enum(['do', 'avoid']).optional()
     .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),
+  dueDaysFromEvent: z.number().int().optional()
+    .describe('Instead of dueDate: days from the project\'s event date, negative for before ("get the license 60 days before" is -60, "thank-you notes a week after" is 7). Becomes an ordinary date; it does not follow the event later, but moving the event with moveTasks moves it.'),
+  deadlineDaysFromEvent: z.number().int().optional()
+    .describe('Instead of deadline: days from the project\'s event date, as dueDaysFromEvent.'),
+  dueEndOfMonthAfterEvent: z.number().int().min(0).optional()
+    .describe('Instead of dueDate: the last day of a month counted from the event\'s, 0 for the event\'s own month and 1 for the month after ("update records by the end of the month after" is 1).'),
+  deadlineEndOfMonthAfterEvent: z.number().int().min(0).optional()
+    .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
     .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
+  onlyIfAnswer: z.object({
+    taskId: z.string().describe('A task that asks a Yes/No or pick-one question when completed.'),
+    answers: z.array(z.string()).min(1).describe('The answers that show this task, spelled as the question offers them.'),
+  }).nullable().optional()
+    .describe('A branch: this task waits until that question is answered, then shows only for these answers. Any other answer marks it not needed: off every list and out of the project\'s count. A task waiting only on not-needed tasks is not needed too. null removes it.'),
   followUp: z.object({
     everyN: z.number().int().describe('2 to 99.'),
     title: z.string(),
@@ -566,6 +589,22 @@ function registerWriteTools(
   );
 
   server.tool(
+    'archive_task',
+    'Archive a task, taking it off every list and out of its project, or restore one with archived: false. This is how to undo a task you created by mistake: there is no delete, and an archived task can always be restored here or in the app. Archiving unpins it; restoring a repeating task starts its streak over, as the app does.',
+    {
+      id: z.string().min(1),
+      archived: z.boolean().optional().describe('false restores an archived task. Defaults to true.'),
+    },
+    async ({ id, archived }) => {
+      try {
+        return json(await withWrite(() => archiveTask(replica, id, archived ?? true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not archive the task.' });
+      }
+    }
+  );
+
+  server.tool(
     'add_grocery_item',
     "Put something on the home grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
@@ -613,6 +652,11 @@ function registerWriteTools(
     subtasks: z.array(z.string()).optional().describe('A checklist under this step.'),
     after: z.array(z.number().int().min(0)).optional()
       .describe('Positions (from 0) of earlier steps in this plan that must be done first. The step stays hidden until they are.'),
+    onlyIfAnswerTo: z.object({
+      step: z.number().int().min(0).describe('Position (from 0) of an earlier step in this plan that asks a Yes/No or pick-one question.'),
+      answers: z.array(z.string()).min(1),
+    }).optional()
+      .describe('onlyIfAnswer for a question in this same plan, which has no id yet.'),
   });
 
   server.tool(
@@ -622,6 +666,7 @@ function registerWriteTools(
       title: z.string().min(1),
       notes: z.string().optional(),
       deadline: z.string().nullable().optional().describe('ISO date to finish by. Shown on the project; schedules nothing.'),
+      eventDate: z.string().nullable().optional().describe('ISO date of the day the project is for: the wedding, the move, the party. Separate from the deadline, since work happens on both sides of it. Steps can be dated from it with dueDaysFromEvent.'),
       category: z.string().nullable().optional().describe('A project category, for grouping on the Projects page.'),
       defaultTaskCategory: z.string().nullable().optional().describe('A task category every step gets unless it names its own.'),
       kind: z.enum(['project', 'list']).optional(),
@@ -637,22 +682,41 @@ function registerWriteTools(
   );
 
   server.tool(
+    'add_project_steps',
+    'Add several steps to a project that already exists, in one go: each a full task, with its checklist and what it waits on. "after" names earlier steps in this same batch by position; "waitsOn" names tasks already in the app by id. Everything is checked first and written together, so a problem adds nothing and lists every issue. The result is the project as get_project shows it, plus the ids of the steps added (archive_task takes any of them back).',
+    {
+      projectId: z.string().min(1),
+      steps: z.array(planStep).min(1),
+    },
+    async ({ projectId, steps }) => {
+      try {
+        return json(await withWrite(() => addProjectSteps(replica, projectId, steps as ProjectPlanStepInput[])));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the steps.' });
+      }
+    }
+  );
+
+  server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes or deadline, re-file it, mark it complete, or archive it. Its tasks are not touched; add steps with create_task (projectId) and edit them with update_task.',
+    'Change a project: rename it, edit its notes, deadline or event date, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
       notes: z.string().optional(),
       deadline: z.string().nullable().optional(),
+      eventDate: z.string().nullable().optional().describe('The day the project is for. Changing it leaves the tasks where they are unless moveTasks is set.'),
+      moveTasks: z.boolean().optional().describe('With a new eventDate: move the project\'s dated tasks by the same number of days, as the app offers when the date is changed there. Ask the user first. Pinned, urgent and some other tasks are left in place and listed under notMoved.'),
+      moveTasksFrom: z.string().optional().describe('Move the dated tasks after the event date has already been changed: the old event date. They move by the days from it to the event date now.'),
       category: z.string().nullable().optional(),
       defaultTaskCategory: z.string().nullable().optional(),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
     },
-    async ({ id, ...patch }) => {
+    async ({ id, moveTasks, moveTasksFrom, ...patch }) => {
       try {
-        return json(await withWrite(() => updateProject(replica, id, patch)));
+        return json(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
       }

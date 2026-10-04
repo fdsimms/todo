@@ -112,6 +112,20 @@ export interface TaskFieldsInput {
   dueDate?: string | null;
   deferUntil?: string | null;
   deadline?: string | null;
+  /**
+   * Days from the project's event date (negative is before), resolved into
+   * `dueDate` / `deadline` by the replica, which knows the project. Never
+   * stored as an offset: see Project.eventDate.
+   */
+  dueDaysFromEvent?: number;
+  deadlineDaysFromEvent?: number;
+  /**
+   * The last day of a month counted from the event's own: 0 is the end of the
+   * event's month, 1 the end of the month after. For "update records by the
+   * end of the month after", which a count of days can't say.
+   */
+  dueEndOfMonthAfterEvent?: number;
+  deadlineEndOfMonthAfterEvent?: number;
   reminderTime?: string | null;
   timeSegments?: TimeOfDay[];
   priority?: number;
@@ -127,6 +141,8 @@ export interface TaskFieldsInput {
   window?: WindowInput | null;
   habit?: 'do' | 'avoid';
   waitsOn?: string[];
+  /** Shown only if that task's question gets one of these answers; null removes it. */
+  onlyIfAnswer?: { taskId: string; answers: string[] } | null;
   followUp?: FollowUpInput | null;
 }
 
@@ -139,6 +155,8 @@ export interface TaskFieldsResult {
   patch: Partial<Task>;
   /** Blocker ids, for the replica to check and write. Absent when not given. */
   waitsOn?: string[];
+  /** An answer gate, for the replica to check against the question and write. Absent when not given or cleared. */
+  onlyIfAnswer?: { taskId: string; answers: string[] };
   errors: string[];
 }
 
@@ -407,7 +425,31 @@ export function taskFieldsPatch(
     if (current && waitsOn.includes(current.id)) errors.push('A task cannot wait on itself.');
   }
 
-  return { patch, ...(waitsOn ? { waitsOn } : {}), errors };
+  // ---- answer gate ----------------------------------------------------------
+  let onlyIfAnswer: { taskId: string; answers: string[] } | undefined;
+  if (input.onlyIfAnswer === null) patch.answerGate = null;
+  else if (input.onlyIfAnswer !== undefined) {
+    const answers = [...new Set((input.onlyIfAnswer.answers ?? []).map(a => (typeof a === 'string' ? a.trim() : '')).filter(Boolean))];
+    if (!input.onlyIfAnswer.taskId) errors.push('onlyIfAnswer needs the taskId of the task asking the question.');
+    else if (current && input.onlyIfAnswer.taskId === current.id) errors.push('A task cannot depend on its own answer.');
+    if (answers.length === 0) errors.push('onlyIfAnswer needs at least one answer: with none, every answer would rule the task out.');
+    onlyIfAnswer = { taskId: input.onlyIfAnswer.taskId, answers };
+  }
+
+  return { patch, ...(waitsOn ? { waitsOn } : {}), ...(onlyIfAnswer ? { onlyIfAnswer } : {}), errors };
+}
+
+/**
+ * A project's event date as stored: midday on the named day (Project.eventDate),
+ * or null when it can't be read. A bare "2027-06-14" is that calendar day where
+ * the app is, not midnight UTC, which west of Greenwich is the day before.
+ */
+export function eventNoonIso(input: string): string | null {
+  const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.trim());
+  const d = bare ? new Date(Number(bare[1]), Number(bare[2]) - 1, Number(bare[3])) : new Date(input);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString();
 }
 
 /** How a repeat rule reads, for `get_task`. Null when the task doesn't repeat. */

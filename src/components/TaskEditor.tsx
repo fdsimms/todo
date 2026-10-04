@@ -46,7 +46,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, NutrientKey, MealSlot } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, NutrientKey, MealSlot, AnswerGate } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -112,7 +112,7 @@ import {
   supplyRunOutDate,
 } from '../utils/supply';
 import { CategoryPickerList } from './CategoryPicker';
-import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
+import { deliverableMeta, deliverableOptionsFor, parseDeliverableOptions } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
 import { SheetHeader } from './SheetHeader';
@@ -594,6 +594,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // for all of them (Task.blockedByIds); stored through blockerFields on save.
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
   const [showBlockers, setShowBlockers] = useState(false);
+  // "Only if <question> is answered …" (Task.answerGate). Held whole while
+  // editing; a gate left with no answers ticked is dropped on save, since it
+  // would rule the task out whatever the answer.
+  const [answerGate, setAnswerGate] = useState<AnswerGate | null>(null);
+  const [showAnswerGate, setShowAnswerGate] = useState(false);
+  const [showAnswerGatePicker, setShowAnswerGatePicker] = useState(false);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   // Task.followUpOn: the day to chase the wait, held as a date while editing.
   const [followUpOn, setFollowUpOn] = useState<Date | null>(null);
@@ -626,6 +632,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
+  // The question the gate rides on, for its title and the answers it offers.
+  const gateQuestion = useTaskStore(s => (answerGate ? s.tasks.find(t => t.id === answerGate.taskId) ?? null : null));
+  const gateOptions = useMemo(() => {
+    const offered = gateQuestion ? deliverableOptionsFor(gateQuestion) : [];
+    // An answer ticked before the question's options were edited stays on
+    // screen, so it can be seen and taken off rather than silently kept.
+    const stale = (answerGate?.answers ?? []).filter(a => !offered.some(o => o.toLowerCase() === a.toLowerCase()));
+    return [...offered, ...stale];
+  }, [gateQuestion, answerGate]);
   const blockerTitles = useTaskStore(useShallow(s => blockerIds.map(id => {
     const t = s.tasks.find(x => x.id === id);
     return t ? displayTitleFor(t) : '';
@@ -925,6 +940,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setLocation(task.location ?? null);
       setBlockerIds(blockerIdsOf(task));
       setShowBlockers(false);
+      setAnswerGate(task.answerGate ?? null);
+      setShowAnswerGate(false);
       setWaitingOnPersonId(task.waitingOnPersonId ?? null);
       setFollowUpOn(task.followUpOn ? dayKeyToDate(task.followUpOn) : null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
@@ -988,6 +1005,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setLocation(initialDraft?.location ?? null);
       setBlockerIds(initialDraft?.blockerIds ?? []);
       setShowBlockers(false);
+      setAnswerGate(null);
+      setShowAnswerGate(false);
       setWaitingOnPersonId(null);
       setFollowUpOn(null);
       setBlocksIds([]);
@@ -1119,6 +1138,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
       blockerIds: task ? blockerIdsOf(task) : (initialDraft?.blockerIds ?? []),
+      answerGate: task?.answerGate ?? null,
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
       followUpOn: task?.followUpOn ?? null,
       deliverableKind: task?.deliverableKind ?? null,
@@ -1592,6 +1612,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
       ...blockerFields(blockerIds),
+      answerGate: answerGate && answerGate.answers.length > 0 ? answerGate : null,
       waitingOnPersonId,
       // Only while waiting: the day is when to chase *this* wait.
       followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
@@ -2216,6 +2237,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       emailAddress,
       location,
       blockerIds,
+      answerGate,
       waitingOnPersonId,
       followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
       deliverableKind,
@@ -2788,6 +2810,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             excludeIds={blocksExcludeIds}
             onClose={() => setShowBlockerPicker(false)}
             onSelect={id => setBlockerIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
+          />
+          <TaskRelationPickerSheet
+            relation="answer"
+            visible={showAnswerGatePicker}
+            taskId={task?.id ?? null}
+            context={{ groupId, projectId: project, category }}
+            onClose={() => setShowAnswerGatePicker(false)}
+            // A new question starts with nothing ticked: which answers show
+            // this task is the next thing to say, and the row opens to say it.
+            onSelect={id => {
+              setAnswerGate(prev => (prev?.taskId === id ? prev : { taskId: id, answers: [] }));
+              setShowAnswerGate(true);
+            }}
           />
           <TaskRelationPickerSheet
             relation="blocks"
@@ -5265,6 +5300,75 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // A branch: shown only for some answers to another task's question.
+          // Beside "Waiting on" because until the question is answered it is
+          // exactly that; see Task.answerGate for what happens after.
+          {
+            key: 'answerGate', label: 'Only if', set: !!answerGate,
+            keywords: ['answer', 'branch', 'decision', 'question', 'condition', 'if', 'choice', 'not needed'],
+            node: (
+              <>
+            <EditorRow
+              icon="git-branch-outline"
+              label="Only if"
+              hint="Show this task only if another task's question gets one of the answers you pick. Any other answer marks it not needed."
+              value={answerGate
+                ? `${gateQuestion ? displayTitleFor(gateQuestion) : 'Task no longer exists'}${answerGate.answers.length > 0 ? `: ${answerGate.answers.join(' or ')}` : ''}`
+                : undefined}
+              expanded={answerGate ? showAnswerGate : undefined}
+              onPress={() => {
+                if (!answerGate) { setShowAnswerGatePicker(true); return; }
+                animateLayout();
+                setShowAnswerGate(v => !v);
+              }}
+              onClear={answerGate
+                ? () => { animateLayout(); setAnswerGate(null); setShowAnswerGate(false); }
+                : undefined}
+            />
+            {showAnswerGate && answerGate && (
+              <View style={styles.blocksBlock}>
+                <Text style={styles.answerGateLabel}>
+                  {gateOptions.length > 0 ? 'Show this task when the answer is:' : 'That task no longer asks a Yes/No or Pick one question.'}
+                </Text>
+                <View style={styles.pillRow}>
+                  {gateOptions.map(option => {
+                    const active = answerGate.answers.some(a => a.toLowerCase() === option.toLowerCase());
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.pill, styles.answerGatePill, active && styles.pillActiveNeutral]}
+                        onPress={() => {
+                          haptics.tap();
+                          setAnswerGate(prev => prev && ({
+                            ...prev,
+                            answers: active
+                              ? prev.answers.filter(a => a.toLowerCase() !== option.toLowerCase())
+                              : [...prev.answers, option],
+                          }));
+                        }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: active }}
+                        accessibilityLabel={`Show when the answer is ${option}`}
+                      >
+                        {active && <Ionicons name="checkmark" size={iconSize.xs} color={colors.text} />}
+                        <Text style={[styles.pillText, active && styles.pillTextActive]}>{option}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <InlineAction
+                  icon="swap-horizontal"
+                  label="Pick another question"
+                  variant="neutral"
+                  onPress={() => setShowAnswerGatePicker(true)}
+                  style={styles.addBtnSpacing}
+                />
+              </View>
+            )}
+              </>
+            ),
+          },
           // The same pointer with a person on the other end (#2087), so it sits
           // directly under the task one rather than in the People group: both
           // answer "what is holding this back", and separating them by which
@@ -6710,6 +6814,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   blocksTitle: { flex: 1, color: colors.text, fontSize: font.md },
   blocksRemove: { padding: 4 },
+  answerGateLabel: { color: colors.textSecondary, fontSize: font.sm, marginBottom: spacing.sm },
+  answerGatePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
     paddingHorizontal: spacing.smd, minHeight: interaction.pillHeight,

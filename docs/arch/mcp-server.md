@@ -411,6 +411,28 @@ and the debounced AI aisle classification a row landing in Other triggers. The l
 with teeth and the right call regardless: it is a network request to Anthropic on the user's key,
 and a server making them because a model added milk is not a thing to do unasked.
 
+### Planning a project over several conversations
+
+A project scoped with Claude is rarely written once. Four tools exist for coming back to one:
+
+- **`add_project_steps`** is `create_project`'s step writer pointed at a project that already
+  exists: one call, validated in full first, written in one transaction. `after` counts over the
+  batch; `waitsOn` names tasks already there.
+- **`archive_task`** is the undo, and **there is deliberately no delete**. An archived row can be
+  restored here or in the app; a deleted one cannot, and the model is the one deciding what to
+  remove. It is the app's own `archiveTask` / `unarchiveTask` (unpin; restoring breaks the streak).
+- **`get_project` lists `decisions`**: `projectDecisions`, the same read as the Decisions block
+  on the project's page, so an answer given months ago can be read back without paging the
+  Logbook.
+- **`onlyIfAnswer`** (and `onlyIfAnswerTo` inside a plan) writes `Task.answerGate`, and
+  **`dueDaysFromEvent`** (or `dueEndOfMonthAfterEvent`, for "by the end of the month after")
+  dates a task from `Project.eventDate`. `create_template` items take a `key` and an
+  `onlyIfAnswer` naming another item's key, which becomes `TemplateItem.answerGate`. The second is resolved into an
+  ordinary date at write time, never stored as an offset (docs/arch/away-dates.md has the reason).
+  Moving the event is `update_project` with `moveTasks`, the app's own shift offer
+  (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since
+  nobody is there to tick it. Without `moveTasks` it moves nothing and says so.
+
 ### Writes have their own token
 
 `MCP_WRITE_TOKEN`, separate from `MCP_AUTH_TOKEN`. The write token buys both scopes so one

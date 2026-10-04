@@ -397,6 +397,18 @@ It is a pure planner emitting `{ id, updates }[]`, applied under one undo entry.
   not move at all. `deloadBlockerFor`'s hard/soft split is the existing
   vocabulary for "cannot move" versus "movable but unchecked".
 
+The same offer is made when a project's deadline moves, and when its event date
+(`Project.eventDate`, the wedding or the move a project is for) does; the event
+wins over the deadline when both moved, and a departure wins over both. The
+planner never knew it was about a trip.
+
+A deadline written on a task moves by the same days as its date, and a task
+with a deadline but no date is offered on the deadline alone ("license by the
+1st" is counted from the event as much as "book the venue" is). A deadline
+worked out from the due date (`deadlineOffsetDays`, `deadlineMonthDay`) is left
+to follow it. `shiftDateOf` is the one read of which date a row moves by, so
+the sheet's "has no date" count can't disagree with the plan.
+
 ### Why the offsets are not stored on the task
 
 The exact fix is `Task.awayOffsetDays` plus an anchor, so a shift is arithmetic

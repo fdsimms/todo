@@ -1,6 +1,7 @@
 import type { Project, Task, TaskGroup } from '../types';
 import {
   fuzzySearch,
+  ranksAsActive,
   searchGroups,
   searchProjects,
   type SearchResult,
@@ -78,7 +79,7 @@ export function quickSearch(
     heldIds
   );
 
-  const active = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
+  const active = (r: SearchResult) => ranksAsActive(r.task, heldIds);
   const orderedTasks = [
     ...taskMatches.filter(active),
     ...taskMatches.filter(r => !active(r)),

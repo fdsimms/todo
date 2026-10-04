@@ -1034,6 +1034,26 @@ export interface Project {
    * never written, the way `task_groups.completed_at` does.
    */
   deadline: string | null;
+  /**
+   * The day the project is built around: the wedding, the move, the party.
+   * Stored at noon, like `awayStart`. Null on almost every project.
+   *
+   * Deliberately separate from `deadline`, which means "finish by" and is
+   * flagged once it passes. Work is planned on both sides of an event
+   * (thank-you notes, changing your name), so an event used as a deadline
+   * reads as overdue the day after it happens.
+   *
+   * What it does, so it isn't the decoration `targetStartDate` was (see
+   * above): it is shown on the project, moving it offers to move the
+   * project's dated tasks by the same number of days (`AwayShiftSheet`, the
+   * offer a moved departure or deadline already makes), a template saved from
+   * the project counts its days from it, and the MCP server can date a task
+   * "60 days before the event". The offsets are not stored on the task, for
+   * the reason docs/arch/away-dates.md gives for trip offsets.
+   *
+   * Optional so a row built before the field existed still type-checks.
+   */
+  eventDate?: string | null;
   // Name of a ProjectCategory, purely for grouping projects on the Projects
   // page. Independent of task Category — never affects the tasks inside the
   // project (their own categories, visibility, etc. are untouched).
@@ -2040,6 +2060,14 @@ export type GeneratedKind =
   // `blocksOnFinished`.
   | 'waterShortfall';
 
+/** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */
+export interface AnswerGate {
+  /** The task whose question decides it. */
+  taskId: string;
+  /** The answers that open it, as the question's own option text. */
+  answers: string[];
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -2662,6 +2690,26 @@ export interface Task {
    * reader goes through `blockerIdsOf`, which treats a missing list as empty.
    */
   blockedByIds?: string[];
+
+  /**
+   * Shown only if another task's question gets one of these answers: "Book
+   * City Hall" only if "Ceremony format?" is answered "City Hall". Null on
+   * almost every task.
+   *
+   * Until the question is answered the task waits on it exactly as it would
+   * on a blocker. Once it is, the task is either free (a listed answer) or
+   * *not needed* (any other), and a not-needed task is off every list and out
+   * of its project's count. Both are derived from the question's row, never
+   * stored, so correcting an answer swaps the branches back by itself; the
+   * rules, including how "not needed" spreads to tasks that only wait on it,
+   * are `isNotNeeded` in `src/utils/blocking.ts`.
+   *
+   * Only a 'choice' or 'yesno' question can gate, since those are the ones
+   * whose answers are a fixed set to pick from.
+   *
+   * Optional so a row built before the field existed still type-checks.
+   */
+  answerGate?: AnswerGate | null;
 
   /**
    * Somebody you are waiting on — "Waiting on Gideon to send the photos"
@@ -3593,6 +3641,12 @@ export interface TemplateQuestion {
   fromDates: TemplateQuestionSource;
 }
 
+/** A template item's answer gate: the item that asks, and the answers that show this one. See `TemplateItem.answerGate`. */
+export interface TemplateAnswerGate {
+  itemId: string;
+  answers: string[];
+}
+
 // "Only include this item when the answer is one of these."
 //
 // Values are matched against the answer as strings, OR within one condition
@@ -3760,6 +3814,19 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+
+  /**
+   * `Task.answerGate` before there is a task: "only if <another item in this
+   * template> is answered one of these". The item is named by its id, which
+   * is stable for exactly this kind of reference, and `applyTemplate` points
+   * the gate at the task that item became. Dropped at apply time when that
+   * item wasn't ticked, since a gate on a question nobody will be asked would
+   * hold the task back for good. Optional: absent on every older template.
+   *
+   * Different from `conditions`, which decide what's *ticked* in the apply
+   * sheet from an answer given then; this waits for an answer given later.
+   */
+  answerGate?: TemplateAnswerGate | null;
 
   // When set, this item is a reference to another template rather than a
   // real task — it expands into that template's own items at apply time.

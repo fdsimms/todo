@@ -6,6 +6,7 @@
 import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type {
+  TemplateAnswerGate,
   TaskDraft,
   TaskTemplate,
   TemplateAnchor,
@@ -89,9 +90,19 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     conditions: normalizeConditions(raw.conditions),
+    answerGate: normalizeItemGate(raw.answerGate),
     refTemplateId: raw.refTemplateId ?? null,
     refTemplateName: raw.refTemplateName ?? '',
   };
+}
+
+/** A stored item gate, or null for anything that isn't one (or has no answers left to open on). */
+function normalizeItemGate(raw: unknown): TemplateAnswerGate | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { itemId, answers } = raw as Partial<TemplateAnswerGate>;
+  if (typeof itemId !== 'string' || !itemId || !Array.isArray(answers)) return null;
+  const kept = answers.filter((a): a is string => typeof a === 'string' && a.trim() !== '');
+  return kept.length > 0 ? { itemId, answers: kept } : null;
 }
 
 /** Drop anything that isn't a `{questionId, values[]}` pair — the same tolerance normalizeTemplateItem gives every other field, since these ride in the same blob. */

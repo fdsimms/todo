@@ -118,6 +118,20 @@ describe('awayShiftUpdates', () => {
     expect(updates.deferUntil).toBeNull();
   });
 
+  it('moves a deadline written on the row by the same days, with or without a due date', () => {
+    const dated = shift([task({ dueDate: iso(2026, 6, 5), deadline: iso(2026, 6, 8) })]);
+    expect(awayShiftUpdates(dated.proposals[0])).toMatchObject({ dueDate: iso(2026, 6, 7), deadline: iso(2026, 6, 10) });
+    // A deadline and no day: it's still counted from the event, so it's offered.
+    const deadlineOnly = shift([task({ deadline: iso(2026, 5, 1) })]);
+    expect(deadlineOnly.proposals).toHaveLength(1);
+    expect(awayShiftUpdates(deadlineOnly.proposals[0])).toEqual({ deadline: iso(2026, 5, 3) });
+  });
+
+  it('leaves a deadline worked out from the due date to follow it', () => {
+    const plan = shift([task({ dueDate: iso(2026, 6, 5), deadline: iso(2026, 6, 3), deadlineOffsetDays: 2 })]);
+    expect(awayShiftUpdates(plan.proposals[0])).not.toHaveProperty('deadline');
+  });
+
   it('defers a recurring member pushed out, leaving its grid alone', () => {
     const plan = shift([task({ dueDate: iso(2026, 6, 5), recurrenceType: 'daily' })]);
     expect(awayShiftUpdates(plan.proposals[0])).toEqual({ deferUntil: iso(2026, 6, 7) });

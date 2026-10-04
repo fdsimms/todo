@@ -1,4 +1,5 @@
-import { fuzzySearch, mergeRanges, searchGroups, searchProjects } from '../utils/fuzzySearch';
+import { fuzzySearch, mergeRanges, ranksAsActive, searchGroups, searchProjects } from '../utils/fuzzySearch';
+import { registerTaskSource } from '../utils/blockerRegistry';
 import type { Project, Task, TaskGroup } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -457,6 +458,21 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   onToday: false,
   projectId: null,
   ...overrides,
+});
+
+describe('a task on a branch that was not taken', () => {
+  const question = makeTask({ id: 'q', title: 'Venue?', completed: true, deliverableKind: 'choice', deliverableOptions: ['Hall', 'Park'], deliverableValue: 'Park' });
+  const hall = makeTask({ id: 'h', title: 'Book the hall venue', answerGate: { taskId: 'q', answers: ['Hall'] } });
+  const park = makeTask({ id: 'p', title: 'Permit for the park venue', answerGate: { taskId: 'q', answers: ['Park'] } });
+  beforeEach(() => registerTaskSource(() => [question, hall, park]));
+  afterEach(() => registerTaskSource(null));
+
+  it('ranks below live work, like a completed one', () => {
+    expect(ranksAsActive(hall, new Set())).toBe(false);
+    expect(ranksAsActive(park, new Set())).toBe(true);
+    const ids = fuzzySearch([hall, park], 'venue').map(r => r.task.id);
+    expect(ids.indexOf('p')).toBeLessThan(ids.indexOf('h'));
+  });
 });
 
 describe('searchGroups', () => {
