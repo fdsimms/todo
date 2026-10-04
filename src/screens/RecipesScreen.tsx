@@ -621,7 +621,9 @@ export function RecipesScreen() {
     if (recipe) {
       if (mealType !== null) setMealType(recipe.id, mealType);
       haptics.success();
-      navigation.navigate('RecipeDetail', { recipeId: recipe.id });
+      // Into the details sheet, since that's where everything but the
+      // ingredients and steps is set (#1754).
+      navigation.navigate('RecipeDetail', { recipeId: recipe.id, openDetails: Date.now() });
       return;
     }
     // The only way addRecipe refuses a non-empty name is one already filed

@@ -132,7 +132,7 @@ type RootStackParamList = {
    * same for MealPlanEntry.recipeScale. Seed only: nothing picked here is
    * written back to the entry.
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number; openCookMode?: number };
+  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number; openCookMode?: number; openDetails?: number };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -405,6 +405,21 @@ export function RecipeDetailScreen() {
   const [noteDraft, setNoteDraft] = useState('');
   const stepInputRef = useRef<TextInput>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  /**
+   * `openDetails` (route.params) is how a recipe just created from a bare name
+   * arrives: straight into "Recipe details", since servings, tags, times,
+   * source and notes are only edited there and a new recipe has none of them
+   * yet (#1754). A stamp compared against the last one handled, the same
+   * handoff `openCookMode` uses below, so it opens once rather than on every
+   * render. Imported and invented recipes don't pass it: they arrive filled in.
+   */
+  const openDetailsStamp = route.params.openDetails;
+  const [handledDetailsStamp, setHandledDetailsStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openDetailsStamp === undefined || openDetailsStamp === handledDetailsStamp) return;
+    setHandledDetailsStamp(openDetailsStamp);
+    setEditorVisible(true);
+  }, [openDetailsStamp, handledDetailsStamp]);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
