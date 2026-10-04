@@ -27,7 +27,9 @@ How the app thinks about time:
 How tasks behave:
 - Completing a repeating task finishes this occurrence and creates the next one. Old occurrences stay as history, so one habit has many completed rows.
 - A task can ask a question when it is completed (asksOnCompletion). Ask the person for the answer before calling complete_task. Pass deliverableValue: null only if they choose to skip it.
-- A "don't do this" habit cannot be completed, and a blocked task is waiting on another task or a person.
+- A "don't do this" habit cannot be completed, and a blocked task is waiting on another task or a person (get_task names them).
+- A task with missed: true is an occurrence marked missed. It also reads completed, but it is not a completion. A task with generatedBy was written by the app, not by the person.
+- Before completing a task, check get_task's onCompletion: completing it also writes a medication, Health or meal entry, so say so rather than completing it casually.
 - Chains move through steps one at a time; a dated series is one task on several dates; a stack groups tasks on Today; a project can be a list with no finish line.
 
 Results about one thing carry openInApp, a link that opens it in the app on their phone. After creating or changing something, offer it as a markdown link such as [Open in dundundun](openInApp), once, at the end of your reply.
