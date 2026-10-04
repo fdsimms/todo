@@ -20,9 +20,21 @@
 import express, { type Request, type Response } from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import {
+  InvalidGrantError,
+  InvalidRequestError,
+  InvalidTargetError,
+  InvalidTokenError,
+  type OAuthError,
+} from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 
-import { authorize, scopeFor, type AuthScope } from './auth';
+import { authorize, bearerToken, scopeFor, type AuthScope } from './auth';
+import { oauthConfigProblem, openOAuthStore, OAuthRefusal, SCOPE_READ, SCOPE_WRITE, type OAuthClient, type OAuthStore } from './oauth';
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
 import { createSyncGate, READ_WAIT_MS, type SyncGate } from './syncGate';
@@ -479,6 +491,117 @@ function mountSyncStore(app: express.Express, store: SyncStore): void {
   if (pruned > 0) console.error(`sync store: pruned ${pruned} payloads past ${DEFAULT_RETENTION_DAYS} days`);
 }
 
+
+/** An OAuthRefusal as the SDK error class the token endpoint reports. */
+function sdkError(e: unknown): unknown {
+  if (!(e instanceof OAuthRefusal)) return e;
+  const byCode: Record<OAuthRefusal['code'], new (message: string) => OAuthError> = {
+    invalid_grant: InvalidGrantError,
+    invalid_token: InvalidTokenError,
+    invalid_request: InvalidRequestError,
+    invalid_target: InvalidTargetError,
+  };
+  return new byCode[e.code](e.message);
+}
+
+const rethrown = <T>(fn: () => T): Promise<T> => {
+  try {
+    return Promise.resolve(fn());
+  } catch (e) {
+    return Promise.reject(sdkError(e));
+  }
+};
+
+/** oauth.ts's store as the SDK's provider. Mapping only; the rules are there. */
+function oauthProvider(store: OAuthStore): OAuthServerProvider {
+  const asClient = (c: OAuthClientInformationFull) => c as unknown as OAuthClient;
+  return {
+    clientsStore: {
+      getClient: id => store.getClient(id) as OAuthClientInformationFull | undefined,
+      registerClient: client => store.registerClient(client as never) as unknown as OAuthClientInformationFull,
+    },
+    async authorize(client, params, res) {
+      // The page posts to /oauth/approve, which checks the password.
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.type('html').send(
+        store.approvalPage({
+          client: asClient(client),
+          redirectUri: params.redirectUri,
+          codeChallenge: params.codeChallenge,
+          state: params.state,
+          resource: params.resource,
+        })
+      );
+    },
+    challengeForAuthorizationCode: (client, code) => rethrown(() => store.challengeForAuthorizationCode(asClient(client), code)),
+    exchangeAuthorizationCode: (client, code, _verifier, redirectUri, resource) =>
+      rethrown(() => store.exchangeAuthorizationCode(asClient(client), code, redirectUri, resource)),
+    exchangeRefreshToken: (client, refreshToken, scopes, resource) =>
+      rethrown(() => store.exchangeRefreshToken(asClient(client), refreshToken, scopes, resource)),
+    verifyAccessToken: token => rethrown(() => store.verifyAccessToken(token)),
+    revokeToken: (client, request) => rethrown(() => store.revokeToken(asClient(client), request.token)),
+  };
+}
+
+/**
+ * Mounts OAuth when it is configured, and returns the store for /mcp to check
+ * tokens against, or null when the chat connector is off.
+ */
+function mountOAuth(app: express.Express): { store: OAuthStore; resourceMetadataUrl: string } | null {
+  const problem = oauthConfigProblem(process.env.MCP_OAUTH_PASSWORD, process.env.PUBLIC_URL);
+  if (problem) {
+    console.error(problem);
+    return null;
+  }
+  const base = new URL(process.env.PUBLIC_URL!);
+  const resource = new URL('/mcp', base);
+  const store = openOAuthStore(process.env.OAUTH_STORE_PATH ?? ':memory:', {
+    password: process.env.MCP_OAUTH_PASSWORD!,
+    writesEnabled: !!process.env.MCP_WRITE_TOKEN,
+    resource,
+  });
+  if (!process.env.OAUTH_STORE_PATH) console.error('OAUTH_STORE_PATH is unset: chat connections will not survive a restart.');
+
+  app.use(
+    mcpAuthRouter({
+      provider: oauthProvider(store),
+      issuerUrl: base,
+      resourceServerUrl: resource,
+      scopesSupported: [SCOPE_READ, SCOPE_WRITE],
+      resourceName: 'dundundun',
+      // Never expire a registered client's secret: the chat would have to be
+      // reconnected by hand every 30 days for no gain, since the password is
+      // what actually guards the door.
+      clientRegistrationOptions: { clientSecretExpirySeconds: 0 },
+    })
+  );
+
+  // The password form. Rate limited hard, since it is the one thing a guesser
+  // can aim at.
+  app.post(
+    '/oauth/approve',
+    rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false }),
+    express.urlencoded({ extended: false }),
+    (req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+      res.setHeader('X-Frame-Options', 'DENY');
+      const result = store.approve(req.body ?? {});
+      if (result.ok) {
+        res.redirect(302, result.redirect);
+      } else if (result.pending) {
+        res.status(result.status).type('html').send(store.approvalPage(result.pending, result.error));
+      } else {
+        res.status(result.status).type('text').send(result.error);
+      }
+    }
+  );
+
+  console.error(`Claude chat connector: add ${resource.href} as a custom connector.`);
+  return { store, resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resource) };
+}
+
 async function main(): Promise<void> {
   const dbPath = process.env.TODO_DB_PATH;
   if (!dbPath) {
@@ -492,6 +615,10 @@ async function main(): Promise<void> {
   const replica = openReplica(dbPath);
 
   const app = express();
+  // Behind Fly's proxy, which is the one hop that sets X-Forwarded-For. The
+  // OAuth rate limits key on the caller's address and would otherwise see
+  // every request as coming from the proxy.
+  app.set('trust proxy', 1);
   // Payloads are whole change sets, so the default 100kb body limit is too
   // small for a device catching up after a long offline stretch.
   app.use(express.json({ limit: '32mb' }));
@@ -505,13 +632,32 @@ async function main(): Promise<void> {
     mountSyncStore(app, openSyncStore(process.env.SYNC_STORE_PATH));
   }
 
+  const oauth = mountOAuth(app);
+
+  // The static tokens first (Claude Code, curl), then an OAuth access token
+  // (the chat connector). A token that is neither gets the challenge that
+  // points an OAuth client at the metadata, when OAuth is on.
+  const scopeOf = (authorization: string | undefined): AuthScope | null => {
+    const fixed = scopeFor(authorization, process.env.MCP_AUTH_TOKEN, process.env.MCP_WRITE_TOKEN);
+    if (fixed || !oauth) return fixed;
+    const token = bearerToken(authorization);
+    if (!token) return null;
+    try {
+      const verified = oauth.store.verifyAccessToken(token);
+      return verified.scopes.includes(SCOPE_WRITE) && process.env.MCP_WRITE_TOKEN ? 'write' : 'read';
+    } catch {
+      return null;
+    }
+  };
+
   app.post('/mcp', async (req: Request, res: Response) => {
-    const scope = scopeFor(
-      req.header('authorization'),
-      process.env.MCP_AUTH_TOKEN,
-      process.env.MCP_WRITE_TOKEN
-    );
+    const scope = scopeOf(req.header('authorization'));
     if (scope === null) {
+      if (oauth) {
+        res.set('WWW-Authenticate', `Bearer resource_metadata="${oauth.resourceMetadataUrl}"`);
+        res.status(401).json({ error: 'Not authorized.' });
+        return;
+      }
       const verdict = authorize(req.header('authorization'), process.env.MCP_AUTH_TOKEN);
       if (verdict.challenge) res.set('WWW-Authenticate', verdict.challenge);
       res.status(401).json({ error: verdict.reason });

@@ -46,8 +46,9 @@ to deploy to yet.
 
 **`MCP_AUTH_TOKEN` is not optional.** With it unset the server starts and refuses every request,
 which is deliberate: the alternative default is a server that serves an entire task history to
-anyone who asks. The shared secret is a development stand-in for OAuth, not a substitute for it.
-Do not put this on a public address.
+anyone who asks. The shared secrets are for Claude Code and curl; the Claude chat signs in with
+OAuth instead, which is on when `MCP_OAUTH_PASSWORD` (16+ characters) and `PUBLIC_URL` are set
+(`OAUTH_STORE_PATH` keeps its connections across restarts). See `src/oauth.ts` and DEPLOY.md.
 
 ## Tools
 
