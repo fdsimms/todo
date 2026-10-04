@@ -44,6 +44,11 @@ export interface SyncTransport {
    * person's own data on their own device.
    */
   readonly withhold?: SyncWithholding;
+  /**
+   * False for a transport no recipe photo is sent to. Its rows still carry
+   * each photo's path, and a photo it hands back is still written here.
+   */
+  readonly sendsImages?: boolean;
 }
 
 /** Tables, and keys of the `settings` table, held back from a transport. */
@@ -311,7 +316,7 @@ export async function runSync(
   // After the rows, so a peer has the recipe before its photo, and outside
   // the row push's own failure: see `imageProblem`.
   try {
-    imagesSent = await pushImages(transport, local, pushWindow);
+    imagesSent = transport.sendsImages === false ? 0 : await pushImages(transport, local, pushWindow);
     if (imagesSent > 0) pushed = true;
   } catch (e) {
     imageProblem = messageOf(e, 'Could not send recipe photos.');

@@ -622,6 +622,34 @@ describe('recipe photos', () => {
     expect(photos.deletions).toEqual([]);
   });
 
+  it('sends no photo to a transport that takes none, but still sends the rows', async () => {
+    const a = new PhotoDevice('a');
+    a.write('t1', 'Chili', '2026-01-01T00:00:00.000Z');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new FakeCloud();
+    Object.defineProperty(cloud, 'sendsImages', { value: false });
+
+    const result = await runSync(cloud, a);
+
+    expect(result.status).toBe('ok');
+    expect(result.imagesSent).toBe(0);
+    expect(cloud.entries).toHaveLength(1);
+    expect(photoPayloads(cloud)).toEqual([]);
+  });
+
+  it('still writes a photo that a transport taking none hands back', async () => {
+    const a = new PhotoDevice('a');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new FakeCloud();
+    await runSync(cloud, a);
+
+    const b = new PhotoDevice('b');
+    Object.defineProperty(cloud, 'sendsImages', { value: false });
+    const result = await runSync(cloud, b);
+    expect(result.imagesReceived).toBe(1);
+    expect(b.files.get('p1.jpg')).toBe('AAAA');
+  });
+
   it('sends each photo to a transport once, however often the rows change', async () => {
     const a = new PhotoDevice('a');
     a.take('p1.jpg', 'AAAA');

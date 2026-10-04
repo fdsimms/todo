@@ -393,6 +393,19 @@ describe('health logs', () => {
   });
 });
 
+describe('recipe photos', () => {
+  it('go to iCloud but not to the sync server', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ enabled: true, serverUrl: 'https://sync.example.com', serverHealthLogs: true });
+
+    await useSyncStore.getState().syncNow();
+    const [icloud, server] = (runSyncAll as jest.Mock).mock.calls[0][0];
+    expect(icloud.sendsImages).toBeUndefined();
+    expect(server.sendsImages).toBe(false);
+  });
+});
+
 describe('settleHealthLogResend', () => {
   it('rewinds to the very start when nothing was ever sent', () => {
     const { settings, cursors } = storedSettings();
