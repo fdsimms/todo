@@ -1,6 +1,8 @@
 /**
- * What Settings contains, as data — the thirteen groups and one record per
- * searchable row.
+ * What Settings contains, as data — the groups and one record per searchable
+ * row. One group (Automations) lives on a screen of its own in the side menu
+ * rather than behind a row here, and is indexed all the same; see
+ * `SettingsGroup.screen`.
  *
  * This is a *search index*, not a description of the UI. It deliberately
  * carries no control type, no current value and no handler: the rows stay
@@ -80,6 +82,16 @@ export interface SettingsGroup {
    * lives in its own Feature areas group instead.
    */
   kitchenOnly?: boolean;
+  /**
+   * The menu screen this group lives on instead of behind a row in Settings.
+   *
+   * Its rows are still in the index, so a Settings search still finds them and
+   * opening one goes to that screen (`settingsGroupTarget`). What changes is
+   * only that Settings' own list of groups leaves it out
+   * (`settingsIndexGroups`): a row there would be a second door to one page,
+   * and the page is a feature people come back to rather than configuration.
+   */
+  screen?: string;
 }
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
@@ -99,33 +111,31 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'capture', title: 'Reminders & Calendar', icon: 'download-outline', tint: 'green', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
   // Its own group rather than one section of fourteen inside Tasks & projects,
-  // which is where half that screen's rows were. It answers the question the
-  // section's own header comment names as the one people actually have — *what
-  // writes tasks into my list* — and it is the part of Settings that grows every
-  // time a generator ships, so it wants a door of its own rather than a deeper
-  // scroll. Not `kitchenOnly`: most generators have nothing to do with the
-  // kitchen and keep running without it, which is exactly the bug that
-  // hiding them behind the area's gate used to cause.
-  { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
+  // which is where half that screen's rows were. It answers the question people
+  // actually have about these (*what writes tasks into my list*), and it grows
+  // every time a generator ships. It is also no longer in Settings at all: it
+  // is the Automations screen in the side menu, beside Activity's record of
+  // what it did, because it is a feature you come back to rather than
+  // configuration you set once. Not `kitchenOnly`: most generators have nothing
+  // to do with the kitchen and keep running without it, which is exactly the
+  // bug that hiding them behind the area's gate used to cause.
+  { id: 'generated', title: 'Automations', icon: 'sparkles-outline', tint: 'accent', screen: 'Automations' },
   // Not filed with Reminders & Calendar, even though it is the third thing this
   // app reads off the device. That group's own note says the two live together
   // because they share a framework, a platform gate and the same caveat, and
   // this shares none of them: EventKit tells you plainly whether you have
   // permission, and HealthKit refuses to, which is a difference the rows have to
-  // explain rather than sit quietly beside. It sits after Automatic tasks
-  // because that is what the readings are ultimately for.
+  // explain rather than sit quietly beside.
   //
-  // Red repeats Notifications', four groups up — the same distance Day & time
-  // and Groceries & meals keep between their two oranges, and the rule is only
-  // that a repeat never lands next to its own other instance.
+  // Red repeats Notifications', three groups up in the list Settings draws, and
+  // the rule is only that a repeat never lands next to its own other instance.
   { id: 'health', title: 'Apple Health', icon: 'heart-outline', tint: 'red', iosOnly: true },
   { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
   // Neutral from here down: the tinted groups are things you configure, the grey
-  // ones are housekeeping. There are only five tints and seven tinted groups, so
-  // two repeat — the rule is that a repeat never lands *next to* its own other
+  // ones are housekeeping. There are only five tints and six tinted groups in
+  // Settings' own list, so one repeats, and so does red — the rule is that a repeat never lands *next to* its own other
   // instance, since adjacency is what reads as an accident rather than as a
-  // category. Appearance/Automatic tasks are five rows apart, Day & time and
-  // Groceries & meals four.
+  // category. Day & time and Groceries & meals are four rows apart.
   //
   // Permissions is read-only accounting rather than a thing you configure —
   // every row here is a status and a link to fix it elsewhere (this app's own
@@ -369,7 +379,7 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       ...shared,
       id: `gen:${spec.kind}`,
       label: spec.label,
-      section: 'Automatic tasks',
+      section: 'Automations',
       keywords: GENERATED_KEYWORDS[spec.kind],
     },
     ...(spec.categorized ? [{
@@ -710,7 +720,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'focus', 'pomodoro', 'stacks', 'templates', 'stats', 'drift', 'backfill', 'waiting',
       'deadline', 'blocked', 'barcode', 'receipt', 'pantry', 'substitutes', 'cook mode',
       'recipe steps'] },
-  // ── Automatic tasks ───────────────────────────────────────────────────────
+  // ── Automations ───────────────────────────────────────────────────────────
   // Derived from GENERATED_KIND_LIST — see GENERATED_ENTRIES above for why, and
   // for why these rows' `section` names the generator rather than the header.
   ...GENERATED_ENTRIES,
@@ -722,7 +732,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Sits above every generator rather than inside one: it decides when the
   // whole list gets a chance to run, not what any of them do.
   { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Add tasks while the app is closed',
-    section: 'Automatic tasks',
+    section: 'Automations',
     keywords: ['background', 'background refresh', 'overnight', 'away', 'wake',
       'catch up', 'top up', 'widget', 'stale', 'battery'] },
   { id: 'mealSlotsEnabled', requires: 'gen:mealSlot', groupId: 'generated', label: 'Meals you eat', section: 'Meal tasks',
@@ -754,7 +764,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'mood', 'feeling', 'multiple', 'several', 'twice'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
-  { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
+  { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
 
   // `kitchen`-gated to match the row itself, which is hidden with the
@@ -917,26 +927,50 @@ export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {
 }
 
 /**
- * Opens the Settings row with this id, wherever it currently lives.
+ * The groups Settings' own list draws, in order: everything
+ * `visibleSettingsGroups` offers except a group that lives on a menu screen of
+ * its own (`SettingsGroup.screen`). Typed narrower so the summaries keyed on it
+ * needn't carry a line for a row that is never drawn.
+ */
+export type IndexedSettingsGroup = SettingsGroup & { id: IndexedSettingsGroupId };
+export type IndexedSettingsGroupId = Exclude<SettingsGroupId, 'generated'>;
+
+export function settingsIndexGroups(platformOS: string, kitchenEnabled = true): IndexedSettingsGroup[] {
+  return visibleSettingsGroups(platformOS, kitchenEnabled)
+    .filter((g): g is IndexedSettingsGroup => !g.screen);
+}
+
+/** Where a group, or one row in it, opens. */
+export type SettingsTarget =
+  | { kind: 'group'; groupId: SettingsGroupId; entryId?: string }
+  | { kind: 'screen'; route: string; entryId?: string };
+
+/**
+ * Where to open a group, or one row in it: the group's own page in Settings,
+ * or the menu screen it lives on instead (`SettingsGroup.screen`).
  *
- * **A hint that names a switch is a dead end until something takes you to
- * it.** Copy like "turn on Log to Health in Settings first" asks the reader to
- * hold a route in their head, leave what they were doing, and find a row by
- * name among a few hundred — so the rows that say it now offer this instead.
+ * The one answer every opener reads, so a search result, a "turn this on" link
+ * and the index's own rows can't disagree about where a row is. Pure, so the
+ * navigation itself is left to `src/navigation/openSettings.ts`, which needs
+ * `navigateToTab` for the screen case.
+ */
+export function settingsGroupTarget(groupId: SettingsGroupId, entryId?: string): SettingsTarget {
+  const screen = settingsGroup(groupId)?.screen;
+  return screen
+    ? { kind: 'screen', route: screen, entryId }
+    : { kind: 'group', groupId, entryId };
+}
+
+/**
+ * Where the Settings row with this id opens, or null when no entry has it.
  *
  * It takes the *entry* id rather than a `{ groupId, entryId }` pair because a
  * call site knows the row it means and not the group holding it: five of them
  * wrote that pair out by hand, and an entry moved to another group would have
  * stranded every one of them somewhere plausible and wrong. The group is read
  * off the entry, so the index stays the single answer to where a row lives.
- *
- * Returns false when no entry has that id — a caller can then leave its button
- * out rather than navigate somewhere arbitrary.
  */
-export function navigateToSettingsEntry(navigation: unknown, entryId: string): boolean {
+export function settingsEntryTarget(entryId: string): SettingsTarget | null {
   const entry = SETTINGS_ENTRIES.find(e => e.id === entryId);
-  if (!entry) return false;
-  (navigation as never as { navigate: (name: string, params: object) => void })
-    .navigate('SettingsGroup', { groupId: entry.groupId, entryId });
-  return true;
+  return entry ? settingsGroupTarget(entry.groupId, entryId) : null;
 }

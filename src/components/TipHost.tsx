@@ -9,7 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTipSignals } from '../hooks/useTipSignals';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
-import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { chooseTip, tipsFor, unseenTipsForScreen, type Tip, type TipScreen } from '../utils/tips';
 

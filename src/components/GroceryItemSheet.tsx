@@ -1956,7 +1956,7 @@ export function GroceryItemSheet({
                     ? 'A task to use this up appears before the use-by date.'
                     : item.useUpTask === false
                       ? 'No task for this item, whatever the setting says.'
-                      : 'Use-up tasks are off in Settings. Tap to get one for this item anyway.'}
+                      : 'Use-up tasks are off in Automations. Tap to get one for this item anyway.'}
                 </Text>
               </View>
             </TouchableOpacity>

@@ -1,5 +1,5 @@
 import { settingsSummaries, type SettingsSummaryInput } from '../utils/settingsSummary';
-import { SETTINGS_GROUPS } from '../utils/settingsIndex';
+import { settingsIndexGroups } from '../utils/settingsIndex';
 
 const defaults: SettingsSummaryInput = {
   themeMode: 'dark',
@@ -13,8 +13,6 @@ const defaults: SettingsSummaryInput = {
   groceryImportEnabled: false,
   kitchenEnabled: true,
   simpleMode: false,
-  generatedOn: 4,
-  generatedTotal: 12,
   mealsOnToday: false,
   unitSystemLabel: null,
   calendarReadEnabled: false,
@@ -34,9 +32,9 @@ const summarise = (over: Partial<SettingsSummaryInput> = {}) =>
   settingsSummaries({ ...defaults, ...over });
 
 describe('settingsSummaries', () => {
-  it('describes every group', () => {
+  it('describes every group Settings draws', () => {
     const summaries = summarise();
-    for (const group of SETTINGS_GROUPS) {
+    for (const group of settingsIndexGroups('ios')) {
       expect(summaries[group.id].trim()).not.toBe('');
     }
   });

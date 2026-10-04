@@ -26,6 +26,7 @@ import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
+import { AutomationsScreen } from '../screens/AutomationsScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
 import { RewardsScreen } from '../screens/RewardsScreen';
@@ -135,6 +136,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Stuck: freezeWhenBlurred(StuckScreen),
   Backfill: freezeWhenBlurred(BackfillScreen),
   Reminders: freezeWhenBlurred(RemindersScreen),
+  Automations: freezeWhenBlurred(AutomationsScreen),
   Archived: freezeWhenBlurred(ArchivedScreen),
   UnattendedLog: freezeWhenBlurred(UnattendedLogScreen),
   Rewards: freezeWhenBlurred(RewardsScreen),

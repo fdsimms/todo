@@ -186,9 +186,12 @@ one. Those three rules and the reasoning behind them are in
     because a notice's panel can hold only its notes and its own block: no notice kind is timed, a
     quota, recurring, chained or in a series. A notice kind that grew one of those would need this
     to become a count.
-- **The settings keys stayed per-generator; only the UI merged.** One "Automatic tasks" section
-  (`GeneratedTasksSection`, under Settings → Automatic tasks) lists every generator. Patch-notes
-  entries that call it "Tasks the app adds" are a record of its old name and stay as they are.
+- **The settings keys stayed per-generator; only the UI merged.** One section
+  (`GeneratedTasksSection`, on the Automations screen in the side menu) lists every generator. It
+  was a Settings group called "Automatic tasks" until it moved to the menu as a feature people
+  come back to; the settings index still carries its rows (`SettingsGroup.screen`), so a Settings
+  search opens Automations on the matched row. Patch-notes entries that call it "Tasks the app
+  adds" or "Automatic tasks" are a record of its old names and stay as they are.
   Renaming `mealCookTasks`/`groceryUseUpTasks`/… to a generic pair would be a migration over
   preferences people have already set, for nothing a person can see. The section's *list* comes
   from the registry; its **controls are still hand-written JSX**, the same line `settingsIndex.ts`

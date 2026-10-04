@@ -6,7 +6,8 @@ import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { navigateToSettingsEntry, settingsGroup, type SettingsEntry } from '../utils/settingsIndex';
+import { settingsGroup, type SettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 
 export interface ScreenSettingsSheetProps {
   visible: boolean;

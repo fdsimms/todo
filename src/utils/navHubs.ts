@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — thirteen rows, four of which are hubs.
+ * What the side menu contains, as data — fourteen rows, four of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -21,7 +21,8 @@
  * **Ordering is by what you came for, not by resemblance.** Tasks, Search,
  * Projects, Calendar, Stuck and Reminders are the questions about your own
  * tasks — what is on today, where is that one, what falls when, what is not
- * moving, what will ring. Groceries follows as the other working surface.
+ * moving, what will ring — and Automations, what the app adds to them on its
+ * own, follows from the last of those. Groceries follows as the other working surface.
  * Organize and History are the two shelves: things a task can belong to, and
  * things that already happened. Health comes right after — its own shelf, for
  * things logged about *you* rather than about a task — and Tips is last
@@ -142,7 +143,7 @@ const HISTORY_HUB: NavHub = {
     // What the app did unattended — the generators, the expiry sweep and the
     // completed-task purge. In History because it is a record of things that
     // happened, which is what the other three here are; the generators' own
-    // switches stay in Settings, and this says what they did. The keywords are
+    // switches are on Automations, and this says what they did. The keywords are
     // the feature, the same way the task editor's are: nobody looking for it
     // knows the word "unattended", they know "where did this task come from".
     {
@@ -238,6 +239,21 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
     },
   },
+  // Every task the app writes without being asked, and the switch for each.
+  // Moved out of Settings because it is a feature you come back to (a new
+  // weather rule, birthday tasks for a new friend) rather than something set
+  // once. Next to Reminders: both answer "what will show up without me doing
+  // anything". Activity, in History, is the record of what these did.
+  {
+    kind: 'screen',
+    destination: {
+      route: 'Automations',
+      icon: 'sparkles-outline',
+      label: 'Automations',
+      keywords: ['automatic', 'automatic tasks', 'generated', 'rules', 'weather', 'health rules',
+        'screen time', 'calendar events', 'birthdays', 'leave by', 'use up', 'nudges'],
+    },
+  },
   // Goes through one field at a time and offers the items missing it — a
   // lens over tasks, categories, projects, people and grocery items that
   // already exist, so it's shown unconditionally in simplified mode the same
@@ -330,7 +346,7 @@ export interface NavSearchResult extends NavDestination {
  * Destinations the find field can reach that the menu deliberately does not
  * draw a row for.
  *
- * The menu is thirteen rows because that is about what fits on a phone, and the hubs
+ * The menu is fourteen rows because that is about what fits on a phone, and the hubs
  * exist to keep it there — so a surface that doesn't earn a row still needs
  * *some* way to be found by name, or it is reachable only from whichever
  * screen happens to link to it. Saved views is the first of these: it is

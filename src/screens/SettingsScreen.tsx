@@ -18,12 +18,12 @@ import { DetailHeader } from '../components/DetailHeader';
 import { SearchField } from '../components/SearchField';
 import { HighlightedText } from '../components/HighlightedText';
 import {
-  visibleSettingsGroups,
-  type SettingsGroup, type SettingsGroupId, type SettingsTint,
+  settingsIndexGroups,
+  type IndexedSettingsGroup, type SettingsGroupId, type SettingsTint,
 } from '../utils/settingsIndex';
+import { openSettingsGroup } from '../navigation/openSettings';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
-import { generatedTaskCounts } from '../utils/generatedTasks';
 import { searchableSettingsEntries } from '../utils/settingsActiveRows';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -69,7 +69,7 @@ export function SettingsScreen() {
   })));
 
   const groups = useMemo(
-    () => visibleSettingsGroups(Platform.OS, settings.kitchenEnabled),
+    () => settingsIndexGroups(Platform.OS, settings.kitchenEnabled),
     [settings.kitchenEnabled]
   );
   // Search must not turn up a row that isn't rendered — see
@@ -81,40 +81,6 @@ export function SettingsScreen() {
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);
 
   const demoActive = useDemoStore(s => s.active);
-
-  // Counted from the same list the group's own rows render from, so "4 of 12
-  // on" can't disagree with what's behind the row.
-  const generatorCounts = useMemo(
-    () => generatedTaskCounts({
-      mealCookTasks: settings.mealCookTasks,
-      groceryUseUpTasks: settings.groceryUseUpTasks,
-      pantryCheckTasks: settings.pantryCheckTasks,
-      pantryReviewTasks: settings.pantryReviewTasks,
-      leftoverUseUpTasks: settings.leftoverUseUpTasks,
-      mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
-      mealShortfallTasks: settings.mealShortfallTasks,
-      mealThawTasks: settings.mealThawTasks,
-      mealLogNudgeTasks: settings.mealLogNudgeTasks,
-      projectReviewTasks: settings.projectReviewTasks,
-      supplyReorderTasks: settings.supplyReorderTasks,
-      calendarReviewTasks: settings.calendarReviewTasks,
-      birthdayTasks: settings.birthdayTasks,
-      birthdayGiftTasks: settings.birthdayGiftTasks,
-      reachOutTasks: settings.reachOutTasks,
-      waitingFollowUpTasks: settings.waitingFollowUpTasks,
-      weatherTasks: settings.weatherTasks,
-      eventTasks: settings.eventTasks,
-      travelTasks: settings.travelTasks,
-      screenTimeTasks: settings.screenTimeTasks,
-    healthTasks: settings.healthTasks,
-      moodLogTasks: settings.moodLogTasks,
-      moodNudgeTasks: settings.moodNudgeTasks,
-      weekendNudgeTasks: settings.weekendNudgeTasks,
-      weighInTasks: settings.weighInTasks,
-      waterShortfallTasks: settings.waterShortfallTasks,
-    }, settings.kitchenEnabled),
-    [settings]
-  );
 
   const summaries = useMemo(() => settingsSummaries({
     themeMode: settings.themeMode,
@@ -131,8 +97,6 @@ export function SettingsScreen() {
     calendarIds: settings.calendarIds,
     healthReadEnabled: settings.healthReadEnabled,
     simpleMode: settings.simpleMode,
-    generatedOn: generatorCounts.on,
-    generatedTotal: generatorCounts.total,
     mealsOnToday: settings.mealsOnToday === 'inline',
     unitSystemLabel: UNIT_SYSTEM_SUMMARY[settings.unitSystem] ?? null,
     vacationMode: settings.vacationMode,
@@ -159,11 +123,13 @@ export function SettingsScreen() {
   // `entryId` is what makes a result open onto its row rather than onto the top
   // of the group holding it — the half of search that was never wired up. The
   // index rows below pass none, since browsing to a group means the group.
+  // Through openSettingsGroup rather than straight to SettingsGroup, because a
+  // result can name a row in a group that lives on its own menu screen
+  // (Automations) rather than behind a row here.
   const openGroup = (groupId: SettingsGroupId, entryId?: string) =>
-    (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId, entryId });
+    openSettingsGroup(navigation, groupId, entryId);
 
-  const groupRow = (group: SettingsGroup) => {
+  const groupRow = (group: IndexedSettingsGroup) => {
     const tint = tintOf(group.tint);
     return (
       <TouchableOpacity

@@ -2,7 +2,9 @@ import {
   SETTINGS_GROUPS,
   SETTINGS_ENTRIES,
   settingsGroup,
-  navigateToSettingsEntry,
+  settingsEntryTarget,
+  settingsGroupTarget,
+  settingsIndexGroups,
   visibleSettingsGroups,
   visibleSettingsEntries,
 } from '../utils/settingsIndex';
@@ -385,27 +387,48 @@ describe('settings index', () => {
     });
   });
 
-  describe('navigateToSettingsEntry', () => {
+  describe('settingsEntryTarget', () => {
     it('reads the group off the entry rather than trusting a caller', () => {
-      const navigate = jest.fn();
-      expect(navigateToSettingsEntry({ navigate }, 'healthWrite')).toBe(true);
-      expect(navigate).toHaveBeenCalledWith(
-        'SettingsGroup', { groupId: 'health', entryId: 'healthWrite' });
+      expect(settingsEntryTarget('healthWrite'))
+        .toEqual({ kind: 'group', groupId: 'health', entryId: 'healthWrite' });
     });
 
     it('refuses an id no entry has, rather than landing somewhere arbitrary', () => {
-      const navigate = jest.fn();
-      expect(navigateToSettingsEntry({ navigate }, 'noSuchRow')).toBe(false);
-      expect(navigate).not.toHaveBeenCalled();
+      expect(settingsEntryTarget('noSuchRow')).toBeNull();
     });
 
     // Every id a jump is written against, checked against the index itself —
     // a renamed row would otherwise only surface as a button that goes nowhere.
     it('resolves every row the app links to from outside Settings', () => {
       for (const id of ['healthWrite', 'healthRead', 'apiKey', 'deadlineCalendar',
-        'completionCalendar', 'mealCalendar']) {
+        'completionCalendar', 'mealCalendar', 'calendarRead']) {
         expect(SETTINGS_ENTRIES.find(e => e.id === id)).toBeDefined();
       }
+    });
+  });
+
+  describe('a group on a screen of its own', () => {
+    it('sends the automatic-task rows to Automations, still on the matched row', () => {
+      expect(settingsEntryTarget('gen:weather'))
+        .toEqual({ kind: 'screen', route: 'Automations', entryId: 'gen:weather' });
+      expect(settingsGroupTarget('generated'))
+        .toEqual({ kind: 'screen', route: 'Automations', entryId: undefined });
+    });
+
+    it('keeps its rows searchable', () => {
+      expect(visibleSettingsEntries('ios').some(e => e.groupId === 'generated')).toBe(true);
+    });
+
+    it('leaves it out of the list of groups Settings draws, and only it', () => {
+      const drawn = settingsIndexGroups('ios').map(g => g.id);
+      expect(drawn).not.toContain('generated');
+      expect(drawn).toHaveLength(visibleSettingsGroups('ios').length - 1);
+    });
+
+    // IndexedSettingsGroupId excludes 'generated' by name, so a second group
+    // given a screen would type-check while its summary line went missing.
+    it('is only the one group the summaries type leaves out', () => {
+      expect(SETTINGS_GROUPS.filter(g => g.screen).map(g => g.id)).toEqual(['generated']);
     });
   });
 });

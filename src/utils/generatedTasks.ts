@@ -997,6 +997,18 @@ export function generatedTaskCounts(
 }
 
 /**
+ * The Automations screen's subtitle, from `generatedTaskCounts`.
+ *
+ * A count rather than a list of names: two dozen generators won't fit on a
+ * line, and "how much of this is the app writing for me" is the question the
+ * screen exists to answer. The total shrinks with the kitchen exactly as the
+ * rows under it do, since both come off the same listing.
+ */
+export function describeGeneratedCounts({ on, total }: { on: number; total: number }): string {
+  return on === 0 ? `None on. ${total} available` : `${on} of ${total} on`;
+}
+
+/**
  * The three-input opt-out, written once instead of three times.
  *
  * Every sourced generator answers "should this source have a task" the same

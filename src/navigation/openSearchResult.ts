@@ -1,5 +1,5 @@
 import type { ElsewhereResult } from '../utils/searchElsewhere';
-import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from './openSettings';
 import { navigateToTab } from './navigationRef';
 
 interface Navigator {
