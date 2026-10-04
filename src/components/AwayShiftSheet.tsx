@@ -18,12 +18,13 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { SheetScrim } from './SheetScrim';
 import { useSheetMotion } from '../hooks/useSheetMotion';
-import { formatDeadlineDate, getEffectiveTaskDate } from '../utils/dateUtils';
+import { formatDeadlineDate } from '../utils/dateUtils';
 import {
   awayShiftUpdates,
   buildAwayShiftPlan,
   describeAwayShift,
   hasAnchoredMember,
+  shiftDateOf,
   type AwayShiftPlan,
 } from '../utils/awayShift';
 import type { Task } from '../types';
@@ -74,7 +75,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
   // Open top-level tasks with no date on them: the plan skips these, and the
   // hint says so.
   const undatedCount = useMemo(
-    () => tasks.filter(t => !t.completed && !t.archived && t.parentId === null && !getEffectiveTaskDate(t)).length,
+    () => tasks.filter(t => !t.completed && !t.archived && t.parentId === null && !shiftDateOf(t)).length,
     [tasks],
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

@@ -360,6 +360,15 @@ const itemSchema = z.object({
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional(),
+  key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
+  deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
+    .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
+  deliverableOptions: z.array(z.string()).optional().describe('For a choice question: the options, at least two.'),
+  onlyIfAnswer: z.object({
+    item: z.string().describe('The key of an item in this plan that asks a Yes/No or choice question.'),
+    answers: z.array(z.string()).min(1),
+  }).optional()
+    .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied.'),
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
@@ -437,6 +446,10 @@ const taskFieldsShape = {
     .describe('Instead of dueDate: days from the project\'s event date, negative for before ("get the license 60 days before" is -60, "thank-you notes a week after" is 7). Becomes an ordinary date; it does not follow the event later, but moving the event with moveTasks moves it.'),
   deadlineDaysFromEvent: z.number().int().optional()
     .describe('Instead of deadline: days from the project\'s event date, as dueDaysFromEvent.'),
+  dueEndOfMonthAfterEvent: z.number().int().min(0).optional()
+    .describe('Instead of dueDate: the last day of a month counted from the event\'s, 0 for the event\'s own month and 1 for the month after ("update records by the end of the month after" is 1).'),
+  deadlineEndOfMonthAfterEvent: z.number().int().min(0).optional()
+    .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
     .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
   onlyIfAnswer: z.object({

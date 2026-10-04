@@ -316,7 +316,11 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   deleteItem(templateId, itemId) {
     const template = get().templates.find(t => t.id === templateId);
     if (!template) return;
-    get().setTemplateItems(templateId, template.items.filter(i => i.id !== itemId));
+    // An item gated on the one going loses the gate rather than pointing at
+    // nothing, the way deleteQuestion strips the conditions that named it.
+    get().setTemplateItems(templateId, template.items
+      .filter(i => i.id !== itemId)
+      .map(i => (i.answerGate?.itemId === itemId ? { ...i, answerGate: null } : i)));
   },
 
   reorderItems(templateId, orderedIds) {
@@ -584,6 +588,22 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           createdTaskIdsByGroup.set(key, list);
         }
       });
+
+      // An item's answer gate names another item of its own template; now
+      // that both are tasks it can name the task. Keyed by template like the
+      // groups above. Left off a 'task' container's items, which are subtasks,
+      // and off any whose question item wasn't ticked: a gate on a question
+      // nobody will be asked would hold the task back for good.
+      if (!runTask) {
+        const taskIdByItem = new Map(expanded.map(({ item, sourceTemplateId }, i) => [`${sourceTemplateId}:${item.id}`, createdTasks[i]?.id]));
+        expanded.forEach(({ item, sourceTemplateId }, index) => {
+          const gate = item.answerGate;
+          const question = gate ? taskIdByItem.get(`${sourceTemplateId}:${gate.itemId}`) : undefined;
+          if (gate && question && createdTasks[index]) {
+            useTaskStore.getState().updateTask(createdTasks[index].id, { answerGate: { taskId: question, answers: gate.answers } });
+          }
+        });
+      }
 
       createdTaskIdsByGroup.forEach((taskIds, key) => {
         const separatorIndex = key.indexOf(':');

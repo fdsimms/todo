@@ -19,7 +19,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -47,7 +47,7 @@ import {
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
-import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
+import { deliverableMeta, deliverableOptionsFor, parseDeliverableOptions } from '../utils/deliverables';
 import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
@@ -96,7 +96,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location';
+type FieldKey = 'blanks' | 'conditions' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location';
 
 interface Props {
   visible: boolean;
@@ -130,6 +130,39 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const choiceQuestions = useTemplateStore(
     useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
   );
+  // TemplateItem.answerGate: "only if <another item> is answered …".
+  const [answerGate, setAnswerGate] = useState<TemplateAnswerGate | null>(null);
+  // The other items in this template that ask a Yes/No or Pick one question,
+  // which is what an "Only if" can wait on. An item whose own gate leads back
+  // here is left out: the two tasks would each wait on the other for good.
+  const templateItems = useTemplateStore(useShallow(s => s.templates.find(t => t.id === templateId)?.items ?? []));
+  const questionItems = useMemo(() => {
+    const byId = new Map(templateItems.map(i => [i.id, i]));
+    const leadsBack = (start: TemplateItem): boolean => {
+      const seen = new Set<string>();
+      for (let at: TemplateItem | undefined = start; at; at = at.answerGate ? byId.get(at.answerGate.itemId) : undefined) {
+        if (at.id === item?.id) return true;
+        if (seen.has(at.id)) return false;
+        seen.add(at.id);
+      }
+      return false;
+    };
+    return templateItems.filter(i =>
+      i.id !== item?.id && !i.refTemplateId && deliverableOptionsFor(i).length >= 2 && !leadsBack(i));
+  }, [templateItems, item?.id]);
+  const gateItem = answerGate ? templateItems.find(i => i.id === answerGate.itemId) ?? null : null;
+  const gateSummary = answerGate && answerGate.answers.length > 0
+    ? `${gateItem?.title || 'An item no longer here'}: ${answerGate.answers.join(' or ')}`
+    : null;
+  const toggleGateAnswer = (itemId: string, option: string) => {
+    haptics.tap();
+    setAnswerGate(prev => {
+      // Ticking an answer under a different item moves the gate to that item.
+      const answers = prev?.itemId === itemId ? prev.answers : [];
+      const next = answers.includes(option) ? answers.filter(a => a !== option) : [...answers, option];
+      return next.length > 0 ? { itemId, answers: next } : null;
+    });
+  };
   // Every medication ever logged, for the "Log a dose" name field's own
   // suggestions below — see medicationVocabulary for why this is derived
   // rather than a registry.
@@ -239,6 +272,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
+    setAnswerGate(item?.answerGate ?? draft?.answerGate ?? null);
     setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
     setDueOffsetDays(item?.dueOffsetDays ?? draft?.dueOffsetDays ?? null);
     setDeferOffsetDays(item?.deferOffsetDays ?? draft?.deferOffsetDays ?? null);
@@ -398,6 +432,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       notes,
       optional,
       conditions,
+      // A gate with no answers ticked would rule the task out whatever the
+      // answer, so it's dropped rather than saved.
+      answerGate: answerGate && answerGate.answers.length > 0 ? answerGate : null,
       anchor,
       dueOffsetDays,
       deferOffsetDays,
@@ -1671,6 +1708,46 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Only if: the branch half of a decision, as TaskEditor's row of the
+          same name. Hidden while no other item asks a question with answers
+          to pick, for the reason "Checked by default for" hides itself. */}
+      {(questionItems.length > 0 || answerGate !== null) && (
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Only if"
+            summary={gateSummary ?? undefined}
+            emptySummary="Always"
+            hint="Waits for another item's question to be answered, then shows only for the answers you pick. Any other answer marks it not needed."
+            expanded={fieldOpen('answerGate', gateSummary !== null)}
+            onToggle={() => toggleField('answerGate', gateSummary !== null)}
+          >
+            {questionItems.map(q => (
+              <View key={q.id} style={styles.conditionBlock}>
+                <Text style={styles.conditionLabel} numberOfLines={1}>{q.title || 'Untitled'}</Text>
+                <View style={styles.blankRow}>
+                  {deliverableOptionsFor(q).map(option => {
+                    const on = answerGate?.itemId === q.id && answerGate.answers.includes(option);
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.conditionPill, on && styles.conditionPillOn]}
+                        onPress={() => toggleGateAnswer(q.id, option)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={`Only if ${q.title} is ${option}`}
+                      >
+                        <Text style={[styles.conditionPillText, on && styles.conditionPillTextOn]}>{option}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </CollapsibleField>
+        </View>
+      )}
 
       {/* Subtasks */}
       <View style={styles.sectionCard}>

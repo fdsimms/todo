@@ -857,10 +857,25 @@ describe('the replica', () => {
     expect(local(thanks.deadline)).toEqual([2027, 7, 14, 12]);
   });
 
+  it('dates a step at the end of a month counted from the event', () => {
+    const { tasks: [records, sameMonth] } = replica.createProjectPlan({
+      title: 'Wedding',
+      eventDate: '2027-01-30',
+      steps: [
+        { fields: { title: 'Update records', dueEndOfMonthAfterEvent: 1 } },
+        { fields: { title: 'Return the suit', deadlineEndOfMonthAfterEvent: 0 } },
+      ],
+    });
+    const local = (iso: string | null) => { const d = new Date(iso!); return [d.getMonth() + 1, d.getDate(), d.getHours()]; };
+    // Jan 30 plus a month clamps to Feb 28, and the end of February is the answer.
+    expect(local(records.dueDate)).toEqual([2, 28, 12]);
+    expect(local(sameMonth.deadline)).toEqual([1, 31, 12]);
+  });
+
   it('refuses event-relative days with no event date, or alongside the date they replace', () => {
     expect(() => replica.taskPatch({ dueDaysFromEvent: -3 }, null, false)).toThrow(/has none/);
     const { project } = replica.createProjectPlan({ title: 'Move', eventDate: '2027-03-01', steps: [] });
-    expect(() => replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3, dueDate: '2027-01-01' }, null, false)).toThrow(/not both/);
+    expect(() => replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3, dueDate: '2027-01-01' }, null, false)).toThrow(/not more/);
     expect(replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3 }, null, false).dueDate).toEqual(expect.any(String));
   });
 
@@ -884,6 +899,18 @@ describe('the replica', () => {
     expect(replica.taskById(undated.id)!.dueDate).toBeNull();
     // Not counted as the person putting it off.
     expect(replica.taskById(license.id)!.postponeCount).toBe(0);
+  });
+
+  it('writes an item branch as a gate on the keyed item, spelled as the question offers it', () => {
+    const built = replica.createTemplate({
+      name: 'Wedding',
+      items: [
+        { title: 'Ceremony format?', key: 'format', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] },
+        { title: 'Book City Hall', onlyIfAnswer: { item: 'format', answers: ['city hall'] } },
+      ],
+    });
+    const [format, hall] = built.items;
+    expect(hall.answerGate).toEqual({ itemId: format.id, answers: ['City Hall'] });
   });
 
   it('refuses to reschedule a completed task', () => {

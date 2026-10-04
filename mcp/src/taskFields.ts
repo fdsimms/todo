@@ -119,6 +119,13 @@ export interface TaskFieldsInput {
    */
   dueDaysFromEvent?: number;
   deadlineDaysFromEvent?: number;
+  /**
+   * The last day of a month counted from the event's own: 0 is the end of the
+   * event's month, 1 the end of the month after. For "update records by the
+   * end of the month after", which a count of days can't say.
+   */
+  dueEndOfMonthAfterEvent?: number;
+  deadlineEndOfMonthAfterEvent?: number;
   reminderTime?: string | null;
   timeSegments?: TimeOfDay[];
   priority?: number;

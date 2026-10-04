@@ -70,6 +70,24 @@ function isShiftable(task: Task): boolean {
 }
 
 /**
+ * A task's own deadline when it is a date written on the row, rather than one
+ * worked out from its due date (`deadlineOffsetDays`, `deadlineMonthDay`),
+ * which follows the due date on its own.
+ */
+function fixedDeadline(task: Task): string | null {
+  return task.deadline && task.deadlineOffsetDays == null && task.deadlineMonthDay == null ? task.deadline : null;
+}
+
+/**
+ * The date a shift moves a task by: the day it sits on, or for a task with no
+ * day but a deadline ("license by May 1"), the deadline. Null for a task with
+ * neither, which the plan skips and the sheet counts as undated.
+ */
+export function shiftDateOf(task: Task): string | null {
+  return getEffectiveTaskDate(task) ?? fixedDeadline(task);
+}
+
+/**
  * Propose moving a trip's tasks by the same number of days its departure moved.
  *
  * `from`/`to` are the old and new departure, and only their calendar-day
@@ -97,7 +115,7 @@ export function buildAwayShiftPlan(
   const proposals: AwayShiftProposal[] = [];
   for (const task of tasks) {
     if (!isShiftable(task)) continue;
-    const current = getEffectiveTaskDate(task);
+    const current = shiftDateOf(task);
     if (!current) continue;
 
     const fromDay = getTaskDayStart(new Date(current), dayResetTime);
@@ -137,7 +155,15 @@ export function awayShiftUpdates(
   dayResetTime?: string,
 ): Partial<Task> | null {
   if (!proposal.destination) return null;
-  return scheduleMoveUpdates(proposal.task, proposal.destination, dayResetTime);
+  const { task } = proposal;
+  // Its due date moves the way any reschedule does, and a deadline written on
+  // the row moves by the same number of days: "60 days before the wedding"
+  // and "license by the 1st" are both counted from the event.
+  const moved = getEffectiveTaskDate(task) ? scheduleMoveUpdates(task, proposal.destination, dayResetTime) : {};
+  const deadline = fixedDeadline(task);
+  if (!deadline) return moved;
+  const days = differenceInCalendarDays(proposal.destination, proposal.from);
+  return { ...moved, deadline: addDays(new Date(deadline), days).toISOString() };
 }
 
 /** "7 tasks move 2 days later" — the sheet's one headline. */

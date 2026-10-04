@@ -4858,6 +4858,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dueDate: t.dueDate,
         deferUntil: t.deferUntil,
         recurrenceAnchorDate: t.recurrenceAnchorDate,
+        // A deadline written on the row moves with it too (awayShiftUpdates).
+        deadline: t.deadline,
       };
     });
 
@@ -4877,7 +4879,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       undo: () => snapshots.forEach(s =>
         get().updateTask(
           s.id,
-          { dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate },
+          { dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate, deadline: s.deadline },
           { skipPostponeCount: true },
         )
       ),

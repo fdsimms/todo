@@ -425,7 +425,9 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   on the project's page, so an answer given months ago can be read back without paging the
   Logbook.
 - **`onlyIfAnswer`** (and `onlyIfAnswerTo` inside a plan) writes `Task.answerGate`, and
-  **`dueDaysFromEvent`** dates a task from `Project.eventDate`. The second is resolved into an
+  **`dueDaysFromEvent`** (or `dueEndOfMonthAfterEvent`, for "by the end of the month after")
+  dates a task from `Project.eventDate`. `create_template` items take a `key` and an
+  `onlyIfAnswer` naming another item's key, which becomes `TemplateItem.answerGate`. The second is resolved into an
   ordinary date at write time, never stored as an offset (docs/arch/away-dates.md has the reason).
   Moving the event is `update_project` with `moveTasks`, the app's own shift offer
   (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since

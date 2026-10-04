@@ -3641,6 +3641,12 @@ export interface TemplateQuestion {
   fromDates: TemplateQuestionSource;
 }
 
+/** A template item's answer gate: the item that asks, and the answers that show this one. See `TemplateItem.answerGate`. */
+export interface TemplateAnswerGate {
+  itemId: string;
+  answers: string[];
+}
+
 // "Only include this item when the answer is one of these."
 //
 // Values are matched against the answer as strings, OR within one condition
@@ -3808,6 +3814,19 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+
+  /**
+   * `Task.answerGate` before there is a task: "only if <another item in this
+   * template> is answered one of these". The item is named by its id, which
+   * is stable for exactly this kind of reference, and `applyTemplate` points
+   * the gate at the task that item became. Dropped at apply time when that
+   * item wasn't ticked, since a gate on a question nobody will be asked would
+   * hold the task back for good. Optional: absent on every older template.
+   *
+   * Different from `conditions`, which decide what's *ticked* in the apply
+   * sheet from an answer given then; this waits for an answer given later.
+   */
+  answerGate?: TemplateAnswerGate | null;
 
   // When set, this item is a reference to another template rather than a
   // real task — it expands into that template's own items at apply time.

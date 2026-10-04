@@ -28,6 +28,8 @@
 // cannot reach database.ts, so the rule above does not apply to it. The app's
 // own modules import it exactly this way.
 import { addDays } from 'date-fns/addDays';
+import { addMonths } from 'date-fns/addMonths';
+import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 
 import { shimModule } from './expoSqliteShim';
 import type {
@@ -644,13 +646,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     current: Task | null,
     eventDate: string | null | undefined,
   ): { fields: TaskFieldsInput; errors: string[] } => {
-    const { dueDaysFromEvent, deadlineDaysFromEvent, ...fields } = input;
+    const { dueDaysFromEvent, deadlineDaysFromEvent, dueEndOfMonthAfterEvent, deadlineEndOfMonthAfterEvent, ...fields } = input;
     const errors: string[] = [];
-    if (dueDaysFromEvent === undefined && deadlineDaysFromEvent === undefined) return { fields, errors };
+    const asks = [dueDaysFromEvent, deadlineDaysFromEvent, dueEndOfMonthAfterEvent, deadlineEndOfMonthAfterEvent];
+    if (asks.every(a => a === undefined)) return { fields, errors };
     const projectId = fields.projectId !== undefined ? fields.projectId : current?.projectId ?? null;
     const event = eventDate !== undefined ? eventDate : projects().find(p => p.id === projectId)?.eventDate ?? null;
     if (!event) {
-      errors.push('dueDaysFromEvent and deadlineDaysFromEvent count from the project\'s event date, and this task\'s project has none. Set one with update_project, or give a date.');
+      errors.push('The ...FromEvent and ...AfterEvent fields count from the project\'s event date, and this task\'s project has none. Set one with update_project, or give a date.');
       return { fields, errors };
     }
     const at = (days: number): string => {
@@ -658,11 +661,22 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       d.setHours(12, 0, 0, 0);
       return d.toISOString();
     };
-    for (const [days, key] of [[dueDaysFromEvent, 'dueDate'], [deadlineDaysFromEvent, 'deadline']] as const) {
-      if (days === undefined) continue;
-      if (!Number.isInteger(days)) errors.push(`${key === 'dueDate' ? 'dueDaysFromEvent' : 'deadlineDaysFromEvent'} must be a whole number of days.`);
-      else if (fields[key] !== undefined) errors.push(`Give ${key} or ${key === 'dueDate' ? 'dueDaysFromEvent' : 'deadlineDaysFromEvent'}, not both.`);
-      else fields[key] = at(days);
+    const monthEnd = (months: number): string => {
+      const d = lastDayOfMonth(addMonths(new Date(event), months));
+      d.setHours(12, 0, 0, 0);
+      return d.toISOString();
+    };
+    const ways = [
+      [dueDaysFromEvent, 'dueDate', 'dueDaysFromEvent', at],
+      [dueEndOfMonthAfterEvent, 'dueDate', 'dueEndOfMonthAfterEvent', monthEnd],
+      [deadlineDaysFromEvent, 'deadline', 'deadlineDaysFromEvent', at],
+      [deadlineEndOfMonthAfterEvent, 'deadline', 'deadlineEndOfMonthAfterEvent', monthEnd],
+    ] as const;
+    for (const [n, key, name, resolve] of ways) {
+      if (n === undefined) continue;
+      if (!Number.isInteger(n)) errors.push(`${name} must be a whole number.`);
+      else if (fields[key] !== undefined) errors.push(`Give one of ${key}, ${key === 'dueDate' ? 'dueDaysFromEvent or dueEndOfMonthAfterEvent' : 'deadlineDaysFromEvent or deadlineEndOfMonthAfterEvent'}, not more.`);
+      else fields[key] = resolve(n);
     }
     return { fields, errors };
   };
@@ -893,11 +907,24 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         return stored;
       });
 
+      // Keyed items get their ids now, so an onlyIfAnswer can name one; the
+      // answers are re-spelled as the question offers them (validated above).
+      const itemIds = new Map<string, string>();
+      for (const item of plan.items ?? []) if (item.key !== undefined) itemIds.set(item.key, generateId());
+      const offeredBy = new Map((plan.items ?? []).filter(i => i.key !== undefined).map(i => [i.key!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
       const items = (plan.items ?? []).map(item => {
-        const { groupKey, conditions, refTemplate, ...fields } = item;
+        const { groupKey, conditions, refTemplate, key, onlyIfAnswer, ...fields } = item;
         const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
+        const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
         return templateUtils.normalizeTemplateItem({
           ...fields,
+          ...(key !== undefined ? { id: itemIds.get(key) } : {}),
+          answerGate: onlyIfAnswer
+            ? {
+                itemId: itemIds.get(onlyIfAnswer.item)!,
+                answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
+              }
+            : null,
           groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
           conditions: (conditions ?? []).map(c => ({
             questionId: questionIds.get(c.question) ?? '',

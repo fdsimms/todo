@@ -45,6 +45,7 @@ import type {
   TemplateScheduleFrequency,
   TimeOfDay,
 } from '../../src/types';
+import { deliverableOptionsFor } from '../../src/utils/deliverables';
 
 export const CONTAINERS: readonly TemplateContainer[] = ['none', 'stack', 'project', 'task'];
 export const QUESTION_KINDS: readonly TemplateQuestionKind[] = ['text', 'number', 'choice', 'people'];
@@ -86,8 +87,15 @@ export interface ConditionPlan {
  * `normalizeTemplateItem` fills the rest — restating its defaults here would be
  * a second copy to keep in step.
  */
-export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId'>> {
+export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate'>> {
   title: string;
+  /** The caller's own handle for this item, which another item's `onlyIfAnswer` names. */
+  key?: string;
+  /**
+   * TemplateItem.answerGate: shown only for these answers to the question
+   * the item with this `key` asks. Becomes Task.answerGate when applied.
+   */
+  onlyIfAnswer?: { item: string; answers: string[] };
   /** A `GroupPlan.key`. */
   groupKey?: string;
   conditions?: ConditionPlan[];
@@ -215,8 +223,23 @@ export function validateTemplatePlan(plan: TemplatePlan, existing: readonly Task
   const items = plan.items ?? [];
   if (items.length === 0) errors.push('a template needs at least one item.');
 
+  // Item keys, and what each keyed item offers as answers, for onlyIfAnswer.
+  const itemAnswers = new Map<string, string[]>();
+  for (const item of items) {
+    if (item.key === undefined) continue;
+    if (itemAnswers.has(item.key)) errors.push(`item key "${item.key}" is used twice.`);
+    itemAnswers.set(item.key, deliverableOptionsFor({
+      deliverableKind: item.deliverableKind ?? null,
+      deliverableOptions: item.deliverableOptions,
+      chainEnabled: false,
+      chainItems: [],
+      chainIndex: 0,
+    } as Parameters<typeof deliverableOptionsFor>[0]));
+  }
+
   for (const item of items) {
     const label = item.title || '(untitled)';
+    errors.push(...gateErrors(item, label, itemAnswers));
     if (!item.title?.trim()) errors.push('every item needs a title.');
 
     if (item.anchor !== undefined && !oneOf(item.anchor, ANCHORS)) {
@@ -292,6 +315,24 @@ export function resolveRef(ref: string, existing: readonly TaskTemplate[]): Task
  * It only fills absent ones, so a negative interval or a 40th of the month
  * stores exactly as given and surfaces later as a schedule that never fires.
  */
+/**
+ * An `onlyIfAnswer` has to name another keyed item that asks a Yes/No or Pick
+ * one question, and answers it offers: a gate on an answer the question can't
+ * give would never open, and the task would be not needed on every run.
+ */
+function gateErrors(item: ItemPlan, label: string, itemAnswers: Map<string, string[]>): string[] {
+  const gate = item.onlyIfAnswer;
+  if (!gate) return [];
+  const offered = itemAnswers.get(gate.item);
+  if (!offered) return [`item "${label}" is only if "${gate.item}", which is not an item key in this plan.`];
+  if (gate.item === item.key) return [`item "${label}" can't depend on its own answer.`];
+  if (offered.length < 2) return [`item "${label}" is only if "${gate.item}", which doesn't ask a Yes/No or pick-one question.`];
+  if ((gate.answers ?? []).length === 0) return [`item "${label}" has an onlyIfAnswer with no answers.`];
+  return gate.answers
+    .filter(a => !offered.some(o => o.toLowerCase() === a.trim().toLowerCase()))
+    .map(a => `item "${label}" is only if "${gate.item}" = "${a}", which is not one of its answers (${offered.join(', ')}).`);
+}
+
 function rangeErrors(item: ItemPlan, label: string): string[] {
   const errors: string[] = [];
   const positive = (value: number | null | undefined, field: string) => {

@@ -140,7 +140,15 @@ export function templateFromProject(
   }));
   const groupIdFor = new Map(blueprint.sections.map((s, i) => [s.id, itemGroups[i].id]));
 
+  // Item ids minted up front, so a branch ("only if Venue? is Park") can name
+  // the item its question became. A gate on a task this blueprint doesn't
+  // carry (outside the project, or a collapsed occurrence) is left behind.
+  const itemIdFor = new Map(blueprint.entries.map(({ task }) => [task.id, generateId()]));
   const items: TemplateItem[] = blueprint.entries.map(({ task, sectionId, subtasks }) => normalizeTemplateItem({
+    id: itemIdFor.get(task.id),
+    answerGate: task.answerGate && itemIdFor.has(task.answerGate.taskId)
+      ? { itemId: itemIdFor.get(task.answerGate.taskId)!, answers: task.answerGate.answers }
+      : null,
     title: task.title,
     notes: task.notes,
     anchor,
