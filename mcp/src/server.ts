@@ -87,7 +87,7 @@ import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, get
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
-import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
+import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_MIN_PUSHES, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
 import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
 import { DEFAULT_SUGGESTION_LIMIT, unusedFeatures } from './adoptionTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
@@ -596,8 +596,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'review_tasks',
-    `Things in the list worth a second look, for a cleanup or weekly review: overdue tasks (oldest first), Inbox items left untriaged over a week, Unscheduled tasks older than staleDays (default ${DEFAULT_STALE_DAYS}), open tasks that look like duplicates, active projects with nothing finished in three weeks, and the repeating tasks missed most often. It lists, it does not judge: ask the person what they want done with any of it before changing anything.`,
-    { staleDays: z.number().int().positive().max(3650).optional() },
+    `Things in the list worth a second look, for a cleanup or weekly review: overdue tasks (oldest first), Inbox items left untriaged over a week, Unscheduled tasks older than staleDays (default ${DEFAULT_STALE_DAYS}), open tasks that look like duplicates, active projects with nothing finished in three weeks, open tasks pushed to a later day at least minPushes times (default ${DEFAULT_MIN_PUSHES}, most pushed first, each with its postponed.since and blockers; the stuck ones, even when never overdue), and the repeating tasks missed most often. It lists, it does not judge: ask the person what they want done with any of it before changing anything.`,
+    { staleDays: z.number().int().positive().max(3650).optional(), minPushes: z.number().int().positive().max(100).optional() },
     async input => json(await withFresh(() => reviewTasks(replica, input)))
   );
 
