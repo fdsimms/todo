@@ -1638,7 +1638,7 @@ function registerWriteTools(
 
   server.tool(
     'update_reward',
-    "Change a reward's title, cost, note, link or one-time flag (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: edit the item instead.",
+    "Change a reward's title, cost, note, link or one-time flag (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
     {
       id: z.string().min(1),
       title: z.string().min(1).optional(),
@@ -1671,7 +1671,7 @@ function registerWriteTools(
 
   server.tool(
     'claim_reward',
-    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short, when a one-time reward was already claimed, and for a wish-list reward (claiming it also checks the item off, which only the app does). The result carries a claimId; unclaim_reward takes it back.",
+    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

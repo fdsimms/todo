@@ -1180,6 +1180,55 @@ describe('the replica', () => {
       replica.deleteReward(reward.id);
     });
 
+    // The replica used to leave the store empty on open, so a claim judged the
+    // balance by what this process had earned since it started. A row already in
+    // the database has to count, and one written behind the replica's back is
+    // picked up on the next refresh.
+    it('reads the balance from the database, including rows it did not write', () => {
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const before = balance();
+      mockRaw.runSync(
+        "INSERT INTO coin_entries (id, kind, amount, at, task_id, reward_id, label) VALUES ('seeded-earn', 'earn', 7, '2026-01-01T00:00:00.000Z', NULL, NULL, 'Seeded')"
+      );
+      replica.refresh();
+      expect(store.getState().balance()).toBe(before + 7);
+      const reward = replica.addReward('Seeded treat', before + 7, {});
+      expect(replica.claimReward(reward.id).amount).toBe(before + 7);
+      replica.unclaimReward(replica.rewardState().entries.find(e => e.kind === 'spend' && e.rewardId === reward.id)!.id);
+      replica.deleteReward(reward.id);
+      mockRaw.runSync("DELETE FROM coin_entries WHERE id = 'seeded-earn'");
+      replica.refresh();
+    });
+
+    it('claims a wish-list reward by checking its item off without paying for the check-off, and unclaims it back', () => {
+      earn(90);
+      const have = balance();
+      const item = replica.createTask({ title: 'New boots' });
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const reward = store.getState().addReward('New boots', 3, { taskId: item.id });
+      replica.refresh();
+
+      const claim = replica.claimReward(reward.id);
+      expect(replica.taskById(item.id)!.completed).toBe(true);
+      expect(balance()).toBe(have - 3);
+
+      replica.unclaimReward(claim.id);
+      expect(replica.taskById(item.id)!.completed).toBe(false);
+      expect(balance()).toBe(have);
+      store.getState().deleteReward(reward.id);
+    });
+
+    it('refuses a wish-list claim once the item was checked off by hand', () => {
+      earn(90);
+      const item = replica.createTask({ title: 'Bought already' });
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const reward = store.getState().addReward('Bought already', 3, { taskId: item.id });
+      replica.completeTask(item.id, {});
+      replica.refresh();
+      expect(() => replica.claimReward(reward.id)).toThrow(/checked off, archived or gone/);
+      store.getState().deleteReward(reward.id);
+    });
+
     it('refuses a fractional or oversized cost', () => {
       expect(() => replica.addReward('Odd', 2.5, {})).toThrow(/whole number/);
       expect(() => replica.addReward('Huge', 1_000_000, {})).toThrow(/whole number/);

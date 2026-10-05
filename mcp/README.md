@@ -137,8 +137,8 @@ only the fallback until the first sync.
 | `create_reward` | **Write.** Adds a reward at a cost in coins. Refused while rewards are off. |
 | `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |
 | `delete_reward` | **Write.** Deletes a reward. Coins already spent on it stay spent. |
-| `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short, a one-time reward was already claimed, or the reward is a wish-list item. |
-| `unclaim_reward` | **Write.** Takes a claim back by its `claimId`. |
+| `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its item off, with no extra coins. |
+| `unclaim_reward` | **Write.** Takes a claim back by its `claimId`, and reopens the wish-list item the claim checked off. |
 | `set_reward_goal` | **Write.** Chooses the reward being saved for, or clears it. |
 | `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |

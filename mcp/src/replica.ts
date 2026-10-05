@@ -866,19 +866,19 @@ export interface Replica {
    * read their title off a list item and are made in the app.
    */
   addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
-  /** Change a reward's title, cost, link, note or one-time flag. A wish-list reward is refused: its title lives on the list item. */
+  /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
   updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
    * Spend a reward's cost, through `useRewardStore.claimReward`. Throws with the
-   * reason when it cannot: rewards off, the balance short, a one-time reward
-   * already claimed, or a wish-list reward (claiming one also checks the item
-   * off, which only the app does). Returns the spend entry, which
-   * `unclaimReward` takes back.
+   * reason when it cannot: rewards off, the balance short, or a one-time reward
+   * already claimed. A wish-list reward also checks its list item off, neutrally
+   * (no coins on top of the spend), as the Rewards screen does. Returns the
+   * spend entry, which `unclaimReward` takes back.
    */
   claimReward(id: string): CoinEntry;
-  /** Take back a claim by its spend entry: the undo for `claimReward`. */
+  /** Take back a claim by its spend entry: the undo for `claimReward`, which also reopens a wish-list item the claim checked off. */
   unclaimReward(entryId: string): CoinEntry;
   /** The reward being saved for (`rewardGoalId`), or null to clear it. A claimed or deleted reward is refused. */
   setRewardGoal(id: string | null): Reward | null;
@@ -1612,10 +1612,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * same walk with `missed: true`, so the streak breaks and the next occurrence
    * is created by the one rule that does both.
    */
-  const finishCompletion = (task: Task, options: CompletionOptions | undefined, missed: boolean): CompletedResult => {
+  const finishCompletion = (task: Task, options: CompletionOptions | undefined, mode: 'completed' | 'missed' | 'neutral'): CompletedResult => {
     const id = task.id;
+    const missed = mode === 'missed';
     const settings = useSettingsStore.getState();
-    const built = completion.buildCompletion(task, missed ? { missed: true } : options, {
+    const built = completion.buildCompletion(task, missed ? { missed: true } : mode === 'neutral' ? { ...options, neutral: true } : options, {
       dayResetTime: settings.dayResetTime,
       vacationMode: settings.vacationMode,
       now: new Date(),
@@ -1652,7 +1653,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // the device that later syncs this completion converges on one entry.
     // A no-op while rewards are off (the setting syncs, so this replica
     // reads the same answer the phone does).
-    if (rewards.taskEarnsCoins(task)) {
+    // A neutral completion is the app closing something on its own account, so
+    // it moves no coins either way (a claimed wish-list item is the one use).
+    if (mode !== 'neutral' && rewards.taskEarnsCoins(task)) {
       const store = useRewardStore.getState();
       const title = visibility.displayTitleFor(task);
       const at = new Date().toISOString();
@@ -2437,7 +2440,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     completeTask(id: string, options?: CompletionOptions): CompletedResult {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-      return finishCompletion(task, vetCompletion(task, options), false);
+      return finishCompletion(task, vetCompletion(task, options), 'completed');
     },
 
     markMissed(id: string): CompletedResult {
@@ -2451,7 +2454,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (task.recurrenceType === 'none') throw new Error('Only a repeating task has an occurrence to miss. Archive a one-off task instead.');
       const refusal = completion.completionRefusal(task);
       if (refusal) throw new Error(refusal);
-      return finishCompletion(task, undefined, true);
+      return finishCompletion(task, undefined, 'missed');
     },
 
     reopenTask(id: string): { task: Task; removed: Task[] } {
@@ -2863,22 +2866,42 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     claimReward(id): CoinEntry {
       requireRewardsOn();
       const reward = requireReward(id);
-      if (reward.taskId) throw new Error('That reward is a wish-list item. Claiming it also checks the item off the list, which only the app does, so claim it there.');
       const { entries } = useRewardStore.getState();
       if (reward.oneTime && rewards.lastClaimedAt(entries, id) !== null) throw new Error(`"${reward.title}" is a one-time reward and has already been claimed.`);
+      // A wish-list reward is its list item: claiming it checks the item off, the
+      // app's `claim` in RewardsScreen. Judged before any coin moves, so a
+      // refusal leaves the balance alone.
+      const item = reward.taskId ? tasks().find(t => t.id === reward.taskId) : undefined;
+      if (reward.taskId) {
+        if (!item || !rewards.rewardIsOpen(reward, entries, item)) throw new Error(`"${reward.title}" is checked off, archived or gone from the list, so the reward is gone too.`);
+        const refusal = completion.completionRefusal(item);
+        if (refusal) throw new Error(refusal);
+      }
       const balance = rewards.coinBalance(entries);
       if (!rewards.canClaimReward(balance, reward.cost)) {
         throw new Error(`"${reward.title}" costs ${reward.cost} coins and the balance is ${balance}.`);
       }
-      const entry = useRewardStore.getState().claimReward(id);
-      if (!entry) throw new Error('Could not claim the reward.');
+      let entry: CoinEntry | null = null;
+      db.dbTransaction(() => {
+        entry = useRewardStore.getState().claimReward(id);
+        if (!entry) throw new Error('Could not claim the reward.');
+        // Neutral, so checking the item off earns nothing on top of what was spent.
+        if (item) finishCompletion(item, undefined, 'neutral');
+      });
       refresh();
-      return entry;
+      return entry!;
     },
 
     unclaimReward(entryId): CoinEntry {
       const entry = useRewardStore.getState().entries.find(e => e.id === entryId);
       if (!entry || entry.kind !== 'spend') throw new Error(`No claim with id ${entryId}. Only a spend can be taken back.`);
+      // The app's undo for a wish-list claim puts the item back with the coins.
+      // Only an item checked off at or after the claim is reopened: one the person
+      // finished earlier is theirs, and a refused reopen stops the whole undo
+      // before any coin moves.
+      const reward = entry.rewardId ? useRewardStore.getState().rewards.find(r => r.id === entry.rewardId) : undefined;
+      const item = reward?.taskId ? tasks().find(t => t.id === reward.taskId) : undefined;
+      if (item?.completed && item.completedAt && item.completedAt >= entry.at) replica.reopenTask(item.id);
       useRewardStore.getState().unclaim(entryId);
       refresh();
       return entry;

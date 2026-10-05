@@ -153,9 +153,17 @@ export function deleteReward(replica: Replica, id: string): { deleted: { id: str
 }
 
 /** Spend a reward's cost. The result carries the claim id `unclaim_reward` takes back. */
-export function claimReward(replica: Replica, id: string): { claimId: string; reward: string; spent: number; balance: number } {
+export function claimReward(replica: Replica, id: string): { claimId: string; reward: string; spent: number; balance: number; checkedOff?: string } {
+  const listItem = replica.rewardState().rewards.find(r => r.id === id)?.taskId;
+  const itemTitle = listItem ? replica.taskById(listItem)?.title : undefined;
   const entry = replica.claimReward(id);
-  return { claimId: entry.id, reward: entry.label, spent: entry.amount, balance: getRewards(replica, { historyLimit: 0 }).balance };
+  return {
+    claimId: entry.id,
+    reward: entry.label,
+    spent: entry.amount,
+    balance: getRewards(replica, { historyLimit: 0 }).balance,
+    ...(itemTitle ? { checkedOff: itemTitle } : {}),
+  };
 }
 
 export function unclaimReward(replica: Replica, claimId: string): { returned: number; reward: string; balance: number } {

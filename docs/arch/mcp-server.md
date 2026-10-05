@@ -741,8 +741,10 @@ app's own passes (the sweeps, the rollover) still never charge anything.
   `missed: true` and `recordMiss`, a slip through `slipPatch` and `recordSlip`. The replica
   hydrates `useRewardStore` on open and on every refresh; before that it was never loaded here, so
   a claim would have judged the balance by what this process had earned since it started.
-- **Refused rather than half-done.** A wish-list reward (claiming it also checks the item off), a
-  habit with a penalty (a slip also charges an app block, which only the phone can set), a one-off
+- **A wish-list claim checks its item off neutrally**, as `RewardsScreen`'s `claim` does (no coins on
+  top of the spend), inside one transaction with the spend. `unclaim_reward` reopens the item only if
+  it was checked off at or after the claim, so an item the person finished earlier is left alone.
+- **Refused rather than half-done.** A habit with a penalty (a slip also charges an app block, which only the phone can set), a one-off
   task or a not-yet-due repeat for `mark_missed` (the app silently skips it), and anything while
   rewards are switched off.
 - **Undo is the paired tool.** `unclaim_reward` takes a claim back by the id `claim_reward` returned,
@@ -750,8 +752,8 @@ app's own passes (the sweeps, the rollover) still never charge anything.
   reversible for that occurrence, as in the app.
 - **Difficulty is `update_task`'s `difficulty`**, not a reward tool: it is an ordinary task field.
 - **Logged as `subject: 'reward'`**, a record only like a stack's. A reward, claim or goal has no
-  task to revert; a bounty edit carries the task revert; a miss is logged as a completion so the
-  Activity screen offers "Reopen", which is its real inverse.
+  task to revert; a bounty edit carries the task revert; a miss has its own `missed` action ("Marked
+  missed") that is reverted like a completion, since "Reopen" is its real inverse.
 
 ### Every task it creates has a category
 

@@ -249,8 +249,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     claimReward(id) {
+      const wish = replica.rewardState().rewards.find(r => r.id === id)?.taskId;
       const entry = replica.claimReward(id);
-      log({ action: 'created', subject: 'reward', title: entry.label, taskId: null, note: `Claim "${entry.label}", spending ${entry.amount} coins` });
+      log({ action: 'created', subject: 'reward', title: entry.label, taskId: null, note: `Claim "${entry.label}", spending ${entry.amount} coins${wish ? ' and checking the item off the wish list' : ''}` });
       return entry;
     },
 
@@ -281,11 +282,11 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return task;
     },
 
-    // Logged as a completion because reopening is its way back: uncompleteTask
-    // removes the row's miss entry along with the successor.
+    // Its own action, but reverted like a completion: reopening is its way back,
+    // and uncompleteTask removes the row's miss entry along with the successor.
     markMissed(id) {
       const result = replica.markMissed(id);
-      log({ action: 'completed', subject: 'task', title: result.completed.title, taskId: id, note: `Mark "${result.completed.title}" missed, which breaks its streak and may cost coins` });
+      log({ action: 'missed', subject: 'task', title: result.completed.title, taskId: id, note: `Mark "${result.completed.title}" missed, which breaks its streak and may cost coins` });
       return result;
     },
 
