@@ -2423,3 +2423,99 @@ describe('isTaskExpired during a nominated away span', () => {
     expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
   });
 });
+
+// Clock times earlier than dayResetTime belong to the small hours at the end
+// of the logical day (onLogicalDay). These pin the three places that placed
+// one on the day start's own date instead, all under a 4 AM reset.
+describe('a day start after midnight', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    mockSettingsState.dayResetTime = '04:00';
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockSettingsState.dayResetTime = '00:00';
+    mockSettingsState.nightStart = '21:00';
+    mockCategorySchedule(null);
+  });
+
+  // "03:00–05:00": the start rolls to tomorrow 03:00 and the end stays on
+  // today's 05:00, so compared as raw minutes the window kept its end and
+  // read as expired from 05:00 on, never visible once, and sweepable under
+  // "Immediately". It is a window straddling the reset, which can't close on
+  // this logical day, so it is open-ended from its start like "22:00–02:00".
+  it('does not expire a per-task window that straddles the reset', () => {
+    const task = { ...baseTask, dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), windowStart: '03:00', windowEnd: '05:00' };
+    jest.setSystemTime(new Date(2025, 5, 10, 5, 30, 0));
+    expect(isTaskExpired(task)).toBe(false);
+    expect(isTaskSweepable(task, 0)).toBe(false);
+    expect(isTaskVisible(task)).toBe(false);
+    jest.setSystemTime(new Date(2025, 5, 11, 3, 30, 0)); // still logical June 10, inside the window
+    expect(isTaskVisible(task)).toBe(true);
+    expect(isTaskExpired(task)).toBe(false);
+  });
+
+  // The overnight window that was open-ended under a midnight reset does
+  // close under this one: 02:00 lands after 22:00 on the logical day.
+  it('closes an overnight window at its end when the reset makes it representable', () => {
+    const task = { ...baseTask, dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), windowStart: '22:00', windowEnd: '02:00' };
+    jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+    expect(isTaskVisible(task)).toBe(true);
+    expect(isTaskExpired(task)).toBe(false);
+    jest.setSystemTime(new Date(2025, 5, 11, 2, 30, 0)); // still logical June 10, past the end
+    expect(isTaskExpired(task)).toBe(true);
+  });
+
+  // getVisibleAt copied the window's hours onto the deferred day's date, so a
+  // 01:00 start on June 13 came out as June 13 01:00: a moment still inside
+  // logical June 12, a full day before isTaskVisible first says yes.
+  it('names the first instant isTaskVisible agrees with, for a window start before the reset', () => {
+    const task = { ...baseTask, deferUntil: new Date(2025, 5, 13, 12, 0, 0).toISOString(), windowStart: '01:00' };
+    expect(getVisibleAt(task)).toEqual(new Date(2025, 5, 14, 1, 0, 0));
+    jest.setSystemTime(new Date(2025, 5, 13, 1, 0, 0));
+    expect(isTaskVisible(task)).toBe(false);
+    jest.setSystemTime(new Date(2025, 5, 14, 1, 0, 0));
+    expect(isTaskVisible(task)).toBe(true);
+  });
+
+  it('does the same for a night segment that starts before the reset', () => {
+    mockSettingsState.nightStart = '01:00';
+    const task = { ...baseTask, dueDate: new Date(2025, 5, 13, 12, 0, 0).toISOString(), timeSegments: ['night' as const] };
+    expect(getVisibleAt(task)).toEqual(new Date(2025, 5, 14, 1, 0, 0));
+    jest.setSystemTime(new Date(2025, 5, 14, 1, 0, 0));
+    expect(isTaskVisible(task)).toBe(true);
+  });
+});
+
+describe('getVisibleAt with a category schedule', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // Tue June 10
+    mockCategorySchedule(workCategory);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockCategorySchedule(null);
+  });
+
+  // The candidates combine as the latest, and the category's next window used
+  // to be walked from today: Saturday's day start (the due date) beat Friday's
+  // window, so Later filed a Mon–Fri task due Saturday under Saturday, a day
+  // it cannot appear on, and moved it to Monday only once Saturday came.
+  it('names the first scheduled day on or after the due date, at the window start', () => {
+    const task = { ...baseTask, category: 'Work', dueDate: new Date(2025, 5, 14, 12, 0, 0).toISOString() };
+    expect(getVisibleAt(task)).toEqual(new Date(2025, 5, 16, 9, 0, 0));
+    jest.setSystemTime(new Date(2025, 5, 14, 12, 0, 0));
+    expect(isTaskVisible(task)).toBe(false);
+    jest.setSystemTime(new Date(2025, 5, 16, 9, 0, 0));
+    expect(isTaskVisible(task)).toBe(true);
+  });
+
+  it('keeps the task\'s own later start when it falls inside the window', () => {
+    const task = { ...baseTask, category: 'Work', dueDate: new Date(2025, 5, 12, 12, 0, 0).toISOString(), windowStart: '10:00' };
+    expect(getVisibleAt(task)).toEqual(new Date(2025, 5, 12, 10, 0, 0));
+  });
+});

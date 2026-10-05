@@ -85,9 +85,17 @@ export function hhmmMinutes(hhmm: string): number {
  * A time window's closing time, or null when it doesn't close on its own day.
  *
  * Both window gates anchor to one logical day, so an end that isn't after the
- * start — "22:00–02:00", a window running into the small hours — compares as
- * already past from 02:00 onward. Treated as open-ended instead, which is what
- * "from 10pm" means in practice.
+ * start on that day's own timeline compares as already past from the moment
+ * it is placed. Treated as open-ended instead, which is what "from 10pm" means
+ * in practice.
+ *
+ * "After the start" is measured from `dayResetTime`, not from midnight,
+ * because every consumer places both ends with onLogicalDay, which rolls a
+ * clock time earlier than the reset onto the next date. Under a 4 AM reset
+ * "22:00–02:00" is a real four-hour window (the end lands after the start)
+ * and "03:00–05:00" is not: the start rolls to tomorrow 03:00 while the end
+ * stays on today's 05:00. Compared as raw minutes the second looked fine and
+ * the task read as expired all day, never having been shown once.
  *
  * The rule lives here rather than beside its first caller so a store-free
  * module can share it rather than fork it, the same split taskDayStart above
@@ -99,9 +107,13 @@ export function hhmmMinutes(hhmm: string): number {
 export function effectiveWindowEndTime(
   windowStart: string | null,
   windowEnd: string | null,
+  dayResetTime: string = '00:00',
 ): string | null {
   if (!windowEnd) return null;
-  if (windowStart && hhmmMinutes(windowEnd) <= hhmmMinutes(windowStart)) return null;
+  if (!windowStart) return windowEnd;
+  const reset = hhmmMinutes(dayResetTime);
+  const sinceReset = (hhmm: string) => (hhmmMinutes(hhmm) - reset + 1440) % 1440;
+  if (sinceReset(windowEnd) <= sinceReset(windowStart)) return null;
   return windowEnd;
 }
 

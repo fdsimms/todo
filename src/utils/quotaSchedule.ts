@@ -95,9 +95,20 @@ export function quotaRunSpan(input: QuotaSpanInput): QuotaSpan {
   return { start, end };
 }
 
-/** `"HH:MM"` anchored to a logical day, the same math `getWindowThreshold` does. */
+/**
+ * `"HH:MM"` anchored to a logical day, the same math `getWindowThreshold` does:
+ * a clock time earlier than the day's start belongs to the small hours at the
+ * *end* of that day, so it rolls onto the next date (visibilityUtils'
+ * onLogicalDay, inlined because this module stays store-free). Placed on the
+ * day start's own date instead, a "01:00–03:00" window under a 4 AM reset sat
+ * entirely before the day began: the whole target was owed the moment the
+ * window opened, the row could never read as on pace, and every due instant
+ * the reminders were scheduled for was already a day old.
+ */
 function onDay(dayStart: Date, hhmm: string): Date {
-  return hhmmToDate(hhmm, new Date(dayStart));
+  const t = hhmmToDate(hhmm, new Date(dayStart));
+  if (t < dayStart) t.setDate(t.getDate() + 1);
+  return t;
 }
 
 /**

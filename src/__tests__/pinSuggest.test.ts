@@ -605,6 +605,22 @@ describe('currentTimeSegment', () => {
   it('reads the small hours before the first segment as night', () => {
     expect(currentTimeSegment(new Date(2026, 2, 15, 3, 0))).toBe('night');
   });
+
+  // A night start earlier than dayResetTime belongs to the small hours at the
+  // end of the logical day (getTimeOfDayThreshold's rule). Copied onto the day
+  // start's own date it sat before the day began, so the whole evening read as
+  // night.
+  it('places a night start earlier than the day reset at the end of the day', () => {
+    mockSettingsState.dayResetTime = '04:00';
+    mockSettingsState.nightStart = '01:00';
+    try {
+      expect(currentTimeSegment(new Date(2026, 2, 15, 19, 0))).toBe('evening');
+      expect(currentTimeSegment(new Date(2026, 2, 16, 1, 30))).toBe('night');
+    } finally {
+      mockSettingsState.dayResetTime = '00:00';
+      mockSettingsState.nightStart = '21:00';
+    }
+  });
 });
 
 describe('buildPinContext', () => {
