@@ -10,6 +10,7 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -184,9 +185,10 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   // The run name, the questions and the blanks all sit above the item list,
   // in a card anchored to the bottom of the screen, so the keyboard covered
   // the very field it opened for. The card rides up with it instead, and the
-  // item list gives up height (`flexShrink` below) to keep it on screen.
+  // body (questions through checklist) scrolls (`flexShrink` below) to keep it on screen.
   const keyboard = useKeyboardLift(visible);
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible && template) {
@@ -472,6 +474,9 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
+          // Capped at the screen so a long run of questions can't push the
+          // title off the top; the body scrolls instead (see `body` below).
+          { maxHeight: windowHeight - insets.top - spacing.sm },
           keyboard.height > 0 && { maxHeight: windowHeight - keyboard.height - KEYBOARD_TOP_INSET },
           { transform: [{ translateY: Animated.add(translateY, keyboard.offset) }] },
         ]}
@@ -483,6 +488,9 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>{template.name}</Text>
 
+          {/* Title and the Add button stay put; everything between scrolls, so
+              a template with many questions can still reach its checklist. */}
+          <ScrollView style={styles.body} bounces={false} keyboardShouldPersistTaps="handled">
           {/* What this run is about — the one field that carries the context
               the item titles leave out. Optional: blank means loose, unnamed
               tasks, exactly as before it existed. */}
@@ -581,15 +589,16 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           <View style={styles.inlineSep} />
 
           {/* Item checklist, including any nested templates' items indented beneath their ref row */}
-          <ScrollView style={styles.itemList} bounces={false}>
+          <View>
             {renderApplyTreeNodes(tree, 0)}
-          </ScrollView>
+          </View>
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
               Some items count days from a date you haven't set, so they'll be added without dates
             </Text>
           )}
+          </ScrollView>
 
           <TouchableOpacity
             style={[styles.applyBtn, selectedCount === 0 && styles.applyBtnDisabled]}
@@ -862,8 +871,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,
   },
-  itemList: {
-    maxHeight: 320,
+  body: {
     flexShrink: 1,
   },
   itemRow: {
