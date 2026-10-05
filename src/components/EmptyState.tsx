@@ -17,6 +17,13 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 interface Props {
   /** `COIN_ICON` draws the gold coin the Rewards screen introduces itself with. */
   icon: IconName;
+  /**
+   * Drawn art in place of the icon circle: Today's All clear mark
+   * (`AllClearMark`). It takes the circle's slot and its entrance, so it still
+   * rises in with the rest; `icon` stays required as what an empty state is
+   * without it.
+   */
+  art?: React.ReactNode;
   title: string;
   subtitle?: string;
   /** Optional call-to-action pill button below the text. */
@@ -73,7 +80,7 @@ interface Props {
  * moves the view in and out of its descriptor set — which is the other way to
  * arrive back at a permanently invisible empty state.
  */
-export function EmptyState({ icon, title, subtitle, actionLabel, onAction, bottomOffset }: Props) {
+export function EmptyState({ icon, art, title, subtitle, actionLabel, onAction, bottomOffset }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
@@ -104,8 +111,8 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
     <Reanimated.View
       style={[styles.container, { paddingBottom: bottomOffset ?? 0 }, containerStyle]}
     >
-      <Reanimated.View style={[styles.iconCircle, iconStyle]}>
-        {icon === COIN_ICON
+      <Reanimated.View style={[art ? styles.artSlot : styles.iconCircle, iconStyle]}>
+        {art ? art : icon === COIN_ICON
           ? <CoinIcon size={44} color={colors.done} filled />
           : <NamedIcon name={icon} size={34} color={colors.textTertiary} />}
       </Reanimated.View>
@@ -122,6 +129,9 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  artSlot: {
+    marginBottom: spacing.xs,
+  },
   iconCircle: {
     width: 88, height: 88, borderRadius: 44,
     backgroundColor: colors.bgSecondary,

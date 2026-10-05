@@ -41,6 +41,8 @@ export function AppearanceSettings() {
   const setHapticsEnabled = useSettingsStore(s => s.setHapticsEnabled);
   const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
   const setShakeToUndoEnabled = useSettingsStore(s => s.setShakeToUndoEnabled);
+  const beatSoundEnabled = useSettingsStore(s => s.beatSoundEnabled);
+  const setBeatSoundEnabled = useSettingsStore(s => s.setBeatSoundEnabled);
   const confirmBeforeDeleting = useSettingsStore(s => s.confirmBeforeDeleting);
   const setConfirmBeforeDeleting = useSettingsStore(s => s.setConfirmBeforeDeleting);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
@@ -187,6 +189,16 @@ export function AppearanceSettings() {
             : 'Shaking your phone does nothing'}
           toggle={shakeToUndoEnabled}
           onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="beatSound"
+          icon="musical-notes-outline"
+          iconColor={beatSoundEnabled ? colors.accent : undefined}
+          label="Sound when Today is clear"
+          hint="Play three notes when you finish the last task on Today. Follows the silent switch"
+          toggle={beatSoundEnabled}
+          onPress={() => setBeatSoundEnabled(!beatSoundEnabled)}
         />
         <View style={styles.sep} />
         <SettingsRow

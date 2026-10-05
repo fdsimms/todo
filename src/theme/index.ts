@@ -105,6 +105,14 @@ export type Colors = {
   /** The check drawn on a `done` fill: ink in every theme. */
   onDone: string;
   /**
+   * The mark's own gold, Marigold 500 in every theme, so the mark drawn in the
+   * app (Today's All clear) matches the app icon. Not a state colour: a
+   * checked box is `done`, which goes darker in Light to hold 3:1 on a card.
+   * The mark on it is `onBrand`.
+   */
+  brand: string;
+  onBrand: string;
+  /**
    * Orange used for "new item" banners and alerts. It was yellow until gold
    * became the colour of finishing, and moved so the two don't read as one.
    */
@@ -177,6 +185,8 @@ export const darkColors: Colors = {
   onFill: '#FFFFFF',
   done: '#FFB020',
   onDone: INK,
+  brand: '#FFB020',
+  onBrand: INK,
   warning: '#FF9F0A',
   warningText: '#FF9F0A',
   warningBg: 'rgba(255, 159, 10, 0.16)',
@@ -229,6 +239,8 @@ export const nightColors: Colors = {
   onFill: '#FFFFFF',
   done: '#FFB020',
   onDone: INK,
+  brand: '#FFB020',
+  onBrand: INK,
   warning: '#FF9F0A',
   warningText: '#FF9F0A',
   warningBg: 'rgba(255, 159, 10, 0.16)',
@@ -277,6 +289,8 @@ export const lightColors: Colors = {
   onFill: '#FFFFFF',
   done: '#C98500',
   onDone: INK,
+  brand: '#FFB020',
+  onBrand: INK,
   warning: '#FF9500',
   warningText: '#9D5B00',
   warningBg: 'rgba(255, 149, 0, 0.16)',

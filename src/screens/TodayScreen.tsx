@@ -178,6 +178,7 @@ import {
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { AllClearMark } from '../components/AllClearMark';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
 import { CreatedTaskToast } from '../components/CreatedTaskToast';
@@ -3895,6 +3896,7 @@ export function TodayScreen() {
   ) : (
     <EmptyState
       icon="checkmark-circle"
+      art={<AllClearMark filtered={activeFilterCount > 0} doneToday={completedToday.length} />}
       title="All clear"
       subtitle={describeAllClear({
         filtered: activeFilterCount > 0,

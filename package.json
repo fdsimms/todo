@@ -59,6 +59,7 @@
     "date-fns": "^4.4.0",
     "expo": "~57.0.16",
     "expo-asset": "~57.0.14",
+    "expo-audio": "~57.0.5",
     "expo-background-task": "^57.0.14",
     "expo-blur": "~57.0.2",
     "expo-build-properties": "~57.0.14",
