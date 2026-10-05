@@ -228,8 +228,9 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     if (s.windowStart) draft.windowStart = s.windowStart;
     if (s.windowEnd) draft.windowEnd = s.windowEnd;
     if (s.explicitClockTime) {
-      const at = new Date(s.dueDate);
-      at.setHours(s.explicitClockTime.h, s.explicitClockTime.m, 0, 0);
+      // On the due day's logical day, as quick add places it: a clock time
+      // before the person's day start is the small hours at that day's end.
+      const at = p.scheduleClockInstant(s, dayResetTime)!;
       if (remind) draft.reminderTime = at.toISOString();
       else notes.push(`Read ${sched.matchedText.trim()} as the time of day; no reminder was set (start the line with "remind me" for one).`);
     }

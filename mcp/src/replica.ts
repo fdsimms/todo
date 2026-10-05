@@ -2487,7 +2487,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!settings.vacationMode) throw new Error('Vacation mode is already off.');
       const wasHiding = hiddenTasks();
       const categories = hiddenCategories();
-      const forgiven = streaks.forgiveVacationStreaks(tasks(), dates.getCurrentDayStart().toISOString());
+      const forgiven = streaks.forgiveVacationStreaks(tasks(), dates.getCurrentDayStart().toISOString(), visibility.isHiddenForVacation);
       forgiven.forEach(t => db.dbUpdateTask(t));
       taskCache = null;
       settings.setVacationMode(false);

@@ -293,6 +293,23 @@ describe('scheduleTaskReminder', () => {
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
+  // Withheld, not only paused: a task vacation mode is hiding is held the same
+  // way a paused project's is, and used to buzz anyway.
+  it('does nothing for a task vacation mode is hiding', async () => {
+    mockSettings.vacationMode = true;
+    try {
+      await scheduleTaskReminder(makeTask({ reminderTime: FUTURE, vacationPause: true }));
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    } finally {
+      mockSettings.vacationMode = false;
+    }
+  });
+
+  it('schedules the same task once vacation mode is off', async () => {
+    await scheduleTaskReminder(makeTask({ reminderTime: FUTURE, vacationPause: true }));
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
   it('does nothing when reminderTime is in the past', async () => {
     await scheduleTaskReminder(makeTask({ reminderTime: PAST }));
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();

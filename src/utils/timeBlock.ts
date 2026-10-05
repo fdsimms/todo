@@ -1,5 +1,7 @@
+import { addDays } from 'date-fns/addDays';
 import { addMinutes } from 'date-fns/addMinutes';
 import type { Task } from '../types';
+import { logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import type { BusyEvent } from './calendarBusy';
 import { freeGapsIn } from './calendarBusy';
 import { activeChainStep } from './chain';
@@ -46,6 +48,8 @@ export interface TimeBlockFields {
 /** Everything `proposeTimeBlockStart` needs that isn't on the task. */
 export interface TimeBlockContext {
   now: Date;
+  /** The day-start setting, so clock times land on the task's logical day. */
+  dayResetTime: string;
   /** "HH:MM" — the earliest hour the app is willing to put work at. */
   activeHoursStart: string;
   /** "HH:MM" — and the latest. */
@@ -68,12 +72,14 @@ function ceilToMinutes(date: Date, step: number): Date {
   return new Date(rounded);
 }
 
-/** `hhmm` applied to `day`'s own calendar date. */
-function timeOnDay(day: Date, hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const out = new Date(day);
-  out.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
-  return out;
+/**
+ * `hhmm` on the logical day that starts at `dayStart` (see onLogicalDay):
+ * a clock time earlier than the reset is the small hours at the day's end.
+ * Applied to the day's calendar date instead, a "01:00" window start under a
+ * 4 AM reset proposed a block a day early.
+ */
+function timeOnDay(dayStart: Date, hhmm: string): Date {
+  return onLogicalDay(dayStart, hhmm);
 }
 
 /**
@@ -125,14 +131,19 @@ export function proposeTimeBlockStart(
   ctx: TimeBlockContext
 ): Date {
   // A task with no date is work for today — there is no other day to mean.
-  const day = task.dueDate ? new Date(task.dueDate) : ctx.now;
+  // A due date is a stored anchor (noon of its day) and `now` is an instant,
+  // so each gets its own day-start rule.
+  const day = task.dueDate
+    ? taskDayStart(new Date(task.dueDate), ctx.dayResetTime)
+    : logicalDayStart(ctx.now, ctx.dayResetTime);
 
   const dayOpen = timeOnDay(day, ctx.activeHoursStart);
   const dayClose = timeOnDay(day, ctx.activeHoursEnd);
-  // Active hours that don't resolve within one day ("22:00–02:00") leave no
-  // span to search; fall back to the whole rest of the day rather than
-  // inverting the range and returning nonsense.
-  const close = dayClose > dayOpen ? dayClose : timeOnDay(day, '23:59');
+  // Active hours that don't resolve within one day leave no span to search;
+  // fall back to the whole rest of the day rather than inverting the range and
+  // returning nonsense. (Placed on the logical day, "22:00–02:00" does resolve
+  // under a reset after 02:00, so this is now only the genuinely inverted case.)
+  const close = dayClose > dayOpen ? dayClose : addMinutes(addDays(day, 1), -1);
 
   const earliest = ceilToMinutes(ctx.now, 15);
   const spanStart = dayOpen > earliest ? dayOpen : earliest;

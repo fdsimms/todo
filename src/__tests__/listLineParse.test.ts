@@ -64,7 +64,7 @@ describe('lineSuggestion', () => {
 describe('confirmLineSuggestion and linePendingFields', () => {
   it('takes the date phrase out of the text and dates the item', () => {
     const s = lineSuggestion('call the vet tomorrow', NOW, NOW)!;
-    const { text, pending } = confirmLineSuggestion(s, NO_LINE_PENDING);
+    const { text, pending } = confirmLineSuggestion(s, NO_LINE_PENDING, '00:00');
     expect(text).toBe('call the vet ');
     const { draft, seriesDates } = linePendingFields(pending);
     const due = new Date(draft.dueDate!);
@@ -75,7 +75,7 @@ describe('confirmLineSuggestion and linePendingFields', () => {
 
   it('sets a priority without touching the schedule', () => {
     const s = lineSuggestion('renew passport !high', NOW, NOW)!;
-    const { text, pending } = confirmLineSuggestion(s, NO_LINE_PENDING);
+    const { text, pending } = confirmLineSuggestion(s, NO_LINE_PENDING, '00:00');
     expect(text).toBe('renew passport ');
     const { draft } = linePendingFields(pending);
     expect(draft.priority).toBe(3);
@@ -83,8 +83,8 @@ describe('confirmLineSuggestion and linePendingFields', () => {
   });
 
   it('keeps a priority confirmed earlier when a date is confirmed after it', () => {
-    const first = confirmLineSuggestion(lineSuggestion('renew passport !high', NOW, NOW)!, NO_LINE_PENDING);
-    const second = confirmLineSuggestion(lineSuggestion(`${first.text}tomorrow`, NOW, NOW)!, first.pending);
+    const first = confirmLineSuggestion(lineSuggestion('renew passport !high', NOW, NOW)!, NO_LINE_PENDING, '00:00');
+    const second = confirmLineSuggestion(lineSuggestion(`${first.text}tomorrow`, NOW, NOW)!, first.pending, '00:00');
     const { draft } = linePendingFields(second.pending);
     expect(draft.priority).toBe(3);
     expect(draft.dueDate).toBeDefined();
@@ -92,7 +92,7 @@ describe('confirmLineSuggestion and linePendingFields', () => {
 
   it('sets the reminder a "remind me to … at" line asks for, and drops the request from the text', () => {
     const s = lineSuggestion('remind me to call mom tomorrow at 4pm', NOW, NOW)!;
-    const { text, pending } = confirmLineSuggestion(s, NO_LINE_PENDING);
+    const { text, pending } = confirmLineSuggestion(s, NO_LINE_PENDING, '00:00');
     expect(text).toBe('call mom ');
     const reminder = new Date(linePendingFields(pending).draft.reminderTime!);
     expect([reminder.getDate(), reminder.getHours()]).toEqual([6, 16]);
@@ -100,7 +100,7 @@ describe('confirmLineSuggestion and linePendingFields', () => {
 
   it('hands every date of a set to applyTaskDates rather than dropping all but one', () => {
     const s = lineSuggestion('water the neighbors\' plants on the 10th and the 15th', NOW, NOW)!;
-    const { pending } = confirmLineSuggestion(s, NO_LINE_PENDING);
+    const { pending } = confirmLineSuggestion(s, NO_LINE_PENDING, '00:00');
     const { seriesDates } = linePendingFields(pending);
     expect(seriesDates?.map(d => d.getDate())).toEqual([10, 15]);
   });

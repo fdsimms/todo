@@ -1,6 +1,6 @@
 import { nextPendingGate, outstandingGates } from './appGate';
 import { syncAppShield } from './appShield';
-import { beginVisibleAtPass, getVisibleAt, isTaskVisible } from './visibilityUtils';
+import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -38,7 +38,12 @@ export function reconcileAppShield(): Date | null {
   // does it: it caches the day boundary and the segment thresholds, which are
   // the same answer for all of them.
   const pass = beginVisibleAtPass();
-  const pending = nextPendingGate(tasks, task => getVisibleAt(task, pass), now);
+  // getVisibleAt names the next *clock* moment and knows nothing about
+  // vacation, so a gate task vacation mode is hiding would otherwise get a
+  // window armed for tomorrow morning: being gated by something the app is
+  // withholding is the one outcome appGate.ts rules out. A paused project's
+  // task stays in, since getVisibleAt does return the day its pause lifts.
+  const pending = nextPendingGate(tasks.filter(t => !isHiddenForVacation(t)), task => getVisibleAt(task, pass), now);
 
   syncAppShield({
     session: useFocusStore.getState().session,

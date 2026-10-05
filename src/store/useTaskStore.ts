@@ -369,7 +369,7 @@ import {
   describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
-import { dateToHHMM } from '../utils/clockTime';
+import { carryClockTime, dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
 import { currentTravelOrigin, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
@@ -453,10 +453,11 @@ function reminderOnto(effective: Task, due: Date, overrides: Partial<Task> = {})
     return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
   }
   const original = new Date(effective.reminderTime);
-  const next = new Date(
-    effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due
-  );
-  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  const onto = effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due;
+  // The clock time on the new day's *logical* day (carryClockTime), not copied
+  // onto its calendar date: a 1 AM reminder sits at the end of its day under a
+  // 4 AM reset, and copied it landed a whole day early on every successor.
+  const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
   return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
 }
 
@@ -3120,10 +3121,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
-    const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+    const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
     const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
       now: new Date(),
+      dayResetTime,
       activeHoursStart,
       activeHoursEnd,
       events: loaded ? events : null,
@@ -8888,7 +8890,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // The rule is `forgiveVacationStreaks` (vacationStreaks.ts), shared with the
   // MCP server's own vacation switch, which cannot load this store.
   forgivVacationStreaks() {
-    const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString());
+    // isHiddenForVacation, not the per-task flag alone: a task hidden through
+    // its category's hide-on-vacation was withheld exactly the same way and
+    // lost its streak at the end of every vacation. Both callers run this
+    // before switching vacation mode off, which is what the check reads.
+    const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString(), isHiddenForVacation);
     if (forgiven.length === 0) return;
     forgiven.forEach(t => dbUpdateTask(t));
     const byId = new Map(forgiven.map(t => [t.id, t]));

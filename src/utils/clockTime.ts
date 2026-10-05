@@ -57,6 +57,17 @@ export function taskDayStart(date: Date, dayResetTime: string): Date {
 }
 
 /**
+ * A reminder's time of day carried onto another day: `original`'s clock time
+ * placed on the logical day `onto` names (a stored anchor such as a due date,
+ * so taskDayStart rather than logicalDayStart). Copying hours and minutes onto
+ * `onto`'s own calendar date put a 1 AM reminder, which lives at the end of
+ * its day under a 4 AM reset, a whole day early on every successor.
+ */
+export function carryClockTime(onto: Date, original: Date, dayResetTime: string): Date {
+  return onLogicalDay(taskDayStart(onto, dayResetTime), dateToHHMM(original));
+}
+
+/**
  * Calendar days a due date is late by. Positive = overdue, 0 = due today,
  * negative = not due yet.
  *

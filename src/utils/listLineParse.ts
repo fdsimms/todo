@@ -3,6 +3,7 @@ import {
   parseCategoryAndTagsInput,
   parsePriorityInput,
   parseTaskInput,
+  scheduleClockInstant,
   stripRemindPrefix,
   withTrailingSpace,
   type GroupMentionToken,
@@ -93,6 +94,7 @@ export const NO_LINE_PENDING: LinePending = { schedule: null, reminderAt: null, 
 export function confirmLineSuggestion(
   suggestion: LineSuggestion,
   pending: LinePending,
+  dayResetTime: string,
 ): { text: string; pending: LinePending } {
   if (suggestion.kind === 'priority') {
     return {
@@ -102,11 +104,8 @@ export function confirmLineSuggestion(
   }
   const { schedule, cleanTitle } = suggestion.parsed;
   const remindTitle = schedule.explicitClockTime ? stripRemindPrefix(cleanTitle) : null;
-  let reminderAt: Date | null = null;
-  if (remindTitle !== null && schedule.explicitClockTime) {
-    reminderAt = new Date(schedule.dueDate);
-    reminderAt.setHours(schedule.explicitClockTime.h, schedule.explicitClockTime.m, 0, 0);
-  }
+  // On the due day's logical day (scheduleClockInstant), as quick add does.
+  const reminderAt = remindTitle !== null ? scheduleClockInstant(schedule, dayResetTime) : null;
   return {
     text: withTrailingSpace(remindTitle ?? cleanTitle),
     pending: { ...pending, schedule, reminderAt },
