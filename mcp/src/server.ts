@@ -81,12 +81,15 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
+import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
-import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
+import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_MIN_PUSHES, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
 import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
+import { DEFAULT_SUGGESTION_LIMIT, unusedFeatures } from './adoptionTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
 import { createConfirmTokens, describeEffects, type ConfirmTokens } from './confirmWrites';
@@ -225,7 +228,7 @@ function withLink<T extends object>(result: T, link: string | undefined): T | (T
 }
 
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
+  const server = new McpServer({ name: 'dundundun', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
 
   // Every tool gets its title and read/write hints from one table
   // (toolAnnotations.ts) rather than an argument at each of thirty call sites.
@@ -331,9 +334,92 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_grocery_items',
-    'The home grocery list, with whether each item is checked off there. This is the list the grocery write tools act on. An item only on a separate list (a trip\'s list, say) is not included. Pass onListOnly: false to search the whole catalog instead.',
-    { onListOnly: z.boolean().optional() },
-    async input => json(await withFresh(() => listGroceryItems(replica, input)))
+    'The home grocery list, with whether each item is checked off there. Pass list to read a separate list (a trip\'s, say) instead. Pass onListOnly: false to search the whole catalog.',
+    { onListOnly: z.boolean().optional(), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.') },
+    async ({ list, ...input }) => json(await withFresh(() => listGroceryItems(replica, { ...input, listId: resolveList(replica, list)?.id ?? null })))
+  );
+
+  server.tool(
+    'grocery_setup',
+    "The grocery setup: the aisles, the stores (with their receipt style), and the lists (the list at home and any separate ones, with item counts). Start here before filing an item in an aisle, linking a store or using a separate list.",
+    {},
+    async () => json(await withFresh(() => grocerySetup(replica)))
+  );
+
+  server.tool(
+    'get_grocery_item',
+    "Everything recorded about one grocery item: aisle, quantity, note, last price, brands (boxes), the stores it comes from, substitutes, the lists it is on, and the names receipts print for it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
+    { id: z.string().optional(), name: z.string().optional() },
+    async input => {
+      try {
+        return json(await withFresh(() => getGroceryItem(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that item.' });
+      }
+    }
+  );
+
+  const receiptLineRead = z.object({
+    label: z.string().min(1).describe('The line exactly as printed, abbreviations and all.'),
+    name: z.string().min(1).describe('The same line as a shopper would say it ("milk"). This is what gets matched.'),
+    quantity: z.string().optional(),
+    priceMinor: z.number().int().positive().nullable().optional().describe('The price in minor units (cents). Null or omitted when the line has none.'),
+  });
+
+  server.tool(
+    'match_receipt',
+    "Read a receipt against the catalog, with the app's own matching. You read the receipt (photo or text) and pass its lines here; this server cannot see images. Names this store printed before are matched first (remembered), then exact, likely and weak matches. scope list reads lines against what is on a list (a shopping trip), catalog against everything (the pantry). Writes nothing: show the person what you are unsure of, then call import_receipt with decisions.",
+    {
+      store: z.string().optional().describe('The store name printed at the top. Matched to the stores in grocery_setup.'),
+      scope: z.enum(['list', 'catalog']).optional(),
+      list: z.string().optional().describe('For scope list: a separate list. The list at home when omitted.'),
+      lines: z.array(receiptLineRead).min(1).max(100),
+    },
+    async ({ lines, ...rest }) => {
+      try {
+        return json(await withFresh(() => matchReceipt(replica, { ...rest, lines })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not match that receipt.' });
+      }
+    }
+  );
+
+  server.tool(
+    'list_pantry',
+    "What is in the kitchen: the pantry (groceries the app has a reason to think are on hand), the fridge (leftovers) and the freezer, each with the app's reason, use-by day and how fresh it is. Use filter: use_up for what is at or near its use-by day. The list is only what the app has a reason to believe, so an item missing from it may still be on a shelf: use get_pantry_item or ask the person. There are no quantities, on purpose.",
+    {
+      query: z.string().optional().describe('Matches a name, brand or section.'),
+      filter: z.enum(PANTRY_FILTERS).optional(),
+      limit: z.number().int().positive().optional(),
+    },
+    async input => json(await withFresh(() => listPantry(replica, input)))
+  );
+
+  server.tool(
+    'get_pantry_item',
+    "Everything the app records about one item's place in the kitchen: whether it counts as on hand and why, its use-by day, opened and frozen state, shelf life, running-low and staple flags, purchase history, how often it went to waste, and its boxes (brands, packets, frozen portions). A status of unknown means the app has no opinion, which is not the same as out. Takes an id from list_grocery_items or list_pantry, or a name.",
+    { id: z.string().optional(), name: z.string().optional() },
+    async input => {
+      try {
+        return json(await withFresh(() => getPantryItem(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'pantry_review',
+    "The pantry review deck the app deals: items whose 'you probably have it' is a guess that has lapsed or an answer that is old, at most 20. Ask the person about each one and record what they say with answer_pantry_review. Never answer on their behalf.",
+    {},
+    async () => json(await withFresh(() => pantryReview(replica)))
+  );
+
+  server.tool(
+    'use_up_recipes',
+    "What is at or past its use-by day, and the recipes that would use some of it, the one using the most first. Groceries only, not leftovers.",
+    {},
+    async () => json(await withFresh(() => useUpRecipes(replica)))
   );
 
   server.tool(
@@ -510,8 +596,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'review_tasks',
-    `Things in the list worth a second look, for a cleanup or weekly review: overdue tasks (oldest first), Inbox items left untriaged over a week, Unscheduled tasks older than staleDays (default ${DEFAULT_STALE_DAYS}), open tasks that look like duplicates, active projects with nothing finished in three weeks, and the repeating tasks missed most often. It lists, it does not judge: ask the person what they want done with any of it before changing anything.`,
-    { staleDays: z.number().int().positive().max(3650).optional() },
+    `Things in the list worth a second look, for a cleanup or weekly review: overdue tasks (oldest first), Inbox items left untriaged over a week, Unscheduled tasks older than staleDays (default ${DEFAULT_STALE_DAYS}), open tasks that look like duplicates, active projects with nothing finished in three weeks, open tasks pushed to a later day at least minPushes times (default ${DEFAULT_MIN_PUSHES}, most pushed first, each with its postponed.since and blockers; the stuck ones, even when never overdue), and the repeating tasks missed most often. It lists, it does not judge: ask the person what they want done with any of it before changing anything.`,
+    { staleDays: z.number().int().positive().max(3650).optional(), minPushes: z.number().int().positive().max(100).optional() },
     async input => json(await withFresh(() => reviewTasks(replica, input)))
   );
 
@@ -524,6 +610,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       includeFixes: z.boolean().optional(),
     },
     async input => json(await withFresh(() => appHelp(replica, input)))
+  );
+
+  server.tool(
+    'unused_features',
+    `App features this person's own data suggests they would get something from and are not using: for example many open tasks and no time estimates, or several projects and no templates. Each suggestion carries what was seen, what the feature does, and the Settings path when it is a setting. Raise a few at a time (default ${DEFAULT_SUGGESTION_LIMIT}) as options, never as a fault. If the person declines one, offer to remember that, naming its id, and it will not come up again. Features in areas they have switched off are never suggested.`,
+    { limit: z.number().int().positive().max(20).optional() },
+    async input => json(await withFresh(() => unusedFeatures(replica, input)))
   );
 
   server.tool(
@@ -680,7 +773,7 @@ const itemSchema = z.object({
   category: z.string().nullable().optional(),
   priority: z.number().int().min(0).max(4).optional(),
   effort: z.number().int().min(0).max(6).optional(),
-  difficulty: z.enum(['easy', 'normal', 'hard']).optional(),
+  difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   recurrenceType: z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly', 'hours']).optional(),
   recurrenceInterval: z.number().int().positive().optional(),
@@ -790,8 +883,8 @@ const taskFieldsShape = {
     .describe('The part of the day it shows up in. Usually one.'),
   priority: z.number().int().min(0).max(4).optional().describe('0 none, 1 low, 2 medium, 3 high, 4 urgent.'),
   effort: z.number().int().min(0).max(6).optional(),
-  difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional()
-    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
+  difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).nullable().optional()
+    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves, trivial earns none.'),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
@@ -877,6 +970,8 @@ const taskFieldsShape = {
     .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
     .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
+  waitForSeriesEnd: z.boolean().optional()
+    .describe('With waitsOn on a repeating task: keep waiting until its last repeat is done, not just the next one. A task that repeats with no end never releases this one.'),
   onlyIfAnswer: z.object({
     taskId: z.string().describe('A task that asks a Yes/No or pick-one question when completed.'),
     answers: z.array(z.string()).min(1).describe('The answers that show this task, spelled as the question offers them.'),
@@ -1024,12 +1119,13 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep") and a note. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), a note and a dream they remember. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
+      dream: z.string().nullable().optional().describe('A dream the person woke up with, in their words. Filed under the day of the check-in.'),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
     },
     async input => {
@@ -1130,13 +1226,14 @@ function registerWriteTools(
 
   server.tool(
     'update_mood_log',
-    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
+    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating, the note or the dream. A check-in cannot be left empty: delete it instead.' + dayNote,
     {
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
+      dream: z.string().nullable().optional(),
     },
     async ({ id, ...patch }) => {
       try {
@@ -1227,7 +1324,9 @@ function registerWriteTools(
         stripKeyword: z.boolean().optional().describe('title: remove the word from the title.'),
         condition: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).optional().describe('weather.'),
         matches: z.array(z.string()).optional().describe('event: 1 to 6 words or phrases looked for in event titles.'),
-        leadDays: z.number().int().min(0).max(14).optional().describe('event: days before the event to add the task.'),
+        leadDays: z.number().int().min(0).max(14).optional().describe('event: days before the event to add the task. Ignored when afterEvent is true.'),
+        afterEvent: z.boolean().optional().describe('event: add the task once the event has ended instead of ahead of it, on the day it ended. Use it for a follow-up like booking the next appointment.'),
+        skipIfUpcoming: z.boolean().optional().describe('event, with afterEvent: add nothing while another event that matches is still ahead on the calendar (up to 6 months out).'),
         metric: z.enum(['steps', 'sleepHours', 'exerciseMinutes', 'sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal']).optional().describe('health.'),
         threshold: z.number().optional().describe('health: in the metric\'s own unit.'),
         direction: z.enum(['under', 'over']).optional().describe('health: which side of the threshold fires it. Each metric has a usual one.'),
@@ -1514,15 +1613,16 @@ function registerWriteTools(
 
   server.tool(
     'add_grocery_item',
-    "Put something on the home grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    "Put something on the home grocery list, or on a separate list with list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
       name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
       quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
       note: z.string().nullable().optional(),
+      list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'),
     },
-    async ({ name, ...rest }) => {
+    async ({ name, list, ...rest }) => {
       try {
-        return json(withLink(await withWrite(() => addGroceryItem(replica, name, rest)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => addGroceryItem(replica, name, { ...rest, listId: resolveList(replica, list)?.id ?? null })), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add that.' });
       }
@@ -1532,10 +1632,10 @@ function registerWriteTools(
   server.tool(
     'check_off_grocery_item',
     'Check something off on the home grocery list, or un-check it with checked: false. Takes the item id from list_grocery_items.',
-    { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
-    async ({ id, checked }) => {
+    { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.'), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'), },
+    async ({ id, checked, list }) => {
       try {
-        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true, resolveList(replica, list)?.id ?? null)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not check that off.' });
       }
@@ -1544,16 +1644,298 @@ function registerWriteTools(
 
   server.tool(
     'remove_from_grocery_list',
-    'Take something off the home grocery list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
-    { id: z.string().min(1) },
-    async ({ id }) => {
+    'Take something off the home grocery list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. delete_grocery_item is the tool that deletes one, only when asked.',
+    { id: z.string().min(1), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'), },
+    async ({ id, list }) => {
       try {
-        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id, resolveList(replica, list)?.id ?? null)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
       }
     }
   );
+
+  const pantryItemShape = {
+    id: z.string().optional().describe('From list_grocery_items, list_pantry or get_pantry_item. Give this or name.'),
+    name: z.string().optional().describe('The item by name, singular or plural. Must already be in the catalog.'),
+    status: z.enum(['have', 'out', 'clear']).optional().describe("have: 'Got it', on hand for the item's usual window. out: 'Out of it', which also clears its use-by, opened and frozen state. clear: forget what was said and go back to the app's own guess."),
+    outcome: z.enum(['usedUp', 'spoiled']).optional().describe('With status out: how it went. spoiled is recorded as waste and used to suggest a shelf life; use usedUp when it was finished.'),
+    staple: z.boolean().optional().describe("'Always have it': never expires."),
+    frozen: z.boolean().optional().describe('Into the freezer, which pauses its use-by countdown. Out of it restarts a fresh shelf life from today.'),
+    freezeSome: z.boolean().optional().describe('Freeze part of it as a separate frozen portion and leave the rest where it is.'),
+    opened: z.boolean().optional().describe('Opened a jar or bag. Moves its use-by day to the opened shelf life when the app knows one for it.'),
+    runningLow: z.boolean().optional().describe('True also puts it on the home grocery list. False never takes it off.'),
+    expiresAt: dayKey.nullable().optional().describe('Use-by day, or null to clear.'),
+    shelfLifeDays: z.number().int().min(0).nullable().optional().describe('How long this item keeps once bought or thawed. Used for the next purchase, not the current use-by day.'),
+    useUpTask: z.boolean().nullable().optional().describe("true or false forces the 'Use up X' task on or off for this item, null follows the setting. The phone creates or drops the task itself the next time it syncs."),
+  };
+
+  server.tool(
+    'update_pantry_item',
+    "Change what the kitchen holds of one grocery item: mark it on hand or out, staple, frozen, opened, running low, its use-by day or shelf life. Several fields can be set in one call and are applied in the order listed. The rules are the app's own (thawing restarts the shelf life, opening can shorten the use-by day, out clears everything about the last box). Only do what the person said: marking something out or on hand replaces a guess with a claim. The result lists what changed.",
+    pantryItemShape,
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => updatePantryItem(replica, input)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_pantry_box',
+    "The same as update_pantry_item for one packet of an item: a brand or variant, or its frozen portion. Ids are the `boxes` of get_pantry_item or the boxId of a list_pantry row. Marking a frozen portion out deletes it.",
+    {
+      id: z.string().min(1),
+      status: z.enum(['have', 'out', 'clear']).optional(),
+      frozen: z.boolean().optional(),
+      opened: z.boolean().optional(),
+    },
+    async ({ id, ...change }) => {
+      try {
+        return json(withLink(await withWrite(() => updatePantryBox(replica, id, change)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that packet.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_to_pantry',
+    "Say the person has these ('I have flour'). A name the catalog knows is marked on hand and keeps everything else; a new one becomes a catalog item that is NOT on the shopping list. A leading amount is dropped, since the app keeps no quantities. Use add_grocery_item to buy something instead.",
+    { names: z.array(z.string().min(1)).min(1).max(50) },
+    async ({ names }) => {
+      try {
+        return json(withLink(await withWrite(() => addToPantry(replica, names)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add those.' });
+      }
+    }
+  );
+
+  server.tool(
+    'answer_pantry_review',
+    "Record the person's answers to cards from pantry_review: have (still on hand), low (running low, which also puts it on the home list) or out. Every answer marks the card reviewed so it is not dealt again for a week. Only record what the person actually said.",
+    { answers: z.array(z.object({ id: z.string().min(1), answer: z.enum(['have', 'low', 'out']) })).min(1).max(20) },
+    async ({ answers }) => {
+      try {
+        return json(withLink(await withWrite(() => answerPantryReview(replica, answers)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not record those answers.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_leftover',
+    "Change a container of cooked food (leftoverId of a list_pantry row): freeze or thaw it (thawing restarts its fridge clock), finish it as eaten or tossed, reopen one that was finished (finished: null), or set how many days it keeps from the day it was stored. Eating one on the phone offers to log the meal; that offer does not happen here, so log_food separately if asked.",
+    {
+      id: z.string().min(1),
+      frozen: z.boolean().optional(),
+      finished: z.enum(['eaten', 'tossed']).nullable().optional(),
+      keepDays: z.number().int().positive().max(365).optional(),
+    },
+    async ({ id, ...change }) => {
+      try {
+        return json(withLink(await withWrite(() => updateLeftover(replica, id, change)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that leftover.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_grocery_item',
+    "Edit a grocery item in the catalog (id from list_grocery_items, or its name): rename it, move it to another aisle, set its quantity, note or last price, mark it a kind of another item, choose its preferred brand, link it to stores, or add or remove substitutes. Several fields per call. Aisles must be ones that exist (grocery_setup). Filing an aisle is remembered for the name, as it is in the app. Activity can undo changes to the item's own fields; a rename and store or substitute changes are recorded but not undoable. Brands themselves are save_grocery_box.",
+    {
+      id: z.string().optional(),
+      name: z.string().optional().describe('The item by name, when you have no id.'),
+      rename: z.string().min(1).optional().describe('A new name. Refused if another item has it; merging two items is done in the app.'),
+      aisle: z.string().optional(),
+      quantity: z.string().nullable().optional(),
+      note: z.string().optional(),
+      priceMinor: z.number().int().positive().nullable().optional().describe('The last price in minor units (cents), or null to clear. Paired with the current quantity.'),
+      priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
+      kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
+      preferredBoxId: z.string().nullable().optional().describe('A box id from get_grocery_item, or null for none.'),
+      onlyPreferredBrand: z.boolean().optional(),
+      linkStores: z.array(z.string()).optional().describe('Stores it can be bought at, by name or id.'),
+      unlinkStores: z.array(z.string()).optional(),
+      addSubstitutes: z.array(z.object({
+        name: z.string().optional(), itemId: z.string().optional(),
+        note: z.string().nullable().optional(),
+        ratioFrom: z.string().nullable().optional().describe('With ratioTo: "1 cup butter" = "3/4 cup oil".'),
+        ratioTo: z.string().nullable().optional(),
+        standing: z.boolean().optional().describe('Always use this instead, in recipes.'),
+        bothWays: z.boolean().optional(),
+      })).optional(),
+      removeSubstitutes: z.array(z.string()).optional().describe('Substitute items to remove, by name or id.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => updateGroceryItem(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_grocery_box',
+    "Add, edit or delete a brand or variant (a box) of a grocery item. Omit boxId to add one (needs a brand or a variant; the first box becomes the preferred one). Pass boxId to edit it, or delete: true to remove it, which also clears it as a preference and from stores' claims. A frozen portion is not editable here (update_pantry_box).",
+    {
+      id: z.string().optional(),
+      name: z.string().optional().describe('The item by name, when you have no id.'),
+      boxId: z.string().optional(),
+      brand: z.string().nullable().optional(),
+      variant: z.string().nullable().optional(),
+      note: z.string().optional(),
+      rating: z.string().nullable().optional().describe('The app\'s own rating words for a box (see get_grocery_item).'),
+      delete: z.boolean().optional(),
+    },
+    async ({ id, name, ...input }) => {
+      try {
+        return json(withLink(await withWrite(() => saveGroceryBox(replica, { id, name }, input as never)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that brand.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_store',
+    "Add a store, or rename one or set how its receipts read. store is an existing store's name or id to change; omit it (and pass name) to add a new one. receiptStyle itemized is an ordinary receipt, none is a store whose receipts are not worth reading. Deleting a store is done in the app.",
+    {
+      store: z.string().optional(),
+      name: z.string().optional(),
+      receiptStyle: z.enum(['itemized', 'none']).optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => saveStore(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that store.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_grocery_item',
+    "Delete a grocery item from the catalog for good: its brands, store links, substitutes, receipt names, prices and purchase history all go with it. Prefer remove_from_grocery_list, which only takes it off the list. The preview lists what goes. Recipes that name it keep working, since they match by name. Activity can restore it, with all of that, while nothing has re-created it. Only when the person asks to delete it.",
+    { id: z.string().optional(), name: z.string().optional() },
+    async input => {
+      try {
+        return json(await withWrite(() => deleteGroceryItem(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_grocery_list',
+    "Create a separate grocery list, for a trip away. The list at home is not created or deleted. Items go on it with add_grocery_item's list. A separate list records almost nothing when finished (no purchase counts, prices or use-by days), by the app's rule.",
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => createGroceryList(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_grocery_list',
+    'Rename a separate grocery list (by name or id).',
+    { list: z.string().min(1), name: z.string().min(1) },
+    async ({ list, name }) => {
+      try {
+        return json(await withWrite(() => renameGroceryList(replica, list, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_grocery_list',
+    'Delete a separate grocery list. Its items are taken off it and stay in the catalog. The list at home cannot be deleted. Not undoable from here.',
+    { list: z.string().min(1) },
+    async ({ list }) => {
+      try {
+        return json(await withWrite(() => deleteGroceryList(replica, list)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'finish_grocery_trip',
+    "Finish a shopping trip: everything checked off on the list is recorded as bought and leaves it (purchase counts, last purchased, use-by days from the shelf-life table, prices, and the store link when store is given). Only what is checked off is finished. For a separate list it records only that the items left. date is the day of the trip (YYYY-MM-DD), today when omitted. prices and frozen are by item name.",
+    {
+      list: z.string().optional().describe('A separate list. The list at home when omitted.'),
+      store: z.string().optional(),
+      date: dayKey.optional(),
+      prices: z.array(z.object({ name: z.string(), priceMinor: z.number().int().positive() })).optional(),
+      frozen: z.array(z.string()).optional().describe('Items going straight into the freezer.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => finishGroceryTrip(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not finish that trip.' });
+      }
+    }
+  );
+
+  server.tool(
+    'import_receipt',
+    "Do what the app's receipt flow does, from a receipt you read (use match_receipt first, and show the person lines you are unsure of). context shopping (default): each line is put on the list if it is not there, checked off, and the trip is finished with the prices (finish: false only checks them off); finishing records everything checked off on the list, including items checked off before this receipt. context pantry: the lines are marked on hand, a repeat purchase clears the old packet's opened, frozen and running-low state, and prices are noted; no purchase is recorded. Each line needs an itemId (a match) or a name (which finds or creates the item). The text printed on a line is remembered as this store's name for the item. The preview lists every line.",
+    {
+      context: z.enum(['shopping', 'pantry']).optional(),
+      list: z.string().optional().describe('Shopping on a separate list. The list at home when omitted.'),
+      store: z.string().optional(),
+      date: dayKey.optional().describe('The date printed on the receipt. Today when omitted.'),
+      finish: z.boolean().optional(),
+      lines: z.array(z.object({
+        label: z.string().min(1).describe('As printed.'),
+        itemId: z.string().optional(),
+        name: z.string().optional(),
+        quantity: z.string().nullable().optional(),
+        priceMinor: z.number().int().positive().nullable().optional(),
+        frozen: z.boolean().optional().describe('Going straight into the freezer.'),
+        rememberAlias: z.boolean().optional().describe('Remember the printed text as this store\'s name for the item. Default true for an existing item.'),
+      })).min(1).max(100),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => importReceipt(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not import that receipt.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_leftover',
+    "Log a container of cooked food that is now in the fridge, or in the freezer with frozen: true. keepDays is how long it keeps in the fridge (3 by default). It appears in list_pantry with a leftoverId. This does not link it to a recipe or a planned meal, and is not a food log entry: use log_food for what someone ate.",
+    {
+      title: z.string().min(1),
+      keepDays: z.number().int().min(1).max(365).optional(),
+      frozen: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => logLeftover(replica, input)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that leftover.' });
+      }
+    }
+  );
+
   const planStep = z.object({
     title: z.string().min(1),
     ...taskFieldsShape,
@@ -1621,6 +2003,11 @@ function registerWriteTools(
       category: z.string().nullable().optional(),
       defaultTaskCategory: z.string().nullable().optional(),
       newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
+      taskDefaults: z.object({
+        priority: z.number().int().min(0).max(4).nullable().optional().describe('0 means no priority on purpose, so the backfill screen stops asking. Null means ask.'),
+        difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional(),
+        effort: z.number().int().min(1).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL).'),
+      }).nullable().optional().describe('Priority, difficulty and time estimate every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),

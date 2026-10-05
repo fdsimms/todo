@@ -95,7 +95,7 @@ import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
-import { lookBacks } from '../utils/moodHistory';
+import { dreamStats, lookBacks } from '../utils/moodHistory';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -879,6 +879,12 @@ describe('demo mode', () => {
     expect(waiter?.blockedById).toBe(blocker!.id);
     expect(s.waitingTasks().map(t => t.id)).toContain(waiter!.id);
     expect(s.blockedTasksOf(blocker!.id).map(t => t.id)).toEqual([waiter!.id]);
+
+    // And one that waits for a whole repeating series, not its first occurrence.
+    const party = s.tasks.find(t => t.title === 'Book the pool party');
+    const swim = s.tasks.find(t => t.title === 'Swim class');
+    expect(party?.blockedById).toBe(swim!.id);
+    expect(party?.waitForSeriesEnd).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });
@@ -2051,6 +2057,12 @@ describe('demo seed — people', () => {
     expect(lookBacks(logs, dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
   });
 
+  it('seeds a couple of dreams, so the dream field and the DREAMS card have something to show', () => {
+    const stats = dreamStats(useMoodStore.getState().logs, dayKeyOf(getCurrentDayStart()).slice(0, 7));
+    expect(stats.dayCount).toBeGreaterThanOrEqual(2);
+    expect(stats.lastDayKey).not.toBeNull();
+  });
+
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {
     const logs = useMoodStore.getState().logs;
     expect(contextTagVocabulary(logs).length).toBeGreaterThan(0);
@@ -2098,6 +2110,10 @@ describe('demo seed — people', () => {
     // A quick task rated hard, which the time estimate alone would pay a coin.
     const dreaded = useTaskStore.getState().tasks.find(t => t.title === 'Call the dentist about the crown');
     expect(dreaded?.difficulty).toBe('hard');
+
+    // And one rated trivial, which earns nothing.
+    const chore = useTaskStore.getState().tasks.find(t => t.title === 'Water the desk plant');
+    expect(chore?.difficulty).toBe('trivial');
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {
@@ -4160,6 +4176,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(quotes!.category).toBe('Home');
   });
 
+  it('seeds project task defaults and a task that starts with them', () => {
+    const { tasks } = useTaskStore.getState();
+    const gift = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
+    expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+    const dad = tasks.find(t => t.title === 'Something for Dad\'s birthday');
+    expect(dad).toBeDefined();
+    expect(dad!.difficulty).toBe('easy');
+    expect(dad!.estimatedMinutes).toBe(15);
+    // "No priority" is an answer, so Backfill has nothing to ask about it.
+    expect(dad!.priority).toBe(0);
+    expect(dad!.backfillDismissedFields).toContain('priority');
+    expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3 });
+  });
+
   it('seeds a weather task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();
@@ -4248,6 +4278,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing is marked handled: the demo never ran the sweep, and a seeded
     // mark would be a claim about an occurrence that does not exist.
     expect(settings.eventTaskHandled).toEqual({});
+
+    // One rule fires after its event ends and stands down when another is booked.
+    expect(rules.some(r => r.afterEvent === true && r.skipIfUpcoming === true)).toBe(true);
   });
 
   it('seeds a leave-by task with its reminder and an MTA note', () => {

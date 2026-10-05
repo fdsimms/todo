@@ -66,6 +66,8 @@ import { readSavedPlaces, savedPlaceKey, type SavedPlace } from '../../utils/sav
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { TaskFieldDefaultsFields } from '../../components/TaskFieldDefaultsFields';
+import { describeTaskFieldDefaults } from '../../utils/taskFieldDefaults';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { requestLocationPermission } from '../../utils/weatherLocation';
@@ -1262,6 +1264,26 @@ export function GeneratedTasksSection() {
               ) : undefined}
             />
             {open && extrasFor(spec.kind)}
+            {open && (
+              <>
+                <View style={styles.sep} />
+                <SettingsRow
+                  entryId={`gen:${spec.kind}:defaults`}
+                  icon="options-outline"
+                  label="Task defaults"
+                  hint="Priority, difficulty and time estimate these tasks start with, so they don't come up in Backfill."
+                  value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Ask each time'}
+                  tight
+                />
+                <View style={styles.pillGroupRow}>
+                  <TaskFieldDefaultsFields
+                    value={s.generatedTaskDefaults[spec.kind]}
+                    onChange={next => s.setGeneratedTaskDefaults(spec.kind, next)}
+                    showDifficulty={s.rewardsEnabled}
+                  />
+                </View>
+              </>
+            )}
             {open && spec.categorized && (
               <>
                 <View style={styles.sep} />

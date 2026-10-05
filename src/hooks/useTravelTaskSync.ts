@@ -74,6 +74,7 @@ export function useTravelTaskSync(): void {
         state.travelTasks !== prev.travelTasks ||
         state.travelLeadMinutes !== prev.travelLeadMinutes ||
         state.travelLeadByCalendar !== prev.travelLeadByCalendar ||
+        state.travelEventPrefs !== prev.travelEventPrefs ||
         state.travelTaskCategory !== prev.travelTaskCategory ||
         state.transitAlerts !== prev.transitAlerts ||
         state.transitLines !== prev.transitLines ||
@@ -89,6 +90,7 @@ export function useTravelTaskSync(): void {
         state.travelTasks !== prev.travelTasks ||
         state.travelEstimates !== prev.travelEstimates ||
         state.travelMode !== prev.travelMode ||
+        state.travelEventPrefs !== prev.travelEventPrefs ||
         state.travelOriginPlaceId !== prev.travelOriginPlaceId ||
         state.calendarReadEnabled !== prev.calendarReadEnabled
       ) {

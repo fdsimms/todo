@@ -4,6 +4,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { SheetScrim } from './SheetScrim';
+import { GlassLayer, glassSupported } from './GlassLayer';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -46,10 +47,12 @@ export function fabCircle(colors: Colors, size: number) {
     width: size,
     height: size,
     borderRadius: size / 2,
-    backgroundColor: colors.accentFill,
+    backgroundColor: glassSupported() ? 'transparent' : colors.accentFill,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     shadowColor: colors.accent,
+    // The glass draws its own depth; a coloured halo under it would show through.
+    ...(glassSupported() ? { shadowOpacity: 0, elevation: 0 } : null),
   };
 }
 
@@ -59,7 +62,7 @@ export function fabCircle(colors: Colors, size: number) {
  * an accent halo reads as the wrong button lit from behind by the right one.
  */
 export function fabCancelCircle(colors: Colors) {
-  return { backgroundColor: colors.redFill, shadowColor: colors.red };
+  return { backgroundColor: glassSupported() ? 'transparent' : colors.redFill, shadowColor: colors.red };
 }
 
 /** Glyph size for a given button size — 56 and 48 are the screen tiers, 36 the in-card one. */
@@ -263,8 +266,9 @@ function FabButton({
         {...(drag ? panResponder.panHandlers : {})}
       >
         {dragLabel ? (
-          <View style={[styles.dragLabel, cancelArmed && styles.dragLabelCancel, shadows.fab]}>
-            <Text style={styles.dragLabelText} numberOfLines={1}>{dragLabel}</Text>
+          <View style={[styles.dragLabel, cancelArmed && styles.dragLabelCancel, glassSupported() ? styles.glassFace : shadows.fab]}>
+            <GlassLayer tintColor={cancelArmed ? colors.redFill : colors.accentFill} style={styles.pillRadius} />
+            <Text style={[styles.dragLabelText, cancelArmed && styles.dragLabelTextCancel]} numberOfLines={1}>{dragLabel}</Text>
           </View>
         ) : null}
         <PressableScale
@@ -272,8 +276,9 @@ function FabButton({
             fabCircle(colors, size),
             // A greyed-out circle casts no shadow: the style is left out
             // rather than its colour overridden, since `shadowColor` is the
-            // accent and a literal here would be the one in the app.
-            !(disabled && dimWhenDisabled) && shadows.fab,
+            // accent and a literal here would be the one in the app. The
+            // glass surface draws its own depth, so it takes none either.
+            glassSupported() ? null : !(disabled && dimWhenDisabled) && shadows.fab,
             // Over the well the button becomes the cancel button, so what's
             // under the finger says what the release does — the well itself is
             // hidden beneath it at exactly that moment.
@@ -286,10 +291,21 @@ function FabButton({
           accessibilityLabel={accessibilityLabel}
           accessibilityHint={drag ? dragHint : undefined}
         >
+          {disabled && dimWhenDisabled ? null : (
+            <GlassLayer
+              interactive
+              tintColor={cancelArmed ? colors.redFill : colors.accentFill}
+              style={{ borderRadius: size / 2 }}
+            />
+          )}
           <Ionicons
             name={cancelArmed ? 'close' : icon}
             size={iconSize}
-            color={colors.onAccent}
+            color={
+              cancelArmed ? colors.onFill
+                : disabled && dimWhenDisabled ? colors.textTertiary
+                : colors.onAccent
+            }
           />
         </PressableScale>
       </Animated.View>
@@ -414,12 +430,13 @@ export function FabMenuOverlay({
               }}
             >
               <PressableScale
-                style={[styles.menuItem, shadows.fab]}
+                style={[styles.menuItem, glassSupported() ? styles.glassFace : shadows.fab]}
                 pressScale={0.95}
                 onPress={() => onSelect(item.key)}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
               >
+                <GlassLayer interactive tintColor={colors.accentFill} style={styles.pillRadius} />
                 <Ionicons name={item.icon} size={20} color={colors.onAccent} />
                 <Text style={styles.menuItemText}>{item.label}</Text>
               </PressableScale>
@@ -427,11 +444,12 @@ export function FabMenuOverlay({
           );
         })}
         <PressableScale
-          style={[fabCircle(colors, size), shadows.fab]}
+          style={[fabCircle(colors, size), glassSupported() ? null : shadows.fab]}
           pressScale={0.9}
           onPress={onDismiss}
           accessibilityLabel="Close"
         >
+          <GlassLayer interactive tintColor={colors.accentFill} style={{ borderRadius: size / 2 }} />
           <Ionicons name="close" size={fabGlyphSize(size)} color={colors.onAccent} />
         </PressableScale>
       </View>
@@ -590,7 +608,7 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.lg, height: 52,
     borderRadius: radius.full,
-    backgroundColor: colors.accentFill,
+    backgroundColor: glassSupported() ? 'transparent' : colors.accentFill,
     shadowColor: colors.accent,
   },
   menuItemText: {
@@ -610,16 +628,21 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     borderRadius: radius.full,
-    backgroundColor: colors.accentFill,
+    backgroundColor: glassSupported() ? 'transparent' : colors.accentFill,
     shadowColor: colors.accent,
   },
+  // The glass draws its own depth, so the coloured halo comes off a glass pill.
+  glassFace: { shadowOpacity: 0, elevation: 0 },
+  pillRadius: { borderRadius: radius.full },
   dragLabelText: {
     color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold,
   },
   dragLabelCancel: {
-    backgroundColor: colors.redFill,
+    backgroundColor: glassSupported() ? 'transparent' : colors.redFill,
     shadowColor: colors.red,
   },
+  // The cancel label sits on redFill, a status colour, so it is onFill.
+  dragLabelTextCancel: { color: colors.onFill },
   well: {
     position: 'absolute',
     // Pinned to the same edge as the button, so the spot it left behind stays

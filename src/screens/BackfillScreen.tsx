@@ -39,6 +39,11 @@ import { activeMealSlotStepId } from '../utils/mealSlotTasks';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
+import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
+import {
+  GROUP_APPLY_FIELDS, backfillGroupKey, backfillGroupMembers, defaultsFromAnswer, defaultsDiffer,
+  NO_TASK_FIELD_DEFAULTS,
+} from '../utils/taskFieldDefaults';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
@@ -85,7 +90,7 @@ import { shorterNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
+  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
 
@@ -558,6 +563,27 @@ export function BackfillScreen() {
     () => taskQueue.filter(t => suggestions.has(t.id)),
     [taskQueue, suggestions]
   );
+
+  // "Use this answer for everything in this list": a whole group (a project, or
+  // a kind of generated task) answered with one tap instead of one per task.
+  // Armed by a toggle on the card and spent by the next answer, so it can never
+  // stay on for a card the person didn't mean it for. Off in a redo-from-scratch
+  // run, where the queue holds tasks that already have a value it would replace.
+  const [groupApply, setGroupApply] = useState(false);
+  const groupMembers = useMemo(
+    () => active?.kind === 'task' && currentTask && !fromScratch && GROUP_APPLY_FIELDS.includes(active.id)
+      ? backfillGroupMembers(taskQueue, currentTask)
+      : [],
+    [active, currentTask, fromScratch, taskQueue],
+  );
+  const groupLabel = currentTask
+    ? currentTask.generatedKind
+      ? GENERATED_KIND_SPECS[currentTask.generatedKind].label
+      : currentTask.projectId ? projectNamesById.get(currentTask.projectId) ?? null : null
+    : null;
+  const groupApplies = groupApply && groupMembers.length > 1;
+  const currentGroupKey = currentTask ? backfillGroupKey(currentTask) : null;
+  useEffect(() => { setGroupApply(false); }, [currentGroupKey, active?.kind === 'task' ? active.id : null]);
   const canSuggest = active?.kind === 'task' && isSuggestibleBackfillField(active.id)
     && suggestRoute !== 'unavailable';
   const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
@@ -816,6 +842,7 @@ export function BackfillScreen() {
   const goBack = () => {
     if (history.length === 0) return;
     haptics.tap();
+    setGroupApply(false);
     animateLayout();
     const prevId = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
@@ -861,6 +888,7 @@ export function BackfillScreen() {
   // and applyNudge below.
   const apply = (patch: Partial<Task>, valueText: string) => {
     if (!currentTask || active?.kind !== 'task') return;
+    if (groupApplies) { applyToGroup(task => patch, valueText); return; }
     haptics.tap();
     animateLayout();
     recordVisited();
@@ -885,6 +913,87 @@ export function BackfillScreen() {
       undo: () => updateTask(snapshot.id, snapshot),
     });
     advance(currentTask.id);
+  };
+
+  /**
+   * Writes one answer onto every queued task in the current task's group. The
+   * same two recoveries `applyAllSuggestions` leaves (a shake takes the whole
+   * batch back, and each task has its own Undo in the session review), because
+   * this is the other place the screen commits more than the card in front of
+   * you. No confirm: arming the toggle was the explicit step, and the card says
+   * how many it will reach.
+   */
+  const applyToGroup = (patchFor: (task: Task) => Partial<Task>, valueText: string, dismissed = false) => {
+    if (active?.kind !== 'task') return;
+    const batch = groupMembers;
+    if (batch.length === 0) return;
+    const offerFor = batch[0];
+    haptics.success();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    setGroupApply(false);
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    const snapshots = batch.map(t => ({ ...t }));
+    batch.forEach((task, i) => {
+      const patch = patchFor(task);
+      const snapshot = snapshots[i];
+      updateTask(task.id, patch);
+      // Same carry-forward the single-task apply does: see apply()'s note on
+      // mealSlotStepEstimates.
+      if (active.id === 'estimate' && patch.estimatedMinutes != null) {
+        const stepId = activeMealSlotStepId(task);
+        if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
+      }
+      logSession({
+        itemId: task.id,
+        title: displayTitleFor(task),
+        valueText,
+        undo: () => updateTask(snapshot.id, snapshot),
+      });
+    });
+    setLastAction({
+      label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
+      undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+    });
+    setSkippedIds(prev => {
+      const next = new Set(prev);
+      for (const task of batch) next.add(task.id);
+      return next;
+    });
+    offerGroupDefault(offerFor, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
+  };
+
+  /**
+   * After a whole-group answer, offers to keep it as the group's default so the
+   * next task added there never reaches this screen. A separate question rather
+   * than part of the toggle, because answering the backlog and deciding what
+   * future tasks start with are two different calls.
+   */
+  const offerGroupDefault = (sample: Task, answer: Partial<TaskFieldDefaults> | null) => {
+    if (!answer) return;
+    const kind = sample.generatedKind;
+    const projectId = sample.projectId;
+    const current = kind
+      ? useSettingsStore.getState().generatedTaskDefaults[kind]
+      : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
+    if (!defaultsDiffer(current, answer)) return;
+    const name = groupLabel ?? 'this group';
+    Alert.alert(
+      `Use this for new tasks in ${name}?`,
+      'New tasks there will start with this answer, so they will not come up here. You can change it later in the project editor or in Settings.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Use for new tasks',
+          onPress: () => {
+            const next: TaskFieldDefaults = { ...NO_TASK_FIELD_DEFAULTS, ...(current ?? {}), ...answer };
+            if (kind) useSettingsStore.getState().setGeneratedTaskDefaults(kind, next);
+            else if (projectId) updateProject(projectId, { taskDefaults: next });
+          },
+        },
+      ],
+    );
   };
 
   // The two task fields the suggestion feature answers, factored out so the
@@ -1241,6 +1350,7 @@ export function BackfillScreen() {
   const skip = () => {
     if (!currentId) return;
     haptics.tap();
+    setGroupApply(false);
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
@@ -1255,6 +1365,11 @@ export function BackfillScreen() {
   // run of it).
   const dismiss = () => {
     if (!active) return;
+    if (active.kind === 'task' && currentTask && groupApplies) {
+      const fieldId = active.id;
+      applyToGroup(task => dismissBackfillField(task, fieldId), 'Left unset', true);
+      return;
+    }
     haptics.tap();
     animateLayout();
     recordVisited();
@@ -1920,6 +2035,32 @@ export function BackfillScreen() {
                 onAccept={() => currentSuggestion && applySuggestion(currentSuggestion)}
                 onApplyAll={confirmApplyAll}
               />
+            )}
+
+            {groupMembers.length > 1 && (
+              <PressableScale
+                style={styles.groupApplyRow}
+                onPress={() => { haptics.tap(); setGroupApply(v => !v); }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: groupApplies }}
+                accessibilityLabel={`Use the next answer for all ${groupMembers.length} tasks${groupLabel ? ` in ${groupLabel}` : ''}`}
+              >
+                <Ionicons
+                  name={groupApplies ? 'checkbox' : 'square-outline'}
+                  size={iconSize.md}
+                  color={groupApplies ? colors.accent : colors.controlBorder}
+                />
+                <View style={styles.groupApplyBody}>
+                  <Text style={styles.groupApplyTitle}>
+                    {`Use the next answer for all ${groupMembers.length}${groupLabel ? ` in ${groupLabel}` : ''}`}
+                  </Text>
+                  {groupApplies && (
+                    <Text style={styles.groupApplyHint}>
+                      {`Leaving it unset also applies to all ${groupMembers.length}. A shake undoes it.`}
+                    </Text>
+                  )}
+                </View>
+              </PressableScale>
             )}
 
             <FieldControl
@@ -3215,8 +3356,8 @@ function FieldControl({
         accessibilityRole="button"
         accessibilityLabel="Show streak on row"
       >
-        <Ionicons name="flame" size={iconSize.md} color={colors.onAccent} />
-        <Text style={styles.toggleButtonText}>Show streak on row</Text>
+        <Ionicons name="flame" size={iconSize.md} color={colors.onFill} />
+        <Text style={[styles.toggleButtonText, styles.toggleButtonTextOnFill]}>Show streak on row</Text>
       </PressableScale>
     );
   }
@@ -3465,6 +3606,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cadenceRow: { gap: spacing.md },
   cadenceStepperRow: { alignItems: 'center' },
 
+  groupApplyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingVertical: spacing.smd,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+  },
+  groupApplyBody: { flex: 1 },
+  groupApplyTitle: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
+  groupApplyHint: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
   toggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3474,6 +3628,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
   },
   toggleButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  // For a toggleButton filled with a status colour (the streak's orange), not the accent.
+  toggleButtonTextOnFill: { color: colors.onFill },
   // The two person fields whose value is typed or stepped can sit at a state
   // that isn't a value yet (Never, an empty box). The button stays where it is
   // and reads back what it's waiting for rather than disappearing, so the card

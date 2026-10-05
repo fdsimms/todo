@@ -11,6 +11,7 @@ const mockSettings = {
   travelOriginPlaceId: null as string | null,
   travelLeadMinutes: 30,
   travelLeadByCalendar: {} as Record<string, number>,
+  travelEventPrefs: {} as Record<string, { mode: 'driving' | 'transit' | 'walking' | null; arriveEarlyMinutes: number }>,
 };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
@@ -48,6 +49,7 @@ beforeEach(() => {
   jest.setSystemTime(NOW);
   mockSettings.travelEstimates = true;
   mockSettings.travelMode = 'driving';
+  mockSettings.travelEventPrefs = {};
   mockSettings.travelOriginPlaceId = null;
   mockPlaces = [];
   mockCalendar = { events: [event('a', 14)], loaded: true };
@@ -133,6 +135,15 @@ describe('refresh', () => {
     mockCalendar = { events: [event('a', 14)], loaded: false };
     await useTravelTimeStore.getState().refresh();
     expect(estimateMock).not.toHaveBeenCalled();
+  });
+
+  it("asks by the event's own mode, and for the departure its arrival offset gives", async () => {
+    mockSettings.travelEventPrefs = { a: { mode: 'walking', arriveEarlyMinutes: 10 } };
+    await useTravelTimeStore.getState().refresh();
+    const [, departAt, mode] = estimateMock.mock.calls[0];
+    expect(mode).toBe('walking');
+    // 14:00 start, 30 minute typed lead, 10 minutes early.
+    expect(departAt).toEqual(new Date(2026, 9, 5, 13, 20));
   });
 
   it('keeps no estimate for a failed one, so it is asked again next time', async () => {

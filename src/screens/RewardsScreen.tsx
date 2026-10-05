@@ -60,14 +60,10 @@ import type { CoinEntry, Reward, Task } from '../types';
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
  *
- * Off until switched on here, which is why the switch lives on this screen
- * rather than in Settings: the screen is where somebody finds out what the
- * feature is, so it's where they decide whether they want it.
- *
  * One scrolling page: the balance (with the goal you're saving for, if any,
  * and the earning rule spelled out), the rewards you've set, items from the
  * list you've chosen to price as rewards, starter ideas, and the history the
- * balance is summed from.
+ * balance is summed from. Coins and rewards are enabled/disabled in Settings.
  */
 
 /** How many history rows to draw. The balance is still summed over all of them. */
@@ -341,17 +337,6 @@ export function RewardsScreen() {
     );
   }, [setGoalId, closeDraft]);
 
-  const turnOff = useCallback(() => {
-    Alert.alert(
-      'Turn off coins?',
-      'Tasks stop earning and costing coins. Your balance, rewards and history are kept for if you turn it back on.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Turn off', style: 'destructive', onPress: () => setEnabled(false) },
-      ],
-    );
-  }, [setEnabled]);
-
   const actions = useMemo<ScreenHeaderAction[]>(() => (enabled
     ? [
         {
@@ -360,10 +345,8 @@ export function RewardsScreen() {
           active: rulesOpen,
           accessibilityLabel: rulesOpen ? 'Hide how coins work' : 'Show how coins work',
         },
-        { icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' },
       ]
-    : []), [enabled, turnOff, rulesOpen]);
-
+    : []), [enabled, rulesOpen]);
   if (!enabled) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -565,7 +548,7 @@ export function RewardsScreen() {
           <Text style={styles.rewardTitle}>{shown.title}</Text>
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
-            <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+            <CoinIcon size={iconSize.sm} color={colors.done} filled />
             <Text style={styles.rewardCost}>
               {reward.oneTime ? `${formatCoins(reward.cost)} · one time` : formatCoins(reward.cost)}
             </Text>
@@ -620,7 +603,7 @@ export function RewardsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Rewards" actions={actions} />
+      <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
       <ScrollView
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
@@ -635,7 +618,7 @@ export function RewardsScreen() {
             accessibilityLabel={`Balance: ${formatCoins(balance)}`}
           >
             <Reanimated.View style={coinStyle}>
-              <CoinIcon size={BALANCE_COIN_SIZE} color={colors.warning} filled />
+              <CoinIcon size={BALANCE_COIN_SIZE} color={colors.done} filled />
             </Reanimated.View>
             <Text style={[styles.balance, balance < 0 && { color: colors.redText }]}>{balance}</Text>
           </View>
@@ -815,7 +798,7 @@ export function RewardsScreen() {
                   </Text>
                 </View>
                 <View style={styles.amountRow}>
-                  <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                  <CoinIcon size={iconSize.sm} color={colors.done} filled />
                   <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.greenText : colors.redText }]}>
                     {signedAmount(entry)}
                   </Text>
@@ -862,8 +845,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     // Warm, where every other card on the page is grey: this one is the point
-    // of the screen, and the gold is the coin's own colour.
-    backgroundColor: colors.warningBg,
+    // of the screen, and the gold is the coin's own colour. `brand` rather than
+    // `done`, which Light darkens only so a checkbox holds 3:1 on a card; a tint
+    // needs no contrast, and warningBg is orange, which means something else.
+    backgroundColor: colors.brand + '29',
     alignItems: 'center',
   },
   burstAnchor: { position: 'absolute', left: 0, right: 0 },
@@ -874,7 +859,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   goal: { alignSelf: 'stretch', marginBottom: spacing.md, gap: spacing.xs },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
   goalTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.warning },
+  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
   rule: { color: colors.textSecondary, fontSize: font.sm, textAlign: 'center' },
   // textSecondary, not textTertiary — the app-wide section-header rule.

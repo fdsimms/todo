@@ -31,6 +31,8 @@ import {
   dbDeleteItemShopLink,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
+  dbSetStoreAlias,
+  dbSetGroceryListEntry,
   dbSetItemProduct,
   dbSetProductGtin,
   dbGetGtinLookup,
@@ -1458,6 +1460,50 @@ describe('list membership', () => {
 
     expect(dbDeleteGroceryItem).toHaveBeenCalledWith(milk.id);
     expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('restoreDeletedItem puts an item back with everything the delete took, and refuses when the name is back', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const box = { id: 'b1', itemId: milk.id, gtin: '0123456789012' } as unknown as ItemProduct;
+    const link = { itemId: milk.id, shopId: 's1' } as unknown as ItemShopLink;
+    const sub = { itemId: milk.id, subItemId: 'x' } as unknown as ItemSubLink;
+    const alias = { id: 'a1', shopId: 's1', rawKey: 'mlk', itemId: milk.id } as unknown as StoreAlias;
+    const entry = { itemId: milk.id, listId: null, checked: false, sortOrder: 1, choiceGroup: null, addedAt: 't' } as GroceryListEntry;
+    seed([]);
+
+    const restored = useGroceryStore.getState().restoreDeletedItem({
+      item: milk, entries: [entry], boxes: [box], shopLinks: [link], subLinks: [sub], aliases: [alias], aisleOverride: 'Dairy',
+    });
+
+    expect(restored).toBe(true);
+    expect(dbInsertGroceryItem).toHaveBeenCalledWith(milk);
+    expect(dbSetProductGtin).toHaveBeenCalledWith('b1', '0123456789012');
+    expect(dbSetItemShopLink).toHaveBeenCalledWith(link);
+    expect(dbSetItemSubLink).toHaveBeenCalledWith(sub);
+    expect(dbSetStoreAlias).toHaveBeenCalledWith(alias);
+    expect(dbSetGroceryListEntry).toHaveBeenCalledWith(entry);
+    const state = useGroceryStore.getState();
+    expect(state.items.map(i => i.id)).toEqual([milk.id]);
+    expect(state.itemProducts).toEqual([box]);
+    expect(state.itemShops).toEqual([link]);
+    expect(state.aisleOverrides[milk.nameKey]).toBe('Dairy');
+
+    // The name is in the catalog again, so a second restore would make two.
+    expect(useGroceryStore.getState().restoreDeletedItem({
+      item: { ...milk, id: 'other' }, entries: [], boxes: [], shopLinks: [], subLinks: [], aliases: [], aisleOverride: null,
+    })).toBe(false);
+  });
+
+  it('restoreCatalogItem writes the fields back and forgets a first filing with a null override', () => {
+    const milk = makeItem({ name: 'Milk', aisle: 'Dairy' });
+    seed([milk]);
+    useGroceryStore.setState({ aisleOverrides: { [milk.nameKey]: 'Dairy' } });
+
+    useGroceryStore.getState().restoreCatalogItem(milk.id, { aisle: 'Other', note: 'x' }, milk.nameKey, null);
+
+    expect(useGroceryStore.getState().itemById(milk.id)).toMatchObject({ aisle: 'Other', note: 'x' });
+    expect(useGroceryStore.getState().aisleOverrides[milk.nameKey]).toBeUndefined();
+    expect(dbSetGroceryAisleOverrides).toHaveBeenLastCalledWith({});
   });
 
   it('removeFromListMany parks every row, same as removeFromList does per row', () => {

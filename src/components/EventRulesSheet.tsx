@@ -22,8 +22,22 @@ import {
   summarizeRuleAgainstEvents,
 } from '../utils/eventTasks';
 import { CountStepper } from './CountStepper';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { RuleListSheet } from './RuleListSheet';
 import { TextField } from './TextField';
+
+type RuleTiming = 'before' | 'after';
+type FollowUpMode = 'always' | 'unlessBooked';
+
+const TIMING_OPTIONS: SegmentOption<RuleTiming>[] = [
+  { value: 'before', label: 'Before the event' },
+  { value: 'after', label: 'After it ends' },
+];
+
+const FOLLOW_UP_OPTIONS: SegmentOption<FollowUpMode>[] = [
+  { value: 'always', label: 'Every time' },
+  { value: 'unlessBooked', label: 'Only if none is booked' },
+];
 
 interface Props {
   visible: boolean;
@@ -129,18 +143,52 @@ export function EventRulesSheet({ visible, onClose }: Props) {
             {`At least ${EVENT_MATCH_MIN_LENGTH} letters each, matched as a whole word. "Gym" finds `
             + '"Gym class" but not "Gymnastics". The rule fires if any of them appears.'}
           </Text>
-          <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Days before the event</Text>
-          <View style={styles.stepperRow}>
-            <CountStepper
-              value={rule.leadDays}
-              onChange={next => update({ leadDays: next ?? 0 })}
-              min={0}
-              max={EVENT_LEAD_DAYS_MAX}
-              format={n => (n === 0 ? 'Same day' : n === 1 ? '1 day' : `${n} days`)}
-              label="Days before the event"
-              describeValue={n => (n === 0 ? 'On the day of the event' : `${n} days before`)}
-            />
-          </View>
+          <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add the task</Text>
+          <SegmentedControl<RuleTiming>
+            options={TIMING_OPTIONS}
+            value={rule.afterEvent ? 'after' : 'before'}
+            onChange={timing => update(
+              timing === 'after'
+                ? { afterEvent: true, leadDays: 0 }
+                : { afterEvent: false, skipIfUpcoming: false },
+            )}
+            label="When the task is added"
+            surface="card"
+          />
+          {rule.afterEvent ? (
+            <>
+              <Text style={styles.hint}>
+                The task appears once the event is over, so nothing shows up beforehand.
+              </Text>
+              <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>If another event matches</Text>
+              <SegmentedControl<FollowUpMode>
+                options={FOLLOW_UP_OPTIONS}
+                value={rule.skipIfUpcoming ? 'unlessBooked' : 'always'}
+                onChange={mode => update({ skipIfUpcoming: mode === 'unlessBooked' })}
+                label="If another matching event is coming up"
+                surface="card"
+              />
+              <Text style={styles.hint}>
+                {'"Only if none is booked" skips the task while another matching event is on your '
+                + 'calendar in the next 6 months.'}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Days before the event</Text>
+              <View style={styles.stepperRow}>
+                <CountStepper
+                  value={rule.leadDays}
+                  onChange={next => update({ leadDays: next ?? 0 })}
+                  min={0}
+                  max={EVENT_LEAD_DAYS_MAX}
+                  format={n => (n === 0 ? 'Same day' : n === 1 ? '1 day' : `${n} days`)}
+                  label="Days before the event"
+                  describeValue={n => (n === 0 ? 'On the day of the event' : `${n} days before`)}
+                />
+              </View>
+            </>
+          )}
         </>
       )}
       titlePlaceholder="e.g. Pack a bag"

@@ -125,7 +125,7 @@ export function ExtractedIngredientRow({
           accessibilityLabel={`${row.name}, ${note || row.aisle}`}
         >
           <View style={[styles.checkbox, checked && styles.checkboxOn]}>
-            {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+            {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
           </View>
         </TouchableOpacity>
 

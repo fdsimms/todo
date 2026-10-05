@@ -75,7 +75,8 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelSourceEventId } from '../utils/travelTasks';
+import { travelModeFor, travelRowNote, travelSourceEventId } from '../utils/travelTasks';
+import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -534,6 +535,21 @@ export const TaskItem = React.memo(function TaskItem({
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  // A "Leave for X" row's trip estimate ("25 min by transit"). Every other row
+  // selects null, so a travel estimate refresh re-renders only travel rows.
+  const travelDefaultMode = useSettingsStore(s => s.travelMode);
+  const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
+  const travelNote = useTravelTimeStore(s => {
+    if (task.generatedKind !== 'travel' || !task.generatedSourceId) return null;
+    const eventId = travelSourceEventId(task.generatedSourceId);
+    if (!eventId) return null;
+    return travelRowNote(
+      task.generatedSourceId,
+      task.location ?? '',
+      s.estimates,
+      travelModeFor(eventId, travelEventPrefs, travelDefaultMode),
+    );
+  });
   const canBreakUp = !!anthropicApiKey || !!onEdit;
   const handleBreakUp = () => {
     setShowWhenPicker(false);
@@ -716,6 +732,13 @@ export const TaskItem = React.memo(function TaskItem({
   // agrees and the extra layer is invisible.
   const [collapsing, setCollapsing] = useState(false);
   const wasExpandedRef = useRef(expanded);
+  // The completion sequences below await animations before they ask the parent
+  // to collapse this row, and `onPress` is a toggle. Reading `expanded` from
+  // their closure would see the value at tap time: unfocus the row mid-send-off
+  // and the stale `true` toggled it back open, leaving the spotlight dimmed over
+  // a row that has left the list. Read the live value instead.
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
   const isSpotlighted = useSpotlightLinger(expanded) || collapsing;
   // Lets a paint-select drag find this row by its on-screen position. A no-op
   // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
@@ -1750,7 +1773,7 @@ export const TaskItem = React.memo(function TaskItem({
       // onPress, so the parent's expanded-row state is never told to clear —
       // collapse it ourselves or the spotlight overlay is stuck dimmed with
       // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
-      if (expanded) onPress(rowId);
+      if (expandedRef.current) onPress(rowId);
     });
   };
 
@@ -1809,7 +1832,7 @@ export const TaskItem = React.memo(function TaskItem({
       chainStepInPlace: true,
     });
     endQuotaHold();
-    if (expanded) onPress(rowId);
+    if (expandedRef.current) onPress(rowId);
   };
 
   // ==== completing, quota taps, and their undos ====
@@ -2380,7 +2403,7 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                   backgroundColor: quotaDone.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.accent, colors.greenFill],
+                    outputRange: [colors.accent, colors.done],
                   }),
                 },
               ]}
@@ -2410,7 +2433,7 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                   backgroundColor: quotaDone.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.accent, colors.greenFill],
+                    outputRange: [colors.accent, colors.done],
                   }),
                 },
               ]}
@@ -2465,7 +2488,7 @@ export const TaskItem = React.memo(function TaskItem({
               opacity: checkGlyphOpacity,
               transform: [{ scale: checkGlyphScale }],
             }}>
-              <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={12} color={colors.onDone} />
             </Animated.View>
           )}
           {isNegative && (
@@ -2474,7 +2497,7 @@ export const TaskItem = React.memo(function TaskItem({
             <Ionicons
               name={slipped ? 'shield' : 'shield-checkmark'}
               size={iconSize.xs}
-              color={slipped ? colors.onAccent : colors.textSecondary}
+              color={slipped ? colors.onFill : colors.textSecondary}
             />
           )}
           {!completing && !isNegative && recurrenceNotYetDue && (
@@ -2602,7 +2625,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2660,6 +2683,14 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="notifications-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {reminderTimeLabel}
+                </Text>
+              </View>
+            )}
+            {travelNote !== null && (
+              <View style={styles.metaChip} accessibilityLabel={`Travel time ${travelNote}`}>
+                <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {travelNote}
                 </Text>
               </View>
             )}
@@ -3420,7 +3451,7 @@ export const TaskItem = React.memo(function TaskItem({
                       >
                         <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
                           {sub.completed && (
-                            <Ionicons name="checkmark" size={8} color={colors.onAccent} />
+                            <Ionicons name="checkmark" size={8} color={colors.onDone} />
                           )}
                         </View>
                       </TouchableOpacity>
@@ -3599,7 +3630,7 @@ export const TaskItem = React.memo(function TaskItem({
                           isCurrent && styles.chainStepListDotActive,
                         ]}>
                           {isDone ? (
-                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                            <Ionicons name="checkmark" size={9} color={colors.onDone} />
                           ) : (
                             <Text maxFontSizeMultiplier={textScale.fixed} style={[
                               styles.chainStepListDotText,
@@ -3835,9 +3866,11 @@ export const TaskItem = React.memo(function TaskItem({
                         <Ionicons
                           name={timerRunning ? 'pause' : 'play'}
                           size={10}
-                          color={colors.onAccent}
+                          color={timerReady ? colors.onFill : colors.onAccent}
                         />
-                        <Text style={styles.timerPillText}>{formatStopwatch(remainingSeconds)}</Text>
+                        <Text style={[styles.timerPillText, timerReady && styles.timerPillTextReady]}>
+                          {formatStopwatch(remainingSeconds)}
+                        </Text>
                       </TouchableOpacity>
                       {(timerRunning || task.timerElapsedSeconds > 0) && (
                         <TouchableOpacity
@@ -3927,7 +3960,7 @@ export const TaskItem = React.memo(function TaskItem({
                         // The task disappears from the list immediately, but nothing
                         // else clears the parent's expanded-row state — collapse it
                         // ourselves so the spotlight overlay doesn't get stuck.
-                        if (expanded) onPress(rowId);
+                        if (expandedRef.current) onPress(rowId);
                       }}
                       hitSlop={8}
                       // The same control does two things depending on where the
@@ -3964,7 +3997,7 @@ export const TaskItem = React.memo(function TaskItem({
                       onPress={async () => {
                         await haptics.impactMedium();
                         markMissed(task.id, { wholeChain: true });
-                        if (expanded) onPress(rowId);
+                        if (expandedRef.current) onPress(rowId);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
@@ -3985,7 +4018,7 @@ export const TaskItem = React.memo(function TaskItem({
                       onPress={async () => {
                         await haptics.tap();
                         skipNextRecurrence(task.id);
-                        if (expanded) onPress(rowId);
+                        if (expandedRef.current) onPress(rowId);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Skip this repeat of ${task.title}, without counting it as missed`}
@@ -4452,8 +4485,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   circleCompleting: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   // The circle's glyph, lifted out of the circle entirely so nothing scales it
   // (see the note at the call site) and so it draws over the quota fill rather
@@ -4786,6 +4819,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
+  // timerPillReady's green fill is a status colour, so its text is onFill.
+  timerPillTextReady: {
+    color: colors.onFill,
+  },
   expandedPanelClip: {
     overflow: 'hidden',
   },
@@ -4856,8 +4893,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   subtaskCheckDone: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   subtaskTitleWrapper: {
     flex: 1,
@@ -4983,7 +5020,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   chainStepListDotDone: {
-    backgroundColor: colors.greenFill,
+    backgroundColor: colors.done,
   },
   chainStepListDotActive: {
     backgroundColor: colors.accentFill,

@@ -49,7 +49,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   // Decided by the run, not the item: the container, the parent task, who the
   // run is for, and the tasks a blocker names (blockedByItemIds, resolved once
   // those items are tasks).
-  'placed by the run itself': ['parentId', 'projectId', 'personIds', 'seriesId', 'blockedById', 'blockedByIds'],
+  'placed by the run itself': ['parentId', 'projectId', 'personIds', 'seriesId', 'blockedById', 'blockedByIds', 'waitForSeriesEnd'],
 
   // A count of something on a shelf. Seeded on every run, it would hand each
   // new task a fresh stock nobody bought.

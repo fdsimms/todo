@@ -66,8 +66,11 @@ export const MAX_REWARD_COST = 100_000;
  * long something takes and nothing about how hard it is to start, so a
  * two-minute call you dread would otherwise pay a coin. 'normal' is 1 so the
  * column's default, and a task with no rating, earns exactly what it did.
+ * 'trivial' is 0, and is the one rating `baseCoinsFor` doesn't floor at 1: it
+ * means the task isn't worth paying for at all.
  */
 export const DIFFICULTY_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
+  trivial: 0,
   easy: 0.5,
   normal: 1,
   hard: 2,
@@ -75,6 +78,7 @@ export const DIFFICULTY_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
 
 /** The difficulty picker's options, shared by the task and template item editors. */
 export const DIFFICULTY_SEGMENTS: { value: Difficulty; label: string }[] = [
+  { value: 'trivial', label: 'Trivial' },
   { value: 'easy', label: 'Easy' },
   { value: 'normal', label: 'Normal' },
   { value: 'hard', label: 'Hard' },
@@ -84,7 +88,7 @@ export const DIFFICULTY_SEGMENTS: { value: Difficulty; label: string }[] = [
  * The same, led by "Not set" for the pickers that edit a rating already given
  * (the editors, quick add): a segmented control can't be tapped off, so this
  * is the one way back to unrated. The backfill card asks about unrated tasks
- * only, so it offers the three ratings alone.
+ * only, so it offers the four ratings alone.
  */
 export const DIFFICULTY_PICKER_SEGMENTS: { value: Difficulty | null; label: string }[] = [
   { value: null, label: 'Not set' },
@@ -92,7 +96,7 @@ export const DIFFICULTY_PICKER_SEGMENTS: { value: Difficulty | null; label: stri
 ];
 
 /** The editor's one-line hint, so the two editors can't describe it differently. */
-export const DIFFICULTY_HINT = 'How hard this is to make yourself do, apart from how long it takes. Hard tasks earn double coins and easy ones half.';
+export const DIFFICULTY_HINT = 'How hard this is to make yourself do, apart from how long it takes. Hard tasks earn double coins and easy ones half. Trivial tasks earn no coins.';
 
 /** What the coin rules read off a task: its estimate, and how hard it is. */
 export type CoinSource = EstimateSource & Partial<Pick<Task, 'difficulty'>>;
@@ -108,9 +112,11 @@ function effortCoinsFor(task: EstimateSource): number {
 
 /**
  * A task's base value in coins: its effort bucket scaled by its difficulty,
- * and never below 1, so an easy quick task still earns something.
+ * and never below 1, so an easy quick task still earns something. A trivial
+ * task is the exception and is worth nothing.
  */
 export function baseCoinsFor(task: CoinSource): number {
+  if (task.difficulty === 'trivial') return 0;
   const multiplier = DIFFICULTY_MULTIPLIER[task.difficulty ?? 'normal'] ?? 1;
   return Math.max(1, Math.round(effortCoinsFor(task) * multiplier));
 }
@@ -124,12 +130,13 @@ export function streakBonusFor(streakCount: number): number {
 /**
  * What completing a task earns. `streakCount` is the streak *after* this
  * completion, so the completion that reaches 7 in a row is the first to get
- * the bonus.
+ * the bonus. A trivial task earns nothing at all, streak bonus included.
  */
 export function coinsForCompletion(
   task: CoinSource & Partial<Pick<Task, 'bountyPushes'>>,
   streakCount: number,
 ): number {
+  if (task.difficulty === 'trivial') return 0;
   return baseCoinsFor(task) + streakBonusFor(streakCount) + bountyCoinsFor(task);
 }
 
@@ -174,7 +181,7 @@ export const MIN_BOUNTY_LIMIT = 1;
 export const MAX_BOUNTY_LIMIT = 5;
 
 type BountySource = CoinSource & Partial<Pick<Task, 'bountyPushes'>>;
-type BountyState = Pick<Task, 'bountyPushes' | 'completed' | 'archived'>;
+type BountyState = Pick<Task, 'bountyPushes' | 'completed' | 'archived'> & Partial<Pick<Task, 'difficulty'>>;
 
 /** A bounty's value before any pushes: the task's base value, floored at `BOUNTY_MIN_COINS`. */
 export function fullBountyFor(task: CoinSource): number {
@@ -187,17 +194,23 @@ export function fullBountyFor(task: CoinSource): number {
  * and none is free: 12 → 8 → 4 → 0, or 3 → 2 → 1 → 0.
  */
 export function bountyCoinsFor(task: BountySource): number {
+  if (task.difficulty === 'trivial') return 0;
   const pushes = task.bountyPushes;
   if (pushes === null || pushes === undefined || pushes >= BOUNTY_PUSHES_TO_EXPIRE) return 0;
   const left = BOUNTY_PUSHES_TO_EXPIRE - Math.max(0, pushes);
   return Math.max(1, Math.round((fullBountyFor(task) * left) / BOUNTY_PUSHES_TO_EXPIRE));
 }
 
-/** Whether a task holds a bounty that still pays, and so takes up a slot. */
+/**
+ * Whether a task holds a bounty that still pays, and so takes up a slot. A task
+ * rated trivial after a bounty went up holds none: it can't pay, and shouldn't
+ * keep the slot.
+ */
 export function isBountyLive(task: BountyState): boolean {
   return (
     !task.completed &&
     !task.archived &&
+    task.difficulty !== 'trivial' &&
     task.bountyPushes != null &&
     task.bountyPushes < BOUNTY_PUSHES_TO_EXPIRE
   );
@@ -213,7 +226,8 @@ export function liveBountyCount(tasks: readonly BountyState[]): number {
 /**
  * Whether a bounty can go up on this task at all, slots aside: an open,
  * top-level, ordinary task that has never had one on this occurrence. A
- * negative habit is never completed, so a bounty on one could never pay.
+ * negative habit is never completed, so a bounty on one could never pay, and
+ * neither could one on a trivial task.
  */
 export function canPostBounty(
   task: BountyState & Pick<Task, 'parentId' | 'polarity'>,
@@ -221,6 +235,7 @@ export function canPostBounty(
   return (
     !task.completed &&
     !task.archived &&
+    task.difficulty !== 'trivial' &&
     taskEarnsCoins(task) &&
     task.polarity !== 'negative' &&
     task.bountyPushes == null

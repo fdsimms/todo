@@ -202,7 +202,9 @@ model.
   landed on, and reports missed occurrences separately.
 - `review_tasks` lists what has sat a long time and what looks duplicated. It is deliberately a
   list and not a verdict, and leaves lists, paused projects and dated series out of the places they
-  would otherwise be false positives.
+  would otherwise be false positives. Its `repeatedlyPostponed` section is the "stuck" read: open
+  tasks pushed `minPushes` (default 3) or more times, off `postponeCount`, with a muted task left
+  out because the person asked not to be nudged about it. The `unstick_tasks` prompt walks it.
 
 **`app_help` reads what the app already says about itself** (`helpTools.ts`): the Settings index
 through the app's own Settings search, with the person's kitchen and simplified-mode gates applied,
@@ -210,6 +212,13 @@ and every patch note in `src/patchNotes/entries/`. The server has the checkout, 
 them rather than the few hundred the app ships. These are the two records kept true by other means
 (a test for the index, a fragment per user-facing PR for the notes), so neither drifts the way a
 hand-written help corpus would.
+
+**`unused_features` is a hand-written table of checks, not an inference** (`adoptionTools.ts`).
+Each check is a feature plus a test on the replica for "this person's data shows the need and the
+feature isn't set up" (forty open tasks and no estimates), and it reports what it saw. A check never
+fires on "the setting is off" alone, which is true of every feature for everyone. Simplified mode
+drops the `advanced` checks, and a note naming a check's id silences it, so a declined suggestion
+isn't repeated. Adding a feature worth recommending is one entry in `ADOPTION_CHECKS`.
 
 **Patterns are the Stats and Mood screens' own reads** (`patternTools.ts`). `habit_patterns` is
 `rhythms.ts` and `estimateCalibration.ts` over each habit's occurrences, plus the streak and pace
@@ -276,7 +285,7 @@ the store's own `uncompleteTask`. Everything else an agent writes is recorded wi
 can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
 is still how the agent left it.
 
-- **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
+- **Undoable:** a catalog item's own fields, and a deleted catalog item (see the catalog section), a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
 - **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
@@ -860,6 +869,80 @@ thing; a copy that also holds every symptom they have recorded, every dose they 
 every meal they have eaten is health data in the sense a privacy label means it, and a hosted
 replica puts all of it on a machine with a public address. The read surface is one bearer token
 for everything, which is adequate for a laptop and is not adequate for that.
+
+### The pantry: the same row rules, and what stays on the phone
+
+`list_pantry`, `get_pantry_item`, `pantry_review`, `use_up_recipes`, `update_pantry_item`,
+`update_pantry_box`, `add_to_pantry`, `answer_pantry_review`, `log_leftover` and `update_leftover`
+(`mcp/src/pantryTools.ts`, over the `Replica` methods of the same names). `docs/arch/groceries.md`
+has the rules; two decisions are specific to the server.
+
+- **Every pantry write is `src/utils/pantryWrite.ts`, shared with the stores.** `useGroceryStore`
+  cannot load in Node, and each of its pantry actions was a row transform fused to a `set()`, an
+  undo and a use-up reconcile. The transform is lifted out the way `planGroceryAdd` was, and
+  `setOnHandUntil`, `markOutOfMany`, `setFrozen`, `setOpened`, `answerPantryReview`, the box actions,
+  `freezePortion`, `addToPantry` and the leftover store's freeze, finish and reopen all call it. A
+  pantry rule fixed in one place is fixed for the phone and the server.
+- **The use-up task is not written here.** It goes through the task store, which is unreachable from
+  Node, so a change that would spawn or drop one leaves it to the phone's catch-up pass
+  (`reconcileAllUseUpTasks`), which converges from the rows alone. The same split `update_meal` makes
+  for a meal's cook task. `update_pantry_item`'s `useUpTask` sets the item's own flag, which that
+  pass then honors.
+- **Reads are the app's readers.** `list_pantry` is `kitchenInventory` (so a row appears only when
+  `probablyHaveReason` vouches for it), `pantry_review` is `buildPantryReviewDeck`, `use_up_recipes`
+  is `useUpRecipes` over `useUpEntries`. `get_pantry_item` reports `unknown` where the app has no
+  opinion, never `out`: a null reason is ignorance. There are no quantities, for the reason
+  `KitchenScreen` gives for not keeping any.
+- **A review answer is the person's.** The tool descriptions say not to answer a card on their
+  behalf, since the review exists to replace a guess with a claim.
+- **Left in the app on purpose:** a leftover's link to the recipe and plan entry it came from, the meal-log offer that eating one raises, a scanned or receipt batch
+  (`addManyToPantry`), the disposal follow-up question, and Siri's mark-as-used-up.
+- **Logged as `subject: 'pantry'`, and undoable by snapshot.** The ledger's usual revert is one flat
+  record of changed fields, and a pantry write touches an item, its boxes (a frozen portion made or
+  deleted) and the home list (running low joins it). So the entry stores the item's pantry fields,
+  its boxes and whether it was on the list, before and after (`agentPantryRevert.ts`), and Activity
+  offers an undo only while the item still matches the "after" snapshot, the rule every other undo
+  follows. The store side is `useGroceryStore.restorePantry` and `useLeftoverStore.restoreLeftover`.
+  A leftover the agent logged is removable while it is open, like a log entry; a new catalog row
+  from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
+  list does.
+
+### The catalog: edits, delete with a snapshot, separate lists and receipts
+
+`grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`,
+`save_grocery_box`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
+`delete_grocery_list`, `finish_grocery_trip` and `import_receipt` (`mcp/src/groceryTools.ts`), with a `list`
+argument on the list tools. The row rules are `src/utils/groceryItemWrite.ts` (price, boxes, rename, store and
+substitute links, list names, aliases, finishing a trip), shared with `useGroceryStore` the way `pantryWrite.ts`
+is. Decisions specific to the server:
+
+- **A delete is undoable because the ledger carries what the app does not.** `dbDeleteGroceryItem` cascades to
+  the item's list entries, store links, substitutes (both directions), boxes and receipt names, and the app
+  keeps no snapshot, which is the whole reason it has no undo. The entry stores a `DeletedItemSnapshot`
+  (`deletedItemSnapshot`) plus the remembered aisle for the name, and `useGroceryStore.restoreDeletedItem` puts
+  all of it back, offered only while neither the id nor the name is back in the catalog
+  (`agentCatalogRevert.ts`). It does not touch what the app itself leaves dangling (a supply task, a food-log
+  row naming the item); a "Use up" task for it is dropped by the phone's catch-up pass.
+- **An edit is undoable only when it touched the item's own fields** (`CATALOG_REVERT_FIELDS`) and the
+  remembered aisle for its name, written back by `restoreCatalogItem`. A rename moves keys in other tables, and
+  store links, substitutes and boxes are other rows, so those are recorded in Activity and not undoable.
+- **An aisle must be one that exists.** Aisles are the person's walk order, so an agent naming a new one would
+  create a section nobody made; `grocery_setup` lists them and an unknown name is refused with the list.
+- **A receipt is read by Claude.** The server cannot see an image and the phone's reader (on-device OCR, or the
+  person's own API key) is not available here, so `match_receipt` takes the lines Claude extracted and runs
+  `matchReceiptLines` (remembered store names, then exact, likely, weak), and `import_receipt` does what the scan
+  flow writes: for shopping each line is joined to the list if needed, checked off and the trip finished
+  (`planFinishShopping` then `dbFinishGroceryShopping`); for the pantry it is `acquiredRow` + "Got it" and a
+  price, with no purchase recorded. The printed text is remembered as that store's name only for a line that
+  named an existing item, as the app does for a row the person confirmed. Finishing records everything checked
+  off on the list, including items checked off before the receipt, exactly as the finish sheet does.
+- **A separate list records almost nothing when finished.** No purchase count, price, store link or use-by day
+  (`docs/arch/groceries.md`, "An away trip records nothing"); `planFinishShopping` zeroes them and the result says so.
+- **Not written here:** the use-up task and the supply restock a finished trip also triggers in the app (both go
+  through the task store; the phone catches up), merging two items, deleting a store, and aisle-level edits
+  (renaming or deleting an aisle rewrites every item and store).
+- **Logged as `subject: 'catalog'`.** Writes to a separate list are recorded there too, never as a `grocery`
+  entry, because that subject's undo acts on the list at home.
 
 ### Correcting and deleting a log entry
 

@@ -34,7 +34,9 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, animation, ty
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { TRAVEL_ARRIVE_CHOICES, TRAVEL_MODES, describeArrival, type TravelMode } from '../utils/travelTasks';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { DEFAULT_EVENT_MINUTES, describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
@@ -107,6 +109,13 @@ export interface QuickEventSeed {
   end?: Date;
   title?: string;
   personIds?: readonly string[];
+  /** An all-day event; `start` is its day. Used by an imported event with no clock time. */
+  allDay?: boolean;
+  location?: string;
+  /** Notes, or a lone link, for the "Notes or link" field. */
+  notes?: string;
+  /** Minutes before the start for the alert chip; omitted keeps the chip's default. */
+  alertMinutes?: number | null;
 }
 
 /** An existing event to open the card on, instead of a new one. */
@@ -292,6 +301,15 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [typedBeforePick, setTypedBeforePick] = useState('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
+  // How this event is travelled to and how early to arrive: app-only, written
+  // to travelEventPrefs once the event saves. Null mode follows Settings.
+  const travelTasksOn = useSettingsStore(s => s.travelTasks);
+  const defaultTravelMode = useSettingsStore(s => s.travelMode);
+  const setTravelEventPref = useSettingsStore(s => s.setTravelEventPref);
+  const [travelModePick, setTravelModePick] = useState<TravelMode | null>(null);
+  const [arriveEarlyPick, setArriveEarlyPick] = useState(0);
+  const [travelModePickerVisible, setTravelModePickerVisible] = useState(false);
+  const [arrivePickerVisible, setArrivePickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
   const [busy, setBusy] = useState(false);
   // A start set by hand (the chip's picker) or by tapping the tooltip. A
@@ -354,6 +372,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setNotesOrLink(notesField);
     setCalendarPick(event.calendarId);
     setAlertPick(alertMinutesFromOffset(event.alertOffset, event.allDay));
+    const travelPref = useSettingsStore.getState().travelEventPrefs[target.eventId];
+    setTravelModePick(travelPref?.mode ?? null);
+    setArriveEarlyPick(travelPref?.arriveEarlyMinutes ?? 0);
     setAvailabilityPick(event.availability);
     const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
     setOriginalPeople(people);
@@ -364,8 +385,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!visible) return;
     const seededText = seed?.title ?? '';
     setText(seededText);
-    setLocation('');
-    setNotesOrLink('');
+    setLocation(seed?.location ?? '');
+    setNotesOrLink(seed?.notes ?? '');
     setRepeatPick(null);
     setPlaceResults([]);
     setPickedPlace(null);
@@ -375,7 +396,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const defaults = readQuickEventDefaults();
     setCalendarId(defaults.calendarId);
     setAlertDefault(defaults.alertMinutes);
-    setAlertPick(undefined);
+    setAlertPick(seed?.alertMinutes);
     setAvailability(defaults.availability);
     setCalendarPick(null);
     setAvailabilityPick(null);
@@ -384,6 +405,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setMemoryDismissedKey(null);
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
+    setTravelModePick(null);
+    setArriveEarlyPick(0);
+    setTravelModePickerVisible(false);
+    setArrivePickerVisible(false);
     void loadCalendars(defaults.calendarId, false);
     titleCaret.resetCaret(seededText);
     setBusy(false);
@@ -393,7 +418,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (seed?.start && seed.end && seed.end > seed.start) {
       setDurationPick(Math.round((seed.end.getTime() - seed.start.getTime()) / 60000));
     }
-    setAllDay(false);
+    setAllDay(seed?.allDay === true);
     setOriginal(null);
     setOriginalNotesField('');
     setOriginalPeople([]);
@@ -766,6 +791,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       availability: effectiveAvailability,
       at: Date.now(),
     }));
+    setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
+    useEventCreatedToastStore.getState().announce(saved.id, effectiveStart);
     onSaved?.(saved.id);
     dismiss();
   };
@@ -810,6 +837,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       );
       return;
     }
+    setTravelEventPref(id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
     onSaved?.(id);
     dismiss();
   };
@@ -858,6 +886,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     { key: 'none', label: describeAlert(null) },
     ...ALERT_CHOICES.map(m => ({ key: String(m), label: describeAlert(m, allDay) })),
   ];
+
+  const travelModeOptions: EventOption[] = [
+    { key: 'default', label: `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
+    ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
+  ];
+  const arriveOptions: EventOption[] = TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) }));
+  // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
+  const showTravelChips = travelTasksOn && !allDay && !!effectiveLocation;
 
   // ==== render. Everything below is JSX ====
   return (
@@ -930,7 +966,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               accessibilityRole="button"
               accessibilityLabel={isEditing ? 'Save changes' : 'Add event'}
             >
-              <Ionicons name="checkmark" size={18} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={18} color={canAdd ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
           </View>
 
@@ -1178,6 +1214,35 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </TouchableOpacity>
             </View>
 
+            {showTravelChips && (
+              <View style={styles.toolbar}>
+                <TouchableOpacity
+                  style={[styles.toolChip, styles.toolChipWide, travelModePick !== null && styles.toolChipSet]}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setTravelModePickerVisible(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Getting there: ${TRAVEL_MODE_LABELS[travelModePick ?? defaultTravelMode]}`}
+                >
+                  <Ionicons name="navigate-outline" size={iconSize.sm} color={travelModePick !== null ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, travelModePick !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                    {TRAVEL_MODE_LABELS[travelModePick ?? defaultTravelMode]}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.toolChip, styles.toolChipWide, arriveEarlyPick !== 0 && styles.toolChipSet]}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Arrive: ${describeArrival(arriveEarlyPick)}`}
+                >
+                  <Ionicons name="flag-outline" size={iconSize.sm} color={arriveEarlyPick !== 0 ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, arriveEarlyPick !== 0 && styles.toolChipTextSet]} numberOfLines={1}>
+                    {describeArrival(arriveEarlyPick)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.toolbar}>
               <TouchableOpacity
                 style={[styles.toolChip, styles.toolChipWide, allDay && styles.toolChipSet]}
@@ -1309,9 +1374,27 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         }}
         onClose={() => setAlertPickerVisible(false)}
       />
+      <EventOptionSheet
+        visible={travelModePickerVisible}
+        title="Getting there"
+        options={travelModeOptions}
+        selectedKey={travelModePick ?? 'default'}
+        onSelect={key => setTravelModePick(key === 'default' ? null : (key as TravelMode))}
+        onClose={() => setTravelModePickerVisible(false)}
+      />
+      <EventOptionSheet
+        visible={arrivePickerVisible}
+        title="Arrive"
+        options={arriveOptions}
+        selectedKey={String(arriveEarlyPick)}
+        onSelect={key => setArriveEarlyPick(Number(key))}
+        onClose={() => setArrivePickerVisible(false)}
+      />
     </SheetModal>
   );
 }
+
+const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
 
 // Mirrors QuickAddModal's card, input and tooltip styles; the notes on why
 // each value is what it is live there.
@@ -1344,7 +1427,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     justifyContent: 'center',
   },
   addBtnDisabled: { backgroundColor: colors.bgTertiary },
-  tooltipRow: { marginTop: -4, marginBottom: spacing.sm },
+  // Zero height with the bubble overflowing it: a popover over the fields, not a
+  // row that pushes them down and clips the card's last row off its capped height.
+  tooltipRow: { height: 0, marginTop: -4, zIndex: 2, overflow: 'visible' },
   tooltipAnchor: { alignSelf: 'flex-start' },
   tooltipCaret: {
     width: 0,

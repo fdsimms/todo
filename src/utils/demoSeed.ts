@@ -564,6 +564,16 @@ export function seedDemoData(): void {
     difficulty: 'hard',
   });
 
+  // The other end of the rating: a chore that belongs on the list and isn't
+  // worth paying for, which is what Trivial is for.
+  addTask({
+    title: 'Water the desk plant',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    effort: 1,
+    difficulty: 'trivial',
+  });
+
   // A place on a task is what the Location row in the editor is for — same
   // reasoning as the phone number above, and the kind of task the "Import
   // event" add-menu entry exists to create without retyping any of this.
@@ -838,7 +848,7 @@ export function seedDemoData(): void {
   // The same added task on the other trigger: a counted repeat whose last
   // occurrence adds a follow-up. Invisible until the last class is done, so
   // the seed's job is the editor's "When the repeat ends" choice.
-  addTask({
+  const swimClass = addTask({
     title: 'Swim class',
     notes: 'Six weekly classes. Finishing the last one adds a task to sign up for the next session.',
     category: 'Health',
@@ -848,6 +858,15 @@ export function seedDemoData(): void {
     recurrenceCount: 6,
     followUpTaskAtEnd: true,
     followUpTaskTitle: 'Sign up for the next swim session',
+  });
+  // Waits for the whole six-week series rather than the first class.
+  addTask({
+    title: 'Book the pool party',
+    notes: 'Held back until the last swim class is done, not just the next one.',
+    category: 'Health',
+    effort: 1,
+    blockedById: swimClass.id,
+    waitForSeriesEnd: true,
   });
 
   // A decision task — one that completes by recording an answer rather than
@@ -1149,6 +1168,13 @@ export function seedDemoData(): void {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
   });
+  // Project.taskDefaults, invisible until a task is added to the project: ideas
+  // aren't ranked and are small, so nothing added here reaches Backfill. Set
+  // after the three above so they stay the "still to fill in" example.
+  updateProject(giftIdeas.id, { taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } });
+  addTask({ title: 'Something for Dad\'s birthday', projectId: giftIdeas.id });
+  // The same idea for a kind of task the app writes itself.
+  useSettingsStore.getState().setGeneratedTaskDefaults('birthdayGift', { priority: 2, difficulty: null, effort: 3 });
 
   // A project parked for a season (Project.pausedUntil): a weekly routine and a
   // one-off, both held off Today until the pause lifts in three weeks. Without
@@ -1506,7 +1532,21 @@ export function seedDemoData(): void {
   addCategory('Calendar');
   setCategoryEmoji('Calendar', '📅');
   useSettingsStore.getState().setEventTaskCategory('Calendar');
-  const eventRules = defaultEventRules();
+  // A third rule beside the two defaults, so the rules sheet shows one that
+  // fires after its event rather than ahead of it. It has no seeded task: its
+  // task only exists once an event has ended, and the demo reads no calendar.
+  const eventRules = [
+    ...defaultEventRules(),
+    {
+      id: generateId(),
+      matches: ['Checkup'],
+      title: 'Schedule next appointment',
+      leadDays: 0,
+      afterEvent: true,
+      skipIfUpcoming: true,
+      enabled: true,
+    },
+  ];
   useSettingsStore.getState().setEventRules(eventRules);
   const [packRule] = eventRules;
   const demoFlight = {
@@ -2501,16 +2541,18 @@ function seedMoodLog(today: Date): void {
     symptoms?: [string, SymptomSeverity][];
     contextTags?: string[];
     note?: string;
+    // Free text only and read by no insight, so these leave every number below as is.
+    dream?: string;
   }[] = [
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5, contextTags: ['Vacation'] },
+    { back: 15, mood: 5, contextTags: ['Vacation'], dream: 'Walking along a beach I did not recognize, looking for a train station.' },
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
     { back: 13, mood: 4 },
     { back: 12, mood: 3 },
     { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
     { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'], dream: 'Missing a meeting I could not find the room for. Woke up twice.' },
     { back: 8, mood: 2, symptoms: [['Headache', 1]] },
     { back: 7, mood: 3 },
     { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
@@ -2532,6 +2574,7 @@ function seedMoodLog(today: Date): void {
       day.note ?? null,
       at,
       day.contextTags ?? [],
+      day.dream ?? null,
     );
   }
 

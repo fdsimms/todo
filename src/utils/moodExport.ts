@@ -33,7 +33,7 @@ import type { MoodLog } from '../types';
 import { moodLabel, severityLabel } from './moodLog';
 
 export const MOOD_EXPORT_COLUMNS = [
-  'Day', 'Logged at', 'Mood', 'Mood label', 'Symptoms', 'Context', 'Note',
+  'Day', 'Logged at', 'Mood', 'Mood label', 'Symptoms', 'Context', 'Note', 'Dream',
 ] as const;
 
 /**
@@ -80,6 +80,7 @@ export function moodExportCsv(logs: readonly MoodLog[]): string {
     symptomCell(log),
     log.contextTags.join('; '),
     log.note ?? '',
+    log.dream ?? '',
   ]));
   // A trailing newline: a text file ends with one, and a spreadsheet importing
   // a file without one is the usual way a last row goes missing.

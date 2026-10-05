@@ -167,7 +167,7 @@ export function RecipeTimerRow({
             running ? `Pause ${noun} timer` : paused ? `Resume ${noun} timer` : `Start ${noun} timer`
           }
         >
-          <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={colors.onAccent} />
+          <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.onFill : colors.onAccent} />
         </TouchableOpacity>
       </View>
       {/* Only while something is actually counting: an untouched bar at 0% on

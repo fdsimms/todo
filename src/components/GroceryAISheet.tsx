@@ -411,7 +411,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
               accessibilityLabel={`${row.name}, ${row.aisle}`}
             >
               <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
               </View>
               <View style={styles.body}>
                 <Text style={styles.name} numberOfLines={1}>{row.name}</Text>

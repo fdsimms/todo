@@ -40,7 +40,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition } from '../types';
+import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -269,6 +269,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // the next task rather than frozen at mount.
   const hostDefaultCategory = () =>
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.defaultTaskCategory : null) ?? null;
+  // The project's own priority, difficulty and estimate, seeded the way its
+  // category is, so the sheet shows what the task will get. Only the project the
+  // sheet was opened into: one picked by hand mid-sheet is still covered by
+  // newTaskFromDraft for difficulty, which the sheet leaves null until chosen.
+  const hostFieldDefaults = () =>
+    (intoProjectId ? projects.find(p => p.id === intoProjectId)?.taskDefaults : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -451,6 +457,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // rule effect only moves it while it still holds what the rule last wrote,
   // so a project picked by hand isn't taken back by the next keystroke.
   const [projectId, setProjectId] = useState<string | null>(null);
+  // What priority, effort and difficulty were last seeded to from a project's
+  // defaults, so choosing another project re-seeds only a pill nobody touched.
+  const fieldSeedRef = useRef<{ priority: Priority; effort: Effort; difficulty: Difficulty | null } | null>(null);
   // The project the picker last set, as opposed to one a title rule filled.
   const pickedProjectRef = useRef<string | null>(null);
   const pickProject = (id: string | null) => {
@@ -564,9 +573,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const listTarget = isListProject(intoProjectId ?? keptProjectId);
     setTitle(nextTitle);
     titleCaret.resetCaret(nextTitle);
-    setPriority(newTaskDefaults.priority ?? 0);
-    setEffort(newTaskDefaults.effort ?? 0);
-    setDifficulty(null);
+    setPriority(hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0);
+    setEffort(hostFieldDefaults()?.effort ?? newTaskDefaults.effort ?? 0);
+    setDifficulty(hostFieldDefaults()?.difficulty ?? newTaskDefaults.difficulty ?? null);
+    fieldSeedRef.current = null;
     setEstimatedMinutes(null);
     setCustomEffortText('');
     setDueDate(defaultDueDate(listTarget));
@@ -705,8 +715,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // base is simply null, same as projectId.
     const baseCategory = seedRef.current?.category ?? hostDefaultCategory()
       ?? (isListProject(intoProjectId) ? null : newTaskDefaults.category);
-    const basePriority: Priority = newTaskDefaults.priority ?? 0;
-    const baseEffort: Effort = newTaskDefaults.effort ?? 0;
+    const basePriority: Priority = hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0;
+    const baseEffort: Effort = hostFieldDefaults()?.effort ?? newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
       ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [], linkUrl: null };
     const next = {
@@ -734,6 +744,27 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // open; re-running on it would fight a value already applied.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruleFill, visible]);
+
+  // A project picked by hand (or by a title rule) answers priority, estimate
+  // and difficulty the way the project the sheet opened into does. A value the
+  // person already changed is left alone, the same compare-to-what-we-put-there
+  // reconcile the title rules above use.
+  useEffect(() => {
+    if (!visible) { fieldSeedRef.current = null; return; }
+    const seedFor = (fd: TaskFieldDefaults | null | undefined) => ({
+      priority: (fd?.priority ?? newTaskDefaults.priority ?? 0) as Priority,
+      effort: (fd?.effort ?? newTaskDefaults.effort ?? 0) as Effort,
+      difficulty: fd?.difficulty ?? newTaskDefaults.difficulty ?? null,
+    });
+    const next = seedFor((projectId ? projects.find(p => p.id === projectId)?.taskDefaults : null) ?? hostFieldDefaults());
+    const prev = fieldSeedRef.current ?? seedFor(hostFieldDefaults());
+    setPriority(cur => (cur === prev.priority ? next.priority : cur));
+    setEffort(cur => (cur === prev.effort ? next.effort : cur));
+    setDifficulty(cur => (cur === prev.difficulty ? next.difficulty : cur));
+    fieldSeedRef.current = next;
+    // Only a change of project re-seeds; the defaults read here are a baseline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, visible]);
 
   /**
    * "“expense” → Work · #receipts" — the word that fired, and what it filled
@@ -2358,7 +2389,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 accessibilityRole="button"
                 accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
               >
-                <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+                <Ionicons name="arrow-up" size={18} color={!title.trim() || blocked !== null ? colors.textTertiary : colors.onAccent} />
               </TouchableOpacity>
             )}
           </View>
@@ -3810,9 +3841,13 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   },
   reminderText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   reminderAccept: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  // Zero height with the bubble overflowing it: a popover over what's below, not
+  // a row that pushes it down.
   tooltipRow: {
+    height: 0,
     marginTop: -4,
-    marginBottom: spacing.sm,
+    zIndex: 2,
+    overflow: 'visible',
   },
   tooltipAnchor: {
     alignSelf: 'flex-start',
