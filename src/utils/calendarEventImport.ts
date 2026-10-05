@@ -2,6 +2,7 @@ import { addDays } from 'date-fns/addDays';
 import { addHours } from 'date-fns/addHours';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
 import type { BusyEvent } from './calendarBusy';
+import type { QuickEventSeed } from '../components/QuickEventSheet';
 
 /** The subset of TaskEditor's TaskDraft an imported event can fill in. */
 export interface CalendarEventDraft {
@@ -122,6 +123,25 @@ export function eventImportCreateFields(event: ExtractedCalendarEvent): EventImp
     location: event.location || undefined,
     notes: event.notes || undefined,
     alarms: timeParts ? [{ relativeOffset: 0 }] : undefined,
+  };
+}
+
+/**
+ * `eventImportCreateFields` as the seed `QuickEventSheet` opens on, so an
+ * imported event is reviewed in the app's own event card rather than Apple's.
+ * Null under the same condition: no readable date.
+ */
+export function eventImportQuickSeed(event: ExtractedCalendarEvent): QuickEventSeed | null {
+  const f = eventImportCreateFields(event);
+  if (!f) return null;
+  return {
+    title: f.title,
+    start: f.start,
+    end: f.end,
+    allDay: f.allDay,
+    location: f.location,
+    notes: f.notes,
+    alertMinutes: f.alarms ? 0 : null,
   };
 }
 
