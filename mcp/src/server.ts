@@ -225,7 +225,7 @@ function withLink<T extends object>(result: T, link: string | undefined): T | (T
 }
 
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
+  const server = new McpServer({ name: 'dundundun', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
 
   // Every tool gets its title and read/write hints from one table
   // (toolAnnotations.ts) rather than an argument at each of thirty call sites.
