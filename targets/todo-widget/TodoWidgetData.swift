@@ -442,3 +442,17 @@ struct WidgetPalette {
         scheme == .dark ? .dark : .light
     }
 }
+
+// A Home Screen widget's own background: the palette's card color
+// (colors.bgSecondary in the app), following the system appearance. A view
+// rather than a Color because `containerBackground` is applied in each
+// widget's configuration, outside the entry view that reads the scheme. The
+// system still removes it where it removes any container background (tinted
+// and clear Home Screens, StandBy), so it needs no case of its own for those.
+struct WidgetCardBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        WidgetPalette.forScheme(colorScheme).bgSecondary
+    }
+}

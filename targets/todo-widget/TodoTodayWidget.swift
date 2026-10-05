@@ -392,7 +392,7 @@ struct TodoTodayWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: TodayWidgetIntent.self, provider: TodoTodayProvider()) { entry in
             TodoTodayWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) {
-                    Color(UIColor.secondarySystemGroupedBackground)
+                    WidgetCardBackground()
                 }
         }
         .configurationDisplayName("Today")
