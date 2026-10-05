@@ -277,7 +277,12 @@ describe('pantry undo and log_leftover', () => {
     calendarRequest: () => null,
   });
 
-  const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry').sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+  // The entry the write under test left, found by id rather than as the newest
+  // by `at`: the setup write before it usually lands in the same millisecond, and
+  // a tie on `at` let either one come back. `since()` goes just before that write.
+  let seen = new Set<string>();
+  const since = () => { seen = new Set(dbGetUnattendedLog().map(e => e.id)); };
+  const latest = () => dbGetUnattendedLog().find(e => e.subject === 'pantry' && !seen.has(e.id))!;
 
   beforeAll(() => {
     replica = openReplica(':memory:');
@@ -290,11 +295,13 @@ describe('pantry undo and log_leftover', () => {
     mockRaw.runSync('DELETE FROM leftovers');
     mockRaw.runSync('DELETE FROM unattended_log');
     replica.refresh();
+    seen = new Set();
   });
 
   it('offers an undo of an item change only while the item is still as it was left', () => {
     addToPantry(replica, ['spinach']);
     const id = replica.groceryItems()[0].id;
+    since();
     updatePantryItem(replica, { id, status: 'out', outcome: 'spoiled' });
     const entry = latest();
     expect(entry.revert).toBeTruthy();
@@ -309,6 +316,7 @@ describe('pantry undo and log_leftover', () => {
   it('reads as undone once the before state is back', () => {
     addToPantry(replica, ['rice']);
     const id = replica.groceryItems()[0].id;
+    since();
     updatePantryItem(replica, { id, staple: true });
     const entry = latest();
     updatePantryItem(replica, { id, staple: false });
@@ -318,6 +326,7 @@ describe('pantry undo and log_leftover', () => {
   it('undoes running low by taking the item back off the list, and a frozen portion by removing it', () => {
     addToPantry(replica, ['butter']);
     const id = replica.groceryItems()[0].id;
+    since();
     updatePantryItem(replica, { id, runningLow: true, freezeSome: true });
     const plan = agentRecordPlan(latest(), stateOf(replica));
     expect(plan).toMatchObject({ kind: 'restorePantryItem', removeFromList: true, removeBoxIds: [replica.itemProducts()[0].id], boxes: [] });
@@ -328,6 +337,7 @@ describe('pantry undo and log_leftover', () => {
     const id = replica.groceryItems()[0].id;
     updatePantryItem(replica, { id, freezeSome: true });
     const portion = replica.itemProducts()[0];
+    since();
     updatePantryBox(replica, portion.id, { status: 'out' });
     const plan = agentRecordPlan(latest(), stateOf(replica));
     expect(plan).toMatchObject({ kind: 'restorePantryItem', boxes: [expect.objectContaining({ id: portion.id, isPortion: true })] });
