@@ -865,7 +865,8 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
   rule in `calendarSync.ts`. `cancel_calendar_request` works only while a request is pending; after
   that the event is the person's, in their calendar app.
 - **The Activity entry is the agent's request** (subject `event`), written here and synced like the
-  rest of the ledger. The phone's write adds no second entry: the row's status is the record of what
+  rest of the ledger. Its "Don't add" button cancels the request while it is still pending
+  (`agentRecordPlan`), and says why not once it isn't. The phone's write adds no second entry: the row's status is the record of what
   became of it. Answered requests are purged after 30 days by the writing device.
 - **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
   the row. The phone re-reads each row just before writing, which makes the window one sync wide.
