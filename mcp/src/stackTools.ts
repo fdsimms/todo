@@ -160,3 +160,9 @@ export function createStack(replica: Replica, input: CreateStackInput): StackWri
   const moved = moveTasks(replica, stack.id, taskIds);
   return finish(replica, stack.id, moved);
 }
+
+/** Rename a stack. The title only; see `Replica.renameStack`. */
+export function renameStack(replica: Replica, id: string, title: string): { id: string; title: string } {
+  const stack = replica.renameStack(id, title);
+  return { id: stack.id, title: stack.title };
+}

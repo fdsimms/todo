@@ -19,7 +19,7 @@
  */
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { AnswerEdit, Replica } from './replica';
-import type { TemplatePlan } from './templatePlan';
+import { resolveRef, templateToPlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import {
   describeHealthTarget,
@@ -892,5 +892,101 @@ export function listMedicationLogs(
       unit: log.unit ?? undefined,
       asNeeded: log.asNeeded ? true : undefined,
     })),
+  };
+}
+
+/** One template as the plan that would recreate it, or null when none matches. */
+export function getTemplate(replica: Replica, ref: string) {
+  const found = resolveRef(ref, replica.templates());
+  if (found.length > 1) throw new Error(`"${ref}" names ${found.length} templates. Use an id.`);
+  return found[0] ? templateToPlan(found[0]) : null;
+}
+
+/** Apply an edit to a template. See `Replica.updateTemplate` for the rules. */
+export function updateTemplate(replica: Replica, ref: string, patch: TemplatePatch): CreateTemplateResult {
+  const built = replica.updateTemplate(ref, patch);
+  return {
+    id: built.id,
+    name: built.name,
+    items: built.items.length,
+    groups: built.itemGroups.length,
+    questions: built.questions.length,
+    scheduled: built.schedule !== null,
+  };
+}
+
+export interface DeleteTemplateResult {
+  deleted: { id: string; name: string; items: number };
+  /** Templates that nested it. Each now has an item whose reference is broken. */
+  nestedIn: string[];
+}
+
+/** Delete a template. Not undoable from here, so the write tool previews it first. */
+export function deleteTemplate(replica: Replica, ref: string): DeleteTemplateResult {
+  const { template, nestedIn } = replica.deleteTemplate(ref);
+  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn };
+}
+
+/** The templates in their new order, as the template list shows them. */
+export function reorderTemplates(replica: Replica, ids: string[]): { id: string; name: string }[] {
+  return replica.reorderTemplates(ids).map(t => ({ id: t.id, name: t.name }));
+}
+
+export interface ReopenTaskResult {
+  task: ReturnType<typeof serializeTasks>[number];
+  /** What the reopen took back with it, in words. */
+  tookBack: string[];
+}
+
+/** Reopen a completed task. The refusals (device state it cannot undo) come from the replica. */
+export function reopenTask(replica: Replica, id: string): ReopenTaskResult {
+  const { task, removed } = replica.reopenTask(id);
+  const tookBack: string[] = [];
+  const top = removed.filter(r => !r.parentId);
+  if (top.length > 0) tookBack.push(`Removed the ${top.length === 1 ? 'occurrence' : `${top.length} occurrences`} its completion created.`);
+  return { task: serializeTasks(replica, [task])[0], tookBack };
+}
+
+export interface ApplyTemplateInput {
+  runName?: string;
+  startDate?: string;
+  endDate?: string;
+  answers?: Record<string, string>;
+  include?: string[];
+  leaveOut?: string[];
+  projectId?: string;
+}
+
+export interface ApplyTemplateResult {
+  created: { id: string; title: string; dueDate?: string }[];
+  /** What the run put them in, when the template makes a stack, project or parent task. */
+  container?: { kind: string; id: string; name: string };
+}
+
+/** A bare YYYY-MM-DD as that local day. Never via toISOString, which is UTC. */
+function localDay(value: string | undefined, field: string): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) throw new Error(`${field} must be YYYY-MM-DD.`);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/** Run a template. See `Replica.applyTemplate`. */
+export function applyTemplate(replica: Replica, ref: string, input: ApplyTemplateInput): ApplyTemplateResult {
+  const start = localDay(input.startDate, 'startDate');
+  const end = localDay(input.endDate, 'endDate');
+  if (start && end && end < start) throw new Error('endDate is before startDate.');
+  const result = replica.applyTemplate(ref, {
+    runName: input.runName,
+    start,
+    end,
+    answers: input.answers,
+    include: input.include,
+    leaveOut: input.leaveOut,
+    projectId: input.projectId,
+  });
+  return {
+    created: result.tasks.map(t => ({ id: t.id, title: t.title, ...(t.dueDate ? { dueDate: t.dueDate.slice(0, 10) } : {}) })),
+    ...(result.container ? { container: result.container } : {}),
   };
 }

@@ -7,7 +7,7 @@
  * for a blob written by an older build and wrong for a caller composing a
  * template it believes it described correctly.
  */
-import { validateTemplatePlan, resolveRef, type TemplatePlan } from '../templatePlan';
+import { validateTemplatePlan, resolveRef, templateToPlan, type TemplatePlan } from '../templatePlan';
 import type { TaskTemplate } from '../../../src/types';
 
 const template = (over: Partial<TaskTemplate> & { id: string; name: string }): TaskTemplate =>
@@ -238,5 +238,53 @@ describe('reporting', () => {
     expect(result.length).toBeGreaterThanOrEqual(4);
     expect(result).toContain('name is required.');
     expect(result).toContain('every item needs a title.');
+  });
+});
+
+describe('an edit to an existing template', () => {
+  const self = template({ id: 't1', name: 'Self', items: [{ id: 'i1', title: 'One' } as TaskTemplate['items'][number]] });
+
+  it('accepts an item id the template has, and refuses one it does not or a repeat', () => {
+    expect(validateTemplatePlan(plan({ items: [{ id: 'i1' , title: 'One' }] }), [self], 't1')).toEqual([]);
+    expect(validateTemplatePlan(plan({ items: [{ id: 'zzz', title: 'x' }] }), [self], 't1')[0]).toMatch(/not an item of this template/);
+    expect(validateTemplatePlan(plan({ items: [{ id: 'i1', title: 'a' }, { id: 'i1', title: 'b' }] }), [self], 't1').join(' ')).toMatch(/used twice/);
+  });
+
+  it('refuses an item id on a new template', () => {
+    expect(errors(plan({ items: [{ id: 'i1', title: 'One' }] }))[0]).toMatch(/not an item of this template/);
+  });
+
+  it('lets an item be gated on another by its id', () => {
+    const items = [
+      { id: 'i1', title: 'Rain?', deliverableKind: 'yesno' as const },
+      { title: 'Umbrella', onlyIfAnswer: { item: 'i1', answers: ['Yes'] } },
+    ];
+    expect(validateTemplatePlan(plan({ items }), [self], 't1')).toEqual([]);
+  });
+
+  it('refuses a nested reference that would make a template contain itself', () => {
+    const other = template({ id: 't2', name: 'Other', items: [{ id: 'x', title: 'n', refTemplateId: 't1' } as TaskTemplate['items'][number]] });
+    const result = validateTemplatePlan(plan({ items: [{ title: 'Nest', refTemplate: 't2' }] }), [self, other], 't1');
+    expect(result[0]).toMatch(/contain itself/);
+    expect(validateTemplatePlan(plan({ items: [{ title: 'Nest', refTemplate: 't1' }] }), [self], 't1')[0]).toMatch(/contain itself/);
+  });
+
+  it('writes a stored template back as a plan that validates and keeps its ids', () => {
+    const stored = template({
+      id: 't1',
+      name: 'Trip',
+      itemGroups: [{ id: 'g1', title: 'Clothes', sortOrder: 1, checklist: true }],
+      questions: [{ id: 'q1', name: 'trip', prompt: 'Kind?', kind: 'choice', options: ['Work', 'Holiday'], defaultValue: '', fromDates: 'none' }],
+      items: [
+        { id: 'i1', title: 'Shirts', groupId: 'g1', conditions: [], answerGate: null, refTemplateId: null, refTemplateName: '' },
+        { id: 'i2', title: 'Laptop', groupId: null, conditions: [{ questionId: 'q1', values: ['Work'] }], answerGate: null, refTemplateId: null, refTemplateName: '' },
+      ] as TaskTemplate['items'],
+    });
+    const asPlan = templateToPlan(stored);
+
+    expect(asPlan.groups).toEqual([{ key: 'g1', title: 'Clothes', checklist: true }]);
+    expect(asPlan.items![0]).toMatchObject({ id: 'i1', groupKey: 'g1' });
+    expect(asPlan.items![1].conditions).toEqual([{ question: 'trip', values: ['Work'] }]);
+    expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
   });
 });

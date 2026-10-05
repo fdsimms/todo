@@ -1,0 +1,4 @@
+{
+  "message": "Claude can now reopen a task you completed by mistake. It puts the task back on the list, restores its streak and takes back the coins and any dose the completion recorded. If the completion also logged a calendar event or marked a meal, it tells you to reopen it in the app instead.",
+  "date": "2026-10-04"
+}

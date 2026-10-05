@@ -7,12 +7,13 @@
  * by anything else that measures them. The last time together is a date, a
  * fact; there is no "days since" count, which the doc keeps to the person's
  * own page. A birthday is a month and a day, with no age worked out from a
- * birth year. And the one write is history, which in the app is a completed
- * task naming the person: there is no interactions table, so there is no
- * second way to record one here either.
+ * birth year. History is a write too, which in the app is a completed task
+ * naming the person (there is no interactions table, so no second way to
+ * record one here), and who someone is can be written (`createPerson`),
+ * though never a cadence, nudge, group, archive or order.
  */
 import type { Person } from '../../src/types';
-import type { Replica } from './replica';
+import type { PersonFields, Replica } from './replica';
 import { localDateInput } from './timeZone';
 
 export const HISTORY_LIMIT = 20;
@@ -139,4 +140,19 @@ export function addPersonHistory(
       people: input.personIds.map(id => names.get(id) ?? id),
     },
   };
+}
+
+/**
+ * Add a person, or change who they are. The same contract as the rest of this
+ * file: nothing here scores, ranks or declares a rhythm for anyone, so the
+ * fields are identity and contact details only (see `Replica.createPerson`).
+ */
+export function createPerson(replica: Replica, fields: PersonFields): SerializedPerson {
+  const person = replica.createPerson(fields);
+  return serializePerson(replica, person, new Map(replica.personGroups().map(g => [g.id, g.name])));
+}
+
+export function updatePerson(replica: Replica, id: string, fields: PersonFields): SerializedPerson {
+  const person = replica.updatePerson(id, fields);
+  return serializePerson(replica, person, new Map(replica.personGroups().map(g => [g.id, g.name])));
 }

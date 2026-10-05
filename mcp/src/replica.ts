@@ -56,6 +56,7 @@ import type {
   ProjectKind,
   Recipe,
   TaskTemplate,
+  TemplateItem,
   Task,
   TaskDraft,
   TaskGroup,
@@ -67,7 +68,7 @@ import type { AgentNote } from '../../src/utils/agentNotes';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
-import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
+import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
@@ -197,6 +198,8 @@ export interface RecipeInput {
   notes?: string;
 }
 
+export type RecipePatch = Partial<Omit<RecipeInput, 'cookbook'>>;
+
 export interface FoodInput {
   label: string;
   /** How much, in words: "1 bowl", "2 slices". */
@@ -214,6 +217,52 @@ export interface MoodInput {
   note?: string | null;
   at?: Date;
 }
+
+export interface TemplateRun {
+  /** Names the run, which is what turns the template's container (stack, project, one task) on. */
+  runName?: string;
+  /** The anchor dates, as local days. Offsets in the template count from these. */
+  start?: Date | null;
+  end?: Date | null;
+  /** Answers to the template's questions, by the question's name. A question left out takes its default. */
+  answers?: Record<string, string>;
+  /** Item ids to add to what the answers select (an optional item), or to take out of it. */
+  include?: string[];
+  leaveOut?: string[];
+  /** Run into this existing project instead of the template's own container. */
+  projectId?: string;
+}
+
+export interface TemplateRunResult {
+  tasks: Task[];
+  /** What the run put the tasks in, by name, when it made one. */
+  container: { kind: 'stack' | 'project' | 'task'; id: string; name: string } | null;
+}
+
+export interface PersonFields {
+  name?: string;
+  nickname?: string;
+  kind?: 'individual' | 'business';
+  notes?: string;
+  askAbout?: string;
+  /** null clears the birthday. */
+  birthday?: { month: number; day: number; year?: number | null } | null;
+  phoneNumber?: string | null;
+  email?: string | null;
+  linkUrl?: string | null;
+}
+
+export interface FoodPatch {
+  label?: string;
+  quantity?: string;
+  /** Replaces every figure. Only an estimated entry has figures an agent may restate. */
+  amounts?: Record<string, number>;
+  slot?: MealSlot | null;
+}
+
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+
+export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
 export interface DoseInput {
   name: string;
@@ -463,6 +512,20 @@ export interface Replica {
    */
   createRecipe(input: RecipeInput): Recipe;
   /**
+   * Change a recipe. Only what is given changes. `ingredients` and `steps` each
+   * replace the whole list (ingredient and step ids are new). A rename is
+   * refused when another recipe in the same cookbook has the name, and planned
+   * meals made from it are retitled; their Today tasks and calendar events
+   * catch up on the phone.
+   */
+  updateRecipe(id: string, patch: RecipePatch): Recipe;
+  /**
+   * Delete a recipe. Planned meals made from it keep their title and stop
+   * pointing at a recipe, as in the app; the phone reconciles their tasks.
+   * Not undoable from here.
+   */
+  deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number };
+  /**
    * A food entry with an estimated panel, through `readNutritionEstimate`,
    * `estimateToPanel` and `buildFoodLogEntry`. Marked estimated for good, and
    * never written to Apple Health: only the device a meal is logged on may.
@@ -472,6 +535,18 @@ export interface Replica {
   logMood(input: MoodInput): MoodLog;
   /** A dose through the medication store, the name in the spelling already in the log. */
   logMedication(input: DoseInput): MedicationLog;
+  /**
+   * Edit or delete an entry in the three health logs. None of these can move an
+   * entry to another day (`dayKey` is stamped with the instant, as in the app),
+   * so a wrong date means delete and log again. Food refuses what only the
+   * phone can finish: an entry already written to Apple Health.
+   */
+  updateFoodEntry(id: string, patch: FoodPatch): FoodLogEntry;
+  deleteFoodEntry(id: string): FoodLogEntry;
+  updateMoodLog(id: string, patch: MoodPatch): MoodLog;
+  deleteMoodLog(id: string): MoodLog;
+  updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
+  deleteMedicationLog(id: string): MedicationLog;
   /** Every automation rule list, as the settings store holds it. */
   ruleLists(): RuleLists;
   /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
@@ -519,6 +594,44 @@ export interface Replica {
   createTemplate(plan: TemplatePlan): TaskTemplate;
 
   /**
+   * Change a template, by id or by exact name. Fields left out stay as they
+   * are. `groups`, `questions` and `items` each replace the whole list when
+   * given (the three point at each other, so they are rebuilt together); a
+   * call naming only scalar fields touches nothing else in the template.
+   *
+   * Written through `dbUpdateTemplate` for the reason `createTemplate` is
+   * written through `dbInsertTemplate`: `templates_sync_stamp_update` stamps it
+   * so it syncs like an edit made in the app. Throws, writing nothing, on an
+   * invalid result, and refuses a nested reference that would form a cycle.
+   */
+  updateTemplate(id: string, patch: TemplatePatch): TaskTemplate;
+
+  /**
+   * Delete a template, by id or exact name. Nothing is archived: a template has
+   * no archived state in the app, so this is the app's own delete and cannot be
+   * undone from here. Other templates that nest it are left as they are, which
+   * is what the app does too (the reference keeps its label and shows as
+   * broken); their names are returned so the caller can say so.
+   */
+  deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] };
+
+  /**
+   * Run a template, as the apply sheet does with its defaults plus what is given:
+   * the same container, category, away-span, section and gate rules, because the
+   * decisions are `applyTemplateRun`'s (`src/utils/templateApply.ts`) and the app
+   * runs the same function. Nothing is written for the device: reminders and
+   * calendar events for the new tasks catch up on the phone, as for `createTask`.
+   * Written in one transaction, so a failure creates nothing.
+   */
+  applyTemplate(ref: string, run: TemplateRun): TemplateRunResult;
+
+  /**
+   * Put the named templates first, in the order given, and leave the rest
+   * after them in the order they were in. Unknown ids are an error.
+   */
+  reorderTemplates(ids: string[]): TaskTemplate[];
+
+  /**
    * Create one task, exactly as the app's own create path would.
    *
    * Built by `newTaskFromDraft`, which was lifted out of `useTaskStore` for
@@ -563,6 +676,14 @@ export interface Replica {
    * it asks a question that was not answered. See `deliverableRefusal`.
    */
   completeTask(id: string, options?: CompletionOptions): CompletedResult;
+  /**
+   * Reopen a completed or missed task: the row goes back to how it was before
+   * (streak, daily-target count, follow-up tally), the coins and the dose its
+   * completion wrote are taken back, and the occurrence it spawned is removed
+   * unless that one was itself completed since. Refuses what leaves something on
+   * the phone this server cannot take back (see `reopenRefusal`).
+   */
+  reopenTask(id: string): { task: Task; removed: Task[] };
   /** What `completeTask` would refuse, without writing anything; null when it would go through. */
   completionProblem(id: string, options?: CompletionOptions): string | null;
 
@@ -705,6 +826,12 @@ export interface Replica {
    */
   createStack(title: string, category: string | null): TaskGroup;
   /**
+   * Rename a stack. Only the title: changing its category would move every
+   * member, and deleting one is a cascade decision (`deleteGroup`) for the
+   * person, so neither is here.
+   */
+  renameStack(id: string, title: string): TaskGroup;
+  /**
    * File a task in a stack, or take it out with a null `stackId`: the app's
    * `addExistingToGroup` / `removeFromGroup`, one task row at a time.
    *
@@ -736,6 +863,16 @@ export interface Replica {
    * are device work and catch up on the next launch there.
    */
   planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null }): MealPlanEntry;
+  /**
+   * Move a planned meal to another day or slot, rename a free-text one, or set a
+   * recipe's scale. A recipe- or leftover-backed meal's title says what backs it
+   * and is not renamed, as in the app. Marking a meal cooked is not here: that
+   * also opens pantry items and ticks the cook task, which the phone does.
+   * The slot's task and calendar event catch up on the phone, as for `planMeal`.
+   */
+  updateMeal(id: string, patch: { date?: string; slot?: MealSlot; title?: string; scale?: number }): MealPlanEntry;
+  /** Remove a planned meal. A cooked meal is refused: it is history and feeds the cooking stats. */
+  removeMeal(id: string): MealPlanEntry;
 
   people(): Person[];
   personGroups(): PersonGroup[];
@@ -750,6 +887,15 @@ export interface Replica {
    * history table, by design (docs/arch/people.md).
    */
   addPersonHistory(personIds: string[], title: string, at: Date): Task;
+  /**
+   * Add someone, or change who they are. Only identity and contact details:
+   * name, nickname, kind, notes, what to ask about, birthday, phone, email and
+   * link. Cadence and nudges are never set here (people.md rule 4: a rhythm is
+   * the person's own declaration), nor are archiving, ordering or groups.
+   * A birthday is validated as a real month and day, with an optional year.
+   */
+  createPerson(fields: PersonFields): Person;
+  updatePerson(id: string, fields: PersonFields): Person;
 
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
@@ -830,6 +976,10 @@ function loggedTransport(transport: SyncTransport): SyncTransport {
   };
 }
 
+function stripUndefined<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
 export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Replica {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const db = require('../../src/db/database') as DbModule;
@@ -854,6 +1004,248 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const aisles = require('../../src/utils/groceryAisles') as GroceryAislesModule;
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
+  const { reopenedTask } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
+  const { generatedSourceOf } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
+  const { completesMealSlot } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
+
+  /**
+   * What reopening cannot undo from here. Each is state on the phone or in a
+   * store this server has no copy of: a calendar event the completion logged, a
+   * screen-time credit, and a meal marked cooked or logged by a meal task. The
+   * app's own Logbook undoes all of them, so the answer is to do it there.
+   */
+  function reopenRefusal(task: Task): string | null {
+    if (task.completionCalendarEventId || task.completionCalendarEventExternalId) {
+      return 'That completion logged a calendar event, which only the phone can remove. Reopen it in the app.';
+    }
+    if (task.penaltyCreditedAt) {
+      return 'That completion credited a screen-time penalty, which only the phone can take back. Reopen it in the app.';
+    }
+    if (generatedSourceOf(task, 'mealCook') || generatedSourceOf(task, 'mealLogNudge') || (generatedSourceOf(task, 'mealSlot') && completesMealSlot(task))) {
+      return 'That completion marked a meal on the plan, which only the phone can undo. Reopen it in the app.';
+    }
+    return null;
+  }
+
+  /**
+   * The groups, questions and items of a validated plan, with every name
+   * resolved to the id minted here. Shared by create and update so a plan means
+   * the same thing either way.
+   */
+  /**
+   * A template's category is a name in the `template_categories` registry that
+   * the editor's picker lists. A name written without registering it still
+   * groups correctly in the picker, but is missing from the editor's list.
+   */
+  function registerTemplateCategory(name: string | null): void {
+    if (name && !db.dbGetAllTemplateCategories().some(c => c.name === name)) db.dbInsertTemplateCategory(name);
+  }
+
+  /**
+   * Symptom and context-tag spellings already in the log, so "headache" lands
+   * on the existing "Headache" rather than starting a second symptom the
+   * insights would count apart. Shared by logging and editing a check-in.
+   */
+  function moodSpelling(): { symptom: (n: string) => string; tag: (n: string) => string } {
+    const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const logs = db.dbGetAllMoodLogs();
+    const spelled = (vocab: string[], key: (s: string) => string) => {
+      const byKey = new Map(vocab.map(v => [key(v), v]));
+      return (name: string) => byKey.get(key(name)) ?? name.trim();
+    };
+    return {
+      symptom: spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey),
+      tag: spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey),
+    };
+  }
+
+  const templateQuestions = require('../../src/utils/templateQuestions') as typeof import('../../src/utils/templateQuestions');
+  const templateApply = require('../../src/utils/templateApply') as typeof import('../../src/utils/templateApply');
+
+  /**
+   * The replica's half of a template run: `applyTemplateRun` decides, and this
+   * supplies the writes over the database and the stores that load in Node.
+   * One transaction, and `refresh` after it rolls back or commits, as
+   * `createProjectPlan` does.
+   */
+  function runTemplateIn(
+    template: TaskTemplate,
+    byId: Map<string, TaskTemplate>,
+    selected: Set<string>,
+    anchors: { start: Date | null; end: Date | null },
+    options: import('../../src/utils/templateApply').TemplateRunOptions,
+    onContainer: (c: NonNullable<TemplateRunResult['container']>) => void,
+  ): Task[] {
+    const projectStore = () => useProjectStore.getState();
+    const groupStore = () => useTaskGroupStore.getState();
+    let created: Task[] = [];
+    try {
+      db.dbTransaction(() => {
+        created = templateApply.applyTemplateRun(template, byId, selected, anchors, options, {
+          addTask: draft => replica.createTask(draft as Partial<TaskDraft>),
+          // A stub is a checklist line: no title rules, no category, no time-of-day seeding.
+          addSubtask: (parentId, title) => {
+            const siblings = db.dbGetAllTasks().filter(t => t.parentId === parentId);
+            const stub = taskDraft.newTaskFromDraft(
+              { title, parentId } as Partial<TaskDraft>,
+              new Date().toISOString(),
+              siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+              false
+            );
+            db.dbInsertTask(stub);
+            refresh();
+          },
+          createStack: (title, category) => {
+            ensureCategory(category);
+            const g = groupStore().createGroup(title, category);
+            onContainer({ kind: 'stack', id: g.id, name: title });
+            return g;
+          },
+          groupTasks: (ids, title, category) => {
+            ensureCategory(category);
+            const g = groupStore().createGroup(title, category);
+            ids.forEach(id => replica.setTaskStack(id, g.id));
+            return g;
+          },
+          createProject: (title, opts) => {
+            const p = projectStore().createProject(title, opts);
+            onContainer({ kind: 'project', id: p.id, name: title });
+            return p;
+          },
+          getProject: id => projectStore().getProjectById(id) ?? undefined,
+          updateProject: (id, patch) => projectStore().updateProject(id, patch),
+          homeSection: (sectionId, projectId, checklist) => groupStore().updateGroup(sectionId, { projectId, checklist }),
+          setAnswerGate: (taskId, gate) => {
+            const task = db.dbGetAllTasks().find(t => t.id === taskId);
+            if (task) db.dbUpdateTask({ ...task, answerGate: gate });
+            refresh();
+          },
+        });
+      });
+    } finally {
+      refresh();
+    }
+    // A 'task' container is the parent every item was filed under.
+    const parentId = created.find(t => t.parentId)?.parentId;
+    if (parentId) {
+      const parent = db.dbGetAllTasks().find(t => t.id === parentId);
+      if (parent) onContainer({ kind: 'task', id: parent.id, name: parent.title });
+    }
+    return created.map(t => db.dbGetAllTasks().find(x => x.id === t.id) ?? t);
+  }
+
+  /** The Person columns a PersonFields names, validated. A birthday of null clears all three. */
+  function personPatch(f: PersonFields): Partial<Person> {
+    const out: Partial<Person> = {};
+    if (f.name !== undefined) out.name = f.name.trim();
+    if (f.nickname !== undefined) out.nickname = f.nickname.trim();
+    if (f.kind !== undefined) {
+      if (f.kind !== 'individual' && f.kind !== 'business') throw new Error('kind must be individual or business.');
+      out.kind = f.kind;
+    }
+    if (f.notes !== undefined) out.notes = f.notes;
+    if (f.askAbout !== undefined) out.askAbout = f.askAbout;
+    if (f.phoneNumber !== undefined) out.phoneNumber = f.phoneNumber?.trim() || null;
+    if (f.email !== undefined) out.email = f.email?.trim() || null;
+    if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
+    if (f.birthday !== undefined) {
+      if (f.birthday === null) {
+        Object.assign(out, { birthdayMonth: null, birthdayDay: null, birthYear: null });
+      } else {
+        const { month, day, year } = f.birthday;
+        // Leap day is real, so the day is checked against a leap year's month length.
+        const length = new Date(2024, month, 0).getDate();
+        if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(day) || day < 1 || day > length) {
+          throw new Error('birthday needs a real month (1 to 12) and day of that month.');
+        }
+        if (year != null && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear())) {
+          throw new Error('birthday year must be a year from 1900 to this year, or left out.');
+        }
+        Object.assign(out, { birthdayMonth: month, birthdayDay: day, birthYear: year ?? null });
+      }
+    }
+    return out;
+  }
+
+  function buildTemplateParts(
+    plan: TemplatePlan,
+    existing: readonly TaskTemplate[],
+    /** The template being updated: an id it already has is kept rather than minted anew. */
+    base?: TaskTemplate
+  ): Pick<TaskTemplate, 'items' | 'itemGroups' | 'questions'> {
+    // Groups and questions are built first because an item's `groupId` and
+    // its conditions' `questionId`s are ids minted here. The plan names them
+    // by key and by name precisely because the caller cannot know these.
+    const groupIds = new Map<string, string>();
+    const itemGroups = (plan.groups ?? []).map((group, i) => {
+      const id = base?.itemGroups.some(g => g.id === group.key) ? group.key : generateId();
+      groupIds.set(group.key, id);
+      return { id, title: group.title, sortOrder: i + 1, ...(group.checklist ? { checklist: true } : {}) };
+    });
+
+    const questionIds = new Map<string, string>();
+    const questions = (plan.questions ?? []).map(question => {
+      const kept = question.name ? base?.questions.find(q => q.name === question.name) : undefined;
+      const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: kept?.id ?? generateId() });
+      if (stored.name) questionIds.set(stored.name, stored.id);
+      return stored;
+    });
+
+    // Keyed items get their ids now, so an onlyIfAnswer can name one; the
+    // answers are re-spelled as the question offers them (validated above).
+    const itemIds = new Map<string, string>();
+    for (const item of plan.items ?? []) {
+      const key = item.key ?? item.id;
+      if (key !== undefined) itemIds.set(key, item.id ?? generateId());
+    }
+    const offeredBy = new Map((plan.items ?? []).filter(i => (i.key ?? i.id) !== undefined).map(i => [(i.key ?? i.id)!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
+    const items = (plan.items ?? []).map(item => {
+      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, id: keptId, chain, rotation, ...fields } = item;
+      // Step and member ids are kept by position and by title on an edit: a
+      // recorded answer and a week's ledger are both found through them.
+      const stored = keptId !== undefined ? base?.items.find(i => i.id === keptId) : undefined;
+      const sequence: Partial<TemplateItem> = chain === undefined && rotation === undefined ? {} : {
+        chainEnabled: !!chain,
+        chainItems: chain ? chain.steps.map((s, i) => ({
+          id: stored?.chainItems[i]?.id ?? generateId(),
+          title: s.title.trim(),
+          estimatedMinutes: s.estimatedMinutes ?? null,
+          ...(s.asks ? { deliverableKind: s.asks } : {}),
+          ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
+        })) : [],
+        chainIndex: 0,
+        rotationEnabled: !!rotation,
+        rotationItems: rotation ? rotation.members.map(m => {
+          const title = m.trim();
+          const kept = stored?.rotationItems.find(o => o.title.trim().toLowerCase() === title.toLowerCase());
+          return kept ? { ...kept, title } : { id: generateId(), title, linkUrl: null };
+        }) : [],
+      };
+      const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
+      const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
+      return templateUtils.normalizeTemplateItem({
+        ...fields,
+        ...sequence,
+        ...((key ?? keptId) !== undefined ? { id: itemIds.get((key ?? keptId)!) } : {}),
+        answerGate: onlyIfAnswer
+          ? {
+              itemId: itemIds.get(onlyIfAnswer.item)!,
+              answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
+            }
+          : null,
+        groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
+        conditions: (conditions ?? []).map(c => ({
+          questionId: questionIds.get(c.question) ?? '',
+          values: c.values,
+        })),
+        refTemplateId: ref?.id ?? null,
+        // Carried so a broken reference can still say what it pointed at,
+        // which is what the field is for (see TemplateItem.refTemplateName).
+        refTemplateName: ref?.name ?? '',
+      });
+    });
+    return { items, itemGroups, questions };
+  }
   const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
   const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
@@ -1403,6 +1795,77 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return useRecipeStore.getState().recipes.find(r => r.id === id)!;
     },
 
+    updateRecipe(id: string, patch: RecipePatch): Recipe {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
+      const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      useRecipeStore.getState().initialize();
+      const recipe = useRecipeStore.getState().recipes.find(r => r.id === id);
+      if (!recipe) throw new Error(`No recipe with id ${id}.`);
+
+      // Everything that can refuse is checked before the first write.
+      let renamed: { name: string; nameKey: string } | null = null;
+      if (patch.name !== undefined) {
+        const clean = recipeUtils.cleanRecipeName(patch.name);
+        if (!clean) throw new Error('A recipe needs a name.');
+        const key = recipeUtils.recipeNameKey(clean);
+        const others = useRecipeStore.getState().recipes.filter(r => r.id !== id);
+        if (key !== recipe.nameKey && recipeUtils.recipeInBook(others, clean, recipe.cookbookId)) {
+          throw new Error(`There is already a recipe called "${clean}" in that cookbook.`);
+        }
+        renamed = { name: clean, nameKey: key };
+      }
+      if (patch.servings != null && (!Number.isInteger(patch.servings) || patch.servings < 1)) throw new Error('servings must be a whole number of 1 or more, or null.');
+
+      const store = () => useRecipeStore.getState();
+      db.dbTransaction(() => {
+        if (patch.servings !== undefined) store().setServings(id, patch.servings);
+        if (patch.estimatedMinutes !== undefined) store().setEstimatedMinutes(id, patch.estimatedMinutes);
+        if (patch.mealType !== undefined) store().setMealType(id, (patch.mealType ?? null) as Recipe['mealType']);
+        if (patch.tags !== undefined) store().setTags(id, patch.tags);
+        if (patch.sourceUrl !== undefined) store().setSourceUrl(id, patch.sourceUrl);
+        if (patch.notes !== undefined) store().setNotes(id, patch.notes);
+        if (patch.ingredients !== undefined) {
+          const made = patch.ingredients
+            .map(line => {
+              const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
+              return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null);
+          store().bulkRemoveIngredients(id, recipe.ingredients.map(i => i.id));
+          if (made.length > 0) store().addStructuredIngredients(id, made);
+        }
+        if (patch.steps !== undefined) {
+          recipe.steps.forEach(s => store().removeStep(id, s.id));
+          for (const step of patch.steps) store().addStep(id, step.text, step.section ?? null);
+        }
+        if (renamed) {
+          // The store's rename also reaches the meal plan store, which Node
+          // cannot load, so the two writes it makes are made here: the recipe
+          // row, and the captured title on each meal planned from it.
+          const current = store().recipes.find(r => r.id === id)!;
+          db.dbUpdateRecipe({ ...current, ...renamed });
+          for (const e of db.dbGetMealPlanEntriesForRecipe(id)) {
+            if (!e.leftoverId && e.title !== renamed.name) db.dbUpdateMealPlanEntry({ ...e, title: renamed.name });
+          }
+        }
+      });
+      // Rehydrated, which also puts the store back if the transaction rolled back.
+      useRecipeStore.getState().initialize();
+      refresh();
+      return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number } {
+      const recipe = db.dbGetAllRecipes().find(r => r.id === id);
+      if (!recipe) throw new Error(`No recipe with id ${id}.`);
+      const plannedMeals = db.dbGetMealPlanEntriesForRecipe(id).length;
+      db.dbDeleteRecipe(id);
+      refresh();
+      return { recipe, plannedMeals };
+    },
+
     logFood(input: FoodInput): FoodLogEntry {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate');
@@ -1427,21 +1890,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     logMood(input: MoodInput): MoodLog {
       /* eslint-disable @typescript-eslint/no-require-imports */
       const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore');
-      const moodLog = require('../../src/utils/moodLog') as typeof import('../../src/utils/moodLog');
       /* eslint-enable @typescript-eslint/no-require-imports */
       if (input.mood != null && (!Number.isInteger(input.mood) || input.mood < 1 || input.mood > 5)) {
         throw new Error('mood is a whole number from 1 (low) to 5 (great), or left out.');
       }
-      // The spelling already in the log, so "headache" lands on the existing
-      // "Headache" rather than starting a second symptom the insights would
-      // count apart.
-      const logs = db.dbGetAllMoodLogs();
-      const spelled = (vocab: string[], key: (s: string) => string) => {
-        const byKey = new Map(vocab.map(v => [key(v), v]));
-        return (name: string) => byKey.get(key(name)) ?? name.trim();
-      };
-      const symptom = spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey);
-      const tag = spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey);
+      const { symptom, tag } = moodSpelling();
       const symptoms = (input.symptoms ?? []).map(s => ({
         name: symptom(s.name),
         severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3,
@@ -1476,6 +1929,110 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       if (!log) throw new Error('A dose needs the medication\'s name.');
       return log;
+    },
+
+    updateFoodEntry(id: string, patch: FoodPatch): FoodLogEntry {
+      const entry = db.dbGetFoodLogEntry(id);
+      if (!entry) throw new Error(`No food entry with id ${id}.`);
+      const estimated = entry.nutrition.source === 'estimated';
+      const touchesFigures = patch.amounts !== undefined || patch.quantity !== undefined;
+      if (touchesFigures && !estimated) {
+        throw new Error('Only an estimated entry has figures to restate. This one was measured against a food\'s own label or database record, so correct it in the app, which re-measures it.');
+      }
+      if (touchesFigures && entry.healthSampleIds.length > 0) {
+        throw new Error('That entry was written to Apple Health, which only the phone can correct. Edit it in the app.');
+      }
+      if (patch.label !== undefined && !patch.label.trim()) throw new Error('A food entry needs a name.');
+
+      let nutrition = entry.nutrition;
+      if (patch.amounts !== undefined) {
+        const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, basis: 'typical', confidence: 'medium' });
+        const panel = read && estimate.estimateToPanel(read);
+        if (!panel) throw new Error('A food entry needs at least one nutrient amount.');
+        nutrition = panel;
+      }
+      const updated: FoodLogEntry = {
+        ...entry,
+        label: patch.label !== undefined ? patch.label.trim() : entry.label,
+        quantity: patch.quantity !== undefined ? patch.quantity.trim() : entry.quantity,
+        slot: patch.slot === undefined ? entry.slot : patch.slot,
+        nutrition,
+      };
+      db.dbUpdateFoodLogEntry(updated);
+      return updated;
+    },
+
+    deleteFoodEntry(id: string): FoodLogEntry {
+      const entry = db.dbGetFoodLogEntry(id);
+      if (!entry) throw new Error(`No food entry with id ${id}.`);
+      if (entry.healthSampleIds.length > 0) {
+        throw new Error('That entry was written to Apple Health, which only the phone can remove it from. Delete it in the app.');
+      }
+      db.dbDeleteFoodLogEntry(id);
+      return entry;
+    },
+
+    updateMoodLog(id: string, patch: MoodPatch): MoodLog {
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMoodLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No mood check-in with id ${id}.`);
+      if (patch.mood != null && (!Number.isInteger(patch.mood) || patch.mood < 1 || patch.mood > 5)) {
+        throw new Error('mood is a whole number from 1 (low) to 5 (great), or null to clear it.');
+      }
+      const spelling = moodSpelling();
+      const next: Partial<MoodLog> = {};
+      if (patch.mood !== undefined) next.mood = patch.mood as MoodLog['mood'];
+      if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
+      if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
+      if (patch.note !== undefined) next.note = patch.note;
+      // An edit may not empty the entry: a check-in recording nothing is a day
+      // marked as logged with nothing on it. Delete it instead.
+      const after = { ...existing, ...next };
+      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+        throw new Error('That would leave the check-in empty. Delete it instead.');
+      }
+      useMoodStore.getState().updateLog(id, next);
+      return db.dbGetAllMoodLogs().find(l => l.id === id)!;
+    },
+
+    deleteMoodLog(id: string): MoodLog {
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMoodLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No mood check-in with id ${id}.`);
+      useMoodStore.getState().removeLog(id);
+      return existing;
+    },
+
+    updateMedicationLog(id: string, patch: DosePatch): MedicationLog {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMedicationLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No dose with id ${id}.`);
+      const amount = patch.amount !== undefined ? patch.amount : existing.amount;
+      const unit = patch.unit !== undefined ? patch.unit : existing.unit;
+      if ((amount == null) !== (unit == null || unit === '')) {
+        throw new Error('Give amount and unit together ("400" and "mg"), or neither.');
+      }
+      if (patch.name !== undefined && !patch.name.trim()) throw new Error('A dose needs the medication\'s name.');
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const name = patch.name === undefined ? undefined
+        : known.find(n => medication.medicationKey(n) === medication.medicationKey(patch.name!)) ?? patch.name.trim();
+      meds.getState().updateLog(id, {
+        ...(name !== undefined ? { name } : {}),
+        ...(patch.amount !== undefined ? { amount: patch.amount } : {}),
+        ...(patch.unit !== undefined ? { unit: patch.unit } : {}),
+        ...(patch.asNeeded !== undefined ? { asNeeded: patch.asNeeded } : {}),
+        ...(patch.note !== undefined ? { note: patch.note } : {}),
+      } as import('../../src/store/useMedicationStore').MedicationLogPatch);
+      return db.dbGetAllMedicationLogs().find(l => l.id === id)!;
+    },
+
+    deleteMedicationLog(id: string): MedicationLog {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const existing = db.dbGetAllMedicationLogs().find(l => l.id === id);
+      if (!existing) throw new Error(`No dose with id ${id}.`);
+      meds.getState().removeLog(id);
+      return existing;
     },
 
     ruleLists(): RuleLists {
@@ -1516,59 +2073,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const errors = validateTemplatePlan(plan, existing);
       if (errors.length > 0) throw new Error(errors.join(' '));
 
-      // Groups and questions are built first because an item's `groupId` and
-      // its conditions' `questionId`s are ids minted here. The plan names them
-      // by key and by name precisely because the caller cannot know these.
-      const groupIds = new Map<string, string>();
-      const itemGroups = (plan.groups ?? []).map((group, i) => {
-        const id = generateId();
-        groupIds.set(group.key, id);
-        return { id, title: group.title, sortOrder: i + 1 };
-      });
-
-      const questionIds = new Map<string, string>();
-      const questions = (plan.questions ?? []).map(question => {
-        const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: generateId() });
-        if (stored.name) questionIds.set(stored.name, stored.id);
-        return stored;
-      });
-
-      // Keyed items get their ids now, so an onlyIfAnswer can name one; the
-      // answers are re-spelled as the question offers them (validated above).
-      const itemIds = new Map<string, string>();
-      for (const item of plan.items ?? []) if (item.key !== undefined) itemIds.set(item.key, generateId());
-      const offeredBy = new Map((plan.items ?? []).filter(i => i.key !== undefined).map(i => [i.key!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
-      const items = (plan.items ?? []).map(item => {
-        const { groupKey, conditions, refTemplate, key, onlyIfAnswer, ...fields } = item;
-        const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
-        const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
-        return templateUtils.normalizeTemplateItem({
-          ...fields,
-          ...(key !== undefined ? { id: itemIds.get(key) } : {}),
-          answerGate: onlyIfAnswer
-            ? {
-                itemId: itemIds.get(onlyIfAnswer.item)!,
-                answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
-              }
-            : null,
-          groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
-          conditions: (conditions ?? []).map(c => ({
-            questionId: questionIds.get(c.question) ?? '',
-            values: c.values,
-          })),
-          refTemplateId: ref?.id ?? null,
-          // Carried so a broken reference can still say what it pointed at,
-          // which is what the field is for (see TemplateItem.refTemplateName).
-          refTemplateName: ref?.name ?? '',
-        });
-      });
-
       const template: TaskTemplate = {
         id: generateId(),
         name: plan.name.trim(),
-        items,
-        itemGroups,
-        questions,
+        ...buildTemplateParts(plan, existing),
         createdAt: new Date().toISOString(),
         sortOrder: existing.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
         category: plan.category ?? null,
@@ -1581,8 +2089,139 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         anchorsAreAway: plan.anchorsAreAway ?? false,
       };
 
+      registerTemplateCategory(template.category);
       db.dbInsertTemplate(template);
       return template;
+    },
+
+    updateTemplate(id: string, patch: TemplatePatch): TaskTemplate {
+      const existing = db.dbGetAllTemplates();
+      const found = resolveRef(id, existing);
+      if (found.length === 0) throw new Error(`No template with id or name "${id}".`);
+      if (found.length > 1) throw new Error(`"${id}" names ${found.length} templates. Use an id.`);
+      const before = found[0];
+
+      const structural = patch.groups !== undefined || patch.questions !== undefined || patch.items !== undefined;
+      let parts: Partial<Pick<TaskTemplate, 'items' | 'itemGroups' | 'questions'>> = {};
+      const errors: string[] = [];
+
+      if (structural) {
+        // Whatever the patch leaves out comes from the stored template, and an
+        // item named by id starts from its stored self, so a field the plan has
+        // no name for is never lost to a rebuild.
+        const current = templateToPlan(before);
+        const storedItems = new Map((current.items ?? []).map(i => [i.id!, i]));
+        const plan: TemplatePlan = {
+          ...current,
+          groups: patch.groups ?? current.groups,
+          questions: patch.questions ?? current.questions,
+          items: patch.items === undefined
+            ? current.items
+            : patch.items.map(it => (it.id !== undefined && storedItems.has(it.id) ? { ...storedItems.get(it.id)!, ...stripUndefined(it) } : it)),
+        };
+        errors.push(...validateTemplatePlan({ ...plan, name: patch.name ?? before.name }, existing, before.id));
+        if (errors.length === 0) parts = buildTemplateParts(plan, existing, before);
+      } else if (patch.name !== undefined && !patch.name.trim()) {
+        errors.push('name is required.');
+      }
+      if (patch.container !== undefined && !(CONTAINERS as readonly string[]).includes(patch.container)) {
+        errors.push(`container must be one of ${CONTAINERS.join(', ')}.`);
+      }
+      if (patch.schedule) errors.push(...validateScheduleOf(patch.schedule));
+      if (errors.length > 0) throw new Error(errors.join(' '));
+
+      const schedule = patch.schedule === undefined
+        ? before.schedule
+        : patch.schedule === null ? null : { ...DEFAULT_SCHEDULE, ...patch.schedule };
+      // Same rule as the app's setSchedule: a changed schedule is a new
+      // question about the current period, an unchanged one is not.
+      // Compared by value: the reader and the writer build the object in a
+      // different key order, and a spurious "changed" re-arms a period that
+      // already fired.
+      const sameSchedule = (a: object | null, b: object | null) => JSON.stringify(a && Object.entries(a).sort()) === JSON.stringify(b && Object.entries(b).sort());
+      const scheduleChanged = !sameSchedule(schedule, before.schedule);
+
+      const updated: TaskTemplate = {
+        ...before,
+        name: (patch.name ?? before.name).trim(),
+        category: patch.category === undefined ? before.category : patch.category,
+        applyContainer: patch.container ?? before.applyContainer,
+        anchorsAreAway: patch.anchorsAreAway ?? before.anchorsAreAway,
+        schedule,
+        scheduleLastFiredKey: scheduleChanged ? null : before.scheduleLastFiredKey,
+        ...parts,
+      };
+      registerTemplateCategory(updated.category);
+      db.dbUpdateTemplate(updated);
+      return updated;
+    },
+
+    applyTemplate(ref: string, run: TemplateRun): TemplateRunResult {
+      const all = db.dbGetAllTemplates();
+      const found = resolveRef(ref, all);
+      if (found.length === 0) throw new Error(`No template with id or name "${ref}".`);
+      if (found.length > 1) throw new Error(`"${ref}" names ${found.length} templates. Use an id.`);
+      const template = found[0];
+      const byId = new Map(all.map(t => [t.id, t]));
+      if (run.projectId && !projects().some(p => p.id === run.projectId)) throw new Error(`No project with id ${run.projectId}.`);
+
+      const anchors = { start: run.start ?? null, end: run.end ?? null };
+      const tree = templateUtils.buildApplyTree(template.items, template.id, byId);
+      const questions = templateQuestions.questionsForTree(tree, byId);
+
+      // Answers arrive by the blank's name; the run works in question ids.
+      const typed: Record<string, string> = {};
+      const errors: string[] = [];
+      for (const [name, value] of Object.entries(run.answers ?? {})) {
+        const question = questions.find(q => q.name === name && q.kind !== 'people');
+        if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
+        if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
+        if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
+        typed[question.id] = value;
+      }
+      const leaves = new Set(templateUtils.flattenApplyTree(tree).map(e => e.item.id));
+      for (const id of [...(run.include ?? []), ...(run.leaveOut ?? [])]) if (!leaves.has(id)) errors.push(`item id "${id}" is not an item of this run.`);
+      if (errors.length > 0) throw new Error(errors.join(' '));
+
+      const answers = templateQuestions.resolveAnswers(questions, typed, anchors);
+      const selected = templateQuestions.initialLeafSelection(tree, questions, answers);
+      for (const id of run.include ?? []) selected.add(id);
+      for (const id of run.leaveOut ?? []) selected.delete(id);
+      if (selected.size === 0) throw new Error('Nothing in this template is selected for that run.');
+
+      let container: TemplateRunResult['container'] = null;
+      const created = runTemplateIn(template, byId, selected, anchors, {
+        runName: run.runName,
+        placeholders: templateQuestions.placeholderValuesFor(questions, answers),
+        targetProjectId: run.projectId,
+      }, c => { container = c; });
+      return { tasks: created, container };
+    },
+
+    deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] } {
+      const existing = db.dbGetAllTemplates();
+      const found = resolveRef(id, existing);
+      if (found.length === 0) throw new Error(`No template with id or name "${id}".`);
+      if (found.length > 1) throw new Error(`"${id}" names ${found.length} templates. Use an id.`);
+      const template = found[0];
+      const nestedIn = existing
+        .filter(t => t.id !== template.id && t.items.some(i => i.refTemplateId === template.id))
+        .map(t => t.name);
+      db.dbDeleteTemplate(template.id);
+      return { template, nestedIn };
+    },
+
+    reorderTemplates(ids: string[]): TaskTemplate[] {
+      const existing = [...db.dbGetAllTemplates()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const byId = new Map(existing.map(t => [t.id, t]));
+      const unknown = ids.filter(id => !byId.has(id));
+      if (unknown.length > 0) throw new Error(`No template with id ${unknown.join(', ')}.`);
+      if (new Set(ids).size !== ids.length) throw new Error('A template is listed twice.');
+      const listed = new Set(ids);
+      const ordered = [...ids.map(id => byId.get(id)!), ...existing.filter(t => !listed.has(t.id))];
+      const updated = ordered.map((t, i) => ({ ...t, sortOrder: i + 1 }));
+      updated.filter(t => byId.get(t.id)!.sortOrder !== t.sortOrder).forEach(t => db.dbUpdateTemplate(t));
+      return updated;
     },
 
     createTask(draft: Partial<TaskDraft>): Task {
@@ -1674,6 +2313,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         rolledOver: built.rolledOver,
         loggedDose: dose !== null,
       };
+    },
+
+    reopenTask(id: string): { task: Task; removed: Task[] } {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!task.completed) throw new Error('That task is not completed, so there is nothing to reopen.');
+      const refusal = reopenRefusal(task);
+      if (refusal) throw new Error(refusal);
+
+      const updated = reopenedTask(task);
+
+      // Coins and the dose first, as the store does: both are records this
+      // replica wrote when it completed the task, so they go back with it.
+      useRewardStore.getState().takeBackTask(id);
+      if (medication.medicationFor(task)) {
+        const log = useMedicationStore.getState();
+        if (visibility.isQuotaTask(task) && !visibility.isMissed(task)) log.removeLatestLogForTask(id);
+        else log.removeLogsForTask(id);
+      }
+
+      // A repeating series rolls over as a set, so every unfinished row that
+      // points back here goes, with its subtasks. One already completed is a
+      // real completion and stays.
+      const all = tasks();
+      const followUps = all.filter(t => t.previousOccurrenceId === id && !t.completed);
+      const removed = [...followUps, ...followUps.flatMap(f => all.filter(t => t.parentId === f.id))];
+      for (const f of followUps) {
+        db.dbDeleteSubtasks(f.id);
+        db.dbDeleteTask(f.id);
+      }
+      db.dbUpdateTask(updated);
+      refresh();
+      return { task: updated, removed };
     },
 
     deferTask(id: string, date: Date | null): Task {
@@ -1970,6 +2642,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return group!;
     },
 
+    renameStack(id: string, title: string): TaskGroup {
+      const name = title.trim();
+      if (!name) throw new Error('A stack needs a title.');
+      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
+      if (!group) throw new Error(`No stack with id ${id}.`);
+      useTaskGroupStore.getState().updateGroup(id, { title: name });
+      refresh();
+      return { ...group, title: name };
+    },
+
     setTaskStack(taskId: string, stackId: string | null): Task {
       const task = tasks().find(t => t.id === taskId);
       if (!task) throw new Error(`No task with id ${taskId}.`);
@@ -2053,6 +2735,64 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       );
       db.dbInsertMealPlanEntry(entry);
       return entry;
+    },
+
+    updateMeal(id: string, patch: { date?: string; slot?: MealSlot; title?: string; scale?: number }): MealPlanEntry {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      let next: MealPlanEntry = { ...entry };
+
+      if (patch.title !== undefined) {
+        const gone = entry.recipeId ? !db.dbGetAllRecipes().some(r => r.id === entry.recipeId) : false;
+        if (entry.leftoverId || (entry.recipeId && !gone)) {
+          throw new Error('That meal\'s name comes from its recipe or leftover, so it is not renamed here. Move or remove it, or plan a new one.');
+        }
+        const cleaned = mealPlanUtils.cleanMealTitle(patch.title);
+        if (!cleaned) throw new Error('A meal needs a title.');
+        // A renamed meal whose recipe is gone is a different meal now, as in the app.
+        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 } : { ...next, title: cleaned };
+      }
+
+      if (patch.scale !== undefined) {
+        if (!entry.recipeId) throw new Error('Only a meal with a recipe has a scale.');
+        if (!Number.isFinite(patch.scale) || patch.scale <= 0) throw new Error('scale must be above zero (0.5 halves a recipe, 2 doubles it).');
+        next = { ...next, recipeScale: patch.scale };
+      }
+
+      const date = patch.date ?? entry.date;
+      const slot = patch.slot ?? entry.slot;
+      if (date !== entry.date || slot !== entry.slot) {
+        next = { ...next, date, slot, sortOrder: mealPlanUtils.nextSortOrder(db.dbGetMealPlanEntries(date, date), date, slot) };
+      }
+      db.dbUpdateMealPlanEntry(next);
+      return next;
+    },
+
+    removeMeal(id: string): MealPlanEntry {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      if (entry.cookedAt) throw new Error('That meal is marked cooked, so it is history and feeds the cooking stats. Remove it in the app if you are sure.');
+      db.dbDeleteMealPlanEntry(id);
+      return entry;
+    },
+
+    createPerson(fields: PersonFields): Person {
+      if (!fields.name?.trim()) throw new Error('A person needs a name.');
+      const { blankPerson } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const person = { ...blankPerson(fields.name, people().reduce((m, p) => Math.max(m, p.sortOrder), 0) + 1), ...personPatch(fields) };
+      db.dbInsertPerson(person);
+      refresh();
+      return person;
+    },
+
+    updatePerson(id: string, fields: PersonFields): Person {
+      const existing = people().find(p => p.id === id);
+      if (!existing) throw new Error(`No person with id ${id}.`);
+      if (fields.name !== undefined && !fields.name.trim()) throw new Error('A person needs a name.');
+      const next = { ...existing, ...personPatch(fields) };
+      db.dbUpdatePerson(next);
+      refresh();
+      return next;
     },
 
     people,

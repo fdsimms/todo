@@ -7448,6 +7448,9 @@ function parseItemGroups(raw: unknown): TemplateItemGroup[] {
       id: g.id ?? '',
       title: g.title ?? '',
       sortOrder: g.sortOrder ?? 0,
+      // Dropped here until now, so a section saved as a checklist came back
+      // ordinary after any reload (and was rewritten that way on the next edit).
+      ...(g.checklist ? { checklist: true } : {}),
     }));
   } catch {
     return [];
