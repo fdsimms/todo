@@ -989,7 +989,7 @@ export function addGroceryItem(
   const outcome = isNew
     ? `Added "${item.name}" to ${where}, filed under ${item.aisle}.`
     : wasOnList
-      ? `"${item.name}" was already on ${where}, so nothing moved. Its tick and its place in the aisle order are untouched.`
+      ? `"${item.name}" was already on ${where}, so nothing moved. Its checked state and its place in the aisle order are untouched.`
       : `"${item.name}" was already in the catalog, so it went back on ${where} with the aisle and history it already had.`;
   return { item: serializeOnList(replica, item, list.id), outcome };
 }

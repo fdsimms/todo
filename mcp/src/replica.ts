@@ -29,6 +29,7 @@
 // own modules import it exactly this way.
 import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 
 import { shimModule } from './expoSqliteShim';
@@ -3092,8 +3093,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             // Moving the departure moves the return with it, keeping the trip
             // the same length, as the editor does: a flight moved three days
             // later is the same ten-day trip.
-            const shift = new Date(start).getTime() - new Date(before.awayStart).getTime();
-            end = new Date(new Date(before.awayEnd).getTime() + shift).toISOString();
+            // Counted in calendar days and re-anchored at noon rather than
+            // shifted by milliseconds: across a clock change the latter lands
+            // an hour off noon, which `awaySpanOf` would then read as a day out.
+            const awayDates = require('../../src/utils/awayDates') as typeof import('../../src/utils/awayDates'); // eslint-disable-line @typescript-eslint/no-require-imports
+            const shiftDays = differenceInCalendarDays(new Date(start), new Date(before.awayStart));
+            end = awayDates.awayNoonIso(addDays(new Date(before.awayEnd), shiftDays));
           } else {
             end = before.awayEnd;
           }
