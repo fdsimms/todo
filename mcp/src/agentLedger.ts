@@ -58,7 +58,12 @@ export function taskRevert(before: Task, after: Task): UnattendedRevert | null {
   return Object.keys(out.after).length > 0 ? out : null;
 }
 
-export function toLedgerEntries(entries: readonly AgentLedgerEntry[], newId: () => string, now = new Date()): UnattendedEntry[] {
+export function toLedgerEntries(
+  entries: readonly AgentLedgerEntry[],
+  newId: () => string,
+  now = new Date(),
+  batchId: string | null = null,
+): UnattendedEntry[] {
   const at = now.toISOString();
   return entries.map(e => ({
     id: newId(),
@@ -71,6 +76,7 @@ export function toLedgerEntries(entries: readonly AgentLedgerEntry[], newId: () 
     actor: 'agent',
     subject: e.subject,
     revert: e.revert ?? null,
+    batchId,
   }));
 }
 

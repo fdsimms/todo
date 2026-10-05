@@ -1,0 +1,1 @@
+{ "message": "Activity now has an Undo all button on a request where Claude changed several tasks at once. It puts back each task that is still the way Claude left it and skips any you changed since.", "date": "2026-10-04" }

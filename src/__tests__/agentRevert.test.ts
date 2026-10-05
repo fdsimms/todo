@@ -1,4 +1,4 @@
-import { agentRevertLabel, agentRevertPlan } from '../utils/agentRevert';
+import { agentRevertLabel, agentRevertPlan, revertBatch, revertableInBatch } from '../utils/agentRevert';
 import type { Task, UnattendedEntry } from '../types';
 
 const task = (over: Partial<Task> = {}): Task =>
@@ -46,5 +46,73 @@ describe('agentRevertPlan', () => {
     expect(agentRevertPlan(entry({ actor: 'app' }), task())).toEqual({ kind: 'none', reason: null });
     expect(agentRevertPlan(entry({ subject: 'grocery' }), task())).toEqual({ kind: 'none', reason: null });
     expect(agentRevertPlan(entry(), null)).toEqual({ kind: 'none', reason: 'Since removed' });
+  });
+});
+
+describe('revertBatch', () => {
+  const batch = (over: Partial<UnattendedEntry>) => entry({ batchId: 'b1', ...over });
+
+  /** A tiny task store, so the batch is applied against state that moves as it runs. */
+  const world = (tasks: Task[]) => {
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    return {
+      get: (id: string) => byId.get(id) ?? null,
+      apply: (plan: { kind: string; taskId: string; patch?: Partial<Task> }) => {
+        if (plan.kind === 'delete') byId.delete(plan.taskId);
+        else if (plan.kind === 'uncomplete') byId.set(plan.taskId, { ...byId.get(plan.taskId)!, completed: false });
+        else byId.set(plan.taskId, { ...byId.get(plan.taskId)!, ...plan.patch });
+      },
+    };
+  };
+
+  it('undoes two edits to one task by taking the newest back first', () => {
+    const entries = [
+      batch({ id: 'e1', at: '2026-10-04T10:00:00.000Z', revert: { before: { title: 'A' }, after: { title: 'B' } } }),
+      batch({ id: 'e2', at: '2026-10-04T10:00:01.000Z', revert: { before: { title: 'B' }, after: { title: 'C' } } }),
+    ];
+    const w = world([task({ title: 'C' })]);
+    expect(revertBatch(entries, 'b1', w.get, w.apply)).toEqual({ reverted: 2, skipped: 0 });
+    expect(w.get('t1')?.title).toBe('A');
+  });
+
+  it('undoes a later edit and then removes the created task, with nothing counted as a refusal', () => {
+    const entries = [
+      batch({ id: 'e1', at: '2026-10-04T10:00:00.000Z', action: 'created', revert: null }),
+      batch({ id: 'e2', at: '2026-10-04T10:00:01.000Z', revert: { before: { title: 'A' }, after: { title: 'B' } } }),
+    ];
+    const w = world([task({ title: 'B' })]);
+    expect(revertBatch(entries, 'b1', w.get, w.apply)).toEqual({ reverted: 2, skipped: 0 });
+    expect(w.get('t1')).toBeNull();
+  });
+
+  it('leaves a task the person changed since, and reports it', () => {
+    const entries = [
+      batch({ id: 'e1', taskId: 't1', revert: { before: { title: 'A' }, after: { title: 'B' } } }),
+      batch({ id: 'e2', taskId: 't2', revert: { before: { title: 'X' }, after: { title: 'Y' } } }),
+    ];
+    const w = world([task({ id: 't1', title: 'B edited by hand' }), task({ id: 't2', title: 'Y' })]);
+    expect(revertBatch(entries, 'b1', w.get, w.apply)).toEqual({ reverted: 1, skipped: 1 });
+    expect(w.get('t1')?.title).toBe('B edited by hand');
+    expect(w.get('t2')?.title).toBe('X');
+  });
+
+  it('touches only the named batch, and never an entry that is not an agent task row', () => {
+    const entries = [
+      batch({ id: 'e1', batchId: 'other', revert: { before: { title: 'A' }, after: { title: 'B' } } }),
+      batch({ id: 'e2', subject: 'grocery', taskId: null, revert: null }),
+    ];
+    const w = world([task({ title: 'B' })]);
+    expect(revertBatch(entries, 'b1', w.get, w.apply)).toEqual({ reverted: 0, skipped: 0 });
+    expect(w.get('t1')?.title).toBe('B');
+  });
+
+  it('counts what is still open to an undo, for the button', () => {
+    const entries = [
+      batch({ id: 'e1', taskId: 't1' }),
+      batch({ id: 'e2', taskId: 't2' }),
+      batch({ id: 'e3', taskId: 't3' }),
+    ];
+    const w = world([task({ id: 't1', tags: ['errand'] }), task({ id: 't2', title: 'changed' }), task({ id: 't3', tags: ['errand'] })]);
+    expect(revertableInBatch(entries, 'b1', w.get)).toBe(2);
   });
 });
