@@ -202,7 +202,9 @@ model.
   landed on, and reports missed occurrences separately.
 - `review_tasks` lists what has sat a long time and what looks duplicated. It is deliberately a
   list and not a verdict, and leaves lists, paused projects and dated series out of the places they
-  would otherwise be false positives.
+  would otherwise be false positives. Its `repeatedlyPostponed` section is the "stuck" read: open
+  tasks pushed `minPushes` (default 3) or more times, off `postponeCount`, with a muted task left
+  out because the person asked not to be nudged about it. The `unstick_tasks` prompt walks it.
 
 **`app_help` reads what the app already says about itself** (`helpTools.ts`): the Settings index
 through the app's own Settings search, with the person's kitchen and simplified-mode gates applied,

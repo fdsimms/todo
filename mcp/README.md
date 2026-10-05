@@ -60,7 +60,7 @@ reads without asking. A new tool needs a line in that table; `toolAnnotations.te
 without one.
 
 Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
-`inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project` and `how_do_i`.
+`inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project`, `unstick_tasks` and `how_do_i`.
 
 Every write previews first: without `apply` it changes nothing and returns `willDo` and a
 `confirmToken`, and the write happens only when called again with `apply: true` and that token
@@ -77,7 +77,7 @@ only the fallback until the first sync.
 | `get_overview` | Where an agent starts: the person's time zone and logical today, counts per list, categories, tags, projects, what is switched off, and whether health logs arrive. |
 | `get_agenda` | The coming days: each day's tasks, repeats expected that day, estimated minutes, what is carried over, and deadlines that will not fit. |
 | `completion_history` | What got done over a range, with a summary by day, weekday, hour, category, project and tag. Missed occurrences are counted separately. |
-| `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects and the most-missed repeats. Lists, does not judge. |
+| `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects, tasks pushed to a later day three or more times and the most-missed repeats. Lists, does not judge. |
 | `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
 | `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
