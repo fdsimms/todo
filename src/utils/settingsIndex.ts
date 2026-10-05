@@ -337,6 +337,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'health', 'track', 'log', 'generated', 'automatic'],
   waterShortfall: ['hydration', 'drink', 'target', 'exercise', 'health', 'food log',
     'generated', 'automatic'],
+  snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
+    'generated', 'automatic'],
 };
 
 /**

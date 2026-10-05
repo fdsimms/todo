@@ -1488,6 +1488,34 @@ target rose at 5.
   the rest. Rules are in `src/utils/waterShortfallTasks.ts` and the target
   arithmetic in `src/utils/waterTargetUnits.ts`.
 
+## `snackNudge`: a snack suggestion when the food log runs low
+
+After 3 PM, if today's food log states under half of the calorie target,
+`reconcileSnackNudge` writes "Have a snack (620 of 2,000 kcal logged)". Rules are
+in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
+`waterShortfall`'s shape: day-keyed with no source row, at most one a day.
+
+- **It can only say what was logged.** A day nobody logged is not a day of
+  nothing, so the pass needs at least one entry that states calories
+  (`loggedKcalToday` returns null for an empty log and for entries with no
+  calorie figure, never zero). The title carries the figures it judged by, so a
+  person who ate without logging sees that the log is what fell short, and the
+  notes say the task can be dismissed in that case.
+- **The target is the stored one, plus the active energy boost when one is
+  configured.** With a boost configured and no Health reading for today, the
+  pass leaves whatever is there alone: an unread value is not a lower target.
+  Same refusal as `reconcileWaterShortfall`.
+- **Two triggers.** Every write to today's food log calls it (through
+  `syncWaterQuotaTasksIfToday` and the bulk delete), which is what removes the
+  task once a snack is logged. The catch-up sweep calls it too, which is what
+  brings it on when 3 PM arrives with no write since. The hour and the share
+  are constants (`SNACK_NUDGE_FROM_HOUR`, `SNACK_NUDGE_SHARE`), not settings.
+- **Completed or deleted blocks a second that day**, through `blocksOnFinished`
+  and `snackNudgeDeclinedDayKey` (the `snackNudge` arm of `writeGeneratedOptOut`).
+  One from a past day is dropped rather than deleted quietly.
+- Ships off, pauses on vacation, files under its own category setting (default
+  Health).
+
 ## A rule's own category
 
 The four rule kinds (weather, Screen Time, Health, calendar events) each have one

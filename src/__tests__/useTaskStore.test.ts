@@ -13327,6 +13327,82 @@ describe('quota tasks', () => {
         });
       });
 
+      describe('the snack suggestion', () => {
+        const calorieEntry = (kcal: number): FoodLogEntry => ({
+          ...waterEntry(0),
+          id: 'c1',
+          label: 'Lunch',
+          nutrition: { ...panel(0), amounts: { calorieKcal: kcal } },
+        });
+        const snackTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'snackNudge');
+        const on = {
+          snackNudgeTasks: true, snackNudgeTaskCategory: 'Health', vacationMode: false,
+          activeEnergyBoost: null, nutritionTargets: { calorieKcal: 2000 },
+        };
+        const run = () => useTaskStore.getState().syncSnackNudgeTasks();
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => jest.useRealTimers());
+
+        it('writes one after the hour when the log is under half the target', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(1);
+          expect(snackTasks()[0].title).toBe('Have a snack (600 of 2,000 kcal logged)');
+        });
+
+        it('writes nothing before the hour', () => {
+          jest.setSystemTime(new Date(2026, 9, 5, 11, 0));
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing while the setting is off', () => {
+          withSettings({ ...on, snackNudgeTasks: false });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing for a day nothing was logged on', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('removes it once a logged snack brings the day past half', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(1);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600), calorieEntry(500)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('does not write one back the day it was deleted', () => {
+          withSettings({ ...on, snackNudgeDeclinedDayKey: dayKeyOf(getCurrentDayStart()) });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('waits for a reading when an active energy boost is configured', () => {
+          withSettings({ ...on, activeEnergyBoost: { baselineKcal: 500 } });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+      });
+
       it('leaves the count alone when the task does not follow', () => {
         withSettings({ nutritionTargets: { waterMl: 2500 } });
         useTaskStore.setState({ tasks: [waterQuota()] });
