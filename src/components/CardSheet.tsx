@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
+import { GlassLayer, glassSupported } from './GlassLayer';
 import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, animation, type Colors } from '../theme';
@@ -228,6 +229,7 @@ export function CardSheet({
             styles.card,
             shadows.sheet,
             styles.popover,
+            glassSupported() && styles.popoverGlass,
             {
               top: placement.top,
               bottom: placement.bottom,
@@ -242,6 +244,7 @@ export function CardSheet({
             cardStyle,
           ]}
         >
+          <GlassLayer style={styles.popoverClip} />
           <View style={[styles.clip, styles.popoverClip]}>{body}</View>
         </Animated.View>
       ) : (
@@ -297,5 +300,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   popoverClip: {
     borderRadius: 16,
+  },
+  // A popover is a menu floating over a row, which is what glass is for. The
+  // centered card holds fields and stays solid. The glass supplies its own edge.
+  popoverGlass: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
 });

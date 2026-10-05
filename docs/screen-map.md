@@ -147,6 +147,7 @@ Where each component can appear.
 - `src/components/FoodLogEntrySheet.tsx` — on FoodLogScreen, app shell
 - `src/components/FreezeWhenBlurred.tsx` — not reached from any screen
 - `src/components/FridgeHistorySheet.tsx` — on KitchenScreen, MealPlanScreen
+- `src/components/GlassLayer.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MoodScreen, PeopleScreen, +19 more
 - `src/components/GroceryAISheet.tsx` — on GroceryScreen
 - `src/components/GroceryAddField.tsx` — on GroceryScreen
 - `src/components/GroceryAddSheet.tsx` — on GroceryScreen
