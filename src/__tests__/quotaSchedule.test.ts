@@ -413,3 +413,35 @@ describe('firstWeekPatch', () => {
     expect(firstWeekAnchor(null, today)).toEqual(today);
   });
 });
+
+// A clock time earlier than the day's start belongs to the small hours at the
+// end of that logical day, the same roll getWindowThreshold applies. Placed on
+// the day start's own date instead, a "01:00–03:00" window under a 4 AM reset
+// sat entirely before the day began: the whole target was owed the instant it
+// opened and every due instant was a day old.
+describe('quotaRunSpan under a day start after midnight', () => {
+  const DAY_4AM = new Date('2026-08-26T04:00:00');
+  const spanAt4 = (input: Partial<Parameters<typeof quotaRunSpan>[0]> = {}) =>
+    quotaRunSpan({
+      windowStart: null, windowEnd: null, quotaStartedAt: null,
+      activeHoursStart: '08:00', activeHoursEnd: '22:00', dayStart: DAY_4AM, ...input,
+    });
+
+  it('rolls a small-hours window onto the end of the logical day', () => {
+    const s = spanAt4({ windowStart: '01:00', windowEnd: '03:00' });
+    expect(s.start).toEqual(new Date('2026-08-27T01:00:00'));
+    expect(s.end).toEqual(new Date('2026-08-27T03:00:00'));
+  });
+
+  it('keeps a daytime window on the day start\'s own date', () => {
+    const s = spanAt4({ windowStart: '09:00', windowEnd: '17:00' });
+    expect(s.start).toEqual(new Date('2026-08-26T09:00:00'));
+    expect(s.end).toEqual(new Date('2026-08-26T17:00:00'));
+  });
+
+  it('still resolves an overnight window into the next calendar day', () => {
+    const s = spanAt4({ windowStart: '22:00', windowEnd: '02:00' });
+    expect(s.start).toEqual(new Date('2026-08-26T22:00:00'));
+    expect(s.end).toEqual(new Date('2026-08-27T02:00:00'));
+  });
+});

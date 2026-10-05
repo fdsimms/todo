@@ -39,6 +39,22 @@ describe('mergeTaskUpdate', () => {
     expect(mergeTaskUpdate(t, { dueDate: '2026-02-10T12:00:00.000Z' }, ctx).recurrenceAnchorDate).toBeNull();
   });
 
+  // The editor writes every schedule field on every save, so "named" and
+  // "changed" have to differ here: a retitle that re-states the same day and
+  // rule is a re-save, and a pulled-forward task keeps the grid it was pulled
+  // off. A different day, a cleared date or a changed rule is a new schedule.
+  it('keeps the grid anchor on a same-day re-save that re-states the schedule', () => {
+    const t = { ...make({ recurrenceType: 'weekly', dueDate: '2026-03-03T12:00:00.000Z' }), recurrenceAnchorDate: '2026-03-05T12:00:00.000Z' };
+    const next = mergeTaskUpdate(t, { title: 'Renamed', dueDate: '2026-03-03T12:00:00.000Z', recurrenceType: 'weekly' }, ctx);
+    expect(next.recurrenceAnchorDate).toBe('2026-03-05T12:00:00.000Z');
+  });
+
+  it('clears the grid anchor when the rule changes or the date is cleared', () => {
+    const t = { ...make({ recurrenceType: 'weekly', dueDate: '2026-03-03T12:00:00.000Z' }), recurrenceAnchorDate: '2026-03-05T12:00:00.000Z' };
+    expect(mergeTaskUpdate(t, { dueDate: '2026-03-03T12:00:00.000Z', recurrenceType: 'monthly' }, ctx).recurrenceAnchorDate).toBeNull();
+    expect(mergeTaskUpdate(t, { dueDate: null }, ctx).recurrenceAnchorDate).toBeNull();
+  });
+
   it('re-derives the anchor day from a newly written date', () => {
     // Local noon, not a `...Z` literal: the anchor day is read in local time,
     // and Feb 10 12:00 UTC is already Feb 11 in UTC+14, where CI runs.

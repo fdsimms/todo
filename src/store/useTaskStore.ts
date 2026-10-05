@@ -4539,9 +4539,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // is a record of *that* day (or week), and the Logbook groups by
       // completedAt.
       const ownPeriodStart = periodStartOf(new Date(task.dueDate!), task.quotaPeriod);
-      const ownDayEnd = new Date(
-        +ownPeriodStart + (task.quotaPeriod === 'week' ? 7 : 1) * 24 * 60 * 60 * 1000 - 1,
-      );
+      // addDays rather than a fixed 24h: the DST spring-forward day is 23
+      // hours long, and a fixed stride landed the stamp at 00:59 the next
+      // morning, which getLogicalDayKey filed under the wrong day.
+      const ownDayEnd = new Date(+addDays(ownPeriodStart, task.quotaPeriod === 'week' ? 7 : 1) - 1);
       // A day the task's own category schedule doesn't cover (see #2201,
       // isCategoryScheduledDay) wasn't a work day, so it closes as a no-op
       // rather than a shortfall — neither advancing nor breaking the streak.
@@ -4905,6 +4906,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const t = byId.get(m.id)!;
       return {
         id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil,
+        // Restored beside dueDate, as shiftAwayTasks does: a patch naming
+        // dueDate without the anchor clears it (mergeTaskUpdate), which would
+        // turn undoing a deload on a pulled-forward recurring task into a
+        // rebase of its grid.
+        recurrenceAnchorDate: t.recurrenceAnchorDate,
         postponeCount: t.postponeCount, bountyPushes: t.bountyPushes ?? null,
       };
     });
@@ -4924,7 +4930,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().deloadTasks(moves),
       undo: () => snapshots.forEach(s =>
         get().updateTask(s.id, {
-          dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount, bountyPushes: s.bountyPushes,
+          dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate,
+          postponeCount: s.postponeCount, bountyPushes: s.bountyPushes,
         })
       ),
     });
@@ -9447,7 +9454,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   pinnedTasks() {
-    const { vacationMode } = useSettingsStore.getState();
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
       // Pinning overrides the *clock* — a pinned task shows here whether or not
@@ -9463,7 +9469,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // A paused project's task is the other non-clock hide: the pause is the
       // person saying "not until then", which pinning doesn't answer.
       .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !(vacationMode && t.vacationPause) && !isInPausedProject(t))
+        && !isHeldBack(t) && !isWithheld(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

@@ -1,6 +1,7 @@
 import { PRIORITY_LABELS, type Task, type TimeOfDay } from '../types';
 import { overdueDayCount } from './clockTime';
-import { getCurrentDayStart, getDeadlineCountdown, getLogicalToday } from './dateUtils';
+import { getDeadlineCountdown, getLogicalToday } from './dateUtils';
+import { timeSegmentThreshold } from './visibilityUtils';
 import { sumEstimatedMinutes } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -142,15 +143,14 @@ export function currentTimeSegment(now: Date = new Date()): TimeOfDay {
     ['night', nightStart],
   ];
 
-  // Anchored to the logical day for the same reason getTimeOfDayThreshold is:
-  // before dayResetTime the wall-clock date has already flipped, and comparing
-  // against it would read every segment as still ahead of us.
+  // The same placement getTimeOfDayThreshold gives each segment, rather than
+  // the clock time copied onto the day start's date: before dayResetTime the
+  // wall-clock date has already flipped, and a night start earlier than the
+  // reset belongs to the small hours at the *end* of the day. Copied, it sat
+  // before the day began and read as "night" all day long.
   let current: TimeOfDay = 'night';
-  for (const [segment, hhmm] of order) {
-    const [h, m] = hhmm.split(':').map(Number);
-    const threshold = getCurrentDayStart();
-    threshold.setHours(h, m, 0, 0);
-    if (threshold <= now) current = segment;
+  for (const [segment] of order) {
+    if (timeSegmentThreshold(segment) <= now) current = segment;
   }
   // Nothing has started yet on this logical day — we're in the small hours
   // before the first segment, which is night's tail.

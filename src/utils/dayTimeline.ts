@@ -152,7 +152,11 @@ function placeTask(task: Task, dayStart: Date): { start: number; end: number; in
 
   if (task.windowStart) {
     const start = clockToDayMinutes(task.windowStart, dayStart);
-    const close = effectiveWindowEndTime(task.windowStart, task.windowEnd);
+    // The day's start instant carries the reset time, which is the timeline
+    // "after the start" is measured on (see effectiveWindowEndTime).
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dayResetTime = `${pad(dayStart.getHours())}:${pad(dayStart.getMinutes())}`;
+    const close = effectiveWindowEndTime(task.windowStart, task.windowEnd, dayResetTime);
     if (close) {
       // A window that closes is the one case with a length nobody guessed:
       // the user typed both ends of it.

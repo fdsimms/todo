@@ -1,4 +1,4 @@
-import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken } from '../utils/clockTime';
+import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken, effectiveWindowEndTime } from '../utils/clockTime';
 
 const NOW = new Date(2025, 5, 10, 14, 30, 0); // Tue Jun 10 2025, 2:30 PM
 
@@ -120,5 +120,34 @@ describe('dateToHHMM', () => {
     for (const hhmm of ['00:30', '01:30', '03:00']) {
       expect(dateToHHMM(hhmmToDate(hhmm, fallBack))).toBe(hhmm);
     }
+  });
+});
+
+describe('effectiveWindowEndTime', () => {
+  it('returns the end when it is after the start', () => {
+    expect(effectiveWindowEndTime('09:00', '17:00')).toBe('17:00');
+  });
+
+  it('passes an end with no start through', () => {
+    expect(effectiveWindowEndTime(null, '17:00')).toBe('17:00');
+    expect(effectiveWindowEndTime('09:00', null)).toBeNull();
+  });
+
+  // Under a midnight reset "22:00–02:00" runs into the small hours, which the
+  // single logical day both gates anchor to can't hold: open-ended.
+  it('is open-ended when the end is not after the start', () => {
+    expect(effectiveWindowEndTime('22:00', '02:00')).toBeNull();
+    expect(effectiveWindowEndTime('09:00', '09:00')).toBeNull();
+  });
+
+  // "After" is measured from dayResetTime, because onLogicalDay rolls a clock
+  // time earlier than the reset onto the next date. Under a 4 AM reset the
+  // overnight window closes six hours after it opens, and it is "03:00–05:00"
+  // that inverts: its start rolls to tomorrow while its end stays on today.
+  // Compared as raw minutes the second kept its end and was expired all day.
+  it('measures "after the start" from dayResetTime', () => {
+    expect(effectiveWindowEndTime('22:00', '02:00', '04:00')).toBe('02:00');
+    expect(effectiveWindowEndTime('03:00', '05:00', '04:00')).toBeNull();
+    expect(effectiveWindowEndTime('09:00', '17:00', '04:00')).toBe('17:00');
   });
 });
