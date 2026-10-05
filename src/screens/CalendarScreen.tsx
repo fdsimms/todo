@@ -966,12 +966,6 @@ export function CalendarScreen() {
           : (monthOutstanding > 0 ? `${monthOutstanding} outstanding in ${format(displayMonth, 'MMMM')}` : undefined)}
         actions={withScreenSettings([
           {
-            icon: 'repeat-outline',
-            onPress: () => { haptics.tap(); setProjecting(p => !p); },
-            active: projecting,
-            accessibilityLabel: projecting ? 'Hide repeats that have no task yet' : 'Show repeats that have no task yet',
-          },
-          {
             icon: 'today-outline',
             onPress: goToToday,
             accessibilityLabel: 'Go to today',
@@ -1013,6 +1007,26 @@ export function CalendarScreen() {
             </TouchableOpacity>
           );
         })}
+        {/* A labeled switch rather than a header icon: a bare repeat glyph
+            read as a sync button, and this is a way of reading the grid, not
+            an action. */}
+        <TouchableOpacity
+          style={styles.repeatsToggle}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setProjecting(p => !p); }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: projecting }}
+          accessibilityLabel="Show repeats that have no task yet"
+        >
+          <Ionicons
+            name={projecting ? 'checkmark-circle' : 'ellipse-outline'}
+            size={16}
+            color={projecting ? colors.accentText : colors.textTertiary}
+          />
+          <Text style={[styles.repeatsToggleText, projecting && styles.repeatsToggleTextOn]}>
+            Repeats
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {viewMode === 'month' ? (
@@ -1437,6 +1451,21 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
     viewModePillTextActive: {
       color: colors.onAccent,
       fontWeight: fontWeight.semibold,
+    },
+    repeatsToggle: {
+      marginLeft: 'auto',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+    },
+    repeatsToggleText: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+    },
+    repeatsToggleTextOn: {
+      color: colors.accentText,
     },
     dayHeaders: {
       flexDirection: 'row',
