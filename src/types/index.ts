@@ -981,6 +981,8 @@ export type UnattendedSubject =
   | 'automation' | 'note' | 'stack' | 'reward'
   // A change to what is in the kitchen (`pantryWrite.ts`), undoable by snapshot (`agentPantryRevert.ts`).
   | 'pantry'
+  // A change to the grocery catalog, a store or a separate list (`groceryItemWrite.ts`): an item's own fields and a deleted item are undoable (`agentCatalogRevert.ts`), the rest is a record.
+  | 'catalog'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
   | 'event';
 

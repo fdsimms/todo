@@ -17,7 +17,7 @@
  * catch-up sweep (`reconcileAllUseUpTasks`) brings it into line off the rows
  * alone, the same split `update_meal` makes for a meal's cook task.
  */
-import type { GroceryItem, ItemProduct, Leftover, LeftoverOutcome } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct, Leftover, LeftoverOutcome } from '../types';
 import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { PORTION_PRODUCT_KEY, isPortionBox } from '../types';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -304,6 +304,36 @@ export function planAddToPantry(raw: string, ctx: PantryAddContext, opts: { name
   });
   // Stamped off the finished row, so this and "Got it" cannot drift apart.
   return { isNew: true, item: { ...row, onHandUntil: defaultOnHandUntil(row, ctx.now) } };
+}
+
+/**
+ * A new packet of something already in the catalog (a receipt line, a scan), so
+ * the old packet's claims go: frozen, opened and running low are about the
+ * packet being replaced. A frozen row's day was suspended and an opened jar's
+ * was set by the opening, so either way the day is the old packet's too.
+ * Null when there was nothing to clear.
+ */
+export function acquiredRow(item: GroceryItem): GroceryItem | null {
+  if (!item.frozenAt && !item.openedAt && !item.runningLowAt) return null;
+  return {
+    ...item,
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
+    expiresAt: item.frozenAt || item.openedAt ? null : item.expiresAt,
+  };
+}
+
+/**
+ * The list entries "running low" put the row on, which buying it retires: the
+ * home entry, plus any other list's entry stamped with the same instant as
+ * `runningLowAt`. An entry on another list with any other `addedAt` was put
+ * there by hand and stays.
+ */
+export function runningLowEntries(entries: readonly GroceryListEntry[], item: GroceryItem): GroceryListEntry[] {
+  const at = item.runningLowAt;
+  if (!at) return [];
+  return entries.filter(e => e.itemId === item.id && (e.listId === null || e.addedAt === at));
 }
 
 // ---------------------------------------------------------------------------

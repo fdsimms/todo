@@ -271,12 +271,21 @@ describe('pantry undo and log_leftover', () => {
     groceryItem: (id: string) => r.groceryItems().find(i => i.id === id) ?? null,
     itemBoxes: (id: string) => r.itemProducts().filter(p => p.itemId === id),
     leftover: (id: string) => r.leftovers().find(l => l.id === id) ?? null,
+    aisleOverride: () => null,
+    itemKeyTaken: () => false,
     exists: () => false,
     ruleList: () => [],
     hasNote: () => false,
     calendarRequest: () => null,
   });
 
+  // Entries are ordered by their millisecond stamp, so two writes in one
+  // millisecond tie and the order flips. A short wait after the setup write
+  // keeps "the latest entry" meaning the write a case is about.
+  const settle = (): void => {
+    const until = Date.now() + 3;
+    while (Date.now() < until) { /* wait */ }
+  };
   const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry').sort((a, b) => (a.at < b.at ? 1 : -1))[0];
 
   beforeAll(() => {
@@ -294,6 +303,7 @@ describe('pantry undo and log_leftover', () => {
 
   it('offers an undo of an item change only while the item is still as it was left', () => {
     addToPantry(replica, ['spinach']);
+    settle();
     const id = replica.groceryItems()[0].id;
     updatePantryItem(replica, { id, status: 'out', outcome: 'spoiled' });
     const entry = latest();
@@ -308,15 +318,18 @@ describe('pantry undo and log_leftover', () => {
 
   it('reads as undone once the before state is back', () => {
     addToPantry(replica, ['rice']);
+    settle();
     const id = replica.groceryItems()[0].id;
     updatePantryItem(replica, { id, staple: true });
     const entry = latest();
+    settle();
     updatePantryItem(replica, { id, staple: false });
     expect(agentRecordPlan(entry, stateOf(replica))).toEqual({ kind: 'none', reason: 'Undone' });
   });
 
   it('undoes running low by taking the item back off the list, and a frozen portion by removing it', () => {
     addToPantry(replica, ['butter']);
+    settle();
     const id = replica.groceryItems()[0].id;
     updatePantryItem(replica, { id, runningLow: true, freezeSome: true });
     const plan = agentRecordPlan(latest(), stateOf(replica));
@@ -325,6 +338,7 @@ describe('pantry undo and log_leftover', () => {
 
   it('restores a deleted portion from the before snapshot', () => {
     addToPantry(replica, ['bread']);
+    settle();
     const id = replica.groceryItems()[0].id;
     updatePantryItem(replica, { id, freezeSome: true });
     const portion = replica.itemProducts()[0];
@@ -356,6 +370,7 @@ describe('pantry undo and log_leftover', () => {
 
   it('undoes a leftover freeze by its own snapshot', () => {
     const made = logLeftover(replica, { title: 'Soup' });
+    settle();
     updateLeftover(replica, made.id, { frozen: true });
     // Both entries can share a millisecond, so pick the edit by its action.
     const edit = dbGetUnattendedLog().find(e => e.subject === 'pantry' && e.action === 'edited')!;

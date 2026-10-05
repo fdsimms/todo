@@ -2,6 +2,20 @@ import { create } from 'zustand';
 import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
 import {
+  type DeletedItemSnapshot,
+  listNameProblem,
+  newListRow,
+  newShopRow,
+  preferredProductRow,
+  pricedRows,
+  renameRows,
+  productEditRow,
+  renamedShopRow,
+  shopLinkRow,
+  clearOtherStandingLinks,
+  subLinkRows,
+} from '../utils/groceryItemWrite';
+import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
@@ -84,6 +98,8 @@ import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { describeQuantities, mergeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import {
+  acquiredRow,
+  runningLowEntries,
   disposalRow,
   freezePortionRow,
   frozenRow,
@@ -1083,6 +1099,20 @@ interface GroceryStore extends UndoHistoryActions {
    */
   answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => ItemProduct[];
   /**
+   * Write an item's own fields back, and the remembered aisle for its name (the
+   * Activity screen's undo of an agent's catalog edit, `agentCatalogRevert.ts`).
+   * `aisleOverride` null forgets the filing, which is what undoing a first
+   * filing means.
+   */
+  restoreCatalogItem: (itemId: string, patch: Record<string, unknown>, nameKey: string, aisleOverride: string | null) => void;
+  /**
+   * Put back an item an agent deleted, with everything the delete took: its
+   * boxes (and their barcodes), store links, substitutes, receipt names, list
+   * entries and the remembered aisle for its name. Refuses when the id or the
+   * name is back in the catalog.
+   */
+  restoreDeletedItem: (snapshot: DeletedItemSnapshot) => boolean;
+  /**
    * Put an item's pantry state back exactly as an earlier snapshot had it (the
    * Activity screen's undo of an agent's pantry write, `agentPantryRevert.ts`).
    * `patch` is the item's pantry fields, `boxes` the item's boxes as they were
@@ -1550,28 +1580,6 @@ interface GroceryStore extends UndoHistoryActions {
   itemById: (id: string) => GroceryItem | null;
   /** The aisle the user has filed this name under before, if any. */
   rememberedAisleFor: (name: string) => string | null;
-}
-
-/**
- * The links that have to stop being standing for `itemId → subItemId` to be —
- * this item's other substitutes, and the reverse row.
- *
- * Returned rather than written, so both callers (`linkItemSub`,
- * `setItemSubStanding`) persist and patch state in one pass with their own
- * write. Empty for the overwhelmingly common case of an item with one
- * substitute and no reverse link, so nothing is written for nothing.
- */
-function clearOtherStandingLinks(
-  links: readonly ItemSubLink[],
-  itemId: string,
-  subItemId: string
-): ItemSubLink[] {
-  return links
-    .filter(l => l.standing)
-    .filter(l =>
-      (l.itemId === itemId && l.subItemId !== subItemId)
-      || (l.itemId === subItemId && l.subItemId === itemId))
-    .map(l => ({ ...l, standing: false }));
 }
 
 /** One reviewed line on its way to the list. `aisle` null means "no opinion". */
@@ -2052,32 +2060,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   addList(name) {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-    // Compared case-insensitively, and against the home list's own name too:
-    // a second "Groceries" would be two rows in the picker saying the same
-    // thing, one of which isn't the list it names.
-    const taken = (n: string) => n.trim().toLowerCase() === trimmed.toLowerCase();
-    if (taken(HOME_LIST_NAME) || get().lists.some(l => taken(l.name))) return null;
-    const list: GroceryList = {
-      id: generateId(),
-      name: trimmed,
-      sortOrder: get().lists.reduce((max, l) => Math.max(max, l.sortOrder), 0) + 1,
-      createdAt: new Date().toISOString(),
-    };
+    // Names are checked case-insensitively and against the home list's own
+    // (`listNameProblem`).
+    if (listNameProblem(name, get().lists)) return null;
+    const list = newListRow(name, get().lists, generateId(), new Date().toISOString());
     dbInsertGroceryList(list);
     set(s => ({ lists: [...s.lists, list] }));
     return list;
   },
 
   renameList(id, name) {
-    const trimmed = name.trim();
-    if (!trimmed) return false;
     const list = get().lists.find(l => l.id === id);
-    if (!list) return false;
-    const taken = (n: string) => n.trim().toLowerCase() === trimmed.toLowerCase();
-    if (taken(HOME_LIST_NAME) || get().lists.some(l => l.id !== id && taken(l.name))) return false;
-    const updated = { ...list, name: trimmed };
+    if (!list || listNameProblem(name, get().lists, id)) return false;
+    const updated = { ...list, name: name.trim() };
     dbUpdateGroceryList(updated);
     set(s => ({ lists: s.lists.map(l => (l.id === id ? updated : l)) }));
     return true;
@@ -2544,43 +2539,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * a deliberate merge sheet rather than a rename that happened to collide.
    */
   renameItem(id, name) {
-    const item = get().items.find(i => i.id === id);
-    if (!item) return false;
-    const trimmed = name.trim();
-    if (!trimmed) return false;
-
-    const key = groceryNameKey(trimmed);
-    if (!key) return false;
-    if (key !== item.nameKey && get().items.some(i => i.nameKey === key)) return false;
-
-    const updated = {
-      ...item,
-      name: trimmed,
-      nameKey: key,
-      // A rename that lands the row on its own declared generic clears the
-      // declaration — a thing is not a variety of itself.
-      varietyOfKey: item.varietyOfKey === key ? null : item.varietyOfKey,
-      // Somebody has now chosen this name, whatever it was called before, so
-      // the row is no longer wearing a barcode source's words. Cleared even
-      // when the trimmed name is identical to the stored one: reaching this
-      // function at all means a person typed it and meant it, and the flag's
-      // only job is to stop asking. See GroceryItem.nameFromScan.
-      nameFromScan: false,
-    };
+    // The refusals, the cleared self-variety, the barcode-name flag and the
+    // variety declarations that follow the old key are `renameRows`'.
+    const renamed = renameRows(get().items, id, name);
+    if ('refusal' in renamed) return false;
+    const { item: updated, repointed, oldKey, key } = renamed;
     dbUpdateGroceryItem(updated);
-    // Variety declarations point at the generic's key, so ones aimed at this
-    // row's old spelling follow the rename — the same stranding the remembered
-    // aisle and the recipe keys below would otherwise suffer, and silent the
-    // same way: a stranded declaration just stops covering anything.
     const repointedVarieties = new Map<string, GroceryItem>();
-    if (key !== item.nameKey) {
-      for (const other of get().items) {
-        if (other.id === id || other.varietyOfKey !== item.nameKey) continue;
-        const next = { ...other, varietyOfKey: key };
-        dbUpdateGroceryItem(next);
-        repointedVarieties.set(other.id, next);
-      }
+    for (const next of repointed) {
+      dbUpdateGroceryItem(next);
+      repointedVarieties.set(next.id, next);
     }
+    const item = { nameKey: oldKey };
     // The remembered aisle is keyed by name, so it has to follow the rename or
     // it stays stranded under the old spelling — which is usually a typo the
     // rename exists to fix.
@@ -3096,31 +3066,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   updateProduct(id, patch) {
     const product = get().itemProducts.find(p => p.id === id);
-    // A portion has no brand or variant to edit, and giving it one would turn
-    // the frozen half of a pack into a product nobody named. See
-    // ItemProduct.isPortion.
-    if (!product || isPortionBox(product)) return false;
-    const brand = patch.brand === undefined ? product.brand : patch.brand?.trim() || null;
-    const variant = patch.variant === undefined ? product.variant : patch.variant?.trim() || null;
-    const productKey = productKeyFor(brand, variant);
-    // A box with no words left is the item itself, so there is nothing to be a
-    // product of — refused rather than stored as a blank row that captions
-    // nothing. Clearing it properly is `deleteProduct`.
-    if (!productKey) return false;
-    // The UNIQUE index would throw; refusing here says why, and lets the sheet
-    // keep the user's text on screen rather than losing it to an exception.
-    const clash = get().itemProducts.some(
-      p => p.itemId === product.itemId && p.id !== id && p.productKey === productKey
-    );
-    if (clash) return false;
-    const updated: ItemProduct = {
-      ...product,
-      brand,
-      variant,
-      productKey,
-      note: patch.note === undefined ? product.note : patch.note.trim(),
-      rating: patch.rating === undefined ? product.rating : patch.rating,
-    };
+    if (!product) return false;
+    // The refusals (a portion, a box with no words, a clash with a sibling's
+    // key) are `productEditRow`'s.
+    const edited = productEditRow(product, get().itemProducts, patch);
+    if ('refusal' in edited) return false;
+    const updated = edited.row;
     dbSetItemProduct(updated);
     set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
     return true;
@@ -3129,20 +3080,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setPreferredProduct(itemId, productId) {
     const item = get().items.find(i => i.id === itemId);
     if (!item) return;
-    // Only ever one of this item's own products, so a stale id from a sheet
-    // rendered against an older state can't file Bread under a milk product.
-    // Nor a portion, which is where some of the item went rather than an
-    // answer to "which one do you want". See ItemProduct.isPortion.
-    const next = productId && get().itemProducts.some(
-      p => p.id === productId && p.itemId === itemId && !isPortionBox(p)
-    )
-      ? productId
-      : null;
-    if (next === item.preferredProductId) return;
-    // Promoted on setting one, for addProduct's reason above. Clearing the
-    // preference promotes nothing, and demoting a row that is already catalog
-    // would throw away purchase history over an edit to a caption.
-    const updated: GroceryItem = { ...item, preferredProductId: next };
+    // Promoted on setting one, for addProduct's reason; clearing the
+    // preference promotes nothing. `preferredProductRow` keeps it to one of
+    // this item's own non-portion boxes.
+    const updated = preferredProductRow(item, get().itemProducts, productId);
+    if (!updated) return;
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
   },
@@ -3458,17 +3400,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // starts clean. Ahead of the freezer toggle below so a fresh "into the
       // freezer" lands on the new packet rather than being swallowed by the
       // old one's stamp, which `setFrozen` would read as nothing to do.
-      if (opts?.acquired && before && (item.frozenAt || item.openedAt || item.runningLowAt)) {
-        const fresh: GroceryItem = {
-          ...item,
-          frozenAt: null,
-          openedAt: null,
-          runningLowAt: null,
-          // A frozen row's day was suspended and an opened jar's was set by
-          // the opening; either way it is the old packet's, and clearing the
-          // state while keeping it would wake a stale day on the new one.
-          expiresAt: item.frozenAt || item.openedAt ? null : item.expiresAt,
-        };
+      const freshRow = opts?.acquired && before ? acquiredRow(item) : null;
+      if (freshRow) {
+        const fresh = freshRow;
         dbUpdateGroceryItem(fresh);
         set(s => ({ items: s.items.map(i => (i.id === fresh.id ? fresh : i)) }));
         if (item.runningLowAt) {
@@ -3477,10 +3411,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           // included), and stamps that entry's `addedAt` with the same instant
           // as `runningLowAt`. An entry on another list with any other
           // `addedAt` was put there by hand and stays.
-          const runningLowAt = item.runningLowAt;
-          const stale = get().listEntries.filter(
-            e => e.itemId === item.id && (e.listId === null || e.addedAt === runningLowAt),
-          );
+          const stale = runningLowEntries(get().listEntries, item);
           if (stale.length > 0) {
             removedEntries.push(...stale);
             writeMembership({ remove: stale.map(e => ({ itemId: e.itemId, listId: e.listId })) });
@@ -3557,36 +3488,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setItemPrice(id, minor, shopId = null) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const now = minor === null ? null : new Date().toISOString();
-    // The quantity it's a price *for* is this row's current one — the same
-    // pairing a finished trip records. Cleared with the price, so a stale
-    // quantity can never be left describing a number that's gone. A quantity
-    // a recipe wrote is a cooking amount, not a pack, so it pairs with nothing
-    // (see finishShopping's pricedQuantityById).
-    const pricedQuantity = minor === null || item.quantityFromRecipe ? null : item.quantity;
-    const updated: GroceryItem = {
-      ...item,
-      lastPriceMinor: minor,
-      lastPricedAt: now,
-      lastPriceQuantity: pricedQuantity,
-    };
-    dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
-
-    // With a store in hand, the same answer goes on the link — a price
-    // corrected while looking at one store's number has to change that number,
-    // or the correction reads as having done nothing. Only an existing link is
-    // touched: a price is not an assertion that the store stocks it, so this
-    // must not mint the row linkItemShop exists to mint.
-    if (!shopId) return;
-    const link = get().itemShops.find(l => l.itemId === id && l.shopId === shopId);
-    if (!link) return;
-    const nextLink: ItemShopLink = {
-      ...link,
-      lastPriceMinor: minor,
-      lastPricedAt: now,
-      lastPriceQuantity: pricedQuantity,
-    };
+    // Only an existing link is touched: a price is not an assertion that the
+    // store stocks it, so this must not mint the row linkItemShop exists to
+    // mint. `pricedRows` holds the quantity pairing.
+    const link = shopId ? get().itemShops.find(l => l.itemId === id && l.shopId === shopId) : undefined;
+    const rows = pricedRows(item, link, minor, new Date().toISOString());
+    dbUpdateGroceryItem(rows.item);
+    set(s => ({ items: s.items.map(i => (i.id === id ? rows.item : i)) }));
+    const nextLink = rows.link;
+    if (!nextLink) return;
     dbSetItemShopLink(nextLink);
     set(s => ({
       itemShops: s.itemShops.map(l =>
@@ -3756,6 +3666,53 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // "out of it" on a row already out has no task left to drop.
     if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
     return thawedPortions;
+  },
+
+  restoreCatalogItem(itemId, patch, nameKey, aisleOverride) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return;
+    const updated = { ...item, ...patch } as GroceryItem;
+    dbUpdateGroceryItem(updated);
+    const overrides = { ...get().aisleOverrides };
+    if (aisleOverride) overrides[nameKey] = aisleOverride;
+    else delete overrides[nameKey];
+    dbSetGroceryAisleOverrides(overrides);
+    set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)), aisleOverrides: overrides }));
+  },
+
+  restoreDeletedItem(snapshot) {
+    const { item } = snapshot;
+    if (get().items.some(i => i.id === item.id || i.nameKey === item.nameKey)) return false;
+    dbTransaction(() => {
+      // Inserted and then updated, as mergeItems' undo does: the insert writes
+      // the row and the update the columns it leaves out (price history).
+      dbInsertGroceryItem(item);
+      dbUpdateGroceryItem(item);
+      for (const box of snapshot.boxes) {
+        dbSetItemProduct(box);
+        if (box.gtin) dbSetProductGtin(box.id, box.gtin);
+      }
+      for (const link of snapshot.shopLinks) dbSetItemShopLink(link);
+      for (const link of snapshot.subLinks) dbSetItemSubLink(link);
+      for (const alias of snapshot.aliases) dbSetStoreAlias(alias);
+      for (const entry of snapshot.entries) dbSetGroceryListEntry(entry);
+      if (snapshot.aisleOverride) {
+        dbSetGroceryAisleOverrides({ ...get().aisleOverrides, [item.nameKey]: snapshot.aisleOverride });
+      }
+    });
+    // Read back rather than patched in, since the entries' writes also rebuild
+    // the item's home-list mirror columns.
+    const restored = dbGetAllGroceryItems().find(i => i.id === item.id) ?? item;
+    set(s => ({
+      items: [...s.items, restored],
+      itemProducts: [...s.itemProducts, ...snapshot.boxes],
+      itemShops: [...s.itemShops, ...snapshot.shopLinks],
+      itemSubs: [...s.itemSubs.filter(l => !snapshot.subLinks.some(r => r.itemId === l.itemId && r.subItemId === l.subItemId)), ...snapshot.subLinks],
+      storeAliases: [...s.storeAliases, ...snapshot.aliases],
+      listEntries: [...s.listEntries, ...snapshot.entries],
+      aisleOverrides: snapshot.aisleOverride ? { ...s.aisleOverrides, [item.nameKey]: snapshot.aisleOverride } : s.aisleOverrides,
+    }));
+    return true;
   },
 
   restorePantry(itemId, patch, boxes, removeBoxIds, removeFromList) {
@@ -4932,33 +4889,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * filing a trip against the wrong place.
    */
   addShop(name) {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-    // Falls back to the raw text for the same reason addByName does: a name
-    // with no letters or digits normalises to empty, and two of those would
-    // collide on the UNIQUE index and throw out of whatever called this.
-    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
-    if (get().shops.some(s => s.nameKey === key)) return null;
-
-    const shop: Shop = {
-      id: generateId(),
-      name: trimmed,
-      nameKey: key,
-      sortOrder: get().shops.reduce((m, s) => Math.max(m, s.sortOrder), 0) + 1,
-      createdAt: new Date().toISOString(),
-      excludeFromSuggestions: false,
-      // Nothing infers this. An ordinary receipt is the default, and a store
-      // that prints a bad one is something only the user can tell us.
-      receiptStyle: 'itemized',
-      // Same rule, and the more important one here: a new store sells
-      // everything until the user says what it sells. Seeding a range from the
-      // name, or from what gets bought there later, is the inference this
-      // feature exists to replace with a statement. See Shop.aisles.
-      aisles: null,
-      // Walks the usual order until somebody arranges it during a trip there.
-      // See Shop.aisleOrder.
-      aisleOrder: null,
-    };
+    const shop = newShopRow(name, get().shops, generateId(), new Date().toISOString());
+    if (!shop) return null;
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
     return shop;
@@ -4967,15 +4899,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   renameShop(id, name) {
     const shop = get().shops.find(s => s.id === id);
     if (!shop) return false;
-    const trimmed = name.trim();
-    if (!trimmed) return false;
-
-    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
-    if (key !== shop.nameKey && get().shops.some(s => s.nameKey === key)) return false;
-
-    // Renaming costs nothing downstream — every link points at the id, which
-    // is the whole reason stores got a table instead of being name strings.
-    const updated = { ...shop, name: trimmed, nameKey: key };
+    // Renaming costs nothing downstream: every link points at the id.
+    const updated = renamedShopRow(shop, name, get().shops);
+    if (!updated) return false;
     dbUpdateGroceryShop(updated);
     set(s => ({ shops: s.shops.map(x => (x.id === id ? updated : x)) }));
     return true;
@@ -5231,38 +5157,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const item = items.find(i => i.id === itemId);
       if (!item) continue;
       const existing = itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
-      // An existing *positive* link already says this, so there's nothing to
-      // write. A negative one says the opposite, and the user is now correcting
-      // it — so this overwrites the row rather than skipping it, keeping
-      // whatever purchases it carries.
-      if (existing && !existing.unavailableAt) continue;
       if (links.some(l => l.itemId === itemId)) continue;
-
-      // purchaseCount 0 is the assertion: the user says it's here, no trip has
-      // confirmed it. Ranking reads that and declines to call it "usually".
-      const link: ItemShopLink = {
-        itemId,
-        shopId,
-        purchaseCount: existing?.purchaseCount ?? 0,
-        lastPurchasedAt: existing?.lastPurchasedAt ?? null,
-        unavailableAt: null,
-        // Carried, not dropped: dbSetItemShopLink writes the whole row, and
-        // what this store last charged is untouched by the user saying they
-        // can get it here.
-        // Carried for the same reason: saying you can get it here is not a
-        // statement about which one they stock. That's finishShopping's to
-        // record, off a purchase.
-        productId: existing?.productId ?? null,
-        // Carried, not cleared: saying you can get it here is not a statement
-        // about which box, so it neither makes nor withdraws those claims.
-        unavailableProductIds: existing?.unavailableProductIds ?? {},
-        lastPriceMinor: existing?.lastPriceMinor ?? null,
-        lastPricedAt: existing?.lastPricedAt ?? null,
-        lastPriceQuantity: existing?.lastPriceQuantity ?? null,
-        // An availability claim is not a purchase, so it records no
-        // observation — it just doesn't throw away the ones already there.
-        priceHistory: existing?.priceHistory ?? [],
-      };
+      // An existing positive link already says this (null); a negative one is
+      // corrected, keeping its purchases. See `shopLinkRow`.
+      const link = shopLinkRow(existing, itemId, shopId);
+      if (!link) continue;
       dbSetItemShopLink(link);
       links.push(link);
     }
@@ -5299,59 +5198,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const sub = items.find(i => i.id === subItemId);
     if (!item || !sub) return;
 
-    const note = opts.note?.trim() || null;
-    // Both or neither — a ratio typed on only one side isn't a ratio; see
-    // ItemSubLink.ratioFrom.
-    const ratioFrom = opts.ratioFrom?.trim() || null;
-    const ratioTo = opts.ratioTo?.trim() || null;
-    const hasRatio = !!ratioFrom && !!ratioTo;
-
-    const standing = !!opts.standing;
-
-    const createdAt = new Date().toISOString();
-    // [itemId, subItemId, ratioFrom, ratioTo, standing] per row written. The
-    // reverse row's ratio is the forward one **swapped**: it describes the
-    // other item's own unit on its own left, or a both-ways
-    // garlic↔garlic-powder link would have the reverse row claiming a clove
-    // converts to a clove.
-    const pairs: Array<[string, string, string | null, string | null, boolean]> = [
-      [itemId, subItemId, hasRatio ? ratioFrom : null, hasRatio ? ratioTo : null, standing],
-    ];
-    // The reverse row carries the same note: a caveat about how far the swap
-    // goes ("fine for frying, not for baking") is a fact about the pair, not
-    // about the direction you happened to write it from. It is never standing,
-    // though, whatever the forward row says: "always use oat milk for milk" is
-    // not also "always use milk for oat milk", and a pair pointing at each
-    // other is a rule that swaps into itself (see standingSwaps.ts).
-    if (opts.bothWays) {
-      pairs.push([subItemId, itemId, hasRatio ? ratioTo : null, hasRatio ? ratioFrom : null, false]);
-    }
-
-    const written: ItemSubLink[] = [];
-    for (const [a, b, rFrom, rTo, isStanding] of pairs) {
-      const existing = itemSubs.find(l => l.itemId === a && l.subItemId === b);
-      // Re-linking an existing pair is an edit of its note (and ratio), so the
-      // original createdAt is kept: that stamp is what orders the list, and
-      // re-ticking "both ways" must not shuffle a row the user arranged by
-      // hand.
-      const link: ItemSubLink = {
-        itemId: a,
-        subItemId: b,
-        note,
-        createdAt: existing?.createdAt ?? createdAt,
-        ratioFrom: rFrom,
-        ratioTo: rTo,
-        standing: isStanding,
-      };
-      dbSetItemSubLink(link);
-      written.push(link);
-    }
-
-    // One standing answer per item, and no pair pointing at each other. Both
-    // are cleared here rather than refused, because the user just said which
-    // one they mean — see standingSwaps.ts for what the alternative states
-    // would do to a read.
-    const cleared = standing ? clearOtherStandingLinks(itemSubs, itemId, subItemId) : [];
+    // The ratio, reverse row and standing rules are `subLinkRows`'.
+    const rows = subLinkRows(itemId, subItemId, itemSubs, opts, new Date().toISOString());
+    if (!rows) return;
+    const { written, cleared } = rows;
+    for (const link of written) dbSetItemSubLink(link);
     for (const link of cleared) dbSetItemSubLink(link);
 
     const key = (l: { itemId: string; subItemId: string }) => `${l.itemId}|${l.subItemId}`;
