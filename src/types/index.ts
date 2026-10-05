@@ -1779,6 +1779,15 @@ export interface MoodLog {
   contextTags: string[];
   /** Whatever you wanted to say about it. Null rather than empty string. */
   note: string | null;
+  /**
+   * A dream you woke up with. Null rather than empty string.
+   *
+   * A field on the entry rather than its own entity: a dream is written down in
+   * the morning, so it files under the day you woke (this entry's `dayKey`) and
+   * rides the same sync, export and day page as the note. Free text only. The
+   * app derives nothing from it (see `docs/arch/mood-log.md`).
+   */
+  dream: string | null;
 }
 
 /**

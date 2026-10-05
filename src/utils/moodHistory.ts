@@ -39,22 +39,30 @@ export interface MoodFilter {
   moods: MoodLevel[];
   /** Only entries with words in them. A switch rather than a set, so it ANDs with the rest. */
   withNote: boolean;
+  /** Only entries with a dream written on them. Same switch shape as `withNote`. */
+  withDream: boolean;
 }
 
 export const EMPTY_MOOD_FILTER: MoodFilter = {
-  symptomKeys: [], contextTagKeys: [], moods: [], withNote: false,
+  symptomKeys: [], contextTagKeys: [], moods: [], withNote: false, withDream: false,
 };
 
 export function isMoodFilterActive(filter: MoodFilter): boolean {
   return filter.symptomKeys.length > 0
     || filter.contextTagKeys.length > 0
     || filter.moods.length > 0
-    || filter.withNote;
+    || filter.withNote
+    || filter.withDream;
 }
 
 /** True when the entry has a note with something other than whitespace in it. */
 export function hasWrittenNote(log: MoodLog): boolean {
   return !!log.note && log.note.trim().length > 0;
+}
+
+/** True when the entry has a dream with something other than whitespace in it. */
+export function hasWrittenDream(log: MoodLog): boolean {
+  return !!log.dream && log.dream.trim().length > 0;
 }
 
 /** Add or remove one value from one of the filter's sets. */
@@ -77,6 +85,7 @@ export function toggleFilterValue<T>(values: readonly T[], value: T): T[] {
 export function filterMoodLogs(logs: readonly MoodLog[], filter: MoodFilter): MoodLog[] {
   return logs.filter(log => {
     if (filter.withNote && !hasWrittenNote(log)) return false;
+    if (filter.withDream && !hasWrittenDream(log)) return false;
     if (filter.moods.length > 0 && (log.mood === null || !filter.moods.includes(log.mood))) {
       return false;
     }
@@ -93,23 +102,66 @@ export function filterMoodLogs(logs: readonly MoodLog[], filter: MoodFilter): Mo
 }
 
 /**
- * The entries whose note contains every word of `query`, in any order, ignoring
- * case. An empty query keeps everything.
+ * The entries whose note or dream contains every word of `query`, in any order,
+ * ignoring case. An empty query keeps everything.
  *
- * Notes only: symptoms and tags already have their own filter chips, and
+ * Written text only: symptoms and tags already have their own filter chips, and
  * matching them here too would make a search for "head" answer with every
- * headache whether or not you wrote the word. Plain substring matching, for the
- * reason `symptomKey` refuses anything fuzzier: a search that quietly returns
- * near-misses is an answer about words the person did not write.
+ * headache whether or not you wrote the word. The note and the dream are read
+ * as one text, so every word has to be in the same entry but may be split
+ * between the two. Plain substring matching, for the reason `symptomKey`
+ * refuses anything fuzzier: a search that quietly returns near-misses is an
+ * answer about words the person did not write.
  */
 export function searchMoodLogs(logs: readonly MoodLog[], query: string): MoodLog[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [...logs];
   return logs.filter(log => {
-    if (!hasWrittenNote(log)) return false;
-    const text = log.note!.toLowerCase();
+    const text = [
+      hasWrittenNote(log) ? log.note! : '',
+      hasWrittenDream(log) ? log.dream! : '',
+    ].join('\n').toLowerCase();
+    if (!text.trim()) return false;
     return words.every(w => text.includes(w));
   });
+}
+
+/**
+ * Plain counts of the dreams written down. Counting one thing has no minimum
+ * (see the header), so nothing here is gated on a sample size.
+ */
+export interface DreamStats {
+  /** Days with at least one dream. The headline number, since a day is the unit. */
+  dayCount: number;
+  /** Dreams written, which is larger whenever a day carries more than one. */
+  entryCount: number;
+  /** Days with a dream whose key starts with `monthPrefix` (`2026-10`). */
+  dayCountInMonth: number;
+  /** Most recent day with a dream, or null when there are none. `yyyy-MM-dd`. */
+  lastDayKey: string | null;
+}
+
+/**
+ * How many dreams the log holds, and when the last one was.
+ *
+ * A day with no dream is simply not counted: it is not "a day without a dream",
+ * since nothing here can tell not dreaming from not writing it down.
+ */
+export function dreamStats(logs: readonly MoodLog[], monthPrefix: string): DreamStats {
+  const days = new Set<string>();
+  let entryCount = 0;
+  for (const log of logs) {
+    if (!hasWrittenDream(log)) continue;
+    entryCount++;
+    days.add(log.dayKey);
+  }
+  const sorted = [...days].sort();
+  return {
+    dayCount: days.size,
+    entryCount,
+    dayCountInMonth: sorted.filter(k => k.startsWith(monthPrefix)).length,
+    lastDayKey: sorted.length > 0 ? sorted[sorted.length - 1] : null,
+  };
 }
 
 /**
@@ -316,7 +368,7 @@ function lookBackLabel(months: number): string {
  * Days you wrote something on, one month, three, six and then each year back
  * from `todayDayKey`, the diary's "on this day".
  *
- * **Only entries with a note count.** A mood with no words is a number, and a
+ * **Only entries with a note or a dream count.** A mood with no words is a number, and a
  * number from a year ago with nothing to say about it is not something to
  * resurface. **A day with nothing to show is absent, never filled in** (rule 3
  * of `moodInsights.ts`, here as a layout rule): no placeholder for the month
@@ -333,7 +385,7 @@ export function lookBacks(logs: readonly MoodLog[], todayDayKey: string): LookBa
   for (const months of LOOK_BACK_MONTHS) {
     const dayKey = format(addMonths(today, -months), 'yyyy-MM-dd');
     const written = logs
-      .filter(l => l.dayKey === dayKey && hasWrittenNote(l))
+      .filter(l => l.dayKey === dayKey && (hasWrittenNote(l) || hasWrittenDream(l)))
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
     if (written.length > 0) found.push({ label: lookBackLabel(months), dayKey, logs: written });
     if (found.length === MAX_LOOK_BACKS) break;
