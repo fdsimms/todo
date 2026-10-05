@@ -124,6 +124,8 @@ export interface FocusSettingsSource {
   focusDefaultWorkMinutes: number;
   focusRestAfterTasks: number | null;
   focusRestAfterMinutes: number | null;
+  /** The master switch. Off holds every break out of a plan while the trigger values below it stay stored. */
+  focusBreaksEnabled: boolean;
   focusRestMinutes: number;
   focusLongRestEvery: number | null;
   focusLongRestMinutes: number;
@@ -140,18 +142,21 @@ export function focusPlanOptionsFrom(settings: FocusSettingsSource): FocusPlanOp
   return {
     workCapMinutes: settings.focusWorkCapMinutes,
     defaultWorkMinutes: settings.focusDefaultWorkMinutes,
-    restAfterTasks: settings.focusRestAfterTasks,
-    restAfterMinutes: settings.focusRestAfterMinutes,
+    restAfterTasks: settings.focusBreaksEnabled ? settings.focusRestAfterTasks : null,
+    restAfterMinutes: settings.focusBreaksEnabled ? settings.focusRestAfterMinutes : null,
     restMinutes: settings.focusRestMinutes,
     longRestEvery: settings.focusLongRestEvery,
     longRestMinutes: settings.focusLongRestMinutes,
   };
 }
 
-/** True when neither rest trigger is on, so the plan will hold no breaks. */
+/** True when the breaks switch is off or neither rest trigger is on, so the plan will hold no breaks. */
 export function focusRestsDisabled(
-  settings: Pick<FocusSettingsSource, 'focusRestAfterTasks' | 'focusRestAfterMinutes'>,
+  settings: Pick<FocusSettingsSource, 'focusRestAfterTasks' | 'focusRestAfterMinutes'> & {
+    focusBreaksEnabled?: boolean;
+  },
 ): boolean {
+  if (settings.focusBreaksEnabled === false) return true;
   const tasksOff = settings.focusRestAfterTasks == null || settings.focusRestAfterTasks <= 0;
   const minutesOff = settings.focusRestAfterMinutes == null || settings.focusRestAfterMinutes <= 0;
   return tasksOff && minutesOff;

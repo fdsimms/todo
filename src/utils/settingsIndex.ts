@@ -674,6 +674,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['pomodoro', 'focus', 'timer', 'deep work', 'block', 'session', 'cap'] },
   { id: 'focusDefaultWorkMinutes', groupId: 'tasksProjects', label: 'Length without an estimate', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'unestimated', 'default', 'fallback'] },
+  { id: 'focusBreaksEnabled', groupId: 'tasksProjects', label: 'Breaks in focus sessions', section: 'Focus sessions', simple: true,
+    keywords: ['pomodoro', 'rest', 'no breaks', 'skip breaks', 'default'] },
   { id: 'focusRestAfterMinutes', groupId: 'tasksProjects', label: 'Break after this much work', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'interval', 'how often'] },
   { id: 'focusRestAfterTasks', groupId: 'tasksProjects', label: 'Break after this many tasks', section: 'Focus sessions', simple: true,

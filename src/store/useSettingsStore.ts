@@ -633,6 +633,9 @@ interface SettingsStore {
   // someone who finds watching a countdown add pressure to the work rather
   // than help it. Off by default, like every other display preference here.
   focusHideTimers: boolean;
+  // Master switch for breaks in a focus session. Off keeps the trigger and length
+  // values stored but plans none, so turning it back on restores them. On by default.
+  focusBreaksEnabled: boolean;
   // Whether the app shows the groceries / recipes / meal plan trio at all —
   // one switch for all three because they aren't separable: a meal plan entry
   // points at a recipe by id, and a recipe reaches the grocery catalog by
@@ -1825,6 +1828,7 @@ interface SettingsStore {
   setTripLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
   setFocusHideTimers: (on: boolean) => void;
+  setFocusBreaksEnabled: (on: boolean) => void;
   setKitchenEnabled: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
@@ -2071,6 +2075,7 @@ const DEFAULT_SETTINGS = {
   tripLiveActivity: true,
   focusLiveActivity: true,
   focusHideTimers: false,
+  focusBreaksEnabled: true,
   collapsedCategories: [] as string[],
   collapsedRecipeSections: [] as string[],
   collapsedGroceryGroups: [] as string[],
@@ -2500,6 +2505,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   tripLiveActivity: true,
   focusLiveActivity: true,
   focusHideTimers: false,
+  focusBreaksEnabled: true,
   collapsedCategories: [],
   collapsedRecipeSections: [],
   collapsedGroceryGroups: [],
@@ -2781,6 +2787,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // And again for the focus session's.
     const focusLiveActivity = dbGetSetting('focusLiveActivity') !== 'false';
     const focusHideTimers = dbGetSetting('focusHideTimers') === 'true';
+    const focusBreaksEnabled = dbGetSetting('focusBreaksEnabled') !== 'false';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
@@ -3268,6 +3275,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       filterEfforts,
       filterHasReminder,
       filterPriorities,
+      focusBreaksEnabled,
       focusDefaultWorkMinutes,
       focusHideTimers,
       focusLiveActivity,
@@ -4412,6 +4420,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFocusLiveActivity(on: boolean) {
     dbSetSetting('focusLiveActivity', on ? 'true' : 'false');
     set({ focusLiveActivity: on });
+  },
+
+  setFocusBreaksEnabled(on: boolean) {
+    dbSetSetting('focusBreaksEnabled', on ? 'true' : 'false');
+    set({ focusBreaksEnabled: on });
   },
 
   setFocusHideTimers(on: boolean) {

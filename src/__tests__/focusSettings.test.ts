@@ -92,6 +92,7 @@ describe('focusPlanOptionsFrom', () => {
     focusDefaultWorkMinutes: 20,
     focusRestAfterTasks: 2,
     focusRestAfterMinutes: 40,
+    focusBreaksEnabled: true,
     focusRestMinutes: 6,
     focusLongRestEvery: 3,
     focusLongRestMinutes: 20,
@@ -107,6 +108,27 @@ describe('focusPlanOptionsFrom', () => {
       longRestEvery: 3,
       longRestMinutes: 20,
     });
+  });
+});
+
+describe('focusBreaksEnabled', () => {
+  it('plans no breaks when off, without touching the stored triggers', () => {
+    const opts = focusPlanOptionsFrom({
+      focusWorkCapMinutes: 25,
+      focusDefaultWorkMinutes: 25,
+      focusRestAfterTasks: 2,
+      focusRestAfterMinutes: 40,
+      focusBreaksEnabled: false,
+      focusRestMinutes: 5,
+      focusLongRestEvery: 4,
+      focusLongRestMinutes: 15,
+    });
+    expect(opts.restAfterTasks).toBeNull();
+    expect(opts.restAfterMinutes).toBeNull();
+  });
+
+  it('counts as disabled even with triggers set', () => {
+    expect(focusRestsDisabled({ focusRestAfterTasks: 2, focusRestAfterMinutes: 25, focusBreaksEnabled: false })).toBe(true);
   });
 });
 
