@@ -124,3 +124,21 @@ describe('batches', () => {
     expect(ledger().find(e => e.title === 'Later')?.batchId ?? null).toBeNull();
   });
 });
+
+describe('records an undo can find again', () => {
+  it('names the grocery item and the meal an entry is about', () => {
+    const outcome = replica.addGroceryItem('ledger test kefir');
+    const meal = replica.planMeal({ date: '2026-10-05', slot: 'dinner', title: 'Soup' });
+    const entries = ledger();
+    expect(entries.find(e => e.subject === 'grocery')?.recordId).toBe(outcome.item.id);
+    expect(entries.find(e => e.subject === 'meal')?.recordId).toBe(meal.id);
+  });
+
+  it('records a rule list as the whole list before and after, named by its type', () => {
+    const before = replica.ruleLists().title;
+    replica.setRuleList('title', []);
+    const entry = ledger().find(e => e.subject === 'automation')!;
+    expect(entry.recordId).toBe('title');
+    expect(entry.revert).toEqual({ before: { rules: before }, after: { rules: [] } });
+  });
+});

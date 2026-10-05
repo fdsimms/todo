@@ -22,12 +22,15 @@
  */
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
+import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
 
 export interface AgentLedgerEntry {
   action: UnattendedEntry['action'];
   subject: UnattendedSubject;
   title: string;
   taskId: string | null;
+  /** The row an entry about something other than a task is about. See `UnattendedEntry.recordId`. */
+  recordId?: string | null;
   count?: number;
   revert?: UnattendedRevert | null;
 }
@@ -58,6 +61,17 @@ export function taskRevert(before: Task, after: Task): UnattendedRevert | null {
   return Object.keys(out.after).length > 0 ? out : null;
 }
 
+/** `taskRevert` for a project, over only the fields a restore can write back (`PROJECT_REVERT_FIELDS`). */
+export function projectRevert(before: Record<string, unknown>, after: Record<string, unknown>): UnattendedRevert | null {
+  const out: UnattendedRevert = { before: {}, after: {} };
+  for (const key of PROJECT_REVERT_FIELDS) {
+    if (same(before[key], after[key])) continue;
+    out.before[key] = before[key] ?? null;
+    out.after[key] = after[key] ?? null;
+  }
+  return Object.keys(out.after).length > 0 ? out : null;
+}
+
 export function toLedgerEntries(
   entries: readonly AgentLedgerEntry[],
   newId: () => string,
@@ -72,6 +86,7 @@ export function toLedgerEntries(
     kind: null,
     title: e.title,
     taskId: e.taskId,
+    recordId: e.recordId ?? null,
     count: e.count ?? 1,
     actor: 'agent',
     subject: e.subject,
@@ -160,8 +175,20 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     updateProject(id, patch) {
+      const before = replica.projects().find(p => p.id === id) ?? null;
       const project = replica.updateProject(id, patch);
-      log({ action: patch.completed ? 'completed' : 'edited', subject: 'project', title: project.title, taskId: null });
+      // A completion is a state change with no restore (the fields below cannot
+      // reopen it), so only a plain edit carries a revert.
+      log({
+        action: patch.completed ? 'completed' : 'edited',
+        subject: 'project',
+        title: project.title,
+        taskId: null,
+        recordId: id,
+        revert: before && !patch.completed
+          ? projectRevert(before as unknown as Record<string, unknown>, project as unknown as Record<string, unknown>)
+          : null,
+      });
       return project;
     },
 
@@ -188,25 +215,25 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
-      if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });
+      if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null, recordId: outcome.item.id });
       return outcome;
     },
 
     setGroceryChecked(id, checked) {
       const item = replica.setGroceryChecked(id, checked);
-      log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null });
+      log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
     },
 
     removeFromGroceryList(id) {
       const item = replica.removeFromGroceryList(id);
-      log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null });
+      log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
     },
 
     planMeal(draft) {
       const entry = replica.planMeal(draft);
-      log({ action: 'created', subject: 'meal', title: entry.title, taskId: null });
+      log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
       return entry;
     },
 
@@ -218,7 +245,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     logFood(input) {
       const entry = replica.logFood(input);
-      log({ action: 'created', subject: 'food', title: entry.label, taskId: null });
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
       return entry;
     },
 
@@ -226,19 +253,30 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     // the Activity list would put somebody's health on a screen about the app.
     logMood(input) {
       const entry = replica.logMood(input);
-      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null });
+      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null, recordId: entry.id });
       return entry;
     },
 
     logMedication(input) {
       const entry = replica.logMedication(input);
-      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null });
+      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null, recordId: entry.id });
       return entry;
     },
 
+    // The whole list, before and after: a rule list is one stored blob, so a
+    // restore writes the old blob back and "still how the agent left it" is a
+    // comparison of two lists.
     setRuleList(type, rules) {
+      const before = replica.ruleLists()[type];
       replica.setRuleList(type, rules);
-      log({ action: 'edited', subject: 'automation', title: `${RULE_LIST_LABEL[type]} rules`, taskId: null });
+      log({
+        action: 'edited',
+        subject: 'automation',
+        title: `${RULE_LIST_LABEL[type]} rules`,
+        taskId: null,
+        recordId: type,
+        revert: { before: { rules: before }, after: { rules: replica.ruleLists()[type] } },
+      });
     },
 
     setGeneratorEnabled(key, on) {
