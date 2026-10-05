@@ -1418,7 +1418,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     justifyContent: 'center',
   },
   addBtnDisabled: { backgroundColor: colors.bgTertiary },
-  tooltipRow: { marginTop: -4, marginBottom: spacing.sm },
+  // Zero height with the bubble overflowing it: a popover over the fields, not a
+  // row that pushes them down and clips the card's last row off its capped height.
+  tooltipRow: { height: 0, marginTop: -4, zIndex: 2, overflow: 'visible' },
   tooltipAnchor: { alignSelf: 'flex-start' },
   tooltipCaret: {
     width: 0,

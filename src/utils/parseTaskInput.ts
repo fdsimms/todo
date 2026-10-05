@@ -1889,7 +1889,11 @@ const MIN_PREFIX_LENGTH = 3;
  */
 function mentionResolveKey(person: PersonToken): string {
   const nickname = person.nickname.trim();
-  return nickname || person.name.trim();
+  if (nickname) return nickname;
+  const name = person.name.trim();
+  // A first name, since the title keeps what's written after "@" and a full
+  // name can't be a token anyway. A business's name is indexed whole.
+  return person.kind === 'business' ? name : name.split(/\s+/)[0];
 }
 
 function buildPersonNameIndex(people: PersonToken[]) {
