@@ -653,6 +653,13 @@ export interface Replica {
   createTask(draft: Partial<TaskDraft>): Task;
 
   /**
+   * Give a just-created weekly target a first week scaled to the days left in
+   * it, the default the app's own creation paths apply (`firstWeekPatch`).
+   * Does nothing to any other task, or on the first day of a week.
+   */
+  scaleFirstWeek(id: string): void;
+
+  /**
    * Complete one task, exactly as ticking it in the app would.
    *
    * Every row comes from `buildCompletion` (`src/utils/taskCompletion.ts`),
@@ -997,6 +1004,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
   const templateUtils = require('../../src/utils/templateUtils') as TemplateUtilsModule;
   const taskDraft = require('../../src/utils/taskDraft') as TaskDraftModule;
+  const quotaSchedule = require('../../src/utils/quotaSchedule') as typeof import('../../src/utils/quotaSchedule');
   const completion = require('../../src/utils/taskCompletion') as TaskCompletionModule;
   const moves = require('../../src/utils/taskMoves') as TaskMovesModule;
   const awayShift = require('../../src/utils/awayShift') as typeof import('../../src/utils/awayShift');
@@ -2247,6 +2255,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbInsertTask(task);
       refresh();
       return task;
+    },
+
+    scaleFirstWeek(id: string): void {
+      const task = tasks().find(t => t.id === id);
+      if (!task) return;
+      const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
+      const anchor = quotaSchedule.firstWeekAnchor(
+        task.dueDate ? dates.getTaskDayStart(new Date(task.dueDate), dayResetTime) : null,
+        dates.getCurrentDayStart(),
+      );
+      const patch = quotaSchedule.firstWeekPatch(task, anchor, weekStartsOn);
+      if (patch) replica.updateTask(id, patch);
     },
 
     completionProblem(id: string, options?: CompletionOptions): string | null {

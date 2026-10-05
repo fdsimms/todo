@@ -759,6 +759,29 @@ describe('the replica', () => {
     expect(() => replica.createTask({ title: '   ' })).toThrow('needs a title');
   });
 
+  // The app's own default for a weekly target set up midweek. Thursday Aug 27
+  // 2026 with the replica's Sunday week start leaves 3 days: 4 a week is 2.
+  it('scales a new weekly target\'s first week to the days left in it', () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    jest.setSystemTime(new Date(2026, 7, 27, 12));
+    try {
+      const weekly = replica.createTask({
+        title: 'Strength', targetCount: 4, quotaPeriod: 'week', recurrenceType: 'weekly',
+        dueDate: new Date(2026, 7, 27, 12).toISOString(),
+      });
+      replica.scaleFirstWeek(weekly.id);
+      const scaled = replica.taskById(weekly.id)!;
+      expect(scaled.targetCount).toBe(2);
+      expect(scaled.seriesDefaults).toEqual({ targetCount: 4 });
+
+      const daily = replica.createTask({ title: 'Water', targetCount: 8, quotaPeriod: 'day', recurrenceType: 'daily' });
+      replica.scaleFirstWeek(daily.id);
+      expect(replica.taskById(daily.id)!.targetCount).toBe(8);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('leaves the reminder to the device that receives it', () => {
     // addTask schedules a notification around this; the replica deliberately
     // does not, because it has no notification centre and the phone's own

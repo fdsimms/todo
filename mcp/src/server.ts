@@ -799,6 +799,8 @@ const taskFieldsShape = {
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+    firstWeek: z.enum(['fewer', 'full']).optional()
+      .describe('create_task, per week only: "fewer" (the default) scales the first week to the days left in it, as the app does (3 a week set on a Thursday asks for 2 that week, then 3). "full" asks for the whole count from the start.'),
   }).nullable().optional()
     .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
   timed: z.object({
