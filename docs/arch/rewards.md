@@ -40,9 +40,12 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 
 ## Difficulty
 
-`Task.difficulty` (Easy / Normal / Hard) says how hard a task is to make yourself do, which the time
+`Task.difficulty` (Trivial / Easy / Normal / Hard) says how hard a task is to make yourself do, which the time
 estimate can't: a two-minute call you dread and an hour of something you enjoy. Hard doubles the
-effort bucket's value and Easy halves it, never below 1. Every place it can be set (the task, template
+effort bucket's value and Easy halves it, never below 1. **Trivial earns nothing**: no base, no
+streak bonus, no bounty. It is the one rating that skips the floor of 1, for the tasks you want in
+the list but don't want paid. A miss costs nothing for the same reason (a loss is capped by what the
+task would earn), and a trivial task can't hold a bounty (`canPostBounty`, `isBountyLive`). Every place it can be set (the task, template
 item and follow-up task editors, quick add's chip, the bulk bar, Backfill) offers it only while
 rewards are on, since nothing else reads it.
 

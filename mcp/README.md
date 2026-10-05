@@ -103,6 +103,10 @@ only the fallback until the first sync.
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or a separate one by `listId`, or the whole catalog with `onListOnly: false`. An item only on another list is not included. |
 | `list_grocery_lists` | Every list: home first, then the person's own, each with its counts and the trip it shops for. Which list the phone is showing does not sync, so it is not reported. |
+| `list_pantry` | What the app has a reason to think is in the kitchen: pantry, fridge and freezer, each with the app's reason, use-by day and freshness. `filter: use_up`, `frozen` or `fridge` narrows it. Has no quantities, on purpose. |
+| `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
+| `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
+| `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
@@ -154,6 +158,12 @@ only the fallback until the first sync.
 | `add_grocery_item` | **Write.** Puts something on the home list, or a separate one by `listId`, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or a separate one by `listId`, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list, or a separate one by `listId`. Does not delete it. |
+| `update_pantry_item` | **Write.** One item's pantry state: on hand, out (with how it went), staple, frozen, opened, running low, use-by day, shelf life, use-up task. Several fields per call. |
+| `update_pantry_box` | **Write.** The same for one packet or frozen portion of an item. |
+| `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
+| `answer_pantry_review` | **Write.** Records the person's answers (have, low, out) to `pantry_review` cards. |
+| `log_leftover` | **Write.** Logs a container of cooked food in the fridge or freezer. |
+| `update_leftover` | **Write.** Freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no
@@ -182,6 +192,12 @@ near-duplicate that splits one shelf item in two.
 For the same reason `remove_from_grocery_list` parks rather than deletes, and there is deliberately
 no tool that deletes a shelf item: dropping one destroys a substitute or a price history with no
 undo, and it is not the sort of thing to do on a model's say-so.
+
+The pantry tools are the same rows through the same rules: `src/utils/pantryWrite.ts` decides what each
+change does to a row, and `useGroceryStore` and `useLeftoverStore` call it too. The one thing they
+do not write is the "Use up X" task, which goes through the task store; the phone reconciles it from
+the rows the next time it opens. Linking a leftover to the recipe it came from, logging cooked weight, a scanned or receipt
+batch and Siri's mark-as-used-up stay in the app.
 
 The three log tools are **empty until the phone sends the logs**: they reach the server only with
 Settings → Sync → **Include health logs** turned on, which is off by default. See "The health logs

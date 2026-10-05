@@ -41,7 +41,7 @@ export interface SerializedTask {
   timeSegments?: string[];
   /** 'Low' | 'Medium' | 'High' | 'Urgent'. Absent for the 'None' default. */
   priority?: string;
-  /** 'easy' | 'normal' | 'hard'. Absent when the task was never rated. */
+  /** 'trivial' | 'easy' | 'normal' | 'hard'. Absent when the task was never rated. */
   difficulty?: string;
   estimatedMinutes?: number;
   /** Present only mid-chain, and then it is where `title` came from. */

@@ -246,7 +246,7 @@ export function parseFollowUpTaskDraft(raw: string | null | undefined): FollowUp
     tags: Array.isArray(d.tags) ? d.tags.filter((t): t is string => typeof t === 'string') : [],
     priority: isPriority(d.priority) ? d.priority : base.priority,
     effort: isEffort(d.effort) ? d.effort : base.effort,
-    difficulty: d.difficulty === 'easy' || d.difficulty === 'normal' || d.difficulty === 'hard' ? d.difficulty : null,
+    difficulty: d.difficulty === 'trivial' || d.difficulty === 'easy' || d.difficulty === 'normal' || d.difficulty === 'hard' ? d.difficulty : null,
     estimatedMinutes: typeof d.estimatedMinutes === 'number' ? d.estimatedMinutes : null,
     timeSegments: Array.isArray(d.timeSegments)
       ? d.timeSegments.filter((t): t is TimeOfDay => TIME_SEGMENTS.includes(t as TimeOfDay))
@@ -263,7 +263,7 @@ export function parseFollowUpTaskDraft(raw: string | null | undefined): FollowUp
   };
 }
 
-const DIFFICULTY_LABELS: Record<Difficulty, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+const DIFFICULTY_LABELS: Record<Difficulty, string> = { trivial: 'Trivial', easy: 'Easy', normal: 'Normal', hard: 'Hard' };
 
 const TIME_SEGMENTS: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
 

@@ -59,7 +59,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     // round rowToTask takes it, and for the same reason: a stored blob from an
     // older build has no polarity, and an ordinary task is the safe misreading.
     polarity: raw.polarity === 'negative' ? 'negative' : 'positive',
-    difficulty: raw.difficulty === 'easy' || raw.difficulty === 'normal' || raw.difficulty === 'hard' ? raw.difficulty : null,
+    difficulty: raw.difficulty === 'trivial' || raw.difficulty === 'easy' || raw.difficulty === 'normal' || raw.difficulty === 'hard' ? raw.difficulty : null,
     recurrenceType: raw.recurrenceType ?? 'none',
     recurrenceInterval: raw.recurrenceInterval ?? 1,
     recurrenceDays: raw.recurrenceDays ?? [],
