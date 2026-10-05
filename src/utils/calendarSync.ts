@@ -590,7 +590,9 @@ export async function presentEventCreate(fields: {
   notes?: string;
   alarms?: Alarm[];
 }): Promise<TimeBlockSheetResult> {
-  if (Platform.OS !== 'ios') return NO_RESULT;
+  // Demo mode refuses as the other device writes here do: the fields come
+  // off seeded fiction, and the sheet would write a real event from them.
+  if (Platform.OS !== 'ios' || isDemoModeActive()) return NO_RESULT;
   try {
     const result = await calendar().createEventInCalendarAsync({
       title: fields.title,

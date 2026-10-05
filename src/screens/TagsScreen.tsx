@@ -108,7 +108,11 @@ export function TagsScreen() {
       },
     });
   };
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  // The list this serves sits inside the tag detail SheetModal this screen
+  // renders itself, so the hook is called from outside that sheet: `ownsSheet`,
+  // or it reads its own sheet as a cover and switches keyboard handling off
+  // for exactly as long as the sheet is open (see the hook's doc comment).
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
   // Lifts the expanded row's cell above the row below it — this list is a
   // genuine FlatList, unlike Today/Later/a project's own list, so the row
   // itself can't just carry a zIndex style the way ReorderableList's

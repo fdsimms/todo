@@ -555,7 +555,7 @@ describe('importReminders — the grocery destination', () => {
     const outcome = await freshSync().importReminders();
 
     expect(outcome.imported).toBe(1);
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
     expect(mockAddTask).not.toHaveBeenCalled();
   });
 
@@ -676,7 +676,7 @@ describe('importReminders — the grocery destination', () => {
     expect(mockAddTask).toHaveBeenCalledTimes(1);
     expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'call the dentist' }));
     expect(mockAddByName).toHaveBeenCalledTimes(1);
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
   });
 
   // One misconfigured destination must not strand the other.
@@ -700,7 +700,7 @@ describe('importReminders — the grocery destination', () => {
     const outcome = await freshSync().importReminders();
 
     expect(outcome.imported).toBe(1);
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
   });
 });
 
@@ -946,7 +946,7 @@ describe('importReminders — groceries left in place', () => {
     const outcome = await freshSync().importReminders();
 
     expect(outcome).toMatchObject({ imported: 1, skipped: 0 });
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
 

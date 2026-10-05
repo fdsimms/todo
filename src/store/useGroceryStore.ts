@@ -584,11 +584,14 @@ interface GroceryStore extends UndoHistoryActions {
        * Which list to add to. Omitted — every hand-driven caller — this is the
        * active list, which is the one rule the switcher rests on.
        *
-       * Exactly one caller names one: the Reminders mirror's import half, which
-       * is pinned to the list at home (see `mirrorItems`). Without it, a
-       * reminder imported while the Airbnb list was on screen would land there,
-       * and the mirror's very next pass would read the row as gone from home
-       * and delete the reminder it had just come from.
+       * The callers that name one are the two halves of the Reminders sync in
+       * `remindersImportSync.ts` (the mirror's import, see `mirrorItems`, and
+       * the capture drain), both pinned to the list at home: neither is a
+       * person looking at the grocery screen, so the active list is whatever
+       * happens to be open. Without it, a reminder imported while the Airbnb
+       * list was on screen would land there, and the mirror's very next pass
+       * would read the row as gone from home and delete the reminder it had
+       * just come from.
        */
       listId?: string | null;
     }
@@ -1077,11 +1080,11 @@ interface GroceryStore extends UndoHistoryActions {
    *
    * A row deleted since the answer is left alone rather than resurrected.
    *
-   * `entry` is that row's membership of the list being shown as it stood before
-   * the answer, or null for "it wasn't in that trolley". It has to be passed
+   * `entry` is that row's membership of the home list as it stood before the
+   * answer, or null for "it wasn't in that trolley". It has to be passed
    * rather than derived, for the same reason the item snapshot does: "Running
-   * low" puts a row on the list, and only a snapshot taken beforehand knows
-   * whether it was already there. See `GroceryListEntry`.
+   * low" puts a row on the home list, and only a snapshot taken beforehand
+   * knows whether it was already there. See `GroceryListEntry`.
    *
    * `portions` is what `answerPantryReview` returned for the answer being
    * undone, put back unless they're already there.
@@ -3839,8 +3842,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // onList — that reach is the whole reason this answer is in the deck (see
     // PantryReviewAnswer), so routing round it would leave the middle answer
     // with nothing to show for itself. It's called first and the stamp below
-    // then rides on the row it wrote.
-    if (answer === 'low') get().setRunningLow(itemId, true, { registerUndo: false });
+    // then rides on the row it wrote. Onto the list at home (`listId: null`),
+    // the supply sweep's rule: the deck reviews the pantry at home, and a row
+    // flagged low onto an away list (the active one, once checkAwayGroceryList
+    // has switched to it) is never restocked by that trip and never offered to
+    // the home list after it.
+    if (answer === 'low') get().setRunningLow(itemId, true, { registerUndo: false, listId: null });
     const item = get().items.find(i => i.id === itemId);
     if (!item) return [];
     // The other two answers are one column, which is why they share a path:
@@ -3913,11 +3920,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // setRunningLow), so it's the one Undo has membership to put back. The
     // entry snapshot is what says whether the row was in this trolley before
     // the card was answered — the item alone can't, now that membership is a
-    // table.
-    const listId = get().activeListId;
+    // table. The home list, which is the one the answer joined, rather than
+    // whichever list is active at undo time: read off the active list, an
+    // undo tapped after the deck had switched trolleys left the home entry
+    // standing and took the row off a list the answer never touched.
     if (entry) writeMembership({ upsert: [entry] });
-    else if (entryFor(get().listEntries, item.id, listId)) {
-      writeMembership({ remove: [{ itemId: item.id, listId }] });
+    else if (entryFor(get().listEntries, item.id, null)) {
+      writeMembership({ remove: [{ itemId: item.id, listId: null }] });
     }
   },
 
@@ -4088,6 +4097,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   undoForAdds(addedIds, preexisting) {
+    // The list the adds went to, taken now rather than at undo time: every
+    // caller adds to the active list, and a shake after switching trolleys
+    // otherwise parked the rows off whichever list was open by then, leaving
+    // them on the one they were added to.
+    const listId = get().activeListId;
     const currentLinks = () => linkCounts({
       products: get().itemProducts,
       subs: get().itemSubs,
@@ -4119,7 +4133,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         else toPark.push(snap.id);
       }
       if (toDelete.length > 0) get().deleteItems(toDelete);
-      if (toPark.length > 0) get().removeFromListMany(toPark);
+      if (toPark.length > 0) get().removeFromListMany(toPark, { listId });
     };
   },
 

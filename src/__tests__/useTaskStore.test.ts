@@ -15586,6 +15586,21 @@ describe('deleting a use-up task', () => {
     expect(useTaskStore.getState().tasks.find(t => t.id === task.id)).toBeDefined();
   });
 
+  // Deleting history is not declining the generator: a completed use-up task
+  // is one that was done, and clearing the Logbook used to write the item's
+  // "never again" for every one of them.
+  it('clearing the Logbook with a completed use-up row writes no opt-out', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
+    useTaskStore.getState().completeTask(task.id);
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)?.completed).toBe(true);
+
+    useTaskStore.getState().clearLogbook();
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)).toBeUndefined();
+    expect(useGroceryStore.getState().items[0].useUpTask).toBeNull();
+  });
+
   it('leaves an ordinary task\'s delete alone', () => {
     seedItem();
     const task = useTaskStore.getState().addTask({ title: 'Buy stamps' });

@@ -219,6 +219,13 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // right now without being recreated on every render to stay fresh.
   const formRef = useRef(form);
   useEffect(() => { formRef.current = form; }, [form]);
+  // Which opening a photo read belongs to. Reading a label takes a moment,
+  // and a person can close the sheet (or the host can open it on another
+  // food) while it's being read; the figures then landed in the form of
+  // whatever the sheet was showing by the time they arrived. Bumped on every
+  // open and close and on a change of food, and read back after each await.
+  const openingRef = useRef(0);
+  useEffect(() => { openingRef.current += 1; }, [visible, foodName]);
 
   useEffect(() => {
     if (!visible) return;
@@ -239,7 +246,10 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   }, [visible]);
 
   const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
+    const opening = openingRef.current;
+    const stillHere = () => openingRef.current === opening;
     const picked = await pickRecipePhoto(source);
+    if (!stillHere()) return;
     if (picked.status === 'canceled') return;
     if (picked.status === 'denied') {
       Alert.alert(
@@ -261,6 +271,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       // edge cut lands hardest on exactly the rows worth reading. Same call
       // `receiptOcr`'s path makes, for the same reason.
       let read = await readLabelPhoto(picked.photo.sourceUri);
+      if (!stillHere()) return;
       let aiFailure: string | null = null;
       // Vision transcribes for free and gets most panels; a curved tub, a
       // steep angle, or glare it couldn't see past gets a second try from
@@ -273,6 +284,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
         } catch (e) {
           aiFailure = describeAIError(e);
         }
+        if (!stillHere()) return;
       }
       if (!read) {
         haptics.warning();
@@ -299,7 +311,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       // earlier in this session would otherwise sit stale beside it.
       setScanNote(null);
     } finally {
-      setReading(false);
+      // The reopen's own reset already lowered it for a read left behind, and
+      // the new opening may have a read of its own under way.
+      if (stillHere()) setReading(false);
     }
   }, []);
 

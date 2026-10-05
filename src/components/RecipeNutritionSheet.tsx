@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -193,23 +193,38 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
     setEstimate(null);
     setEstimateError(null);
   }, [estimateKey]);
+  // What the request in flight was asked about, read back after the await:
+  // the reset above clears a guess when the recipe changes, but a reply
+  // already on its way landed after it, so one recipe's estimate sat under
+  // another's lines (or under a sheet that had been closed). Same guard
+  // CookModeSheet's `stillHere` keeps for a step left behind.
+  const estimateKeyRef = useRef(estimateKey);
+  useEffect(() => { estimateKeyRef.current = estimateKey; }, [estimateKey]);
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   const runEstimate = async () => {
     haptics.tap();
     setEstimating(true);
     setEstimateError(null);
+    const askedFor = estimateKey;
+    const stillHere = () => visibleRef.current && estimateKeyRef.current === askedFor;
     try {
       const lines = reading.lines.map(line =>
         line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
       const next = await estimateRecipeNutrition(recipeName, servings, lines);
+      if (!stillHere()) return;
       setEstimate(next);
       haptics.success();
     } catch (e) {
+      if (!stillHere()) return;
       // The reason, not a blanket "try again": no key, demo mode and a
       // reply with nothing usable in it are not fixed by waiting.
       setEstimateError(describeAIError(e));
       haptics.error();
     } finally {
+      // Cleared whichever way it went: the spinner belongs to this sheet, not
+      // to the recipe it was asked about.
       setEstimating(false);
     }
   };

@@ -153,7 +153,11 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       // the item as the deck was built, which may be a few answers old by now.
       const state = useGroceryStore.getState();
       const live = state.items.find(i => i.id === card.item.id);
-      const entry = entryFor(state.listEntries, card.item.id, state.activeListId);
+      // The home list, not the active one: "Running low" joins the list at
+      // home (see answerPantryReview), so that is the membership Undo has to
+      // know about. Read off the active list it said "wasn't in this trolley"
+      // for a row the home list already held, and Undo took it off.
+      const entry = entryFor(state.listEntries, card.item.id, null);
       haptics.tap();
       const portions = answerPantryReview(card.item.id, answer);
       setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer, portions }]);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -264,6 +264,10 @@ export function SuggestMealsSheet({
     setGenerateError(null);
     setHints('');
   }, [visible]);
+  // Read after an await, so a reply that comes back once the sheet has closed
+  // is dropped rather than written into the next opening (see `generate`).
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   const availableMealTypes = useMemo(
     () => RECIPE_MEAL_TYPES.filter(type =>
@@ -369,6 +373,10 @@ export function SuggestMealsSheet({
       // one offering it, with its real ingredients behind it. Keyed the way
       // the box itself is (`recipeNameKey`), so a near-spelling of a saved
       // recipe is held back rather than offered and then refused at Save.
+      // Closed while the ideas were being written (Cancel, or a swipe down):
+      // the reset on close already cleared the list, and a batch landing
+      // after it was the next opening's first screen.
+      if (!visibleRef.current) return;
       const owned = new Set(allRecipes.map(r => r.nameKey));
       const fresh = result.filter(i => !owned.has(recipeNameKey(i.title)));
       setIdeas(prev => {
@@ -377,10 +385,13 @@ export function SuggestMealsSheet({
         return [...kept, ...fresh.filter(i => !keptKeys.has(recipeNameKey(i.title)))];
       });
     } catch (e) {
+      if (!visibleRef.current) return;
       setIdeas(keepPicked);
       setGenerateError(describeAIError(e));
     } finally {
-      setGenerating(false);
+      // The reset on close already lowered it, and the next opening may have
+      // a request of its own under way.
+      if (visibleRef.current) setGenerating(false);
     }
   }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints, selected]);
 

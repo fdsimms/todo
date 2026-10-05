@@ -446,6 +446,14 @@ export function BackfillScreen() {
   const [suggestAskedIds, setSuggestAskedIds] = useState<Set<string>>(new Set());
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  // Which field is open right now, for a request that comes back after the
+  // person has moved on: `chooseTaskField` clears the suggestions for the
+  // field being left, but a batch already in flight landed after that clear,
+  // so category suggestions sat in the map while the estimate field was on
+  // screen (and were offered as estimates). Read after the await and compared
+  // with the field the request was for.
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
 
   const clearSuggestions = () => {
     setSuggestions(new Map());
@@ -917,10 +925,15 @@ export function BackfillScreen() {
     haptics.tap();
     setSuggestLoading(true);
     setSuggestError(null);
+    // Still on the field this batch was asked for. Anything else (another
+    // field, back at the pool list) has already cleared its own slate, and a
+    // reply merged into it now would be answers to a different question.
+    const stillHere = () => activeRef.current?.kind === 'task' && activeRef.current.id === field;
     try {
       const asking = new Set(batch.map(t => t.id));
       const examples = suggestionExamples(tasks, field, displayTitleFor, asking);
       const result = await suggestBackfillValues(field, batch, examples, categories.map(c => c.name));
+      if (!stillHere()) return;
       animateLayout();
       setSuggestions(prev => new Map([...prev, ...result]));
       setSuggestAskedIds(prev => new Set([...prev, ...asking]));
@@ -934,10 +947,13 @@ export function BackfillScreen() {
         haptics.success();
       }
     } catch (e) {
+      if (!stillHere()) return;
       haptics.error();
       setSuggestError(describeAIError(e));
     } finally {
-      setSuggestLoading(false);
+      // Left alone when the field changed: clearSuggestions already lowered
+      // it, and the new field may have a request of its own under way.
+      if (stillHere()) setSuggestLoading(false);
     }
   };
 

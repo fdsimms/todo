@@ -32,6 +32,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -76,7 +77,11 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   const setProductOpened = useGroceryStore(s => s.setProductOpened);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
 
-  const item = items.find(i => i.id === itemId) ?? null;
+  const liveItem = items.find(i => i.id === itemId) ?? null;
+  // Held through the dismissal (useSheetSubject): the caller clears the id in
+  // the same onClose that drops `visible`, and a sheet torn out of the tree
+  // can't hold its own close back (see noUnmountedSheet.test.ts).
+  const item = useSheetSubject(liveItem);
   const editing = itemProducts.find(p => p.id === editingProductId) ?? null;
 
   const [brand, setBrand] = useState('');

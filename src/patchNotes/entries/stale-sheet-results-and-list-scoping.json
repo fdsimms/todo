@@ -1,0 +1,4 @@
+{
+  "message": "AI suggestions no longer land on the wrong item, recipe or template when you switch or close the sheet while a request is still running. Items captured from Reminders and items marked low in a pantry review always go to your home grocery list, not to whichever list is open. Clearing the Logbook or deleting history no longer turns off the app's use-up reminders for those items.",
+  "date": "2026-10-05"
+}

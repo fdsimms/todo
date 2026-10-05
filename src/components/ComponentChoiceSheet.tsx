@@ -16,6 +16,7 @@ import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -39,7 +40,12 @@ interface Props {
  * as an alternative for itself, a question nobody could answer without knowing
  * the data model.
  */
-export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Props) {
+export function ComponentChoiceSheet({ visible, recipe, component: liveComponent, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the component in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const component = useSheetSubject(liveComponent);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 

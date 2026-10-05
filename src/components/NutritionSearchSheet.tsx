@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -109,21 +109,41 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
     onClose();
   };
 
+  // Which opening a reply belongs to, and which search is the newest. Both
+  // are network round trips: a search submitted over a slower one landed its
+  // results under the newer query, and a portion fetch for a row tapped just
+  // before Cancel handed `onPick` a food to a sheet that had been closed (or
+  // reopened on another item). Bumped on every open and close, and by every
+  // search; read back after each await.
+  const openingRef = useRef(0);
+  useEffect(() => { openingRef.current += 1; }, [visible]);
+  const searchRef = useRef(0);
+
   const run = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setSearching(true);
     setError(null);
     setErrorSettingsEntryId(null);
+    const opening = openingRef.current;
+    const search = ++searchRef.current;
+    const stillHere = () => openingRef.current === opening && searchRef.current === search;
     try {
-      setHits(await searchFoods(trimmed));
+      const found = await searchFoods(trimmed);
+      if (!stillHere()) return;
+      setHits(found);
     } catch (e) {
+      if (!stillHere()) return;
       setHits([]);
       setError(describeFoodSearchError(e));
       setErrorSettingsEntryId(foodSearchErrorSettingsEntryId(e));
     } finally {
-      setSearching(false);
-      setSearched(true);
+      // Left alone for a search that was overtaken: the newer one owns the
+      // spinner now, and the reopen's own reset covers a closed sheet.
+      if (stillHere()) {
+        setSearching(false);
+        setSearched(true);
+      }
     }
   }, []);
 
@@ -162,15 +182,19 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
     haptics.tap();
     setPicking(row.candidate.fdcId);
     setError(null);
+    const opening = openingRef.current;
+    const stillHere = () => openingRef.current === opening;
     try {
       // The second request, and the reason there is one: the portion table is
       // on the detail endpoint only, and without it a recipe line written as a
       // volume or a count can never become grams. See `readFdcPortions`.
       const portions = await fetchFoodPortions(row.candidate.fdcId);
+      if (!stillHere()) return;
       onPick({ ...hit.nutrition, portions }, row.candidate.description);
       haptics.success();
       close();
     } catch (e) {
+      if (!stillHere()) return;
       setError(describeFoodSearchError(e));
       setPicking(null);
     }

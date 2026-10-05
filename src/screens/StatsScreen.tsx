@@ -604,9 +604,11 @@ export function StatsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>MARKED ONE TIME, DONE ANOTHER</Text>
               <View style={styles.card}>
+                {/* Title over the pill rather than beside it: the pill
+                    claimed its width first and the title got what was left. */}
                 {mismatches.map((m, i) => (
-                  <View key={m.key} style={[styles.row, i < mismatches.length - 1 && styles.rowBorder]}>
-                    <View style={styles.instanceMain}>
+                  <View key={m.key} style={[styles.mismatchRow, i < mismatches.length - 1 && styles.rowBorder]}>
+                    <View style={styles.mismatchMain}>
                       <Text style={styles.instanceTitle} numberOfLines={1}>{m.title}</Text>
                       <Text style={styles.instanceMeta}>{m.reason}</Text>
                     </View>
@@ -1286,6 +1288,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
     // Tinted like a tag chip (colour + '33'), which is the app's established
     // way of tinting a pill to a data-driven colour rather than the accent.
+    mismatchRow: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+      gap: spacing.xs,
+      alignItems: 'flex-start',
+    },
+    mismatchMain: {
+      alignSelf: 'stretch',
+      gap: spacing.xxs,
+    },
     segmentFix: {
       flexDirection: 'row',
       alignItems: 'center',

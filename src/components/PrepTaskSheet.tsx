@@ -12,6 +12,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -33,7 +34,12 @@ const REMINDER_STEPS_MAX = 96;
  * needs. See resolvePrepTaskDraft for how offsetDays/reminderOffsetMinutes
  * resolve to an actual due date once a meal is scheduled.
  */
-export function PrepTaskSheet({ visible, recipeId, prepTask, onClose }: Props) {
+export function PrepTaskSheet({ visible, recipeId, prepTask: livePrepTask, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the prep task in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const prepTask = useSheetSubject(livePrepTask);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -43,12 +49,15 @@ export function PrepTaskSheet({ visible, recipeId, prepTask, onClose }: Props) {
   const [offsetDays, setOffsetDays] = useState(-1);
   const [reminderOffsetMinutes, setReminderOffsetMinutes] = useState<number | null>(null);
 
+  // Keyed on `visible` too, now that the held prep task survives a close: a
+  // reopen on the same row has to reseed from it rather than show the last
+  // opening's half-finished edit.
   useEffect(() => {
-    if (!prepTask) return;
+    if (!visible || !prepTask) return;
     setTitle(prepTask.title);
     setOffsetDays(prepTask.offsetDays);
     setReminderOffsetMinutes(prepTask.reminderOffsetMinutes);
-  }, [prepTask]);
+  }, [visible, prepTask]);
 
   const saveAndClose = () => {
     if (!prepTask) { onClose(); return; }

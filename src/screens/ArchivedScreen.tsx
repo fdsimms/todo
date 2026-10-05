@@ -119,7 +119,10 @@ export function ArchivedScreen() {
           style: 'destructive',
           onPress: () => {
             animateLayout();
-            bulkDeleteTasks(ids);
+            // skipGeneratedOptOut: an archived row is one the user kept out of
+            // the way, and deleting it is deleting history, not declining the
+            // generator that wrote the task (see clearLogbook).
+            bulkDeleteTasks(ids, { skipGeneratedOptOut: true });
             exitSelection();
           },
         },

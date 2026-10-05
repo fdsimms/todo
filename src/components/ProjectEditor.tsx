@@ -62,6 +62,7 @@ import {
   type NudgeMode,
 } from '../utils/nudgeCadence';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
   value: mode,
@@ -93,7 +94,12 @@ interface Props {
   onClose: (outcome?: 'discarded') => void;
 }
 
-export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
+export function ProjectEditor({ visible, project: liveProject, isNew, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the project in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const project = useSheetSubject(liveProject);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -224,8 +230,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAwayListOpen(false);
   };
 
+  // Keyed on `visible` too, now that the held project survives a close: a
+  // reopen on the same row has to reseed from it rather than show the last
+  // opening's state.
   useEffect(() => {
-    if (!project) return;
+    if (!visible || !project) return;
     setTitle(project.title);
     setNotes(project.notes);
     setCategory(project.category);
@@ -256,7 +265,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setShowChecked(project.showChecked ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
-  }, [project]);
+  }, [visible, project]);
 
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
 

@@ -1065,6 +1065,10 @@ function recordTimeBlockExternalId(taskId: string, eventId: string): void {
 function reconcileTimeBlockEvent(task: Task): void {
   const eventId = task.timeBlockEventId;
   if (!eventId) return;
+  // Demo mode: the row is seeded fiction, and this would retitle and resize a
+  // real event in the user's calendar to match it (or drop the pointer on the
+  // strength of a real read). Same gate the deadline mirror has.
+  if (isDemoModeActive()) return;
   readTimeBlockEvent(eventId)
     .then(async event => {
       const block = event ? { eventId, event } : await adoptTimeBlock(task);
@@ -9028,7 +9032,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const historyBefore = get().undoStack;
     const ids = get().completedTasks().map(t => t.id);
     if (ids.length === 0) return;
-    get().bulkDeleteTasks(ids);
+    // skipGeneratedOptOut: clearing history is not declining a generator. A
+    // completed "Use up spinach" in the logbook is a task that was done, and
+    // its row going wrote the item's "never again" exactly as swiping the live
+    // task away would have, so clearing the Logbook turned off every use-up
+    // reminder whose task had ever been finished.
+    get().bulkDeleteTasks(ids, { skipGeneratedOptOut: true });
     const undo = get().lastAction?.undo;
     if (undo) {
       get().setLastAction({
@@ -9038,7 +9047,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // The ids it actually cleared, not a second call to this action: a
         // redo re-runs against the logbook as it stands now, and anything
         // completed since the undo is not part of the clear being replayed.
-        redo: () => get().bulkDeleteTasks(ids),
+        redo: () => get().bulkDeleteTasks(ids, { skipGeneratedOptOut: true }),
       }, { replacing: historyBefore });
     }
   },
@@ -9283,7 +9292,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the screen only has to break the runs apart. The blocker task wins when
     // both are set, matching how the screen files it.
     // With several blockers, the first one still open is the one it's filed under.
-    const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? t.blockedById ?? t.waitingOnPersonId ?? '';
+    const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? blockerIdsOf(t)[0] ?? t.waitingOnPersonId ?? '';
     return get().tasks
       .filter(isWaitingTask)
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);

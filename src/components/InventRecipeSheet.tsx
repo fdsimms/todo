@@ -105,6 +105,11 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
     try {
       const recent = recentlyCookedTitles(recipes, new Date());
       const result = await suggestMealIdeas([], recent, MIN_MEAL_IDEAS, hints, []);
+      // Closed while the ideas were being written (Cancel, or a swipe down):
+      // the reset on close already cleared the list, and a batch landing after
+      // it was the next opening's first screen. Same guard createFromIdea
+      // keeps for a draft.
+      if (!visibleRef.current) return;
       // suggestMealIdeas only dedupes against the titles it was handed
       // (recently cooked); a dish already in the box under any other name
       // isn't "new" just because it wasn't cooked lately. Keyed the way the
@@ -113,10 +118,13 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       const owned = new Set(recipes.map(r => r.nameKey));
       setIdeas(result.filter(i => !owned.has(recipeNameKey(i.title))));
     } catch (e) {
+      if (!visibleRef.current) return;
       setIdeas([]);
       setGenerateError(describeAIError(e));
     } finally {
-      setGenerating(false);
+      // The reset on close already lowered it, and the next opening may have
+      // a request of its own under way.
+      if (visibleRef.current) setGenerating(false);
     }
   }, [recipes, hints]);
 

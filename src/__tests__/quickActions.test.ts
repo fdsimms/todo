@@ -6,11 +6,14 @@ const mockResetToSearch = jest.fn();
 const mockResetToProjects = jest.fn();
 const mockOpenQuickAddFromShortcut = jest.fn();
 
+const mockSetItems = jest.fn((..._args: unknown[]) => Promise.resolve());
 jest.mock('expo-quick-actions', () => ({
   initial: null,
   addListener: jest.fn(() => ({ remove: jest.fn() })),
-  setItems: jest.fn(() => Promise.resolve()),
+  setItems: (...args: unknown[]) => mockSetItems(...args),
 }));
+let mockDemoActive = false;
+jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemoActive }));
 jest.mock('../navigation/navigationRef', () => ({
   resetToGroceries: (...args: unknown[]) => mockResetToGroceries(...args),
   resetToSearch: (...args: unknown[]) => mockResetToSearch(...args),
@@ -21,7 +24,27 @@ jest.mock('../navigation/navigationRef', () => ({
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { handleQuickActionId, quickActionsFor } from '../utils/quickActions';
+import { handleQuickActionId, publishQuickActions, quickActionsFor } from '../utils/quickActions';
+
+describe('publishQuickActions', () => {
+  beforeEach(() => {
+    mockSetItems.mockClear();
+    mockDemoActive = false;
+  });
+
+  it('writes the list for the current settings', () => {
+    publishQuickActions(false);
+    expect(mockSetItems).toHaveBeenCalledWith(quickActionsFor(false));
+  });
+
+  // The icon's menu is outside the app's database, and the setting it reads
+  // is the demo's while demo mode is on.
+  it('writes nothing in demo mode', () => {
+    mockDemoActive = true;
+    publishQuickActions(true);
+    expect(mockSetItems).not.toHaveBeenCalled();
+  });
+});
 
 describe('handleQuickActionId', () => {
   beforeEach(() => {

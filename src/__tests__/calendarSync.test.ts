@@ -14,6 +14,7 @@ const mockCalendar = {
   getEventAsync: jest.fn(),
   updateEventAsync: jest.fn(),
   deleteEventAsync: jest.fn(),
+  createEventInCalendarAsync: jest.fn(),
   getCalendarsAsync: jest.fn(),
   getCalendarPermissionsAsync: jest.fn(),
   requestCalendarPermissionsAsync: jest.fn(),
@@ -37,6 +38,7 @@ import {
   readEventForEdit,
   updateEventDirect,
   moveAllDayEvent,
+  presentEventCreate,
   updateTimeBlockEvent,
 } from '../utils/calendarSync';
 
@@ -365,9 +367,14 @@ describe('editing an event from the card', () => {
 
     await expect(updateEventDirect('evt-1', { title: 'x', start: new Date(), end: new Date() })).resolves.toBeNull();
     await expect(deleteEventDirect('evt-1')).resolves.toBe(false);
+    // The system "new event" sheet too: an itinerary imported in demo mode
+    // would otherwise offer to write a real event from seeded fiction.
+    await expect(presentEventCreate({ title: 'x', start: new Date(), end: new Date() }))
+      .resolves.toEqual({ saved: false, deleted: false, eventId: null });
 
     expect(mockCalendar.updateEventAsync).not.toHaveBeenCalled();
     expect(mockCalendar.deleteEventAsync).not.toHaveBeenCalled();
+    expect(mockCalendar.createEventInCalendarAsync).not.toHaveBeenCalled();
   });
 
   it('deletes only the occurrence opened', async () => {
