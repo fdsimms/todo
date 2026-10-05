@@ -59,8 +59,8 @@ and annotates every tool as read-only or not (`src/toolAnnotations.ts`), so the 
 reads without asking. A new tool needs a line in that table; `toolAnnotations.test.ts` fails
 without one.
 
-Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
-`inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project` and `how_do_i`.
+Seven prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
+`inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project`, `unstick_tasks` and `how_do_i`.
 
 Every write previews first: without `apply` it changes nothing and returns `willDo` and a
 `confirmToken`, and the write happens only when called again with `apply: true` and that token
@@ -77,8 +77,9 @@ only the fallback until the first sync.
 | `get_overview` | Where an agent starts: the person's time zone and logical today, counts per list, categories, tags, projects, what is switched off, and whether health logs arrive. |
 | `get_agenda` | The coming days: each day's tasks, repeats expected that day, estimated minutes, what is carried over, and deadlines that will not fit. |
 | `completion_history` | What got done over a range, with a summary by day, weekday, hour, category, project and tag. Missed occurrences are counted separately. |
-| `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects and the most-missed repeats. Lists, does not judge. |
+| `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects, tasks pushed to a later day three or more times and the most-missed repeats. Lists, does not judge. |
 | `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
+| `unused_features` | Features the person's own data suggests they would benefit from and are not using (many tasks and no estimates, saved recipes and no planned meals, people and no birthdays), with what was seen, what the feature does and the Settings path. Declined ones are silenced by an agent note naming the id. |
 | `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
@@ -101,6 +102,9 @@ only the fallback until the first sync.
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
+| `grocery_setup` | The aisles, the stores (with receipt style) and the lists (home and separate), with item counts. |
+| `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names. |
+| `match_receipt` | The app's receipt matching over lines Claude read. Writes nothing. |
 | `list_pantry` | What the app has a reason to think is in the kitchen: pantry, fridge and freezer, each with the app's reason, use-by day and freshness. `filter: use_up`, `frozen` or `fridge` narrows it. Has no quantities, on purpose. |
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
@@ -119,7 +123,7 @@ only the fallback until the first sync.
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
-| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. |
+| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project, or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). Its existing tasks are untouched. |
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
@@ -156,6 +160,13 @@ only the fallback until the first sync.
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
+| `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
+| `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item. |
+| `save_store` | **Write.** Add or rename a store, or set its receipt style. |
+| `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
+| `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
+| `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |
+| `import_receipt` | **Write.** The in-app receipt flow, from lines Claude read. |
 | `update_pantry_item` | **Write.** One item's pantry state: on hand, out (with how it went), staple, frozen, opened, running low, use-by day, shelf life, use-up task. Several fields per call. |
 | `update_pantry_box` | **Write.** The same for one packet or frozen portion of an item. |
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
@@ -187,9 +198,18 @@ with its aisle, purchase history, prices and pantry state intact. Singular and p
 the same item, so "serrano pepper" finds an existing "Serrano peppers" instead of minting a
 near-duplicate that splits one shelf item in two.
 
-For the same reason `remove_from_grocery_list` parks rather than deletes, and there is deliberately
-no tool that deletes a shelf item: dropping one destroys a substitute or a price history with no
-undo, and it is not the sort of thing to do on a model's say-so.
+For the same reason `remove_from_grocery_list` parks rather than deletes. `delete_grocery_item` exists
+for the person who asks for it: it previews what goes with the item (brands, store links, substitutes,
+receipt names), and the Activity entry carries a snapshot that puts all of it back while nothing has
+re-created the item. The app itself keeps no such snapshot, which is the only reason it has no undo.
+
+A receipt is read by Claude, not by this server (the phone reads one with on-device OCR or the user's own
+API key). `match_receipt` takes the lines Claude extracted and runs the app's own matching, store's
+remembered names first. `import_receipt` then does what the in-app scan flow does: on a shopping trip it
+puts each line on the list, checks it off, remembers the printed text as that store's name for the item and
+finishes the trip with the prices; for the pantry it marks the lines on hand without recording a purchase.
+Finishing a separate list records almost nothing (no purchase counts, prices or use-by days), which is the
+app's rule for a trip away.
 
 The pantry tools are the same rows through the same rules: `src/utils/pantryWrite.ts` decides what each
 change does to a row, and `useGroceryStore` and `useLeftoverStore` call it too. The one thing they

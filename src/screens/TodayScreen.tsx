@@ -131,8 +131,7 @@ import { QuickAddModal } from '../components/QuickAddModal';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
-import { draftFromExtractedEvent, eventImportCreateFields } from '../utils/calendarEventImport';
-import { presentEventCreate } from '../utils/calendarSync';
+import { draftFromExtractedEvent, eventImportQuickSeed } from '../utils/calendarEventImport';
 import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
@@ -158,7 +157,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
-import { QuickEventSheet } from '../components/QuickEventSheet';
+import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
@@ -182,6 +181,7 @@ import {
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { AllClearMark } from '../components/AllClearMark';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
 import { CreatedTaskToast } from '../components/CreatedTaskToast';
@@ -792,6 +792,8 @@ export function TodayScreen() {
   // more than one. Drained one at a time by the effect below, which opens the
   // next as soon as the editor closes on the previous — see its own comment.
   const [pendingEventImports, setPendingEventImports] = useState<ExtractedCalendarEvent[]>([]);
+  const [quickEventVisible, setQuickEventVisible] = useState(false);
+  const [quickEventSeed, setQuickEventSeed] = useState<QuickEventSeed | null>(null);
   const [pullingToSearch, setPullingToSearch] = useState(false);
   const [quickSearchVisible, setQuickSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
@@ -1999,34 +2001,26 @@ export function TodayScreen() {
   };
 
   // Advances an itinerary import one entry at a time: an event with a real
-  // date goes straight to Apple's own "new event" sheet (`presentEventCreate`)
-  // and, once that closes, recurses into whatever's left — no state involved,
-  // since nothing else needs to know a native sheet is up. An entry with no
-  // date can't become an event at all (nothing to start it on), so that one
-  // opens the full task editor instead, pre-filled from
-  // `draftFromExtractedEvent`; quick add is skipped because its seed can't
-  // carry notes or a location, and an imported event routinely has both (a
-  // phone number, an address) — see the design note on EventImportSheet.
-  // The task branch hands the rest of the queue to `pendingEventImports`
-  // rather than recursing itself, because the editor closes on its own time
-  // (saved or cancelled) and there's no promise to chain off of the way there
-  // is for a native sheet.
-  // Returns a promise that settles once every native sheet in the run has
-  // closed, so `EventImportSheet` can stay open underneath them (a native
-  // sheet presented as that Modal dismisses comes up blank).
-  const advanceEventImportQueue = useCallback(async (queue: ExtractedCalendarEvent[]): Promise<void> => {
+  // date opens the app's own event card (`QuickEventSheet`), seeded from
+  // `eventImportQuickSeed`. An entry with no date can't become an event at all
+  // (nothing to start it on), so that one opens the full task editor instead,
+  // pre-filled from `draftFromExtractedEvent`; quick add is skipped because
+  // its seed can't carry notes or a location, and an imported event routinely
+  // has both (a phone number, an address) — see the design note on
+  // EventImportSheet.
+  // Either surface closes on its own time (saved or cancelled), so the rest of
+  // the queue waits in `pendingEventImports` and the effect below advances it
+  // once both are closed.
+  const advanceEventImportQueue = useCallback((queue: ExtractedCalendarEvent[]) => {
     const [next, ...rest] = queue;
     if (!next) return;
-    const eventFields = eventImportCreateFields(next);
-    if (eventFields) {
-      try {
-        await presentEventCreate(eventFields);
-      } finally {
-        await advanceEventImportQueue(rest);
-      }
+    setPendingEventImports(rest);
+    const seed = eventImportQuickSeed(next);
+    if (seed) {
+      setQuickEventSeed(seed);
+      setQuickEventVisible(true);
       return;
     }
-    setPendingEventImports(rest);
     setEditingTask(null);
     setEditorInitialDraft(draftFromExtractedEvent(next));
     setEditorVisible(true);
@@ -2035,21 +2029,21 @@ export function TodayScreen() {
   const handleEventsImported = (events: ExtractedCalendarEvent[]) => advanceEventImportQueue(events);
 
   // Drains the queue an itinerary import left behind: as soon as the editor
-  // closes — saved or cancelled, either is "done with this one" — and there's
-  // still something waiting, advance to the next entry. Deliberately a
-  // separate effect rather than special-cased inside the editor's own
-  // onClose: that callback fires while `editorVisible` is still true, and
+  // or the event card closes — saved or cancelled, either is "done with this
+  // one" — and there's still something waiting, advance to the next entry.
+  // Deliberately a separate effect rather than special-cased inside either
+  // onClose: that callback fires while the sheet is still visible, and
   // flipping it false then true again in the same handler nets out to no
-  // change at all, so TaskEditor's own seeding effect (keyed on
-  // `[visible, task]`) would never see a reason to re-run and the second
-  // event would silently reuse the first one's draft. Watching the close
-  // land as its own render is what makes the reopen real.
+  // change at all, so the sheet's own seeding effect (keyed on visibility)
+  // would never see a reason to re-run and the second event would silently
+  // reuse the first one's draft. Watching the close land as its own render is
+  // what makes the reopen real.
   useEffect(() => {
-    if (editorVisible || pendingEventImports.length === 0) return;
+    if (editorVisible || quickEventVisible || pendingEventImports.length === 0) return;
     const queue = pendingEventImports;
     setPendingEventImports([]);
     advanceEventImportQueue(queue);
-  }, [editorVisible, pendingEventImports, advanceEventImportQueue]);
+  }, [editorVisible, quickEventVisible, pendingEventImports, advanceEventImportQueue]);
 
   // ==== the lists: store tasks narrowed to what this view mode shows ====
   const filtered = useMemo(() => {
@@ -2375,7 +2369,6 @@ export function TodayScreen() {
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
-  const [quickEventVisible, setQuickEventVisible] = useState(false);
 
   // The Today widget's "Add event" shortcut (openQuickAddEventFromShortcut()
   // in navigationRef.ts, deep link dundundun://addevent) — the event
@@ -3908,6 +3901,7 @@ export function TodayScreen() {
   ) : (
     <EmptyState
       icon="checkmark-circle"
+      art={<AllClearMark filtered={activeFilterCount > 0} doneToday={completedToday.length} />}
       title="All clear"
       subtitle={describeAllClear({
         filtered: activeFilterCount > 0,
@@ -4226,7 +4220,7 @@ export function TodayScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${coinTotal} coins. Open Rewards`}
                   >
-                    <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                    <CoinIcon size={iconSize.sm} color={colors.done} filled />
                     <Text style={styles.coinPillText}>{coinTotal}</Text>
                   </TouchableOpacity>
                 )}
@@ -5027,7 +5021,8 @@ export function TodayScreen() {
 
         <QuickEventSheet
           visible={quickEventVisible}
-          onClose={() => setQuickEventVisible(false)}
+          seed={quickEventSeed}
+          onClose={() => { setQuickEventVisible(false); setQuickEventSeed(null); }}
         />
 
         <TodayEventsSheet
@@ -5209,7 +5204,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center',
   },
-  viewModePillBadgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
+  viewModePillBadgeText: { color: colors.onFill, fontSize: font.xxs, fontWeight: fontWeight.bold },
   // Same badge, muted: Unscheduled is a pile of things with no date, not a pile
   // of things owed, so a red alert dot overstates it — and two red dots side by
   // side stop reading as "this one needs you". Red stays the Inbox's alone.

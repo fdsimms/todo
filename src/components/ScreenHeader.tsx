@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
+import { useBrandFace } from '../theme/AppFont';
 import { spacing, font, fontWeight, lineHeight, iconSize, interaction, radius, textScale, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { TargetIcon, TARGET_ICON } from './TargetIcon';
@@ -72,6 +73,7 @@ interface Props {
 export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, titleAdornment }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const brandFace = useBrandFace('heavy');
 
   return (
     <View style={styles.header}>
@@ -92,16 +94,16 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
             accessibilityRole="button"
             accessibilityLabel={titleAccessibilityLabel ?? title}
           >
-            <Text style={styles.title} numberOfLines={1}>{title}</Text>
+            <Text style={[styles.title, brandFace]} numberOfLines={1}>{title}</Text>
             <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} style={styles.titleChevron} />
           </TouchableOpacity>
         ) : titleAdornment != null ? (
           <View style={styles.titleRow}>
-            <Text style={[styles.title, styles.titleHolds]}>{title}</Text>
+            <Text style={[styles.title, brandFace, styles.titleHolds]}>{title}</Text>
             <View style={styles.adornment}>{titleAdornment}</View>
           </View>
         ) : (
-          <Text style={styles.title}>{title}</Text>
+          <Text style={[styles.title, brandFace]}>{title}</Text>
         )}
         {subtitle != null ? (
           <Text style={styles.subtitle}>{subtitle}</Text>
@@ -121,7 +123,8 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
           const tintColor = action.tint === 'orange' ? colors.orangeFill : colors.accentFill;
           const iconColor = action.disabled
             ? colors.textTertiary
-            : action.active ? colors.onAccent : colors.textSecondary;
+            : !action.active ? colors.textSecondary
+            : action.tint === 'orange' ? colors.onFill : colors.onAccent;
           return (
             <PressableScale
               key={`${action.icon}-${i}`}
@@ -209,7 +212,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center',
   },
-  badgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
+  badgeText: { color: colors.onFill, fontSize: font.xxs, fontWeight: fontWeight.bold },
   badgeDot: {
     position: 'absolute', top: 1, right: 1,
     width: 8, height: 8, borderRadius: 4,

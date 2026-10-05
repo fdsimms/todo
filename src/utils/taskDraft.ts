@@ -26,6 +26,7 @@ import { generateId } from './id';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { resolveFieldDefaults, seedTaskFields } from './taskFieldDefaults';
 import { resolveTitleRules } from './titleRules';
 import { taskKindOf, MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
 import {
@@ -185,6 +186,13 @@ export function newTaskFromDraft(
   // precedence: a row carrying both reads as its kind everywhere else in the
   // app, so leaving the polarity set would leave the Goal row hidden behind
   // that kind with no way to reach it and turn the polarity back off.
+  // Priority, difficulty and time estimate a group of tasks starts with: the
+  // kind of generated task this is, else its project's. Beneath whatever the
+  // draft names and above Settings' global defaults (see seedTaskFields).
+  const fieldDefaults = resolveFieldDefaults(
+    draft.generatedKind ? useSettingsStore.getState().generatedTaskDefaults?.[draft.generatedKind] : null,
+    draft.projectId ? useProjectStore.getState().getProjectById(draft.projectId)?.taskDefaults : null,
+  );
   const resolvedPolarity: Polarity =
     taskKindOf({
       chainEnabled: draft.chainEnabled ?? false,
@@ -196,6 +204,7 @@ export function newTaskFromDraft(
     }) === 'task'
       ? (draft.polarity ?? 'positive')
       : 'positive';
+  const seeded = seedTaskFields(draft, fieldDefaults, defaults, resolvedPolarity === 'negative');
   const task: Task = {
     id: id ?? generateId(),
     title: draft.title ?? '',
@@ -288,10 +297,10 @@ export function newTaskFromDraft(
     sortOrder,
     pinned: draft.pinned ?? false,
     pinnedOrder: 0,
-    priority: draft.priority ?? defaults.priority ?? 0,
-    effort: draft.effort ?? defaults.effort ?? 0,
-    estimatedMinutes: draft.estimatedMinutes ?? null,
-    backfillDismissedFields: [],
+    priority: seeded.priority,
+    effort: seeded.effort,
+    estimatedMinutes: seeded.estimatedMinutes,
+    backfillDismissedFields: seeded.backfillDismissedFields,
     streakCount: 0,
     // A negative habit is anchored at the day it was created, where a positive
     // one has no anchor until its first completion. The anchor is what
@@ -359,7 +368,7 @@ export function newTaskFromDraft(
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     weatherWait: draft.weatherWait ?? null,
-    difficulty: draft.difficulty ?? null,
+    difficulty: seeded.difficulty,
     pinEachOccurrence: draft.pinEachOccurrence ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,
@@ -404,6 +413,7 @@ export function newTaskFromDraft(
     location: draft.location ?? null,
     blockedById: draft.blockedById ?? draft.blockedByIds?.[0] ?? null,
     blockedByIds: draft.blockedById ? (draft.blockedByIds ?? []) : (draft.blockedByIds ?? []).slice(1),
+    waitForSeriesEnd: draft.waitForSeriesEnd ?? false,
     answerGate: draft.answerGate ?? null,
     waitingOnPersonId: null,
     waitingOnPersonSince: null,

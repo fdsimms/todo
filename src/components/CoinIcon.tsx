@@ -17,7 +17,7 @@ interface Props {
    * Ionicons at their weight.
    */
   filled?: boolean;
-  /** The rim and mark on a filled face. Defaults to `onWarning`, the dark that reads on gold in both themes. */
+  /** The rim and mark on a filled face. Defaults to `onDone`, the ink that reads on the gold `done` face in every theme. */
   markColor?: string;
 }
 
@@ -35,7 +35,7 @@ interface Props {
  */
 export function CoinIcon({ size, color, filled = false, markColor }: Props) {
   const colors = useColors();
-  const mark = markColor ?? colors.onWarning;
+  const mark = markColor ?? colors.onDone;
   const line = filled ? mark : color;
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">

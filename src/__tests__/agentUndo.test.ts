@@ -19,6 +19,8 @@ const state = (over: Partial<RecordState> = {}): RecordState => ({
   groceryItem: () => null,
   itemBoxes: () => [],
   leftover: () => null,
+  aisleOverride: () => null,
+  itemKeyTaken: () => false,
   exists: () => false,
   ruleList: () => [],
   hasNote: () => false,

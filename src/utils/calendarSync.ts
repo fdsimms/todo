@@ -736,6 +736,25 @@ export async function saveEventDirect(
   }
 }
 
+/**
+ * Opens an event in the system's own calendar UI (Apple's event view on iOS,
+ * the default calendar app on Android). `occurrenceStart` picks the instance of
+ * a repeating event. Returns false when it couldn't be opened (event gone, no
+ * access); the caller has nothing to explain, so it just stays where it is.
+ */
+export async function openEventInSystemCalendar(eventId: string, occurrenceStart?: Date): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  try {
+    await calendar().openEventInCalendarAsync({
+      id: eventId,
+      ...(occurrenceStart ? { instanceStartDate: occurrenceStart } : {}),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** An existing event, as the edit card opens it. */
 export interface EventForEdit {
   title: string;

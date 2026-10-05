@@ -1921,6 +1921,17 @@ describe('Projects', () => {
     expect(p.completed).toBe(false);
   });
 
+  it('round-trips task defaults on insert and update, and clears them', () => {
+    dbInsertProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+
+    dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 3, difficulty: null, effort: null } }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 3, difficulty: null, effort: null });
+
+    dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: null }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toBeNull();
+  });
+
   it('round-trips a completed project, stamping completedAt', () => {
     dbInsertProject(makeProject({ id: 'p-done', completed: true, completedAt: '2026-01-05T00:00:00.000Z' }));
     const p = dbGetAllProjects().find(row => row.id === 'p-done');

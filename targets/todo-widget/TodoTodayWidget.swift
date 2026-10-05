@@ -97,10 +97,10 @@ struct TaskRowView: View {
                         .stroke(palette.separator, lineWidth: 2)
                     if isPendingCompletion {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(palette.accent)
+                            .fill(palette.done)
                         Image(systemName: "checkmark")
                             .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(palette.onDone)
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -392,7 +392,7 @@ struct TodoTodayWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: TodayWidgetIntent.self, provider: TodoTodayProvider()) { entry in
             TodoTodayWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) {
-                    Color(UIColor.secondarySystemGroupedBackground)
+                    WidgetCardBackground()
                 }
         }
         .configurationDisplayName("Today")

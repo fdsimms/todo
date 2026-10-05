@@ -63,9 +63,9 @@ export interface SettingsSummaryInput {
 }
 
 const THEME_LABELS: Record<string, string> = {
-  dark: 'Dark',
+  dark: 'Black',
   light: 'Light',
-  darkPurple: 'Purple',
+  darkPurple: 'Dark',
   system: 'System',
 };
 
@@ -89,7 +89,7 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettin
     ) || 'Everything on',
 
     appearance: line(
-      THEME_LABELS[s.themeMode] ?? 'Dark',
+      THEME_LABELS[s.themeMode] ?? 'Black',
       s.fontLabel,
       !s.hapticsEnabled && 'No haptics',
     ),

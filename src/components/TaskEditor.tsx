@@ -601,6 +601,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // for all of them (Task.blockedByIds); stored through blockerFields on save.
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
   const [showBlockers, setShowBlockers] = useState(false);
+  // Keep waiting through every occurrence of a repeating blocker (Task.waitForSeriesEnd).
+  const [waitForSeriesEnd, setWaitForSeriesEnd] = useState(false);
   // "Only if <question> is answered …" (Task.answerGate). Held whole while
   // editing; a gate left with no answers ticked is dropped on save, since it
   // would rule the task out whatever the answer.
@@ -653,6 +655,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const t = s.tasks.find(x => x.id === id);
     return t ? displayTitleFor(t) : '';
   })));
+  // The toggle below only means something when a blocker repeats.
+  const anyBlockerRepeats = useTaskStore(s => blockerIds.some(id => {
+    const t = s.tasks.find(x => x.id === id);
+    return !!t && t.recurrenceType !== 'none';
+  }));
   // Archived people stay out of the picker but never off a task that already
   // names one — the same split the People field makes. `canWaitOn` has already
   // freed the wait by then, so the row reads as no longer waiting either way.
@@ -960,6 +967,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
       setBlockerIds(blockerIdsOf(task));
+      setWaitForSeriesEnd(task.waitForSeriesEnd ?? false);
       setShowBlockers(false);
       setAnswerGate(task.answerGate ?? null);
       setShowAnswerGate(false);
@@ -1026,6 +1034,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
       setBlockerIds(initialDraft?.blockerIds ?? []);
+      setWaitForSeriesEnd(false);
       setShowBlockers(false);
       setAnswerGate(null);
       setShowAnswerGate(false);
@@ -1163,6 +1172,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
       blockerIds: task ? blockerIdsOf(task) : (initialDraft?.blockerIds ?? []),
+      waitForSeriesEnd: task?.waitForSeriesEnd ?? false,
       answerGate: task?.answerGate ?? null,
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
       followUpOn: task?.followUpOn ?? null,
@@ -1645,6 +1655,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
       ...blockerFields(blockerIds),
+      waitForSeriesEnd: blockerIds.length > 0 && waitForSeriesEnd,
       answerGate: answerGate && answerGate.answers.length > 0 ? answerGate : null,
       waitingOnPersonId,
       // Only while waiting: the day is when to chase *this* wait.
@@ -2306,6 +2317,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       emailAddress,
       location,
       blockerIds,
+      waitForSeriesEnd,
       answerGate,
       waitingOnPersonId,
       followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
@@ -3706,7 +3718,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }
                   hint={
                     'A set of things to get through once each per week, in any order. '
-                    + 'Checking the task off asks which one you did, and it only shows up on Today when you fall behind.'
+                    + 'Checking the task off asks which one you did, and it stays on Today until every one is done. Reschedule it on a day you don\'t want to do one.'
                   }
                   expanded={fieldOpen('rotationSet', true)}
                   onToggle={() => toggleField('rotationSet', true)}
@@ -5423,6 +5435,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onPress={() => setShowBlockerPicker(true)}
                   style={styles.addBtnSpacing}
                 />
+                {anyBlockerRepeats && (
+                  <TouchableOpacity
+                    style={styles.optionRow}
+                    onPress={() => { haptics.tap(); setWaitForSeriesEnd(v => !v); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: waitForSeriesEnd }}
+                    accessibilityLabel="Wait until the repeating task has ended"
+                  >
+                    <Ionicons
+                      name="repeat"
+                      size={18}
+                      color={waitForSeriesEnd ? colors.accent : colors.textSecondary}
+                    />
+                    <View style={styles.optionContent}>
+                      <Text style={styles.optionLabel}>Wait until it ends</Text>
+                      <Text style={styles.optionHint}>
+                        Stay hidden until the last repeat of a repeating task is done, not just the next one. A task that repeats with no end never releases this one.
+                      </Text>
+                    </View>
+                    <View style={[styles.toggle, waitForSeriesEnd && styles.toggleOn]}>
+                      <View style={[styles.toggleKnob, waitForSeriesEnd && styles.toggleKnobOn]} />
+                    </View>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
               </>
@@ -6105,7 +6142,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 >
                   <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
                     {sub.completed && (
-                      <Ionicons name="checkmark" size={11} color={colors.onAccent} />
+                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
                     )}
                   </View>
                   </TouchableOpacity>
@@ -7202,7 +7239,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.orangeFill,
   },
   streakApplyBtnDisabled: { backgroundColor: colors.bgTertiary },
-  streakApplyText: { color: colors.onAccent, fontSize: font.sm, fontWeight: '600' },
+  streakApplyText: { color: colors.onFill, fontSize: font.sm, fontWeight: '600' },
   streakApplyTextDisabled: { color: colors.textTertiary },
   toggle: {
     width: 46, height: 27, borderRadius: 14,
@@ -7267,8 +7304,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexShrink: 0,
   },
   subtaskBoxDone: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   subtaskTitleWrapper: { flex: 1 },
   subtaskTitle: {

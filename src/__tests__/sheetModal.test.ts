@@ -8,7 +8,9 @@ import {
   registerPresentation,
   releasePresentation,
   releasePresentationClaim,
+  requestDismissAllSheets,
   sheetCovered,
+  subscribeDismissAllSheets,
   subscribePresentation,
   subscribeSheetCover,
 } from '../utils/sheetModal';
@@ -383,5 +385,20 @@ describe('subscribeSheetCover', () => {
     releasePresentation(root, 'log');
     expect(own.listeners.size).toBe(0);
     off();
+  });
+});
+
+describe('requestDismissAllSheets', () => {
+  it('reaches every subscribed sheet once and stops after unsubscribe', () => {
+    let a = 0;
+    let b = 0;
+    const offA = subscribeDismissAllSheets(() => { a += 1; });
+    const offB = subscribeDismissAllSheets(() => { b += 1; });
+    requestDismissAllSheets();
+    expect([a, b]).toEqual([1, 1]);
+    offA();
+    requestDismissAllSheets();
+    expect([a, b]).toEqual([1, 2]);
+    offB();
   });
 });

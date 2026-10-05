@@ -1472,6 +1472,46 @@ describe('shakeToUndoEnabled', () => {
   });
 });
 
+describe('beatSoundEnabled', () => {
+  // Off by default, unlike haptics: the sound is an opt-in on top of the beat's
+  // haptic, and an install predating it never had one.
+  it('defaults to off, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().beatSoundEnabled).toBe(false);
+  });
+
+  it('only turns on for an explicit "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'beatSoundEnabled' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().beatSoundEnabled).toBe(true);
+  });
+
+  it('round-trips through setBeatSoundEnabled', () => {
+    useSettingsStore.getState().setBeatSoundEnabled(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('beatSoundEnabled', 'true');
+    expect(useSettingsStore.getState().beatSoundEnabled).toBe(true);
+  });
+});
+
+describe('beatLastDayKey', () => {
+  it('loads the stored day, or null when there is none', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().beatLastDayKey).toBeNull();
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'beatLastDayKey' ? '2026-10-05' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().beatLastDayKey).toBe('2026-10-05');
+  });
+
+  it('stores an empty string for null so the next load reads it as never', () => {
+    useSettingsStore.getState().setBeatLastDayKey(null);
+    expect(dbSetSetting).toHaveBeenCalledWith('beatLastDayKey', '');
+  });
+});
+
 describe('hideHelpText', () => {
   // Off by default, so an install predating the setting keeps showing the
   // hints it already had.

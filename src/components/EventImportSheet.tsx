@@ -28,6 +28,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
+import { useClipboardImage } from '../hooks/useClipboardImage';
 
 type InputMode = 'paste' | 'photo';
 
@@ -36,11 +38,8 @@ interface Props {
   onClose: () => void;
   /**
    * Called once extraction finds at least one event; the sheet closes itself
-   * right after. A caller that presents a native sheet returns a promise that
-   * settles when it is done, and this sheet stays open underneath until then:
-   * the native sheet presents from the top-most view controller, and closing
-   * this Modal in the same tick left it presenting from one that was
-   * mid-dismissal, which showed as a blank sheet and no event.
+   * right after. A caller may return a promise, which this sheet awaits
+   * before closing.
    */
   onImported: (events: ExtractedCalendarEvent[]) => void | Promise<void>;
 }
@@ -55,11 +54,10 @@ interface Props {
  * found fields to tick through — a successful read hands the raw
  * `ExtractedCalendarEvent[]` straight to `onImported` and closes, and the
  * caller (`TodayScreen`) is what reviews each one, one at a time for an
- * itinerary with several legs. An entry with a real date goes to Apple's own
- * "new event" sheet (`presentEventCreate`, filled by
- * `eventImportCreateFields` in `calendarEventImport.ts`), which is that
- * review surface for an event: a real Date row, a Location row, an Alert row,
- * and a Cancel that doesn't commit anything. An entry with no legible
+ * itinerary with several legs. An entry with a real date goes to the app's own
+ * event card (`QuickEventSheet`, seeded by `eventImportQuickSeed` in
+ * `calendarEventImport.ts`), which is that review surface for an event: a
+ * date, a location, an alert, and a Cancel that doesn't commit anything. An entry with no legible
  * date can't become an event at all, so it falls back to `TaskEditor` instead
  * (`draftFromExtractedEvent`) — building a second review UI of our own for
  * either shape would duplicate one of those for no reason other than habit.
@@ -146,6 +144,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       if (result.status === 'ok') {
         haptics.success();
         setPhoto(result.photo);
+        setMode('photo');
       } else if (result.status === 'denied') {
         alertPhotoAccessDenied(source, result.canAskAgain, 'read an event off a photo');
       } else if (result.status === 'failed') {
@@ -156,6 +155,8 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       setPicking(false);
     }
   }, []);
+
+  const clipboardHasImage = useClipboardImage(visible && mode === 'paste' && !text.trim());
 
   const ready = mode === 'photo' ? !!photo : !!text.trim();
 
@@ -321,6 +322,10 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         />
         )}
 
+        {mode === 'paste' && clipboardHasImage && (
+          <ClipboardPhotoOffer onPress={() => pick('clipboard')} disabled={picking} />
+        )}
+
         {mode === 'paste' ? (
           <TextField
             style={styles.pasteInput}
@@ -347,7 +352,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
               accessibilityRole="button"
               accessibilityLabel="Remove this photo"
             >
-              <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+              <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -395,7 +400,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
           accessibilityRole="button"
           accessibilityLabel="Read the event"
         >
-          <Ionicons name="sparkles" size={iconSize.sm} color={colors.onAccent} />
+          <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
           <Text style={styles.runBtnText}>Read the event</Text>
         </TouchableOpacity>
       </>
@@ -503,7 +508,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: 14,
     },
     runBtnOff: { opacity: 0.4 },
-    runBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+    runBtnText: { color: colors.onFill, fontSize: font.md, fontWeight: fontWeight.semibold },
     error: { color: colors.redText, fontSize: font.sm },
   });
 }

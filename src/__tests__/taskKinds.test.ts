@@ -165,6 +165,12 @@ describe('typeSummary', () => {
     expect(s).toContain('fall behind');
   });
 
+  it('says a rotation stays on Today until all are done', () => {
+    const s = typeSummary('rotation', values({ rotationItems: [] }))!;
+    expect(s).toContain('Stays on Today');
+    expect(s).not.toContain('fall behind');
+  });
+
   it('says a week for a weekly target', () => {
     const s = typeSummary('target', values({ targetCount: 3, quotaPeriod: 'week' }))!;
     expect(s).toContain('3× a week');

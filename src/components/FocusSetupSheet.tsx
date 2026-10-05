@@ -162,6 +162,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
    * switch that can't do anything is worse than no switch.
    */
   const [breaksEnabled, setBreaksEnabled] = useState(true);
+  // planOptions already reads null triggers when Settings' breaks switch is off.
   const settingsHaveBreaks = !focusRestsDisabled({
     focusRestAfterTasks: planOptions.restAfterTasks,
     focusRestAfterMinutes: planOptions.restAfterMinutes,

@@ -166,7 +166,7 @@ struct TodoGroceryWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: GroceryWidgetIntent.self, provider: GroceryProvider()) { entry in
             GroceryWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) {
-                    Color(UIColor.secondarySystemGroupedBackground)
+                    WidgetCardBackground()
                 }
         }
         .configurationDisplayName("Groceries")

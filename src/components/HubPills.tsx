@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, textScale, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, textScale, textOnFill, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -134,7 +134,14 @@ export function HubPills({ hub, active }: Props) {
                   tab.route === 'MealPlan' && !isActive && { backgroundColor: freshnessFill(worstFreshness, colors) },
                 ]}
               >
-                <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]} maxFontSizeMultiplier={textScale.badge}>{badge}</Text>
+                <Text
+                  style={[
+                    styles.pillBadgeText,
+                    isActive && styles.pillBadgeTextActive,
+                    tab.route === 'MealPlan' && !isActive && { color: textOnFill(freshnessFill(worstFreshness, colors), colors) },
+                  ]}
+                  maxFontSizeMultiplier={textScale.badge}
+                >{badge}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -169,5 +176,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.orangeFill,
   },
   pillBadgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
-  pillBadgeTextActive: { color: colors.onAccent },
+  // pillBadgeActive is orangeFill, a status colour.
+  pillBadgeTextActive: { color: colors.onFill },
 });

@@ -43,6 +43,17 @@ export const FONT_ASSETS: Record<Exclude<AppFont, 'system'>, Record<string, numb
 };
 
 /**
+ * The brand's display faces: Bricolage Grotesque, set on screen titles and
+ * empty-state titles while the font picker is on its default (see
+ * `useBrandFace`). Always loaded at launch, unlike `FONT_ASSETS`, which loads
+ * only the font a person picked. Two faces at ~90 KB each.
+ */
+export const BRAND_FONT_ASSETS: Record<string, number> = {
+    BricolageGrotesque_700Bold: require('@expo-google-fonts/bricolage-grotesque/700Bold/BricolageGrotesque_700Bold.ttf'),
+    BricolageGrotesque_800ExtraBold: require('@expo-google-fonts/bricolage-grotesque/800ExtraBold/BricolageGrotesque_800ExtraBold.ttf'),
+};
+
+/**
  * The regular face of each bundled font, for previewing all the options at once.
  *
  * Derived rather than listed so adding a font can't half-land: a hand-kept copy

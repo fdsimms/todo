@@ -6,6 +6,7 @@ import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { fetchEvents, type CalendarInfo, type CalendarReadStatus } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
+import { FOLLOW_UP_AHEAD_DAYS, FOLLOW_UP_LOOKBACK_DAYS, needsFollowUpWindow } from '../utils/eventTasks';
 import {
   shouldReadPastCalendar,
   pastWindowStart,
@@ -140,6 +141,17 @@ interface CalendarState {
   /** End of the window `aheadEvents` covers; null before the first read. */
   aheadWindowEnd: string | null;
   refreshAhead: () => Promise<void>;
+  /**
+   * The follow-up window: a week back and `FOLLOW_UP_AHEAD_DAYS` ahead, for the
+   * event rules that fire after an event ends and may stand down when another
+   * is booked. A **separate read** for the reason the other two are: Today's
+   * fortnight reaches neither an event that ended days ago nor one booked
+   * months out, and widening it would charge every foreground for one rule.
+   * Read only while such a rule is enabled (see `needsFollowUpWindow`).
+   */
+  followUpEvents: BusyEvent[];
+  followUpLoaded: boolean;
+  refreshFollowUp: () => Promise<void>;
   /** Records one answer, and persists the pruned record. */
   markHistoryHandled: (key: string, dayKey: string) => void;
   /** Drops everything — used when the feature is switched off. */
@@ -156,6 +168,7 @@ interface CalendarState {
 const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
 const aheadGuard = createRefreshGuard();
+const followUpGuard = createRefreshGuard();
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
@@ -171,6 +184,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   aheadEvents: [],
   aheadLoaded: false,
   aheadWindowEnd: null,
+  followUpEvents: [],
+  followUpLoaded: false,
   handledHistory: {},
   handledLoaded: false,
 
@@ -283,6 +298,38 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({ aheadEvents: result.events.filter(spansDays), aheadLoaded: true, aheadWindowEnd: end.toISOString() });
   },
 
+  async refreshFollowUp() {
+    const settings = useSettingsStore.getState();
+    const readIds = settings.vacationMode
+      ? settings.calendarIds.filter(id => !settings.vacationHiddenCalendarIds.includes(id))
+      : settings.calendarIds;
+    // Demo mode is in the gate, as `refreshAhead` has it: the sweep this feeds
+    // writes tasks, and a demo must not write them from somebody's real calendar.
+    if (
+      !settings.calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios'
+      || isDemoModeActive() || !needsFollowUpWindow(settings.eventTasks, settings.eventRules)
+    ) {
+      followUpGuard.invalidate();
+      set({ followUpEvents: [], followUpLoaded: false });
+      return;
+    }
+    const today = getDayStart(new Date(), settings.dayResetTime);
+    const token = followUpGuard.begin();
+    const result = await fetchEvents(
+      readIds,
+      addDays(today, -FOLLOW_UP_LOOKBACK_DAYS),
+      addDays(today, FOLLOW_UP_AHEAD_DAYS),
+    );
+    if (!followUpGuard.isCurrent(token)) return;
+    if (result === null) {
+      set({ followUpLoaded: false });
+      return;
+    }
+    // `useEventTaskSync` re-runs the sweep when this lands; it can't be called
+    // from here, since `useTaskStore` imports this store.
+    set({ followUpEvents: result.events, followUpLoaded: true });
+  },
+
   markHistoryHandled(key, dayKey) {
     const floorDayKey = dayKeyOf(pastWindowStart(new Date()));
     // Guarded rather than assumed: a mark can only follow a successful
@@ -309,10 +356,12 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     windowGuard.invalidate();
     pastGuard.invalidate();
     aheadGuard.invalidate();
+    followUpGuard.invalidate();
     set({
       events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
+      followUpEvents: [], followUpLoaded: false,
     });
   },
 }));
@@ -356,6 +405,12 @@ function hydrateHandled(
  * hasn't been backgrounded since yesterday is not the case worth engineering
  * for), and `windowStart` is on the state for a reader that wants to check.
  */
+function refreshWindows(): void {
+  const store = useCalendarStore.getState();
+  store.refresh();
+  store.refreshFollowUp();
+}
+
 export function useCalendarSync(): void {
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
@@ -363,7 +418,7 @@ export function useCalendarSync(): void {
     // Guarded on `initialized` because settings load in an effect of their own
     // and this one can win the race — the same guard the reminders drain has.
     if (useSettingsStore.getState().initialized) {
-      if (useSettingsStore.getState().calendarReadEnabled) useCalendarStore.getState().refresh();
+      if (useSettingsStore.getState().calendarReadEnabled) refreshWindows();
     }
 
     const unsubscribe = useSettingsStore.subscribe((state, prev) => {
@@ -375,15 +430,19 @@ export function useCalendarSync(): void {
         // which day "today" is.
         state.dayResetTime !== prev.dayResetTime
       ) {
-        if (state.calendarReadEnabled) useCalendarStore.getState().refresh();
+        if (state.calendarReadEnabled) refreshWindows();
         else useCalendarStore.getState().clear();
+      } else if (
+        // Turning follow-up rules on or off, or editing one, changes whether
+        // the wider window is wanted at all.
+        state.eventTasks !== prev.eventTasks || state.eventRules !== prev.eventRules
+      ) {
+        useCalendarStore.getState().refreshFollowUp();
       }
     });
 
     const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active' && useSettingsStore.getState().calendarReadEnabled) {
-        useCalendarStore.getState().refresh();
-      }
+      if (state === 'active' && useSettingsStore.getState().calendarReadEnabled) refreshWindows();
     });
 
     return () => {

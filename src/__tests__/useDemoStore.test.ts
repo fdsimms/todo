@@ -880,6 +880,12 @@ describe('demo mode', () => {
     expect(s.waitingTasks().map(t => t.id)).toContain(waiter!.id);
     expect(s.blockedTasksOf(blocker!.id).map(t => t.id)).toEqual([waiter!.id]);
 
+    // And one that waits for a whole repeating series, not its first occurrence.
+    const party = s.tasks.find(t => t.title === 'Book the pool party');
+    const swim = s.tasks.find(t => t.title === 'Swim class');
+    expect(party?.blockedById).toBe(swim!.id);
+    expect(party?.waitForSeriesEnd).toBe(true);
+
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -4170,6 +4176,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(quotes!.category).toBe('Home');
   });
 
+  it('seeds project task defaults and a task that starts with them', () => {
+    const { tasks } = useTaskStore.getState();
+    const gift = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
+    expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+    const dad = tasks.find(t => t.title === 'Something for Dad\'s birthday');
+    expect(dad).toBeDefined();
+    expect(dad!.difficulty).toBe('easy');
+    expect(dad!.estimatedMinutes).toBe(15);
+    // "No priority" is an answer, so Backfill has nothing to ask about it.
+    expect(dad!.priority).toBe(0);
+    expect(dad!.backfillDismissedFields).toContain('priority');
+    expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3 });
+  });
+
   it('seeds a weather task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();
@@ -4258,6 +4278,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing is marked handled: the demo never ran the sweep, and a seeded
     // mark would be a claim about an occurrence that does not exist.
     expect(settings.eventTaskHandled).toEqual({});
+
+    // One rule fires after its event ends and stands down when another is booked.
+    expect(rules.some(r => r.afterEvent === true && r.skipIfUpcoming === true)).toBe(true);
   });
 
   it('seeds a leave-by task with its reminder and an MTA note', () => {
