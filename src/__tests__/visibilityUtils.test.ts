@@ -1875,6 +1875,18 @@ describe('quota tasks', () => {
       expect(isTaskVisible(behind)).toBe(true);
     });
 
+    it('a rotation stays on Today while on pace', () => {
+      const item = (id: string) => ({ id, title: id });
+      const rotation = {
+        ...quotaTask,
+        rotationEnabled: true,
+        rotationItems: [item('a'), item('b'), item('c'), item('d'), item('e'), item('f'), item('g'), item('h')],
+        progressCount: 2,
+      } as Task;
+      expect(isQuotaOnPace(rotation)).toBe(true);
+      expect(isTaskVisible(rotation)).toBe(true);
+    });
+
     it('re-hides as soon as the next unit is logged', () => {
       const behind = { ...quotaTask, progressCount: 1 };
       expect(isTaskVisible(behind)).toBe(true);
