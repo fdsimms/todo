@@ -144,3 +144,17 @@ export function clockTimeToken(use24Hour = false): string {
 export function dateToHHMM(d: Date): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
+
+/**
+ * An `HH:MM` placed on the logical day that starts at `dayStart`: a time
+ * earlier than the reset belongs to the small hours at the *end* of that day,
+ * so it rolls onto the next calendar date. See the note on its re-export in
+ * visibilityUtils for the bug a bare `setHours` on the day start caused.
+ */
+export function onLogicalDay(dayStart: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = new Date(dayStart);
+  t.setHours(h, m, 0, 0);
+  if (t < dayStart) t.setDate(t.getDate() + 1);
+  return t;
+}

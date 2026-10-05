@@ -128,7 +128,8 @@ import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask } from '../utils/visibilityUtils';
+import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -510,6 +511,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
+  // Whether a weekly target set up partway through a week asks for fewer that
+  // first week. On by default; only offered when it would change the count.
+  const [prorateFirstWeek, setProrateFirstWeek] = useState(true);
   const [followWaterTarget, setFollowWaterTarget] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [showHealthTarget, setShowHealthTarget] = useState(false);
@@ -745,6 +749,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
@@ -892,7 +897,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPenaltyMinutes(task.penaltyMinutes ?? null);
       setGatesApps(task.gatesApps ?? false);
       setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
-      setTargetCount(task.targetCount ?? null);
+      // The full weekly count, not this week's scaled-down one: that's what
+      // the stepper edits, and the scaling is the toggle under it.
+      setTargetCount(proratedFrom(task) ?? task.targetCount ?? null);
+      setProrateFirstWeek(true);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
@@ -974,7 +982,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1073,7 +1081,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
-      targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
+      targetCount: task ? (proratedFrom(task) ?? task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
+      prorateFirstWeek: true,
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
@@ -1664,6 +1673,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       ? { monthDays: seriesMonthDaysFrom(allDates), repeatMonths: 1 }
       : undefined;
 
+    // After the row is written, so it scales whatever the save left there.
+    // `data` always carries the full count; this is the one place that turns
+    // it into this week's.
+    const applyProration = (id: string) => {
+      const row = useTaskStore.getState().tasks.find(t => t.id === id);
+      if (!row) return;
+      const patch = quotaProrationPatch(
+        row, targetCount, prorateFirstWeek ? proratedCount : null, prorationAnchor,
+      );
+      if (patch) updateTask(id, patch);
+    };
+
     const commitSave = (scope?: 'occurrence' | 'series') => {
       haptics.success();
       if (task) {
@@ -1678,6 +1699,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // what makes it visible today it must not also read as unseen.
           markSeenOnBecomeVisible: true,
         });
+        applyProration(task.id);
         // Other rows, so it can't ride along in `data`: "Blocks" writes each
         // picked task's own blockedById (see setBlockedTasks).
         setBlockedTasks(task.id, blocksIds);
@@ -1727,6 +1749,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // branches of this if consistent: addTaskSeries never applies them.
           // Quick add is where a rule fires, and it says so as you type.
           const created = addTask(newData, undefined, { skipTitleRules: true });
+          applyProration(created.id);
           if (blocksIds.length > 0) setBlockedTasks(created.id, blocksIds);
           // Subtasks typed in before the parent existed (see draftSubtasks) —
           // flush them to real rows now that there's a parent id to hang off.
@@ -1837,6 +1860,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * already is, and there's nothing to migrate or keep in step.
    */
   const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget, rotationEnabled });
+
+  // A weekly target set up partway through a week: how many the first week
+  // asks for instead (see proratedWeeklyTarget). Offered when the task is
+  // becoming a weekly target in this edit, or already is a scaled-down one;
+  // a weekly target whose week is already running keeps its count.
+  const wasProrated = task ? proratedFrom(task) !== null : false;
+  const prorationAnchor = (() => {
+    if (task && wasProrated && task.quotaStartedAt) {
+      return getTaskDayStart(new Date(task.quotaStartedAt), dayResetTime);
+    }
+    return firstWeekAnchor(dueDate ? getTaskDayStart(dueDate, dayResetTime) : null, getCurrentDayStart());
+  })();
+  const prorationDaysLeft = weekDaysLeft(prorationAnchor, weekStartsOn);
+  const offersProration =
+    kind === 'target' && targetCount !== null && quotaIntervalMinutes === null && quotaPeriod === 'week' &&
+    (!task || wasProrated || !(task.quotaPeriod === 'week' && isQuotaTask(task)));
+  const proratedCount = offersProration && targetCount !== null
+    ? proratedWeeklyTarget(targetCount, prorationDaysLeft)
+    : null;
 
   // What the supply card reads back: the day the last unit gets spent, and the
   // day an order has to go in to beat it.
@@ -2220,6 +2262,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       windowStart, windowEnd,
       penaltyMinutes, gatesApps, penaltyCutoffTime,
       targetCount,
+      prorateFirstWeek,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
@@ -3331,7 +3374,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'target' ? [{
             key: 'dailyTarget', label: quotaPeriod === 'week' ? 'Weekly target' : 'Daily target', set: true,
-            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
+            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'prorate', 'this week', 'fewer', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
@@ -3451,6 +3494,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           : 'The count resets each day.'}
                       </Text>
                     </>
+                  )}
+                  {proratedCount !== null && targetCount !== null && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setProrateFirstWeek(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Fewer this week"
+                      accessibilityState={{ checked: prorateFirstWeek }}
+                    >
+                      <Ionicons name="calendar-outline" size={18} color={prorateFirstWeek ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Fewer this week</Text>
+                        <Text style={styles.optionHint}>
+                          {`Aim for ${[proratedCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${prorationDaysLeft === 1 ? '1 day is' : `${prorationDaysLeft} days are`} left in it. ${[targetCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} a week after that.`}
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, prorateFirstWeek && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, prorateFirstWeek && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
                   )}
                   {targetCount !== null && quotaPeriod === 'day' && (
                     <>
@@ -6279,7 +6343,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               accessibilityLabel="Pin to Today"
               accessibilityState={{ checked: pinned }}
             >
-              <PinIcon filled={pinned} size={18} color={pinned ? colors.orange : colors.textSecondary} />
+              <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pin to Today</Text>
                 <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
@@ -6297,7 +6361,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 accessibilityLabel="Pin every occurrence"
                 accessibilityState={{ checked: pinEachOccurrence }}
               >
-                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orange : colors.textSecondary} />
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Pin every occurrence</Text>
                   <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
@@ -6426,7 +6490,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons
                         name={app.icon as never}
                         size={13}
-                        color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                        color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
                       />
                       <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
                         {app.name}
@@ -6606,7 +6670,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     size={18}
                     color={
                       isStreakAtRecord(task) ? colors.red
-                      : task.streakCount > 0 ? colors.orange
+                      : task.streakCount > 0 ? colors.orangeText
                       : colors.textSecondary
                     }
                   />
@@ -6658,7 +6722,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   accessibilityLabel="Show streak on row"
                   accessibilityState={{ checked: showStreak }}
                 >
-                  <Ionicons name="flame" size={18} color={showStreak ? colors.orange : colors.textSecondary} />
+                  <Ionicons name="flame" size={18} color={showStreak ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Show streak on row</Text>
                     <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
@@ -6690,7 +6754,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   accessibilityLabel="Streak requires on-time completion"
                   accessibilityState={{ checked: streakRequiresWindow }}
                 >
-                  <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orange : colors.textSecondary} />
+                  <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak requires on-time completion</Text>
                     <Text style={styles.optionHint}>Completing outside this task's time window still counts as done, but restarts the streak instead of continuing it</Text>
@@ -6745,7 +6809,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, { color: colors.red }]}>Delete Task</Text>
+              <Text style={[styles.optionLabel, { color: colors.redText }]}>Delete Task</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -6961,13 +7025,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, alignItems: 'center',
     borderWidth: 2, borderColor: 'transparent',
   },
-  timePillActive: { backgroundColor: colors.accent },
+  timePillActive: { backgroundColor: colors.accentFill },
   // Which of Start/End the wheel below is currently set to — separate from
   // timePillActive, which just means "has a value", so a pill can show both,
   // either, or neither.
   timePillEditing: { borderColor: colors.text },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  timePillTextActive: { color: colors.bg, fontWeight: '600' },
+  timePillTextActive: { color: colors.onAccent, fontWeight: '600' },
   windowPillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
@@ -7089,9 +7153,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  linkAppChipActive: { backgroundColor: colors.accent },
+  linkAppChipActive: { backgroundColor: colors.accentFill },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  linkAppChipTextActive: { color: colors.bg, fontWeight: '600' },
+  linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
   linkCustomRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
@@ -7129,16 +7193,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  schedulePillActive: { backgroundColor: colors.accent },
+  schedulePillActive: { backgroundColor: colors.accentFill },
   schedulePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  schedulePillTextActive: { color: colors.bg },
+  schedulePillTextActive: { color: colors.onAccent },
   seriesRepeatHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   streakApplyBtn: {
     marginLeft: 'auto', paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.orange,
+    borderRadius: radius.full, backgroundColor: colors.orangeFill,
   },
   streakApplyBtnDisabled: { backgroundColor: colors.bgTertiary },
   streakApplyText: { color: colors.onAccent, fontSize: font.sm, fontWeight: '600' },
@@ -7200,14 +7264,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
     borderCurve: 'continuous',
     borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   subtaskBoxDone: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
+    backgroundColor: colors.greenFill,
+    borderColor: colors.greenFill,
   },
   subtaskTitleWrapper: { flex: 1 },
   subtaskTitle: {
@@ -7247,11 +7311,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  chainItemDotActive: { backgroundColor: colors.accent },
+  chainItemDotActive: { backgroundColor: colors.accentFill },
   chainItemDotText: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
   },
-  chainItemDotTextActive: { color: colors.bg },
+  chainItemDotTextActive: { color: colors.onAccent },
   chainItemTitleWrapper: { flex: 1 },
   chainItemTitle: {
     flex: 1, color: colors.text, fontSize: font.md,

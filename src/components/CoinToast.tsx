@@ -58,7 +58,7 @@ export function CoinToast() {
   if (!shown) return null;
 
   const earned = shown.kind === 'earn';
-  const tint = earned ? colors.green : colors.red;
+  const tint = earned ? colors.greenText : colors.redText;
   const text = `${earned ? '+' : '-'}${formatCoins(shown.amount)}`;
 
   return (

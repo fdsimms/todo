@@ -229,5 +229,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.smd,
     marginTop: spacing.xl,
   },
-  deleteText: { color: colors.red, fontSize: font.md },
+  deleteText: { color: colors.redText, fontSize: font.md },
 });

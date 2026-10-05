@@ -15,6 +15,8 @@ import type {
   Reward,
   Milestone,
   EventPeopleLink,
+  CalendarRequest,
+  CalendarRequestStatus,
   MoodLevel,
   MoodLog,
   NutrientKey,
@@ -430,6 +432,23 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_event_people_links_event_key ON event_people_links(event_key);
+
+    -- An event an agent asked for, waiting on the device that writes them — see
+    -- CalendarRequest in types/index.ts and src/utils/calendarRequestDrain.ts.
+    CREATE TABLE IF NOT EXISTS calendar_requests (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      all_day INTEGER NOT NULL DEFAULT 0,
+      location TEXT,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      failure_reason TEXT,
+      event_external_id TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL
+    );
 
     -- One dose taken, at one moment — see MedicationLog in types/index.ts and
     -- src/utils/medicationLog.ts. Same shape call mood_logs makes and for the
@@ -2270,6 +2289,9 @@ export const BACKUP_TABLES = [
   'milestones',
   // After people: a link names people by id, so they are restored first.
   'event_people_links',
+  // Points at nothing. A pending request restored onto a phone that writes
+  // them is written then, which is what it was waiting for.
+  'calendar_requests',
   // The medication log, beside the two above it. Its one pointer (task_id) is
   // provenance rather than a reference — a dose whose task is gone is still a
   // dose — so it has no ordering requirement against `tasks`.
@@ -6458,6 +6480,63 @@ export function dbUpsertEventPeopleLink(link: EventPeopleLink): void {
 
 export function dbDeleteEventPeopleLinks(ids: readonly string[]): void {
   for (const id of ids) db.runSync('DELETE FROM event_people_links WHERE id = ?', [id]);
+}
+
+const CALENDAR_REQUEST_STATUSES: readonly CalendarRequestStatus[] = ['pending', 'written', 'failed', 'cancelled'];
+
+function rowToCalendarRequest(row: Record<string, unknown>): CalendarRequest {
+  const status = row.status as CalendarRequestStatus;
+  return {
+    id: row.id as string,
+    title: (row.title as string) ?? '',
+    startAt: row.start_at as string,
+    endAt: row.end_at as string,
+    allDay: row.all_day === 1,
+    location: (row.location as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    // An unknown status from a newer peer is left alone rather than written.
+    status: CALENDAR_REQUEST_STATUSES.includes(status) ? status : 'cancelled',
+    failureReason: (row.failure_reason as string | null) ?? null,
+    eventExternalId: (row.event_external_id as string | null) ?? null,
+    resolvedAt: (row.resolved_at as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllCalendarRequests(): CalendarRequest[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM calendar_requests ORDER BY created_at ASC')
+    .map(rowToCalendarRequest);
+}
+
+export function dbGetCalendarRequest(id: string): CalendarRequest | null {
+  const row = db.getFirstSync<Record<string, unknown>>('SELECT * FROM calendar_requests WHERE id = ?', [id]);
+  return row ? rowToCalendarRequest(row) : null;
+}
+
+export function dbInsertCalendarRequest(r: CalendarRequest): void {
+  db.runSync(
+    `INSERT INTO calendar_requests
+       (id, title, start_at, end_at, all_day, location, notes, status, failure_reason, event_external_id, resolved_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [r.id, r.title, r.startAt, r.endAt, r.allDay ? 1 : 0, r.location, r.notes, r.status,
+      r.failureReason, r.eventExternalId, r.resolvedAt, r.createdAt]
+  );
+}
+
+/** Moves a request to its outcome. Only the outcome columns: what was asked for never changes. */
+export function dbResolveCalendarRequest(
+  id: string,
+  outcome: Pick<CalendarRequest, 'status' | 'failureReason' | 'eventExternalId' | 'resolvedAt'>
+): void {
+  db.runSync(
+    'UPDATE calendar_requests SET status = ?, failure_reason = ?, event_external_id = ?, resolved_at = ? WHERE id = ?',
+    [outcome.status, outcome.failureReason, outcome.eventExternalId, outcome.resolvedAt, id]
+  );
+}
+
+export function dbDeleteCalendarRequests(ids: readonly string[]): void {
+  for (const id of ids) db.runSync('DELETE FROM calendar_requests WHERE id = ?', [id]);
 }
 
 /**

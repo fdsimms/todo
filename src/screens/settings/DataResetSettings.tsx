@@ -302,7 +302,7 @@ export function DataResetSettings() {
           icon="cloud-upload-outline"
           iconColor={demoActive ? colors.textTertiary : colors.red}
           label="Restore from a backup"
-          labelColor={demoActive ? colors.textTertiary : colors.red}
+          labelColor={demoActive ? colors.textTertiary : colors.redText}
           hint={demoActive
             ? 'Unavailable while demo mode is on'
             : 'Replaces everything in the app with a backup file'}
@@ -363,7 +363,7 @@ export function DataResetSettings() {
           icon="refresh-outline"
           iconColor={colors.red}
           label="Reset all streaks"
-          labelColor={colors.red}
+          labelColor={colors.redText}
           hint="Sets every task's streak count back to 0."
           onPress={confirmResetStreaks}
         />
@@ -373,7 +373,7 @@ export function DataResetSettings() {
           icon="refresh-circle-outline"
           iconColor={colors.red}
           label="Reset to defaults"
-          labelColor={colors.red}
+          labelColor={colors.redText}
           hint="Puts every setting in the app back to its default."
           onPress={confirmResetToDefaults}
           accessibilityLabel="Reset settings to defaults"

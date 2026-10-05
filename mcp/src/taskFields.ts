@@ -109,6 +109,8 @@ export interface TargetInput {
   per: 'day' | 'week';
   unit?: string | null;
   allowOvershoot?: boolean;
+  /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
+  firstWeek?: 'fewer' | 'full';
 }
 
 /** A countdown the task runs once started. Subtask stretches are not settable here. */

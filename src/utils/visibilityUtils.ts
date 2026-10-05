@@ -2,7 +2,7 @@ import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { Task, TimeOfDay, Category } from '../types';
 import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
-import { effectiveWindowEndTime } from './clockTime';
+import { effectiveWindowEndTime, onLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -11,7 +11,7 @@ import { activeChainStep } from './chain';
 import { isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
-import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
+import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
 
@@ -185,13 +185,10 @@ export function isHiddenForVacation(task: Task): boolean {
 // drop off Today and re-advertise themselves as "Tomorrow". Same bug the
 // per-task gates had before they were anchored (see getWindowThreshold), and
 // the same fix.
-export function onLogicalDay(dayStart: Date, hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const t = new Date(dayStart);
-  t.setHours(h, m, 0, 0);
-  if (t < dayStart) t.setDate(t.getDate() + 1);
-  return t;
-}
+//
+// The function itself lives in the store-free clockTime module, so a module
+// that can't reach the stores (templateSchedule) places a time the same way.
+export { onLogicalDay } from './clockTime';
 
 // The window's closing instant on the logical day that starts at `dayStart`.
 //
@@ -577,8 +574,14 @@ function isPlacedOnADay(task: Task): boolean {
 // it again. Reaching targetCount completes the task like any other, so the
 // per-day reset is free: the next occurrence starts at progressCount 0.
 
+//
+// A target of 1 is an ordinary task everywhere except one place: the first
+// week of a weekly target scaled down to the days that were left in it (see
+// proratedFrom). That row is still counting toward a weekly target and has to
+// pace, roll over and hand the full count on like one.
 export function isQuotaTask(task: Task): boolean {
-  return task.targetCount !== null && task.targetCount > 1;
+  if (task.targetCount === null) return false;
+  return task.targetCount > 1 || (task.targetCount === 1 && proratedFrom(task) !== null);
 }
 
 /**

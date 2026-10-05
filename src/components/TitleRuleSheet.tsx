@@ -414,7 +414,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 <Ionicons
                   name={app.icon as never}
                   size={13}
-                  color={draft.linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                  color={draft.linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
                 />
                 <Text style={[styles.linkAppChipText, draft.linkUrl === app.scheme && styles.linkAppChipTextActive]}>
                   {app.name}
@@ -560,9 +560,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  linkAppChipActive: { backgroundColor: colors.accent },
+  linkAppChipActive: { backgroundColor: colors.accentFill },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  linkAppChipTextActive: { color: colors.bg, fontWeight: '600' },
+  linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
   linkCustomRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingTop: spacing.sm,
@@ -613,5 +613,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderRadius: radius.md,
     paddingVertical: 13, alignItems: 'center',
   },
-  deleteText: { color: colors.red, fontSize: font.md },
+  deleteText: { color: colors.redText, fontSize: font.md },
 });

@@ -254,6 +254,49 @@ describe('buildDraftsFromTemplate', () => {
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
 
+  // completeTask carries a deadline only as an offset and moves a reminder by
+  // whole days, so a repeating item's fixed dates alone stop at the first one.
+  it('gives a repeating item a deadline and reminder that carry to later occurrences', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({
+      recurrenceType: 'weekly', dueOffsetDays: 3, deadlineOffsetDays: 1, reminderOffsetMinutes: 24 * 60,
+    })], { start, end });
+    expect(draft.deadlineOffsetDays).toBe(2);
+    expect(draft.reminderOffsetDays).toBe(1);
+  });
+
+  it('leaves a one-off item and a same-day deadline on fixed dates', () => {
+    const [once] = buildDraftsFromTemplate([makeItem({ dueOffsetDays: 3, deadlineOffsetDays: 1, reminderOffsetMinutes: 1440 })], { start, end });
+    expect(once.deadlineOffsetDays).toBeNull();
+    expect(once.reminderOffsetDays).toBeNull();
+    const [sameDay] = buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', dueOffsetDays: 0, deadlineOffsetDays: 0, reminderOffsetMinutes: 60 })], { start, end });
+    expect(sameDay.deadlineOffsetDays).toBeNull();
+    expect(sameDay.reminderOffsetDays).toBeNull();
+    expect(sameDay.deadline).not.toBeNull();
+  });
+
+  it('seeds a target, phone, email and the 2nd-weekday repeat, each only where it applies', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({
+      targetCount: 8, targetUnit: 'glasses', quotaReminders: true, phoneNumber: '555', emailAddress: 'a@b.c',
+      recurrenceType: 'monthly', recurrenceDays: [2], recurrenceWeekOrdinal: 2,
+    })], noAnchors);
+    expect(draft).toMatchObject({ targetCount: 8, targetUnit: 'glasses', quotaReminders: true, phoneNumber: '555', emailAddress: 'a@b.c', recurrenceWeekOrdinal: 2 });
+    // An ordinal means nothing on a weekly repeat, and a target's options
+    // nothing without the target.
+    const [weekly] = buildDraftsFromTemplate([makeItem({ recurrenceType: 'weekly', recurrenceWeekOrdinal: 2, quotaReminders: true, targetUnit: 'x' })], noAnchors);
+    expect(weekly).toMatchObject({ recurrenceWeekOrdinal: null, quotaReminders: false, targetUnit: null, targetCount: null });
+  });
+
+  it('seeds a chain step per repeat only on a chain that repeats', () => {
+    const chain = { chainEnabled: true, chainItems: [{ id: 'a', title: 'A', estimatedMinutes: null }, { id: 'b', title: 'B', estimatedMinutes: null }], chainStepOnSchedule: true };
+    expect(buildDraftsFromTemplate([makeItem({ ...chain, recurrenceType: 'daily' })], noAnchors)[0].chainStepOnSchedule).toBe(true);
+    expect(buildDraftsFromTemplate([makeItem(chain)], noAnchors)[0].chainStepOnSchedule).toBe(false);
+  });
+
+  it('reads a target below two, and a blocker on the item itself, as none', () => {
+    expect(normalizeTemplateItem({ targetCount: 1 }).targetCount).toBeNull();
+    expect(normalizeTemplateItem({ id: 'x', blockedByItemIds: ['x', 'y', 'y'] }).blockedByItemIds).toEqual(['y']);
+  });
+
   it('seeds the task with the item difficulty', () => {
     const [draft] = buildDraftsFromTemplate([makeItem({ difficulty: 'hard' })], noAnchors);
     expect(draft.difficulty).toBe('hard');
@@ -610,6 +653,18 @@ describe('expandTemplateItems / buildDraftsFromTemplateTree', () => {
     expect(expanded.map(e => e.item.title)).toEqual(['Pack bag']);
   });
 
+  // Identical copies can't be told apart by a selection keyed by item id, and
+  // the run's gate wiring keys by item id too, so a template reached twice
+  // contributes its items once.
+  it('expands a template reached twice only once', () => {
+    const shared = makeTemplate({ id: 's', items: [makeItem({ id: 's1', title: 'Charger' })] });
+    const mid = makeTemplate({ id: 'm', items: [refItem('m1', 's')] });
+    const top = makeTemplate({ id: 't', items: [refItem('t1', 's'), refItem('t2', 's'), refItem('t3', 'm')] });
+    const templatesById = new Map([[shared.id, shared], [mid.id, mid], [top.id, top]]);
+    const expanded = expandTemplateItems(top.items, top.id, new Set(['t1', 't2', 't3', 'm1', 's1']), templatesById);
+    expect(expanded.map(e => e.item.title)).toEqual(['Charger']);
+  });
+
   it('does not infinite-loop on a cyclic reference', () => {
     const a = makeTemplate({ id: 'a', items: [refItem('a1', 'b')] });
     const b = makeTemplate({ id: 'b', items: [refItem('b1', 'a')] });
@@ -667,6 +722,17 @@ describe('buildApplyTree / flattenApplyTree / expandSelectionWithAncestors', () 
 });
 
 describe('extractPlaceholders', () => {
+  // A rotation member's blank is substituted at apply time, so it has to be
+  // asked for too, or it always comes out empty.
+  it('reads blanks in rotation members', () => {
+    const item = normalizeTemplateItem({ title: 'Weekly cleaning', rotationEnabled: true, rotationItems: [
+      { id: 'r1', title: 'Clean {room}' },
+      { id: 'r2', title: 'Hoover' },
+    ] as TemplateItem['rotationItems'] });
+    expect(extractPlaceholders([item])).toEqual(['room']);
+    expect(itemPlaceholders(item)).toEqual(['room']);
+  });
+
   it("reads a blank that appears only in an item's location", () => {
     expect(extractPlaceholders([makeItem({ title: 'Check in', location: '{hotel}' })])).toEqual(['hotel']);
   });
@@ -918,6 +984,13 @@ describe('substitutePlaceholders', () => {
 
   it('matches the name case-insensitively', () => {
     expect(substitutePlaceholders('Book {Where}', { where: 'Denver' })).toBe('Book Denver');
+  });
+
+  // The other half of case-insensitive: a caller (the MCP server, a question
+  // named as typed) can hand over a capitalised key.
+  it('reads a value keyed with capitals', () => {
+    expect(substitutePlaceholders('Pack {nights} socks', { Nights: '7' })).toBe('Pack 7 socks');
+    expect(substitutePlaceholders('Book {where}', { ' Where ': 'Denver' })).toBe('Book Denver');
   });
 
   it('replaces every occurrence', () => {

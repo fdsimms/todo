@@ -300,6 +300,7 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     }
     case 'noteRemove': return { title: 'Forget this note?', message: `Removes the note ${t} from Notes for Claude.`, destructive: true };
     case 'noteAdd': return { title: 'Restore this note?', message: `Puts the note ${t} back in Notes for Claude.`, destructive: false };
+    case 'cancelCalendarRequest': return { title: 'Don’t add this event?', message: `Claude asked to add ${t} to your calendar, and it hasn’t been added yet. This stops it from being added.`, destructive: false };
   }
 }
 

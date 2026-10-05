@@ -116,7 +116,7 @@ export function RecipeTimerRow({
           <Ionicons
             name={ready ? 'alarm' : 'timer-outline'}
             size={18}
-            color={ready ? colors.orange : colors.accent}
+            color={ready ? colors.orangeText : colors.accent}
           />
           {reading ? (
             <Text style={styles.labels} numberOfLines={1}>
@@ -244,7 +244,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   clockReady: {
-    color: colors.orange,
+    color: colors.orangeText,
   },
   clockState: {
     color: colors.textSecondary,
@@ -252,7 +252,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   clockStateReady: {
-    color: colors.orange,
+    color: colors.orangeText,
   },
   // "Cook for 45m", "Time prep": a line of words rather than a clock, so a
   // step under the clock's size. Most recipes are never timed, and two idle
@@ -271,7 +271,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: TOUCH,
   },
   primaryBtnRunning: {
-    backgroundColor: colors.orange,
+    backgroundColor: colors.orangeFill,
   },
   secondaryBtn: {
     width: TOUCH,

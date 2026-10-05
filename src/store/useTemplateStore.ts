@@ -25,8 +25,9 @@ import {
   initialLeafSelection,
   personIdsForAnswers,
 } from '../utils/templateQuestions';
+import { blockerFields } from '../utils/blocking';
 import { applyTemplateRun } from '../utils/templateApply';
-import { dueTemplateRun } from '../utils/templateSchedule';
+import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
 import { useSettingsStore } from './useSettingsStore';
 
 /** Everything the apply sheet collects beyond the item selection and anchors. */
@@ -456,6 +457,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         updateProject: (id, patch) => projects.updateProject(id, patch),
         homeSection: (sectionId, projectId, checklist) => groups.updateGroup(sectionId, { projectId, checklist }),
         setAnswerGate: (taskId, gate) => tasks.updateTask(taskId, { answerGate: gate }),
+        setBlockers: (taskId, ids) => tasks.updateTask(taskId, blockerFields(ids)),
       });
     });
     return createdTasks;
@@ -470,7 +472,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     // answered — so holding the old key would silently swallow the first run
     // under the new setting. Toggling off and on again isn't a new question,
     // and clearing there would hand out a second run of the same period.
-    const changed = JSON.stringify(schedule) !== JSON.stringify(template.schedule);
+    const changed = !schedulesEqual(schedule, template.schedule);
     const updated: TaskTemplate = {
       ...template,
       schedule,
@@ -517,25 +519,36 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       // not be re-diagnosed as due on every later launch this period. The key
       // means "this period has been dealt with", not "this period created
       // tasks".
-      const fired: TaskTemplate = { ...template, scheduleLastFiredKey: due.periodKey };
+      //
+      // Stamped onto the row as it is now rather than the snapshot: an earlier
+      // run in this loop, or a sync landing mid-loop, may have rewritten it,
+      // and writing the snapshot back would undo that edit.
+      const live = get().templates.find(t => t.id === template.id) ?? template;
+      const fired: TaskTemplate = { ...live, scheduleLastFiredKey: due.periodKey };
       dbUpdateTemplate(fired);
       set(s => ({ templates: s.templates.map(t => (t.id === template.id ? fired : t)) }));
 
-      const tree = buildApplyTree(template.items, template.id, templatesById);
-      const questions = questionsForTree(tree, templatesById);
-      const answers = resolveAnswers(questions, {}, due.anchors);
-      const selectedIds = initialLeafSelection(tree, questions, answers);
-      if (selectedIds.size === 0) continue;
+      // One template that throws must not cost every template after it its
+      // run. Its own period is already recorded above, by design.
+      try {
+        const tree = buildApplyTree(template.items, template.id, templatesById);
+        const questions = questionsForTree(tree, templatesById);
+        const answers = resolveAnswers(questions, {}, due.anchors);
+        const selectedIds = initialLeafSelection(tree, questions, answers);
+        if (selectedIds.size === 0) continue;
 
-      get().applyTemplate(template.id, selectedIds, due.anchors, {
-        runName: due.runName,
-        placeholders: placeholderValuesFor(questions, answers),
-        answers,
-        // Always [] here: answers is {}, so every 'people' question resolves
-        // to defaultAnswer, which normalizeTemplateQuestion guarantees is ''
-        // for that kind. Nobody was asked, so nobody gets named.
-        personIds: personIdsForAnswers(questions, answers),
-      });
+        get().applyTemplate(template.id, selectedIds, due.anchors, {
+          runName: due.runName,
+          placeholders: placeholderValuesFor(questions, answers),
+          answers,
+          // Always [] here: answers is {}, so every 'people' question resolves
+          // to defaultAnswer, which normalizeTemplateQuestion guarantees is ''
+          // for that kind. Nobody was asked, so nobody gets named.
+          personIds: personIdsForAnswers(questions, answers),
+        });
+      } catch (error) {
+        console.warn(`Scheduled run of template "${template.name}" failed`, error);
+      }
     }
     // Deliberately no setLastAction, same reasoning as dripStalledProjects and
     // checkMealPlanNudge: an unattended write nobody saw happen shouldn't be

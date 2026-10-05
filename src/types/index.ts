@@ -960,7 +960,7 @@ export interface FocusSessionRecord {
  * `src/utils/retention.ts` for why this one may not default to forever the way
  * the Logbook's own window does.
  */
-export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed';
+export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed' | 'missed';
 
 /**
  * Who made the write: the app's own passes, or an agent working through the
@@ -978,7 +978,9 @@ export type UnattendedActor = 'app' | 'agent';
 /** What an agent's entry is about. Everything the app writes on its own is a task. */
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
-  | 'automation' | 'note' | 'stack';
+  | 'automation' | 'note' | 'stack' | 'reward'
+  // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
+  | 'event';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -3813,6 +3815,39 @@ export interface TemplateItem {
   recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceCount: number | null;
+  // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
+  // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the
+  // other fields added after templates shipped: absent reads as null.
+  recurrenceWeekOrdinal?: number | null;
+
+  // Seed the counted-target fields of the same names: "8 glasses a day",
+  // "3 runs a week". A routine is exactly where a target belongs, and without
+  // these it had to be set on every task the template made. The interval form
+  // (quotaIntervalMinutes) and the water link are not seeded; see
+  // templateItemParity.test.ts for why.
+  targetCount?: number | null;
+  targetUnit?: string | null;
+  quotaPeriod?: QuotaPeriod;
+  allowOvershoot?: boolean;
+  quotaReminders?: boolean;
+
+  // Seeds Task.chainStepOnSchedule: on a repeating chain, each step waits for
+  // the next repeat rather than following the one before it straight away.
+  chainStepOnSchedule?: boolean;
+
+  // Seed Task.phoneNumber / emailAddress, siblings of linkUrl and location:
+  // the clinic to call, the office to email.
+  phoneNumber?: string | null;
+  emailAddress?: string | null;
+
+  /**
+   * "Waits on" before there is a task: other items of this template that must
+   * be done first. Named by item id, like `answerGate`, and turned into the
+   * task's blockers (`blockerFields`) once those items are tasks. An item that
+   * wasn't ticked, or isn't in this template, is dropped at apply time rather
+   * than left as a blocker that names nothing.
+   */
+  blockedByItemIds?: string[];
 
   vacationPause: boolean;
   // Seeds Task.excludeFromSuggestions on the task this item creates. Same
@@ -7208,6 +7243,48 @@ export const LEFTOVER_RETENTION_DAYS = 60;
  * completions forever" also means "keep four years of dinners".
  */
 export const MEAL_PLAN_RETENTION_DAYS = 180;
+
+/**
+ * Where a calendar request stands (see `CalendarRequest`). `pending` until the
+ * device named by `calendarRequestDeviceId` picks it up; that device moves it
+ * to `written` or `failed`. `cancelled` is the requester taking it back while
+ * it was still pending.
+ */
+export type CalendarRequestStatus = 'pending' | 'written' | 'failed' | 'cancelled';
+
+/**
+ * An event an agent asked to have put on the calendar (`request_calendar_event`
+ * in the MCP server, see `docs/arch/mcp-server.md`). The server cannot reach a
+ * calendar, so it writes this synced row and the one device chosen in Settings
+ * writes the event when the row arrives (`src/utils/calendarRequestDrain.ts`),
+ * then stamps the outcome back onto the row so the requester can see it.
+ *
+ * The row is a request, not a link: nothing keeps the event in step with it
+ * afterwards, and the app never edits or deletes an event it wrote this way.
+ */
+export interface CalendarRequest {
+  id: string;
+  title: string;
+  /** ISO. For an all-day event, local midnight of its first day. */
+  startAt: string;
+  /** ISO, exclusive. For an all-day event, local midnight of the day after its last. */
+  endAt: string;
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
+  status: CalendarRequestStatus;
+  /** Why it failed, in words a person can read. Null unless `failed`. */
+  failureReason: string | null;
+  /**
+   * The calendar server's id for the event written (`calendarItemExternalIdentifier`),
+   * when the writing device could read one. Unlike an EventKit id it names the
+   * same event on every device, which is why it is allowed to sync.
+   */
+  eventExternalId: string | null;
+  /** ISO, when it left `pending`. Null while pending. */
+  resolvedAt: string | null;
+  createdAt: string;
+}
 
 /**
  * Who one calendar event occurrence is with — the app's own note about an

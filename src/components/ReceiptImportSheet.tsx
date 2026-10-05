@@ -1221,7 +1221,7 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.lg,
     },
     dateValue: { flex: 1, color: colors.text, fontSize: font.md },
-    dateCaution: { color: colors.orange, fontSize: font.xs, marginTop: spacing.xs },
+    dateCaution: { color: colors.orangeText, fontSize: font.xs, marginTop: spacing.xs },
     tally: {
       color: colors.textTertiary,
       fontSize: font.sm,
@@ -1258,7 +1258,7 @@ function makeStyles(colors: Colors) {
     rowBody: { flex: 1 },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
-    rowWeak: { color: colors.orange, fontSize: font.xs, marginTop: spacing.xxs },
+    rowWeak: { color: colors.orangeText, fontSize: font.xs, marginTop: spacing.xxs },
     rowRemembered: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
     rowSkipped: { color: colors.textSecondary, fontSize: font.sm },
     rowPrice: { color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'] },
@@ -1306,7 +1306,7 @@ function makeStyles(colors: Colors) {
     checkOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
     loading: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
     loadingText: { color: colors.textSecondary, fontSize: font.sm },
-    error: { color: colors.red, fontSize: font.sm },
+    error: { color: colors.redText, fontSize: font.sm },
     // EmptyState brings its own centring, icon circle and type — this only
     // has to keep it off the sheet's edges.
     empty: { paddingHorizontal: spacing.md, paddingVertical: spacing.xl },

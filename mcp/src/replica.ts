@@ -33,7 +33,10 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 
 import { shimModule } from './expoSqliteShim';
 import type {
+  CalendarRequest,
   Category,
+  ChainItem,
+  CoinEntry,
   Cookbook,
   DeliverableKind,
   EventTaskRule,
@@ -55,6 +58,7 @@ import type {
   Project,
   ProjectKind,
   Recipe,
+  Reward,
   TaskTemplate,
   TemplateItem,
   Task,
@@ -68,7 +72,7 @@ import type { AgentNote } from '../../src/utils/agentNotes';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
-import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
+import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, templateVersion, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
@@ -87,6 +91,7 @@ type FoodLogModule = typeof import('../../src/utils/foodLog');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
 type RewardsModule = typeof import('../../src/utils/rewards');
+type NegativeHabitsModule = typeof import('../../src/utils/negativeHabits');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
@@ -132,8 +137,27 @@ export interface ReplicaSettings {
   /** Simplified mode: the advanced half of the app is hidden. */
   simpleMode: boolean;
   rewardsEnabled: boolean;
+  /** The reward being saved for, or null. */
+  rewardGoalId: string | null;
+  /** How many coin bounties may be live at once. */
+  bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
   completedRetentionDays: number | null;
+  /**
+   * Whether some device is set to write the calendar events an agent asks for
+   * (`calendarRequestDeviceId`). Without one, a request would wait for ever.
+   */
+  calendarRequestsOn: boolean;
+}
+
+/** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
+export interface CalendarRequestInput {
+  title: string;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
 }
 
 /**
@@ -170,6 +194,7 @@ export interface ReplicaLib {
   eventTasks: typeof import('../../src/utils/eventTasks');
   healthRules: typeof import('../../src/utils/healthRules');
   screenTimeRules: typeof import('../../src/utils/screenTimeRules');
+  rewards: typeof import('../../src/utils/rewards');
 }
 
 /** The rule lists an agent may edit, by the name the tools use. */
@@ -226,7 +251,10 @@ export interface TemplateRun {
   end?: Date | null;
   /** Answers to the template's questions, by the question's name. A question left out takes its default. */
   answers?: Record<string, string>;
-  /** Item ids to add to what the answers select (an optional item), or to take out of it. */
+  /**
+   * Item ids to add to what the answers select (an optional item), or to take
+   * out of it. A nested template's own item stands for every item inside it.
+   */
   include?: string[];
   leaveOut?: string[];
   /** Run into this existing project instead of the template's own container. */
@@ -237,6 +265,16 @@ export interface TemplateRunResult {
   tasks: Task[];
   /** What the run put the tasks in, by name, when it made one. */
   container: { kind: 'stack' | 'project' | 'task'; id: string; name: string } | null;
+  /**
+   * Items the run offered but did not create, and why: what the person would
+   * have seen unticked in the apply sheet. A run reported by its tasks alone
+   * hides exactly the part a caller is most likely to have got wrong.
+   */
+  leftOut: { itemId: string; title: string; why: string }[];
+  /** Blanks in the created text that had no value, and so were dropped from it. */
+  unfilledBlanks: string[];
+  /** Nested templates that no longer exist, so nothing came from them. */
+  brokenRefs: string[];
 }
 
 export interface PersonFields {
@@ -547,6 +585,16 @@ export interface Replica {
   deleteMoodLog(id: string): MoodLog;
   updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
   deleteMedicationLog(id: string): MedicationLog;
+  /** Every calendar request, oldest first (`CalendarRequest`). */
+  calendarRequests(): CalendarRequest[];
+  /**
+   * Queue an event for the device chosen to write them. Refuses when no device
+   * is chosen, since nothing would ever write it. The server never touches a
+   * calendar itself: this is a synced row the phone answers.
+   */
+  requestCalendarEvent(input: CalendarRequestInput): CalendarRequest;
+  /** Take back a request that is still pending. One already answered is the phone's to keep. */
+  cancelCalendarRequest(id: string): CalendarRequest;
   /** Every automation rule list, as the settings store holds it. */
   ruleLists(): RuleLists;
   /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
@@ -604,7 +652,7 @@ export interface Replica {
    * so it syncs like an edit made in the app. Throws, writing nothing, on an
    * invalid result, and refuses a nested reference that would form a cycle.
    */
-  updateTemplate(id: string, patch: TemplatePatch): TaskTemplate;
+  updateTemplate(id: string, patch: TemplatePatch, expectedVersion?: string): TaskTemplate;
 
   /**
    * Delete a template, by id or exact name. Nothing is archived: a template has
@@ -651,6 +699,13 @@ export interface Replica {
    * reschedules from every task rather than from the one that changed.
    */
   createTask(draft: Partial<TaskDraft>): Task;
+
+  /**
+   * Give a just-created weekly target a first week scaled to the days left in
+   * it, the default the app's own creation paths apply (`firstWeekPatch`).
+   * Does nothing to any other task, or on the first day of a week.
+   */
+  scaleFirstWeek(id: string): void;
 
   /**
    * Complete one task, exactly as ticking it in the app would.
@@ -844,6 +899,58 @@ export interface Replica {
    * Refused for a subtask, a completed task and an archived one.
    */
   setTaskStack(taskId: string, stackId: string | null): Task;
+
+  /**
+   * The rewards ledger as it stands: every coin entry (newest first) and every
+   * reward (cheapest first), read from the database each call. The balance is
+   * never stored, so a reader sums `entries` (`rewards.coinBalance`).
+   */
+  rewardState(): { entries: CoinEntry[]; rewards: Reward[] };
+  /**
+   * A new reward, through `useRewardStore.addReward`. Refused while rewards are
+   * off, because the Rewards screen is hidden then and a reward made here would
+   * sit on a screen the person cannot open. Never a wish-list reward: those
+   * read their title off a list item and are made in the app.
+   */
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  /** Delete a reward. Coins already spent on it stay spent, as in the app. */
+  deleteReward(id: string): Reward;
+  /**
+   * Spend a reward's cost, through `useRewardStore.claimReward`. Throws with the
+   * reason when it cannot: rewards off, the balance short, or a one-time reward
+   * already claimed. A wish-list reward also checks its list item off, neutrally
+   * (no coins on top of the spend), as the Rewards screen does. Returns the
+   * spend entry, which `unclaimReward` takes back.
+   */
+  claimReward(id: string): CoinEntry;
+  /** Take back a claim by its spend entry: the undo for `claimReward`, which also reopens a wish-list item the claim checked off. */
+  unclaimReward(entryId: string): CoinEntry;
+  /** The reward being saved for (`rewardGoalId`), or null to clear it. A claimed or deleted reward is refused. */
+  setRewardGoal(id: string | null): Reward | null;
+  /**
+   * Post a bounty on an open task, or withdraw the one posted. `useTaskStore`'s
+   * `postBounty` / `withdrawBounty` rules: one bounty per occurrence, a limit on
+   * how many are live at once (`bountyLimit`), withdrawing spends it.
+   */
+  postBounty(id: string): Task;
+  withdrawBounty(id: string): Task;
+  /**
+   * Mark a repeating task's occurrence missed: `useTaskStore.markMissed`, which
+   * is `completeTask` with `missed: true`. The streak breaks, the next
+   * occurrence is created, and the coins it costs are written. `reopenTask`
+   * undoes it. Refused for a one-off task and for one that is not due yet, where
+   * the app would silently skip it instead.
+   */
+  markMissed(id: string): CompletedResult;
+  /**
+   * Log a slip against a "don't do this" habit, and take back today's latest one.
+   * A habit with a penalty is refused: the slip charges an app block on the
+   * phone, which only the phone can set.
+   */
+  logSlip(id: string): Task;
+  undoSlip(id: string): Task;
   /**
    * Move a project's dated tasks by the days its event (or any date) moved,
    * as the app's own offer does when the date is changed in the editor:
@@ -992,11 +1099,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
   const rewards = require('../../src/utils/rewards') as RewardsModule;
+  const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
   const templateUtils = require('../../src/utils/templateUtils') as TemplateUtilsModule;
   const taskDraft = require('../../src/utils/taskDraft') as TaskDraftModule;
+  const quotaSchedule = require('../../src/utils/quotaSchedule') as typeof import('../../src/utils/quotaSchedule');
   const completion = require('../../src/utils/taskCompletion') as TaskCompletionModule;
   const moves = require('../../src/utils/taskMoves') as TaskMovesModule;
   const awayShift = require('../../src/utils/awayShift') as typeof import('../../src/utils/awayShift');
@@ -1120,6 +1229,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             if (task) db.dbUpdateTask({ ...task, answerGate: gate });
             refresh();
           },
+          setBlockers: (taskId, ids) => {
+            const task = db.dbGetAllTasks().find(t => t.id === taskId);
+            if (task) db.dbUpdateTask({ ...task, ...blocking.blockerFields(ids) });
+            refresh();
+          },
         });
       });
     } finally {
@@ -1185,9 +1299,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     const questionIds = new Map<string, string>();
     const questions = (plan.questions ?? []).map(question => {
-      const kept = question.name ? base?.questions.find(q => q.name === question.name) : undefined;
-      const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: kept?.id ?? generateId() });
+      const { key, ...fields } = question;
+      // Kept by name, or for one with no name by the key get_template gave it
+      // (its id), so its conditions and a people question's id survive an edit.
+      const kept = question.name
+        ? base?.questions.find(q => q.name === question.name)
+        : key !== undefined ? base?.questions.find(q => q.id === key) : undefined;
+      const stored = templateUtils.normalizeTemplateQuestion({ ...fields, id: kept?.id ?? generateId() });
       if (stored.name) questionIds.set(stored.name, stored.id);
+      else if (key !== undefined) questionIds.set(key, stored.id);
       return stored;
     });
 
@@ -1200,20 +1320,33 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     const offeredBy = new Map((plan.items ?? []).filter(i => (i.key ?? i.id) !== undefined).map(i => [(i.key ?? i.id)!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
     const items = (plan.items ?? []).map(item => {
-      const { groupKey, conditions, variants, refTemplate, key, onlyIfAnswer, id: keptId, chain, rotation, ...fields } = item;
+      const { groupKey, conditions, variants, refTemplate, key, onlyIfAnswer, waitsOn, id: keptId, chain, rotation, ...fields } = item;
       // Step and member ids are kept by position and by title on an edit: a
       // recorded answer and a week's ledger are both found through them.
       const stored = keptId !== undefined ? base?.items.find(i => i.id === keptId) : undefined;
       const sequence: Partial<TemplateItem> = chain === undefined && rotation === undefined ? {} : {
         chainEnabled: !!chain,
-        chainItems: chain ? chain.steps.map((s, i) => ({
-          id: stored?.chainItems[i]?.id ?? generateId(),
-          title: s.title.trim(),
-          estimatedMinutes: s.estimatedMinutes ?? null,
-          ...(s.asks ? { deliverableKind: s.asks } : {}),
-          ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
-        })) : [],
-        chainIndex: 0,
+        chainItems: chain ? chain.steps.map((s, i) => {
+          // A stored step is found by title first (a reorder or an insert
+          // keeps each step's own id and the fields a plan has no name for,
+          // like its link and medication), then by position (a rename).
+          const title = s.title.trim();
+          const byTitle = stored?.chainItems.find(c => c.title.trim().toLowerCase() === title.toLowerCase());
+          const keptStep = byTitle ?? (stored?.chainItems[i] && !chain.steps.some(o => o.title.trim().toLowerCase() === stored.chainItems[i].title.trim().toLowerCase()) ? stored.chainItems[i] : undefined);
+          const { deliverableKind: _k, deliverableDatesNextStep: _d, ...carried } = keptStep ?? ({} as Partial<ChainItem>);
+          void _k; void _d;
+          return {
+            ...carried,
+            id: keptStep?.id ?? generateId(),
+            title,
+            estimatedMinutes: s.estimatedMinutes ?? null,
+            ...(s.asks ? { deliverableKind: s.asks } : {}),
+            ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
+          };
+        }) : [],
+        // The step a run starts on has no name in a plan, so an edit keeps the
+        // stored one (clamped to the new length) rather than resetting it.
+        chainIndex: chain && stored?.chainEnabled ? Math.min(stored.chainIndex, chain.steps.length - 1) : 0,
         rotationEnabled: !!rotation,
         rotationItems: rotation ? rotation.members.map(m => {
           const title = m.trim();
@@ -1222,6 +1355,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         }) : [],
       };
       const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
+      // A reference whose target was deleted is kept as the stored item had
+      // it (validation lets exactly this through), rather than turned into a
+      // task item with no title.
+      const brokenKept = refTemplate !== undefined && !ref && stored?.refTemplateId === refTemplate ? stored : undefined;
       const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
       return templateUtils.normalizeTemplateItem({
         ...fields,
@@ -1233,7 +1370,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
               answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
             }
           : null,
-        groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
+        groupId: groupKey == null ? null : (groupIds.get(groupKey) ?? null),
+        // Left as stored when the plan doesn't say (an update writing other
+        // fields over a kept item), resolved from keys when it does.
+        ...(waitsOn !== undefined ? { blockedByItemIds: waitsOn.map(k => itemIds.get(k)).filter((id): id is string => !!id) } : {}),
         conditions: (conditions ?? []).map(c => ({
           questionId: questionIds.get(c.question) ?? '',
           values: c.values,
@@ -1244,10 +1384,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ...(v.title ? { title: v.title } : {}),
           ...(v.notes ? { notes: v.notes } : {}),
         })),
-        refTemplateId: ref?.id ?? null,
+        refTemplateId: ref?.id ?? brokenKept?.refTemplateId ?? null,
         // Carried so a broken reference can still say what it pointed at,
         // which is what the field is for (see TemplateItem.refTemplateName).
-        refTemplateName: ref?.name ?? '',
+        refTemplateName: ref?.name ?? brokenKept?.refTemplateName ?? '',
       });
     });
     return { items, itemGroups, questions };
@@ -1286,6 +1426,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // project here ignored that setting. createProjectPlan writes through it too.
   useProjectStore.getState().initialize();
   useTaskGroupStore.getState().initialize();
+  // Loaded for the same reason: `claimReward` judges the balance off the store's
+  // entries, and recordEarn/recordMiss only add to them. Left empty, a claim
+  // here saw a balance of whatever this process had earned since it started.
+  useRewardStore.getState().initialize();
 
   // Read caches, cleared per request by `refresh`. They exist because the
   // blocker registry resolves one id at a time: without them, a list of 200
@@ -1338,6 +1482,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     useCategoryStore.getState().initialize();
     useProjectStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
+    useRewardStore.getState().initialize();
   };
 
   /**
@@ -1497,6 +1642,114 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     if (errors.length > 0) throw new Error(errors.join(' '));
     return patch;
+  };
+
+  // ==== rewards ====
+  // The Rewards screen is hidden while the setting is off, so a write that
+  // would land on it (a reward, a goal, a bounty) is refused rather than
+  // quietly filling a screen the person cannot open.
+  const requireRewardsOn = (): void => {
+    if (!useSettingsStore.getState().rewardsEnabled) {
+      throw new Error('Rewards are switched off in the app. The person turns them on from the Rewards screen.');
+    }
+  };
+  const requireReward = (id: string): Reward => {
+    const reward = useRewardStore.getState().rewards.find(r => r.id === id);
+    if (!reward) throw new Error(`No reward with id ${id}. get_rewards lists them.`);
+    return reward;
+  };
+  const requireRewardCost = (cost: number): void => {
+    if (!Number.isInteger(cost) || cost <= 0 || cost > rewards.MAX_REWARD_COST) {
+      throw new Error(`A reward's cost is a whole number of coins from 1 to ${rewards.MAX_REWARD_COST}.`);
+    }
+  };
+  const setBountyPushes = (task: Task, bountyPushes: number): Task => {
+    // Through the same merge the app's updateTask runs; the app passes
+    // SKIP_POSTPONE here so posting is never counted as a push.
+    const updated = taskUpdate.mergeTaskUpdate(task, { bountyPushes }, {
+      scope: 'occurrence',
+      freshPinnedOrder: 0,
+      dayResetTime: useSettingsStore.getState().dayResetTime,
+    });
+    db.dbUpdateTask(updated);
+    refresh();
+    return updated;
+  };
+  const requireNegativeHabit = (id: string): Task => {
+    const task = tasks().find(t => t.id === id);
+    if (!task) throw new Error(`No task with id ${id}.`);
+    if (!negativeHabits.isNegativeTask(task) || task.archived) throw new Error('A slip is logged against an active "don\'t do this" habit, and that task is not one.');
+    // The app's slip also charges the penalty block on the phone's apps, which
+    // is device work this server cannot do. Refused rather than half-logged.
+    if (task.penaltyMinutes !== null) throw new Error('That habit has a penalty, and logging a slip charges an app block that only the phone can set. Log the slip in the app.');
+    return task;
+  };
+
+  /**
+   * The write a completion and a miss share: build the rows, write them, then
+   * the two records that are the app's own (a dose, the coins). A miss is the
+   * same walk with `missed: true`, so the streak breaks and the next occurrence
+   * is created by the one rule that does both.
+   */
+  const finishCompletion = (task: Task, options: CompletionOptions | undefined, mode: 'completed' | 'missed' | 'neutral'): CompletedResult => {
+    const id = task.id;
+    const missed = mode === 'missed';
+    const settings = useSettingsStore.getState();
+    const built = completion.buildCompletion(task, missed ? { missed: true } : mode === 'neutral' ? { ...options, neutral: true } : options, {
+      dayResetTime: settings.dayResetTime,
+      vacationMode: settings.vacationMode,
+      now: new Date(),
+      allTasks: tasks(),
+      subtasks: tasks().filter(t => t.parentId === id),
+    });
+    // Unreachable: completionRefusal above is the same guard buildCompletion
+    // runs. Narrowing rather than asserting, so a rule added to one and not
+    // the other surfaces as a refusal rather than as a crash.
+    if (!built) throw new Error('That task cannot be completed.');
+
+    db.dbUpdateTask(built.completed);
+    for (const row of [
+      ...(built.nextTask ? [built.nextTask] : []),
+      ...built.nextSubtasks,
+      ...(built.followUpTask ? [built.followUpTask] : []),
+      ...built.followUpSubtasks,
+      ...built.rolledOver,
+    ]) {
+      db.dbInsertTask(row);
+    }
+
+    // The one cross-store write kept, because it is a record rather than a
+    // device effect: a dose taken is a fact about the person, and dropping
+    // it would make a medication task completed here invisible in the log
+    // that exists to count exactly these. Read through `medicationFor` so a
+    // chain step carrying its own medication records that one.
+    const dose = missed ? null : medication.medicationFor(task);
+    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
+
+    // Coins, kept for the same reason: the ledger is a record, and a task
+    // finished here should earn what it would have earned on the phone.
+    // Through the app's own store and rules, keyed by the completed row, so
+    // the device that later syncs this completion converges on one entry.
+    // A no-op while rewards are off (the setting syncs, so this replica
+    // reads the same answer the phone does).
+    // A neutral completion is the app closing something on its own account, so
+    // it moves no coins either way (a claimed wish-list item is the one use).
+    if (mode !== 'neutral' && rewards.taskEarnsCoins(task)) {
+      const store = useRewardStore.getState();
+      const title = visibility.displayTitleFor(task);
+      const at = new Date().toISOString();
+      if (missed) store.recordMiss(id, rewards.coinsForLoss(task), title, at);
+      else store.recordEarn(id, rewards.coinsForCompletion(task, built.completed.streakCount), title, at);
+    }
+
+    refresh();
+    return {
+      completed: built.completed,
+      nextTask: built.nextTask,
+      followUpTask: built.followUpTask,
+      rolledOver: built.rolledOver,
+      loggedDose: dose !== null,
+    };
   };
 
   /**
@@ -1693,7 +1946,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
+        rewardGoalId: s.rewardGoalId,
+        bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
+        // Read off the table, as requestCalendarEvent does, so the two agree.
+        calendarRequestsOn: !!db.dbGetSetting('calendarRequestDeviceId'),
       };
     },
 
@@ -1759,6 +2016,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         eventTasks: require('../../src/utils/eventTasks'),
         healthRules: require('../../src/utils/healthRules'),
         screenTimeRules: require('../../src/utils/screenTimeRules'),
+        rewards: require('../../src/utils/rewards'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
@@ -2002,6 +2260,49 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return db.dbGetAllMoodLogs().find(l => l.id === id)!;
     },
 
+    calendarRequests(): CalendarRequest[] {
+      return db.dbGetAllCalendarRequests();
+    },
+
+    requestCalendarEvent(input: CalendarRequestInput): CalendarRequest {
+      if (!db.dbGetSetting('calendarRequestDeviceId')) {
+        throw new Error(
+          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Reminders & Calendar › Add Claude’s events to.'
+        );
+      }
+      const request: CalendarRequest = {
+        id: generateId(),
+        title: input.title,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        allDay: input.allDay,
+        location: input.location,
+        notes: input.notes,
+        status: 'pending',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
+    cancelCalendarRequest(id: string): CalendarRequest {
+      const existing = db.dbGetCalendarRequest(id);
+      if (!existing) throw new Error(`No calendar request with id ${id}.`);
+      if (existing.status !== 'pending') {
+        throw new Error(
+          existing.status === 'written'
+            ? 'That event is already on the calendar. Only the person can remove it, in their calendar app.'
+            : `That request is already ${existing.status}.`
+        );
+      }
+      const outcome = { status: 'cancelled' as const, failureReason: null, eventExternalId: null, resolvedAt: new Date().toISOString() };
+      db.dbResolveCalendarRequest(id, outcome);
+      return { ...existing, ...outcome };
+    },
+
     deleteMoodLog(id: string): MoodLog {
       const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
       const existing = db.dbGetAllMoodLogs().find(l => l.id === id);
@@ -2100,12 +2401,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return template;
     },
 
-    updateTemplate(id: string, patch: TemplatePatch): TaskTemplate {
+    updateTemplate(id: string, patch: TemplatePatch, expectedVersion?: string): TaskTemplate {
       const existing = db.dbGetAllTemplates();
       const found = resolveRef(id, existing);
       if (found.length === 0) throw new Error(`No template with id or name "${id}".`);
       if (found.length > 1) throw new Error(`"${id}" names ${found.length} templates. Use an id.`);
       const before = found[0];
+      // Whole lists are rebuilt from what the caller sent, so an edit written
+      // against an older read would undo whatever changed since (on the phone,
+      // say). The version get_template gave says which read it was.
+      if (expectedVersion !== undefined && expectedVersion !== templateVersion(before)) {
+        throw new Error(`"${before.name}" has changed since that version was read. Read it again with get_template and redo the edit on what it holds now.`);
+      }
 
       const structural = patch.groups !== undefined || patch.questions !== undefined || patch.items !== undefined;
       let parts: Partial<Pick<TaskTemplate, 'items' | 'itemGroups' | 'questions'>> = {};
@@ -2178,31 +2485,77 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // Answers arrive by the blank's name; the run works in question ids.
       const typed: Record<string, string> = {};
       const errors: string[] = [];
-      for (const [name, value] of Object.entries(run.answers ?? {})) {
-        const question = questions.find(q => q.name === name && q.kind !== 'people');
+      for (const [name, raw] of Object.entries(run.answers ?? {})) {
+        // Matched the way a blank is: "Nights" and "nights" are one question.
+        const question = questions.find(q => q.name && templateUtils.placeholderKey(q.name) === templateUtils.placeholderKey(name) && q.kind !== 'people');
         if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
+        // A choice answer is spelled the way the option is, since a condition
+        // compares the stored strings exactly.
+        const value = question.kind === 'choice'
+          ? question.options.find(o => o.trim().toLowerCase() === raw.trim().toLowerCase()) ?? raw
+          : raw;
         if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
         if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
         typed[question.id] = value;
       }
-      const leaves = new Set(templateUtils.flattenApplyTree(tree).map(e => e.item.id));
-      for (const id of [...(run.include ?? []), ...(run.leaveOut ?? [])]) if (!leaves.has(id)) errors.push(`item id "${id}" is not an item of this run.`);
+      // An id may name a leaf, or a nested template's own item, which stands
+      // for every leaf under it: "leave out the packing list" is one id.
+      const nodesById = new Map<string, import('../../src/utils/templateUtils').ApplyTreeNode>();
+      const walk = (nodes: import('../../src/utils/templateUtils').ApplyTreeNode[]) => nodes.forEach(n => { nodesById.set(n.item.id, n); walk(n.children); });
+      walk(tree);
+      const leavesFor = (id: string) => {
+        const node = nodesById.get(id);
+        if (!node || node.broken) { errors.push(`item id "${id}" is not an item of this run.`); return []; }
+        return templateUtils.leafIdsUnder(node);
+      };
+      const include = (run.include ?? []).flatMap(leavesFor);
+      const leaveOut = new Set((run.leaveOut ?? []).flatMap(leavesFor));
       if (errors.length > 0) throw new Error(errors.join(' '));
 
       const answers = templateQuestions.resolveAnswers(questions, typed, anchors);
-      const selected = templateQuestions.initialLeafSelection(tree, questions, answers);
-      for (const id of run.include ?? []) selected.add(id);
-      for (const id of run.leaveOut ?? []) selected.delete(id);
+      const byDefault = templateQuestions.initialLeafSelection(tree, questions, answers);
+      const selected = new Set(byDefault);
+      for (const id of include) selected.add(id);
+      for (const id of leaveOut) selected.delete(id);
       if (selected.size === 0) throw new Error('Nothing in this template is selected for that run.');
 
+      const placeholders = templateQuestions.placeholderValuesFor(questions, answers);
       let container: TemplateRunResult['container'] = null;
       const created = runTemplateIn(template, byId, selected, anchors, {
         runName: run.runName,
-        placeholders: templateQuestions.placeholderValuesFor(questions, answers),
+        placeholders,
         answers,
         targetProjectId: run.projectId,
       }, c => { container = c; });
-      return { tasks: created, container };
+
+      // Why each offered item is off, in the order the apply sheet would ask.
+      const leftOut: TemplateRunResult['leftOut'] = [];
+      const brokenRefs: string[] = [];
+      const explain = (nodes: import('../../src/utils/templateUtils').ApplyTreeNode[], underOptional: boolean) => {
+        for (const node of nodes) {
+          if (node.broken) { brokenRefs.push(node.item.refTemplateName || node.item.refTemplateId || '(unknown)'); continue; }
+          if (node.item.refTemplateId !== null) { explain(node.children, underOptional || node.item.optional); continue; }
+          if (selected.has(node.item.id)) continue;
+          const conditioned = templateQuestions.liveConditions(node.item.conditions, questions).length > 0;
+          const why = leaveOut.has(node.item.id) ? 'left out by request'
+            : underOptional ? 'inside a nested template that is optional (include its item to run it)'
+            : conditioned ? 'not ticked for these answers'
+            : node.item.optional ? 'optional, off unless included'
+            : 'not selected';
+          leftOut.push({ itemId: node.item.id, title: node.item.title, why });
+        }
+      };
+      explain(tree, false);
+
+      const ran = templateUtils.flattenApplyTree(tree).filter(e => selected.has(e.item.id)).map(e => e.item);
+      const filled = new Set(Object.entries(placeholders).filter(([, v]) => v.trim()).map(([k]) => k));
+      if (run.runName?.trim()) filled.add(templateUtils.RUN_PLACEHOLDER);
+      const unfilledBlanks = [
+        ...templateUtils.extractPlaceholders(ran),
+        ...(templateUtils.declaresRunPlaceholder(ran) ? [templateUtils.RUN_PLACEHOLDER] : []),
+      ].filter(name => !filled.has(name));
+
+      return { tasks: created, container, leftOut, unfilledBlanks, brokenRefs };
     },
 
     deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] } {
@@ -2249,6 +2602,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return task;
     },
 
+    scaleFirstWeek(id: string): void {
+      const task = tasks().find(t => t.id === id);
+      if (!task) return;
+      const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
+      const anchor = quotaSchedule.firstWeekAnchor(
+        task.dueDate ? dates.getTaskDayStart(new Date(task.dueDate), dayResetTime) : null,
+        dates.getCurrentDayStart(),
+      );
+      const patch = quotaSchedule.firstWeekPatch(task, anchor, weekStartsOn);
+      if (patch) replica.updateTask(id, patch);
+    },
+
     completionProblem(id: string, options?: CompletionOptions): string | null {
       const task = tasks().find(t => t.id === id);
       if (!task) return `No task with id ${id}.`;
@@ -2263,63 +2628,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     completeTask(id: string, options?: CompletionOptions): CompletedResult {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-      options = vetCompletion(task, options);
+      return finishCompletion(task, vetCompletion(task, options), 'completed');
+    },
 
-      const settings = useSettingsStore.getState();
-      const built = completion.buildCompletion(task, options, {
-        dayResetTime: settings.dayResetTime,
-        vacationMode: settings.vacationMode,
-        now: new Date(),
-        allTasks: tasks(),
-        subtasks: tasks().filter(t => t.parentId === id),
-      });
-      // Unreachable: completionRefusal above is the same guard buildCompletion
-      // runs. Narrowing rather than asserting, so a rule added to one and not
-      // the other surfaces as a refusal rather than as a crash.
-      if (!built) throw new Error('That task cannot be completed.');
-
-      db.dbUpdateTask(built.completed);
-      for (const row of [
-        ...(built.nextTask ? [built.nextTask] : []),
-        ...built.nextSubtasks,
-        ...(built.followUpTask ? [built.followUpTask] : []),
-        ...built.followUpSubtasks,
-        ...built.rolledOver,
-      ]) {
-        db.dbInsertTask(row);
-      }
-
-      // The one cross-store write kept, because it is a record rather than a
-      // device effect: a dose taken is a fact about the person, and dropping
-      // it would make a medication task completed here invisible in the log
-      // that exists to count exactly these. Read through `medicationFor` so a
-      // chain step carrying its own medication records that one.
-      const dose = medication.medicationFor(task);
-      if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
-
-      // Coins, kept for the same reason: the ledger is a record, and a task
-      // finished here should earn what it would have earned on the phone.
-      // Through the app's own store and rules, keyed by the completed row, so
-      // the device that later syncs this completion converges on one entry.
-      // A no-op while rewards are off (the setting syncs, so this replica
-      // reads the same answer the phone does).
-      if (rewards.taskEarnsCoins(task)) {
-        useRewardStore.getState().recordEarn(
-          id,
-          rewards.coinsForCompletion(task, built.completed.streakCount),
-          visibility.displayTitleFor(task),
-          new Date().toISOString(),
-        );
-      }
-
-      refresh();
-      return {
-        completed: built.completed,
-        nextTask: built.nextTask,
-        followUpTask: built.followUpTask,
-        rolledOver: built.rolledOver,
-        loggedDose: dose !== null,
-      };
+    markMissed(id: string): CompletedResult {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.completed) throw new Error('That task is already completed, so it cannot be marked missed.');
+      // The app's own guards (useTaskStore.markMissed): a one-off has no
+      // occurrence to miss, and a repeat that has not come round yet is skipped
+      // silently there. Refused here instead, because a tool that says "missed"
+      // and rolls the task forward unmissed is a claim the person did not make.
+      if (task.recurrenceType === 'none') throw new Error('Only a repeating task has an occurrence to miss. Archive a one-off task instead.');
+      const refusal = completion.completionRefusal(task);
+      if (refusal) throw new Error(refusal);
+      return finishCompletion(task, undefined, 'missed');
     },
 
     reopenTask(id: string): { task: Task; removed: Task[] } {
@@ -2687,6 +3010,146 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         ensureCategory(updated.category);
         db.dbUpdateTask(updated);
       });
+      refresh();
+      return updated;
+    },
+
+    rewardState(): { entries: CoinEntry[]; rewards: Reward[] } {
+      return {
+        entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
+        rewards: [...db.dbGetAllRewards()].sort((a, b) => a.cost - b.cost || (a.createdAt < b.createdAt ? -1 : 1)),
+      };
+    },
+
+    addReward(title, cost, details): Reward {
+      requireRewardsOn();
+      const name = title.trim();
+      if (!name) throw new Error('A reward needs a title.');
+      requireRewardCost(cost);
+      const reward = useRewardStore.getState().addReward(name, cost, details);
+      if (!reward) throw new Error('Could not add the reward.');
+      refresh();
+      return reward;
+    },
+
+    updateReward(id, patch): Reward {
+      requireRewardsOn();
+      const current = requireReward(id);
+      if (current.taskId) throw new Error('That reward is a wish-list item, so its title, note and link are the item\'s. Edit the item instead.');
+      if (patch.title !== undefined && !patch.title.trim()) throw new Error('A reward needs a title.');
+      if (patch.cost !== undefined) requireRewardCost(patch.cost);
+      useRewardStore.getState().updateReward(id, patch);
+      refresh();
+      return requireReward(id);
+    },
+
+    deleteReward(id): Reward {
+      requireRewardsOn();
+      const reward = requireReward(id);
+      useRewardStore.getState().deleteReward(id);
+      refresh();
+      return reward;
+    },
+
+    claimReward(id): CoinEntry {
+      requireRewardsOn();
+      const reward = requireReward(id);
+      const { entries } = useRewardStore.getState();
+      if (reward.oneTime && rewards.lastClaimedAt(entries, id) !== null) throw new Error(`"${reward.title}" is a one-time reward and has already been claimed.`);
+      // A wish-list reward is its list item: claiming it checks the item off, the
+      // app's `claim` in RewardsScreen. Judged before any coin moves, so a
+      // refusal leaves the balance alone.
+      const item = reward.taskId ? tasks().find(t => t.id === reward.taskId) : undefined;
+      if (reward.taskId) {
+        if (!item || !rewards.rewardIsOpen(reward, entries, item)) throw new Error(`"${reward.title}" is checked off, archived or gone from the list, so the reward is gone too.`);
+        const refusal = completion.completionRefusal(item);
+        if (refusal) throw new Error(refusal);
+      }
+      const balance = rewards.coinBalance(entries);
+      if (!rewards.canClaimReward(balance, reward.cost)) {
+        throw new Error(`"${reward.title}" costs ${reward.cost} coins and the balance is ${balance}.`);
+      }
+      let entry: CoinEntry | null = null;
+      db.dbTransaction(() => {
+        entry = useRewardStore.getState().claimReward(id);
+        if (!entry) throw new Error('Could not claim the reward.');
+        // Neutral, so checking the item off earns nothing on top of what was spent.
+        if (item) finishCompletion(item, undefined, 'neutral');
+      });
+      refresh();
+      return entry!;
+    },
+
+    unclaimReward(entryId): CoinEntry {
+      const entry = useRewardStore.getState().entries.find(e => e.id === entryId);
+      if (!entry || entry.kind !== 'spend') throw new Error(`No claim with id ${entryId}. Only a spend can be taken back.`);
+      // The app's undo for a wish-list claim puts the item back with the coins.
+      // Only an item checked off at or after the claim is reopened: one the person
+      // finished earlier is theirs, and a refused reopen stops the whole undo
+      // before any coin moves.
+      const reward = entry.rewardId ? useRewardStore.getState().rewards.find(r => r.id === entry.rewardId) : undefined;
+      const item = reward?.taskId ? tasks().find(t => t.id === reward.taskId) : undefined;
+      if (item?.completed && item.completedAt && item.completedAt >= entry.at) replica.reopenTask(item.id);
+      useRewardStore.getState().unclaim(entryId);
+      refresh();
+      return entry;
+    },
+
+    setRewardGoal(id): Reward | null {
+      requireRewardsOn();
+      let reward: Reward | null = null;
+      if (id !== null) {
+        reward = requireReward(id);
+        const source = reward.taskId ? tasks().find(t => t.id === reward!.taskId) : undefined;
+        if (!rewards.rewardIsOpen(reward, useRewardStore.getState().entries, source)) {
+          throw new Error(`"${reward.title}" has already been claimed or is gone, so it cannot be the goal.`);
+        }
+      }
+      useSettingsStore.getState().setRewardGoalId(id);
+      refresh();
+      return reward;
+    },
+
+    postBounty(id): Task {
+      requireRewardsOn();
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!rewards.canPostBounty(task)) {
+        throw new Error(task.bountyPushes != null
+          ? 'That task already had a bounty this occurrence, live or withdrawn. A repeating task can have another on its next occurrence.'
+          : 'A bounty needs an open, top-level task that is not a "don\'t do this" habit.');
+      }
+      const { bountyLimit } = useSettingsStore.getState();
+      if (rewards.liveBountyCount(tasks()) >= bountyLimit) {
+        throw new Error(`The bounty limit is ${bountyLimit} live at once. Withdraw one first.`);
+      }
+      return setBountyPushes(task, 0);
+    },
+
+    withdrawBounty(id): Task {
+      requireRewardsOn();
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!rewards.isBountyLive(task)) throw new Error('That task has no live bounty to withdraw.');
+      return setBountyPushes(task, rewards.BOUNTY_WITHDRAWN);
+    },
+
+    logSlip(id): Task {
+      const task = requireNegativeHabit(id);
+      const updated = { ...task, ...negativeHabits.slipPatch(task, dates.getCurrentDayStart()) };
+      db.dbUpdateTask(updated);
+      useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      refresh();
+      return updated;
+    },
+
+    undoSlip(id): Task {
+      const task = requireNegativeHabit(id);
+      const patch = negativeHabits.undoSlipPatch(task, dates.getCurrentDayStart());
+      if (!patch) throw new Error('No slip has been logged against that habit today, so there is nothing to undo.');
+      const updated = { ...task, ...patch };
+      db.dbUpdateTask(updated);
+      useRewardStore.getState().takeBackSlip(id);
       refresh();
       return updated;
     },

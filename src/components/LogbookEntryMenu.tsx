@@ -203,7 +203,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   destructiveLabel: {
-    color: colors.red,
+    color: colors.redText,
   },
   inlineSep: {
     height: border.hairline,
