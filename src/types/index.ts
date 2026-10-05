@@ -35,7 +35,7 @@ export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
  * How hard a task is to make yourself do, apart from how long it takes — see
  * `Task.difficulty`.
  */
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
 
 /**
  * Which direction a task's success runs in — see `Task.polarity`.
