@@ -77,6 +77,7 @@ import { CsvExportSheet } from '../components/CsvExportSheet';
 import { foodLogExportCsv, foodLogExportFileName, foodLogExportSummary } from '../utils/foodLogExport';
 import { WhenPicker } from '../components/WhenPicker';
 import { ReorderableList } from '../components/ReorderableList';
+import type { DragScroller } from '../utils/fabDrop';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
@@ -303,6 +304,7 @@ export function FoodLogScreen() {
   // to the slot chip a person would otherwise make themselves.
   const guessedSlot = useMemo(() => slotForHour(loggingAt.getHours()), [loggingAt]);
 
+  const foodScrollControl = useRef<DragScroller | null>(null);
   useEffect(() => {
     loadRange(dayKey, dayKey);
   }, [dayKey, loadRange]);
@@ -340,6 +342,15 @@ export function FoodLogScreen() {
       const pendingEntry = route.params?.openEntry;
       if (pendingEntry && pendingEntry.nonce !== handledOpenEntry) return;
       setDayKey(dayKeyOf(getCurrentDayStart()));
+      // Every arrival lands on today at the top. The list keeps the offset it
+      // was left at while the tab is blurred, and the day it comes back to can
+      // be shorter, so without this it paints scrolled off the top for a
+      // frame before the settled-scroll clamp snaps it back. Reset on the way
+      // out as well, since a blurred tab is frozen and runs nothing until it
+      // is already on screen.
+      const resetScroll = () => foodScrollControl.current?.scrollToOffset(0);
+      resetScroll();
+      return resetScroll;
     }, [route.params?.openEntry, handledOpenEntry]),
   );
 
@@ -1157,6 +1168,7 @@ export function FoodLogScreen() {
               item.type === 'entry' ? `entry-${item.entry.id}` : `${item.type}-${item.slot ?? 'none'}`
             }
             scrollToTop={{ bottom: tabBarHeight + spacing.md }}
+            scrollControlRef={foodScrollControl}
             // A paint gesture owns the touch for its duration, same reason
             // every other selectable list turns scrolling off for one.
             scrollEnabled={!painting}
