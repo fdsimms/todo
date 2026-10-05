@@ -29,7 +29,7 @@ describe('screen settings', () => {
 
   it('lists a screen\'s rows in its own order', () => {
     const rows = screenSettingsEntries('Calendar', visibleSettingsEntries('ios'));
-    expect(rows.map(e => e.id)).toEqual(['calendarRead', 'deadlineCalendar', 'completionCalendar']);
+    expect(rows.map(e => e.id)).toEqual(['calendarRead', 'deadlineCalendar', 'completionCalendar', 'claudeCalendar']);
   });
 
   it('leaves out rows that are hidden right now', () => {

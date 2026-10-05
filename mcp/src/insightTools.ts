@@ -92,7 +92,11 @@ export interface Overview {
   tags: { name: string; count: number }[];
   projects: { id: string; title: string; outstanding: number; deadline?: string }[];
   /** Areas of the app the person has switched off. An agent should not walk them through a screen they cannot see. */
-  features: { kitchen: boolean; simplifiedMode: boolean; rewards: boolean };
+  features: {
+    kitchen: boolean; simplifiedMode: boolean; rewards: boolean;
+    /** Whether a device is set to add the events request_calendar_event asks for. */
+    calendarRequests: boolean;
+  };
   /**
    * Whether the health logs (food, mood, medication) have reached the server
    * in the last 30 days. They travel only with a switch on the phone, so false
@@ -170,7 +174,10 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
     projects: listProjects(replica)
       .filter(p => !replica.projects().find(q => q.id === p.id)?.completed)
       .map(p => ({ id: p.id, title: p.title, outstanding: p.outstanding, ...(p.deadline ? { deadline: p.deadline } : {}) })),
-    features: { kitchen: settings.kitchenEnabled, simplifiedMode: settings.simpleMode, rewards: settings.rewardsEnabled },
+    features: {
+      kitchen: settings.kitchenEnabled, simplifiedMode: settings.simpleMode, rewards: settings.rewardsEnabled,
+      calendarRequests: settings.calendarRequestsOn,
+    },
     healthLogs: {
       food,
       mood,

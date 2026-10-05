@@ -62,6 +62,9 @@ export const REDACTED_SETTING_KEYS = ['anthropicApiKey'];
 const DEVICE_ID_SETTING_KEYS = [
   'calendarIds', 'deadlineCalendarId', 'completionCalendarId', 'mealCalendarId', 'calendarHistoryHandled',
   'calendarEventPeople', 'calendarEventTasks', 'quickEventDefaults', 'quickEventMemory',
+  // A calendar id, and the id of the device that writes into it. Restored onto
+  // a new phone, the second names a phone that is not this one.
+  'calendarRequestCalendarId', 'calendarRequestDeviceId',
 ];
 const DEVICE_ID_SETTING_PREFIXES = ['remindersImport', 'groceryImport'];
 

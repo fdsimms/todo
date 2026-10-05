@@ -33,6 +33,7 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 
 import { shimModule } from './expoSqliteShim';
 import type {
+  CalendarRequest,
   Category,
   CoinEntry,
   Cookbook,
@@ -141,6 +142,21 @@ export interface ReplicaSettings {
   bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
   completedRetentionDays: number | null;
+  /**
+   * Whether some device is set to write the calendar events an agent asks for
+   * (`calendarRequestDeviceId`). Without one, a request would wait for ever.
+   */
+  calendarRequestsOn: boolean;
+}
+
+/** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
+export interface CalendarRequestInput {
+  title: string;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
 }
 
 /**
@@ -555,6 +571,16 @@ export interface Replica {
   deleteMoodLog(id: string): MoodLog;
   updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
   deleteMedicationLog(id: string): MedicationLog;
+  /** Every calendar request, oldest first (`CalendarRequest`). */
+  calendarRequests(): CalendarRequest[];
+  /**
+   * Queue an event for the device chosen to write them. Refuses when no device
+   * is chosen, since nothing would ever write it. The server never touches a
+   * calendar itself: this is a synced row the phone answers.
+   */
+  requestCalendarEvent(input: CalendarRequestInput): CalendarRequest;
+  /** Take back a request that is still pending. One already answered is the phone's to keep. */
+  cancelCalendarRequest(id: string): CalendarRequest;
   /** Every automation rule list, as the settings store holds it. */
   ruleLists(): RuleLists;
   /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
@@ -1878,6 +1904,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         rewardGoalId: s.rewardGoalId,
         bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
+        // Read off the table, as requestCalendarEvent does, so the two agree.
+        calendarRequestsOn: !!db.dbGetSetting('calendarRequestDeviceId'),
       };
     },
 
@@ -2185,6 +2213,49 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       useMoodStore.getState().updateLog(id, next);
       return db.dbGetAllMoodLogs().find(l => l.id === id)!;
+    },
+
+    calendarRequests(): CalendarRequest[] {
+      return db.dbGetAllCalendarRequests();
+    },
+
+    requestCalendarEvent(input: CalendarRequestInput): CalendarRequest {
+      if (!db.dbGetSetting('calendarRequestDeviceId')) {
+        throw new Error(
+          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Reminders & Calendar › Add Claude’s events to.'
+        );
+      }
+      const request: CalendarRequest = {
+        id: generateId(),
+        title: input.title,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        allDay: input.allDay,
+        location: input.location,
+        notes: input.notes,
+        status: 'pending',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
+    cancelCalendarRequest(id: string): CalendarRequest {
+      const existing = db.dbGetCalendarRequest(id);
+      if (!existing) throw new Error(`No calendar request with id ${id}.`);
+      if (existing.status !== 'pending') {
+        throw new Error(
+          existing.status === 'written'
+            ? 'That event is already on the calendar. Only the person can remove it, in their calendar app.'
+            : `That request is already ${existing.status}.`
+        );
+      }
+      const outcome = { status: 'cancelled' as const, failureReason: null, eventExternalId: null, resolvedAt: new Date().toISOString() };
+      db.dbResolveCalendarRequest(id, outcome);
+      return { ...existing, ...outcome };
     },
 
     deleteMoodLog(id: string): MoodLog {

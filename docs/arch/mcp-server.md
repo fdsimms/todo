@@ -868,6 +868,37 @@ bad servings count) is checked before the first write, and the writes are one tr
 `delete_recipe` leaves planned meals as the app does (title kept, link gone) and reports how many;
 their Today tasks and events catch up on the phone. Moving a recipe between cookbooks stays in the app.
 
+### Calendar events: a request the phone answers
+
+The server cannot reach EventKit, so `request_calendar_event` does not write an event. It writes a
+synced `calendar_requests` row (`CalendarRequest`), and the phone answers it: on launch and after
+every sync that applied rows, `drainCalendarRequests` (`src/utils/calendarRequestDrain.ts`) writes
+each pending request with `saveEventDirect` and stamps `written` or `failed` back onto the row, which
+is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/calendarRequests.ts`.
+
+- **Exactly one device writes them, and that is a synced setting.** An iCloud calendar shows an event
+  on every device signed in to it, so two devices answering one request would put it there twice.
+  `calendarRequestDeviceId` names the writer (a `dbGetDeviceId` id). Picking a calendar in Settings ›
+  Reminders & Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
+  by overwriting the key rather than by anybody remembering to. The calendar itself,
+  `calendarRequestCalendarId`, is device-local like every other EventKit id. A device-local on/off
+  switch was the first sketch and was dropped for this reason.
+- **No writer, no request.** The tool refuses rather than queueing something nothing will ever
+  write, and `get_overview` reports `features.calendarRequests` so an agent knows before asking.
+- **It never asks for calendar access.** Nobody tapped anything, so without access a request stays
+  pending until access is given. Demo mode leaves requests untouched for the real database.
+- **A request already over when it arrives fails rather than writing into the past**, with a reason
+  on the row, so a phone that didn't sync for a week doesn't fill last week with events.
+- **Create only.** Nothing edits or deletes an event once written, the "never deletes a time block"
+  rule in `calendarSync.ts`. `cancel_calendar_request` works only while a request is pending; after
+  that the event is the person's, in their calendar app.
+- **The Activity entry is the agent's request** (subject `event`), written here and synced like the
+  rest of the ledger. Its "Don't add" button cancels the request while it is still pending
+  (`agentRecordPlan`), and says why not once it isn't. The phone's write adds no second entry: the row's status is the record of what
+  became of it. Answered requests are purged after 30 days by the writing device.
+- **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
+  the row. The phone re-reads each row just before writing, which makes the window one sync wide.
+
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and
