@@ -90,7 +90,7 @@ describe('baseCoinsFor', () => {
 });
 
 describe('difficulty', () => {
-  const rated = (estimatedMinutes: number | null, difficulty: 'easy' | 'normal' | 'hard') =>
+  const rated = (estimatedMinutes: number | null, difficulty: 'trivial' | 'easy' | 'normal' | 'hard') =>
     ({ ...task(estimatedMinutes), difficulty });
 
   it('leaves a normal or unrated task exactly as it was', () => {
@@ -110,6 +110,30 @@ describe('difficulty', () => {
     expect(baseCoinsFor(rated(600, 'easy'))).toBe(6);
     expect(baseCoinsFor(rated(90, 'easy'))).toBe(3);
     expect(baseCoinsFor(rated(1, 'easy'))).toBe(1);
+  });
+
+  it('pays a trivial task nothing, whatever its estimate', () => {
+    expect(baseCoinsFor(rated(1, 'trivial'))).toBe(0);
+    expect(baseCoinsFor(rated(600, 'trivial'))).toBe(0);
+    expect(coinsForCompletion(rated(600, 'trivial'), 0)).toBe(0);
+  });
+
+  it('pays a trivial task no streak bonus or bounty either', () => {
+    const live = { ...rated(30, 'trivial'), bountyPushes: 0 };
+    expect(coinsForCompletion(live, STREAK_BONUS_EVERY * 3)).toBe(0);
+    expect(bountyCoinsFor(live)).toBe(0);
+  });
+
+  it('never charges for missing a trivial task', () => {
+    expect(coinsForLoss(rated(600, 'trivial'))).toBe(0);
+  });
+
+  it('refuses a bounty on a trivial task, and frees the slot of one rated trivial later', () => {
+    const open = { completed: false, archived: false, parentId: null, polarity: 'positive' as const, bountyPushes: null };
+    expect(canPostBounty({ ...open, difficulty: 'normal' })).toBe(true);
+    expect(canPostBounty({ ...open, difficulty: 'trivial' })).toBe(false);
+    expect(isBountyLive({ ...open, bountyPushes: 0, difficulty: 'hard' })).toBe(true);
+    expect(isBountyLive({ ...open, bountyPushes: 0, difficulty: 'trivial' })).toBe(false);
   });
 
   it('carries into a completion and a bounty', () => {
