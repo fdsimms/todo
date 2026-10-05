@@ -1,4 +1,4 @@
 {
-  "message": "Setting up a weekly target partway through a week now offers a smaller count for that first week, based on the days left. The full target starts the week after.",
+  "message": "A weekly target set up partway through a week now asks for fewer that first week, based on the days left, from the task editor or quick add. The full target starts the week after. The editor has a switch to keep the full count instead.",
   "date": "2026-10-05"
 }

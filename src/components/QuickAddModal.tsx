@@ -63,7 +63,8 @@ import {
 import { isSimpleChip } from '../utils/simpleTaskForm';
 import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
-import { MAX_TARGET_UNIT_LENGTH, formatQuotaTarget } from '../utils/quotaUnit';
+import { MAX_TARGET_UNIT_LENGTH, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
+import { firstWeekAnchor, proratedWeeklyTarget, weekDaysLeft, firstWeekPatch } from '../utils/quotaSchedule';
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { WeekdaySelector } from './WeekdaySelector';
@@ -97,7 +98,7 @@ import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, formatTimeOfDay, formatHHMM } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, getTaskDayStart, formatTimeOfDay, formatHHMM } from '../utils/dateUtils';
 import { blockerFields } from '../utils/blocking';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
@@ -254,6 +255,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const addTask = useTaskStore(s => s.addTask);
   const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const addSubtask = useTaskStore(s => s.addSubtask);
+  const updateTask = useTaskStore(s => s.updateTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -269,6 +271,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.defaultTaskCategory : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
   // Titles filed since the sheet opened, while "Add another" is on — the
@@ -1687,6 +1690,16 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     && !seed.windowStart && !seed.pinned && seed.category == null;
   const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && (!seedActive || sectionOnlySeed);
 
+  // A weekly target typed partway through a week starts with fewer that week,
+  // the editor's default (see firstWeekPatch). There's no room for the
+  // editor's toggle here, so the caption under the stepper says what the
+  // first week will ask for, and the editor can turn it off afterwards.
+  const firstWeekDayStart = firstWeekAnchor(dueDate ? getTaskDayStart(dueDate, dayResetTime) : null, getCurrentDayStart());
+  const firstWeekDaysLeft = weekDaysLeft(firstWeekDayStart, weekStartsOn);
+  const firstWeekCount = type === 'target' && quotaPeriod === 'week' && targetCount !== null
+    ? proratedWeeklyTarget(targetCount, firstWeekDaysLeft)
+    : null;
+
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
@@ -1746,6 +1759,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // any other set is (and the repeat, if one was also set, is stripped the
     // same way: a series never carries one).
     if (dueDate && seriesExtraDates.length > 0) applyTaskDates(task.id, [dueDate, ...seriesExtraDates]);
+    else {
+      const firstWeek = firstWeekPatch(task, firstWeekDayStart, weekStartsOn);
+      if (firstWeek) updateTask(task.id, firstWeek);
+    }
     // Subtasks hang off the first row only, the way the editor's draft
     // subtasks do (proceedWithSave): applyTaskDates has already run, so the
     // set's other dates don't get copies of them.
@@ -2730,6 +2747,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 />
                 <Text style={styles.targetStepperCaption}>a {quotaPeriod}</Text>
               </View>
+              {firstWeekCount !== null && (
+                <Text style={[styles.targetStepperCaption, styles.firstWeekCaption]}>
+                  {`${[firstWeekCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${firstWeekDaysLeft === 1 ? '1 day is' : `${firstWeekDaysLeft} days are`} left in it.`}
+                </Text>
+              )}
             </View>
           )}
 
@@ -3937,6 +3959,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   targetStepperCaption: {
     color: colors.textSecondary,
     fontSize: font.sm,
+  },
+  firstWeekCaption: {
+    marginTop: spacing.sm,
   },
   presetChip: {
     paddingHorizontal: 14,

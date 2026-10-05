@@ -239,6 +239,36 @@ export function quotaProrationPatch(
 }
 
 /**
+ * The day a new weekly target's first week is counted from: the logical day
+ * it is first due, or today when that has already passed or there is none.
+ */
+export function firstWeekAnchor(dueDayStart: Date | null, todayStart: Date): Date {
+  return dueDayStart && dueDayStart > todayStart ? dueDayStart : todayStart;
+}
+
+/**
+ * The patch that gives a just-created weekly target a first week scaled to the
+ * days left in it, or null when there is nothing to scale. The default every
+ * creation path applies (the editor's toggle starts on, and quick add and the
+ * MCP server have no toggle at all), kept here so they agree on what counts.
+ *
+ * Only a plain weekly target: a rotation's count is its members, and an
+ * interval quota is day-shaped (see `Task.quotaPeriod`).
+ */
+export function firstWeekPatch(
+  task: Pick<Task, 'quotaPeriod' | 'targetCount' | 'seriesDefaults' | 'quotaStartedAt' | 'rotationEnabled' | 'quotaIntervalMinutes'>,
+  anchorDayStart: Date,
+  weekStartsOn: 0 | 1,
+): Partial<Task> | null {
+  if (
+    task.quotaPeriod !== 'week' || task.targetCount === null || task.targetCount < 2 ||
+    task.rotationEnabled || task.quotaIntervalMinutes !== null
+  ) return null;
+  const scaled = proratedWeeklyTarget(task.targetCount, weekDaysLeft(anchorDayStart, weekStartsOn));
+  return quotaProrationPatch(task, task.targetCount, scaled, anchorDayStart);
+}
+
+/**
  * How many units an interval implies across a span, clamped to the range a
  * target is allowed to hold.
  *

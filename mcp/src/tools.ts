@@ -713,6 +713,10 @@ export function createTask(replica: Replica, input: TaskFieldsInput & { parentId
   if (parentId && !replica.taskById(parentId)) throw new Error(`No task with id ${parentId} to add a subtask to.`);
   const patch = replica.taskPatch(fields, null, !!parentId);
   const task = replica.createTask({ ...patch, ...(parentId ? { parentId } : {}) });
+  // The app's own default for a weekly target set up midweek: fewer that first
+  // week (see firstWeekPatch). Only on create; an existing weekly target's
+  // week is already running.
+  if (fields.target?.per === 'week' && fields.target.firstWeek !== 'full') replica.scaleFirstWeek(task.id);
   return getTask(replica, task.id)!;
 }
 

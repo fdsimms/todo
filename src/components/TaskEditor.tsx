@@ -129,7 +129,7 @@ import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
 import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask } from '../utils/visibilityUtils';
-import { proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
+import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -1870,9 +1870,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (task && wasProrated && task.quotaStartedAt) {
       return getTaskDayStart(new Date(task.quotaStartedAt), dayResetTime);
     }
-    const today = getCurrentDayStart();
-    const due = dueDate ? getTaskDayStart(dueDate, dayResetTime) : today;
-    return due > today ? due : today;
+    return firstWeekAnchor(dueDate ? getTaskDayStart(dueDate, dayResetTime) : null, getCurrentDayStart());
   })();
   const prorationDaysLeft = weekDaysLeft(prorationAnchor, weekStartsOn);
   const offersProration =

@@ -10,6 +10,8 @@ import {
   weekDaysLeft,
   proratedWeeklyTarget,
   quotaProrationPatch,
+  firstWeekAnchor,
+  firstWeekPatch,
 } from '../utils/quotaSchedule';
 
 const DAY = new Date('2026-08-26T00:00:00');
@@ -384,5 +386,30 @@ describe('weekly target proration', () => {
   it('is only a weekly thing', () => {
     expect(quotaProrationPatch(row({ quotaPeriod: 'day' }), 3, 2, thu)).toBeNull();
     expect(proratedFrom(row({ quotaPeriod: 'day', targetCount: 2, seriesDefaults: { targetCount: 3 } }))).toBeNull();
+  });
+});
+
+describe('firstWeekPatch', () => {
+  const thu = new Date('2026-08-27T00:00:00');
+  const fresh = (o: Partial<Parameters<typeof firstWeekPatch>[0]> = {}) => ({
+    quotaPeriod: 'week' as const, targetCount: 3, seriesDefaults: null, quotaStartedAt: null,
+    rotationEnabled: false, quotaIntervalMinutes: null, ...o,
+  });
+
+  it('scales a plain weekly target set up midweek', () => {
+    expect(firstWeekPatch(fresh(), thu, 1)).toMatchObject({ targetCount: 2, seriesDefaults: { targetCount: 3 } });
+  });
+
+  it('leaves a full week, a daily target and a rotation alone', () => {
+    expect(firstWeekPatch(fresh(), new Date('2026-08-24T00:00:00'), 1)).toBeNull();
+    expect(firstWeekPatch(fresh({ quotaPeriod: 'day' }), thu, 1)).toBeNull();
+    expect(firstWeekPatch(fresh({ rotationEnabled: true }), thu, 1)).toBeNull();
+  });
+
+  it('counts from the first due day, never from before today', () => {
+    const today = new Date('2026-08-25T00:00:00');
+    expect(firstWeekAnchor(thu, today)).toEqual(thu);
+    expect(firstWeekAnchor(new Date('2026-08-20T00:00:00'), today)).toEqual(today);
+    expect(firstWeekAnchor(null, today)).toEqual(today);
   });
 });
