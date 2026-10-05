@@ -46,7 +46,7 @@ export const TASK_KIND_META: {
   // Beside Chain because the pair is the real distinction — both hold a list,
   // and the hints are where the difference lives: one fixes the order, the
   // other leaves it to you and only cares that the week covers the set.
-  { key: 'rotation', label: 'Rotation', icon: 'repeat-outline', hint: 'A set of things, each done once a week, in any order.' },
+  { key: 'rotation', label: 'Rotation', icon: 'repeat-outline', hint: 'A set of things, each done a set number of times a week, in any order.' },
   { key: 'chain', label: 'Chain', icon: 'git-commit-outline', hint: 'Steps through a list one at a time.' },
 ];
 
@@ -281,8 +281,8 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
       // this from the Chain sitting under it in the picker, and the summary
       // line is the only place the app explains either.
       return v.rotationItems.length > 0
-        ? `${v.rotationItems.length} thing${v.rotationItems.length === 1 ? '' : 's'}, ${rotationTargetTotal(v.rotationItems)} ${rotationTargetTotal(v.rotationItems) === 1 ? 'time' : 'times'} a week in all, in any order. Only shows up when you fall behind.`
-        : 'A set of things, each done a set number of times a week, in any order. Only shows up when you fall behind.';
+        ? `${v.rotationItems.length} thing${v.rotationItems.length === 1 ? '' : 's'}, ${rotationTargetTotal(v.rotationItems)} ${rotationTargetTotal(v.rotationItems) === 1 ? 'time' : 'times'} a week in all, in any order. Stays on Today until all are done.`
+        : 'A set of things, each done a set number of times a week, in any order. Stays on Today until all are done.';
     case 'chain':
       return v.chainItems.length > 0
         ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion. Finishing one reveals the next.`

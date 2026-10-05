@@ -9,6 +9,7 @@ import { CoinIcon } from '../components/CoinIcon';
 import { COIN_ICON } from '../constants/coinIcon';
 import { clearUnprovenScreen, markScreenUnproven, readUnprovenScreen, screenToRestore } from '../utils/launchGuard';
 import { SafeBlurView } from '../components/SafeBlurView';
+import { GlassLayer, glassSupported } from '../components/GlassLayer';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
@@ -57,6 +58,7 @@ import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { CoinToast } from '../components/CoinToast';
+import { EventCreatedToast } from '../components/EventCreatedToast';
 import { ReadyOfferBar } from '../components/ReadyOfferBar';
 import { TripDatePrompt } from '../components/TripDatePrompt';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
@@ -66,9 +68,10 @@ import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
 import { CookingBar } from '../components/CookingBar';
+import { FocusFloatingBar } from '../components/FocusBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { border } from '../theme';
+import { border, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -198,6 +201,10 @@ function MorePlaceholder() {
 }
 
 const styles = StyleSheet.create({
+  glassTabBar: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
   edgeZone: {
     position: 'absolute',
     left: 0,
@@ -360,6 +367,9 @@ export default function AppNavigator() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [initialRouteName] = useState(initialScreenFromSettings);
   const [activeTab, setActiveTab] = useState(initialRouteName);
+  // Today draws its own inline strip for a focus session; everywhere else,
+  // pushed cards included, gets the floating one.
+  const [onToday, setOnToday] = useState(initialRouteName === 'Today');
   // Stable function reference (Zustand actions never change identity), so
   // selecting only this doesn't subscribe AppNavigator to lastVisitedScreen
   // itself — see initialScreenFromSettings above.
@@ -407,6 +417,7 @@ export default function AppNavigator() {
 
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
+    if (currentName) setOnToday(currentName === 'Today');
     if (!currentName || currentName === 'More' || PUSHED_ROUTES.has(currentName)) return;
     // Remembered so the next cold launch reopens here instead of always on
     // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
@@ -425,16 +436,24 @@ export default function AppNavigator() {
       backgroundColor: 'transparent',
       borderTopWidth: 0,
       elevation: 0,
+      ...(glassSupported() ? { left: spacing.smd, right: spacing.smd } : null),
     },
+    // On iOS 26 the bar is a glass slab inset from the screen edges with
+    // rounded top corners. Its height and bottom edge are unchanged, so no
+    // screen's bottom padding moves. Older iOS keeps the blur.
     tabBarBackground: () => (
-      <SafeBlurView
-        intensity={isDark ? 60 : 80}
-        tint={isDark ? 'dark' : 'light'}
-        style={[StyleSheet.absoluteFill, {
-          borderTopWidth: border.hairline,
-          borderTopColor: colors.separator,
-        }]}
-      />
+      glassSupported() ? (
+        <GlassLayer style={styles.glassTabBar} />
+      ) : (
+        <SafeBlurView
+          intensity={isDark ? 60 : 80}
+          tint={isDark ? 'dark' : 'light'}
+          style={[StyleSheet.absoluteFill, {
+            borderTopWidth: border.hairline,
+            borderTopColor: colors.separator,
+          }]}
+        />
+      )
     ),
     tabBarActiveTintColor: colors.accent,
     tabBarInactiveTintColor: colors.textTertiary,
@@ -565,6 +584,9 @@ export default function AppNavigator() {
       {/* Beside it: the coins a tick just earned are a moment, not a screen.
           See CoinToast. */}
       <CoinToast />
+      {/* And the event a person just added: a moment with one tap to see it
+          in the system calendar. See EventCreatedToast. */}
+      <EventCreatedToast />
       {/* Beside it, for the same reason: "X is ready" is a moment after a
           tap, not a screen. See ReadyOfferBar. */}
       <ReadyOfferBar />
@@ -593,6 +615,9 @@ export default function AppNavigator() {
           comment for why a cook timer needs the app-wide bar that shopping
           trip deliberately doesn't get. */}
       <CookingBar />
+      {/* A minimized focus session's way back from every screen but Today,
+          which has its own inline strip. See FocusFloatingBar. */}
+      <FocusFloatingBar hidden={onToday} />
     </>
   );
 }
