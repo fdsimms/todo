@@ -40,7 +40,10 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
-import { GROUP_APPLY_FIELDS, backfillGroupKey, backfillGroupMembers } from '../utils/taskFieldDefaults';
+import {
+  GROUP_APPLY_FIELDS, backfillGroupKey, backfillGroupMembers, defaultsFromAnswer, defaultsDiffer,
+  NO_TASK_FIELD_DEFAULTS,
+} from '../utils/taskFieldDefaults';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
@@ -87,7 +90,7 @@ import { shorterNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
+  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
 
@@ -912,10 +915,11 @@ export function BackfillScreen() {
    * you. No confirm: arming the toggle was the explicit step, and the card says
    * how many it will reach.
    */
-  const applyToGroup = (patchFor: (task: Task) => Partial<Task>, valueText: string) => {
+  const applyToGroup = (patchFor: (task: Task) => Partial<Task>, valueText: string, dismissed = false) => {
     if (active?.kind !== 'task') return;
     const batch = groupMembers;
     if (batch.length === 0) return;
+    const offerFor = batch[0];
     haptics.success();
     animateLayout();
     recordVisited();
@@ -949,6 +953,39 @@ export function BackfillScreen() {
       for (const task of batch) next.add(task.id);
       return next;
     });
+    offerGroupDefault(offerFor, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
+  };
+
+  /**
+   * After a whole-group answer, offers to keep it as the group's default so the
+   * next task added there never reaches this screen. A separate question rather
+   * than part of the toggle, because answering the backlog and deciding what
+   * future tasks start with are two different calls.
+   */
+  const offerGroupDefault = (sample: Task, answer: Partial<TaskFieldDefaults> | null) => {
+    if (!answer) return;
+    const kind = sample.generatedKind;
+    const projectId = sample.projectId;
+    const current = kind
+      ? useSettingsStore.getState().generatedTaskDefaults[kind]
+      : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
+    if (!defaultsDiffer(current, answer)) return;
+    const name = groupLabel ?? 'this group';
+    Alert.alert(
+      `Use this for new tasks in ${name}?`,
+      'New tasks there will start with this answer, so they will not come up here. You can change it later in the project editor or in Settings.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Use for new tasks',
+          onPress: () => {
+            const next: TaskFieldDefaults = { ...NO_TASK_FIELD_DEFAULTS, ...(current ?? {}), ...answer };
+            if (kind) useSettingsStore.getState().setGeneratedTaskDefaults(kind, next);
+            else if (projectId) updateProject(projectId, { taskDefaults: next });
+          },
+        },
+      ],
+    );
   };
 
   // The two task fields the suggestion feature answers, factored out so the
@@ -1314,7 +1351,7 @@ export function BackfillScreen() {
     if (!active) return;
     if (active.kind === 'task' && currentTask && groupApplies) {
       const fieldId = active.id;
-      applyToGroup(task => dismissBackfillField(task, fieldId), 'Left unset');
+      applyToGroup(task => dismissBackfillField(task, fieldId), 'Left unset', true);
       return;
     }
     haptics.tap();

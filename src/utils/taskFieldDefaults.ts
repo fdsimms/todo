@@ -209,3 +209,30 @@ export function backfillGroupMembers(queue: Task[], current: Task): Task[] {
   if (key === null) return [];
   return queue.filter(t => backfillGroupKey(t) === key);
 }
+
+/**
+ * The group default a backfill answer implies, for the "also use this for new
+ * tasks" offer after a whole-group apply. `patch` is what was written to each
+ * task. Leaving priority unset implies "no priority" (0); leaving difficulty or
+ * an estimate unset implies nothing, since those have no "none" answer.
+ */
+export function defaultsFromAnswer(
+  fieldId: string,
+  patch: Partial<Task>,
+  dismissed: boolean,
+): Partial<TaskFieldDefaults> | null {
+  if (fieldId === 'priority') {
+    if (dismissed) return { priority: 0 };
+    return patch.priority !== undefined ? { priority: patch.priority } : null;
+  }
+  if (dismissed) return null;
+  if (fieldId === 'difficulty') return patch.difficulty ? { difficulty: patch.difficulty } : null;
+  if (fieldId === 'estimate') return patch.effort ? { effort: patch.effort } : null;
+  return null;
+}
+
+/** Whether `answer` would change `current`, so the offer is not made for a default already set. */
+export function defaultsDiffer(current: TaskFieldDefaults | null | undefined, answer: Partial<TaskFieldDefaults>): boolean {
+  const base = current ?? NO_TASK_FIELD_DEFAULTS;
+  return (Object.keys(answer) as (keyof TaskFieldDefaults)[]).some(k => base[k] !== answer[k]);
+}

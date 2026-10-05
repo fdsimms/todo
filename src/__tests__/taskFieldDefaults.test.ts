@@ -1,7 +1,7 @@
 import {
   parseTaskFieldDefaults, parseGeneratedTaskDefaults, serializeTaskFieldDefaults, hasTaskFieldDefaults,
   resolveFieldDefaults, seedTaskFields, existingTaskPatch, tasksNeedingDefaults, describeTaskFieldDefaults,
-  backfillGroupKey, backfillGroupMembers, NO_TASK_FIELD_DEFAULTS,
+  backfillGroupKey, backfillGroupMembers, NO_TASK_FIELD_DEFAULTS, defaultsFromAnswer, defaultsDiffer,
 } from '../utils/taskFieldDefaults';
 import type { Task, TaskFieldDefaults } from '../types';
 
@@ -159,5 +159,26 @@ describe('backfill groups', () => {
     const queue = [task({ id: 'a', projectId: 'p1' }), task({ id: 'b', projectId: 'p2' }), task({ id: 'c', projectId: 'p1' })];
     expect(backfillGroupMembers(queue, queue[0]).map(t => t.id)).toEqual(['a', 'c']);
     expect(backfillGroupMembers(queue, task())).toEqual([]);
+  });
+});
+
+describe('the "also use this for new tasks" offer', () => {
+  it('turns an answer into a default, and leaving priority unset into "no priority"', () => {
+    expect(defaultsFromAnswer('priority', { priority: 3 }, false)).toEqual({ priority: 3 });
+    expect(defaultsFromAnswer('priority', {}, true)).toEqual({ priority: 0 });
+    expect(defaultsFromAnswer('difficulty', { difficulty: 'hard' }, false)).toEqual({ difficulty: 'hard' });
+    expect(defaultsFromAnswer('estimate', { effort: 2, estimatedMinutes: 15 }, false)).toEqual({ effort: 2 });
+  });
+
+  it('offers nothing where there is no "none" answer or no default field', () => {
+    expect(defaultsFromAnswer('difficulty', {}, true)).toBeNull();
+    expect(defaultsFromAnswer('estimate', {}, true)).toBeNull();
+    expect(defaultsFromAnswer('category', { category: 'Home' }, false)).toBeNull();
+  });
+
+  it('only offers when the answer would change the current default', () => {
+    expect(defaultsDiffer(null, { priority: 0 })).toBe(true);
+    expect(defaultsDiffer({ priority: 0, difficulty: null, effort: null }, { priority: 0 })).toBe(false);
+    expect(defaultsDiffer({ priority: 1, difficulty: null, effort: null }, { priority: 0 })).toBe(true);
   });
 });

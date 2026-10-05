@@ -40,7 +40,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition } from '../types';
+import type { Priority, Effort, Difficulty, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity, WeatherCondition, TaskFieldDefaults } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -457,6 +457,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // rule effect only moves it while it still holds what the rule last wrote,
   // so a project picked by hand isn't taken back by the next keystroke.
   const [projectId, setProjectId] = useState<string | null>(null);
+  // What priority, effort and difficulty were last seeded to from a project's
+  // defaults, so choosing another project re-seeds only a pill nobody touched.
+  const fieldSeedRef = useRef<{ priority: Priority; effort: Effort; difficulty: Difficulty | null } | null>(null);
   // The project the picker last set, as opposed to one a title rule filled.
   const pickedProjectRef = useRef<string | null>(null);
   const pickProject = (id: string | null) => {
@@ -573,6 +576,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setPriority(hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0);
     setEffort(hostFieldDefaults()?.effort ?? newTaskDefaults.effort ?? 0);
     setDifficulty(hostFieldDefaults()?.difficulty ?? newTaskDefaults.difficulty ?? null);
+    fieldSeedRef.current = null;
     setEstimatedMinutes(null);
     setCustomEffortText('');
     setDueDate(defaultDueDate(listTarget));
@@ -740,6 +744,27 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // open; re-running on it would fight a value already applied.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruleFill, visible]);
+
+  // A project picked by hand (or by a title rule) answers priority, estimate
+  // and difficulty the way the project the sheet opened into does. A value the
+  // person already changed is left alone, the same compare-to-what-we-put-there
+  // reconcile the title rules above use.
+  useEffect(() => {
+    if (!visible) { fieldSeedRef.current = null; return; }
+    const seedFor = (fd: TaskFieldDefaults | null | undefined) => ({
+      priority: (fd?.priority ?? newTaskDefaults.priority ?? 0) as Priority,
+      effort: (fd?.effort ?? newTaskDefaults.effort ?? 0) as Effort,
+      difficulty: fd?.difficulty ?? newTaskDefaults.difficulty ?? null,
+    });
+    const next = seedFor((projectId ? projects.find(p => p.id === projectId)?.taskDefaults : null) ?? hostFieldDefaults());
+    const prev = fieldSeedRef.current ?? seedFor(hostFieldDefaults());
+    setPriority(cur => (cur === prev.priority ? next.priority : cur));
+    setEffort(cur => (cur === prev.effort ? next.effort : cur));
+    setDifficulty(cur => (cur === prev.difficulty ? next.difficulty : cur));
+    fieldSeedRef.current = next;
+    // Only a change of project re-seeds; the defaults read here are a baseline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, visible]);
 
   /**
    * "“expense” → Work · #receipts" — the word that fired, and what it filled
