@@ -206,6 +206,26 @@ describe('timed', () => {
   });
 });
 
+describe('rotation counts', () => {
+  it('sums per-member counts into the target', () => {
+    const patch = ok({ rotation: { members: [{ title: 'Run', timesPerWeek: 3 }, 'Peloton ride'] } });
+    expect(patch.targetCount).toBe(4);
+    expect(patch.rotationItems!.map(i => i.perWeek)).toEqual([3, undefined]);
+  });
+
+  it('keeps a stored count when a bare name is re-sent, and replaces it when one is stated', () => {
+    const cur = existing({ rotationEnabled: true, rotationItems: [{ id: 'run', title: 'Run', linkUrl: null, perWeek: 3 }, { id: 'b', title: 'Bike', linkUrl: null }] } as Partial<Task>);
+    expect(ok({ rotation: { members: ['run', 'Bike'] } }, cur).targetCount).toBe(4);
+    expect(ok({ rotation: { members: [{ title: 'Run', timesPerWeek: 2 }, 'Bike'] } }, cur).targetCount).toBe(3);
+    expect(ok({ rotation: { members: [{ title: 'Run', timesPerWeek: 1 }, 'Bike'] } }, cur).targetCount).toBe(2);
+  });
+
+  it('refuses a count outside 1 to 7', () => {
+    expect(errorsOf({ rotation: { members: [{ title: 'A', timesPerWeek: 0 }, 'B'] } })).toMatch(/1 to 7/);
+    expect(errorsOf({ rotation: { members: [{ title: 'A', timesPerWeek: 8 }, 'B'] } })).toMatch(/1 to 7/);
+  });
+});
+
 describe('rotation', () => {
   it('makes a weekly target the size of the set', () => {
     expect(ok({ rotation: { members: ['Spanish', 'French', 'Hindi'] } })).toMatchObject({

@@ -92,6 +92,38 @@ export function withPerWeek(item: RotationItem, perWeek: number): RotationItem {
 }
 
 /**
+ * A member as the MCP tools accept it: a bare title, or a title with how many
+ * times a week. A bare title means "unspecified", so an edit that re-sends names
+ * keeps the counts already stored instead of resetting them to once.
+ */
+export type RotationMemberInput = string | { title: string; timesPerWeek?: number };
+
+export function rotationMemberTitle(m: RotationMemberInput): string {
+  return (typeof m === 'string' ? m : m?.title ?? '').trim();
+}
+
+/**
+ * The member record for an input, reusing `kept` (the stored member with the
+ * same title) so its id, link and history survive. A stated count wins; an
+ * unstated one keeps the stored count.
+ */
+export function rotationItemFromInput(
+  m: RotationMemberInput,
+  kept: RotationItem | undefined,
+  newId: () => string,
+): RotationItem {
+  const title = rotationMemberTitle(m);
+  const base: RotationItem = kept ? { ...kept, title } : { id: newId(), title, linkUrl: null };
+  const times = typeof m === 'string' ? undefined : m.timesPerWeek;
+  return times === undefined ? base : withPerWeek(base, times);
+}
+
+/** The inverse, for showing a stored member to an agent: a bare title unless it has a count. */
+export function rotationMemberToInput(item: RotationItem): RotationMemberInput {
+  return rotationPerWeek(item) > 1 ? { title: item.title, timesPerWeek: rotationPerWeek(item) } : item.title;
+}
+
+/**
  * A rotation's set built from something the task already listed: its chain
  * steps or its subtasks. Switching a task to Rotation starts from what it was
  * rather than from an empty set, so the names and links already typed carry

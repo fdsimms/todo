@@ -73,6 +73,7 @@ import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
+import { MAX_ROTATION_PER_WEEK, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { formatPhoneInput } from '../utils/phone';
 import { capitalize } from '../utils/capitalize';
@@ -559,7 +560,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       chainStepOnSchedule: chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       subtasks: effectiveSubtasks,
       // The rest of a target is dropped with it, as TaskEditor saves it.
-      targetCount,
+      // A rotation's target is the sum of its members' counts, so a count edited
+      // after the kind was picked still reaches the task it creates.
+      targetCount: rotationEnabled && rotationItems.length >= 2 ? rotationTargetTotal(rotationItems) : targetCount,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnitText) : null,
       quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
       allowOvershoot: targetCount !== null && allowOvershoot,
@@ -1789,14 +1792,14 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           summary={
             rotationEnabled
               ? (rotationItems.length > 1
-                  ? `${rotationItems.length} things, one each a week`
+                  ? `${rotationItems.length} things, ${rotationTargetTotal(rotationItems)} times a week`
                   : rotationItems.length === 1
                     ? '1 thing, add one more'
                     : 'Nothing in the set yet')
               : undefined
           }
           emptySummary="Off"
-          hint="A set of things to get through once each per week, in any order. Checking the task off asks which one you did."
+          hint="A set of things to get through each week, in any order, each with its own number of times a week. Checking the task off asks which one you did."
           expanded={fieldOpen('rotationSet', rotationEnabled)}
           onToggle={() => toggleField('rotationSet', rotationEnabled)}
           right={
@@ -1819,6 +1822,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               data={rotationItems}
               onReorder={setRotationItems}
               renderItem={(rotationItem, _displayIndex, drag) => (
+              <View>
               <View style={styles.chainItemRow}>
                 <TouchableOpacity
                   onLongPress={drag}
@@ -1851,6 +1855,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 >
                   <Ionicons name="close" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
+              </View>
+              <View style={styles.rotationCountRow}>
+                <Text style={styles.optionHint}>Times a week</Text>
+                <CountStepper
+                  value={rotationPerWeek(rotationItem)}
+                  min={1}
+                  max={MAX_ROTATION_PER_WEEK}
+                  label={`times a week for ${rotationItem.title || 'this item'}`}
+                  format={n => `${n}×`}
+                  onChange={n => setRotationItems(prev => prev.map(
+                    r => (r.id === rotationItem.id ? withPerWeek(r, n ?? 1) : r)))}
+                />
+              </View>
               </View>
               )}
             />
@@ -2595,6 +2612,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  rotationCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: spacing.lg,
+    paddingBottom: spacing.xsm,
+  },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   setBtn: {
     paddingHorizontal: spacing.smd, paddingVertical: 5,
