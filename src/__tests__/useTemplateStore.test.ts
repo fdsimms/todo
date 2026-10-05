@@ -100,6 +100,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   refTemplateId: null,
   refTemplateName: '',
   conditions: [],
+  variants: [],
   ...overrides,
 });
 
@@ -970,6 +971,46 @@ describe('applyTemplate — placeholders', () => {
       'tpl-1', new Set(['ref', 'n1']), { start: null, end: null }, { placeholders: { where: 'Denver' } }
     );
     expect(mockAddTask.mock.calls[0][0].title).toBe('Pack for Denver');
+  });
+});
+
+describe('applyTemplate — variants', () => {
+  const variantItem = makeItem({
+    id: 'a',
+    title: 'Pack {nights + 1 max 7} shirts',
+    notes: 'plain',
+    variants: [{ questionId: 'q-laundry', answer: 'Yes', title: 'Pack {nights / 2} shirts' }],
+  });
+
+  it('swaps in the variant text for the answer, and keeps the notes', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ items: [variantItem] })] });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null },
+      { placeholders: { nights: '8' }, answers: { 'q-laundry': 'Yes' } }
+    );
+    const [draft] = mockAddTask.mock.calls[0];
+    expect(draft.title).toBe('Pack 4 shirts');
+    expect(draft.notes).toBe('plain');
+  });
+
+  it('uses the item\'s own text for any other answer, or none', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ items: [variantItem] })] });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null },
+      { placeholders: { nights: '14' }, answers: { 'q-laundry': 'No' } }
+    );
+    expect(mockAddTask.mock.calls[0][0].title).toBe('Pack 7 shirts');
+  });
+
+  it('deleting the question removes the variants that named it', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        questions: [{ id: 'q-laundry', name: 'laundry', prompt: 'Laundry?', kind: 'choice', options: ['Yes', 'No'], defaultValue: '', fromDates: 'none' }],
+        items: [variantItem],
+      })],
+    });
+    useTemplateStore.getState().deleteQuestion('tpl-1', 'q-laundry');
+    expect(useTemplateStore.getState().templates[0].items[0].variants).toEqual([]);
   });
 });
 

@@ -24,6 +24,7 @@ import { nextPullCandidate } from '../utils/projectPull';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { projectCardCaption } from '../utils/projectList';
 import { isHeldBack, isQuotaOnPace, isTaskNotNeeded, isTaskVisible } from '../utils/visibilityUtils';
+import { proratedFrom } from '../utils/quotaSchedule';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSavedViewStore } from '../store/useSavedViewStore';
@@ -1101,8 +1102,9 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const weekly = tasks.find(t => t.quotaPeriod === 'week' && !t.rotationEnabled);
+    const weekly = tasks.find(t => t.title === 'Go for a run');
     expect(weekly).toBeDefined();
+    expect(weekly!.quotaPeriod).toBe('week');
     expect(weekly!.targetCount).toBe(3);
     expect(weekly!.progressCount).toBeGreaterThan(0);
     expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
@@ -1111,6 +1113,18 @@ describe('demo mode', () => {
     expect(weekly!.recurrenceType).toBe('weekly');
     // Whichever day the demo is entered on, the row is actually on screen.
     expect(isTaskVisible(weekly!)).toBe(true);
+  });
+
+  // A weekly target set up midweek asks for fewer that first week, and keeps
+  // the full count for the next. Invisible unless a row is actually scaled.
+  it('seeds a weekly target scaled down for its first week', () => {
+    useDemoStore.getState().enterDemoMode();
+    const scaled = useTaskStore.getState().tasks.find(t => t.title === 'Strength workout');
+    expect(scaled).toBeDefined();
+    expect(scaled!.targetCount).toBe(2);
+    expect(proratedFrom(scaled!)).toBe(4);
+    expect(scaled!.quotaStartedAt).not.toBeNull();
+    expect(isTaskVisible(scaled!)).toBe(true);
   });
 
   // A rotation is the one shape a plain weekly target can't express: it knows
@@ -1233,6 +1247,12 @@ describe('demo mode', () => {
     expect(conditioned.length).toBeGreaterThan(0);
     expect(conditioned[0].conditions[0].questionId).toBe(choice.id);
     expect(choice.options).toEqual(expect.arrayContaining(conditioned[0].conditions[0].values));
+
+    // An item with its own text for one answer of that choice.
+    const varied = asking.items.filter(i => i.variants.length > 0);
+    expect(varied.length).toBeGreaterThan(0);
+    expect(varied[0].variants[0].questionId).toBe(choice.id);
+    expect(choice.options).toContain(varied[0].variants[0].answer);
 
     // And a people question — no name to fill a blank with, no options, no
     // default: normalizeTemplateQuestion forces all three empty for this kind.

@@ -33,6 +33,7 @@ import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, R
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
+import { quotaProrationPatch } from './quotaSchedule';
 import { getCurrentDayStart, dayKeyOf, dateToHHMM } from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
@@ -723,6 +724,25 @@ export function seedDemoData(): void {
     quotaAlwaysVisible: true,
   });
   updateTask(runs.id, { progressCount: 1 });
+
+  // A weekly target set up partway through its first week, scaled down to
+  // the days that were left (see proratedWeeklyTarget). Through the same patch
+  // the editor writes, so the seeded row is exactly what the toggle makes:
+  // 2 this week, the full 4 again from next week.
+  const strength = addTask({
+    title: 'Strength workout',
+    notes: 'Four times a week. Started midweek, so this first week only asks for two.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 4,
+    targetUnit: 'workouts',
+    quotaPeriod: 'week',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    quotaAlwaysVisible: true,
+  });
+  const strengthScaled = quotaProrationPatch(strength, 4, 2, today);
+  if (strengthScaled) updateTask(strength.id, strengthScaled);
 
   // A rotation: the same weekly counting, but the units have names (see
   // utils/rotation.ts). This is the one shape a plain weekly target cannot
@@ -2780,7 +2800,14 @@ function seedTemplates(): void {
     // A count off the dates, and the same count halved — one shirt a day, one
     // pair of jeans per two.
     { title: 'Pack {nights} shirts', dueOffsetDays: -1, category: 'Home' },
-    { title: 'Pack {nights / 2} pairs of jeans', dueOffsetDays: -1, category: 'Home' },
+    // Its own text for a work trip: slacks instead, capped, since a long
+    // trip doesn't need more than three pairs.
+    {
+      title: 'Pack {nights / 2} pairs of jeans',
+      dueOffsetDays: -1,
+      category: 'Home',
+      variants: [{ questionId: tripType.id, answer: 'Work', title: 'Pack {nights / 2 max 3} pairs of slacks' }],
+    },
     // And the conditioned one: ticked for a work trip, left off for a vacation.
     {
       title: 'Pack laptop and charger',

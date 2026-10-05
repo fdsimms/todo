@@ -758,6 +758,21 @@ describe('the replica', () => {
         expect(replica.tasks().find(x => x.id === result.tasks[0].id)!.groupId).toBe(section.id);
       });
 
+      it('uses an item\'s variant for the answer, and keeps it through an edit', () => {
+        const t = replica.createTemplate({
+          name: 'Shirts',
+          questions: [{ name: 'laundry', prompt: 'Laundry?', kind: 'choice', options: ['Yes', 'No'] }, { name: 'days', prompt: 'Days?', kind: 'number' }],
+          items: [{ title: 'Pack {days + 1 max 7} shirts', category: 'Home', variants: [{ question: 'laundry', answer: 'Yes', title: 'Pack {days / 2} shirts' }] }],
+        });
+        expect(replica.applyTemplate(t.id, { answers: { laundry: 'Yes', days: '8' } }).tasks[0].title).toBe('Pack 4 shirts');
+        expect(replica.applyTemplate(t.id, { answers: { laundry: 'No', days: '20' } }).tasks[0].title).toBe('Pack 7 shirts');
+
+        // An edit that names only the id leaves the variant alone.
+        const kept = replica.updateTemplate(t.id, { items: [{ id: t.items[0].id }] });
+        expect(kept.items[0].variants).toHaveLength(1);
+        expect(kept.items[0].variants[0].questionId).toBe(kept.questions.find(q => q.name === 'laundry')!.id);
+      });
+
       it('follows the answers, and include / leaveOut', () => {
         const t = trip();
         const sunscreen = t.items.find(i => i.title === 'Sunscreen')!;
@@ -883,6 +898,29 @@ describe('the replica', () => {
 
   it('refuses a task with no title', () => {
     expect(() => replica.createTask({ title: '   ' })).toThrow('needs a title');
+  });
+
+  // The app's own default for a weekly target set up midweek. Thursday Aug 27
+  // 2026 with the replica's Sunday week start leaves 3 days: 4 a week is 2.
+  it('scales a new weekly target\'s first week to the days left in it', () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    jest.setSystemTime(new Date(2026, 7, 27, 12));
+    try {
+      const weekly = replica.createTask({
+        title: 'Strength', targetCount: 4, quotaPeriod: 'week', recurrenceType: 'weekly',
+        dueDate: new Date(2026, 7, 27, 12).toISOString(),
+      });
+      replica.scaleFirstWeek(weekly.id);
+      const scaled = replica.taskById(weekly.id)!;
+      expect(scaled.targetCount).toBe(2);
+      expect(scaled.seriesDefaults).toEqual({ targetCount: 4 });
+
+      const daily = replica.createTask({ title: 'Water', targetCount: 8, quotaPeriod: 'day', recurrenceType: 'daily' });
+      replica.scaleFirstWeek(daily.id);
+      expect(replica.taskById(daily.id)!.targetCount).toBe(8);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('leaves the reminder to the device that receives it', () => {
@@ -1268,6 +1306,153 @@ describe('the replica', () => {
     const task = replica.createTask({ title: 'Write the report', estimatedMinutes: 90 });
     replica.completeTask(task.id, {});
     expect(coins()).toEqual([{ task_id: task.id, amount: 5 }]);
+  });
+
+  describe('rewards', () => {
+    const balance = () => replica.lib().rewards.coinBalance(replica.rewardState().entries);
+    const earn = (minutes: number) => {
+      const t = replica.createTask({ title: `Earner ${Math.random()}`, estimatedMinutes: minutes });
+      replica.completeTask(t.id, {});
+    };
+
+    beforeAll(() => {
+      mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardsEnabled', 'true')");
+      replica.refresh();
+    });
+
+    it('adds, claims and takes back a reward against the stored balance', () => {
+      // The store is loaded from the database, so a balance earned before this
+      // process's reward store was last read still counts toward a claim.
+      earn(90);
+      const have = balance();
+      const reward = replica.addReward('Takeout', have, { note: 'the Thai place', oneTime: true });
+      expect(reward.oneTime).toBe(true);
+
+      const claim = replica.claimReward(reward.id);
+      expect(claim.kind).toBe('spend');
+      expect(balance()).toBe(0);
+      expect(() => replica.claimReward(reward.id)).toThrow(/already been claimed/);
+
+      replica.unclaimReward(claim.id);
+      expect(balance()).toBe(have);
+      replica.deleteReward(reward.id);
+    });
+
+    it('refuses a claim the balance does not cover, and says by how much', () => {
+      const reward = replica.addReward('Holiday', balance() + 50, {});
+      expect(() => replica.claimReward(reward.id)).toThrow(/costs \d+ coins and the balance is/);
+      replica.deleteReward(reward.id);
+    });
+
+    // The replica used to leave the store empty on open, so a claim judged the
+    // balance by what this process had earned since it started. A row already in
+    // the database has to count, and one written behind the replica's back is
+    // picked up on the next refresh.
+    it('reads the balance from the database, including rows it did not write', () => {
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const before = balance();
+      mockRaw.runSync(
+        "INSERT INTO coin_entries (id, kind, amount, at, task_id, reward_id, label) VALUES ('seeded-earn', 'earn', 7, '2026-01-01T00:00:00.000Z', NULL, NULL, 'Seeded')"
+      );
+      replica.refresh();
+      expect(store.getState().balance()).toBe(before + 7);
+      const reward = replica.addReward('Seeded treat', before + 7, {});
+      expect(replica.claimReward(reward.id).amount).toBe(before + 7);
+      replica.unclaimReward(replica.rewardState().entries.find(e => e.kind === 'spend' && e.rewardId === reward.id)!.id);
+      replica.deleteReward(reward.id);
+      mockRaw.runSync("DELETE FROM coin_entries WHERE id = 'seeded-earn'");
+      replica.refresh();
+    });
+
+    it('claims a wish-list reward by checking its item off without paying for the check-off, and unclaims it back', () => {
+      earn(90);
+      const have = balance();
+      const item = replica.createTask({ title: 'New boots' });
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const reward = store.getState().addReward('New boots', 3, { taskId: item.id });
+      replica.refresh();
+
+      const claim = replica.claimReward(reward.id);
+      expect(replica.taskById(item.id)!.completed).toBe(true);
+      expect(balance()).toBe(have - 3);
+
+      replica.unclaimReward(claim.id);
+      expect(replica.taskById(item.id)!.completed).toBe(false);
+      expect(balance()).toBe(have);
+      store.getState().deleteReward(reward.id);
+    });
+
+    it('refuses a wish-list claim once the item was checked off by hand', () => {
+      earn(90);
+      const item = replica.createTask({ title: 'Bought already' });
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const reward = store.getState().addReward('Bought already', 3, { taskId: item.id });
+      replica.completeTask(item.id, {});
+      replica.refresh();
+      expect(() => replica.claimReward(reward.id)).toThrow(/checked off, archived or gone/);
+      store.getState().deleteReward(reward.id);
+    });
+
+    it('refuses a fractional or oversized cost', () => {
+      expect(() => replica.addReward('Odd', 2.5, {})).toThrow(/whole number/);
+      expect(() => replica.addReward('Huge', 1_000_000, {})).toThrow(/whole number/);
+    });
+
+    it('chooses and clears the goal, and refuses one that is gone', () => {
+      const reward = replica.addReward('Book', 40, {});
+      expect(replica.setRewardGoal(reward.id)!.id).toBe(reward.id);
+      expect(replica.settings().rewardGoalId).toBe(reward.id);
+      replica.setRewardGoal(null);
+      expect(replica.settings().rewardGoalId).toBeNull();
+      replica.deleteReward(reward.id);
+      expect(() => replica.setRewardGoal(reward.id)).toThrow(/No reward/);
+    });
+
+    it('posts one bounty at the default limit, and a withdrawn one is spent', () => {
+      const a = replica.createTask({ title: 'Put off A' });
+      const b = replica.createTask({ title: 'Put off B' });
+      expect(replica.postBounty(a.id).bountyPushes).toBe(0);
+      expect(() => replica.postBounty(b.id)).toThrow(/limit is 1/);
+      replica.withdrawBounty(a.id);
+      expect(() => replica.postBounty(a.id)).toThrow(/already had a bounty/);
+      expect(replica.postBounty(b.id).bountyPushes).toBe(0);
+      replica.withdrawBounty(b.id);
+    });
+
+    it('marks a repeating occurrence missed, costs the coins, and reopens it with them back', () => {
+      earn(90);
+      const before = balance();
+      const dailyDue = new Date(Date.now() - 2 * 86_400_000).toISOString();
+      const t = replica.createTask({ title: 'Stretch daily', recurrenceType: 'daily', dueDate: dailyDue, estimatedMinutes: 30 });
+      const result = replica.markMissed(t.id);
+      expect(result.completed.missedAt).not.toBeNull();
+      expect(result.nextTask).not.toBeNull();
+      expect(balance()).toBeLessThan(before);
+
+      replica.reopenTask(t.id);
+      expect(balance()).toBe(before);
+    });
+
+    it('refuses to mark a one-off task missed', () => {
+      const t = replica.createTask({ title: 'One-off' });
+      expect(() => replica.markMissed(t.id)).toThrow(/repeating task/);
+    });
+
+    it('logs a slip, costs coins, and undoes both; refuses a habit with a penalty', () => {
+      earn(90);
+      const before = balance();
+      const habit = replica.createTask({ title: 'No biting nails', polarity: 'negative' });
+      const slipped = replica.logSlip(habit.id);
+      expect(slipped.slipCount).toBe(1);
+      expect(balance()).toBeLessThan(before);
+
+      expect(replica.undoSlip(habit.id).slipCount).toBe(0);
+      expect(balance()).toBe(before);
+      expect(() => replica.undoSlip(habit.id)).toThrow(/nothing to undo/);
+
+      const guarded = replica.createTask({ title: 'No scrolling', polarity: 'negative', penaltyMinutes: 30 });
+      expect(() => replica.logSlip(guarded.id)).toThrow(/penalty/);
+    });
   });
 
   it('refuses a task that is already completed', () => {

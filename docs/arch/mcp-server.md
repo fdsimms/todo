@@ -279,7 +279,7 @@ is still how the agent left it.
 - **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
-- **Record only, on purpose:** a recipe, template, stack or project the agent created (each has
+- **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
   contents added afterward and no edit stamp to tell whether they were, and a project or stack owns
   other rows), a grocery item taken off the list (putting it back would rebuild its quantity and aisle
   from nothing), a project completion, and an automation switch (one setter per setting).
@@ -770,6 +770,34 @@ so the finished occurrences behind a repeating task stay where they were.
   model should not make, and changing the category would move every member, so those stay a tap in
   the app. There is no reorder.
 
+### Rewards: Claude acts only on the person's word
+
+`get_rewards`, `create_reward`, `update_reward`, `delete_reward`, `claim_reward`, `unclaim_reward`,
+`set_reward_goal`, `set_bounty`, `mark_missed`, `log_slip` and `undo_slip` (`mcp/src/rewardTools.ts`,
+over the `Replica` methods of the same names). `docs/arch/rewards.md` says only a person moves coins.
+The tools keep that by being things the person asks Claude to do, never things Claude does to be
+helpful: each description says "only when they say so", every write previews first, and the
+app's own passes (the sweeps, the rollover) still never charge anything.
+
+- **The rules are the app's.** Claims go through `useRewardStore.claimReward`, bounties through the
+  same `canPostBounty` / `bountyLimit` checks as `postBounty`, a miss through `buildCompletion` with
+  `missed: true` and `recordMiss`, a slip through `slipPatch` and `recordSlip`. The replica
+  hydrates `useRewardStore` on open and on every refresh; before that it was never loaded here, so
+  a claim would have judged the balance by what this process had earned since it started.
+- **A wish-list claim checks its item off neutrally**, as `RewardsScreen`'s `claim` does (no coins on
+  top of the spend), inside one transaction with the spend. `unclaim_reward` reopens the item only if
+  it was checked off at or after the claim, so an item the person finished earlier is left alone.
+- **Refused rather than half-done.** A habit with a penalty (a slip also charges an app block, which only the phone can set), a one-off
+  task or a not-yet-due repeat for `mark_missed` (the app silently skips it), and anything while
+  rewards are switched off.
+- **Undo is the paired tool.** `unclaim_reward` takes a claim back by the id `claim_reward` returned,
+  `reopen_task` takes back a miss and its coins, `undo_slip` a slip. `withdraw` of a bounty is not
+  reversible for that occurrence, as in the app.
+- **Difficulty is `update_task`'s `difficulty`**, not a reward tool: it is an ordinary task field.
+- **Logged as `subject: 'reward'`**, a record only like a stack's. A reward, claim or goal has no
+  task to revert; a bounty edit carries the task revert; a miss has its own `missed` action ("Marked
+  missed") that is reverted like a completion, since "Reopen" is its real inverse.
+
 ### Every task it creates has a category
 
 A task the model files with no category lands in no section on Today, and a free-text name that
@@ -882,6 +910,37 @@ title on each meal planned from it. Everything that can refuse (a name clash in 
 bad servings count) is checked before the first write, and the writes are one transaction.
 `delete_recipe` leaves planned meals as the app does (title kept, link gone) and reports how many;
 their Today tasks and events catch up on the phone. Moving a recipe between cookbooks stays in the app.
+
+### Calendar events: a request the phone answers
+
+The server cannot reach EventKit, so `request_calendar_event` does not write an event. It writes a
+synced `calendar_requests` row (`CalendarRequest`), and the phone answers it: on launch and after
+every sync that applied rows, `drainCalendarRequests` (`src/utils/calendarRequestDrain.ts`) writes
+each pending request with `saveEventDirect` and stamps `written` or `failed` back onto the row, which
+is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/calendarRequests.ts`.
+
+- **Exactly one device writes them, and that is a synced setting.** An iCloud calendar shows an event
+  on every device signed in to it, so two devices answering one request would put it there twice.
+  `calendarRequestDeviceId` names the writer (a `dbGetDeviceId` id). Picking a calendar in Settings ›
+  Reminders & Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
+  by overwriting the key rather than by anybody remembering to. The calendar itself,
+  `calendarRequestCalendarId`, is device-local like every other EventKit id. A device-local on/off
+  switch was the first sketch and was dropped for this reason.
+- **No writer, no request.** The tool refuses rather than queueing something nothing will ever
+  write, and `get_overview` reports `features.calendarRequests` so an agent knows before asking.
+- **It never asks for calendar access.** Nobody tapped anything, so without access a request stays
+  pending until access is given. Demo mode leaves requests untouched for the real database.
+- **A request already over when it arrives fails rather than writing into the past**, with a reason
+  on the row, so a phone that didn't sync for a week doesn't fill last week with events.
+- **Create only.** Nothing edits or deletes an event once written, the "never deletes a time block"
+  rule in `calendarSync.ts`. `cancel_calendar_request` works only while a request is pending; after
+  that the event is the person's, in their calendar app.
+- **The Activity entry is the agent's request** (subject `event`), written here and synced like the
+  rest of the ledger. Its "Don't add" button cancels the request while it is still pending
+  (`agentRecordPlan`), and says why not once it isn't. The phone's write adds no second entry: the row's status is the record of what
+  became of it. Answered requests are purged after 30 days by the writing device.
+- **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
+  the row. The phone re-reads each row just before writing, which makes the window one sync wide.
 
 ### The health logs have their own switch, and iCloud never gets them
 

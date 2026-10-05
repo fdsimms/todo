@@ -379,8 +379,8 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                               { backgroundColor: isActive ? colors.accent + '22' : colors.bgTertiary },
                             ]}
                           >
-                            <Ionicons
-                              name={icon as React.ComponentProps<typeof Ionicons>['name']}
+                            <NamedIcon
+                              name={icon}
                               size={20}
                               color={isActive ? colors.accent : colors.textSecondary}
                             />
@@ -581,8 +581,8 @@ function HubRow({
         importantForAccessibility="no"
       >
         <View style={[styles.iconWrap, { backgroundColor: active ? colors.accent + '22' : colors.bgTertiary }]}>
-          <Ionicons
-            name={hub.icon as React.ComponentProps<typeof Ionicons>['name']}
+          <NamedIcon
+            name={hub.icon}
             size={20}
             color={active ? colors.accent : colors.textSecondary}
           />

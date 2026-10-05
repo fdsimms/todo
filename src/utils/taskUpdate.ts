@@ -289,7 +289,11 @@ export function mergeTaskUpdate(t: Task, updates: Partial<Task>, ctx: TaskUpdate
   const next = {
     ...t,
     ...updates,
-    seriesDefaults,
+    // A patch naming seriesDefaults itself wins outright, the same rule as the
+    // derived fields below: a whole-snapshot undo puts back what was there, and
+    // a weekly target's part-week scaling (quotaProrationPatch) writes the full
+    // count it reverts to.
+    seriesDefaults: 'seriesDefaults' in updates ? (updates.seriesDefaults ?? null) : seriesDefaults,
     ...(derivedPostpone ?? {}),
     ...(waitingOnPersonChange ?? {}),
     ...(takenOver ? { autoScheduledAt: null } : {}),

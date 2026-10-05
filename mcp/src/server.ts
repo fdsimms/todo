@@ -79,6 +79,7 @@ import {
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
+import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
@@ -93,6 +94,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
+import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
@@ -342,6 +344,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'list_calendar_requests',
+    'Events you asked the phone to add with request_calendar_event, newest first, and what happened to each: pending (waiting for the phone to sync), written (on the calendar), failed (with the reason), or cancelled. Also whether any device is set to add them. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
+    { status: z.enum(['pending', 'written', 'failed', 'cancelled']).optional() },
+    async input => json(await withFresh(() => listCalendarRequests(replica, input)))
+  );
+
+  server.tool(
     'list_mood_logs',
     'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
@@ -394,6 +403,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Stacks: named groups of tasks that sit together on Today, each with its category and its open tasks in order. A stack is only a label, so every task in it keeps its own schedule, streak and logging. A task shows which stack it is in as stackId.',
     {},
     async () => json({ stacks: await withFresh(() => listStacks(replica)) })
+  );
+
+  server.tool(
+    'get_rewards',
+    "The coin economy: whether rewards are on, the balance, the reward being saved for and how far along it is, every reward on the list (cost, whether the balance covers it now, how many coins short, when it was last claimed), the tasks with a live coin bounty, and the latest coin history (what earned, what was lost, what was spent). Read it before claiming or pricing anything. A balance can be below zero. When enabled is false the person has rewards switched off, so do not bring them up.",
+    { historyLimit: z.number().int().min(0).max(100).optional().describe('How many history entries, newest first. Default 15.') },
+    async input => json(await withFresh(() => getRewards(replica, input)))
   );
 
   server.tool(
@@ -640,6 +656,13 @@ const conditionSchema = z.object({
   values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
 });
 
+const variantSchema = z.object({
+  question: z.string().describe('The name of a choice question defined in this plan.'),
+  answer: z.string().describe('One of that question\'s options.'),
+  title: z.string().optional().describe('Replaces the item\'s title for this answer. Omit to keep it.'),
+  notes: z.string().optional().describe('Replaces the item\'s notes for this answer. Omit to keep them.'),
+});
+
 const itemSchema = z.object({
   id: z.string().optional().describe('Update only: the id of an item this template already has (get_template). It starts from the stored item and the other fields here change it.'),
   title: z.string().min(1).optional().describe('Required, except when id names an item that already has one.'),
@@ -699,6 +722,7 @@ const itemSchema = z.object({
   groupKey: z.string().nullable().optional().describe('The key of a group defined in this plan. null takes the item out of its group.'),
   conditions: z.array(conditionSchema).optional()
     .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
+  variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
@@ -711,6 +735,13 @@ const itemSchema = z.object({
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
+/**
+ * The blank syntax an item's title, notes, location, subtasks and chain steps
+ * understand, written once for both template tools. The rules are
+ * templateUtils.ts's (tested); this is only the words a client reads.
+ */
+const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token. An item can also carry variants: its own title and/or notes for particular answers of a choice question.';
+
 const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
   .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
 const anchorsAreAwaySchema = z.boolean().optional().describe('Whether the anchor dates mean a period away from home.');
@@ -720,14 +751,14 @@ const groupsSchema = z.array(z.object({
   checklist: z.boolean().optional().describe('Run into a project, the section is a checklist.'),
 })).optional();
 const questionsSchema = z.array(z.object({
-  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none.'),
+  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none. Item titles, notes, location, subtask titles and chain step titles replace {name} with the answer when the template is applied (case-insensitive; an unanswered blank is dropped). A title can do one sum on it, `{name + 1}`, `{name - 2}`, `{name * 2}` or `{name / 2}`: one operator and a literal number, no parentheses, fractions round up, never below 0. A name that no item mentions is allowed and fills nothing. A name like `days-2` is refused because it reads as a sum.'),
   key: z.string().optional().describe('For a question with no name (a people question, or a choice that only decides what is ticked): a handle conditions can name it by. get_template returns the question\'s id here; keep it to keep the question.'),
   prompt: z.string(),
   kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
   options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
   defaultValue: z.string().optional(),
   fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
-    .describe('A number question can take its answer off the anchor dates: days or nights.'),
+    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. Only a choice question can gate an item through conditions, so a number cannot express "only if days > 5": add a choice question for that.'),
 })).optional();
 const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
@@ -804,6 +835,8 @@ const taskFieldsShape = {
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+    firstWeek: z.enum(['fewer', 'full']).optional()
+      .describe('create_task, per week only: "fewer" (the default) scales the first week to the days left in it, as the app does (3 a week set on a Thursday asks for 2 that week, then 3). "full" asks for the whole count from the start.'),
   }).nullable().optional()
     .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
   timed: z.object({
@@ -1024,6 +1057,38 @@ function registerWriteTools(
         return json(await withWrite(() => logMedication(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not record that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'request_calendar_event',
+    'Ask the person\'s phone to add an event to their calendar. The server cannot reach the calendar, so this queues the event and the one device they chose in Settings adds it the next time it syncs; until then it is not on the calendar, so say it is queued, not added. Refused when no device is set to add them (get_overview features.calendarRequests). Give start as YYYY-MM-DD for an all-day event (end is then the last day, default the same day), or YYYY-MM-DDTHH:MM in their time zone for a timed one (end defaults to an hour later). Nothing here can change or delete an event once it is added.',
+    {
+      title: z.string().min(1),
+      start: z.string().min(1).describe('YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM in their time zone.'),
+      end: z.string().optional().describe('All day: the last day, YYYY-MM-DD. Timed: YYYY-MM-DDTHH:MM. Default: same day, or an hour after start.'),
+      location: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => requestCalendarEvent(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not queue that event.' });
+      }
+    }
+  );
+
+  server.tool(
+    'cancel_calendar_request',
+    'Take back a calendar request that is still pending, so the phone never adds it. One already on the calendar can only be removed by the person, in their calendar app.',
+    { id: z.string().min(1).describe('The id from list_calendar_requests or request_calendar_event.') },
+    async input => {
+      try {
+        return json(await withWrite(() => cancelCalendarRequest(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not cancel that request.' });
       }
     }
   );
@@ -1260,7 +1325,7 @@ function registerWriteTools(
 
   server.tool(
     'create_template',
-    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once. A valid plan can still come back with warnings: things the template will do that were probably not meant (a {blank} no question fills, a reminder with no due date, a category that does not exist yet). Fix them, or tell the person why they stay. Every {word in braces} in a title or notes is a blank: declare a question with that name for each one, or a scheduled run and apply_template drop it.',
+    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once. A valid plan can still come back with warnings: things the template will do that were probably not meant (a {blank} no question fills, a reminder with no due date, a category that does not exist yet). Fix them, or tell the person why they stay. Every {word in braces} in a title or notes is a blank: declare a question with that name for each one, or a scheduled run and apply_template drop it.' + BLANK_SYNTAX,
     {
       name: z.string().min(1),
       category: z.string().nullable().optional(),
@@ -1285,7 +1350,7 @@ function registerWriteTools(
 
   server.tool(
     'update_template',
-    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name (or, for one with no name, its key). Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused. Pass expectedVersion from get_template so an edit made against an old read is refused instead of undoing changes made since. The result lists the changes, which the preview shows the person, and any warnings.',
+    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name (or, for one with no name, its key). Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused. Pass expectedVersion from get_template so an edit made against an old read is refused instead of undoing changes made since. The result lists the changes, which the preview shows the person, and any warnings.' + BLANK_SYNTAX,
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       name: z.string().min(1).optional(),
@@ -1611,6 +1676,150 @@ function registerWriteTools(
         return json(await withWrite(() => renameStack(replica, id, title)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not rename the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_reward',
+    "Add a reward the person can spend coins on, such as a treat or a night off. Ask them for the cost, or offer one based on how often they want it (get_rewards shows the balance and history to judge the pace). A reward is a note to themselves: claiming one unlocks nothing in the app. oneTime makes it disappear once claimed. Refused while rewards are switched off.",
+    {
+      title: z.string().min(1),
+      cost: z.number().int().min(1).describe('Coins, a whole number.'),
+      note: z.string().nullable().optional().describe('A line of context, e.g. "the Thai place on 5th".'),
+      link: z.string().nullable().optional().describe('A URL to open for it.'),
+      oneTime: z.boolean().optional().describe('Claimed once, then gone from the list.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createReward(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_reward',
+    "Change a reward's title, cost, note, link or one-time flag (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
+    {
+      id: z.string().min(1),
+      title: z.string().min(1).optional(),
+      cost: z.number().int().min(1).optional(),
+      note: z.string().nullable().optional(),
+      link: z.string().nullable().optional(),
+      oneTime: z.boolean().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateReward(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_reward',
+    "Delete a reward from the list (ids from get_rewards). Coins already spent on it stay spent. Only on the person's say-so.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteReward(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'claim_reward',
+    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => claimReward(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not claim the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'unclaim_reward',
+    "Take back a claim by its claimId (from claim_reward, or an id from get_rewards history where kind is spend): the coins go back and a one-time reward returns to the list.",
+    { claimId: z.string().min(1) },
+    async ({ claimId }) => {
+      try {
+        return json(await withWrite(() => unclaimReward(replica, claimId)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not take back the claim.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_reward_goal',
+    "Choose the reward the person is saving for (an id from get_rewards), or null to stop saving for any. It only changes which reward the Rewards screen shows progress toward.",
+    { id: z.string().min(1).nullable() },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => setRewardGoal(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the goal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_bounty',
+    "Post extra coins on a task the person has been putting off (posted: true), or withdraw the live one (posted: false). Only when they ask: a bounty is theirs to set. It is worth the most when posted and loses value each time the task is moved, so a task is never worth more for having waited. One per occurrence, a few live at once (get_rewards shows the limit), and withdrawing it cannot be undone for that occurrence. Refused while rewards are off.",
+    { taskId: z.string().min(1), posted: z.boolean() },
+    async ({ taskId, posted }) => {
+      try {
+        return json(await withWrite(() => setBounty(replica, taskId, posted)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the bounty.' });
+      }
+    }
+  );
+
+  server.tool(
+    'mark_missed',
+    "Mark an occurrence of a repeating task as missed. Only when the person says they missed it: the app never decides that for them, and an overdue task costs nothing until they say so. It breaks the streak, creates the next occurrence, and costs coins when rewards are on (the result says how many). A one-off task and a repeat that is not due yet are refused. reopen_task puts it back and returns the coins.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => markMissed(replica, id));
+        return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not mark the task missed.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_slip',
+    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => setSlip(replica, id, true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log the slip.' });
+      }
+    }
+  );
+
+  server.tool(
+    'undo_slip',
+    "Take back today's latest slip on a \"don't do this\" habit: the streak goes back to what it was and the slip's coins are returned. Only today's slips can be undone.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => setSlip(replica, id, false)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not undo the slip.' });
       }
     }
   );

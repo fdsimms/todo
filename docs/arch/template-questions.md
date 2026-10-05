@@ -34,6 +34,46 @@ beside it.
   zero (these are counts of things to take with you). A token that doesn't fit the shape falls back
   to being a name, exactly as before it existed — and `normalizePlaceholderName` now refuses to
   mint a blank that *would* fit it, so `{nights-2}` can only ever mean one thing.
+- **A sum can be capped, and a token can switch on a choice answer.** `{days + 1 max 7}` limits a
+  count (a long trip doesn't pack more than a week of shirts); `{laundry access = Yes ? days / 2 :
+  days + 1}` picks one of two counts by a choice question's answer, so one item serves both without a
+  second copy. Both stay inside the rule above rather than loosening it:
+  - `max N` is a whole number applied **after** rounding up, and works with or without an operator
+    (`{days max 7}`).
+  - A switch has exactly one comparison, `=`, against one option (case-insensitive), and each branch
+    is a plain blank, a sum, either with a cap, or a literal number. No nesting, no `!=`, no `and`:
+    a third answer is a second token, not a longer one.
+  - **The existing rules carry over unchanged.** A blank answer drops the token (an empty condition
+    blank, or an empty blank in the chosen branch), a fraction rounds up, a result never goes below
+    zero, and a malformed token stays literal text. A switch is not a condition: it changes a *number
+    in a title*, while the Only when conditions below still decide what is ticked, and only a choice
+    question can be the left side.
+  - A token reports every blank it reads (the condition and both branches), so each is asked once.
+    `normalizePlaceholderName` refuses a name that would parse as `x max N`, for the same reason it
+    refuses `x-2`.
+  - It does not make the answer a choice for you: the left side is just a blank, so it only does
+    anything when that blank is a choice question's name.
+  - The syntax is described to MCP clients in `BLANK_SYNTAX` (`mcp/src/server.ts`), appended to the
+    `create_template` and `update_template` descriptions.
+- **An item can say something different for an answer, and only its words.** `TemplateItem.variants`
+  holds `{questionId, answer, title?, notes?}`: when the run's answer to that choice question is
+  `answer`, the variant's title and/or notes replace the item's own (`applyItemVariant`), so a
+  packing item needs one row for "laundry access" and not two.
+  - **Text only, on purpose.** Dates, category, subtasks, the chain and everything else stay the
+    item's. A variant that changed those would be a second item under one name, and two items is
+    what `conditions` already does.
+  - **Replaces, never merges, and a blank field keeps the item's own.** The first variant matching
+    wins. Because of that, clearing both fields deletes the variant (`setVariantText`), which is how
+    an answer goes back to the base text.
+  - **Not a condition.** `conditions` decide what is ticked; a variant changes what the task says.
+    An item can have both, and the apply sheet's checklist previews the variant's title.
+  - **Resolved at apply time from answers keyed by question id**, passed as `answers` in the run's
+    options (the apply sheet, a scheduled run and the MCP `apply_template` all pass it). A variant
+    for a deleted question never matches, and `deleteQuestion` removes it anyway. Blanks used only
+    in a variant are still asked for (`extractPlaceholders` reads it), and the blank syntax above
+    works inside it.
+  - Over MCP a variant names its question by `name`, like a condition (`variants: [{question,
+    answer, title?, notes?}]`), and `update_template` treats it as part of the item's plan.
 - **A condition decides an item's default tick, not whether it's offered.** Everything the template
   holds stays on screen and stays overridable — the request was "includes my laptop *by default*",
   and a hard filter is how a wrong answer hides items you then can't get back without editing the

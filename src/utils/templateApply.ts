@@ -17,6 +17,7 @@
  */
 import type { Project, Task, TaskTemplate } from '../types';
 import { awayNoonIso } from './awayDates';
+import { applyItemVariant } from './templateQuestions';
 import {
   RUN_PLACEHOLDER,
   buildApplyTree,
@@ -39,6 +40,11 @@ export interface TemplateRunOptions {
   runName?: string;
   /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
   placeholders?: Record<string, string>;
+  /**
+   * The run's answers by question id, which pick an item's variant (its
+   * alternative title or notes). Left out, every item keeps its own text.
+   */
+  answers?: Record<string, string>;
   /**
    * Everyone named by a 'people' question. Stamped onto every task created
    * directly from an item; a run stack, a run project and a 'task' container's
@@ -103,7 +109,9 @@ export function applyTemplateRun(
     buildApplyTree(template.items, template.id, templatesById),
     selectedItemIds,
   );
-  const expanded = expandTemplateItems(template.items, template.id, selection, templatesById);
+  const answers = options?.answers ?? {};
+  const expanded = expandTemplateItems(template.items, template.id, selection, templatesById)
+    .map(e => ({ ...e, item: applyItemVariant(e.item, answers) }));
   // Nothing to create (only broken references selected, say) means no
   // container either: an empty stack or project every scheduled period is
   // noise with nothing in it to explain itself.

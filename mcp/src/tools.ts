@@ -23,6 +23,7 @@ import type { AnswerEdit, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
+import { proratedFrom } from '../../src/utils/quotaSchedule';
 import {
   describeHealthTarget,
   describeRepeat,
@@ -312,10 +313,13 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         }
       : undefined,
     repeat: describeRepeat(task) ?? undefined,
-    target: task.targetCount != null && task.targetCount >= 2 && !isRotationTask(task)
+    target: task.targetCount != null && (task.targetCount >= 2 || proratedFrom(task) !== null) && !isRotationTask(task)
       ? {
           count: task.targetCount,
           per: task.quotaPeriod === 'week' ? 'week' : 'day',
+          // A first week scaled to the days that were left in it; next week's
+          // occurrence goes back to this.
+          ...(proratedFrom(task) !== null ? { fullCount: proratedFrom(task) } : {}),
           done: task.progressCount ?? 0,
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
@@ -723,6 +727,10 @@ export function createTask(replica: Replica, input: TaskFieldsInput & { parentId
   if (parentId && !replica.taskById(parentId)) throw new Error(`No task with id ${parentId} to add a subtask to.`);
   const patch = replica.taskPatch(fields, null, !!parentId);
   const task = replica.createTask({ ...patch, ...(parentId ? { parentId } : {}) });
+  // The app's own default for a weekly target set up midweek: fewer that first
+  // week (see firstWeekPatch). Only on create; an existing weekly target's
+  // week is already running.
+  if (fields.target?.per === 'week' && fields.target.firstWeek !== 'full') replica.scaleFirstWeek(task.id);
   return getTask(replica, task.id)!;
 }
 

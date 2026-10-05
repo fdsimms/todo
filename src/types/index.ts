@@ -960,7 +960,7 @@ export interface FocusSessionRecord {
  * `src/utils/retention.ts` for why this one may not default to forever the way
  * the Logbook's own window does.
  */
-export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed';
+export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed' | 'missed';
 
 /**
  * Who made the write: the app's own passes, or an agent working through the
@@ -978,7 +978,9 @@ export type UnattendedActor = 'app' | 'agent';
 /** What an agent's entry is about. Everything the app writes on its own is a task. */
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
-  | 'automation' | 'note' | 'stack';
+  | 'automation' | 'note' | 'stack' | 'reward'
+  // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
+  | 'event';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -3744,6 +3746,26 @@ export interface TemplateItemCondition {
   values: string[];
 }
 
+/**
+ * A different title and/or notes for an item when one choice question has one
+ * answer: "Pack {days / 2} shirts" for a laundry-access trip against
+ * "Pack {days + 1} shirts" for one without, without keeping two items.
+ *
+ * Replaces, never merges: a field the variant leaves out (or blank) keeps the
+ * item's own. Deliberately text only; everything else about the item (dates,
+ * category, subtasks) is shared, since a variant that changed those would be a
+ * second item under one name. The first variant matching the run's answers
+ * wins, and one naming a deleted question or an answer that isn't given is
+ * inert (resolve-or-shrug, like `TemplateItemCondition`).
+ */
+export interface TemplateItemVariant {
+  questionId: string;
+  /** The answer that selects this variant, compared exactly as a condition's values are. */
+  answer: string;
+  title?: string;
+  notes?: string;
+}
+
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the
 // apply sheet. Offsets are days relative to whichever anchor date (`anchor`)
@@ -3934,6 +3956,10 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+
+  // Alternative title/notes for particular answers; see TemplateItemVariant.
+  // Empty for every item stored before this shipped, which is "no variants".
+  variants: TemplateItemVariant[];
 
   /**
    * `Task.answerGate` before there is a task: "only if <another item in this
@@ -7217,6 +7243,48 @@ export const LEFTOVER_RETENTION_DAYS = 60;
  * completions forever" also means "keep four years of dinners".
  */
 export const MEAL_PLAN_RETENTION_DAYS = 180;
+
+/**
+ * Where a calendar request stands (see `CalendarRequest`). `pending` until the
+ * device named by `calendarRequestDeviceId` picks it up; that device moves it
+ * to `written` or `failed`. `cancelled` is the requester taking it back while
+ * it was still pending.
+ */
+export type CalendarRequestStatus = 'pending' | 'written' | 'failed' | 'cancelled';
+
+/**
+ * An event an agent asked to have put on the calendar (`request_calendar_event`
+ * in the MCP server, see `docs/arch/mcp-server.md`). The server cannot reach a
+ * calendar, so it writes this synced row and the one device chosen in Settings
+ * writes the event when the row arrives (`src/utils/calendarRequestDrain.ts`),
+ * then stamps the outcome back onto the row so the requester can see it.
+ *
+ * The row is a request, not a link: nothing keeps the event in step with it
+ * afterwards, and the app never edits or deletes an event it wrote this way.
+ */
+export interface CalendarRequest {
+  id: string;
+  title: string;
+  /** ISO. For an all-day event, local midnight of its first day. */
+  startAt: string;
+  /** ISO, exclusive. For an all-day event, local midnight of the day after its last. */
+  endAt: string;
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
+  status: CalendarRequestStatus;
+  /** Why it failed, in words a person can read. Null unless `failed`. */
+  failureReason: string | null;
+  /**
+   * The calendar server's id for the event written (`calendarItemExternalIdentifier`),
+   * when the writing device could read one. Unlike an EventKit id it names the
+   * same event on every device, which is why it is allowed to sync.
+   */
+  eventExternalId: string | null;
+  /** ISO, when it left `pending`. Null while pending. */
+  resolvedAt: string | null;
+  createdAt: string;
+}
 
 /**
  * Who one calendar event occurrence is with — the app's own note about an
