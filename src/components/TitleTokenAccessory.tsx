@@ -227,7 +227,9 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
             onPress={() => setShowMore(false)}
             accessibilityLabel="Back to symbols"
           >
-            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text} />
+            {/* Circled so it reads as a control. A bare chevron sits among the
+                text glyphs ("+", "→", ":") and looks like a "<" to type. */}
+            <Ionicons name="chevron-back-circle-outline" size={iconSize.md} color={colors.text} />
           </PressableScale>
         )}
         {(showMore ? moreTokens : mainTokens).map(({ char, label, insert, glyph }) => (
