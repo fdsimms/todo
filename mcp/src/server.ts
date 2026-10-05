@@ -629,7 +629,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
  */
 const conditionSchema = z.object({
   question: z.string().describe('The name of a choice question defined in this plan.'),
-  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on.'),
+  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
 });
 
 const itemSchema = z.object({
@@ -678,7 +678,8 @@ const itemSchema = z.object({
   excludeFromSuggestions: z.boolean().optional(),
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
-  conditions: z.array(conditionSchema).optional(),
+  conditions: z.array(conditionSchema).optional()
+    .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
