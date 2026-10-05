@@ -556,6 +556,18 @@ export function FoodLogScreen() {
           },
         }]
         : []),
+      {
+        // For "I just ran out": a linked entry re-lists its own catalog row
+        // (keeping its aisle, brand and store), and an unlinked one goes on by
+        // name like a typed add. The store registers the undo either way.
+        text: 'Add to grocery list',
+        onPress: () => {
+          const { items: catalog, addExisting, addByName } = useGroceryStore.getState();
+          if (entry.itemId && catalog.some(i => i.id === entry.itemId)) addExisting(entry.itemId);
+          else addByName(entry.label);
+          haptics.success();
+        },
+      },
       { text: 'Re-date…', onPress: () => setRedatingEntry(entry) },
       { text: 'Duplicate to…', onPress: () => setDuplicatingEntry(entry) },
       { text: 'Forget', style: 'destructive', onPress: () => handleDelete(entry.id, entry.label) },
