@@ -1490,8 +1490,8 @@ target rose at 5.
 
 ## `snackNudge`: a snack suggestion when the food log runs low
 
-After 3 PM, if today's food log states under half of the calorie target,
-`reconcileSnackNudge` writes "Have a snack (620 of 2,000 kcal logged)". Rules are
+From 3 PM by default, if today's food log states under half of the calorie
+target (both adjustable), `reconcileSnackNudge` writes "Have a snack (620 of 2,000 kcal logged)". Rules are
 in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
 `waterShortfall`'s shape: day-keyed with no source row, at most one a day.
 
@@ -1509,7 +1509,11 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
   `syncWaterQuotaTasksIfToday` and the bulk delete), which is what removes the
   task once a snack is logged. The catch-up sweep calls it too, which is what
   brings it on when 3 PM arrives with no write since. The hour and the share
-  are constants (`SNACK_NUDGE_FROM_HOUR`, `SNACK_NUDGE_SHARE`), not settings.
+  are settings (`snackNudgeFromHour`, 12 PM to 8 PM; `snackNudgeSharePercent`,
+  10 to 90 in steps of 10), clamped on read and write.
+- **It refuses in demo mode**, `moodLog`'s position: the demo database holds a
+  seeded snack task that no food log backs, and the pass would delete it as
+  unwanted on the next sweep.
 - **Completed or deleted blocks a second that day**, through `blocksOnFinished`
   and `snackNudgeDeclinedDayKey` (the `snackNudge` arm of `writeGeneratedOptOut`).
   One from a past day is dropped rather than deleted quietly.

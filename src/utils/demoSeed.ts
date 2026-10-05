@@ -43,6 +43,7 @@ import {
   WEIGH_IN_TITLE,
   weighInNotes,
 } from './weightTasks';
+import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
 import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
@@ -1629,6 +1630,20 @@ export function seedDemoData(): void {
     linkUrl: WEIGH_IN_LINK_URL,
     category: 'Health',
     ...generatedBy('weighIn', dayKeyOf(today)),
+  });
+
+  // The snack suggestion, seeded directly because `reconcileSnackNudge` refuses
+  // in demo mode (a pass that judges the clock and the food log would delete
+  // this row before 3 PM, or whenever the seeded log doesn't qualify). The
+  // figures in the title are illustrative; no food log entries are seeded to
+  // back them.
+  useSettingsStore.getState().setSnackNudgeTaskCategory('Health');
+  addTask({
+    title: snackNudgeTitle(620, 2000),
+    notes: SNACK_NUDGE_NOTES,
+    dueDate: today.toISOString(),
+    category: 'Health',
+    ...generatedBy('snackNudge', dayKeyOf(today)),
   });
 
   // A health-target task, the fifth kind. Seeded so the shape is visible even

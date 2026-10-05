@@ -1,1 +1,1 @@
-{ "message": "New automation: Suggest a snack. After 3 PM, adds a task when your food log is under half of your calorie target. Off by default, in Settings under Automations.", "date": "2026-10-05" }
+{ "message": "New automation: Suggest a snack. In the afternoon, adds a task when your food log is low against your calorie target. You choose the start time and the cutoff. Off by default, in Settings under Automations.", "date": "2026-10-05" }

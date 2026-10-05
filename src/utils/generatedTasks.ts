@@ -973,7 +973,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'snackNudgeTasks',
     label: 'Suggest a snack',
-    onHint: 'Adds a task after 3 PM when the food log is under half of the calorie target',
+    onHint: 'Adds a task in the afternoon when the food log is low against the calorie target',
     offHint: 'No task when the food log is low on calories',
     icon: 'nutrition-outline',
     // Its source id is the day key it was raised on, waterShortfall's position.

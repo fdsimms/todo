@@ -2272,6 +2272,9 @@ function reconcileSnackNudge(tasks: Task[]): void {
   const settings = useSettingsStore.getState();
   if (!settings.snackNudgeTasks || !settings.snackNudgeTaskCategory) return;
   if (generatorPausedForVacation('snackNudge', settings.vacationMode)) return;
+  // The demo database holds a seeded task for this kind (demoSeed.ts) that no
+  // food log backs, and this pass would delete it as unwanted on the next sweep.
+  if (isDemoModeActive()) return;
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const healthToday = useHealthStore.getState().today;
@@ -2288,7 +2291,9 @@ function reconcileSnackNudge(tasks: Task[]): void {
   );
   const loggedKcal = loggedKcalToday(dbGetFoodLogEntries(todayKey, todayKey));
   const wanted =
-    snackNudgeApplies(loggedKcal, targetKcal, new Date()) &&
+    snackNudgeApplies(
+      loggedKcal, targetKcal, new Date(), settings.snackNudgeFromHour, settings.snackNudgeSharePercent,
+    ) &&
     settings.snackNudgeDeclinedDayKey !== todayKey;
 
   const dueDate = getCurrentDayStart();

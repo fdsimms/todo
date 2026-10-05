@@ -25,15 +25,44 @@ import { foodLogTotals } from './foodLog';
  * because the pass re-judges on every food log write.
  */
 
-/** The hour (local, logical day) from which the nudge may appear: 3 PM. */
-export const SNACK_NUDGE_FROM_HOUR = 15;
+/**
+ * The hour (local clock) from which the nudge may appear, and the range the
+ * setting allows. Noon to 8 PM: earlier is a nudge before lunch has had its
+ * chance, later leaves no afternoon to act on it.
+ */
+export const DEFAULT_SNACK_NUDGE_FROM_HOUR = 15;
+export const SNACK_NUDGE_FROM_HOUR_MIN = 12;
+export const SNACK_NUDGE_FROM_HOUR_MAX = 20;
 
 /**
- * Below this share of the target, the day reads as short. Past 3 PM someone
- * who has had most of the day's calories needs no prompt; half is where the
- * remaining evening meal can no longer be expected to close the gap alone.
+ * Below this percentage of the target, the day reads as short. The default is
+ * half: past 3 PM someone who has had most of the day's calories needs no
+ * prompt, and half is where the evening meal can no longer be expected to
+ * close the gap alone.
  */
-export const SNACK_NUDGE_SHARE = 0.5;
+export const DEFAULT_SNACK_NUDGE_SHARE_PERCENT = 50;
+export const SNACK_NUDGE_SHARE_PERCENT_MIN = 10;
+export const SNACK_NUDGE_SHARE_PERCENT_MAX = 90;
+export const SNACK_NUDGE_SHARE_PERCENT_STEP = 10;
+
+export function clampSnackNudgeFromHour(hour: number): number {
+  if (!Number.isFinite(hour)) return DEFAULT_SNACK_NUDGE_FROM_HOUR;
+  return Math.min(SNACK_NUDGE_FROM_HOUR_MAX, Math.max(SNACK_NUDGE_FROM_HOUR_MIN, Math.round(hour)));
+}
+
+export function clampSnackNudgeSharePercent(percent: number): number {
+  if (!Number.isFinite(percent)) return DEFAULT_SNACK_NUDGE_SHARE_PERCENT;
+  const step = SNACK_NUDGE_SHARE_PERCENT_STEP;
+  const snapped = Math.round(percent / step) * step;
+  return Math.min(SNACK_NUDGE_SHARE_PERCENT_MAX, Math.max(SNACK_NUDGE_SHARE_PERCENT_MIN, snapped));
+}
+
+/** An hour of the day as the clock reads it: 15 is "3 PM". */
+export function describeSnackNudgeHour(hour: number): string {
+  const h = clampSnackNudgeFromHour(hour);
+  if (h === 12) return '12 PM';
+  return h > 12 ? `${h - 12} PM` : `${h} AM`;
+}
 
 /** Why the task exists, in the plain terms the rest of the app uses. */
 export const SNACK_NUDGE_NOTES =
@@ -61,16 +90,18 @@ export function loggedKcalToday(entries: readonly FoodLogEntry[]): number | null
 }
 
 /**
- * Whether the day is short enough to ask. Null on no target or no usable log,
+ * Whether the day is short enough to ask. False on no target or no usable log,
  * which is "nothing to judge" rather than "not short".
  */
 export function snackNudgeApplies(
   loggedKcal: number | null,
   targetKcal: number | undefined,
   now: Date,
+  fromHour: number = DEFAULT_SNACK_NUDGE_FROM_HOUR,
+  sharePercent: number = DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
 ): boolean {
   if (loggedKcal === null) return false;
   if (targetKcal === undefined || !(targetKcal > 0)) return false;
-  if (now.getHours() < SNACK_NUDGE_FROM_HOUR) return false;
-  return loggedKcal < targetKcal * SNACK_NUDGE_SHARE;
+  if (now.getHours() < clampSnackNudgeFromHour(fromHour)) return false;
+  return loggedKcal < targetKcal * (clampSnackNudgeSharePercent(sharePercent) / 100);
 }
