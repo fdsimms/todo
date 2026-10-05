@@ -8,6 +8,7 @@ import Reanimated, {
   interpolate,
 } from 'react-native-reanimated';
 import { useColors } from '../theme/ThemeContext';
+import { useBrandFace } from '../theme/AppFont';
 import { animation, font, fontWeight, lineHeight, spacing, radius, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { CoinIcon, NamedIcon, type IconName } from './CoinIcon';
@@ -74,6 +75,7 @@ interface Props {
  * arrive back at a permanently invisible empty state.
  */
 export function EmptyState({ icon, title, subtitle, actionLabel, onAction, bottomOffset }: Props) {
+  const brandFace = useBrandFace('bold');
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
@@ -109,7 +111,7 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
           ? <CoinIcon size={44} color={colors.warning} filled />
           : <NamedIcon name={icon} size={34} color={colors.textTertiary} />}
       </Reanimated.View>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={[styles.title, brandFace]}>{title}</Text>
       {subtitle != null && <Text style={styles.subtitle}>{subtitle}</Text>}
       {actionLabel != null && onAction != null && (
         <PressableScale style={styles.actionBtn} onPress={onAction} haptic>
