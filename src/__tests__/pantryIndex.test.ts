@@ -1,8 +1,10 @@
 import {
   buildPantryIndex,
   parseQueuedDisposals,
+  planQueuedDisposals,
   resolveQueuedPantryItem,
   MAX_PANTRY_INDEX_ENTRIES,
+  type QueuedDisposal,
 } from '../utils/pantryIndex';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -179,5 +181,51 @@ describe('resolveQueuedPantryItem', () => {
   it('is null when neither half answers', () => {
     expect(resolveQueuedPantryItem({ id: null, name: '' }, [])).toBeNull();
     expect(resolveQueuedPantryItem({}, [makeItem({ name: 'Banana' })])).toBeNull();
+  });
+});
+
+// ─── planQueuedDisposals ─────────────────────────────────────────────────────
+
+describe('planQueuedDisposals', () => {
+  const said = (
+    name: string,
+    outcome: QueuedDisposal['outcome'] = 'usedUp',
+    id: string | null = null,
+  ): QueuedDisposal => ({ id, name, outcome });
+
+  it('applies what was said, in the order it was said', () => {
+    const bananas = makeItem({ name: 'Banana' });
+    const milk = makeItem({ name: 'Milk' });
+    expect(planQueuedDisposals([said('milk', 'spoiled'), said('bananas')], [bananas, milk])).toEqual([
+      { itemId: milk.id, outcome: 'spoiled' },
+      { itemId: bananas.id, outcome: 'usedUp' },
+    ]);
+  });
+
+  it('drops a name the catalog has never heard of, rather than minting a row', () => {
+    expect(planQueuedDisposals([said('quince')], [makeItem({ name: 'Banana' })])).toEqual([]);
+  });
+
+  it('drops a row already out of it, since a second disposal would record something that did not happen', () => {
+    const gone = makeItem({ name: 'Banana', onHandUntil: OUT_OF_IT_UNTIL });
+    expect(planQueuedDisposals([said('bananas')], [gone])).toEqual([]);
+  });
+
+  it('applies a row said twice once, as re-reading the store between passes did', () => {
+    const bananas = makeItem({ name: 'Banana' });
+    expect(planQueuedDisposals([said('bananas'), said('banana', 'spoiled')], [bananas])).toEqual([
+      { itemId: bananas.id, outcome: 'usedUp' },
+    ]);
+  });
+
+  it('reaches one row by id and by name, and still applies it once', () => {
+    const bananas = makeItem({ name: 'Banana' });
+    expect(planQueuedDisposals([said('whatever Siri heard', 'usedUp', bananas.id), said('bananas')], [bananas])).toEqual([
+      { itemId: bananas.id, outcome: 'usedUp' },
+    ]);
+  });
+
+  it('is empty for an empty queue', () => {
+    expect(planQueuedDisposals([], [makeItem({ name: 'Banana' })])).toEqual([]);
   });
 });

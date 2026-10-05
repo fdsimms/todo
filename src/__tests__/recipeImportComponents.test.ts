@@ -2,10 +2,17 @@ import {
   referencePageNumber,
   importableReferences,
   coveredIngredients,
+  seededComponentKeys,
+  nextComponentPhotos,
+  coveringComponentKeys,
+  componentCommitFor,
+  type ComponentImportState,
+  type ReferenceCandidate,
 } from '../utils/recipeImportComponents';
 import { makeComponent } from '../utils/recipeComponents';
+import { MAX_RECIPE_PHOTOS, type RecipePhoto } from '../utils/recipePhoto';
 import type { Recipe } from '../types';
-import type { ExtractedRecipeReference, RecipeGroceryItem } from '../services/aiSuggestions';
+import type { ExtractedRecipe, ExtractedRecipeReference, RecipeGroceryItem } from '../services/aiSuggestions';
 
 // recipeUtils (the name lookup's home) reaches the settings store; nothing
 // here reads a setting.
@@ -212,5 +219,122 @@ describe('coveredIngredients', () => {
     // The rice was mentioned in the headnote, not bought as an ingredient.
     const covered = coveredIngredients(ingredients, candidates, new Set(['mexican rice']));
     expect(covered.size).toBe(0);
+  });
+});
+
+// ─── the import sheet's rows ─────────────────────────────────────────────────
+
+function candidate(name: string, match: Recipe | null = null): ReferenceCandidate {
+  return { reference: ref(name, 'page 45'), key: name.toLowerCase(), match, page: '45' };
+}
+
+function extracted(name: string): ExtractedRecipe {
+  return {
+    name,
+    servings: null,
+    servingsMax: null,
+    prepMinutes: null,
+    recipeYield: null,
+    leftoverKeepDays: null,
+    ingredients: [],
+    sourceTitle: null,
+    sourceAuthor: null,
+    sourcePage: null,
+    sourceType: null,
+    references: [],
+    steps: [],
+    prepTasks: [],
+  };
+}
+
+function photo(n: number): RecipePhoto {
+  return { base64: `p${n}`, mediaType: 'image/jpeg', width: 10, height: 10, sourceUri: `file:///p${n}.jpg` };
+}
+
+const readState = (name: string, photoCount = 1): Extract<ComponentImportState, { status: 'read' }> =>
+  ({ status: 'read', extracted: extracted(name), photoCount });
+
+describe('seededComponentKeys', () => {
+  it('ticks a reference the box already holds and leaves one to photograph unticked', () => {
+    const salsa = recipe('r1', 'Salsa verde');
+    expect(seededComponentKeys([candidate('Salsa verde', salsa), candidate('Mash')])).toEqual(new Set(['salsa verde']));
+  });
+});
+
+describe('nextComponentPhotos', () => {
+  it('starts a one-photo set for a row with nothing read', () => {
+    expect(nextComponentPhotos(undefined, undefined, photo(1))).toEqual([photo(1)]);
+    expect(nextComponentPhotos({ status: 'idle' }, undefined, photo(1))).toEqual([photo(1)]);
+  });
+
+  it('adds a page to a row already read, rather than replacing it', () => {
+    expect(nextComponentPhotos(readState('Mash'), [photo(1)], photo(2))).toEqual([photo(1), photo(2)]);
+  });
+
+  it('starts over after a failure, since there is nothing worth combining with', () => {
+    expect(nextComponentPhotos({ status: 'failed', message: 'blurry' }, [photo(1)], photo(2))).toEqual([photo(2)]);
+  });
+
+  it('never grows past the cap', () => {
+    const full = Array.from({ length: MAX_RECIPE_PHOTOS }, (_, i) => photo(i));
+    expect(nextComponentPhotos(readState('Mash', full.length), full, photo(99))).toEqual(full);
+  });
+});
+
+describe('coveringComponentKeys', () => {
+  const salsa = recipe('r1', 'Salsa verde');
+  const matched = candidate('Salsa verde', salsa);
+  const mash = candidate('Mash');
+
+  it('covers a ticked match, a ticked read and a ticked hand-pick', () => {
+    expect(coveringComponentKeys([matched, mash], new Set(['salsa verde', 'mash']), { mash: readState('Mash') }))
+      .toEqual(new Set(['salsa verde', 'mash']));
+    expect(coveringComponentKeys([mash], new Set(['mash']), { mash: { status: 'linked', recipe: salsa } }))
+      .toEqual(new Set(['mash']));
+  });
+
+  it('covers nothing for a ticked row with nothing read yet, however it is ticked', () => {
+    expect(coveringComponentKeys([mash], new Set(['mash']), {})).toEqual(new Set());
+    expect(coveringComponentKeys([mash], new Set(['mash']), { mash: { status: 'reading' } })).toEqual(new Set());
+  });
+
+  it('covers nothing for an unticked match', () => {
+    expect(coveringComponentKeys([matched], new Set(), {})).toEqual(new Set());
+  });
+});
+
+describe('componentCommitFor', () => {
+  const salsa = recipe('r1', 'Salsa verde');
+
+  it('writes nothing for an unticked row, whatever it holds', () => {
+    expect(componentCommitFor(candidate('Salsa verde', salsa), new Set(), readState('Salsa verde'))).toEqual({ kind: 'skip' });
+  });
+
+  it('links the recipe the box matched, even over a read', () => {
+    expect(componentCommitFor(candidate('Salsa verde', salsa), new Set(['salsa verde']), readState('Other')))
+      .toEqual({ kind: 'link', recipeId: 'r1' });
+  });
+
+  it('links a recipe picked by hand', () => {
+    expect(componentCommitFor(candidate('Mash'), new Set(['mash']), { status: 'linked', recipe: salsa }))
+      .toEqual({ kind: 'link', recipeId: 'r1' });
+  });
+
+  it('creates a read recipe under the name the extraction gave, cleaned', () => {
+    const state = readState('  Mashed   potatoes ');
+    expect(componentCommitFor(candidate('Mash'), new Set(['mash']), state))
+      .toEqual({ kind: 'create', name: 'Mashed potatoes', extracted: state.extracted });
+  });
+
+  it('falls back to the name the referencing page used when the read gave none', () => {
+    expect(componentCommitFor(candidate('Mash'), new Set(['mash']), readState('')))
+      .toMatchObject({ kind: 'create', name: 'Mash' });
+  });
+
+  it('writes nothing for a row with nothing read, or with no usable name either way', () => {
+    expect(componentCommitFor(candidate('Mash'), new Set(['mash']), undefined)).toEqual({ kind: 'skip' });
+    expect(componentCommitFor(candidate('Mash'), new Set(['mash']), { status: 'failed', message: 'blurry' }))
+      .toEqual({ kind: 'skip' });
+    expect(componentCommitFor(candidate('   '), new Set(['   ']), readState(''))).toEqual({ kind: 'skip' });
   });
 });
