@@ -14,7 +14,7 @@ import { subDays } from 'date-fns/subDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday } from '../utils/negativeHabits';
-import { MIN_ROTATION_ITEMS } from '../utils/rotation';
+import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '../utils/rotation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -1141,7 +1141,7 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const rotation = tasks.find(t => t.rotationEnabled)!;
+    const rotation = tasks.find(t => t.rotationEnabled && t.title === 'Language podcast')!;
     expect(rotation).toBeDefined();
     expect(rotation.rotationItems.length).toBeGreaterThanOrEqual(MIN_ROTATION_ITEMS);
     // The count is the set's size, never typed.
@@ -1161,6 +1161,20 @@ describe('demo mode', () => {
     // And the memory that outlives the period was written too.
     expect(Object.keys(rotation.rotationLastDone)).toHaveLength(rotation.progressCount);
     expect(isTaskVisible(rotation)).toBe(true);
+  });
+
+  // A member can be asked for more than once a week, and a day can be planned.
+  // Neither shows until the seed holds one of each.
+  it('seeds a rotation with a per-member count and a plan for today', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const workouts = tasks.find(t => t.rotationEnabled && t.title === 'Workouts')!;
+    expect(workouts).toBeDefined();
+    expect(workouts.rotationItems.some(r => (r.perWeek ?? 1) > 1)).toBe(true);
+    expect(workouts.targetCount).toBe(rotationTargetTotal(workouts.rotationItems));
+    expect(workouts.progressCount).toBe(1);
+    expect(plannedRotationItem(workouts, getCurrentDayStart())?.title).toBe('Peloton ride');
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that

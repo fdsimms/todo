@@ -48,7 +48,7 @@ import type {
 } from '../../src/types';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
 import { RUN_PLACEHOLDER, itemPlaceholders, placeholderKey, wouldCreateCycle } from '../../src/utils/templateUtils';
-import { MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
+import { MIN_ROTATION_ITEMS, rotationMemberTitle, rotationMemberToInput, type RotationMemberInput } from '../../src/utils/rotation';
 
 export const CONTAINERS: readonly TemplateContainer[] = ['none', 'stack', 'project', 'task'];
 export const QUESTION_KINDS: readonly TemplateQuestionKind[] = ['text', 'number', 'choice', 'people'];
@@ -128,7 +128,7 @@ export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 
   /** Steps done one after another, each appearing when the one before is done. null removes it. */
   chain?: { steps: ChainStepPlan[] } | null;
   /** Named things each done once a week in any order: two or more, all different. null removes it. */
-  rotation?: { members: string[] } | null;
+  rotation?: { members: RotationMemberInput[] } | null;
   /** Required, except on an update where `id` names the item that already has one. */
   title?: string;
   /**
@@ -530,7 +530,7 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   }
   const rotation = item.rotation;
   if (rotation) {
-    const names = rotation.members.map(m => (typeof m === 'string' ? m.trim() : ''));
+    const names = rotation.members.map(rotationMemberTitle);
     if (names.length < MIN_ROTATION_ITEMS) errors.push(`item "${label}" rotation needs at least ${MIN_ROTATION_ITEMS} members. One is just a task.`);
     if (names.some(n => !n)) errors.push(`item "${label}" rotation members cannot be blank.`);
     if (new Set(names.map(n => n.toLowerCase())).size !== names.length) errors.push(`item "${label}" rotation members must all be different.`);
@@ -642,7 +642,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
         ...(chainEnabled && chainItems.length > 1
           ? { chain: { steps: chainItems.map(c => ({ title: c.title, estimatedMinutes: c.estimatedMinutes, ...(c.deliverableKind ? { asks: c.deliverableKind as ChainStepPlan['asks'] } : {}), ...(c.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}) })) } }
           : {}),
-        ...(rotationEnabled && rotationItems.length >= 2 ? { rotation: { members: rotationItems.map(r => r.title) } } : {}),
+        ...(rotationEnabled && rotationItems.length >= 2 ? { rotation: { members: rotationItems.map(rotationMemberToInput) } } : {}),
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),
         ...(groupId ? { groupKey: groupId } : {}),
         ...(() => {

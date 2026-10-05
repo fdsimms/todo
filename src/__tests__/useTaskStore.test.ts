@@ -433,6 +433,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -12845,6 +12846,62 @@ describe('quota tasks', () => {
     });
 
   const pods = () => useTaskStore.getState().tasks.find(t => t.id === 'pods')!;
+
+  describe('a rotation with per-member counts', () => {
+    const WORKOUTS = [
+      { id: 'run', title: 'Run', linkUrl: null, perWeek: 3 },
+      { id: 'bike', title: 'Peloton ride', linkUrl: null },
+    ];
+    const workouts = () => rotation({ rotationItems: WORKOUTS, targetCount: 4 });
+
+    it('closes the week only when every member has reached its own count', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'bike');
+      expect(pods().progressCount).toBe(3);
+      expect(pods().completed).toBe(false);
+
+      store.logRotationUnit('pods', 'run');
+      expect(pods().completed).toBe(true);
+    });
+
+    it('logs a fourth run without counting it', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      expect(pods().rotationLog).toHaveLength(4);
+      expect(pods().progressCount).toBe(3);
+      expect(pods().completed).toBe(false);
+    });
+
+    it('takes back a run without dropping a covered count', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.unlogRotationUnit('pods');
+      expect(pods().progressCount).toBe(1);
+    });
+
+    it('plans a member for today and spends the plan on the next pick', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.planRotationItem('pods', 'bike');
+      expect(pods().rotationPlan?.itemId).toBe('bike');
+
+      store.planRotationItem('pods', 'bike');
+      expect(pods().rotationPlan).toBeNull();
+
+      store.planRotationItem('pods', 'bike');
+      store.logRotationUnit('pods', 'run');
+      expect(pods().rotationPlan).toBeNull();
+    });
+  });
 
   describe('logRotationUnit', () => {
     it('records which member was done, not just that something was', () => {

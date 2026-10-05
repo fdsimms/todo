@@ -77,7 +77,7 @@ import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
-import { isRotationTask } from '../utils/rotation';
+import { isRotationTask, rotationCoveredOf } from '../utils/rotation';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
@@ -932,10 +932,10 @@ const LogbookRow = React.memo(function LogbookRow({
   const paintRef = usePaintSelectionRow(task.id);
   const partial = isQuotaPartial(task);
   const answer = formatTaskDeliverable(task);
-  // Distinct members covered, not ledger entries: a member logged twice is one
-  // language, which is the same rule the count on the live row follows.
+  // Covered picks, not ledger entries: a member logged past its own count adds
+  // nothing, which is the same rule the count on the live row follows.
   const rotationResult = isRotationTask(task)
-    ? `${new Set(task.rotationLog.map(e => e.itemId)).size} of ${task.rotationItems.length}`
+    ? (({ covered, total }) => `${covered} of ${total}`)(rotationCoveredOf(task.rotationItems, task.rotationLog))
     : null;
   // A miss outranks a partial in the glyph: a quota task marked missed is both,
   // and "you didn't do this" is the more important of the two things to say.

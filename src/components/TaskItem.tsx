@@ -102,7 +102,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
-import { isRotationTask, rotationLastPickLabel, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
+import { isRotationTask, plannedRotationItem, rotationLastPickLabel, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -364,6 +364,7 @@ export const TaskItem = React.memo(function TaskItem({
     unlogQuotaUnit,
     recordRotationPick,
     unlogRotationUnit,
+    planRotationItem,
     logSlip,
     undoSlip,
     startQuotaRun,
@@ -1385,6 +1386,9 @@ export const TaskItem = React.memo(function TaskItem({
   const rotationLast = isRotation
     ? rotationLastPickLabel(task, rotationDayStart, weekStartsOn)
     : null;
+  // What today was planned as, if anything. The row's tap logs it directly
+  // instead of asking, and the chip opens the picker for the other answer.
+  const rotationPlanned = isRotation ? plannedRotationItem(task, rotationDayStart) : null;
   // A daily target closed out short of its count (rollover, or an explicit
   // miss) is still `completed`, but a plain checkmark would read as the same
   // full finish an on-target row gets — same distinction Logbook's row draws
@@ -2021,6 +2025,12 @@ export const TaskItem = React.memo(function TaskItem({
       return;
     }
     if (isNew) markTaskSeen(task.id);
+    if (rotationPlanned) {
+      // Today already has an answer; one tap records it. A different one is
+      // the chip's job, and the undo bar covers a tap that was wrong.
+      await handleRotationPick(rotationPlanned.id);
+      return;
+    }
     await haptics.tap();
     setShowRotationPick(true);
   };
@@ -2867,6 +2877,18 @@ export const TaskItem = React.memo(function TaskItem({
                   {rotationLine}
                 </Text>
               </View>
+            )}
+            {rotationPlanned !== null && (
+              <TouchableOpacity
+                style={styles.metaChip}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => setShowRotationPick(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Planned for today: ${rotationPlanned.title}. Open to change it.`}
+              >
+                <Ionicons name="flag" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.quotaLabel} numberOfLines={1}>Today: {rotationPlanned.title}</Text>
+              </TouchableOpacity>
             )}
             {rotationLast !== null && (
               // Its own chip, so a long member name truncates itself rather
@@ -4397,6 +4419,7 @@ export const TaskItem = React.memo(function TaskItem({
           task={task}
           onPick={handleRotationPick}
           onCancel={() => setShowRotationPick(false)}
+          onPlan={itemId => planRotationItem(task.id, itemId)}
         />
       )}
     </>

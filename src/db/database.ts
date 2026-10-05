@@ -77,7 +77,7 @@ import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
-import { parseRotationItems, parseRotationLastDone, parseRotationLog } from '../utils/rotation';
+import { parseRotationItems, parseRotationLastDone, parseRotationLog, parseRotationPlan } from '../utils/rotation';
 import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/savedViews';
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
@@ -1631,6 +1631,9 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN weather_wait TEXT',
     // Task.waitForSeriesEnd: hold this task until a repeating blocker's last occurrence is done.
     'ALTER TABLE tasks ADD COLUMN wait_for_series_end INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing row: nothing is planned until someone plans it.
+    // See Task.rotationPlan.
+    'ALTER TABLE tasks ADD COLUMN rotation_plan TEXT',
     // Null on every existing row — none of them were spawned by the rule.
     // See Task.followUpTaskSourceTitle.
     'ALTER TABLE tasks ADD COLUMN extra_task_source_title TEXT',
@@ -3356,6 +3359,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     followUpTaskAtEnd: row.extra_task_at_end === 1,
     weatherWait: parseWeatherWait(row.weather_wait),
     waitForSeriesEnd: row.wait_for_series_end === 1,
+    rotationPlan: parseRotationPlan(row.rotation_plan),
     followUpTaskTally: (row.extra_task_tally as number) ?? 0,
     previousFollowUpTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     followUpTaskSourceTitle: (row.extra_task_source_title as string | null) ?? null,
@@ -3499,8 +3503,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3623,6 +3627,7 @@ export function dbInsertTask(task: Task): void {
       task.followUpTaskAtEnd ? 1 : 0,
       task.weatherWait ?? null,
       task.waitForSeriesEnd ? 1 : 0,
+      task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
     ]
   );
 }
@@ -3659,7 +3664,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3783,6 +3788,7 @@ export function dbUpdateTask(task: Task): void {
       task.followUpTaskAtEnd ? 1 : 0,
       task.weatherWait ?? null,
       task.waitForSeriesEnd ? 1 : 0,
+      task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.id,
     ]
   );

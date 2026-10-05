@@ -75,7 +75,7 @@ import type {
   TaskGroup,
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
-import { activeRotationLog } from '../../src/utils/rotation';
+import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
@@ -1559,9 +1559,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         chainIndex: chain && stored?.chainEnabled ? Math.min(stored.chainIndex, chain.steps.length - 1) : 0,
         rotationEnabled: !!rotation,
         rotationItems: rotation ? rotation.members.map(m => {
-          const title = m.trim();
+          const title = rotationMemberTitle(m);
           const kept = stored?.rotationItems.find(o => o.title.trim().toLowerCase() === title.toLowerCase());
-          return kept ? { ...kept, title } : { id: generateId(), title, linkUrl: null };
+          return rotationItemFromInput(m, kept, generateId);
         }) : [],
       };
       const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
@@ -2129,7 +2129,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     isVisible: (task: Task) => visibility.isTaskVisible(task),
     rotationDoneIds: (task: Task) =>
-      activeRotationLog(task, dates.getCurrentDayStart(), useSettingsStore.getState().weekStartsOn).map(e => e.itemId),
+      rotationMembers(task, dates.getCurrentDayStart(), useSettingsStore.getState().weekStartsOn)
+        .filter(m => m.doneAt !== null)
+        .map(m => m.item.id),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),

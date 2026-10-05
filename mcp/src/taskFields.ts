@@ -34,7 +34,7 @@ import type {
 } from '../../src/types';
 import { minutesToEffort } from '../../src/utils/effort';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
-import { isRotationTask, MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
+import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { localDateInput } from './timeZone';
@@ -121,7 +121,7 @@ export interface TimedInput {
 /** A set of named things, each done once a week in any order. */
 export interface RotationInput {
   /** Titles, in the order to show them, at least two and each different. */
-  members: string[];
+  members: RotationMemberInput[];
 }
 
 /** Ready-to-check-off once Apple Health reaches a number. Configuration only: the server cannot read a reading. */
@@ -486,7 +486,9 @@ export function taskFieldsPatch(
       // The count was derived from the set, so it goes with it.
       if (current?.rotationEnabled && input.target === undefined) Object.assign(patch, { targetCount: null, quotaPeriod: 'day' } satisfies Partial<Task>);
     } else {
-      const titles = (input.rotation.members ?? []).map(m => (typeof m === 'string' ? m.trim() : ''));
+      const titles = (input.rotation.members ?? []).map(rotationMemberTitle);
+      const badCount = (input.rotation.members ?? []).some(m => typeof m !== 'string' && m.timesPerWeek !== undefined && (!Number.isInteger(m.timesPerWeek) || m.timesPerWeek < 1 || m.timesPerWeek > MAX_ROTATION_PER_WEEK));
+      if (badCount) errors.push(`rotation.members timesPerWeek must be a whole number from 1 to ${MAX_ROTATION_PER_WEEK}.`);
       if (titles.length < MIN_ROTATION_ITEMS) errors.push(`A rotation needs at least ${MIN_ROTATION_ITEMS} members. One is just a task.`);
       if (titles.some(t => !t)) errors.push('rotation.members cannot contain a blank title.');
       if (new Set(titles.map(t => t.toLowerCase())).size !== titles.length) errors.push('rotation.members must all be different, or the picker would show the same name twice.');
@@ -494,9 +496,9 @@ export function taskFieldsPatch(
       // A member keeps its id when its title is kept: this week's ledger and
       // each member's "last done" are both keyed by it.
       const old = current?.rotationItems ?? [];
-      const items: RotationItem[] = titles.map(title => {
-        const kept = old.find(o => o.title.trim().toLowerCase() === title.toLowerCase());
-        return kept ? { ...kept, title } : { id: deps.newId(), title, linkUrl: null };
+      const items: RotationItem[] = (input.rotation.members ?? []).map((m, i) => {
+        const kept = old.find(o => o.title.trim().toLowerCase() === titles[i].toLowerCase());
+        return rotationItemFromInput(m, kept, deps.newId);
       });
       // A weekly period is the rotation's own, and the repeat is what spawns
       // next week's row, so a task with no rule becomes weekly. A rule already
@@ -508,7 +510,7 @@ export function taskFieldsPatch(
       Object.assign(patch, {
         rotationEnabled: true,
         rotationItems: items,
-        targetCount: items.length,
+        targetCount: rotationTargetTotal(items),
         quotaPeriod: 'week',
       } satisfies Partial<Task>);
     }
@@ -707,13 +709,14 @@ export function describeRepeat(t: Task): RepeatInput | null {
 }
 
 /** A rotation as `get_task` shows it: the members, and which this week's picks cover. */
-export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; lastDone?: string }[] } | null {
+export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string }[] } | null {
   if (!isRotationTask(t)) return null;
   const last = t.rotationLastDone ?? {};
   return {
     members: (t.rotationItems ?? []).map(m => ({
       title: m.title,
       doneThisWeek: doneIds.has(m.id),
+      ...(rotationPerWeek(m) > 1 ? { timesPerWeek: rotationPerWeek(m) } : {}),
       ...(last[m.id] ? { lastDone: last[m.id] } : {}),
     })),
   };

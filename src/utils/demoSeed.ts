@@ -110,6 +110,7 @@ export function seedDemoData(): void {
     completeTask,
     setMeasuredTime,
     logRotationUnit,
+    planRotationItem,
     addNewGroupedTask,
     addExistingToProject,
     addTag,
@@ -785,6 +786,27 @@ export function seedDemoData(): void {
   // built on. Two picks, which leaves the row reading "3 left".
   logRotationUnit(podcasts.id, languages[0].id);
   logRotationUnit(podcasts.id, languages[3].id);
+
+  // A rotation whose members are not all once a week: three runs and one bike
+  // ride, in any order. The first run is logged and the ride is planned for
+  // today, so the row shows the counted progress and the plan chip.
+  const run = { id: generateId(), title: 'Run', linkUrl: null, perWeek: 3 };
+  const ride = { id: generateId(), title: 'Peloton ride', linkUrl: null };
+  const workouts = addTask({
+    title: 'Workouts',
+    notes: 'Three runs and one ride a week, in whatever order works.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    rotationEnabled: true,
+    rotationItems: [run, ride],
+    targetCount: 4,
+    quotaPeriod: 'week',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    quotaAlwaysVisible: true,
+  });
+  logRotationUnit(workouts.id, run.id);
+  planRotationItem(workouts.id, ride.id);
 
   // A follow-up task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
