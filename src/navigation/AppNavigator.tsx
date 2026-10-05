@@ -9,6 +9,7 @@ import { CoinIcon } from '../components/CoinIcon';
 import { COIN_ICON } from '../constants/coinIcon';
 import { clearUnprovenScreen, markScreenUnproven, readUnprovenScreen, screenToRestore } from '../utils/launchGuard';
 import { SafeBlurView } from '../components/SafeBlurView';
+import { GlassLayer, glassSupported } from '../components/GlassLayer';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
@@ -70,7 +71,7 @@ import { CookingBar } from '../components/CookingBar';
 import { FocusFloatingBar } from '../components/FocusBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { border } from '../theme';
+import { border, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -200,6 +201,10 @@ function MorePlaceholder() {
 }
 
 const styles = StyleSheet.create({
+  glassTabBar: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
   edgeZone: {
     position: 'absolute',
     left: 0,
@@ -431,16 +436,24 @@ export default function AppNavigator() {
       backgroundColor: 'transparent',
       borderTopWidth: 0,
       elevation: 0,
+      ...(glassSupported() ? { left: spacing.smd, right: spacing.smd } : null),
     },
+    // On iOS 26 the bar is a glass slab inset from the screen edges with
+    // rounded top corners. Its height and bottom edge are unchanged, so no
+    // screen's bottom padding moves. Older iOS keeps the blur.
     tabBarBackground: () => (
-      <SafeBlurView
-        intensity={isDark ? 60 : 80}
-        tint={isDark ? 'dark' : 'light'}
-        style={[StyleSheet.absoluteFill, {
-          borderTopWidth: border.hairline,
-          borderTopColor: colors.separator,
-        }]}
-      />
+      glassSupported() ? (
+        <GlassLayer style={styles.glassTabBar} />
+      ) : (
+        <SafeBlurView
+          intensity={isDark ? 60 : 80}
+          tint={isDark ? 'dark' : 'light'}
+          style={[StyleSheet.absoluteFill, {
+            borderTopWidth: border.hairline,
+            borderTopColor: colors.separator,
+          }]}
+        />
+      )
     ),
     tabBarActiveTintColor: colors.accent,
     tabBarInactiveTintColor: colors.textTertiary,
