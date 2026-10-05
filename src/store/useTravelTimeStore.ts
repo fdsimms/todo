@@ -10,6 +10,9 @@ import {
   travelOriginFor,
   travelOriginKey,
   travelLeadFor,
+  travelModeFor,
+  arriveEarlyFor,
+  leadWithArrival,
   travelLeaveAt,
   travelSourceId,
   TRAVEL_ESTIMATES_PER_REFRESH,
@@ -77,7 +80,7 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
     const originKey = travelOriginKey(origin);
     const held = get().estimates;
     const wanted = upcoming
-      .filter(event => needsTravelEstimate(event, held, settings.travelMode, originKey, now))
+      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), originKey, now))
       .slice(0, TRAVEL_ESTIMATES_PER_REFRESH);
 
     // Estimates for occurrences no longer coming up are dropped either way.
@@ -92,15 +95,15 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
     set({ refreshing: true });
     const token = estimateGuard.begin();
     try {
-      const mode = settings.travelMode;
       const fresh: Record<string, TravelEstimate> = {};
       for (const event of wanted) {
         // Asked for the moment the user would leave by the typed lead: close
         // enough for traffic, and the only departure known before the answer.
-        const departAt = travelLeaveAt(event, travelLeadFor(event, {
+        const mode = travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode);
+        const departAt = travelLeaveAt(event, leadWithArrival(travelLeadFor(event, {
           defaultMinutes: settings.travelLeadMinutes,
           byCalendar: settings.travelLeadByCalendar,
-        })) ?? now;
+        }), arriveEarlyFor(event.id, settings.travelEventPrefs))) ?? now;
         const minutes = await estimateTravelMinutes(event, departAt, mode, origin);
         if (!estimateGuard.isCurrent(token)) return;
         if (minutes === null) continue;

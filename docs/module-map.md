@@ -20,6 +20,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/activityRings.ts` — ActivityRing, RingId, ActivityRings, RING_META, RING_ORDER, parseActivitySummary, ringFraction, isRingClosed, describeRing, ringsAccessibilityLabel, +1 more
 - `src/utils/agendaSpeech.ts` — AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda
+- `src/utils/agentCatalogRevert.ts` — CATALOG_REVERT_FIELDS, CatalogItemSnapshot, catalogSnapshot, catalogRevertOf, deletedItemRevert, CatalogRecordState, CatalogRecordPlan, catalogRecordPlan
 - `src/utils/agentNotes.ts` — AGENT_NOTES_KEY, AGENT_NOTES_LIMIT, AGENT_NOTE_MAX_LENGTH, AgentNote, parseAgentNotes, AgentNoteChange, addAgentNote, editAgentNote, removeAgentNote, readAgentNotes, +1 more
 - `src/utils/agentPantryRevert.ts` — PANTRY_ITEM_REVERT_FIELDS, LEFTOVER_REVERT_FIELDS, PantryItemSnapshot, LeftoverSnapshot, pantrySnapshot, leftoverSnapshot, pantryRevertOf, PantryRecordState, PantryRecordPlan, pantryRecordPlan
 - `src/utils/agentRecordRevert.ts` — PROJECT_REVERT_FIELDS, RecordLogSubject, RuleListName, RULE_LIST_NAMES, RecordState, AgentRecordPlan, agentRecordPlan, agentRecordLabel
@@ -139,6 +140,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature, describeForgetLoss
+- `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameRows, shopLinkRow, newShopRow, renamedShopRow, SubLinkOptions, clearOtherStandingLinks, +8 more
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
 - `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, looksLikeAlternativeList, resolveGroceryTokens, +1 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
@@ -221,7 +223,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryIndex.ts` — PantryIndexEntry, MAX_PANTRY_INDEX_ENTRIES, buildPantryIndex, QueuedDisposal, parseQueuedDisposals, resolveQueuedPantryItem
 - `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, describePantryDoubt, describePantryReviewDone
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
-- `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +12 more
+- `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +14 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, NUMBER_WORDS, NUMBER_WORD_ALT, parseCount, +3 more
 - `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +44 more
 - `src/utils/patchNotes.ts` — PatchNote
@@ -354,6 +356,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tagColor.ts` — tagColor
 - `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
+- `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, existingTaskPatch, +7 more
 - `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +20 more
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
@@ -379,7 +382,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/titleTokenChips.ts` — TokenChipKind, TokenChip, TokenChipSet, TokenChipSources, MAX_TOKEN_CHIPS, tokenChipsFor, applyTokenChip
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +4 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TravelMode, TRAVEL_MODES, TRAVEL_ESTIMATE_MARGIN_MINUTES, TRAVEL_ESTIMATE_STALE_MS, TRAVEL_ESTIMATES_PER_REFRESH, TravelEstimate, +27 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TravelMode, TRAVEL_MODES, TravelEventPref, TravelEventPrefs, TRAVEL_ARRIVE_CHOICES, clampArriveEarlyMinutes, +37 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync

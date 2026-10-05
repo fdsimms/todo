@@ -54,6 +54,8 @@ export function agentUndoReaders(): AgentUndoReaders {
     },
     groceryItem: id => useGroceryStore.getState().items.find(i => i.id === id) ?? null,
     itemBoxes: itemId => useGroceryStore.getState().itemProducts.filter(p => p.itemId === itemId),
+    aisleOverride: nameKey => useGroceryStore.getState().aisleOverrides[nameKey] ?? null,
+    itemKeyTaken: nameKey => useGroceryStore.getState().items.some(i => i.nameKey === nameKey),
     leftover: id => useLeftoverStore.getState().leftovers.find(l => l.id === id) ?? null,
     ruleList: ruleListOf,
     hasNote: text => readAgentNotes().some(n => sameText(n.text, text)),
@@ -92,6 +94,8 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
     case 'restorePantryItem':
       useGroceryStore.getState().restorePantry(plan.itemId, plan.patch, plan.boxes, plan.removeBoxIds, plan.removeFromList);
       return;
+    case 'restoreCatalogItem': useGroceryStore.getState().restoreCatalogItem(plan.itemId, plan.patch, plan.nameKey, plan.aisleOverride); return;
+    case 'restoreDeletedItem': useGroceryStore.getState().restoreDeletedItem(plan.snapshot); return;
     case 'restoreLeftover': useLeftoverStore.getState().restoreLeftover(plan.id, plan.patch); return;
     case 'removeLeftover': useLeftoverStore.getState().deleteLeftover(plan.id); return;
     case 'noteRemove': {

@@ -6626,7 +6626,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       : undefined;
     const matches = matchedTravelTasks(
       { defaultMinutes: settings.travelLeadMinutes, byCalendar: settings.travelLeadByCalendar },
-      calendar.events, now, horizonEnd, handled, estimated);
+      calendar.events, now, horizonEnd, handled, estimated, settings.travelEventPrefs);
     // Read only while the switch is on, so turning it off takes the notes off
     // on the next sweep even if a snapshot is still held.
     const transit = settings.transitAlerts ? useTransitStore.getState().snapshot : null;
@@ -8510,6 +8510,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     projectStore.updateProject(created.id, {
       notes: source.notes,
       defaultTaskCategory: source.defaultTaskCategory,
+      taskDefaults: source.taskDefaults ?? null,
       ongoing: source.ongoing,
       nudgeOptIn: source.nudgeOptIn,
       nudgeCadenceDays: source.nudgeCadenceDays,

@@ -675,6 +675,39 @@ describe('blockedReviewRows', () => {
   });
 });
 
+describe('a repointed ingredient key surviving a reload', () => {
+  const stored = (r: RecipeIngredient) => JSON.parse(JSON.stringify(r)) as unknown;
+
+  it('keeps the key a catalog rename repointed the line to, while the label is unchanged', () => {
+    const r = recipe('Ragu', { ingredients: [ing('Tomatos', { nameKey: 'tomatos' })] });
+    const [remapped] = remapIngredientKeyIn([r], 'tomatos', 'tomatoes');
+    const reloaded = normalizeIngredient(stored(remapped.ingredients[0]))!;
+    expect(reloaded.name).toBe('Tomatos');
+    expect(reloaded.nameKey).toBe('tomatoes');
+    expect(reloaded.catalogKey).toBe('tomatoes');
+    // And again on the load after that.
+    expect(normalizeIngredient(stored(reloaded))!.nameKey).toBe('tomatoes');
+  });
+
+  it('drops it once an edit has moved the key off it, so a renamed label follows its own name', () => {
+    const edited = { ...ing('Plum tomatoes', { nameKey: 'plum tomatoes' }), catalogKey: 'tomatoes' };
+    const reloaded = normalizeIngredient(stored(edited))!;
+    expect(reloaded.nameKey).toBe('plum tomatoes');
+    expect(reloaded.catalogKey).toBeUndefined();
+  });
+
+  it('ignores a stored key that merely disagrees with the label, as a blob from an older build can', () => {
+    const reloaded = normalizeIngredient({ id: 'x', name: 'Onions', nameKey: 'stale', quantity: '' })!;
+    expect(reloaded.nameKey).toBe('onions');
+    expect(reloaded.catalogKey).toBeUndefined();
+  });
+
+  it('records no catalogKey when the repoint lands on the key the label already has', () => {
+    const reloaded = normalizeIngredient({ id: 'x', name: 'Onions', nameKey: 'onions', catalogKey: 'onions', quantity: '' })!;
+    expect(reloaded.catalogKey).toBeUndefined();
+  });
+});
+
 describe('remapIngredientKeyIn', () => {
   it('returns only the recipes that actually changed', () => {
     const hit = recipe('Ragu', { ingredients: [ing('Tomatos', { nameKey: 'tomatos' }), ing('Onions')] });

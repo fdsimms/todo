@@ -334,6 +334,7 @@ file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
+| priority, difficulty and estimate answered once for a group, so Backfill never asks (a project's list, or a kind of generated task) | `src/utils/taskFieldDefaults.ts` (the rules) + `Project.taskDefaults` + `generatedTaskDefaults` in `useSettingsStore`, read in `newTaskFromDraft`. A default fills a field nobody answered and never overrides one. `priority: 0` is an answer (stamps the priority backfill as dismissed), because a priority of 0 otherwise reads as missing. Backfill's whole-group toggle uses `backfillGroupMembers` |
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |
@@ -406,6 +407,7 @@ file: the two maps are indexes, not write-ups.
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | what a pantry action does to a row (got it, out of it, frozen, opened, running low, a leftover), in the app and over MCP | `src/utils/pantryWrite.ts` — pure row rules that `useGroceryStore`, `useLeftoverStore` and the MCP replica all call; the stores keep only the `set()`, undo and use-up task. An agent's pantry write is undone from Activity by snapshot (`src/utils/agentPantryRevert.ts`) |
+| what a catalog edit, a brand, a store link, a substitute, a list name or finishing a trip does to a row, in the app and over MCP | `src/utils/groceryItemWrite.ts` — pure row rules that `useGroceryStore` and the MCP replica both call. A delete is undone from Activity by `DeletedItemSnapshot` (`src/utils/agentCatalogRevert.ts`); the app itself keeps no undo for one |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |

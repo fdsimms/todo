@@ -271,15 +271,22 @@ describe('pantry undo and log_leftover', () => {
     groceryItem: (id: string) => r.groceryItems().find(i => i.id === id) ?? null,
     itemBoxes: (id: string) => r.itemProducts().filter(p => p.itemId === id),
     leftover: (id: string) => r.leftovers().find(l => l.id === id) ?? null,
+    aisleOverride: () => null,
+    itemKeyTaken: () => false,
     exists: () => false,
     ruleList: () => [],
     hasNote: () => false,
     calendarRequest: () => null,
   });
 
-  // The log is already newest first. Re-sorting by `at` here returned an arbitrary entry
-  // whenever two writes landed in the same millisecond, which made these tests flaky.
-  const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry')[0];
+  // The newest pantry entry by insertion order. Sorting on `at` alone is a coin
+  // flip when two writes land in the same millisecond, which a fast run does:
+  // the add and the change after it tie, and the comparator then picks either.
+  const latest = () => {
+    const newestId = (mockRaw as unknown as { getFirstSync: (sql: string) => { id: string } | null })
+      .getFirstSync("SELECT id FROM unattended_log WHERE subject = 'pantry' ORDER BY rowid DESC")?.id;
+    return dbGetUnattendedLog().find(e => e.id === newestId)!;
+  };
 
   beforeAll(() => {
     replica = openReplica(':memory:');
