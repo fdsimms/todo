@@ -2,7 +2,7 @@ import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { Task, TimeOfDay, Category } from '../types';
 import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
-import { effectiveWindowEndTime } from './clockTime';
+import { effectiveWindowEndTime, hhmmOnLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -186,11 +186,7 @@ export function isHiddenForVacation(task: Task): boolean {
 // per-task gates had before they were anchored (see getWindowThreshold), and
 // the same fix.
 export function onLogicalDay(dayStart: Date, hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const t = new Date(dayStart);
-  t.setHours(h, m, 0, 0);
-  if (t < dayStart) t.setDate(t.getDate() + 1);
-  return t;
+  return hhmmOnLogicalDay(dayStart, hhmm);
 }
 
 // The window's closing instant on the logical day that starts at `dayStart`.

@@ -11,7 +11,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isInPausedProject, isTaskNotNeeded, isWithheld } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isTaskNotNeeded, isWithheld } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -208,9 +208,11 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   // task nobody but the demo will ever see again.
   if (isDemoModeActive()) return;
   if (!task.reminderTime || task.completed || task.archived) return;
-  // A paused project's tasks are held until the pause lifts; the reschedule
-  // pass after that day puts a still-future reminder back.
-  if (isInPausedProject(task)) return;
+  // A withheld task (vacation mode hiding it, or a paused project) is held
+  // until that lifts; the reschedule pass after that puts a still-future
+  // reminder back. Checked through isWithheld rather than the pause alone, as
+  // every day-driven pass is (CLAUDE.md, "Visibility model").
+  if (isWithheld(task)) return;
   // A task on a branch that wasn't taken will never be done (Task.answerGate).
   if (isTaskNotNeeded(task)) return;
   let triggerDate = new Date(task.reminderTime);
@@ -356,7 +358,7 @@ export const MAX_PENDING_REMINDERS = 64;
  */
 export function upcomingReminders(tasks: Task[], now: Date = new Date()): Task[] {
   return tasks
-    .filter(t => t.reminderTime && !t.completed && !t.archived && !isInPausedProject(t) && !isTaskNotNeeded(t) && new Date(t.reminderTime) > now)
+    .filter(t => t.reminderTime && !t.completed && !t.archived && !isWithheld(t) && !isTaskNotNeeded(t) && new Date(t.reminderTime) > now)
     .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime());
 }
 

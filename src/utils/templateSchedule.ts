@@ -5,6 +5,7 @@ import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateSchedule } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
+import { hhmmOnLogicalDay, taskDayStart } from './clockTime';
 import { dayKeyOf, getDayStart } from './dateUtils';
 import type { TemplateAnchors } from './templateUtils';
 
@@ -155,9 +156,12 @@ export function dueTemplateRun(
   if (periodKey === template.scheduleLastFiredKey) return null;
 
   const triggerDay = triggerDayFor(schedule, today, weekStartsOn);
-  const [hh, mm] = schedule.time.split(':').map(Number);
-  const triggerInstant = new Date(triggerDay);
-  triggerInstant.setHours(Number.isFinite(hh) ? hh : 0, Number.isFinite(mm) ? mm : 0, 0, 0);
+  // The time is a time of day on the trigger's *logical* day, so a time earlier
+  // than the reset ("02:00" under a 4 AM start) is the small hours at the end
+  // of that day. Set on the trigger day's calendar date instead it was already
+  // past when the day began, and the run fired at the day's start, a logical
+  // day early by the person's clock.
+  const triggerInstant = hhmmOnLogicalDay(taskDayStart(triggerDay, dayResetTime), schedule.time);
   if (now.getTime() < triggerInstant.getTime()) return null;
 
   // Anchored on the logical day the run is *for*, not on the trigger day it

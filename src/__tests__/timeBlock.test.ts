@@ -48,6 +48,7 @@ function event(start: string, end: string, overrides: Partial<BusyEvent> = {}): 
 function ctx(overrides: Partial<TimeBlockContext> = {}): TimeBlockContext {
   return {
     now: new Date(2026, 7, 13, 8, 0),
+    dayResetTime: '00:00',
     activeHoursStart: '09:00',
     activeHoursEnd: '17:00',
     events: null,
@@ -256,5 +257,28 @@ describe('timeBlockUpdateFor', () => {
       allDay: false,
     });
     expect(update).toBeNull();
+  });
+});
+
+// A window start earlier than the day reset is the small hours at the end of
+// the task's logical day. Applied to the due date's calendar date it was
+// already behind "now" and the proposal silently fell through to a gap search.
+describe('proposeTimeBlockStart under a day start after midnight', () => {
+  it('places a small-hours windowStart at the end of the due day', () => {
+    const task = makeTask({
+      dueDate: new Date(2026, 7, 20, 12, 0).toISOString(),
+      windowStart: '01:00',
+    });
+    const start = proposeTimeBlockStart(task, 60, ctx({ dayResetTime: '04:00', events: [] }));
+    expect(start).toEqual(new Date(2026, 7, 21, 1, 0));
+  });
+
+  it('still places a daytime windowStart on the due date itself', () => {
+    const task = makeTask({
+      dueDate: new Date(2026, 7, 20, 12, 0).toISOString(),
+      windowStart: '14:30',
+    });
+    const start = proposeTimeBlockStart(task, 60, ctx({ dayResetTime: '04:00', events: [] }));
+    expect(start).toEqual(new Date(2026, 7, 20, 14, 30));
   });
 });

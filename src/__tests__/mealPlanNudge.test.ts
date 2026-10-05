@@ -17,8 +17,9 @@ import type { MealSlot, Task } from '../types';
 // needs, since every date this module compares is a calendar day or an
 // explicit clock time, never a logical-day rollback. Same defensive mock as
 // mealPlan.test.ts / mealPlanGroceries.test.ts.
+const mockSettings = { dayResetTime: '00:00' };
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+  useSettingsStore: { getState: () => mockSettings },
 }));
 
 // Aug 2025 starts on a Friday (see calendarGrid.test.ts), so with
@@ -354,5 +355,22 @@ describe('constants', () => {
 
   it('links to the meal plan screen', () => {
     expect(MEAL_PLAN_NUDGE_LINK_URL).toBe('dundundun://mealplan');
+  });
+});
+
+// The trigger time is a time of day on the trigger's *logical* day, so a time
+// earlier than the day reset belongs to the small hours at that day's end. Set
+// on the trigger day's calendar date it was already past when the day began,
+// and the nudge fired at the day's start, a logical day early.
+describe('dueMealPlanNudge under a day start after midnight', () => {
+  beforeEach(() => { mockSettings.dayResetTime = '04:00'; });
+  afterEach(() => { mockSettings.dayResetTime = '00:00'; });
+
+  it('waits for a trigger time before the reset until the end of the trigger day', () => {
+    // Sunday 05:00 is logical Sunday; a 02:00 trigger is Monday 02:00 by the clock.
+    expect(dueMealPlanNudge(SUN_AUG_3(5, 0), 0, 0, '02:00', null)).toBeNull();
+    const due = dueMealPlanNudge(new Date(2025, 7, 4, 2, 30, 0), 0, 0, '02:00', null);
+    expect(due).not.toBeNull();
+    expect(due!.weekKey).toBe('2025-08-03');
   });
 });

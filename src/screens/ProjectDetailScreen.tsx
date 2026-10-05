@@ -291,7 +291,7 @@ function NewLineField({
   const confirm = () => {
     if (!suggestion) return;
     haptics.success();
-    const applied = confirmLineSuggestion(suggestion, pendingRef.current);
+    const applied = confirmLineSuggestion(suggestion, pendingRef.current, dayResetTime);
     setPendingBoth(applied.pending);
     change(applied.text);
     caret.moveCaret(applied.text);

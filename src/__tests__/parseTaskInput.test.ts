@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2113,5 +2113,31 @@ describe('parseWeatherWaitInput', () => {
     expect(parseWeatherWaitInput('make sunny side up eggs')).toBeNull();
     expect(parseWeatherWaitInput('plan the next day')).toBeNull();
     expect(parseWeatherWaitInput('next sunny day')).toBeNull();
+  });
+});
+
+// A typed clock time is placed on the due day's *logical* day: a time earlier
+// than the day reset is the small hours at that day's end. Copied onto the due
+// date's calendar date, "remind me at 3am" typed at 1:30 AM under a 4 AM reset
+// (still yesterday by the person's clock) scheduled about 22 hours in the past.
+describe('scheduleClockInstant', () => {
+  const noon = new Date(2025, 5, 10, 12, 0, 0);
+
+  it('returns null when the line named no clock time', () => {
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: null }, '00:00')).toBeNull();
+  });
+
+  it('places the time on the due date under a midnight reset', () => {
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 3, m: 0 } }, '00:00'))
+      .toEqual(new Date(2025, 5, 10, 3, 0, 0));
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 16, m: 30 } }, '00:00'))
+      .toEqual(new Date(2025, 5, 10, 16, 30, 0));
+  });
+
+  it('rolls a time before the reset onto the end of the logical day', () => {
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 3, m: 0 } }, '04:00'))
+      .toEqual(new Date(2025, 5, 11, 3, 0, 0));
+    expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 16, m: 30 } }, '04:00'))
+      .toEqual(new Date(2025, 5, 10, 16, 30, 0));
   });
 });

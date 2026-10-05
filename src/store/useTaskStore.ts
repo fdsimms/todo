@@ -363,7 +363,7 @@ import {
   describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
-import { dateToHHMM } from '../utils/clockTime';
+import { carryClockTime, dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
 import { currentTravelOrigin, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
@@ -447,10 +447,11 @@ function reminderOnto(effective: Task, due: Date, overrides: Partial<Task> = {})
     return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
   }
   const original = new Date(effective.reminderTime);
-  const next = new Date(
-    effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due
-  );
-  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  const onto = effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due;
+  // The clock time on the new day's *logical* day (carryClockTime), not copied
+  // onto its calendar date: a 1 AM reminder sits at the end of its day under a
+  // 4 AM reset, and copied it landed a whole day early on every successor.
+  const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
   return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
 }
 
@@ -3034,10 +3035,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
-    const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+    const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
     const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
       now: new Date(),
+      dayResetTime,
       activeHoursStart,
       activeHoursEnd,
       events: loaded ? events : null,
@@ -8762,9 +8764,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   forgivVacationStreaks() {
     const today = getCurrentDayStart().toISOString();
-    const toUpdate = get().tasks.filter(
-      t => t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
-    );
+    // isHiddenForVacation, not the per-task flag alone: a task hidden through
+    // its category's hide-on-vacation was withheld exactly the same way and
+    // lost its streak at the end of every vacation. Both callers run this
+    // before switching vacation mode off, which is what the check reads.
+    const forgiven = (t: Task) =>
+      isHiddenForVacation(t) && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0;
+    const toUpdate = get().tasks.filter(forgiven);
     if (toUpdate.length === 0) return;
     toUpdate.forEach(t => {
       const updated = { ...t, streakDate: today };
@@ -8772,7 +8778,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     set(s => ({
       tasks: s.tasks.map(t =>
-        t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
+        forgiven(t)
           ? { ...t, streakDate: today }
           : t
       ),

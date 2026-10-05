@@ -36,6 +36,7 @@ import {
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
 } from './dateUtils';
+import { carryClockTime } from './clockTime';
 import { getVisibleAt } from './visibilityUtils';
 import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
@@ -470,8 +471,11 @@ export function reanchorReminder(
     const next = getVisibleAt(visibilityContext);
     return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
   }
-  const next = new Date(offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date);
-  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  // carryClockTime: the hour lands on the target's logical day, so a small-hours
+  // reminder under a late day start stays at the end of its day rather than
+  // moving a day early (see the helper).
+  const onto = offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date;
+  const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
   return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
 }
 
