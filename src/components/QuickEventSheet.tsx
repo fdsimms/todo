@@ -1214,7 +1214,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   accessibilityLabel={conflictsOpen ? 'Hide overlapping events' : 'Show overlapping events'}
                   accessibilityState={{ expanded: conflictsOpen }}
                 >
-                  <Ionicons name="alert-circle-outline" size={13} color={colors.orange} />
+                  <Ionicons name="alert-circle-outline" size={13} color={colors.orangeText} />
                   <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
                     {conflictsOpen
                       ? `Overlaps ${conflicts.length} ${conflicts.length === 1 ? 'event' : 'events'}`

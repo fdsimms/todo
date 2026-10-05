@@ -524,7 +524,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.smd,
   },
   deleteText: {
-    color: colors.red,
+    color: colors.redText,
     fontSize: font.md,
   },
   card: {

@@ -1352,7 +1352,7 @@ function makeStyles(colors: Colors) {
     // Indented to the row body's own left edge so the results read as belonging
     // to the row above rather than to the card.
     pickerWrap: { paddingLeft: spacing.xl, paddingRight: spacing.md, paddingBottom: spacing.sm },
-    rowError: { color: colors.orange, fontSize: font.xs },
+    rowError: { color: colors.orangeText, fontSize: font.xs },
     // Tighter than `InlineAction`'s own default so a "Confirm" pill sitting
     // beside a caption reads as part of the line, not a control from a denser
     // grid of chips.

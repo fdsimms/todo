@@ -45,6 +45,7 @@ export function agentRevertPlan(entry: UnattendedEntry, task: Task | null): Agen
       if (task.completed) return { kind: 'none', reason: 'Completed since' };
       return { kind: 'delete', taskId: task.id };
     case 'completed':
+    case 'missed':
       if (!task.completed) return { kind: 'none', reason: 'Reopened since' };
       return { kind: 'uncomplete', taskId: task.id };
     case 'edited':

@@ -16,6 +16,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { dbGetCalendarRequest, dbResolveCalendarRequest } from '../db/database';
 import { addAgentNote, readAgentNotes, removeAgentNote, writeAgentNotes } from './agentNotes';
 import type { RecordState, RuleListName } from './agentRecordRevert';
 import type { AgentUndoAction, AgentUndoReaders } from './agentUndo';
@@ -52,6 +53,7 @@ export function agentUndoReaders(): AgentUndoReaders {
     },
     ruleList: ruleListOf,
     hasNote: text => readAgentNotes().some(n => sameText(n.text, text)),
+    calendarRequest: id => dbGetCalendarRequest(id),
   };
   return { task: id => useTaskStore.getState().tasks.find(t => t.id === id) ?? null, record };
 }
@@ -92,6 +94,16 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
     case 'noteAdd': {
       const change = addAgentNote(readAgentNotes(), plan.text);
       if (change.ok) writeAgentNotes(change.notes);
+      return;
+    }
+    // No store owns calendar requests: the drain reads the table directly, so
+    // the cancel writes it directly too. Re-checked here because the writing
+    // device may have answered it since the plan was made.
+    case 'cancelCalendarRequest': {
+      if (dbGetCalendarRequest(plan.id)?.status !== 'pending') return;
+      dbResolveCalendarRequest(plan.id, {
+        status: 'cancelled', failureReason: null, eventExternalId: null, resolvedAt: new Date().toISOString(),
+      });
       return;
     }
   }

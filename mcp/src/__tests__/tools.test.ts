@@ -113,6 +113,9 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     deleteMoodLog: () => { throw new Error('not stubbed'); },
     updateMedicationLog: () => { throw new Error('not stubbed'); },
     deleteMedicationLog: () => { throw new Error('not stubbed'); },
+    calendarRequests: () => [],
+    requestCalendarEvent: () => { throw new Error('not stubbed'); },
+    cancelCalendarRequest: () => { throw new Error('not stubbed'); },
     updateMeal: () => { throw new Error('not stubbed'); },
     removeMeal: () => { throw new Error('not stubbed'); },
     createPerson: () => { throw new Error('not stubbed'); },
@@ -120,6 +123,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     renameStack: () => { throw new Error('not stubbed'); },
     reorderTemplates: () => { throw new Error('not stubbed'); },
     createTask: () => { throw new Error('not stubbed'); },
+    scaleFirstWeek: () => {},
     completeTask: () => { throw new Error('not stubbed'); },
     completionProblem: () => null,
     deferTask: () => { throw new Error('not stubbed'); },
@@ -137,6 +141,18 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     stacks: () => [],
     createStack: () => { throw new Error('not stubbed'); },
     setTaskStack: () => { throw new Error('not stubbed'); },
+    rewardState: () => ({ entries: [], rewards: [] }),
+    addReward: () => { throw new Error('not stubbed'); },
+    updateReward: () => { throw new Error('not stubbed'); },
+    deleteReward: () => { throw new Error('not stubbed'); },
+    claimReward: () => { throw new Error('not stubbed'); },
+    unclaimReward: () => { throw new Error('not stubbed'); },
+    setRewardGoal: () => { throw new Error('not stubbed'); },
+    postBounty: () => { throw new Error('not stubbed'); },
+    withdrawBounty: () => { throw new Error('not stubbed'); },
+    markMissed: () => { throw new Error('not stubbed'); },
+    logSlip: () => { throw new Error('not stubbed'); },
+    undoSlip: () => { throw new Error('not stubbed'); },
     recipes: () => [],
     cookbooks: () => [],
     mealPlan: () => [],
@@ -150,7 +166,8 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     settings: () => ({
       dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationEnd: null,
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
-      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, completedRetentionDays: null,
+      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, rewardGoalId: null, bountyLimit: 1, completedRetentionDays: null,
+      calendarRequestsOn: false,
     }),
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
@@ -638,6 +655,17 @@ describe('serializeTask', () => {
 });
 
 describe('createTask and updateTask', () => {
+  it('scales a new weekly target\'s first week unless asked for the full count', () => {
+    const created = task({ id: 'today-new', title: 'Run' });
+    const scaleFirstWeek = jest.fn();
+    const r = withTasks([created], { taskPatch: () => ({}), createTask: () => created, scaleFirstWeek });
+    createTask(r, { title: 'Run', target: { count: 3, per: 'week' } });
+    createTask(r, { title: 'Run', target: { count: 3, per: 'week', firstWeek: 'full' } });
+    createTask(r, { title: 'Water', target: { count: 8, per: 'day' } });
+    expect(scaleFirstWeek).toHaveBeenCalledTimes(1);
+    expect(scaleFirstWeek).toHaveBeenCalledWith('today-new');
+  });
+
   it('refuses a subtask of a task that does not exist, before writing anything', () => {
     const r = stubReplica({ taskPatch: () => ({}) });
     expect(() => createTask(r, { title: 'Child', parentId: 'nope' })).toThrow(/No task with id nope/);

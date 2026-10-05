@@ -74,7 +74,7 @@ export function CookingBar() {
         accessibilityRole="button"
         accessibilityLabel={`Cooking ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
       >
-        <Ionicons name="flame" size={iconSize.sm} color={colors.orange} />
+        <Ionicons name="flame" size={iconSize.sm} color={colors.orangeText} />
         <Text style={styles.text} numberOfLines={1}>
           Cooking <Text style={styles.name}>{recipe.name}</Text>
         </Text>

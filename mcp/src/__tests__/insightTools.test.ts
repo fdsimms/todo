@@ -63,7 +63,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     medicationLogs: () => [],
     settings: () => ({
       dayResetTime: '04:00', weekStartsOn: 1, vacationMode: false, vacationEnd: null,
-      kitchenEnabled: false, simpleMode: false, rewardsEnabled: true, completedRetentionDays: 90,
+      kitchenEnabled: false, simpleMode: false, rewardsEnabled: true, completedRetentionDays: 90, calendarRequestsOn: false,
     }),
     lastSyncedAt: () => null,
     agentNotes: () => [],
@@ -106,7 +106,7 @@ describe('getOverview', () => {
       { name: 'Home', open: 1 },
     ]);
     expect(overview.tags).toEqual([{ name: 'call', count: 2 }, { name: 'quick', count: 1 }]);
-    expect(overview.features).toEqual({ kitchen: false, simplifiedMode: false, rewards: true });
+    expect(overview.features).toEqual({ kitchen: false, simplifiedMode: false, rewards: true, calendarRequests: false });
     expect(overview.completedTasksKeptForDays).toBe(90);
     expect(overview.access).toBe('write');
   });

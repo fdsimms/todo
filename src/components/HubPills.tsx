@@ -17,7 +17,7 @@ import { NAV_HUBS, visibleHubMembers, type NavHubId } from '../utils/navHubs';
 import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // The colour ladder lives with the card that established it — same import
 // RecipePickerSheet makes, and for the reason given there.
-import { freshnessColor } from './LeftoversCard';
+import { freshnessFill } from './LeftoversCard';
 
 interface Props {
   hub: NavHubId;
@@ -131,7 +131,7 @@ export function HubPills({ hub, active }: Props) {
                 style={[
                   styles.pillBadge,
                   isActive && styles.pillBadgeActive,
-                  tab.route === 'MealPlan' && !isActive && { backgroundColor: freshnessColor(worstFreshness, colors) },
+                  tab.route === 'MealPlan' && !isActive && { backgroundColor: freshnessFill(worstFreshness, colors) },
                 ]}
               >
                 <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]} maxFontSizeMultiplier={textScale.badge}>{badge}</Text>
@@ -162,11 +162,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     // Accent, not red: the Groceries badge is a plain "N to buy" count, not
     // something urgent — the MealPlan pill overrides this per-row with
-    // freshnessColor since that one *is* reporting something time-sensitive.
+    // freshnessFill since that one *is* reporting something time-sensitive.
     backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center',
   },
   pillBadgeActive: {
-    backgroundColor: colors.orange,
+    backgroundColor: colors.orangeFill,
   },
   pillBadgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
   pillBadgeTextActive: { color: colors.onAccent },

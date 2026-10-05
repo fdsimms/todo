@@ -108,10 +108,10 @@ export function ItemDisposalOffer({ itemId, onOpenShelfLife }: Props) {
       // surfaces for exactly this reason, and red carries no verdict here — the
       // copy is "Went bad", the same refusal to grade that picks "Thrown out"
       // over "Wasted".
-      actionTint={colors.green}
+      actionTint={colors.greenFill}
       secondaryActionLabel="Went bad"
       onSecondaryAction={() => recordDisposal(item.id, 'spoiled')}
-      secondaryActionTint={colors.red}
+      secondaryActionTint={colors.redFill}
       onDismiss={dismiss}
       accessibilityLabel={`${item.name} is marked out. How did it go?`}
       actionAccessibilityLabel={`Record that you used up the ${item.name}`}

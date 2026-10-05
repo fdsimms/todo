@@ -97,7 +97,7 @@ export function SimpleBulkBar({
           accessibilityLabel={deleteAccessibilityLabel}
         >
           <Ionicons name="trash" size={24} color={colors.red} />
-          <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>
+          <Text style={[styles.actionLabel, { color: colors.redText }]}>Delete</Text>
         </PressableScale>
       </View>
     </Animated.View>

@@ -1,4 +1,4 @@
-import type { Project, UnattendedEntry } from '../types';
+import type { CalendarRequestStatus, Project, UnattendedEntry } from '../types';
 
 /**
  * Whether an agent's write to something that is not a task can be taken back.
@@ -40,6 +40,8 @@ export interface RecordState {
   exists(subject: RecordLogSubject, id: string): boolean;
   ruleList(type: RuleListName): unknown;
   hasNote(text: string): boolean;
+  /** Where a calendar request stands, or null when it is gone. */
+  calendarRequest(id: string): { status: CalendarRequestStatus } | null;
 }
 
 export type AgentRecordPlan =
@@ -50,6 +52,7 @@ export type AgentRecordPlan =
   | { kind: 'restoreRules'; type: RuleListName; rules: unknown }
   | { kind: 'noteRemove'; text: string }
   | { kind: 'noteAdd'; text: string }
+  | { kind: 'cancelCalendarRequest'; id: string }
   | { kind: 'none'; reason: string | null };
 
 const NONE: AgentRecordPlan = { kind: 'none', reason: null };
@@ -126,6 +129,22 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       return NONE;
     }
 
+    // A request can be taken back only while it is still a request. Once the
+    // phone has written the event it is the person's, in their calendar app,
+    // which nothing here edits or deletes.
+    case 'event': {
+      if (entry.action !== 'created' || !id) return NONE;
+      const request = state.calendarRequest(id);
+      if (!request) return { kind: 'none', reason: 'Removed since' };
+      switch (request.status) {
+        case 'pending': return { kind: 'cancelCalendarRequest', id };
+        case 'written': return { kind: 'none', reason: 'On your calendar' };
+        case 'failed': return { kind: 'none', reason: 'Not added' };
+        case 'cancelled': return { kind: 'none', reason: 'Undone' };
+      }
+      return NONE;
+    }
+
     default:
       return NONE;
   }
@@ -143,6 +162,9 @@ export function agentRecordLabel(plan: AgentRecordPlan): string | null {
     case 'groceryCheck':
     case 'noteAdd':
       return 'Undo';
+    // Not "Cancel": the confirmation's own dismiss button already says that.
+    case 'cancelCalendarRequest':
+      return 'Don’t add';
     case 'none':
       return null;
   }

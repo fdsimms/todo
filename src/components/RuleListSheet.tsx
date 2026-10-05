@@ -406,7 +406,7 @@ function makeStyles(colors: Colors) {
     name: { color: colors.text, fontSize: font.md },
     nameOff: { color: colors.textSecondary },
     note: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
-    noteWarn: { color: colors.orange },
+    noteWarn: { color: colors.orangeText },
     meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     toggle: { width: 46, height: 27, borderRadius: 14, backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3 },
     toggleKnob: { width: 21, height: 21, borderRadius: 11, backgroundColor: colors.bg },
@@ -434,7 +434,7 @@ function makeStyles(colors: Colors) {
     categoryValue: { flex: 1, color: colors.text, fontSize: font.md },
     categoryHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xs },
     deleteRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
-    deleteLabel: { color: colors.red, fontSize: font.sm },
+    deleteLabel: { color: colors.redText, fontSize: font.sm },
     addBtn: { marginTop: spacing.md, alignSelf: 'flex-start' },
   });
 }

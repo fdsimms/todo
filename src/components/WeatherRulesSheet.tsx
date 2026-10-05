@@ -107,7 +107,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
       header={permission !== null && permission !== 'granted' && (
         <RuleSheetNoticeCard
           icon="location-outline"
-          iconColor={permission === 'denied' ? colors.warning : colors.textSecondary}
+          iconColor={permission === 'denied' ? colors.warningText : colors.textSecondary}
           title="Location access"
           hint={
             permission === 'denied'

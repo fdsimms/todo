@@ -1041,7 +1041,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkOn: { backgroundColor: colors.red, borderColor: colors.red },
+    checkOn: { backgroundColor: colors.redFill, borderColor: colors.redFill },
     // Margin on both sides: the store picker sits above and the leftovers
     // label below, and neither carries a top margin of its own.
     rangeCard: {

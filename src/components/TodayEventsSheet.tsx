@@ -691,7 +691,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
-  pillActive: { backgroundColor: colors.accent },
+  pillActive: { backgroundColor: colors.accentFill },
   pillText: { color: colors.text, fontSize: font.sm },
   pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.medium },
   newEventRow: { flexDirection: 'row', marginHorizontal: spacing.md, marginTop: spacing.md },

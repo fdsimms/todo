@@ -317,7 +317,7 @@ export function LeftoverDragCard({
 
   const liveFreshness = liveFreshnessOf(leftover);
   const tint = late
-    ? colors.red
+    ? colors.redText
     : liveFreshness ? freshnessColor(liveFreshness, colors) : colors.textTertiary;
 
   return (
@@ -350,10 +350,26 @@ export function LeftoverDragCard({
  */
 export function freshnessColor(freshness: LeftoverFreshness, colors: Colors): string {
   switch (freshness) {
-    case 'over': return colors.red;
+    case 'over': return colors.redText;
     case 'due':
-    case 'soon': return colors.orange;
+    case 'soon': return colors.orangeText;
     default: return colors.textTertiary;
+  }
+}
+
+/**
+ * `freshnessColor` as a badge fill under a white count (the Meals pill's
+ * badge). Text and fill need different shades of the same hue, see the note on
+ * `green` in `Colors`. A fresh fridge is a plain count, so it takes the same
+ * `accentFill` every other count badge uses; the grey a caption gets would
+ * leave the white number unreadable.
+ */
+export function freshnessFill(freshness: LeftoverFreshness, colors: Colors): string {
+  switch (freshness) {
+    case 'over': return colors.redFill;
+    case 'due':
+    case 'soon': return colors.orangeFill;
+    default: return colors.accentFill;
   }
 }
 

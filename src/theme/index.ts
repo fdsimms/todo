@@ -13,6 +13,14 @@ export type Colors = {
    * shade darker than the page, since white cards are already the top.
    */
   bgSunken: string;
+  /**
+   * The outline of an unchecked control that has no fill of its own: a task's
+   * completion checkbox and the `SelectionDot` ring. 3:1 on the card and on a
+   * pressed row (`bgSecondary`, `bgTertiary`), the WCAG floor for a control's
+   * boundary. It used to be `bgQuaternary`, which is a *surface* and measured
+   * 1.5:1 as an outline, so an empty checkbox was close to invisible.
+   */
+  controlBorder: string;
   text: string;
   textSecondary: string;
   textTertiary: string;
@@ -41,15 +49,46 @@ export type Colors = {
    * else a fill is called for.
    */
   accentFill: string;
+  /**
+   * The four status hues, each in three roles — the `accent` / `accentText` /
+   * `accentFill` split above, applied to every colour that is used both as
+   * text and as a filled surface:
+   *
+   * - The plain hue (`red`) is the identity colour: a dot, a bar, a border, a
+   *   tint, a chart mark, and (red, green, purple only) an icon.
+   * - `…Text` is the hue as **text**, and as an **icon** for orange, whose
+   *   plain value can't carry a glyph on a light surface. 4.5:1 on `bg`,
+   *   `bgSecondary` and `bgTertiary`, and on its own translucent pill.
+   * - `…Fill` is the hue as a **surface carrying `onAccent`** white text or
+   *   icons (a destructive button, a swipe panel, a badge). 4.5:1 under white.
+   *
+   * No single value can do both jobs: in dark a red that reads as text on a
+   * card is too light to hold white text, and in light an orange that reads as
+   * text is brown. `themeContrast.test.ts` holds each role to its floor.
+   */
   green: string;
+  greenText: string;
+  greenFill: string;
   orange: string;
+  orangeText: string;
+  orangeFill: string;
   red: string;
+  redText: string;
+  redFill: string;
   purple: string;
+  purpleText: string;
+  purpleFill: string;
   separator: string;
   /** Text/icon color on filled accent/colored surfaces (always white, iOS-style). */
   onAccent: string;
   /** Bright yellow used for "new item" banners/alerts. */
   warning: string;
+  /**
+   * `warning` as text or an icon on an ordinary surface. Yellow is the same in
+   * dark, and an olive in light, where `warning` itself measures 1.3:1 on the
+   * page. A filled warning surface carries `onWarning`, so there is no fill.
+   */
+  warningText: string;
   /** Subtle tinted background behind warning banners. */
   warningBg: string;
   /** Text/icon color on filled warning surfaces (always dark, for contrast against yellow). */
@@ -71,20 +110,30 @@ export const darkColors: Colors = {
   bgTertiary: '#2C2C2E',
   bgQuaternary: '#3A3A3C',
   bgSunken: '#0E0E10',
+  controlBorder: '#757579',
   text: '#FFFFFF',
-  textSecondary: '#8E8E93',
-  textTertiary: '#636366',
+  textSecondary: '#A6A6AA',
+  textTertiary: '#939396',
   accent: '#0A84FF',
   accentSubtle: 'rgba(10, 132, 255, 0.15)',
   accentText: '#3D9BFF',
   accentFill: '#0970D9',
   green: '#4C9A76',
+  greenText: '#51A47D',
+  greenFill: '#418365',
   orange: '#FF9F0A',
+  orangeText: '#FF9F0A',
+  orangeFill: '#AA6700',
   red: '#FF453A',
+  redText: '#FF594F',
+  redFill: '#ED0D00',
   purple: '#BF5AF2',
+  purpleText: '#C76DF4',
+  purpleFill: '#B137EF',
   separator: '#38383A',
   onAccent: '#FFFFFF',
   warning: '#FFD60A',
+  warningText: '#FFD60A',
   warningBg: 'rgba(255, 214, 10, 0.16)',
   onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.45)',
@@ -107,20 +156,30 @@ export const darkPurpleColors: Colors = {
   bgTertiary: '#2A2338',
   bgQuaternary: '#3A324A',
   bgSunken: '#1A1526',
+  controlBorder: '#786798',
   text: '#FFFFFF',
-  textSecondary: '#9D93AD',
-  textTertiary: '#6E6480',
+  textSecondary: '#ACA4BA',
+  textTertiary: '#9289A3',
   accent: '#0A84FF',
   accentSubtle: 'rgba(10, 132, 255, 0.15)',
   accentText: '#3D9BFF',
   accentFill: '#0970D9',
   green: '#4C9A76',
+  greenText: '#53A680',
+  greenFill: '#418365',
   orange: '#FF9F0A',
+  orangeText: '#FF9F0A',
+  orangeFill: '#AA6700',
   red: '#FF453A',
+  redText: '#FF594F',
+  redFill: '#ED0D00',
   purple: '#BF5AF2',
+  purpleText: '#C76FF4',
+  purpleFill: '#B137EF',
   separator: '#3D3550',
   onAccent: '#FFFFFF',
   warning: '#FFD60A',
+  warningText: '#FFD60A',
   warningBg: 'rgba(255, 214, 10, 0.16)',
   onWarning: '#000000',
   backdrop: 'rgba(10, 6, 20, 0.5)',
@@ -141,20 +200,30 @@ export const lightColors: Colors = {
   bgTertiary: '#EFEFF4',
   bgQuaternary: '#D1D1D6',
   bgSunken: '#E7E7EC',
+  controlBorder: '#898996',
   text: '#000000',
-  textSecondary: '#6C6C70',
-  textTertiary: '#8A8A8E',
+  textSecondary: '#515154',
+  textTertiary: '#6C6C70',
   accent: '#007AFF',
   accentSubtle: 'rgba(0, 122, 255, 0.12)',
   accentText: '#0B69D0',
   accentFill: '#0068D9',
   green: '#3D8563',
+  greenText: '#377759',
+  greenFill: '#3C8362',
   orange: '#FF9500',
+  orangeText: '#9D5B00',
+  orangeFill: '#AD6500',
   red: '#FF3B30',
+  redText: '#D10B00',
+  redFill: '#ED0D00',
   purple: '#AF52DE',
+  purpleText: '#9F30D8',
+  purpleFill: '#AA47DC',
   separator: '#C6C6C8',
   onAccent: '#FFFFFF',
   warning: '#FFCC00',
+  warningText: '#836800',
   warningBg: 'rgba(255, 204, 0, 0.16)',
   onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.35)',

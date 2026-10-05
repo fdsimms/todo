@@ -304,7 +304,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                   <PinIcon
                     filled={pinned}
                     size={iconSize.sm}
-                    color={pinDisabled ? colors.textTertiary : (pinned ? colors.orange : colors.textSecondary)}
+                    color={pinDisabled ? colors.textTertiary : (pinned ? colors.orangeText : colors.textSecondary)}
                   />
                 </TouchableOpacity>
               )}

@@ -309,7 +309,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
+    checkboxOn: { backgroundColor: colors.purpleFill, borderColor: colors.purpleFill },
     expandedCard: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,

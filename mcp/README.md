@@ -105,10 +105,11 @@ only the fallback until the first sync.
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
-| `get_template` | One template in full, in the shape `create_template` and `update_template` take. |
-| `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
-| `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Needs `MCP_WRITE_TOKEN`. |
-| `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. |
+| `get_template` | One template in full, in the shape `create_template` and `update_template` take, with a `version` for `update_template`'s `expectedVersion`. |
+| `template_library_check` | Every template checked at once: broken pointers, unused questions, items copied across templates, near-copies. Suggests edits; changes nothing. |
+| `create_template` | **Write.** Builds a whole template in one call, and returns warnings for things it will do that were probably not meant. Needs `MCP_WRITE_TOKEN`. |
+| `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Lists the changes, and refuses an edit made against an old `version`. Needs `MCP_WRITE_TOKEN`. |
+| `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. Reports what it left out and why, and any blanks left empty. |
 | `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
 | `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
@@ -125,6 +126,8 @@ only the fallback until the first sync.
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
+| `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. The server never touches the calendar itself. |
+| `list_calendar_requests` | Those requests and what became of each: pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
@@ -133,6 +136,16 @@ only the fallback until the first sync.
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details. Never a cadence, nudge, group or order. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
+| `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
+| `create_reward` | **Write.** Adds a reward at a cost in coins. Refused while rewards are off. |
+| `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |
+| `delete_reward` | **Write.** Deletes a reward. Coins already spent on it stay spent. |
+| `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its item off, with no extra coins. |
+| `unclaim_reward` | **Write.** Takes a claim back by its `claimId`, and reopens the wish-list item the claim checked off. |
+| `set_reward_goal` | **Write.** Chooses the reward being saved for, or clears it. |
+| `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
+| `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
+| `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. A habit with a penalty is refused. |
 | `update_recipe` | **Write.** Changes a recipe; ingredients and steps replace the whole list. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |

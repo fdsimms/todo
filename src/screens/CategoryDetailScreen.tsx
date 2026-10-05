@@ -242,7 +242,7 @@ export function CategoryDetailScreen() {
               <PinIcon
                 filled={categoryAllPinned}
                 size={22}
-                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orange : colors.textSecondary)}
+                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orangeText : colors.textSecondary)}
               />
             </TouchableOpacity>
           }

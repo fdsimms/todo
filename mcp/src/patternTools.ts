@@ -137,7 +137,7 @@ export function habitPatterns(replica: Replica, input: { days?: number } = {}): 
     const last = rows
       .filter(r => replica.isRealCompletion(r) && r.completedAt)
       .reduce<string | undefined>((m, r) => (!m || r.completedAt! > m ? r.completedAt! : m), undefined);
-    const target = t.targetCount != null && t.targetCount >= 2
+    const target = t.targetCount != null && lib.visibility.isQuotaTask(t)
       ? {
           count: t.targetCount,
           per: (t.quotaPeriod === 'week' ? 'week' : 'day') as 'day' | 'week',
