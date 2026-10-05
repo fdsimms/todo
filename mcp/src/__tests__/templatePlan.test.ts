@@ -104,6 +104,29 @@ describe('what the normalizers would have swallowed', () => {
   });
 });
 
+describe('variants', () => {
+  const laundry = { name: 'laundry', prompt: 'Laundry?', kind: 'choice' as const, options: ['Yes', 'No'] };
+  const withVariant = (v: object) => plan({ questions: [laundry, { name: 'n', prompt: 'N?', kind: 'number' as const }], items: [{ title: 'Shirts', variants: [v as never] }] });
+
+  it('accepts a variant on a choice answer', () => {
+    expect(errors(withVariant({ question: 'laundry', answer: 'Yes', title: 'Fewer shirts' }))).toEqual([]);
+  });
+
+  it('refuses an unknown question, a non-choice, an unknown answer and an empty variant', () => {
+    expect(errors(withVariant({ question: 'nope', answer: 'Yes', title: 'x' }))[0]).toMatch(/which the plan does not define/);
+    expect(errors(withVariant({ question: 'n', answer: 'Yes', title: 'x' }))[0]).toMatch(/not a choice question/);
+    expect(errors(withVariant({ question: 'laundry', answer: 'Maybe', title: 'x' }))[0]).toMatch(/not one of its options/);
+    expect(errors(withVariant({ question: 'laundry', answer: 'Yes' }))[0]).toMatch(/no title or notes/);
+  });
+
+  it('refuses two variants for one answer', () => {
+    const p = plan({ questions: [laundry], items: [{ title: 'Shirts', variants: [
+      { question: 'laundry', answer: 'Yes', title: 'a' }, { question: 'laundry', answer: 'Yes', notes: 'b' },
+    ] }] });
+    expect(errors(p)[0]).toMatch(/two variants/);
+  });
+});
+
 describe('cross-references', () => {
   it('checks an item branch names a keyed question item and answers it offers', () => {
     const venue = { title: 'Venue?', key: 'venue', deliverableKind: 'choice' as const, deliverableOptions: ['Hall', 'Park'] };

@@ -19,7 +19,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -31,7 +31,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { describeConditions, questionLabel, toggleItemCondition } from '../utils/templateQuestions';
+import { describeConditions, describeVariants, questionLabel, setVariantText, toggleItemCondition, variantText } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -97,7 +97,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait';
+type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait';
 
 interface Props {
   visible: boolean;
@@ -179,6 +179,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
+  const [variants, setVariants] = useState<TemplateItemVariant[]>([]);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
   // nested *inside* a scroll view doesn't stop it from claiming the touch (see
@@ -275,6 +276,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
+    setVariants(item?.variants ?? draft?.variants ?? []);
     setAnswerGate(item?.answerGate ?? draft?.answerGate ?? null);
     setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
     setDueOffsetDays(item?.dueOffsetDays ?? draft?.dueOffsetDays ?? null);
@@ -340,6 +342,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   }, [visible, item, initialDraft]);
 
   const conditionSummary = describeConditions(conditions, choiceQuestions);
+  const variantSummary = describeVariants(variants, choiceQuestions);
 
   /**
    * Tick one answer on or off. A question left with no answers ticked drops its
@@ -436,6 +439,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       notes,
       optional,
       conditions,
+      variants,
       // A gate with no answers ticked would rule the task out whatever the
       // answer, so it's dropped rather than saved.
       answerGate: answerGate && answerGate.answers.length > 0 ? answerGate : null,
@@ -551,6 +555,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setTitle(prev => withoutPlaceholder(prev, name));
     setNotes(prev => withoutPlaceholder(prev, name));
     setLocationText(prev => withoutPlaceholder(prev, name));
+    setVariants(prev => prev.map(v => ({
+      ...v,
+      ...(v.title ? { title: withoutPlaceholder(v.title, name) } : {}),
+      ...(v.notes ? { notes: withoutPlaceholder(v.notes, name) } : {}),
+    })));
     // A subtask or step whose whole title was the blank has nothing left to be,
     // so it goes with it rather than sitting there as an untitled row.
     setSubtasks(subtasks
@@ -743,6 +752,50 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     );
                   })}
                 </View>
+              </View>
+            ))}
+          </CollapsibleField>
+        </View>
+      )}
+
+      {/* Different text per answer. Same gate as Only when (a choice question to
+          key on), and a field of its own rather than a mode of that one: it
+          changes what the task says, where that one changes whether it's ticked. */}
+      {choiceQuestions.length > 0 && (
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Different text for"
+            summary={variantSummary ?? undefined}
+            emptySummary="Same for every answer"
+            hint="Replaces the title or notes above when the run's answer is the one named. Leave a field empty to keep the text above. Blanks work in it too."
+            expanded={fieldOpen('variants', variantSummary !== null)}
+            onToggle={() => toggleField('variants', variantSummary !== null)}
+          >
+            {choiceQuestions.map(question => (
+              <View key={question.id} style={styles.conditionBlock}>
+                <Text style={styles.conditionLabel} numberOfLines={1}>{questionLabel(question)}</Text>
+                {question.options.map(option => (
+                  <View key={option} style={styles.conditionBlock}>
+                    <Text style={styles.conditionLabel} numberOfLines={1}>{option}</Text>
+                    <TextField
+                      style={styles.notesInput}
+                      value={variantText(variants, question.id, option, 'title')}
+                      onChangeText={text => setVariants(prev => setVariantText(prev, question.id, option, 'title', text))}
+                      placeholder={`Title when ${option}`}
+                      placeholderTextColor={colors.textTertiary}
+                      accessibilityLabel={`Title when ${questionLabel(question)} is ${option}`}
+                    />
+                    <TextField
+                      style={styles.notesInput}
+                      value={variantText(variants, question.id, option, 'notes')}
+                      onChangeText={text => setVariants(prev => setVariantText(prev, question.id, option, 'notes', text))}
+                      placeholder={`Notes when ${option}`}
+                      placeholderTextColor={colors.textTertiary}
+                      accessibilityLabel={`Notes when ${questionLabel(question)} is ${option}`}
+                      multiline
+                    />
+                  </View>
+                ))}
               </View>
             ))}
           </CollapsibleField>
