@@ -73,6 +73,11 @@ import type { CoinEntry, Reward, Task } from '../types';
 /** How many history rows to draw. The balance is still summed over all of them. */
 const HISTORY_LIMIT = 50;
 
+/** Rows each long section shows before "Show more", and how many that button reveals. */
+const HISTORY_PREVIEW = 5;
+const HISTORY_STEP = 20;
+const LIST_PREVIEW = 4;
+
 /** The coin beside the balance. A hero, so a literal size like the number's own. */
 const BALANCE_COIN_SIZE = 52;
 
@@ -93,6 +98,15 @@ type Draft =
   | { mode: 'new' }
   | { mode: 'edit'; id: string }
   | { mode: 'item'; taskId: string };
+
+/** The footer row of a card that shows only part of its list. */
+function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () => void; styles: ReturnType<typeof makeStyles> }) {
+  return (
+    <View style={[styles.historyRow, styles.historyDivider, styles.showMore]}>
+      <InlineAction label={label} variant="neutral" onPress={() => { haptics.tap(); onPress(); }} />
+    </View>
+  );
+}
 
 export function RewardsScreen() {
   const colors = useColors();
@@ -176,6 +190,10 @@ export function RewardsScreen() {
     [list, tasks, pricedTaskIds],
   );
   const [listPickerOpen, setListPickerOpen] = useState(false);
+  // Long sections show a few rows and grow on request, so a big wish list or a
+  // year of history doesn't push everything else off the page.
+  const [historyShown, setHistoryShown] = useState(HISTORY_PREVIEW);
+  const [listExpanded, setListExpanded] = useState(false);
 
   // Live bounties, worth the most first. Posted from a task's editor, so this
   // section lists and withdraws them rather than posting.
@@ -354,7 +372,11 @@ export function RewardsScreen() {
     );
   }
 
-  const history = entries.slice(0, HISTORY_LIMIT);
+  const recentEntries = entries.slice(0, HISTORY_LIMIT);
+  const history = recentEntries.slice(0, historyShown);
+  const historyHidden = recentEntries.length - history.length;
+  const pickableItems = listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id));
+  const pickableShown = listExpanded ? pickableItems : pickableItems.slice(0, LIST_PREVIEW);
   const linkApps = linkAppsFor(kitchenEnabled);
   const customLink = knownLinkAppFor(draftLink) ? '' : draftLink;
 
@@ -700,25 +722,30 @@ export function RewardsScreen() {
             ) : (
               <>
                 {draft?.mode === 'item' && renderDraft()}
-                {listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id)).length === 0 ? (
+                {pickableItems.length === 0 ? (
                   draft?.mode !== 'item' && (
                     <EmptyNote icon="list-outline">{`Everything on ${list.title} is already a reward.`}</EmptyNote>
                   )
                 ) : (
                   <View style={styles.historyCard}>
-                    {listItems
-                      .filter(t => !(draft?.mode === 'item' && draft.taskId === t.id))
-                      .map((item, i) => (
-                        <View key={item.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
-                          <Text style={[styles.historyLabel, styles.historyText]}>{item.title}</Text>
-                          <InlineAction
-                            label="Price it"
-                            icon="pricetag-outline"
-                            onPress={() => openDraft({ mode: 'item', taskId: item.id })}
-                            accessibilityLabel={`Make ${item.title} a reward`}
-                          />
-                        </View>
-                      ))}
+                    {pickableShown.map((item, i) => (
+                      <View key={item.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                        <Text style={[styles.historyLabel, styles.historyText]}>{item.title}</Text>
+                        <InlineAction
+                          label="Price it"
+                          icon="pricetag-outline"
+                          onPress={() => openDraft({ mode: 'item', taskId: item.id })}
+                          accessibilityLabel={`Make ${item.title} a reward`}
+                        />
+                      </View>
+                    ))}
+                    {pickableItems.length > LIST_PREVIEW && (
+                      <ShowMoreRow
+                        label={listExpanded ? 'Show less' : `Show ${pickableItems.length - LIST_PREVIEW} more`}
+                        onPress={() => setListExpanded(open => !open)}
+                        styles={styles}
+                      />
+                    )}
                   </View>
                 )}
                 <View style={styles.addRow}>
@@ -782,6 +809,13 @@ export function RewardsScreen() {
                 </View>
               </View>
             ))}
+            {(historyHidden > 0 || historyShown > HISTORY_PREVIEW) && (
+              <ShowMoreRow
+                label={historyHidden > 0 ? `Show ${Math.min(historyHidden, HISTORY_STEP)} more` : 'Show less'}
+                onPress={() => setHistoryShown(n => (historyHidden > 0 ? n + HISTORY_STEP : HISTORY_PREVIEW))}
+                styles={styles}
+              />
+            )}
           </View>
         )}
       </ScrollView>
@@ -915,6 +949,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   historyDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   historyText: { flex: 1 },
+  showMore: { justifyContent: 'center' },
   historyLabel: { color: colors.text, fontSize: font.md },
   historyMeta: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   historyAmount: { fontSize: font.md, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
