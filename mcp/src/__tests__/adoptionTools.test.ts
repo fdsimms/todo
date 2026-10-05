@@ -26,10 +26,23 @@ function fakeReplica(opts: {
   tags?: string[];
   templates?: unknown[];
   projects?: unknown[];
+  kitchenEnabled?: boolean;
+  recipes?: number;
+  planned?: number;
+  people?: unknown[];
+  moodLogs?: number;
+  milestones?: unknown[];
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
-    settings: () => ({ simpleMode: !!opts.simpleMode, completedRetentionDays: null }),
+    settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null }),
+    recipes: () => Array.from({ length: opts.recipes ?? 0 }),
+    mealPlan: () => Array.from({ length: opts.planned ?? 0 }),
+    todayKey: () => '2026-10-05',
+    shiftDayKey: (k: string) => k,
+    people: () => opts.people ?? [],
+    allMoodLogs: () => Array.from({ length: opts.moodLogs ?? 0 }),
+    milestones: () => opts.milestones ?? [],
     agentNotes: () => (opts.notes ?? []).map((text, i) => ({ id: String(i), text })),
     tagRegistry: () => opts.tags ?? [],
     templates: () => opts.templates ?? [],
@@ -89,6 +102,32 @@ describe('unusedFeatures', () => {
     const result = unusedFeatures(fakeReplica({ tasks: manyOpen(40) }), { limit: 1 });
     expect(result.suggestions).toHaveLength(1);
     expect(result.more).toBeGreaterThan(0);
+  });
+});
+
+describe('kitchen, people and mood checks', () => {
+  const ids = (r: Replica) => unusedFeatures(r, { limit: 30 }).suggestions.map(s => s.id);
+
+  it('suggests planning meals only when recipes exist and nothing is planned', () => {
+    expect(ids(fakeReplica({ recipes: 6 }))).toContain('meal_plan');
+    expect(ids(fakeReplica({ recipes: 6, planned: 2 }))).not.toContain('meal_plan');
+    expect(ids(fakeReplica({ recipes: 2 }))).not.toContain('meal_plan');
+  });
+
+  it('never suggests a kitchen feature while the kitchen is switched off', () => {
+    expect(ids(fakeReplica({ recipes: 6, kitchenEnabled: false }))).not.toContain('meal_plan');
+  });
+
+  it('suggests birthdays when people are saved and none has one', () => {
+    const person = (birthdayMonth: number | null) => ({ archived: false, kind: 'individual', birthdayMonth });
+    expect(ids(fakeReplica({ people: [person(null), person(null), person(null)] }))).toContain('birthdays');
+    expect(ids(fakeReplica({ people: [person(null), person(null), person(4)] }))).not.toContain('birthdays');
+  });
+
+  it('suggests milestones only once there are enough mood check-ins to compare', () => {
+    expect(ids(fakeReplica({ moodLogs: 20 }))).toContain('milestones');
+    expect(ids(fakeReplica({ moodLogs: 20, milestones: [{}] }))).not.toContain('milestones');
+    expect(ids(fakeReplica({ moodLogs: 3 }))).not.toContain('milestones');
   });
 });
 

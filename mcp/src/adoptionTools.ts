@@ -45,6 +45,8 @@ export interface AdoptionCheck {
   settingsQuery?: string;
   /** Hidden along with the rest of the advanced half of the app in simplified mode. */
   advanced?: boolean;
+  /** Groceries, recipes and the meal plan: never suggested while the person has that area switched off. */
+  kitchen?: boolean;
   /** What the data showed, or null when the check does not apply. */
   evidence: (ctx: AdoptionContext) => string | null;
 }
@@ -181,6 +183,44 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'meal_plan',
+    title: 'Meal plan',
+    benefit: 'Planning meals on the calendar lets the app add the shopping and cooking tasks for them, and check what you already have.',
+    kitchen: true,
+    evidence: ({ replica }) => {
+      const recipes = replica.recipes().length;
+      const today = replica.todayKey();
+      const planned = replica.mealPlan(replica.shiftDayKey(today, -14), replica.shiftDayKey(today, 14)).length;
+      return recipes >= 5 && planned === 0
+        ? `${recipes} recipes are saved and nothing is planned in the four weeks around today.`
+        : null;
+    },
+  },
+  {
+    id: 'birthdays',
+    title: 'Birthdays',
+    benefit: 'A birthday on a person adds a reminder on the day, and optionally a task to get a gift ahead of it.',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const people = replica.people().filter(p => !p.archived && p.kind === 'individual');
+      return people.length >= 3 && people.every(p => p.birthdayMonth == null)
+        ? `${people.length} people are saved and none has a birthday.`
+        : null;
+    },
+  },
+  {
+    id: 'milestones',
+    title: 'Milestones',
+    benefit: 'Marking the day something changed (a new medicine, a new job) lets the Mood screen compare how you felt before and after.',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const logs = replica.allMoodLogs().length;
+      return logs >= 14 && replica.milestones().length === 0
+        ? `${logs} mood check-ins are logged and no milestone is marked.`
+        : null;
+    },
+  },
+  {
     id: 'retention',
     title: 'Keeping completed tasks',
     benefit: 'Every completion leaves a row behind, so repeating tasks pile up. A retention window clears old ones and keeps the app quick.',
@@ -224,7 +264,7 @@ export function unusedFeatures(
   checks: readonly AdoptionCheck[] = ADOPTION_CHECKS,
 ): UnusedFeaturesResult {
   const limit = Math.max(1, input.limit ?? DEFAULT_SUGGESTION_LIMIT);
-  const simple = replica.settings().simpleMode;
+  const { simpleMode: simple, kitchenEnabled: kitchenOn } = replica.settings();
   const all = replica.tasks().filter(t => !t.parentId);
   const ctx: AdoptionContext = { replica, all, open: all.filter(t => !t.completed && !t.archived) };
   const notes = replica.agentNotes().map(n => n.text.toLowerCase());
@@ -233,6 +273,7 @@ export function unusedFeatures(
   const found: UnusedFeature[] = [];
   for (const check of checks) {
     if (simple && check.advanced) continue;
+    if (!kitchenOn && check.kitchen) continue;
     const seen = check.evidence(ctx);
     if (!seen) continue;
     if (notes.some(text => text.includes(check.id))) {

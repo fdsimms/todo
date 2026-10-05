@@ -79,7 +79,7 @@ only the fallback until the first sync.
 | `completion_history` | What got done over a range, with a summary by day, weekday, hour, category, project and tag. Missed occurrences are counted separately. |
 | `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects and the most-missed repeats. Lists, does not judge. |
 | `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
-| `unused_features` | Features the person's own data suggests they would benefit from and are not using (many tasks and no estimates, several projects and no templates), with what was seen, what the feature does and the Settings path. Declined ones are silenced by an agent note naming the id. |
+| `unused_features` | Features the person's own data suggests they would benefit from and are not using (many tasks and no estimates, saved recipes and no planned meals, people and no birthdays), with what was seen, what the feature does and the Settings path. Declined ones are silenced by an agent note naming the id. |
 | `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
