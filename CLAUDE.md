@@ -401,6 +401,7 @@ file: the two maps are indexes, not write-ups.
 | the record of what the app wrote or deleted unattended | `src/utils/unattendedLedger.ts` + `src/store/useUnattendedStore.ts` + `UnattendedEntry` in `src/types/index.ts`. Writes come from `generatedTaskSync.ts`, `sweepExpiredTasks`, `purgeOldCompletedTasks` and the two generators that create outside it (`recordGenerated` in `useTaskStore`); grep `recordGenerated`/`recordMany` for the current set. It records the *effect*, never the catch-up pass that ran; nothing about the user; and not a recurrence or quota successor |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) — see `docs/arch/reminders-import.md` |
 | the grocery list and a Reminders list kept in step both ways | `src/utils/groceryReminderMirror.ts` — see `docs/arch/reminders-import.md` |
+| a screen that crashes on open, and the app reopening onto it at every launch | `src/utils/launchGuard.ts` — a screen is marked unproven when entered and trusted after `HEALTHY_AFTER_MS`; a launch that finds the mark on the screen it would restore opens Today instead. It catches only a fast crash and doesn't stop re-entering the screen by hand |
 | the Face ID app lock, and the cover over the app-switcher snapshot | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` + `modules/todo-privacy-shield/` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
@@ -937,6 +938,8 @@ reach for `KeyboardAvoidingView` instead — see the hook's own doc comment and 
 `EditorSheet` for why the two fight each other. The exception is a small centered card rather than
 a full scrollable sheet (`LogMealPrompt`, `TripBudgetPrompt`), where `KeyboardAvoidingView` is
 right.
+
+**A function called from a Reanimated worklet (the callback of `useAnimatedStyle`, `useDerivedValue`, `runOnUI`) must start with a `'worklet'` directive.** The callback is workletized for you but what it calls is not, and calling a plain function on the UI thread is a fatal error the moment the component mounts. It typechecks and no Jest test runs a worklet, so `noNonWorkletInWorklet.test.ts` fails the build on it instead; it shipped as a Rewards screen that crashed on open.
 
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 

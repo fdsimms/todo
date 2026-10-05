@@ -115,7 +115,7 @@ public class TodoEventKitBridgeModule: Module {
     /// Reminders share the lookup and are left out.
     AsyncFunction("eventsWithExternalIdentifier") { (externalId: String) -> [[String: Any]] in
       if externalId.isEmpty { return [] }
-      let items: [EKCalendarItem] = (try? self.store.calendarItems(withExternalIdentifier: externalId)) ?? []
+      let items: [EKCalendarItem] = self.store.calendarItems(withExternalIdentifier: externalId)
       var out: [[String: Any]] = []
       for item in items {
         guard let event = item as? EKEvent else { continue }

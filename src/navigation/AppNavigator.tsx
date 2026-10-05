@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CoinIcon } from '../components/CoinIcon';
 import { COIN_ICON } from '../constants/coinIcon';
+import { clearUnprovenScreen, markScreenUnproven, readUnprovenScreen, screenToRestore } from '../utils/launchGuard';
 import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
@@ -322,7 +323,17 @@ const MainTabs = React.memo(function MainTabs({
 // re-render MainTabs) on every tab switch for the rest of the session, which
 // is exactly what MainTabs's own React.memo exists to prevent.
 function initialScreenFromSettings(): string {
-  const { lastVisitedScreen, kitchenEnabled, simpleMode } = useSettingsStore.getState();
+  const { kitchenEnabled, simpleMode } = useSettingsStore.getState();
+  // A screen the last launch never got past (see launchGuard.ts) is not
+  // restored, or a screen that crashes on open would crash every cold start.
+  const { screen: lastVisitedScreen, tripped } = screenToRestore(
+    useSettingsStore.getState().lastVisitedScreen,
+    readUnprovenScreen(),
+  );
+  if (tripped) {
+    clearUnprovenScreen();
+    useSettingsStore.getState().setLastVisitedScreen(null);
+  }
   if (!lastVisitedScreen || !RESTORABLE_SCREENS.has(lastVisitedScreen)) return 'Today';
   if (KITCHEN_SCREENS.has(lastVisitedScreen) && !kitchenEnabled) return 'Today';
   // Same question the drawer asks, with the same counts — reopening onto a
@@ -338,6 +349,8 @@ function initialScreenFromSettings(): string {
     medications: useMedicationStore.getState().logs.length,
     foodLog: useFoodLogStore.getState().totalCount,
   })) return 'Today';
+  // Restored but unproven until it has stayed up (a restore to Today needs no guard).
+  if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);
   return lastVisitedScreen;
 }
 
@@ -399,6 +412,7 @@ export default function AppNavigator() {
     // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
     // so no further check is needed on write.
     setLastVisitedScreen(currentName);
+    markScreenUnproven(currentName);
     // The side menu's Recent row, and which screen a hub row opens.
     pushRecentScreen(currentName);
     setActiveTab(currentName);
