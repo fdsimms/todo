@@ -291,12 +291,16 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
     return (
       <View style={[styles.floatingWrap, { bottom: keyboardHeight }]}>
         {bar}
+        {/* The keyboard's top corners are rounded, so without this the page
+            shows through beside them. Real accessory views get this fill
+            from iOS; the floating stand-in has to paint it. */}
+        <View style={styles.cornerFill} />
       </View>
     );
   }
 
   return (
-    <InputAccessoryView nativeID={nativeID}>
+    <InputAccessoryView nativeID={nativeID} backgroundColor={colors.bgSecondary}>
       {bar}
     </InputAccessoryView>
   );
@@ -311,6 +315,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: 0,
     right: 0,
   },
+  cornerFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '100%',
+    height: radius.lg,
+    backgroundColor: colors.bgSecondary,
+  },
   bar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -320,11 +332,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
-    // Rounds to meet the keyboard's own top corners, which sit flush
-    // against this bar's bottom edge.
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    borderCurve: 'continuous',
   },
   tokenGroup: {
     flexDirection: 'row',
