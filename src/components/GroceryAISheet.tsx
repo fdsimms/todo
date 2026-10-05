@@ -479,7 +479,7 @@ function makeStyles(colors: Colors) {
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
-    photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
+    photoError: { color: colors.redText, fontSize: font.sm, textAlign: 'center' },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -500,7 +500,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
+    checkboxOn: { backgroundColor: colors.purpleFill, borderColor: colors.purpleFill },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },

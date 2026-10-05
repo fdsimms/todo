@@ -210,7 +210,7 @@ export function NotificationSettings() {
         icon={notifPermission === 'granted' ? 'notifications' : 'notifications-off-outline'}
         iconColor={
           notifPermission === 'granted' ? colors.accent
-          : notifPermission === 'denied' ? colors.warning
+          : notifPermission === 'denied' ? colors.warningText
           : undefined
         }
         label="Reminders"
@@ -246,7 +246,7 @@ export function NotificationSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label={`${reminderStats.scheduled} of ${reminderStats.wanted} reminders scheduled`}
             hint={`iOS only holds ${MAX_PENDING_REMINDERS} at once, so the ${reminderStats.dropped} furthest out ${reminderStats.dropped === 1 ? 'is' : 'are'} waiting. They’re scheduled automatically as nearer ones pass.`}
           />

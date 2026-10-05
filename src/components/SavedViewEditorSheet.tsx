@@ -297,7 +297,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
                   onPress={() => { haptics.tap(); setIcon(glyph); }}
                   style={[
                     styles.iconChoice,
-                    { backgroundColor: active ? colors.accent : colors.bgTertiary },
+                    { backgroundColor: active ? colors.accentFill : colors.bgTertiary },
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -458,7 +458,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   deleteLabel: {
     fontSize: font.md,
-    color: colors.red,
+    color: colors.redText,
   },
   deleteHint: {
     fontSize: font.sm,

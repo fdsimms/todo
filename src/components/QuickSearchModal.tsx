@@ -776,7 +776,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.bold,
   },
   archivedLabel: {
-    color: colors.orange,
+    color: colors.orangeText,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },

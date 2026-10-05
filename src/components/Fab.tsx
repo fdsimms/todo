@@ -59,7 +59,7 @@ export function fabCircle(colors: Colors, size: number) {
  * an accent halo reads as the wrong button lit from behind by the right one.
  */
 export function fabCancelCircle(colors: Colors) {
-  return { backgroundColor: colors.red, shadowColor: colors.red };
+  return { backgroundColor: colors.redFill, shadowColor: colors.red };
 }
 
 /** Glyph size for a given button size — 56 and 48 are the screen tiers, 36 the in-card one. */
@@ -615,7 +615,7 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold,
   },
   dragLabelCancel: {
-    backgroundColor: colors.red,
+    backgroundColor: colors.redFill,
     shadowColor: colors.red,
   },
   well: {

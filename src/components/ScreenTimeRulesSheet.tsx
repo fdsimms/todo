@@ -134,7 +134,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
           {authorization !== null && authorization !== 'approved' && (
             <RuleSheetNoticeCard
               icon="hourglass-outline"
-              iconColor={authorization === 'denied' ? colors.warning : colors.textSecondary}
+              iconColor={authorization === 'denied' ? colors.warningText : colors.textSecondary}
               title="Screen Time access"
               hint={
                 authorization === 'denied'

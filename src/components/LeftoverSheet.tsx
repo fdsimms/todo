@@ -687,7 +687,7 @@ export function LeftoverSheet({
               <View style={styles.sep} />
               <SheetActionRow
                 icon="trash-bin-outline"
-                color={colors.orange}
+                color={colors.orangeText}
                 label="Threw it out"
                 onPress={() => { haptics.warning(); dismiss(() => onFinish('tossed')); }}
                 accessibilityLabel="Mark this leftover thrown out"
@@ -713,7 +713,7 @@ export function LeftoverSheet({
               <View style={styles.sep} />
               <SheetActionRow
                 icon="close-circle-outline"
-                color={colors.red}
+                color={colors.redText}
                 destructive
                 label="Delete"
                 onPress={handleDeleteLeftover}

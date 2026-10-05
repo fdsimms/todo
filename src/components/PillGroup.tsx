@@ -380,7 +380,7 @@ const makeStyles = (colors: Colors, surface: Surface) => {
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     pillTextSizer: { fontWeight: fontWeight.semibold, opacity: 0 },
     pillTextOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, textAlign: 'center' },
-    pillTextNegative: { color: colors.red, textDecorationLine: 'line-through' },
+    pillTextNegative: { color: colors.redText, textDecorationLine: 'line-through' },
     morePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     // Weighted, so the disclosure doesn't read as one more option in the grid
     // it sits at the end of.
@@ -388,6 +388,6 @@ const makeStyles = (colors: Colors, surface: Surface) => {
     addWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
     addButton: { backgroundColor: pillBg },
     empty: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.sm },
-    error: { fontSize: font.sm, color: colors.red, marginTop: spacing.sm },
+    error: { fontSize: font.sm, color: colors.redText, marginTop: spacing.sm },
   });
 };

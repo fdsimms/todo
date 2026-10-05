@@ -1327,7 +1327,7 @@ function makeStyles(colors: Colors) {
     },
     groupBlock: { marginBottom: spacing.sm },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
-    photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
+    photoError: { color: colors.redText, fontSize: font.sm, textAlign: 'center' },
     nameCard: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,

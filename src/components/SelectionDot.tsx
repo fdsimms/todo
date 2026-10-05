@@ -66,10 +66,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: SELECTION_DOT_SIZE,
     borderRadius: radius.full,
     borderWidth: border.md,
-    // A step brighter than the checkbox's own ring (bgQuaternary). This one has
-    // to be legible at rest across a whole list — that's what says "you are
-    // still selecting" — where the checkbox only has to be findable next to the
-    // text it belongs to.
+    // A step brighter than the checkbox's own ring (controlBorder, 3:1). This
+    // one has to be legible at rest across a whole list — that's what says "you
+    // are still selecting" — where the checkbox only has to be findable next to
+    // the text it belongs to.
     borderColor: colors.textTertiary,
     alignItems: 'center',
     justifyContent: 'center',

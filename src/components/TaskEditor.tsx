@@ -6340,7 +6340,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               accessibilityLabel="Pin to Today"
               accessibilityState={{ checked: pinned }}
             >
-              <PinIcon filled={pinned} size={18} color={pinned ? colors.orange : colors.textSecondary} />
+              <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pin to Today</Text>
                 <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
@@ -6358,7 +6358,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 accessibilityLabel="Pin every occurrence"
                 accessibilityState={{ checked: pinEachOccurrence }}
               >
-                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orange : colors.textSecondary} />
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Pin every occurrence</Text>
                   <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
@@ -6487,7 +6487,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons
                         name={app.icon as never}
                         size={13}
-                        color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                        color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
                       />
                       <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
                         {app.name}
@@ -6667,7 +6667,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     size={18}
                     color={
                       isStreakAtRecord(task) ? colors.red
-                      : task.streakCount > 0 ? colors.orange
+                      : task.streakCount > 0 ? colors.orangeText
                       : colors.textSecondary
                     }
                   />
@@ -6719,7 +6719,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   accessibilityLabel="Show streak on row"
                   accessibilityState={{ checked: showStreak }}
                 >
-                  <Ionicons name="flame" size={18} color={showStreak ? colors.orange : colors.textSecondary} />
+                  <Ionicons name="flame" size={18} color={showStreak ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Show streak on row</Text>
                     <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
@@ -6751,7 +6751,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   accessibilityLabel="Streak requires on-time completion"
                   accessibilityState={{ checked: streakRequiresWindow }}
                 >
-                  <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orange : colors.textSecondary} />
+                  <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak requires on-time completion</Text>
                     <Text style={styles.optionHint}>Completing outside this task's time window still counts as done, but restarts the streak instead of continuing it</Text>
@@ -6806,7 +6806,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, { color: colors.red }]}>Delete Task</Text>
+              <Text style={[styles.optionLabel, { color: colors.redText }]}>Delete Task</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -7022,13 +7022,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, alignItems: 'center',
     borderWidth: 2, borderColor: 'transparent',
   },
-  timePillActive: { backgroundColor: colors.accent },
+  timePillActive: { backgroundColor: colors.accentFill },
   // Which of Start/End the wheel below is currently set to — separate from
   // timePillActive, which just means "has a value", so a pill can show both,
   // either, or neither.
   timePillEditing: { borderColor: colors.text },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  timePillTextActive: { color: colors.bg, fontWeight: '600' },
+  timePillTextActive: { color: colors.onAccent, fontWeight: '600' },
   windowPillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
@@ -7150,9 +7150,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  linkAppChipActive: { backgroundColor: colors.accent },
+  linkAppChipActive: { backgroundColor: colors.accentFill },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  linkAppChipTextActive: { color: colors.bg, fontWeight: '600' },
+  linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
   linkCustomRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
@@ -7190,16 +7190,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: spacing.smd, paddingVertical: 5,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  schedulePillActive: { backgroundColor: colors.accent },
+  schedulePillActive: { backgroundColor: colors.accentFill },
   schedulePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  schedulePillTextActive: { color: colors.bg },
+  schedulePillTextActive: { color: colors.onAccent },
   seriesRepeatHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   streakApplyBtn: {
     marginLeft: 'auto', paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.orange,
+    borderRadius: radius.full, backgroundColor: colors.orangeFill,
   },
   streakApplyBtnDisabled: { backgroundColor: colors.bgTertiary },
   streakApplyText: { color: colors.onAccent, fontSize: font.sm, fontWeight: '600' },
@@ -7261,14 +7261,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
     borderCurve: 'continuous',
     borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   subtaskBoxDone: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
+    backgroundColor: colors.greenFill,
+    borderColor: colors.greenFill,
   },
   subtaskTitleWrapper: { flex: 1 },
   subtaskTitle: {
@@ -7308,11 +7308,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  chainItemDotActive: { backgroundColor: colors.accent },
+  chainItemDotActive: { backgroundColor: colors.accentFill },
   chainItemDotText: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
   },
-  chainItemDotTextActive: { color: colors.bg },
+  chainItemDotTextActive: { color: colors.onAccent },
   chainItemTitleWrapper: { flex: 1 },
   chainItemTitle: {
     flex: 1, color: colors.text, fontSize: font.md,

@@ -856,8 +856,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   taskTitleUnchecked: { color: colors.textSecondary },
   taskTitleBlocked: { color: colors.textTertiary },
   taskMeta: { color: colors.textSecondary, fontSize: font.xs },
-  taskMetaRed: { color: colors.red },
-  taskMetaOrange: { color: colors.orange },
+  taskMetaRed: { color: colors.redText },
+  taskMetaOrange: { color: colors.orangeText },
   moreLine: {
     color: colors.textTertiary,
     fontSize: font.sm,
@@ -881,8 +881,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
   },
   dayValue: { color: colors.textTertiary, fontSize: font.xs },
-  dayValueBusy: { color: colors.orange },
-  dayValueFull: { color: colors.red },
+  dayValueBusy: { color: colors.orangeText },
+  dayValueFull: { color: colors.redText },
   ghostLine: {
     color: colors.textTertiary,
     fontSize: font.sm,
