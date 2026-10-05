@@ -1,4 +1,5 @@
 import type { CalendarRequestStatus, Project, UnattendedEntry } from '../types';
+import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from './agentPantryRevert';
 
 /**
  * Whether an agent's write to something that is not a task can be taken back.
@@ -18,6 +19,9 @@ import type { CalendarRequestStatus, Project, UnattendedEntry } from '../types';
  * - A grocery item taken off the list. Putting it back would have to rebuild its
  *   quantity, aisle and trolley from nothing.
  * - An automation switch. Each is its own setting with its own setter.
+ *
+ * A pantry change *is* undoable, by snapshot (agentPantryRevert.ts), because what it touches is a
+ * small, known set of columns that can be compared and written back.
  */
 
 /** The project fields an agent edit can change and a restore can write back. Mirrors `updateProject`'s patch. */
@@ -33,7 +37,7 @@ export type RuleListName = 'title' | 'weather' | 'event' | 'health' | 'screenTim
 export const RULE_LIST_NAMES: readonly RuleListName[] = ['title', 'weather', 'event', 'health', 'screenTime'];
 
 /** What the plan needs to know about the world, so it can be tested without a store. */
-export interface RecordState {
+export interface RecordState extends PantryRecordState {
   project(id: string): Project | null;
   /** The item's entry on the list at home, or null when it is not on it. */
   groceryHome(itemId: string): { checked: boolean } | null;
@@ -53,6 +57,7 @@ export type AgentRecordPlan =
   | { kind: 'noteRemove'; text: string }
   | { kind: 'noteAdd'; text: string }
   | { kind: 'cancelCalendarRequest'; id: string }
+  | Exclude<PantryRecordPlan, { kind: 'none' }>
   | { kind: 'none'; reason: string | null };
 
 const NONE: AgentRecordPlan = { kind: 'none', reason: null };
@@ -145,6 +150,9 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       return NONE;
     }
 
+    case 'pantry':
+      return pantryRecordPlan(entry, state);
+
     default:
       return NONE;
   }
@@ -156,11 +164,14 @@ export function agentRecordLabel(plan: AgentRecordPlan): string | null {
     case 'groceryRemove':
     case 'removeRecord':
     case 'noteRemove':
+    case 'removeLeftover':
       return 'Remove';
     case 'restoreProject':
     case 'restoreRules':
     case 'groceryCheck':
     case 'noteAdd':
+    case 'restorePantryItem':
+    case 'restoreLeftover':
       return 'Undo';
     // Not "Cancel": the confirmation's own dismiss button already says that.
     case 'cancelCalendarRequest':

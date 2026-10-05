@@ -10,6 +10,7 @@
  */
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useMoodStore } from '../store/useMoodStore';
@@ -51,6 +52,9 @@ export function agentUndoReaders(): AgentUndoReaders {
         case 'medication': return useMedicationStore.getState().logs.some(e => e.id === id);
       }
     },
+    groceryItem: id => useGroceryStore.getState().items.find(i => i.id === id) ?? null,
+    itemBoxes: itemId => useGroceryStore.getState().itemProducts.filter(p => p.itemId === itemId),
+    leftover: id => useLeftoverStore.getState().leftovers.find(l => l.id === id) ?? null,
     ruleList: ruleListOf,
     hasNote: text => readAgentNotes().some(n => sameText(n.text, text)),
     calendarRequest: id => dbGetCalendarRequest(id),
@@ -85,6 +89,11 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
       else s.setScreenTimeRules(rules);
       return;
     }
+    case 'restorePantryItem':
+      useGroceryStore.getState().restorePantry(plan.itemId, plan.patch, plan.boxes, plan.removeBoxIds, plan.removeFromList);
+      return;
+    case 'restoreLeftover': useLeftoverStore.getState().restoreLeftover(plan.id, plan.patch); return;
+    case 'removeLeftover': useLeftoverStore.getState().deleteLeftover(plan.id); return;
     case 'noteRemove': {
       const notes = readAgentNotes();
       const note = notes.find(n => sameText(n.text, plan.text));

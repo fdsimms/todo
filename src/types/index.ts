@@ -35,7 +35,7 @@ export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
  * How hard a task is to make yourself do, apart from how long it takes — see
  * `Task.difficulty`.
  */
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
 
 /**
  * Answers to the three questions the backfill screen asks about every task,
@@ -997,6 +997,8 @@ export type UnattendedActor = 'app' | 'agent';
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
   | 'automation' | 'note' | 'stack' | 'reward'
+  // A change to what is in the kitchen (`pantryWrite.ts`), undoable by snapshot (`agentPantryRevert.ts`).
+  | 'pantry'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
   | 'event';
 

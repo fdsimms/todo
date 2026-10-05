@@ -564,6 +564,16 @@ export function seedDemoData(): void {
     difficulty: 'hard',
   });
 
+  // The other end of the rating: a chore that belongs on the list and isn't
+  // worth paying for, which is what Trivial is for.
+  addTask({
+    title: 'Water the desk plant',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    effort: 1,
+    difficulty: 'trivial',
+  });
+
   // A place on a task is what the Location row in the editor is for — same
   // reasoning as the phone number above, and the kind of task the "Import
   // event" add-menu entry exists to create without retyping any of this.

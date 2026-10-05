@@ -191,3 +191,13 @@ describe('filterUnattended', () => {
     expect(filterUnattended(entries, null).map(e => e.id)).toEqual(['a', 'b']);
   });
 });
+
+describe('a kind this build has no spec for', () => {
+  const unknown = () => entry({ kind: 'fromNewerBuild' as never });
+
+  it('still names and icons the row, and stays out of the filter pills', () => {
+    expect(unattendedSource(unknown())).toBe('Automatic task');
+    expect(unattendedIcon(unknown())).toBeTruthy();
+    expect(unattendedKinds([unknown()])).toEqual([]);
+  });
+});
