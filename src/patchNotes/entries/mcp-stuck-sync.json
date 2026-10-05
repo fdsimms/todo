@@ -1,0 +1,1 @@
+{ "message": "Fixed Claude, connected to your sync server, hanging on every request after one sync stalled. A request now waits at most 20 seconds for a sync in progress and then answers from what the server already has, and the app's own sync with your server no longer waits forever on a download that stops partway.", "date": "2026-10-04" }
