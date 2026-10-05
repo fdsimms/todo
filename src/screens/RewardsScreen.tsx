@@ -845,8 +845,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     // Warm, where every other card on the page is grey: this one is the point
-    // of the screen, and the gold is the coin's own colour.
-    backgroundColor: colors.warningBg,
+    // of the screen, and the gold is the coin's own colour. `brand` rather than
+    // `done`, which Light darkens only so a checkbox holds 3:1 on a card; a tint
+    // needs no contrast, and warningBg is orange, which means something else.
+    backgroundColor: colors.brand + '29',
     alignItems: 'center',
   },
   burstAnchor: { position: 'absolute', left: 0, right: 0 },

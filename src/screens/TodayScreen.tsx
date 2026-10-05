@@ -4228,7 +4228,7 @@ export function TodayScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${coinTotal} coins. Open Rewards`}
                   >
-                    <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                    <CoinIcon size={iconSize.sm} color={colors.done} filled />
                     <Text style={styles.coinPillText}>{coinTotal}</Text>
                   </TouchableOpacity>
                 )}
