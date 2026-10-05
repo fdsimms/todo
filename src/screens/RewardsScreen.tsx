@@ -60,14 +60,10 @@ import type { CoinEntry, Reward, Task } from '../types';
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
  *
- * Off until switched on here, which is why the switch lives on this screen
- * rather than in Settings: the screen is where somebody finds out what the
- * feature is, so it's where they decide whether they want it.
- *
  * One scrolling page: the balance (with the goal you're saving for, if any,
  * and the earning rule spelled out), the rewards you've set, items from the
  * list you've chosen to price as rewards, starter ideas, and the history the
- * balance is summed from.
+ * balance is summed from. Coins and rewards are enabled/disabled in Settings.
  */
 
 /** How many history rows to draw. The balance is still summed over all of them. */
@@ -341,17 +337,6 @@ export function RewardsScreen() {
     );
   }, [setGoalId, closeDraft]);
 
-  const turnOff = useCallback(() => {
-    Alert.alert(
-      'Turn off coins?',
-      'Tasks stop earning and costing coins. Your balance, rewards and history are kept for if you turn it back on.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Turn off', style: 'destructive', onPress: () => setEnabled(false) },
-      ],
-    );
-  }, [setEnabled]);
-
   const actions = useMemo<ScreenHeaderAction[]>(() => (enabled
     ? [
         {
@@ -360,10 +345,8 @@ export function RewardsScreen() {
           active: rulesOpen,
           accessibilityLabel: rulesOpen ? 'Hide how coins work' : 'Show how coins work',
         },
-        { icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' },
       ]
-    : []), [enabled, turnOff, rulesOpen]);
-
+    : []), [enabled, rulesOpen]);
   if (!enabled) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -620,7 +603,7 @@ export function RewardsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Rewards" actions={actions} />
+      <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
       <ScrollView
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
