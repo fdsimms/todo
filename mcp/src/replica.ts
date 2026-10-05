@@ -67,6 +67,7 @@ import type {
   TaskDraft,
   TaskGroup,
 } from '../../src/types';
+import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { activeRotationLog } from '../../src/utils/rotation';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
@@ -253,6 +254,8 @@ export interface MoodInput {
   symptoms?: { name: string; severity?: number }[];
   contextTags?: string[];
   note?: string | null;
+  /** A dream the person woke up with. Filed under the day of the check-in. */
+  dream?: string | null;
   at?: Date;
 }
 
@@ -311,7 +314,7 @@ export interface FoodPatch {
   slot?: MealSlot | null;
 }
 
-export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note' | 'dream'>>;
 
 export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
@@ -481,6 +484,8 @@ export interface ProjectPatch {
   eventDate?: string | null;
   category?: string | null;
   defaultTaskCategory?: string | null;
+  /** Priority (0 to 4, 0 meaning deliberately none), difficulty and estimate bucket (1 to 6) new tasks start with; null clears. */
+  taskDefaults?: { priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null } | null;
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
@@ -2275,8 +2280,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         input.note ?? null,
         input.at,
         (input.contextTags ?? []).map(tag),
+        input.dream ?? null,
       );
-      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag, a note or a dream.');
       return log;
     },
 
@@ -2356,10 +2362,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
       if (patch.note !== undefined) next.note = patch.note;
+      if (patch.dream !== undefined) next.dream = patch.dream;
       // An edit may not empty the entry: a check-in recording nothing is a day
       // marked as logged with nothing on it. Delete it instead.
       const after = { ...existing, ...next };
-      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim() && !after.dream?.trim()) {
         throw new Error('That would leave the check-in empty. Delete it instead.');
       }
       useMoodStore.getState().updateLog(id, next);
@@ -3237,7 +3244,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const store = useProjectStore.getState();
       if (!store.projects.some(p => p.id === id)) throw new Error(`No project with id ${id}.`);
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A project title cannot be blank.');
-      const { completed, archived, newCategory, ...content } = patch;
+      const { completed, archived, newCategory, taskDefaults, ...rest } = patch;
+      const content: Parameters<typeof store.updateProject>[1] = { ...rest } as never;
+      if (taskDefaults !== undefined) {
+        content.taskDefaults = taskDefaults === null ? null : parseTaskFieldDefaults(taskDefaults);
+        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, and effort is 1 to 6.');
+      }
       if (content.defaultTaskCategory) {
         const errors: string[] = [];
         const named = categoryNamed(content.defaultTaskCategory, newCategory === true, errors, 'defaultTaskCategory');

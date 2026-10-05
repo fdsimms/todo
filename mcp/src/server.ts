@@ -916,6 +916,8 @@ const taskFieldsShape = {
     .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
     .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
+  waitForSeriesEnd: z.boolean().optional()
+    .describe('With waitsOn on a repeating task: keep waiting until its last repeat is done, not just the next one. A task that repeats with no end never releases this one.'),
   onlyIfAnswer: z.object({
     taskId: z.string().describe('A task that asks a Yes/No or pick-one question when completed.'),
     answers: z.array(z.string()).min(1).describe('The answers that show this task, spelled as the question offers them.'),
@@ -1063,12 +1065,13 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep") and a note. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), a note and a dream they remember. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
+      dream: z.string().nullable().optional().describe('A dream the person woke up with, in their words. Filed under the day of the check-in.'),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
     },
     async input => {
@@ -1169,13 +1172,14 @@ function registerWriteTools(
 
   server.tool(
     'update_mood_log',
-    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
+    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating, the note or the dream. A check-in cannot be left empty: delete it instead.' + dayNote,
     {
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
+      dream: z.string().nullable().optional(),
     },
     async ({ id, ...patch }) => {
       try {
@@ -1768,6 +1772,11 @@ function registerWriteTools(
       category: z.string().nullable().optional(),
       defaultTaskCategory: z.string().nullable().optional(),
       newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
+      taskDefaults: z.object({
+        priority: z.number().int().min(0).max(4).nullable().optional().describe('0 means no priority on purpose, so the backfill screen stops asking. Null means ask.'),
+        difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional(),
+        effort: z.number().int().min(1).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL).'),
+      }).nullable().optional().describe('Priority, difficulty and time estimate every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),

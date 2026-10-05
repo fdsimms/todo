@@ -365,6 +365,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // synced are with their own generators above. `generatedSync.test.ts` fails
   // when a generator's switch is missing from this list.
   'titleRules',
+  'generatedTaskDefaults',
   'weatherRules',
   'eventRules',
   'healthRules',

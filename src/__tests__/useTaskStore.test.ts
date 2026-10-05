@@ -1297,6 +1297,27 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
       expect(task.category).toBe('Home');
     });
 
+    it('seeds priority, difficulty and estimate from the project, beneath what the draft names', () => {
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } })] });
+      const seeded = useTaskStore.getState().addTask({ title: 'A cast iron pan', projectId: 'proj1' });
+      expect(seeded).toMatchObject({ priority: 0, difficulty: 'easy', effort: 2, estimatedMinutes: 15 });
+      expect(seeded.backfillDismissedFields).toContain('priority');
+      const named = useTaskStore.getState().addTask({ title: 'Urgent one', projectId: 'proj1', priority: 4, difficulty: 'hard' });
+      expect(named).toMatchObject({ priority: 4, difficulty: 'hard' });
+      expect(named.backfillDismissedFields).not.toContain('priority');
+    });
+
+    it('seeds a generated kind from Settings, ahead of its project', () => {
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 1, difficulty: null, effort: null } })] });
+      useSettingsStore.getState.mockReturnValue({
+        dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
+        newTaskDefaults: { category: null, priority: null, effort: null, difficulty: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+        generatedTaskDefaults: { birthdayGift: { priority: 3, difficulty: 'easy', effort: null } },
+      });
+      const gift = useTaskStore.getState().addTask({ title: 'Gift for Sam', projectId: 'proj1', generatedKind: 'birthdayGift' });
+      expect(gift).toMatchObject({ priority: 3, difficulty: 'easy' });
+    });
+
     it('skipCategoryDefault bypasses the project default too', () => {
       useProjectStore.setState({ projects: [makeProject({ id: 'proj1', defaultTaskCategory: 'Renovation' })] });
       const task = useTaskStore.getState().addTask(
@@ -8281,6 +8302,20 @@ describe('skipNextRecurrence', () => {
     useTaskStore.getState().skipNextRecurrence('t1');
     const updated = useTaskStore.getState().tasks[0];
     expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+  });
+
+  it.each([[false, false], [true, true]])('pinEachOccurrence=%s leaves the next occurrence pinned=%s', (each, pinned) => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      pinned: true,
+      pinEachOccurrence: each,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(pinned);
   });
 
   it('decrements recurrenceCount', () => {

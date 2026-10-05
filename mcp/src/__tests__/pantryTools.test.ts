@@ -277,12 +277,13 @@ describe('pantry undo and log_leftover', () => {
     calendarRequest: () => null,
   });
 
-  // Newest by insertion order: two writes in the same millisecond share an `at`,
-  // and sorting on it alone picked the earlier one about one run in five.
+  // The newest pantry entry by insertion order. Sorting on `at` alone is a coin
+  // flip when two writes land in the same millisecond, which a fast run does:
+  // the add and the change after it tie, and the comparator then picks either.
   const latest = () => {
-    const row = mockRaw.getFirstSync<{ id: string }>(
-      "SELECT id FROM unattended_log WHERE subject = 'pantry' ORDER BY rowid DESC LIMIT 1");
-    return dbGetUnattendedLog().find(e => e.id === row?.id)!;
+    const newestId = (mockRaw as unknown as { getFirstSync: (sql: string) => { id: string } | null })
+      .getFirstSync("SELECT id FROM unattended_log WHERE subject = 'pantry' ORDER BY rowid DESC")?.id;
+    return dbGetUnattendedLog().find(e => e.id === newestId)!;
   };
 
   beforeAll(() => {

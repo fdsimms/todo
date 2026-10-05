@@ -30,7 +30,7 @@ import {
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
-import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import {
   parseNutritionTargets,
   serializeNutritionTargets,
@@ -99,6 +99,7 @@ import {
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
+import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import {
   parseEventRules,
@@ -205,6 +206,9 @@ export interface NewTaskDefaults {
   category: string | null;
   priority: Priority | null;
   effort: Effort | null;
+  // Only read when rewards are on, like the editor's own Difficulty row, since
+  // nothing but the coin rules reads a difficulty.
+  difficulty: Difficulty | null;
   timeSegment: TimeOfDay | null;
   destination: 'today' | 'inbox' | 'unscheduled';
   openEditorAfterQuickAdd: boolean;
@@ -228,6 +232,7 @@ const DEFAULT_NEW_TASK_DEFAULTS: NewTaskDefaults = {
   category: null,
   priority: null,
   effort: null,
+  difficulty: null,
   timeSegment: null,
   destination: 'today',
   openEditorAfterQuickAdd: false,
@@ -1686,6 +1691,13 @@ interface SettingsStore {
   // lock is: "reset appearance and formatting" is not a request to throw away
   // rules somebody wrote.
   titleRules: TitleRule[];
+  // Priority, difficulty and time estimate each kind of generated task starts
+  // with, keyed by kind, so a birthday reminder or a "Use up X" task doesn't
+  // reach the backfill screen unanswered. Sits above newTaskDefaults and obeys
+  // its contract: it only fills a field nobody answered. See
+  // utils/taskFieldDefaults.ts. Kept out of DEFAULT_SETTINGS/resetToDefaults
+  // for the reason titleRules is (a record doesn't round-trip through String).
+  generatedTaskDefaults: Record<string, TaskFieldDefaults>;
   // The top-level screen (a bottom-tab or drawer route name — see
   // RESTORABLE_SCREENS in AppNavigator.tsx) the app was on when it last left
   // the foreground. State, not a preference — kept out of DEFAULT_SETTINGS/
@@ -1961,6 +1973,8 @@ interface SettingsStore {
   setUseUpTaskCap: (cap: number | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
+  /** Null clears the kind's defaults. */
+  setGeneratedTaskDefaults: (kind: GeneratedKind, defaults: TaskFieldDefaults | null) => void;
   pushRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
   setTitleRules: (rules: TitleRule[]) => void;
@@ -2371,6 +2385,9 @@ function parseNewTaskDefaults(raw: string | null): NewTaskDefaults {
     if (parsed.effort === null || (typeof parsed.effort === 'number' && parsed.effort >= 0 && parsed.effort <= 6)) {
       result.effort = parsed.effort as Effort | null;
     }
+    if (parsed.difficulty === null || parsed.difficulty === 'easy' || parsed.difficulty === 'normal' || parsed.difficulty === 'hard') {
+      result.difficulty = parsed.difficulty as Difficulty | null;
+    }
     if (parsed.timeSegment === null || NEW_TASK_TIME_SEGMENTS.includes(parsed.timeSegment as TimeOfDay)) {
       result.timeSegment = parsed.timeSegment as TimeOfDay | null;
     }
@@ -2419,6 +2436,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   recipeLovedOnly: false,
   projectSortOption: 'manual',
   titleRules: [],
+  generatedTaskDefaults: {},
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   dailyAgendaSpoken: false,
@@ -3158,6 +3176,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
+    const generatedTaskDefaults = parseGeneratedTaskDefaults(dbGetSetting('generatedTaskDefaults'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
     const recentScreens = parseRecentScreens(dbGetSetting('recentScreens'));
     // One field per line and sorted by field name, deliberately. Not to be
@@ -3243,6 +3262,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       focusWorkCapMinutes,
       foodLogPinnedNutrients,
       gateShieldEnabled,
+      generatedTaskDefaults,
       generatorEstimates,
       groceryImportConfirmedListId,
       groceryImportDelete,
@@ -4885,6 +4905,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
    * list is what's being edited (added to, reordered by deletion, toggled),
    * and the sheet already holds it.
    */
+  setGeneratedTaskDefaults(kind: GeneratedKind, defaults: TaskFieldDefaults | null) {
+    set(state => {
+      const next = { ...state.generatedTaskDefaults };
+      if (hasTaskFieldDefaults(defaults)) next[kind] = defaults; else delete next[kind];
+      dbSetSetting('generatedTaskDefaults', JSON.stringify(next));
+      return { generatedTaskDefaults: next };
+    });
+  },
+
   setTitleRules(rules: TitleRule[]) {
     dbSetSetting('titleRules', JSON.stringify(rules));
     set({ titleRules: rules });
