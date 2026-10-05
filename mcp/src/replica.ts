@@ -67,6 +67,7 @@ import type {
   TaskDraft,
   TaskGroup,
 } from '../../src/types';
+import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { activeRotationLog } from '../../src/utils/rotation';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
@@ -483,6 +484,8 @@ export interface ProjectPatch {
   eventDate?: string | null;
   category?: string | null;
   defaultTaskCategory?: string | null;
+  /** Priority (0 to 4, 0 meaning deliberately none), difficulty and estimate bucket (1 to 6) new tasks start with; null clears. */
+  taskDefaults?: { priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null } | null;
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
@@ -3241,7 +3244,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const store = useProjectStore.getState();
       if (!store.projects.some(p => p.id === id)) throw new Error(`No project with id ${id}.`);
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A project title cannot be blank.');
-      const { completed, archived, newCategory, ...content } = patch;
+      const { completed, archived, newCategory, taskDefaults, ...rest } = patch;
+      const content: Parameters<typeof store.updateProject>[1] = { ...rest } as never;
+      if (taskDefaults !== undefined) {
+        content.taskDefaults = taskDefaults === null ? null : parseTaskFieldDefaults(taskDefaults);
+        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, and effort is 1 to 6.');
+      }
       if (content.defaultTaskCategory) {
         const errors: string[] = [];
         const named = categoryNamed(content.defaultTaskCategory, newCategory === true, errors, 'defaultTaskCategory');
