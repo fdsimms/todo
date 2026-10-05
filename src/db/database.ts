@@ -3358,7 +3358,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     pinEachOccurrence: Boolean(row.pin_each_occurrence),
     bountyPushes: (row.bounty_pushes as number | null) ?? null,
-    difficulty: row.difficulty === 'easy' || row.difficulty === 'normal' || row.difficulty === 'hard' ? row.difficulty : null,
+    difficulty: row.difficulty === 'trivial' || row.difficulty === 'easy' || row.difficulty === 'normal' || row.difficulty === 'hard' ? row.difficulty : null,
     answerGate: parseAnswerGate(row.answer_gate),
     deliverableWhy: (row.deliverable_why as string | null) ?? null,
     deliverableRevisitIf: (row.deliverable_revisit_if as string | null) ?? null,

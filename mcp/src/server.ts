@@ -81,6 +81,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
@@ -334,6 +335,44 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The home grocery list, with whether each item is checked off there. This is the list the grocery write tools act on. An item only on a separate list (a trip\'s list, say) is not included. Pass onListOnly: false to search the whole catalog instead.',
     { onListOnly: z.boolean().optional() },
     async input => json(await withFresh(() => listGroceryItems(replica, input)))
+  );
+
+  server.tool(
+    'list_pantry',
+    "What is in the kitchen: the pantry (groceries the app has a reason to think are on hand), the fridge (leftovers) and the freezer, each with the app's reason, use-by day and how fresh it is. Use filter: use_up for what is at or near its use-by day. The list is only what the app has a reason to believe, so an item missing from it may still be on a shelf: use get_pantry_item or ask the person. There are no quantities, on purpose.",
+    {
+      query: z.string().optional().describe('Matches a name, brand or section.'),
+      filter: z.enum(PANTRY_FILTERS).optional(),
+      limit: z.number().int().positive().optional(),
+    },
+    async input => json(await withFresh(() => listPantry(replica, input)))
+  );
+
+  server.tool(
+    'get_pantry_item',
+    "Everything the app records about one item's place in the kitchen: whether it counts as on hand and why, its use-by day, opened and frozen state, shelf life, running-low and staple flags, purchase history, how often it went to waste, and its boxes (brands, packets, frozen portions). A status of unknown means the app has no opinion, which is not the same as out. Takes an id from list_grocery_items or list_pantry, or a name.",
+    { id: z.string().optional(), name: z.string().optional() },
+    async input => {
+      try {
+        return json(await withFresh(() => getPantryItem(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'pantry_review',
+    "The pantry review deck the app deals: items whose 'you probably have it' is a guess that has lapsed or an answer that is old, at most 20. Ask the person about each one and record what they say with answer_pantry_review. Never answer on their behalf.",
+    {},
+    async () => json(await withFresh(() => pantryReview(replica)))
+  );
+
+  server.tool(
+    'use_up_recipes',
+    "What is at or past its use-by day, and the recipes that would use some of it, the one using the most first. Groceries only, not leftovers.",
+    {},
+    async () => json(await withFresh(() => useUpRecipes(replica)))
   );
 
   server.tool(
@@ -680,7 +719,7 @@ const itemSchema = z.object({
   category: z.string().nullable().optional(),
   priority: z.number().int().min(0).max(4).optional(),
   effort: z.number().int().min(0).max(6).optional(),
-  difficulty: z.enum(['easy', 'normal', 'hard']).optional(),
+  difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   recurrenceType: z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly', 'hours']).optional(),
   recurrenceInterval: z.number().int().positive().optional(),
@@ -790,8 +829,8 @@ const taskFieldsShape = {
     .describe('The part of the day it shows up in. Usually one.'),
   priority: z.number().int().min(0).max(4).optional().describe('0 none, 1 low, 2 medium, 3 high, 4 urgent.'),
   effort: z.number().int().min(0).max(6).optional(),
-  difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional()
-    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
+  difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).nullable().optional()
+    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves, trivial earns none.'),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
@@ -1556,6 +1595,114 @@ function registerWriteTools(
       }
     }
   );
+
+  const pantryItemShape = {
+    id: z.string().optional().describe('From list_grocery_items, list_pantry or get_pantry_item. Give this or name.'),
+    name: z.string().optional().describe('The item by name, singular or plural. Must already be in the catalog.'),
+    status: z.enum(['have', 'out', 'clear']).optional().describe("have: 'Got it', on hand for the item's usual window. out: 'Out of it', which also clears its use-by, opened and frozen state. clear: forget what was said and go back to the app's own guess."),
+    outcome: z.enum(['usedUp', 'spoiled']).optional().describe('With status out: how it went. spoiled is recorded as waste and used to suggest a shelf life; use usedUp when it was finished.'),
+    staple: z.boolean().optional().describe("'Always have it': never expires."),
+    frozen: z.boolean().optional().describe('Into the freezer, which pauses its use-by countdown. Out of it restarts a fresh shelf life from today.'),
+    freezeSome: z.boolean().optional().describe('Freeze part of it as a separate frozen portion and leave the rest where it is.'),
+    opened: z.boolean().optional().describe('Opened a jar or bag. Moves its use-by day to the opened shelf life when the app knows one for it.'),
+    runningLow: z.boolean().optional().describe('True also puts it on the home grocery list. False never takes it off.'),
+    expiresAt: dayKey.nullable().optional().describe('Use-by day, or null to clear.'),
+    shelfLifeDays: z.number().int().min(0).nullable().optional().describe('How long this item keeps once bought or thawed. Used for the next purchase, not the current use-by day.'),
+    useUpTask: z.boolean().nullable().optional().describe("true or false forces the 'Use up X' task on or off for this item, null follows the setting. The phone creates or drops the task itself the next time it syncs."),
+  };
+
+  server.tool(
+    'update_pantry_item',
+    "Change what the kitchen holds of one grocery item: mark it on hand or out, staple, frozen, opened, running low, its use-by day or shelf life. Several fields can be set in one call and are applied in the order listed. The rules are the app's own (thawing restarts the shelf life, opening can shorten the use-by day, out clears everything about the last box). Only do what the person said: marking something out or on hand replaces a guess with a claim. The result lists what changed.",
+    pantryItemShape,
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => updatePantryItem(replica, input)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_pantry_box',
+    "The same as update_pantry_item for one packet of an item: a brand or variant, or its frozen portion. Ids are the `boxes` of get_pantry_item or the boxId of a list_pantry row. Marking a frozen portion out deletes it.",
+    {
+      id: z.string().min(1),
+      status: z.enum(['have', 'out', 'clear']).optional(),
+      frozen: z.boolean().optional(),
+      opened: z.boolean().optional(),
+    },
+    async ({ id, ...change }) => {
+      try {
+        return json(withLink(await withWrite(() => updatePantryBox(replica, id, change)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that packet.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_to_pantry',
+    "Say the person has these ('I have flour'). A name the catalog knows is marked on hand and keeps everything else; a new one becomes a catalog item that is NOT on the shopping list. A leading amount is dropped, since the app keeps no quantities. Use add_grocery_item to buy something instead.",
+    { names: z.array(z.string().min(1)).min(1).max(50) },
+    async ({ names }) => {
+      try {
+        return json(withLink(await withWrite(() => addToPantry(replica, names)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add those.' });
+      }
+    }
+  );
+
+  server.tool(
+    'answer_pantry_review',
+    "Record the person's answers to cards from pantry_review: have (still on hand), low (running low, which also puts it on the home list) or out. Every answer marks the card reviewed so it is not dealt again for a week. Only record what the person actually said.",
+    { answers: z.array(z.object({ id: z.string().min(1), answer: z.enum(['have', 'low', 'out']) })).min(1).max(20) },
+    async ({ answers }) => {
+      try {
+        return json(withLink(await withWrite(() => answerPantryReview(replica, answers)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not record those answers.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_leftover',
+    "Change a container of cooked food (leftoverId of a list_pantry row): freeze or thaw it (thawing restarts its fridge clock), finish it as eaten or tossed, reopen one that was finished (finished: null), or set how many days it keeps from the day it was stored. Eating one on the phone offers to log the meal; that offer does not happen here, so log_food separately if asked.",
+    {
+      id: z.string().min(1),
+      frozen: z.boolean().optional(),
+      finished: z.enum(['eaten', 'tossed']).nullable().optional(),
+      keepDays: z.number().int().positive().max(365).optional(),
+    },
+    async ({ id, ...change }) => {
+      try {
+        return json(withLink(await withWrite(() => updateLeftover(replica, id, change)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that leftover.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_leftover',
+    "Log a container of cooked food that is now in the fridge, or in the freezer with frozen: true. keepDays is how long it keeps in the fridge (3 by default). It appears in list_pantry with a leftoverId. This does not link it to a recipe or a planned meal, and is not a food log entry: use log_food for what someone ate.",
+    {
+      title: z.string().min(1),
+      keepDays: z.number().int().min(1).max(365).optional(),
+      frozen: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => logLeftover(replica, input)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that leftover.' });
+      }
+    }
+  );
+
   const planStep = z.object({
     title: z.string().min(1),
     ...taskFieldsShape,
