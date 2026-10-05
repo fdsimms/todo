@@ -691,7 +691,7 @@ export function MealEntrySheet({
           <View style={styles.sep} />
           <SheetActionRow
             icon="trash-outline"
-            color={colors.red}
+            color={colors.redText}
             destructive
             label="Remove from plan"
             onPress={() => { haptics.warning(); dismiss(onRemove); }}

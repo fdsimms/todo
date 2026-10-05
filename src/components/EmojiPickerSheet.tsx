@@ -307,7 +307,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleText: { flex: 1 },
   sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   sheetHint: { color: colors.textTertiary, fontSize: font.xs, paddingTop: spacing.xxs },
-  removeLabel: { color: colors.red, fontSize: font.sm, fontWeight: fontWeight.medium, paddingTop: 3 },
+  removeLabel: { color: colors.redText, fontSize: font.sm, fontWeight: fontWeight.medium, paddingTop: 3 },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     backgroundColor: colors.bgTertiary, borderRadius: radius.md,

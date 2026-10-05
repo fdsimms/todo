@@ -57,7 +57,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
             </PressableScale>
             <PressableScale style={styles.actionBtn} onPress={() => { haptics.impactMedium(); onDelete(); }}>
               <Ionicons name="trash" size={24} color={colors.red} />
-              <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>
+              <Text style={[styles.actionLabel, { color: colors.redText }]}>Delete</Text>
             </PressableScale>
           </View>
         </>

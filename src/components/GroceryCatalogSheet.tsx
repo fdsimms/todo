@@ -385,7 +385,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             <InlineAction
               label="Forget"
               icon="trash-outline"
-              tint={colors.red}
+              tint={colors.redText}
               onPress={confirmForget}
               accessibilityLabel={`Forget ${selected.size} selected ${selected.size === 1 ? 'item' : 'items'}`}
             />

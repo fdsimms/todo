@@ -144,4 +144,7 @@ days at your current pace").
   dated within the last minute, so a backdated one (the morning check-in, a widget tap drained
   later, the demo seed) never announces itself on whatever screen comes next.
 - **The MCP replica** earns through the same store and rules when it completes a task
-  (`mcp/src/replica.ts`), keyed by the completed row like everything else.
+  (`mcp/src/replica.ts`), keyed by the completed row like everything else. It can also manage
+  rewards, claim, post bounties, mark a miss and log a slip, but only because the person asked
+  Claude to ("Only a person moves it" above stays true: the app's own passes still never charge).
+  See "Rewards" in `docs/arch/mcp-server.md`.

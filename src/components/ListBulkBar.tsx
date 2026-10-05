@@ -165,12 +165,12 @@ export function ListBulkBar({
                 accessibilityLabel={category.title}
               >
                 <Ionicons name="folder" size={24} color={colors.purple} />
-                <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
+                <Text style={[styles.actionLabel, { color: colors.purpleText }]}>Move</Text>
               </PressableScale>
             )}
             {actions.map(action => {
-              const tint = action.tone === 'destructive' ? colors.red
-                : action.tone === 'purple' ? colors.purple
+              const tint = action.tone === 'destructive' ? colors.redText
+                : action.tone === 'purple' ? colors.purpleText
                 : colors.accent;
               return (
                 <PressableScale

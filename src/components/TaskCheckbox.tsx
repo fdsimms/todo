@@ -336,21 +336,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: checkboxRadius(TASK_CHECKBOX_SIZE),
     borderCurve: 'continuous',
     borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   boxDone: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
+    backgroundColor: colors.greenFill,
+    borderColor: colors.greenFill,
   },
   boxMeter: {
     borderColor: colors.accent,
     overflow: 'hidden',
   },
   boxSlipped: {
-    backgroundColor: colors.red,
-    borderColor: colors.red,
+    backgroundColor: colors.redFill,
+    borderColor: colors.redFill,
   },
   fill: {
     position: 'absolute',

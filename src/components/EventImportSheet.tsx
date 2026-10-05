@@ -498,12 +498,12 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.sm,
-      backgroundColor: colors.purple,
+      backgroundColor: colors.purpleFill,
       borderRadius: radius.md,
       paddingVertical: 14,
     },
     runBtnOff: { opacity: 0.4 },
     runBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
-    error: { color: colors.red, fontSize: font.sm },
+    error: { color: colors.redText, fontSize: font.sm },
   });
 }

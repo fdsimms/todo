@@ -942,7 +942,7 @@ const ProjectRow = React.memo(function ProjectRow({
                 style={[
                   styles.rangeText,
                   captionSoon && styles.rangeTextSoon,
-                  captionOverdue && pastWindow && { color: colors.orange },
+                  captionOverdue && pastWindow && { color: colors.orangeText },
                 ]}
                 numberOfLines={1}
               >

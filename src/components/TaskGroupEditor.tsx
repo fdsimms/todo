@@ -423,7 +423,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
                 <PinIcon
                   filled={allPinned}
                   size={20}
-                  color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orange : colors.textSecondary)}
+                  color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orangeText : colors.textSecondary)}
                 />
               </TouchableOpacity>
               <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${sectionWord}`}>

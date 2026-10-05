@@ -7,7 +7,8 @@
  * for a blob written by an older build and wrong for a caller composing a
  * template it believes it described correctly.
  */
-import { validateTemplatePlan, resolveRef, templateToPlan, type TemplatePlan } from '../templatePlan';
+import { describeTemplateChanges, templateWarnings, validateTemplatePlan, resolveRef, templateToPlan, type TemplatePlan } from '../templatePlan';
+import { normalizeTemplateItem } from '../../../src/utils/templateUtils';
 import type { TaskTemplate } from '../../../src/types';
 
 const template = (over: Partial<TaskTemplate> & { id: string; name: string }): TaskTemplate =>
@@ -87,6 +88,25 @@ describe('what the normalizers would have swallowed', () => {
       'item "Pack" recurrenceDays must be 0 to 6.',
       'item "Pack" priority must be 0 to 4.',
     ]);
+  });
+
+  it('refuses a recurrence type the engine does not know', () => {
+    expect(errors(plan({ items: [{ title: 'Pack', recurrenceType: 'weekly' }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'Pack', recurrenceType: 'biweekly' as never }] }))[0])
+      .toContain('recurrenceType must be one of');
+  });
+
+  it('needs a completion choice to offer two options', () => {
+    expect(errors(plan({ items: [{ title: 'Pick', deliverableKind: 'choice', deliverableOptions: ['Only'] }] }))[0])
+      .toContain('needs at least two deliverableOptions');
+    expect(errors(plan({ items: [{ title: 'Pick', deliverableKind: 'choice', deliverableOptions: ['A', 'B'] }] }))).toEqual([]);
+  });
+
+  // TemplateSchedule.month is 1-12 (templateSchedule reads clamp(month, 1, 12) - 1).
+  // A 0-11 check made December impossible and every other month one early.
+  it('takes a schedule month as 1 to 12, the way the app stores it', () => {
+    expect(errors(plan({ schedule: { frequency: 'yearly', month: 12, monthDay: 1 } }))).toEqual([]);
+    expect(errors(plan({ schedule: { frequency: 'yearly', month: 0, monthDay: 1 } }))).toEqual(['schedule month must be 1 to 12.']);
   });
 
   it('knows effort runs to 6, not to 4 like priority', () => {
@@ -309,5 +329,87 @@ describe('an edit to an existing template', () => {
     expect(asPlan.items![0]).toMatchObject({ id: 'i1', groupKey: 'g1' });
     expect(asPlan.items![1].conditions).toEqual([{ question: 'trip', values: ['Work'] }]);
     expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
+  });
+});
+
+describe('a question with no name', () => {
+  it('takes a key so a condition can name it, but only a choice can fill no blank that way', () => {
+    const p = plan({
+      questions: [{ key: 'q-kind', prompt: 'What kind?', kind: 'choice', options: ['Work', 'Holiday'] }],
+      items: [{ title: 'Laptop', conditions: [{ question: 'q-kind', values: ['Work'] }] }],
+    });
+    expect(errors(p)).toEqual([]);
+    expect(errors(plan({ questions: [{ key: 'q', prompt: 'Where?', kind: 'text' }] }))[0]).toContain('needs a name');
+    expect(errors(plan({ questions: [
+      { key: 'q', prompt: 'A?', kind: 'choice', options: ['a', 'b'] },
+      { key: 'q', prompt: 'B?', kind: 'choice', options: ['a', 'b'] },
+    ] }))).toContain('two questions share the key "q".');
+  });
+});
+
+describe('waitsOn', () => {
+  it('names keyed items, not itself, and no loop', () => {
+    expect(errors(plan({ items: [{ title: 'A', key: 'a' }, { title: 'B', key: 'b', waitsOn: ['a'] }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'B', waitsOn: ['nope'] }] }))[0]).toContain('not an item key');
+    expect(errors(plan({ items: [{ title: 'A', key: 'a', waitsOn: ['a'] }] }))).toContain('item "A" can\'t wait on itself.');
+    expect(errors(plan({ items: [
+      { title: 'A', key: 'a', waitsOn: ['c'] }, { title: 'B', key: 'b', waitsOn: ['a'] }, { title: 'C', key: 'c', waitsOn: ['b'] },
+    ] }))).toContain('items wait on each other in a loop, so none of them could ever start.');
+  });
+
+  it('checks a 2nd-weekday repeat is monthly, names its weekday and has no month day', () => {
+    expect(errors(plan({ items: [{ title: 'A', recurrenceType: 'monthly', recurrenceDays: [2], recurrenceWeekOrdinal: 2 }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'A', recurrenceType: 'weekly', recurrenceWeekOrdinal: 2 }] }))).toEqual([
+      'item "A" recurrenceWeekOrdinal only applies to a monthly repeat.',
+      'item "A" recurrenceWeekOrdinal needs the weekday in recurrenceDays.',
+    ]);
+  });
+});
+
+describe('templateWarnings', () => {
+  const stored = (items: Parameters<typeof normalizeTemplateItem>[0][], over: Partial<TaskTemplate> = {}) =>
+    template({ id: 't', name: 'T', items: items.map(normalizeTemplateItem), ...over });
+
+  it('names a blank no question fills, but not {run} or a declared one', () => {
+    const t = stored([{ title: 'Pack for {where} ({run}), {nights} nights' }], {
+      questions: [{ id: 'q', name: 'Nights', prompt: '', kind: 'number', options: [], defaultValue: '', fromDates: 'none' }],
+    });
+    const warnings = templateWarnings(t, []);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('{where}');
+  });
+
+  it('flags combinations a run silently drops', () => {
+    const warnings = templateWarnings(stored([
+      { title: 'A', reminderOffsetMinutes: 10 },
+      { title: 'B', weatherWait: 'sunny', recurrenceType: 'daily' },
+      { title: 'C', dueOffsetDays: 0, deferOffsetDays: 2 },
+      { title: 'D', windowStart: '22:00', windowEnd: '02:00' },
+      { title: 'E', category: 'Nowhere' },
+    ]), ['Home']);
+    expect(warnings.map(w => w.slice(0, 10))).toEqual(['item "A" h', 'item "B" w', 'item "C" i', 'item "D" h', 'item "E" i']);
+  });
+
+  it('is quiet for an ordinary template', () => {
+    expect(templateWarnings(stored([{ title: 'Pack', category: 'home', dueOffsetDays: -1, reminderOffsetMinutes: 60 }]), ['Home'])).toEqual([]);
+  });
+});
+
+describe('describeTemplateChanges', () => {
+  it('says what an edit adds, removes and changes, by name', () => {
+    const before = template({ id: 't', name: 'Trip', items: [
+      normalizeTemplateItem({ id: 'a', title: 'Shirts' }),
+      normalizeTemplateItem({ id: 'b', title: 'Laptop' }),
+    ] });
+    const after = template({ id: 't', name: 'Trip', items: [
+      normalizeTemplateItem({ id: 'a', title: 'Shirts', dueOffsetDays: -1 }),
+      normalizeTemplateItem({ id: 'c', title: 'Charger' }),
+    ] });
+    expect(describeTemplateChanges(before, after)).toEqual([
+      'Change item "Shirts": dueOffsetDays.',
+      'Add item "Charger".',
+      'Remove item "Laptop".',
+    ]);
+    expect(describeTemplateChanges(before, before)).toEqual([]);
   });
 });

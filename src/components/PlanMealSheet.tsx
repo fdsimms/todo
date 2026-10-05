@@ -271,7 +271,7 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
               accessibilityLabel={`Planned for ${describeDay(planned.date)}, ${slotLabel(planned.slot)}. Pick another day to plan it again.`}
             >
               <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.green} />
-              <Text style={[styles.primaryText, { color: colors.green }]}>
+              <Text style={[styles.primaryText, { color: colors.greenText }]}>
                 {`Planned for ${describeDay(planned.date)} · ${slotLabel(planned.slot)}`}
               </Text>
             </View>

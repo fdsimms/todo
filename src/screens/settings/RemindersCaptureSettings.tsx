@@ -397,7 +397,7 @@ export function RemindersCaptureSettings() {
             icon={remindersPermission === 'granted' ? 'lock-open-outline' : 'lock-closed-outline'}
             iconColor={
               remindersPermission === 'granted' ? colors.accent
-              : remindersPermission === 'denied' ? colors.warning
+              : remindersPermission === 'denied' ? colors.warningText
               : undefined
             }
             label="Reminders access"
@@ -468,7 +468,7 @@ export function RemindersCaptureSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label="That list isn’t on this device"
             hint="Nothing is being imported. Pick another list above, or turn this off."
           />
@@ -480,7 +480,7 @@ export function RemindersCaptureSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label={`${lastImport!.deleteFailed} reminder${lastImport!.deleteFailed === 1 ? '' : 's'} couldn’t be removed`}
             hint={`${lastImport!.deleteFailed === 1 ? 'Its task is' : 'Their tasks are'} in your Inbox and${lastImport!.deleteFailed === 1 ? ' it is' : ' they are'} skipped for now. Delete${lastImport!.deleteFailed === 1 ? ' it' : ' them'} in the Reminders app so nothing comes back next time.`}
           />
@@ -617,7 +617,7 @@ export function RemindersCaptureSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label="That grocery list isn’t on this device"
             hint="Nothing is being imported into groceries. Pick another list above, or turn this off."
           />

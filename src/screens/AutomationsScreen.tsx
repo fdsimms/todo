@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -41,6 +42,7 @@ type AutomationsParams = {
  */
 export function AutomationsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<AutomationsParams, 'Automations'>>();
   const entryId = route.params?.entryId;
@@ -70,7 +72,7 @@ export function AutomationsScreen() {
   }, [entryId, navigation]));
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Automations"
         subtitle={describeGeneratedCounts(counts)}

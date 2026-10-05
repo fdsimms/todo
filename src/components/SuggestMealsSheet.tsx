@@ -585,7 +585,7 @@ export function SuggestMealsSheet({
     // Tuesday" the sentence has stopped being about the clock, and an orange
     // one there reads as a warning about a day that's perfectly fine. Late is
     // the exception, because then the day is exactly what's wrong with it.
-    const captionTint = late ? colors.red : day ? colors.textTertiary : tint;
+    const captionTint = late ? colors.redText : day ? colors.textTertiary : tint;
     const caption = landedDay
       ? `Planned for ${format(landedDay, 'EEEE')}${late ? ' · past its use-by' : ''}`
       : isSelected && previewDay
@@ -814,7 +814,7 @@ export function SuggestMealsSheet({
             <InlineAction
               label={ideas.length > 0 ? 'More ideas' : 'Invent meals'}
               icon={ideas.length > 0 ? 'refresh' : 'sparkles-outline'}
-              tint={colors.purple}
+              tint={colors.purpleText}
               onPress={() => { haptics.tap(); generate(); }}
               accessibilityLabel={ideas.length > 0
                 ? 'Generate more meal ideas'
@@ -1116,7 +1116,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pantryBadgeKnown: { backgroundColor: `${colors.green}26` },
   pantryBadgeUnknown: { backgroundColor: colors.bgTertiary },
   pantryBadgeText: { fontSize: font.xs, fontWeight: fontWeight.medium },
-  pantryBadgeTextKnown: { color: colors.green },
+  pantryBadgeTextKnown: { color: colors.greenText },
   pantryBadgeTextUnknown: { color: colors.textTertiary },
   cookHistory: { fontSize: font.xs, color: colors.textTertiary, flexShrink: 1 },
 
@@ -1136,10 +1136,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xxs,
     backgroundColor: `${colors.purple}26`,
   },
-  ideaTagText: { fontSize: font.xs, fontWeight: fontWeight.medium, color: colors.purple },
+  ideaTagText: { fontSize: font.xs, fontWeight: fontWeight.medium, color: colors.purpleText },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   ideaActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
+  ideaError: { fontSize: font.xs, color: colors.redText, marginTop: spacing.xs },
 
   ideaSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md, gap: spacing.sm },
   cookAgainSection: { paddingTop: spacing.md, gap: spacing.xxs },
@@ -1171,7 +1171,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   generating: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   generatingText: { fontSize: font.sm, color: colors.textSecondary },
   generateError: { gap: spacing.sm, alignItems: 'flex-start' },
-  generateErrorText: { fontSize: font.sm, color: colors.red, lineHeight: lineHeight.sm },
+  generateErrorText: { fontSize: font.sm, color: colors.redText, lineHeight: lineHeight.sm },
 
   previewList: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   previewMeta: { fontSize: font.sm, color: colors.textTertiary, lineHeight: lineHeight.sm },

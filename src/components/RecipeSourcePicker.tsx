@@ -327,7 +327,7 @@ export function RecipeSourcePicker({
 
       {bareUrl && (
         <View style={styles.warning}>
-          <Ionicons name="link-outline" size={iconSize.sm} color={colors.warning} />
+          <Ionicons name="link-outline" size={iconSize.sm} color={colors.warningText} />
           <View style={styles.warningBody}>
             <Text style={styles.warningTitle}>That's a link</Text>
             <Text style={styles.warningDetail}>
@@ -421,7 +421,7 @@ function makeStyles(colors: Colors) {
       textAlign: 'center',
     },
     linkBad: {
-      color: colors.red,
+      color: colors.redText,
       fontSize: font.xs,
       lineHeight: font.xs * 1.4,
       textAlign: 'center',
@@ -525,7 +525,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.sm,
-      backgroundColor: colors.purple,
+      backgroundColor: colors.purpleFill,
       borderRadius: radius.md,
       paddingVertical: 14,
     },
