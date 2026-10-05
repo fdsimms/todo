@@ -60,14 +60,10 @@ import type { CoinEntry, Reward, Task } from '../types';
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
  *
- * Off until switched on here, which is why the switch lives on this screen
- * rather than in Settings: the screen is where somebody finds out what the
- * feature is, so it's where they decide whether they want it.
- *
  * One scrolling page: the balance (with the goal you're saving for, if any,
  * and the earning rule spelled out), the rewards you've set, items from the
  * list you've chosen to price as rewards, starter ideas, and the history the
- * balance is summed from.
+ * balance is summed from. Coins and rewards are enabled/disabled in Settings.
  */
 
 /** How many history rows to draw. The balance is still summed over all of them. */
@@ -177,6 +173,9 @@ export function RewardsScreen() {
   // Ideas are the whole section while you have no rewards, and a button away
   // once you do, so a list you've made your own isn't crowded by suggestions.
   const [ideasOpen, setIdeasOpen] = useState(false);
+  // How coins are earned and lost is reference text, not something to read on
+  // every visit, so it stays folded behind the header's help button.
+  const [rulesOpen, setRulesOpen] = useState(false);
   const showIdeas = ideas.length > 0 && (openRewards.length === 0 || ideasOpen);
 
   // The list whose items can be priced as rewards. Only offered at all while
@@ -338,21 +337,16 @@ export function RewardsScreen() {
     );
   }, [setGoalId, closeDraft]);
 
-  const turnOff = useCallback(() => {
-    Alert.alert(
-      'Turn off coins?',
-      'Tasks stop earning and costing coins. Your balance, rewards and history are kept for if you turn it back on.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Turn off', style: 'destructive', onPress: () => setEnabled(false) },
-      ],
-    );
-  }, [setEnabled]);
-
   const actions = useMemo<ScreenHeaderAction[]>(() => (enabled
-    ? [{ icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' }]
-    : []), [enabled, turnOff]);
-
+    ? [
+        {
+          icon: 'help-circle-outline',
+          onPress: () => setRulesOpen(open => !open),
+          active: rulesOpen,
+          accessibilityLabel: rulesOpen ? 'Hide how coins work' : 'Show how coins work',
+        },
+      ]
+    : []), [enabled, rulesOpen]);
   if (!enabled) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -646,9 +640,11 @@ export function RewardsScreen() {
               </Text>
             </View>
           )}
+          {rulesOpen && (
           <Text style={styles.rule}>
             {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
           </Text>
+          )}
         </View>
 
         <Text style={styles.sectionHeader}>Rewards</Text>

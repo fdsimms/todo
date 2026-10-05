@@ -16,7 +16,7 @@
  */
 
 /** App link paths this server hands out, each of which the app routes. */
-export const OPEN_PATHS = ['task', 'project', 'groceries', 'recipe', 'mealplan', 'people'] as const;
+export const OPEN_PATHS = ['task', 'project', 'groceries', 'recipe', 'mealplan', 'people', 'kitchen'] as const;
 export type OpenPath = (typeof OPEN_PATHS)[number];
 
 const SCHEME = 'dundundun';
@@ -25,6 +25,8 @@ export interface AppLinks {
   task(id: string): string;
   project(id: string): string;
   groceries(): string;
+  /** The pantry and fridge view. */
+  pantry(): string;
   recipe(id: string): string;
   mealPlan(dayKey: string): string;
   person(id: string): string;
@@ -48,6 +50,7 @@ export function appLinks(base: string | undefined): AppLinks | null {
     task: id => link('task', { id }),
     project: id => link('project', { id }),
     groceries: () => link('groceries'),
+    pantry: () => link('kitchen'),
     recipe: id => link('recipe', { id }),
     mealPlan: dayKey => link('mealplan', { date: dayKey }),
     person: id => link('people', { person: id }),
