@@ -109,6 +109,7 @@ function fieldChanges(entry: AgentLedgerEntry): string[] {
 
 const SUBJECT_NOUN: Record<string, string> = {
   task: 'task', project: 'project', template: 'template', recipe: 'recipe', meal: 'meal',
+  milestone: 'milestone', view: 'saved view', setting: 'setting',
 };
 
 /** One line per effect, in the order they would happen. */

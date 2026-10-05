@@ -108,6 +108,7 @@ import {
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { reopenedTask } from '../utils/taskReopen';
+import { forgiveVacationStreaks } from '../utils/vacationStreaks';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
@@ -8759,23 +8760,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  // The rule is `forgiveVacationStreaks` (vacationStreaks.ts), shared with the
+  // MCP server's own vacation switch, which cannot load this store.
   forgivVacationStreaks() {
-    const today = getCurrentDayStart().toISOString();
-    const toUpdate = get().tasks.filter(
-      t => t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
-    );
-    if (toUpdate.length === 0) return;
-    toUpdate.forEach(t => {
-      const updated = { ...t, streakDate: today };
-      dbUpdateTask(updated);
-    });
-    set(s => ({
-      tasks: s.tasks.map(t =>
-        t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
-          ? { ...t, streakDate: today }
-          : t
-      ),
-    }));
+    const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString());
+    if (forgiven.length === 0) return;
+    forgiven.forEach(t => dbUpdateTask(t));
+    const byId = new Map(forgiven.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
 
   // Auto-turns-off vacation mode once its optional end date has passed —

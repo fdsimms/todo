@@ -39,6 +39,7 @@ import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
 import { createSyncGate, READ_WAIT_MS, type SyncGate } from './syncGate';
 import {
+  DEFAULT_LOG_DAYS,
   MAX_LOG_DAYS,
   TASK_VIEWS,
   getTask,
@@ -98,7 +99,10 @@ import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
-import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
+import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
+import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews } from './savedViewTools';
+import { setVacationMode } from './vacationTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -418,6 +422,43 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
+  );
+
+  server.tool(
+    'list_milestones',
+    'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
+    {},
+    async () => json(await withFresh(() => listMilestones(replica)))
+  );
+
+  server.tool(
+    'focus_history',
+    `Finished focus sessions over a range of days (default ${DEFAULT_LOG_DAYS}, up to ${MAX_LOG_DAYS}), as the Stats screen reads them: worked and rested minutes, how work stretches ran against their planned length (only once there are enough), how many offered breaks were taken, and each session's steps with the task behind each. History only: a session in progress lives on the phone and does not sync, so this cannot say what the person is working through right now, or start, pause or advance a session. Ask them.`,
+    logRange,
+    async input => json(await withFresh(() => focusHistory(replica, input)))
+  );
+
+  server.tool(
+    'list_saved_views',
+    'The person\'s saved views: each a named lens over every open task (across Today, Later, Unscheduled and Inbox at once) built from clauses a task has to pass, with the clauses in words and how many tasks it holds right now. Refer to one by its name.',
+    {},
+    async () => json(await withFresh(() => listSavedViews(replica)))
+  );
+
+  server.tool(
+    'get_saved_view',
+    `One saved view, by name or id, and the tasks it holds right now, in the app's own order (up to ${SAVED_VIEW_TASK_LIMIT}; the result says when there were more).`,
+    {
+      view: z.string().min(1).describe('The view\'s name (case does not matter) or its id from list_saved_views.'),
+      limit: z.number().int().min(1).max(SAVED_VIEW_TASK_LIMIT).optional(),
+    },
+    async ({ view, limit }) => {
+      try {
+        return json(await withFresh(() => getSavedView(replica, view, limit)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that view.' });
+      }
+    }
   );
 
   server.tool(
@@ -1264,6 +1305,106 @@ function registerWriteTools(
         return json(await withWrite(() => deleteMedicationLog(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_milestone',
+    'Mark the day something changed in the person\'s life ("Started sertraline", "New job", "Moved house"), for the mood log to read mood before and after it. Only what they tell you, in their words; the date defaults to today. Record a start and a later stop as two milestones.',
+    {
+      label: z.string().min(1).max(200).describe('What changed, in a few words.'),
+      date: dayKey.optional().describe('The day it happened, YYYY-MM-DD. Default today.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => addMilestone(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_milestone',
+    'Change a milestone\'s label or date, by its id from list_milestones. Only what you name changes.',
+    {
+      id: z.string().min(1),
+      label: z.string().min(1).max(200).optional(),
+      date: dayKey.optional().describe('YYYY-MM-DD.'),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateMilestone(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_milestone',
+    'Delete a milestone by its id from list_milestones. A milestone is a fact about one day, so a wrong one is corrected or deleted; there is no archive, and it cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteMilestone(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_saved_view',
+    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. Views are edited and reordered in the app.',
+    {
+      name: z.string().min(1).max(80),
+      icon: z.string().optional().describe('One of the app\'s view icons (the refusal lists them). Default bookmark-outline.'),
+      clauses: z.array(z.object({
+        kind: z.string(),
+        values: z.array(z.union([z.string(), z.number()])).optional(),
+        minutes: z.number().optional(),
+        overdue: z.boolean().optional(),
+        hasReminder: z.boolean().optional(),
+        heldBack: z.boolean().optional(),
+        undated: z.boolean().optional(),
+      })).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createSavedView(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the view.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_saved_view',
+    'Delete a saved view by name or id. The tasks it showed are untouched; only the lens goes, and it cannot be restored from here.',
+    { view: z.string().min(1).describe('The view\'s name (case does not matter) or its id from list_saved_views.') },
+    async ({ view }) => {
+      try {
+        return json(await withWrite(() => deleteSavedView(replica, view)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the view.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_vacation_mode',
+    'Turn vacation mode on or off, as the switch in Settings does. On, it hides every task marked for vacation pause and every category set to hide on vacation, everywhere, and protects their streaks; nothing else moves. Off, it brings them back and forgives the protected streaks, as the app does. With on: true, until (YYYY-MM-DD, after today) is the day it turns itself off; with the mode already on, until only moves that day, and null clears it. The result says what it hides. get_overview reports the mode and, when a trip switched it on, which one: turning it off during that trip counts as declining it for the trip.',
+    {
+      on: z.boolean(),
+      until: dayKey.nullable().optional().describe('With on: true. The day it turns itself off, YYYY-MM-DD, after today. null clears an end date already set. Leave out to keep it on until it is turned off.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setVacationMode(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change vacation mode.' });
       }
     }
   );

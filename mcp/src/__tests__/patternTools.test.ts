@@ -8,7 +8,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { habitPatterns, moodInsights } from '../patternTools';
+import { focusHistory, habitPatterns, moodInsights } from '../patternTools';
 
 let mockRaw: ShimDatabase;
 
@@ -117,5 +117,59 @@ describe('moodInsights', () => {
     expect(result.moodAndCompletions).toMatchObject({ days: 14, direction: 'more done on better days', strength: 'strong' });
     expect(JSON.stringify(result)).not.toMatch(/"r":/);
     expect(result.rules.join(' ')).toMatch(/never causes/);
+  });
+});
+
+describe('focusHistory', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { dbInsertFocusSessionRecord } = require('../../../src/db/database') as typeof import('../../../src/db/database');
+
+  const session = (id: string, daysAgo: number, steps: { task: string | null; planned: number; actualSeconds: number }[]) => {
+    dbInsertFocusSessionRecord({
+      id,
+      startedAt: at(daysAgo, 9),
+      endedAt: at(daysAgo, 10),
+      workedSeconds: steps.reduce((sum, s) => sum + s.actualSeconds, 0),
+      restedSeconds: 300,
+      plannedWorkMinutes: steps.reduce((sum, s) => sum + s.planned, 0),
+      steps: [
+        ...steps.map(s => ({ kind: 'work' as const, taskId: s.task, plannedMinutes: s.planned, actualSeconds: s.actualSeconds, part: 1, partCount: 1, long: false })),
+        { kind: 'rest' as const, taskId: null, plannedMinutes: 5, actualSeconds: 300, part: 1, partCount: 1, long: false },
+      ],
+      completedTaskIds: steps.flatMap(s => (s.task ? [s.task] : [])),
+    });
+  };
+
+  beforeEach(() => {
+    mockRaw.runSync('DELETE FROM focus_session_log');
+    mockRaw.runSync('DELETE FROM tasks');
+    replica.refresh();
+  });
+
+  it('reads finished sessions as the Stats screen does, naming each step\'s task, and says the live session is out of reach', () => {
+    task({ id: 'report', title: 'Write the report' });
+    session('s1', 1, [{ task: 'report', planned: 25, actualSeconds: 1500 }, { task: 'gone', planned: 10, actualSeconds: 900 }]);
+    session('s2', 40, [{ task: 'report', planned: 25, actualSeconds: 1200 }]);
+
+    const result = focusHistory(replica, { days: 7 });
+    expect(result.sessions.map(s => s.id)).toEqual(['s1']);
+    expect(result.sessions[0]).toMatchObject({ day: dayKey(1), workedMinutes: 40, restedMinutes: 5, plannedWorkMinutes: 35 });
+    expect(result.sessions[0].completed).toEqual(['Write the report', 'a task since deleted']);
+    expect(result.sessions[0].steps.map(s => s.kind)).toEqual(['work', 'work', 'rest']);
+    expect(result.sessions[0].steps[0]).toMatchObject({ task: 'Write the report', plannedMinutes: 25, actualMinutes: 25 });
+    expect(result.sessions[0].steps[2]).not.toHaveProperty('task');
+    expect(result.breaks).toEqual({ offered: 1, taken: 1 });
+    expect(result.liveSession).toMatch(/does not sync/);
+    // Two work stretches is under the Stats screen's own floor, so nothing is read into them.
+    expect(result.accuracy).toBeUndefined();
+    expect(result.note).toMatch(/Fewer than 3 work stretches/);
+  });
+
+  it('reads how stretches ran against their plan once there are enough of them', () => {
+    session('s1', 1, [{ task: null, planned: 25, actualSeconds: 1800 }, { task: null, planned: 25, actualSeconds: 1800 }]);
+    session('s2', 2, [{ task: null, planned: 25, actualSeconds: 1800 }]);
+    const result = focusHistory(replica, { days: 7 });
+    expect(result.accuracy).toMatchObject({ steps: 3, plannedMinutes: 75, actualMinutes: 90, reading: 'Stretches tend to run over their planned length.' });
+    expect(result.note).toBeUndefined();
   });
 });

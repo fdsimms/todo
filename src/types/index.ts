@@ -982,7 +982,14 @@ export type UnattendedSubject =
   // A change to what is in the kitchen (`pantryWrite.ts`), undoable by snapshot (`agentPantryRevert.ts`).
   | 'pantry'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
-  | 'event';
+  | 'event'
+  // A milestone on the mood log (`Milestone`). Titled by kind, never by its label, for the
+  // reason a mood entry is: the Activity list is about the app, not somebody's health.
+  | 'milestone'
+  // A saved view (`SavedView`), created or deleted by an agent. Record only.
+  | 'view'
+  // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
+  | 'setting';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were

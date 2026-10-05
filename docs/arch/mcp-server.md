@@ -1044,6 +1044,44 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
 - **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
   the row. The phone re-reads each row just before writing, which makes the window one sync wide.
 
+### Focus sessions, milestones, saved views and the vacation switch
+
+Four areas had no MCP read or write, and the shape of each answer follows from what syncs:
+
+- **Focus sessions are history only, and that is the sync model working.** `focus_history` reads
+  `focus_session_log`, the finished sessions Stats reads (`focusStats.ts`: the summary, how
+  stretches ran against their plan, which is null below `MIN_ACCURACY_SAMPLES` and said rather than
+  hidden, and how many offered breaks were taken), with each step's task named through the replica.
+  The session in flight is `focus_sessions`, which `docs/arch/focus-sessions.md` keeps out of sync on
+  purpose (a cursor two devices could fight over), so no replica ever holds it: nothing here can say
+  what the person is working through now, or start, pause or advance a session, and the result's
+  `liveSession` says so in words the model can repeat.
+- **Milestones go through `useMilestoneStore`'s own actions** (`milestoneTools.ts`), which is
+  loadable here because it imports only the db layer. A blank label is refused as the sheet refuses
+  it, and a date is anchored at noon as `MilestoneSheet` anchors a picked day, because the row's
+  date is the split point every before/after read is built on. The Activity entry is titled by kind
+  ("Milestone"), never by its label, for the reason a mood entry is: "Started sertraline" is health
+  content, and the Activity list is about the app. Each milestone is its own split and the tools
+  never pair a start with a later stop; the contrast itself is `mood_insights`' to report.
+- **Saved views are read through the app's own matcher** (`filterTasksForView`, with the app's
+  held-back rule and logical day), so a view's count here is the count the Saved Views screen shows.
+  `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app
+  uses, and then compares what survived with what was asked: a clause the parser would drop, a
+  second clause of one kind, a category nobody has or a project id that is not theirs is refused
+  by name rather than stored as a view that means less than it was told to. There is deliberately
+  no update: a view owns no rows, so a wrong one is deleted and remade, and its name, icon and
+  clauses are edited in the app.
+- **The vacation switch is the settings store's own setter**, so what `set_vacation_mode` does is
+  what the Settings toggle does. The rule every off-path shares, that the protected streaks are
+  forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out
+  of `useTaskStore.forgivVacationStreaks` into `vacationStreaks.ts`, because the store imports
+  `useFocusStore` and so `expo-notifications`, which the server cannot load; the store and the
+  server now call one function. What the mode hides is counted by `isHiddenForVacation`, never
+  re-derived. `vacationDrivenBy` is left alone on the way off: `checkAwayVacation` reads "mode off
+  while a trip still names it" as the person declining that trip, and clearing it from here would
+  make the trip arm the mode again tomorrow. `get_overview`'s `vacation` carries the same state
+  (since, until, the driving trip, what it hides).
+
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and

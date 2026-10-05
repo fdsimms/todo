@@ -37,6 +37,10 @@ const COUNTERPARTS: Record<string, string[]> = {
   // update_food_entry will not restate it; the row is deleted and relogged.
   log_water: ['delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
+  add_milestone: ['update_milestone', 'delete_milestone'],
+  // A view's name, icon and clauses are edited in the app; a wrong one is
+  // deleted and made again, which costs nothing since a view owns no rows.
+  create_saved_view: ['delete_saved_view'],
   request_calendar_event: ['cancel_calendar_request'],
   log_medication: ['update_medication_log', 'delete_medication_log'],
   plan_meal: ['update_meal', 'remove_meal'],

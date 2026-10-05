@@ -81,6 +81,13 @@ only the fallback until the first sync.
 | `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
 | `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
+| `focus_history` | Finished focus sessions over a range, as the Stats screen reads them: minutes worked and rested, how stretches ran against their plan (once there are enough), breaks taken, and each session's steps. History only: a session in progress stays on the phone. |
+| `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |
+| `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
+| `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
+| `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
+| `create_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. A view's clauses are edited in the app. |
+| `set_vacation_mode` | **Write.** Turn vacation mode on or off as the Settings switch does, optionally with the day it turns itself off. On hides every task marked for vacation pause and every hide-on-vacation category; off brings them back and forgives their streaks. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |

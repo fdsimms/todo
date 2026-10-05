@@ -44,6 +44,9 @@ import type {
   FoodLogEntry,
   HealthRule,
   Milestone,
+  FocusSessionRecord,
+  SavedView,
+  SavedViewClause,
   ScreenTimeRule,
   TitleRule,
   WeatherRule,
@@ -137,7 +140,11 @@ export interface ReplicaSettings {
   activeHoursStart: string;
   activeHoursEnd: string;
   vacationMode: boolean;
+  /** Stamped when the mode was switched on, so it records when they went and never when they are going. */
+  vacationStart: string | null;
   vacationEnd: string | null;
+  /** The project whose away dates switched vacation mode on, or null when a person did (docs/arch/away-dates.md). */
+  vacationDrivenBy: string | null;
   /** The unit the person counts water in. Display only: `waterMl` is stored in millilitres whichever is picked. */
   waterUnit: WaterUnit;
   /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
@@ -214,6 +221,20 @@ export interface ReplicaLib {
   freshness: typeof import('../../src/utils/freshness');
   groceryParse: typeof import('../../src/utils/groceryParse');
   groceryPlural: typeof import('../../src/utils/groceryPlural');
+  focusStats: typeof import('../../src/utils/focusStats');
+}
+
+/** What switching vacation mode did, read at the moment the hide applied (see `Replica.setVacationMode`). */
+export interface VacationSwitchOutcome {
+  on: boolean;
+  /** Open top-level tasks the mode hides: their own `vacationPause`, or a category set to hide on vacation. */
+  hiddenTasks: number;
+  /** The categories set to hide on vacation, by name. */
+  hiddenCategories: string[];
+  /** Streaks re-dated on the way off (`forgiveVacationStreaks`); 0 on the way on. */
+  forgivenStreaks: number;
+  /** True when the call only moved the end date of a mode already on. */
+  endOnly: boolean;
 }
 
 /** The rule lists an agent may edit, by the name the tools use. */
@@ -654,6 +675,49 @@ export interface Replica {
   /** Every mood check-in, unfiltered: the insights need the whole log. */
   allMoodLogs(): MoodLog[];
   milestones(): Milestone[];
+  /**
+   * Milestones through `useMilestoneStore`'s own actions: a blank label is
+   * refused as the sheet refuses it, and a date is stored as given (the tool
+   * anchors it at noon, as `MilestoneSheet` does). The store is loadable here
+   * (it imports only the db layer and `generateId`), so nothing is lifted.
+   */
+  addMilestone(label: string, date: Date): Milestone;
+  updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
+  deleteMilestone(id: string): Milestone;
+  /**
+   * Finished focus sessions, newest first: `focus_session_log`, what Stats
+   * reads. The session in flight is `focus_sessions`, which is in
+   * `SYNC_EXCLUDED_TABLES` (docs/arch/focus-sessions.md: a cursor two devices
+   * could fight over), so it never reaches a replica and there is nothing live
+   * to read or drive from here.
+   */
+  focusHistory(): FocusSessionRecord[];
+  /** The person's saved views, in their own order. */
+  savedViews(): SavedView[];
+  /**
+   * The tasks one view holds now, through the app's own matcher
+   * (`filterTasksForView`) with the app's own held-back rule and logical day,
+   * the way `SavedViewsScreen` counts them.
+   */
+  savedViewTasks(clauses: readonly SavedViewClause[]): Task[];
+  /** A view through `useSavedViewStore.createView`, which takes the next slot at the bottom of the list. The clauses are already checked. */
+  createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView;
+  deleteSavedView(id: string): SavedView;
+  /**
+   * Vacation mode through the settings store's own setter, the way the
+   * Settings toggle does it. On the way off the protected streaks are forgiven
+   * first (`forgiveVacationStreaks`, the rule every off-path shares), or a
+   * paused daily habit reads as broken the moment the pause lifts. `until` is
+   * the day it turns itself off, stored as that day's start as the Settings
+   * picker stores it; with the mode already on, a call with `until` moves only
+   * the end date. Already on without `until`, or already off, is refused.
+   *
+   * `vacationDrivenBy` is deliberately left alone on the way off: the phone's
+   * `checkAwayVacation` reads "mode off while a trip still names it" as the
+   * person declining that trip, and clearing it here would make the trip arm
+   * the mode again tomorrow.
+   */
+  setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome;
   /** Every tag the person has, used or not. */
   tagRegistry(): string[];
   /**
@@ -2113,7 +2177,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         activeHoursStart: s.activeHoursStart,
         activeHoursEnd: s.activeHoursEnd,
         vacationMode: s.vacationMode,
+        vacationStart: s.vacationStart,
         vacationEnd: s.vacationEnd,
+        vacationDrivenBy: s.vacationDrivenBy,
         waterUnit: s.waterUnit,
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
@@ -2200,11 +2266,105 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         freshness: require('../../src/utils/freshness'),
         groceryParse: parse,
         groceryPlural: require('../../src/utils/groceryPlural'),
+        focusStats: require('../../src/utils/focusStats'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
     milestones: () => db.dbGetAllMilestones(),
+    // The store, loaded per write and hydrated before acting: a handful of
+    // rows, and a dry run's rollback must not leave it holding a milestone the
+    // database no longer has.
+    addMilestone(label: string, date: Date): Milestone {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMilestoneStore } = require('../../src/store/useMilestoneStore') as typeof import('../../src/store/useMilestoneStore');
+      const store = useMilestoneStore.getState();
+      store.initialize();
+      const milestone = store.addMilestone(label, date);
+      if (!milestone) throw new Error('A milestone needs a label: what changed, in a few words.');
+      return milestone;
+    },
+    updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMilestoneStore } = require('../../src/store/useMilestoneStore') as typeof import('../../src/store/useMilestoneStore');
+      const store = useMilestoneStore.getState();
+      store.initialize();
+      if (!store.milestones.some(m => m.id === id)) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
+      if (patch.label !== undefined && !patch.label.trim()) throw new Error('A milestone needs a label: what changed, in a few words.');
+      store.updateMilestone(id, {
+        ...(patch.label !== undefined ? { label: patch.label } : {}),
+        ...(patch.date !== undefined ? { date: patch.date.toISOString() } : {}),
+      });
+      return useMilestoneStore.getState().milestones.find(m => m.id === id)!;
+    },
+    deleteMilestone(id: string): Milestone {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMilestoneStore } = require('../../src/store/useMilestoneStore') as typeof import('../../src/store/useMilestoneStore');
+      const store = useMilestoneStore.getState();
+      store.initialize();
+      const milestone = store.milestones.find(m => m.id === id);
+      if (!milestone) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
+      store.removeMilestone(id);
+      return milestone;
+    },
+    focusHistory: () => db.dbGetFocusSessionLog(),
+    savedViews: () => db.dbGetAllSavedViews(),
+    savedViewTasks(clauses: readonly SavedViewClause[]): Task[] {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const savedViews = require('../../src/utils/savedViews') as typeof import('../../src/utils/savedViews');
+      return savedViews.filterTasksForView(tasks(), clauses, {
+        todayStart: dates.getCurrentDayStart(),
+        heldBack: visibility.isHeldBack,
+      });
+    },
+    createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
+      const store = useSavedViewStore.getState();
+      store.initialize();
+      return store.createView(name, icon, clauses);
+    },
+    deleteSavedView(id: string): SavedView {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
+      const store = useSavedViewStore.getState();
+      store.initialize();
+      const view = store.views.find(v => v.id === id);
+      if (!view) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
+      store.removeView(id);
+      return view;
+    },
+    setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const streaks = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks');
+      const settings = useSettingsStore.getState();
+      const hiddenCategories = () => useCategoryStore.getState().categories.filter(c => c.hideOnVacation).map(c => c.name);
+      // Only while the mode is on does isHiddenForVacation answer, so the count
+      // is taken after switching on and before switching off.
+      const hiddenTasks = () => tasks().filter(t => !t.parentId && !t.completed && !t.archived && visibility.isHiddenForVacation(t)).length;
+      // Stored as the day's start, as the Settings picker stores it, which is
+      // what checkVacationExpiry compares against.
+      const end = until === undefined ? undefined : until === null ? null : dates.getTaskDayStart(until).toISOString();
+
+      if (on) {
+        if (settings.vacationMode) {
+          if (end === undefined) throw new Error('Vacation mode is already on.');
+          settings.setVacationEnd(end);
+          return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, endOnly: true };
+        }
+        settings.setVacationMode(true, end ?? null);
+        return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, endOnly: false };
+      }
+
+      if (!settings.vacationMode) throw new Error('Vacation mode is already off.');
+      const wasHiding = hiddenTasks();
+      const categories = hiddenCategories();
+      const forgiven = streaks.forgiveVacationStreaks(tasks(), dates.getCurrentDayStart().toISOString());
+      forgiven.forEach(t => db.dbUpdateTask(t));
+      taskCache = null;
+      settings.setVacationMode(false);
+      return { on: false, hiddenTasks: wasHiding, hiddenCategories: categories, forgivenStreaks: forgiven.length, endOnly: false };
+    },
     tagRegistry: () => db.dbGetTagRegistry(),
     createRecipe(input: RecipeInput): Recipe {
       /* eslint-disable @typescript-eslint/no-require-imports */
