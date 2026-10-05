@@ -45,8 +45,16 @@ export function burstPieces(count: number, reach = 150): BurstPiece[] {
   return pieces;
 }
 
+/**
+ * `burstOffset` and `burstOpacity` run inside `CoinBurst`'s `useAnimatedStyle`,
+ * on the UI thread, where Reanimated refuses to call a function that isn't
+ * marked `'worklet'` (a fatal error on mount, not a warning). Keep the
+ * directive, and keep anything they call a worklet or a plain constant.
+ */
+
 /** Where a piece is `t` (0..1) of the way through its flight, relative to the launch point. */
 export function burstOffset(piece: BurstPiece, t: number): { x: number; y: number } {
+  'worklet';
   const clamped = Math.min(1, Math.max(0, t));
   return {
     x: Math.cos(piece.angle) * piece.distance * clamped,
@@ -56,6 +64,7 @@ export function burstOffset(piece: BurstPiece, t: number): { x: number; y: numbe
 
 /** Fully drawn for the first part of the flight, then fading out over the rest. */
 export function burstOpacity(t: number): number {
+  'worklet';
   if (t <= 0 || t >= 1) return 0;
   const FADE_FROM = 0.65;
   return t < FADE_FROM ? 1 : (1 - t) / (1 - FADE_FROM);

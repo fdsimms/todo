@@ -12,6 +12,10 @@ import {
   questionLabel,
   describeQuestion,
   describeConditions,
+  applyItemVariant,
+  setVariantText,
+  variantText,
+  describeVariants,
   personIdsFromAnswer,
   personIdsToAnswer,
   personIdsForAnswers,
@@ -381,5 +385,75 @@ describe('labels', () => {
       [{ questionId: 'q-type', values: ['Work'] }, { questionId: 'q-nights', values: ['7'] }],
       questions,
     )).toBe('What kind of trip? Work · How many nights? 7');
+  });
+});
+
+describe('item variants', () => {
+  const item = makeItem({
+    title: 'Pack {days + 1} shirts',
+    notes: 'base notes',
+    variants: [
+      { questionId: 'q-type', answer: 'Work', title: 'Pack {days} dress shirts' },
+      { questionId: 'q-type', answer: 'Vacation', notes: 'beach notes' },
+    ],
+  });
+
+  it('replaces the title for the matching answer and keeps the notes', () => {
+    const out = applyItemVariant(item, { 'q-type': 'Work' });
+    expect(out.title).toBe('Pack {days} dress shirts');
+    expect(out.notes).toBe('base notes');
+  });
+
+  it('replaces only the notes when the variant gives only notes', () => {
+    const out = applyItemVariant(item, { 'q-type': 'Vacation' });
+    expect(out.title).toBe('Pack {days + 1} shirts');
+    expect(out.notes).toBe('beach notes');
+  });
+
+  it('returns the item untouched for another answer, none, or a deleted question', () => {
+    expect(applyItemVariant(item, { 'q-type': 'Other' })).toBe(item);
+    expect(applyItemVariant(item, {})).toBe(item);
+    expect(applyItemVariant(item, { 'q-gone': 'Work' })).toBe(item);
+  });
+
+  it('takes the first variant when two match', () => {
+    const two = makeItem({
+      title: 'base',
+      variants: [
+        { questionId: 'q-type', answer: 'Work', title: 'first' },
+        { questionId: 'q-type', answer: 'Work', title: 'second' },
+      ],
+    });
+    expect(applyItemVariant(two, { 'q-type': 'Work' }).title).toBe('first');
+  });
+
+  it('writes, edits and clears a variant through setVariantText', () => {
+    let v = setVariantText([], 'q-type', 'Work', 'title', 'Dress shirts');
+    expect(v).toEqual([{ questionId: 'q-type', answer: 'Work', title: 'Dress shirts' }]);
+    v = setVariantText(v, 'q-type', 'Work', 'notes', 'Iron them');
+    expect(variantText(v, 'q-type', 'Work', 'notes')).toBe('Iron them');
+    v = setVariantText(v, 'q-type', 'Work', 'title', '');
+    expect(v).toHaveLength(1);
+    v = setVariantText(v, 'q-type', 'Work', 'notes', '  ');
+    expect(v).toEqual([]);
+  });
+
+  it('summarizes the answers that have their own text', () => {
+    expect(describeVariants(item.variants, [makeQuestion()])).toBe('Work, Vacation');
+    expect(describeVariants(item.variants, [])).toBeNull();
+    expect(describeVariants([], [makeQuestion()])).toBeNull();
+  });
+
+  it('normalizes stored variants, dropping junk and blank text', () => {
+    const n = normalizeTemplateItem({
+      variants: [
+        { questionId: 'q', answer: 'A', title: 'x', notes: '  ' },
+        { questionId: 'q', answer: '' },
+        { answer: 'B' },
+        'nope',
+      ],
+    } as unknown as Partial<TemplateItem>);
+    expect(n.variants).toEqual([{ questionId: 'q', answer: 'A', title: 'x' }]);
+    expect(normalizeTemplateItem({}).variants).toEqual([]);
   });
 });

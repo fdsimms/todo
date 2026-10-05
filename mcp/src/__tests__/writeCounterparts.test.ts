@@ -28,6 +28,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   add_project_steps: ['update_task', 'archive_task'],
   create_project: ['update_project', 'update_task'],
   create_stack: ['rename_stack', 'assign_to_stack'],
+  create_reward: ['update_reward', 'delete_reward'],
+  log_slip: ['undo_slip'],
   create_template: ['update_template', 'delete_template', 'reorder_templates'],
   create_person: ['update_person'],
   log_food: ['update_food_entry', 'delete_food_entry'],

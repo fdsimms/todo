@@ -279,7 +279,7 @@ is still how the agent left it.
 - **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
-- **Record only, on purpose:** a recipe, template, stack or project the agent created (each has
+- **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
   contents added afterward and no edit stamp to tell whether they were, and a project or stack owns
   other rows), a grocery item taken off the list (putting it back would rebuild its quantity and aisle
   from nothing), a project completion, and an automation switch (one setter per setting).
@@ -726,6 +726,34 @@ so the finished occurrences behind a repeating task stay where they were.
 - **`rename_stack` renames and nothing else.** Deleting is a cascade decision (`deleteGroup`) the
   model should not make, and changing the category would move every member, so those stay a tap in
   the app. There is no reorder.
+
+### Rewards: Claude acts only on the person's word
+
+`get_rewards`, `create_reward`, `update_reward`, `delete_reward`, `claim_reward`, `unclaim_reward`,
+`set_reward_goal`, `set_bounty`, `mark_missed`, `log_slip` and `undo_slip` (`mcp/src/rewardTools.ts`,
+over the `Replica` methods of the same names). `docs/arch/rewards.md` says only a person moves coins.
+The tools keep that by being things the person asks Claude to do, never things Claude does to be
+helpful: each description says "only when they say so", every write previews first, and the
+app's own passes (the sweeps, the rollover) still never charge anything.
+
+- **The rules are the app's.** Claims go through `useRewardStore.claimReward`, bounties through the
+  same `canPostBounty` / `bountyLimit` checks as `postBounty`, a miss through `buildCompletion` with
+  `missed: true` and `recordMiss`, a slip through `slipPatch` and `recordSlip`. The replica
+  hydrates `useRewardStore` on open and on every refresh; before that it was never loaded here, so
+  a claim would have judged the balance by what this process had earned since it started.
+- **A wish-list claim checks its item off neutrally**, as `RewardsScreen`'s `claim` does (no coins on
+  top of the spend), inside one transaction with the spend. `unclaim_reward` reopens the item only if
+  it was checked off at or after the claim, so an item the person finished earlier is left alone.
+- **Refused rather than half-done.** A habit with a penalty (a slip also charges an app block, which only the phone can set), a one-off
+  task or a not-yet-due repeat for `mark_missed` (the app silently skips it), and anything while
+  rewards are switched off.
+- **Undo is the paired tool.** `unclaim_reward` takes a claim back by the id `claim_reward` returned,
+  `reopen_task` takes back a miss and its coins, `undo_slip` a slip. `withdraw` of a bounty is not
+  reversible for that occurrence, as in the app.
+- **Difficulty is `update_task`'s `difficulty`**, not a reward tool: it is an ordinary task field.
+- **Logged as `subject: 'reward'`**, a record only like a stack's. A reward, claim or goal has no
+  task to revert; a bounty edit carries the task revert; a miss has its own `missed` action ("Marked
+  missed") that is reverted like a completion, since "Reopen" is its real inverse.
 
 ### Every task it creates has a category
 

@@ -104,7 +104,18 @@ export interface ChainStepPlan {
   answerSchedulesNextStep?: boolean;
 }
 
-export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate' | 'chainEnabled' | 'chainItems' | 'chainIndex' | 'rotationEnabled' | 'rotationItems'>> {
+export interface VariantPlan {
+  /** A choice question's `name`. */
+  question: string;
+  /** One of that question's options. */
+  answer: string;
+  /** Replaces the item's title for this answer. Omit to keep it. */
+  title?: string;
+  /** Replaces the item's notes for this answer. Omit to keep them. */
+  notes?: string;
+}
+
+export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'variants' | 'refTemplateId' | 'answerGate' | 'chainEnabled' | 'chainItems' | 'chainIndex' | 'rotationEnabled' | 'rotationItems'>> {
   /** Steps done one after another, each appearing when the one before is done. null removes it. */
   chain?: { steps: ChainStepPlan[] } | null;
   /** Named things each done once a week in any order: two or more, all different. null removes it. */
@@ -129,6 +140,8 @@ export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 
   /** A `GroupPlan.key`. */
   groupKey?: string;
   conditions?: ConditionPlan[];
+  /** Different title and/or notes for particular answers of a choice question (TemplateItemVariant). */
+  variants?: VariantPlan[];
   /** An existing template's id, or its name when that names exactly one. */
   refTemplate?: string;
 }
@@ -301,11 +314,43 @@ export function validateTemplatePlan(
       errors.push(`item "${label}" names group "${item.groupKey}", which the plan does not define.`);
     }
     errors.push(...conditionErrors(item, label, choices, questionNames));
+    errors.push(...variantErrors(item, label, choices, questionNames));
     errors.push(...refErrors(item, label, existing, selfId));
     errors.push(...rangeErrors(item, label));
   }
 
   errors.push(...scheduleErrors(plan.schedule));
+  return errors;
+}
+
+function variantErrors(
+  item: ItemPlan,
+  label: string,
+  choices: Map<string, string[]>,
+  questionNames: Set<string>
+): string[] {
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  for (const variant of item.variants ?? []) {
+    const options = choices.get(variant.question);
+    if (!options) {
+      errors.push(
+        questionNames.has(variant.question)
+          ? `item "${label}" has a variant on "${variant.question}", which is not a choice question.`
+          : `item "${label}" has a variant on "${variant.question}", which the plan does not define.`
+      );
+      continue;
+    }
+    if (!options.includes(variant.answer)) {
+      errors.push(`item "${label}" has a variant for "${variant.question}" = "${variant.answer}", which is not one of its options (${options.join(', ')}).`);
+    }
+    if (!variant.title?.trim() && !variant.notes?.trim()) {
+      errors.push(`item "${label}" has a variant for "${variant.question}" = "${variant.answer}" with no title or notes.`);
+    }
+    const key = `${variant.question}\u0000${variant.answer}`;
+    if (seen.has(key)) errors.push(`item "${label}" has two variants for "${variant.question}" = "${variant.answer}".`);
+    seen.add(key);
+  }
   return errors;
 }
 
@@ -499,7 +544,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       ...(q.fromDates !== 'none' ? { fromDates: q.fromDates } : {}),
     })),
     items: template.items.map(item => {
-      const { groupId, conditions, refTemplateId, refTemplateName, answerGate, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
+      const { groupId, conditions, variants, refTemplateId, refTemplateName, answerGate, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
       void chainIndex;
       return {
         ...fields,
@@ -511,6 +556,9 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
         ...(groupId ? { groupKey: groupId } : {}),
         ...(conditions.length
           ? { conditions: conditions.map(c => ({ question: questionName.get(c.questionId) ?? '', values: c.values })) }
+          : {}),
+        ...((variants ?? []).length
+          ? { variants: (variants ?? []).map(v => ({ question: questionName.get(v.questionId) ?? '', answer: v.answer, ...(v.title ? { title: v.title } : {}), ...(v.notes ? { notes: v.notes } : {}) })) }
           : {}),
         ...(answerGate ? { onlyIfAnswer: { item: answerGate.itemId, answers: answerGate.answers } } : {}),
         ...(refTemplateId ? { refTemplate: refTemplateId } : {}),

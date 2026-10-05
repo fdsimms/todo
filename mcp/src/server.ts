@@ -78,6 +78,7 @@ import {
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
+import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
@@ -397,6 +398,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'get_rewards',
+    "The coin economy: whether rewards are on, the balance, the reward being saved for and how far along it is, every reward on the list (cost, whether the balance covers it now, how many coins short, when it was last claimed), the tasks with a live coin bounty, and the latest coin history (what earned, what was lost, what was spent). Read it before claiming or pricing anything. A balance can be below zero. When enabled is false the person has rewards switched off, so do not bring them up.",
+    { historyLimit: z.number().int().min(0).max(100).optional().describe('How many history entries, newest first. Default 15.') },
+    async input => json(await withFresh(() => getRewards(replica, input)))
+  );
+
+  server.tool(
     'list_recipes',
     'Recipes, alphabetically. query matches the name, a tag or an ingredient ("spinach").',
     {
@@ -640,6 +648,13 @@ const conditionSchema = z.object({
   values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
 });
 
+const variantSchema = z.object({
+  question: z.string().describe('The name of a choice question defined in this plan.'),
+  answer: z.string().describe('One of that question\'s options.'),
+  title: z.string().optional().describe('Replaces the item\'s title for this answer. Omit to keep it.'),
+  notes: z.string().optional().describe('Replaces the item\'s notes for this answer. Omit to keep them.'),
+});
+
 const itemSchema = z.object({
   id: z.string().optional().describe('Update only: the id of an item this template already has (get_template). It starts from the stored item and the other fields here change it.'),
   title: z.string().min(1).optional().describe('Required, except when id names an item that already has one.'),
@@ -688,6 +703,7 @@ const itemSchema = z.object({
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional()
     .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
+  variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
@@ -705,7 +721,7 @@ const itemSchema = z.object({
  * understand, written once for both template tools. The rules are
  * templateUtils.ts's (tested); this is only the words a client reads.
  */
-const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token.';
+const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token. An item can also carry variants: its own title and/or notes for particular answers of a choice question.';
 
 const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
   .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
@@ -799,6 +815,8 @@ const taskFieldsShape = {
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+    firstWeek: z.enum(['fewer', 'full']).optional()
+      .describe('create_task, per week only: "fewer" (the default) scales the first week to the days left in it, as the app does (3 a week set on a Thursday asks for 2 that week, then 3). "full" asks for the whole count from the start.'),
   }).nullable().optional()
     .describe('Something done several times: "drink water 8 times a day", "run 3 times a week". A daily target makes the task repeat daily if it did not; a weekly one makes it repeat weekly. null removes it.'),
   timed: z.object({
@@ -1637,6 +1655,150 @@ function registerWriteTools(
         return json(await withWrite(() => renameStack(replica, id, title)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not rename the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_reward',
+    "Add a reward the person can spend coins on, such as a treat or a night off. Ask them for the cost, or offer one based on how often they want it (get_rewards shows the balance and history to judge the pace). A reward is a note to themselves: claiming one unlocks nothing in the app. oneTime makes it disappear once claimed. Refused while rewards are switched off.",
+    {
+      title: z.string().min(1),
+      cost: z.number().int().min(1).describe('Coins, a whole number.'),
+      note: z.string().nullable().optional().describe('A line of context, e.g. "the Thai place on 5th".'),
+      link: z.string().nullable().optional().describe('A URL to open for it.'),
+      oneTime: z.boolean().optional().describe('Claimed once, then gone from the list.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createReward(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_reward',
+    "Change a reward's title, cost, note, link or one-time flag (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
+    {
+      id: z.string().min(1),
+      title: z.string().min(1).optional(),
+      cost: z.number().int().min(1).optional(),
+      note: z.string().nullable().optional(),
+      link: z.string().nullable().optional(),
+      oneTime: z.boolean().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateReward(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_reward',
+    "Delete a reward from the list (ids from get_rewards). Coins already spent on it stay spent. Only on the person's say-so.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteReward(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'claim_reward',
+    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => claimReward(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not claim the reward.' });
+      }
+    }
+  );
+
+  server.tool(
+    'unclaim_reward',
+    "Take back a claim by its claimId (from claim_reward, or an id from get_rewards history where kind is spend): the coins go back and a one-time reward returns to the list.",
+    { claimId: z.string().min(1) },
+    async ({ claimId }) => {
+      try {
+        return json(await withWrite(() => unclaimReward(replica, claimId)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not take back the claim.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_reward_goal',
+    "Choose the reward the person is saving for (an id from get_rewards), or null to stop saving for any. It only changes which reward the Rewards screen shows progress toward.",
+    { id: z.string().min(1).nullable() },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => setRewardGoal(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the goal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_bounty',
+    "Post extra coins on a task the person has been putting off (posted: true), or withdraw the live one (posted: false). Only when they ask: a bounty is theirs to set. It is worth the most when posted and loses value each time the task is moved, so a task is never worth more for having waited. One per occurrence, a few live at once (get_rewards shows the limit), and withdrawing it cannot be undone for that occurrence. Refused while rewards are off.",
+    { taskId: z.string().min(1), posted: z.boolean() },
+    async ({ taskId, posted }) => {
+      try {
+        return json(await withWrite(() => setBounty(replica, taskId, posted)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the bounty.' });
+      }
+    }
+  );
+
+  server.tool(
+    'mark_missed',
+    "Mark an occurrence of a repeating task as missed. Only when the person says they missed it: the app never decides that for them, and an overdue task costs nothing until they say so. It breaks the streak, creates the next occurrence, and costs coins when rewards are on (the result says how many). A one-off task and a repeat that is not due yet are refused. reopen_task puts it back and returns the coins.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => markMissed(replica, id));
+        return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not mark the task missed.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_slip',
+    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => setSlip(replica, id, true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log the slip.' });
+      }
+    }
+  );
+
+  server.tool(
+    'undo_slip',
+    "Take back today's latest slip on a \"don't do this\" habit: the streak goes back to what it was and the slip's coins are returned. Only today's slips can be undone.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => setSlip(replica, id, false)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not undo the slip.' });
       }
     }
   );

@@ -960,7 +960,7 @@ export interface FocusSessionRecord {
  * `src/utils/retention.ts` for why this one may not default to forever the way
  * the Logbook's own window does.
  */
-export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed';
+export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed' | 'missed';
 
 /**
  * Who made the write: the app's own passes, or an agent working through the
@@ -978,7 +978,7 @@ export type UnattendedActor = 'app' | 'agent';
 /** What an agent's entry is about. Everything the app writes on its own is a task. */
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
-  | 'automation' | 'note' | 'stack'
+  | 'automation' | 'note' | 'stack' | 'reward'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
   | 'event';
 
@@ -3746,6 +3746,26 @@ export interface TemplateItemCondition {
   values: string[];
 }
 
+/**
+ * A different title and/or notes for an item when one choice question has one
+ * answer: "Pack {days / 2} shirts" for a laundry-access trip against
+ * "Pack {days + 1} shirts" for one without, without keeping two items.
+ *
+ * Replaces, never merges: a field the variant leaves out (or blank) keeps the
+ * item's own. Deliberately text only; everything else about the item (dates,
+ * category, subtasks) is shared, since a variant that changed those would be a
+ * second item under one name. The first variant matching the run's answers
+ * wins, and one naming a deleted question or an answer that isn't given is
+ * inert (resolve-or-shrug, like `TemplateItemCondition`).
+ */
+export interface TemplateItemVariant {
+  questionId: string;
+  /** The answer that selects this variant, compared exactly as a condition's values are. */
+  answer: string;
+  title?: string;
+  notes?: string;
+}
+
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the
 // apply sheet. Offsets are days relative to whichever anchor date (`anchor`)
@@ -3903,6 +3923,10 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+
+  // Alternative title/notes for particular answers; see TemplateItemVariant.
+  // Empty for every item stored before this shipped, which is "no variants".
+  variants: TemplateItemVariant[];
 
   /**
    * `Task.answerGate` before there is a task: "only if <another item in this

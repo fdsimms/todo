@@ -14,6 +14,7 @@ import type {
   TemplateContainer,
   TemplateItem,
   TemplateItemCondition,
+  TemplateItemVariant,
   TemplateQuestion,
   TemplateQuestionKind,
   TemplateQuestionSource,
@@ -92,6 +93,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     conditions: normalizeConditions(raw.conditions),
+    variants: normalizeVariants(raw.variants),
     answerGate: normalizeItemGate(raw.answerGate),
     refTemplateId: raw.refTemplateId ?? null,
     refTemplateName: raw.refTemplateName ?? '',
@@ -117,6 +119,24 @@ function normalizeConditions(raw: unknown): TemplateItemCondition[] {
       questionId: c.questionId,
       values: Array.isArray(c.values) ? c.values.filter((v): v is string => typeof v === 'string') : [],
     }));
+}
+
+/** Drop anything that isn't a `{questionId, answer}` pair, and keep only the text fields that carry something. */
+function normalizeVariants(raw: unknown): TemplateItemVariant[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TemplateItemVariant[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== 'object') continue;
+    const { questionId, answer, title, notes } = v as Partial<TemplateItemVariant>;
+    if (typeof questionId !== 'string' || typeof answer !== 'string' || !answer) continue;
+    out.push({
+      questionId,
+      answer,
+      ...(typeof title === 'string' && title.trim() ? { title } : {}),
+      ...(typeof notes === 'string' && notes.trim() ? { notes } : {}),
+    });
+  }
+  return out;
 }
 
 /**
@@ -801,6 +821,9 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
     add(item.location ?? '');
     item.subtasks.forEach(s => add(s.title));
     item.chainItems.forEach(c => add(c.title));
+    // A variant's text is only ever swapped in for the item's own, so its blanks
+    // are asked for too: otherwise one used in a variant alone is never filled.
+    item.variants.forEach(v => { add(v.title ?? ''); add(v.notes ?? ''); });
   }
   return found;
 }
@@ -815,7 +838,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
  * ask it about the draft it's holding in state, which isn't an item yet.
  */
 export function itemPlaceholders(
-  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'>,
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & Partial<Pick<TemplateItem, 'variants'>>,
 ): string[] {
   const found: string[] = [];
   const add = (text: string) => {
@@ -828,6 +851,7 @@ export function itemPlaceholders(
   add(item.location ?? '');
   item.subtasks.forEach(s => add(s.title));
   item.chainItems.forEach(c => add(c.title));
+  (item.variants ?? []).forEach(v => { add(v.title ?? ''); add(v.notes ?? ''); });
   return found;
 }
 
@@ -883,7 +907,8 @@ export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
     hasRun(item.notes) ||
     hasRun(item.location ?? '') ||
     item.subtasks.some(s => hasRun(s.title)) ||
-    item.chainItems.some(c => hasRun(c.title))
+    item.chainItems.some(c => hasRun(c.title)) ||
+    item.variants.some(v => hasRun(v.title ?? '') || hasRun(v.notes ?? ''))
   );
 }
 

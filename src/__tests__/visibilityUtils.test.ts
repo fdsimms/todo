@@ -1762,6 +1762,14 @@ describe('quota tasks', () => {
     it('is true for a target of two or more', () => {
       expect(isQuotaTask(quotaTask)).toBe(true);
     });
+
+    // The first week of a weekly target scaled down to one (set up on the
+    // last day of a week) is still counting toward that target.
+    it('is true for a weekly target of one scaled down from more', () => {
+      expect(isQuotaTask({ ...quotaTask, targetCount: 1, quotaPeriod: 'week', seriesDefaults: { targetCount: 3 } })).toBe(true);
+      expect(isQuotaTask({ ...quotaTask, targetCount: 1, quotaPeriod: 'week' })).toBe(false);
+      expect(isQuotaTask({ ...quotaTask, targetCount: 1, quotaPeriod: 'day', seriesDefaults: { targetCount: 3 } })).toBe(false);
+    });
   });
 
   describe('quotaExpectedByNow', () => {

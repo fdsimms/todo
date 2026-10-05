@@ -38,6 +38,8 @@ export interface ApplyTemplateOptions {
   runName?: string;
   /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
   placeholders?: Record<string, string>;
+  /** The run's answers by question id; they pick an item's variant text. */
+  answers?: Record<string, string>;
   /**
    * Everyone named by a `'people'` question, unioned across every such
    * question on the run. Stamped onto every task the run creates directly
@@ -406,8 +408,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       ...template,
       questions: template.questions.filter(q => q.id !== questionId),
       items: template.items.map(i =>
-        i.conditions.some(c => c.questionId === questionId)
-          ? { ...i, conditions: i.conditions.filter(c => c.questionId !== questionId) }
+        i.conditions.some(c => c.questionId === questionId) || i.variants.some(v => v.questionId === questionId)
+          ? {
+              ...i,
+              conditions: i.conditions.filter(c => c.questionId !== questionId),
+              variants: i.variants.filter(v => v.questionId !== questionId),
+            }
           : i
       ),
     };
@@ -524,6 +530,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       get().applyTemplate(template.id, selectedIds, due.anchors, {
         runName: due.runName,
         placeholders: placeholderValuesFor(questions, answers),
+        answers,
         // Always [] here: answers is {}, so every 'people' question resolves
         // to defaultAnswer, which normalizeTemplateQuestion guarantees is ''
         // for that kind. Nobody was asked, so nobody gets named.
