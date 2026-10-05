@@ -4,6 +4,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -61,6 +62,7 @@ import type { GeneratedKind, UnattendedEntry } from '../types';
  */
 export function UnattendedLogScreen() {
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('UnattendedLog', 'Activity settings');
   const entries = useUnattendedStore(useShallow(s => s.entries));
@@ -209,7 +211,7 @@ export function UnattendedLogScreen() {
   }, [clearAll]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Activity"
         subtitle={entries.length === 0 ? undefined : unattendedSummary(filtered)}
