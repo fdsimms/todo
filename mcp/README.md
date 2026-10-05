@@ -59,7 +59,7 @@ and annotates every tool as read-only or not (`src/toolAnnotations.ts`), so the 
 reads without asking. A new tool needs a line in that table; `toolAnnotations.test.ts` fails
 without one.
 
-Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
+Seven prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
 `inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project`, `unstick_tasks` and `how_do_i`.
 
 Every write previews first: without `apply` it changes nothing and returns `willDo` and a
