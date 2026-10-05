@@ -479,7 +479,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * Deliberately absent, and why — kept as prose rather than a denylist so it
  * can't be mistaken for something the code enforces:
  *
- * - `hapticsEnabled`, `shakeToUndoEnabled`, `timerLiveActivity`,
+ * - `hapticsEnabled`, `shakeToUndoEnabled`, `beatSoundEnabled`,
+ *   `beatLastDayKey`, `timerLiveActivity`,
  *   `tripLiveActivity`, `focusLiveActivity`, `fabHand`, `mapsApp` — capabilities and
  *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
  *   which maps apps are installed differs from phone to phone.

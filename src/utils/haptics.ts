@@ -1,5 +1,6 @@
 import * as ExpoHaptics from 'expo-haptics';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { BEAT_STEP_MS } from './beatMark';
 
 /**
  * The single gate for the "Haptic feedback" setting. Every haptic in the app
@@ -32,6 +33,7 @@ let lastDragTick = 0;
  *   dragTick     — a drag crossing into a new slot, rate-limited (see below)
  *   success      — completing a task, confirming an add
  *   chainFinish  — completing the last step of a non-repeating chain
+ *   beat         — Today's All clear: light, light, heavy, in time with the mark
  *   warning      — destructive confirmation prompts
  *   error        — failed actions, validation errors
  *   impact       — physical-feeling moments (drag lift, drop, swipe actions)
@@ -62,6 +64,20 @@ export const haptics = {
     } catch {
       // no-op, matching every other entry here
     }
+  },
+  // Scheduled from one start rather than chained on each pulse's promise, so
+  // the three land BEAT_STEP_MS apart like the mark's dot, dot, check instead
+  // of drifting by however long each call took to resolve.
+  beat: () => {
+    if (!enabled()) return;
+    const pulses = [
+      ExpoHaptics.ImpactFeedbackStyle.Light,
+      ExpoHaptics.ImpactFeedbackStyle.Light,
+      ExpoHaptics.ImpactFeedbackStyle.Heavy,
+    ];
+    pulses.forEach((style, i) => {
+      setTimeout(() => { ExpoHaptics.impactAsync(style).catch(() => {}); }, i * BEAT_STEP_MS);
+    });
   },
   warning: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
   error: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error).catch(() => {}) : undefined,

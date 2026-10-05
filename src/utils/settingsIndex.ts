@@ -395,7 +395,7 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Appearance
   { id: 'theme', groupId: 'appearance', label: 'Theme', section: 'Theme',
-    keywords: ['dark', 'light', 'purple', 'system', 'colour', 'color'] },
+    keywords: ['dark', 'light', 'black', 'night', 'oled', 'purple', 'system', 'colour', 'color'] },
   { id: 'fabHand', groupId: 'appearance', label: 'Add button', section: 'Theme',
     keywords: ['corner', 'left', 'right', 'handed', 'plus', 'fab'] },
   { id: 'typeface', groupId: 'appearance', label: 'Typeface', section: 'Typeface',
@@ -408,6 +408,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['delete', 'alert', 'confirmation', 'undo', 'forget', 'clear'] },
   { id: 'hideHelpText', groupId: 'appearance', label: 'Hide help text', section: 'Feedback',
     keywords: ['hint', 'description', 'explanation', 'subtitle', 'terse', 'declutter'] },
+  { id: 'beatSound', groupId: 'appearance', label: 'Sound when Today is clear', section: 'Feedback',
+    keywords: ['audio', 'chime', 'notes', 'all clear', 'finished', 'done', 'celebrate'] },
   { id: 'shakeToUndo', groupId: 'appearance', label: 'Shake to undo', section: 'Feedback',
     keywords: ['gesture', 'revert', 'mistake', 'accident', 'restore', 'take back'] },
   { id: 'tipsEnabled', groupId: 'appearance', label: 'Tips', section: 'Feedback',

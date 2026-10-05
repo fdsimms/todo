@@ -930,7 +930,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               accessibilityRole="button"
               accessibilityLabel={isEditing ? 'Save changes' : 'Add event'}
             >
-              <Ionicons name="checkmark" size={18} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={18} color={canAdd ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
           </View>
 

@@ -2380,7 +2380,7 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                   backgroundColor: quotaDone.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.accent, colors.greenFill],
+                    outputRange: [colors.accent, colors.done],
                   }),
                 },
               ]}
@@ -2410,7 +2410,7 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                   backgroundColor: quotaDone.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.accent, colors.greenFill],
+                    outputRange: [colors.accent, colors.done],
                   }),
                 },
               ]}
@@ -2465,7 +2465,7 @@ export const TaskItem = React.memo(function TaskItem({
               opacity: checkGlyphOpacity,
               transform: [{ scale: checkGlyphScale }],
             }}>
-              <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={12} color={colors.onDone} />
             </Animated.View>
           )}
           {isNegative && (
@@ -2474,7 +2474,7 @@ export const TaskItem = React.memo(function TaskItem({
             <Ionicons
               name={slipped ? 'shield' : 'shield-checkmark'}
               size={iconSize.xs}
-              color={slipped ? colors.onAccent : colors.textSecondary}
+              color={slipped ? colors.onFill : colors.textSecondary}
             />
           )}
           {!completing && !isNegative && recurrenceNotYetDue && (
@@ -3420,7 +3420,7 @@ export const TaskItem = React.memo(function TaskItem({
                       >
                         <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
                           {sub.completed && (
-                            <Ionicons name="checkmark" size={8} color={colors.onAccent} />
+                            <Ionicons name="checkmark" size={8} color={colors.onDone} />
                           )}
                         </View>
                       </TouchableOpacity>
@@ -3599,7 +3599,7 @@ export const TaskItem = React.memo(function TaskItem({
                           isCurrent && styles.chainStepListDotActive,
                         ]}>
                           {isDone ? (
-                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                            <Ionicons name="checkmark" size={9} color={colors.onDone} />
                           ) : (
                             <Text maxFontSizeMultiplier={textScale.fixed} style={[
                               styles.chainStepListDotText,
@@ -3835,9 +3835,11 @@ export const TaskItem = React.memo(function TaskItem({
                         <Ionicons
                           name={timerRunning ? 'pause' : 'play'}
                           size={10}
-                          color={colors.onAccent}
+                          color={timerReady ? colors.onFill : colors.onAccent}
                         />
-                        <Text style={styles.timerPillText}>{formatStopwatch(remainingSeconds)}</Text>
+                        <Text style={[styles.timerPillText, timerReady && styles.timerPillTextReady]}>
+                          {formatStopwatch(remainingSeconds)}
+                        </Text>
                       </TouchableOpacity>
                       {(timerRunning || task.timerElapsedSeconds > 0) && (
                         <TouchableOpacity
@@ -4452,8 +4454,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   circleCompleting: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   // The circle's glyph, lifted out of the circle entirely so nothing scales it
   // (see the note at the call site) and so it draws over the quota fill rather
@@ -4786,6 +4788,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
+  // timerPillReady's green fill is a status colour, so its text is onFill.
+  timerPillTextReady: {
+    color: colors.onFill,
+  },
   expandedPanelClip: {
     overflow: 'hidden',
   },
@@ -4856,8 +4862,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   subtaskCheckDone: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   subtaskTitleWrapper: {
     flex: 1,
@@ -4983,7 +4989,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   chainStepListDotDone: {
-    backgroundColor: colors.greenFill,
+    backgroundColor: colors.done,
   },
   chainStepListDotActive: {
     backgroundColor: colors.accentFill,

@@ -229,7 +229,7 @@ function FilterGroup({
               {showDot && !active && chip.color && (
                 <View style={[styles.chipDot, { backgroundColor: chip.color }]} />
               )}
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{chip.label}</Text>
+              <Text style={[styles.chipText, active && styles.chipTextActive, active && chip.color && styles.chipTextOnFill]}>{chip.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -281,4 +281,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipDot: { width: 6, height: 6, borderRadius: radius.full },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  // An option with its own colour fills with it rather than the accent.
+  chipTextOnFill: { color: colors.onFill },
 });

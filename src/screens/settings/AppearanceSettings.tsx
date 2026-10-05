@@ -13,9 +13,11 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
 const THEME_OPTIONS: SegmentOption<ThemeMode>[] = [
+  // The stored values predate the names: 'darkPurple' is Dark and 'dark' is
+  // Black (see `ThemeMode`), kept because the setting syncs between devices.
   { value: 'light', label: 'Light', icon: 'sunny' },
-  { value: 'dark', label: 'Dark', icon: 'moon' },
-  { value: 'darkPurple', label: 'Purple', icon: 'color-palette' },
+  { value: 'darkPurple', label: 'Dark', icon: 'moon' },
+  { value: 'dark', label: 'Black', icon: 'contrast' },
   { value: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
@@ -39,6 +41,8 @@ export function AppearanceSettings() {
   const setHapticsEnabled = useSettingsStore(s => s.setHapticsEnabled);
   const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
   const setShakeToUndoEnabled = useSettingsStore(s => s.setShakeToUndoEnabled);
+  const beatSoundEnabled = useSettingsStore(s => s.beatSoundEnabled);
+  const setBeatSoundEnabled = useSettingsStore(s => s.setBeatSoundEnabled);
   const confirmBeforeDeleting = useSettingsStore(s => s.confirmBeforeDeleting);
   const setConfirmBeforeDeleting = useSettingsStore(s => s.setConfirmBeforeDeleting);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
@@ -185,6 +189,16 @@ export function AppearanceSettings() {
             : 'Shaking your phone does nothing'}
           toggle={shakeToUndoEnabled}
           onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="beatSound"
+          icon="musical-notes-outline"
+          iconColor={beatSoundEnabled ? colors.accent : undefined}
+          label="Sound when Today is clear"
+          hint="Play three notes when you finish the last task on Today. Follows the silent switch"
+          toggle={beatSoundEnabled}
+          onPress={() => setBeatSoundEnabled(!beatSoundEnabled)}
         />
         <View style={styles.sep} />
         <SettingsRow
