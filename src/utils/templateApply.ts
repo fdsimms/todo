@@ -20,7 +20,9 @@ import { awayNoonIso } from './awayDates';
 import { applyItemVariant } from './templateQuestions';
 import {
   RUN_PLACEHOLDER,
+  buildApplyTree,
   buildDraftsFromTemplateTree,
+  expandSelectionWithAncestors,
   expandTemplateItems,
   majorityCategory,
   resolveApplyContainer,
@@ -79,6 +81,8 @@ export interface TemplateRunSink {
   /** A section that lands in a project is homed on its page, and a checklist if it was saved as one. */
   homeSection(sectionId: string, projectId: string, checklist: boolean): void;
   setAnswerGate(taskId: string, gate: { taskId: string; answers: string[] }): void;
+  /** The tasks this one waits on. The sink writes them through `blockerFields`. */
+  setBlockers(taskId: string, blockerTaskIds: string[]): void;
 }
 
 /**
@@ -94,9 +98,24 @@ export function applyTemplateRun(
   options: TemplateRunOptions | undefined,
   sink: TemplateRunSink,
 ): Task[] {
+  // `expandTemplateItems` only recurses into a nested template whose own ref
+  // item is selected, but the selection every caller builds (`initialLeafSelection`,
+  // a person's ticks) names leaves. Adding the ancestors here rather than at each
+  // call site is the point: the scheduler and the MCP server each forgot to, and
+  // every nested template's items silently dropped out of their runs. Ancestors
+  // of a leaf the caller didn't pick are never added, so this changes nothing
+  // for a caller that already passed them.
+  const selection = expandSelectionWithAncestors(
+    buildApplyTree(template.items, template.id, templatesById),
+    selectedItemIds,
+  );
   const answers = options?.answers ?? {};
-  const expanded = expandTemplateItems(template.items, template.id, selectedItemIds, templatesById)
+  const expanded = expandTemplateItems(template.items, template.id, selection, templatesById)
     .map(e => ({ ...e, item: applyItemVariant(e.item, answers) }));
+  // Nothing to create (only broken references selected, say) means no
+  // container either: an empty stack or project every scheduled period is
+  // noise with nothing in it to explain itself.
+  if (expanded.length === 0) return [];
 
   // `{run}` is bound rather than collected, so a template only needs the one
   // field filled in to get its context into the titles that travel alone.
@@ -207,6 +226,13 @@ export function applyTemplateRun(
       if (gate && question && createdTasks[index]) {
         sink.setAnswerGate(createdTasks[index].id, { taskId: question, answers: gate.answers });
       }
+      // "Waits on" another item, now that both are tasks. An item that wasn't
+      // ticked (or was nested elsewhere) made no task, so it is dropped rather
+      // than left as a blocker naming nothing.
+      const blockers = (item.blockedByItemIds ?? [])
+        .map(id => taskIdByItem.get(`${sourceTemplateId}:${id}`))
+        .filter((id): id is string => !!id);
+      if (blockers.length > 0 && createdTasks[index]) sink.setBlockers(createdTasks[index].id, blockers);
     });
   }
 

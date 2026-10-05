@@ -372,9 +372,9 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
     if (node.broken) {
       return (
         <View style={[styles.itemRow, indent]}>
-          <Ionicons name="alert-circle" size={20} color={colors.warning} />
+          <Ionicons name="alert-circle" size={20} color={colors.warningText} />
           <View style={styles.itemContent}>
-            <Text style={[styles.itemTitle, { color: colors.warning }]} numberOfLines={1}>
+            <Text style={[styles.itemTitle, { color: colors.warningText }]} numberOfLines={1}>
               {node.item.refTemplateName || 'Nested template'} was deleted, so it was skipped
             </Text>
           </View>

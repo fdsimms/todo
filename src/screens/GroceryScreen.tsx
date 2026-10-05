@@ -1702,7 +1702,7 @@ export function GroceryScreen() {
                 <InlineAction
                   label={`Sort ${unsortedCount} into aisles`}
                   icon="sparkles-outline"
-                  tint={colors.purple}
+                  tint={colors.purpleText}
                   onPress={() => setAiMode('tidy')}
                 />
               </View>

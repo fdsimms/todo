@@ -20,7 +20,7 @@ import type { SettingsEntry } from './settingsIndex';
 export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   Today: ['newTaskDestination', 'mealsOnToday', 'calendarRead'],
   Projects: ['autoCompleteProjects', 'defaultProjectNudgeCadence', 'gen:projectReview'],
-  Calendar: ['calendarRead', 'deadlineCalendar', 'completionCalendar'],
+  Calendar: ['calendarRead', 'deadlineCalendar', 'completionCalendar', 'claudeCalendar'],
   Reminders: ['defaultReminderLead', 'quietHours', 'notifPermission'],
   Stuck: ['postponeCheck', 'gen:waitingFollowUp'],
   Groceries: ['groceryImport', 'tripLiveActivity', 'ai:groceryAisles'],

@@ -13640,6 +13640,47 @@ describe('quota tasks', () => {
       expect(live[0].quotaPeriod).toBe('week');
     });
 
+    // A first week scaled to the days left in it closes on its own count and
+    // hands the next week the full one.
+    it('gives next week the full count after a scaled-down first week', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          targetCount: 1,
+          progressCount: 0,
+          seriesDefaults: { targetCount: 3 },
+          quotaStartedAt: new Date(2025, 5, 7, 0, 0, 0).toISOString(),
+          dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const closed = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(closed.completed).toBe(true);
+      expect(closed.targetCount).toBe(1);
+      const live = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(live.targetCount).toBe(3);
+      expect(live.seriesDefaults).toBeNull();
+      expect(live.quotaStartedAt).toBeNull();
+    });
+
+    it('completes a scaled-down first week on its own count', () => {
+      useTaskStore.setState({
+        tasks: [weekly({
+          targetCount: 2,
+          progressCount: 1,
+          seriesDefaults: { targetCount: 3 },
+          dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(next.targetCount).toBe(3);
+      expect(next.progressCount).toBe(0);
+    });
+
     // The regression guard on the other side: making the sweep period-aware
     // must not stop it closing an ordinary daily target every night.
     it('still closes a daily target the next day', () => {

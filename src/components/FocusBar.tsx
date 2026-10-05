@@ -103,7 +103,7 @@ export function FocusBar({ onOpen }: Props) {
         <Ionicons
           name={finished ? 'checkmark-done' : step?.kind === 'rest' ? 'cafe' : 'hourglass'}
           size={iconSize.sm}
-          color={stepDone && !finished ? colors.orange : colors.accent}
+          color={stepDone && !finished ? colors.orangeText : colors.accent}
         />
         <Text style={styles.text} numberOfLines={1}>{label}</Text>
         {quotaCount !== null && <Text style={styles.count}>{quotaCount}</Text>}
@@ -163,7 +163,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
-  clockDone: { color: colors.orange },
+  clockDone: { color: colors.orangeText },
   button: {
     backgroundColor: colors.accentFill,
     width: 32,

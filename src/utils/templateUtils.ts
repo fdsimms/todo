@@ -4,6 +4,7 @@
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
 import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { canWaitForWeather } from './weatherCondition';
 import { startOfDay } from 'date-fns/startOfDay';
 import type {
@@ -66,6 +67,20 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
     recurrenceCount: raw.recurrenceCount ?? null,
+    recurrenceWeekOrdinal: raw.recurrenceWeekOrdinal ?? null,
+    // A target below 2 is no target (Task.targetCount's own floor), so it
+    // reads as none rather than seeding a quota of one.
+    targetCount: typeof raw.targetCount === 'number' && raw.targetCount >= 2 ? Math.round(raw.targetCount) : null,
+    targetUnit: raw.targetUnit ?? null,
+    quotaPeriod: raw.quotaPeriod === 'week' ? 'week' : 'day',
+    allowOvershoot: raw.allowOvershoot ?? false,
+    quotaReminders: raw.quotaReminders ?? false,
+    chainStepOnSchedule: raw.chainStepOnSchedule ?? false,
+    phoneNumber: raw.phoneNumber ?? null,
+    emailAddress: raw.emailAddress ?? null,
+    blockedByItemIds: Array.isArray(raw.blockedByItemIds)
+      ? [...new Set(raw.blockedByItemIds.filter((id): id is string => typeof id === 'string' && id !== '' && id !== raw.id))]
+      : [],
     vacationPause: raw.vacationPause ?? false,
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
     weatherWait: raw.weatherWait ?? null,
@@ -208,13 +223,29 @@ export function buildDraftsFromTemplate(
       dueDate !== null && item.reminderOffsetMinutes !== null
         ? new Date(new Date(dueDate).getTime() - item.reminderOffsetMinutes * 60 * 1000).toISOString()
         : null;
+    // A repeating item's later occurrences are placed by completeTask, which
+    // carries a deadline only as `deadlineOffsetDays` and moves a reminder by
+    // `reminderOffsetDays`. Without those the fixed dates below apply to the
+    // first occurrence alone: the deadline is dropped from every later one,
+    // and a reminder set a day before lands on the due day instead.
+    const repeats = item.recurrenceType !== 'none';
+    const deadlineLead = item.dueOffsetDays !== null && item.deadlineOffsetDays !== null
+      ? item.dueOffsetDays - item.deadlineOffsetDays
+      : 0;
+    const reminderLead = dueDate !== null && reminderTime !== null
+      ? differenceInCalendarDays(new Date(dueDate), new Date(reminderTime))
+      : 0;
     return {
       title: item.title,
       notes: item.notes,
       dueDate,
       deferUntil: resolveOffsetDate(anchor, item.deferOffsetDays),
       deadline: resolveOffsetDate(anchor, item.deadlineOffsetDays),
-      deadlineOffsetDays: null,
+      // Signed like Task.deadlineOffsetDays (positive is before the due date),
+      // and never 0, which that field doesn't allow: a same-day deadline
+      // stays the fixed date.
+      deadlineOffsetDays: repeats && deadlineLead !== 0 ? deadlineLead : null,
+      reminderOffsetDays: repeats && reminderLead > 0 ? reminderLead : null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
       linkUrl: item.linkUrl ?? null,
@@ -232,6 +263,17 @@ export function buildDraftsFromTemplate(
       recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
       recurrenceCount: item.recurrenceCount,
+      // Only a monthly repeat reads an ordinal (TaskEditor saves it the same way).
+      recurrenceWeekOrdinal: item.recurrenceType === 'monthly' ? item.recurrenceWeekOrdinal ?? null : null,
+      targetCount: item.targetCount ?? null,
+      targetUnit: item.targetCount != null ? item.targetUnit ?? null : null,
+      quotaPeriod: item.quotaPeriod ?? 'day',
+      allowOvershoot: item.targetCount != null && (item.allowOvershoot ?? false),
+      quotaReminders: item.targetCount != null && (item.quotaReminders ?? false),
+      // Only a repeating chain has a "next repeat" to wait for.
+      chainStepOnSchedule: item.chainEnabled && item.recurrenceType !== 'none' && (item.chainStepOnSchedule ?? false),
+      phoneNumber: item.phoneNumber ?? null,
+      emailAddress: item.emailAddress ?? null,
       vacationPause: item.vacationPause,
       excludeFromSuggestions: item.excludeFromSuggestions,
       weatherWait: canWaitForWeather(item) ? item.weatherWait ?? null : null,
@@ -374,6 +416,13 @@ export function expandTemplateItems(
   selectedIds: Set<string>,
   templatesById: Map<string, TaskTemplate>,
   visited: Set<string> = new Set(),
+  // Every template already expanded anywhere in this run, shared across the
+  // whole walk (where `visited` is per path, for cycles). A template reached
+  // twice (nested directly twice, or through two others) contributes its
+  // items once: the copies would be identical tasks, a selection keyed by
+  // item id can't tell them apart, and the run's gate and section wiring keys
+  // by item id too, so the second copy would collide with the first.
+  expanded: Set<string> = new Set(),
 ): ExpandedTemplateItem[] {
   const result: ExpandedTemplateItem[] = [];
   for (const item of items) {
@@ -382,9 +431,10 @@ export function expandTemplateItems(
       result.push({ item, sourceTemplateId });
       continue;
     }
-    if (visited.has(item.refTemplateId)) continue;
+    if (visited.has(item.refTemplateId) || expanded.has(item.refTemplateId)) continue;
     const target = templatesById.get(item.refTemplateId);
     if (!target) continue;
+    expanded.add(item.refTemplateId);
     result.push(
       ...expandTemplateItems(
         target.items,
@@ -392,6 +442,7 @@ export function expandTemplateItems(
         selectedIds,
         templatesById,
         new Set(visited).add(item.refTemplateId),
+        expanded,
       )
     );
   }
@@ -703,7 +754,17 @@ interface PlaceholderChoice {
 
 type PlaceholderRef = PlaceholderExpr | PlaceholderChoice;
 
-const normalizeBlankName = (raw: string) => raw.trim().replace(/\s+/g, ' ').toLowerCase();
+/**
+ * The key a blank's value is filed and looked up under: lowercased, inner
+ * whitespace collapsed, exactly what a token's name is read as. Every map of
+ * values goes through it, so a question named "Nights" (stored as typed)
+ * fills `{nights}` rather than silently leaving it empty.
+ */
+export function placeholderKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+const normalizeBlankName = placeholderKey;
 
 function parsePlaceholderExpr(raw: string): PlaceholderExpr {
   const trimmed = raw.trim();
@@ -803,6 +864,29 @@ function placeholderNamesIn(text: string): string[] {
 }
 
 /**
+ * Every field of an item a blank can sit in — the one list, so a field that
+ * gets substituted (`substituteDraftPlaceholders`) can't drift out of the set
+ * that's asked for, which is how rotation members came to be filled in but
+ * never asked about.
+ */
+function placeholderTexts(
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & { rotationItems?: { title: string }[] } & Partial<Pick<TemplateItem, 'variants'>>,
+): string[] {
+  return [
+    item.title,
+    item.notes,
+    item.location ?? '',
+    ...item.subtasks.map(s => s.title),
+    ...item.chainItems.map(c => c.title),
+    ...(item.rotationItems ?? []).map(r => r.title),
+    // A variant's text is only ever swapped in for the item's own, so its
+    // blanks are asked for too: otherwise one used in a variant alone is
+    // never filled.
+    ...(item.variants ?? []).flatMap(v => [v.title ?? '', v.notes ?? '']),
+  ];
+}
+
+/**
  * Every distinct placeholder the given items declare across their titles,
  * notes, locations, subtasks and chain steps — in first-appearance order, so the apply
  * sheet's inputs read in the same order as the checklist. `run` is excluded:
@@ -815,16 +899,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
       if (name !== RUN_PLACEHOLDER && !found.includes(name)) found.push(name);
     }
   };
-  for (const item of items) {
-    add(item.title);
-    add(item.notes);
-    add(item.location ?? '');
-    item.subtasks.forEach(s => add(s.title));
-    item.chainItems.forEach(c => add(c.title));
-    // A variant's text is only ever swapped in for the item's own, so its blanks
-    // are asked for too: otherwise one used in a variant alone is never filled.
-    item.variants.forEach(v => { add(v.title ?? ''); add(v.notes ?? ''); });
-  }
+  for (const item of items) placeholderTexts(item).forEach(add);
   return found;
 }
 
@@ -838,7 +913,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
  * ask it about the draft it's holding in state, which isn't an item yet.
  */
 export function itemPlaceholders(
-  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & Partial<Pick<TemplateItem, 'variants'>>,
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & { rotationItems?: { title: string }[] } & Partial<Pick<TemplateItem, 'variants'>>,
 ): string[] {
   const found: string[] = [];
   const add = (text: string) => {
@@ -846,12 +921,7 @@ export function itemPlaceholders(
       if (!found.includes(name)) found.push(name);
     }
   };
-  add(item.title);
-  add(item.notes);
-  add(item.location ?? '');
-  item.subtasks.forEach(s => add(s.title));
-  item.chainItems.forEach(c => add(c.title));
-  (item.variants ?? []).forEach(v => { add(v.title ?? ''); add(v.notes ?? ''); });
+  placeholderTexts(item).forEach(add);
   return found;
 }
 
@@ -902,14 +972,7 @@ export function withoutPlaceholder(text: string, name: string): string {
 /** True if any of these items references `{run}` — i.e. wants the run name inlined into a title, not just used to name the container. */
 export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
   const hasRun = (text: string) => placeholderNamesIn(text).includes(RUN_PLACEHOLDER);
-  return items.some(item =>
-    hasRun(item.title) ||
-    hasRun(item.notes) ||
-    hasRun(item.location ?? '') ||
-    item.subtasks.some(s => hasRun(s.title)) ||
-    item.chainItems.some(c => hasRun(c.title)) ||
-    item.variants.some(v => hasRun(v.title ?? '') || hasRun(v.notes ?? ''))
-  );
+  return items.some(item => placeholderTexts(item).some(hasRun));
 }
 
 /** The spacing repair a removed value leaves behind — shared so a blank deleted in the editor reads exactly as one left unfilled at apply time. */
@@ -936,8 +999,15 @@ export function substitutePlaceholders(text: string, values: Record<string, stri
     return text;
   }
   PLACEHOLDER_PATTERN.lastIndex = 0;
+  // Tokens are read lowercased, so the values have to be keyed the same way
+  // or a caller passing `{ Where: 'Paris' }` fills nothing.
+  const keyed: Record<string, string> = {};
+  for (const [name, value] of Object.entries(values)) {
+    const key = placeholderKey(name);
+    if (!(key in keyed)) keyed[key] = value;
+  }
   const substituted = text.replace(PLACEHOLDER_PATTERN, (_, token: string) =>
-    resolvePlaceholderRef(parsePlaceholderRef(token), values) ?? ''
+    resolvePlaceholderRef(parsePlaceholderRef(token), keyed) ?? ''
   );
   return tidySubstituted(substituted);
 }

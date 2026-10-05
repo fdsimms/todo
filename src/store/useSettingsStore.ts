@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
+import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { WaterUnit } from '../utils/waterLog';
@@ -973,6 +973,14 @@ interface SettingsStore {
   // shares it. Writing both into one calendar would put your work deadlines
   // on the family fridge.
   mealCalendarId: string | null;
+  // Which device writes the calendar events an agent asks for over the MCP
+  // server (src/utils/calendarRequestDrain.ts): a device id, or null for none.
+  // Synced, so choosing this device switches whichever one held it off, and
+  // the server can refuse a request nobody would write.
+  calendarRequestDeviceId: string | null;
+  // The calendar those events go into on this device. Device-local, like the
+  // three above. Only read while `calendarRequestDeviceId` names this device.
+  calendarRequestCalendarId: string | null;
 
   // Whether this app may read Apple Health.
   //
@@ -1842,6 +1850,12 @@ interface SettingsStore {
   setDeadlineCalendarId: (id: string | null) => void;
   setCompletionCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
+  /**
+   * Makes this device the one that writes an agent's calendar requests, into
+   * `calendarId`, or stops it (null). Stopping only clears the synced writer
+   * when it is this device, so turning it off here can't switch off another.
+   */
+  setCalendarRequestCalendar: (calendarId: string | null) => void;
   setProjectReviewTasks: (on: boolean) => void;
   setProjectReviewTaskCategory: (category: string | null) => void;
   setBirthdayTasks: (on: boolean) => void;
@@ -2503,6 +2517,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   deadlineCalendarId: null,
   completionCalendarId: null,
   mealCalendarId: null,
+  calendarRequestDeviceId: null,
+  calendarRequestCalendarId: null,
   healthReadEnabled: false,
   healthWriteEnabled: false,
   healthFoodWriteRefusalSeen: false,
@@ -2853,6 +2869,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
     const completionCalendarId = dbGetSetting('completionCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
+    const calendarRequestDeviceId = dbGetSetting('calendarRequestDeviceId') || null;
+    const calendarRequestCalendarId = dbGetSetting('calendarRequestCalendarId') || null;
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
     const healthWriteEnabled = dbGetSetting('healthWriteEnabled') === 'true';
     const healthFoodWriteRefusalSeen = dbGetSetting('healthFoodWriteRefusalSeen') === 'true';
@@ -3173,6 +3191,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       calendarIds,
       calendarPeopleHistory,
       calendarReadEnabled,
+      calendarRequestCalendarId,
+      calendarRequestDeviceId,
       calendarReviewLastDayKey,
       calendarReviewTaskCategory,
       calendarReviewTasks,
@@ -4738,6 +4758,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ deadlineCalendarId: id });
   },
 
+  setCalendarRequestCalendar(calendarId: string | null) {
+    const self = dbGetDeviceId();
+    if (calendarId) {
+      dbSetSetting('calendarRequestCalendarId', calendarId);
+      dbSetSetting('calendarRequestDeviceId', self);
+      set({ calendarRequestCalendarId: calendarId, calendarRequestDeviceId: self });
+      return;
+    }
+    dbSetSetting('calendarRequestCalendarId', '');
+    const writer = get().calendarRequestDeviceId === self ? null : get().calendarRequestDeviceId;
+    if (writer === null) dbSetSetting('calendarRequestDeviceId', '');
+    set({ calendarRequestCalendarId: null, calendarRequestDeviceId: writer });
+  },
+
   setCompletionCalendarId(id: string | null) {
     dbSetSetting('completionCalendarId', id ?? '');
     set({ completionCalendarId: id });
@@ -4911,6 +4945,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     dbSetSetting('deadlineCalendarId', '');
     dbSetSetting('completionCalendarId', '');
     dbSetSetting('mealCalendarId', '');
+    // Calendar requests stop here too, and only here: another device that
+    // writes them keeps doing so.
+    dbSetSetting('calendarRequestCalendarId', '');
+    const requestWriter = get().calendarRequestDeviceId === dbGetDeviceId() ? null : get().calendarRequestDeviceId;
+    if (requestWriter === null) dbSetSetting('calendarRequestDeviceId', '');
     set({
       ...DEFAULT_SETTINGS,
       remindersImportListId: null,
@@ -4920,6 +4959,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       deadlineCalendarId: null,
       completionCalendarId: null,
       mealCalendarId: null,
+      calendarRequestCalendarId: null,
+      calendarRequestDeviceId: requestWriter,
       reminderCaptures: clearedCaptures,
     });
   },

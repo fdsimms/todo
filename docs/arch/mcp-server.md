@@ -279,7 +279,7 @@ is still how the agent left it.
 - **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
-- **Record only, on purpose:** a recipe, template, stack or project the agent created (each has
+- **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
   contents added afterward and no edit stamp to tell whether they were, and a project or stack owns
   other rows), a grocery item taken off the list (putting it back would rebuild its quantity and aisle
   from nothing), a project completion, and an automation switch (one setter per setting).
@@ -488,18 +488,38 @@ adds `update_template` has to add the guard with it.
 ### Editing one: `get_template` and `update_template`
 
 `get_template` returns a template as the plan that would recreate it (`templateToPlan`), and
-`update_template` takes any part of a plan, with what it leaves out unchanged. Three rules hold it:
+`update_template` takes any part of a plan, with what it leaves out unchanged. Four rules hold it:
 
 - **A list is replaced, not patched.** `groups`, `questions` and `items` point at one another, so
   each replaces its whole list when given. What keeps this from being a rewrite is that **ids
   survive by being named**: an item passes its `id`, a group uses its id as its `key`, a question
-  keeps its `name`. `{ id }` alone leaves an item exactly as stored.
+  keeps its `name` (one with no name, a people question or a choice that only decides what is
+  ticked, keeps the `key` `get_template` gave it, which is its id). `{ id }` alone leaves an item
+  exactly as stored.
+- **What `get_template` returns goes back in unchanged.** Handing the plan straight back stores the
+  same template (the replica test pins this down). So `templateToPlan` leaves out the pointers every
+  reader already ignores (a condition on a deleted question or with no values, a gate on an item
+  that is gone), validation lets a nested reference through when it was already broken on the
+  stored template, and the applier keeps what a plan has no words for: a chain's starting step, and
+  a step's link and medication (steps are matched by title, then by position).
 - **An item with an `id` starts from the stored item.** The zod item schema names only some of
   `TemplateItem`'s fields, so a plan that rebuilt each item from what the caller sent would drop
   the rest (link, chain, rotation, medication...) on every edit. Writing the given fields over the
   stored item is what makes the edit lossless. An item with no id is new; one left out is removed.
 - **A scalar-only edit never rebuilds the lists.** A rename or a schedule change leaves items
-  untouched, so a stored nested reference that has since gone dangling cannot block it.
+  untouched.
+- **An edit can say which read it was made against.** `get_template` returns a `version`
+  (`templateVersion`, a hash of the stored content leaving out `scheduleLastFiredKey`), and
+  `update_template`'s `expectedVersion` refuses the edit if the template changed since. Rebuilding
+  whole lists means an edit composed against an old read would otherwise undo whatever the phone
+  changed in between, and the confirm token binds the request, not the state.
+
+Create and edit also return **`warnings`** (`templateWarnings`): legal templates that probably
+don't do what was meant, like a `{blank}` no question fills (an unattended run drops it), a
+reminder with no due date, a weather wait on a repeating item, or a category that a run would
+create. They are warnings rather than refusals because the app's own editor makes every one of
+them. An edit's result lists its **`changes`** in plain words (`describeTemplateChanges`), and since
+the preview is the result with ids removed, that list is what the person confirms.
 
 **`apply_template` runs the app's own run logic.** The container choice, the run's category, the
 away span a trip's anchors become, item-group sections (a checklist flag included), the gates
@@ -509,9 +529,27 @@ and now called by both. It writes through a `TemplateRunSink`: the store supplie
 actions (undo, reminders, calendar events), the replica supplies one over the database. A second
 copy of those rules was never an option, for the reason `taskCompletion.ts` exists. Which items are
 on is the apply sheet's opening state (`initialLeafSelection`, which is also what a scheduled run
-uses), adjusted by `include` / `leaveOut` item ids; answers come in by the question's name and are
-checked against its kind. People questions are not answered over MCP, so no task is stamped with
-people. Run in one transaction; reminders and calendar events catch up on the phone.
+uses), adjusted by `include` / `leaveOut` item ids (a nested template's own item id stands for
+everything inside it); answers come in by the question's name, matched the way a blank is
+(ignoring case), and are checked against its kind. People questions are not answered over MCP, so
+no task is stamped with people. Run in one transaction; reminders and calendar events catch up on
+the phone. `applyTemplateRun` adds the nested templates above each selected leaf itself, since the
+selection every caller builds names leaves only and both the scheduler and the replica once
+dropped every nested item by not doing it.
+
+The result, and so the preview, says what a person would check before saying yes: each task's
+dates and subtasks, the items **left out** and why (with their `itemId`s for `include`), the blanks
+left empty, and nested templates that no longer exist.
+
+**`template_library_check` reads the whole library at once** (`mcp/src/templateLibrary.ts`, pure).
+Per template it reports problems a run mishandles now (a nested template since deleted, a
+condition on a deleted question, a wait or gate on an item that is gone, a group that is gone) and
+warnings (`templateWarnings`, plus a question no title fills and no condition reads). Across
+templates it reports runs of three or more items copied into several templates, which is what a
+nested template is for, and pairs whose item lists overlap by 70% or more, which could be one
+template with a choice question. Items are compared with their blanks, case and spacing removed.
+It never edits: each finding says what an `update_template` would change, and that edit is
+previewed and confirmed like any other.
 
 `delete_template` has no archive to fall back on (a template has no archived state in the app), so
 it is the one delete the server offers. It leans on the preview every write already has: the dry
@@ -526,8 +564,13 @@ A template's category is also registered in `template_categories`, which the edi
 The item schema was about twenty fields behind when it was added. The groups are the same
 decisions as on a task: gates, penalties and a medication are withheld. Chain and rotation are
 written as nested `chain` / `rotation` plan fields and turned into the item's step and member lists
-by the applier; on an edit, step ids are kept by position and member ids by title, because a
-recorded answer and a week's ledger are found through them.
+by the applier; on an edit, step ids are kept by title then by position, and member ids by title,
+because a recorded answer and a week's ledger are found through them.
+"Waits on" between items is `waitsOn`, a list of item keys like `onlyIfAnswer`'s, stored as
+`TemplateItem.blockedByItemIds` and turned into the tasks' blockers at run time (an item not ticked
+is dropped from the list). Validation refuses a loop, since every task in one would wait for good.
+`src/__tests__/templateItemParity.test.ts` is the app-side check behind this one: every `Task`
+field is seeded by a template item or named there with the reason it isn't.
 
 The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
 comparison is by value because the db reader and the writer build the object in different key
@@ -727,6 +770,34 @@ so the finished occurrences behind a repeating task stay where they were.
   model should not make, and changing the category would move every member, so those stay a tap in
   the app. There is no reorder.
 
+### Rewards: Claude acts only on the person's word
+
+`get_rewards`, `create_reward`, `update_reward`, `delete_reward`, `claim_reward`, `unclaim_reward`,
+`set_reward_goal`, `set_bounty`, `mark_missed`, `log_slip` and `undo_slip` (`mcp/src/rewardTools.ts`,
+over the `Replica` methods of the same names). `docs/arch/rewards.md` says only a person moves coins.
+The tools keep that by being things the person asks Claude to do, never things Claude does to be
+helpful: each description says "only when they say so", every write previews first, and the
+app's own passes (the sweeps, the rollover) still never charge anything.
+
+- **The rules are the app's.** Claims go through `useRewardStore.claimReward`, bounties through the
+  same `canPostBounty` / `bountyLimit` checks as `postBounty`, a miss through `buildCompletion` with
+  `missed: true` and `recordMiss`, a slip through `slipPatch` and `recordSlip`. The replica
+  hydrates `useRewardStore` on open and on every refresh; before that it was never loaded here, so
+  a claim would have judged the balance by what this process had earned since it started.
+- **A wish-list claim checks its item off neutrally**, as `RewardsScreen`'s `claim` does (no coins on
+  top of the spend), inside one transaction with the spend. `unclaim_reward` reopens the item only if
+  it was checked off at or after the claim, so an item the person finished earlier is left alone.
+- **Refused rather than half-done.** A habit with a penalty (a slip also charges an app block, which only the phone can set), a one-off
+  task or a not-yet-due repeat for `mark_missed` (the app silently skips it), and anything while
+  rewards are switched off.
+- **Undo is the paired tool.** `unclaim_reward` takes a claim back by the id `claim_reward` returned,
+  `reopen_task` takes back a miss and its coins, `undo_slip` a slip. `withdraw` of a bounty is not
+  reversible for that occurrence, as in the app.
+- **Difficulty is `update_task`'s `difficulty`**, not a reward tool: it is an ordinary task field.
+- **Logged as `subject: 'reward'`**, a record only like a stack's. A reward, claim or goal has no
+  task to revert; a bounty edit carries the task revert; a miss has its own `missed` action ("Marked
+  missed") that is reverted like a completion, since "Reopen" is its real inverse.
+
 ### Every task it creates has a category
 
 A task the model files with no category lands in no section on Today, and a free-text name that
@@ -839,6 +910,37 @@ title on each meal planned from it. Everything that can refuse (a name clash in 
 bad servings count) is checked before the first write, and the writes are one transaction.
 `delete_recipe` leaves planned meals as the app does (title kept, link gone) and reports how many;
 their Today tasks and events catch up on the phone. Moving a recipe between cookbooks stays in the app.
+
+### Calendar events: a request the phone answers
+
+The server cannot reach EventKit, so `request_calendar_event` does not write an event. It writes a
+synced `calendar_requests` row (`CalendarRequest`), and the phone answers it: on launch and after
+every sync that applied rows, `drainCalendarRequests` (`src/utils/calendarRequestDrain.ts`) writes
+each pending request with `saveEventDirect` and stamps `written` or `failed` back onto the row, which
+is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/calendarRequests.ts`.
+
+- **Exactly one device writes them, and that is a synced setting.** An iCloud calendar shows an event
+  on every device signed in to it, so two devices answering one request would put it there twice.
+  `calendarRequestDeviceId` names the writer (a `dbGetDeviceId` id). Picking a calendar in Settings ›
+  Reminders & Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
+  by overwriting the key rather than by anybody remembering to. The calendar itself,
+  `calendarRequestCalendarId`, is device-local like every other EventKit id. A device-local on/off
+  switch was the first sketch and was dropped for this reason.
+- **No writer, no request.** The tool refuses rather than queueing something nothing will ever
+  write, and `get_overview` reports `features.calendarRequests` so an agent knows before asking.
+- **It never asks for calendar access.** Nobody tapped anything, so without access a request stays
+  pending until access is given. Demo mode leaves requests untouched for the real database.
+- **A request already over when it arrives fails rather than writing into the past**, with a reason
+  on the row, so a phone that didn't sync for a week doesn't fill last week with events.
+- **Create only.** Nothing edits or deletes an event once written, the "never deletes a time block"
+  rule in `calendarSync.ts`. `cancel_calendar_request` works only while a request is pending; after
+  that the event is the person's, in their calendar app.
+- **The Activity entry is the agent's request** (subject `event`), written here and synced like the
+  rest of the ledger. Its "Don't add" button cancels the request while it is still pending
+  (`agentRecordPlan`), and says why not once it isn't. The phone's write adds no second entry: the row's status is the record of what
+  became of it. Answered requests are purged after 30 days by the writing device.
+- **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
+  the row. The phone re-reads each row just before writing, which makes the window one sync wide.
 
 ### The health logs have their own switch, and iCloud never gets them
 

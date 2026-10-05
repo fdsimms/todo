@@ -401,6 +401,7 @@ file: the two maps are indexes, not write-ups.
 | the record of what the app wrote or deleted unattended | `src/utils/unattendedLedger.ts` + `src/store/useUnattendedStore.ts` + `UnattendedEntry` in `src/types/index.ts`. Writes come from `generatedTaskSync.ts`, `sweepExpiredTasks`, `purgeOldCompletedTasks` and the two generators that create outside it (`recordGenerated` in `useTaskStore`); grep `recordGenerated`/`recordMany` for the current set. It records the *effect*, never the catch-up pass that ran; nothing about the user; and not a recurrence or quota successor |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) — see `docs/arch/reminders-import.md` |
 | the grocery list and a Reminders list kept in step both ways | `src/utils/groceryReminderMirror.ts` — see `docs/arch/reminders-import.md` |
+| a screen that crashes on open, and the app reopening onto it at every launch | `src/utils/launchGuard.ts` — a screen is marked unproven when entered and trusted after `HEALTHY_AFTER_MS`; a launch that finds the mark on the screen it would restore opens Today instead. It catches only a fast crash and doesn't stop re-entering the screen by hand |
 | the Face ID app lock, and the cover over the app-switcher snapshot | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` + `modules/todo-privacy-shield/` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
@@ -908,6 +909,8 @@ sized as an icon, a large hero number (a focus countdown, an estimate's total), 
 - `colors.backdrop` — every modal/sheet dim layer
 - `colors.blurFallback` — tint overlay behind `SafeBlurView` content
 - `colors.onAccent` — text/icons on filled accent/green/red surfaces (always white, both themes)
+- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onAccent`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
+- `colors.controlBorder` — the outline of an empty checkbox-shaped control or a field's only boundary (3:1), never `bgQuaternary`, which is a surface
 - `colors.timeMorning/timeAfternoon/timeEvening` — time-of-day segment colors
 - `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior
 - `animation.spring.snappy/smooth/bouncy` and `animation.duration.*` — every Animated call
@@ -937,6 +940,8 @@ reach for `KeyboardAvoidingView` instead — see the hook's own doc comment and 
 `EditorSheet` for why the two fight each other. The exception is a small centered card rather than
 a full scrollable sheet (`LogMealPrompt`, `TripBudgetPrompt`), where `KeyboardAvoidingView` is
 right.
+
+**A function called from a Reanimated worklet (the callback of `useAnimatedStyle`, `useDerivedValue`, `runOnUI`) must start with a `'worklet'` directive.** The callback is workletized for you but what it calls is not, and calling a plain function on the UI thread is a fatal error the moment the component mounts. It typechecks and no Jest test runs a worklet, so `noNonWorkletInWorklet.test.ts` fails the build on it instead; it shipped as a Rewards screen that crashed on open.
 
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 
@@ -1157,7 +1162,7 @@ Three decisions worth not re-deriving:
   Closing clears the query, and reopening the sheet resets it — handing someone back a filtered form
   with no visible reason why is the one way this breaks.
 
-**List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold **`textSecondary`** with `letterSpacing: 0.8` — every one of them, the editor group labels (`EditorGroup`, `CollapsibleField`) and the Settings section labels included. `textTertiary` measures 2.84:1 on `bgSecondary` in dark, under even the 3:1 large-text bar, and these are the one grey the app repeats on every screen; `textSecondary` is 5.22:1 and was already the other grey in use. Raising the size instead was the alternative and was rejected — it makes the headers louder than the rows they label. `textTertiary` is still right where dimness is the *signal* rather than decoration (`CollapsibleField`'s `summaryEmpty`, which is how a field says it has no value). The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
+**List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold **`textSecondary`** with `letterSpacing: 0.8` — every one of them, the editor group labels (`EditorGroup`, `CollapsibleField`) and the Settings section labels included. These are the one grey the app repeats on every screen, so they take the stronger of the two: the greys are a ladder, `textSecondary` at 7:1 and `textTertiary` at 4.5:1 on the page and a card (`themeContrast.test.ts`). Raising the size instead was the alternative and was rejected — it makes the headers louder than the rows they label. `textTertiary` is right where dimness is the *signal* (`CollapsibleField`'s `summaryEmpty`, which is how a field says it has no value, and placeholders). The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
 
 **A selected/active row's background must be opaque, never a translucent tint, on anything that sits inside a `SwipeableRow` or a `ReorderableList`/`SortableList` drag overlay.** `SwipeableRow`'s `selectAction` commits the moment the swipe starts opening, a few hundred ms before the panel has finished closing, and a drag overlay paints no background of its own. A translucent "selected" color (`colors.accentSubtle`, `colors.accent + '1A'`, …) laid over `bgSecondary` lets whatever is behind the row bleed through for that window, which reads as a block of the wrong, too-vivid color that snaps to the right one when the panel goes. **Use `flattenOverlay(overlayColor, baseHex)`** (`src/theme/index.ts`) to precompute an opaque equivalent against the row's own resting background (`colors.bgSecondary` for a card row, `colors.bg` for a flat full-bleed one like Logbook's), or give a dragging state its own opaque token (`bgTertiary`). Check this on sight for **any row that both (a) sits inside a `SwipeableRow` with a `selectAction`/`whenAction`, or a draggable list, and (b) changes its own background color for a state.** `TaskItem` sidesteps the whole class by not tinting the row for selection at all (it only fills `SelectionDot`), which is the other valid answer.
 
@@ -1252,19 +1257,9 @@ A schema version in `PRAGMA user_version` was the other way to do this and is de
 Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`). Tags are additionally tracked in a `tag_registry` key in the `settings` table, so a tag that exists but is currently unused doesn't disappear. Categories used to work the same way, but now live in their own `categories` table (they carry schedule/vacation fields a string list can't hold) — the `category_registry` setting is legacy, read only by the one-time migration in `initDatabase()` that backfills that table.
 
 **A new `Task` field is not finished until you've decided whether `TemplateItem` needs it too.**
-`TemplateItem` (`src/types/index.ts`) deliberately mirrors a large slice of `Task`'s fields —
-`vacationPause`, `excludeFromSuggestions`, `priority`, `effort`, the recurrence fields, and more —
-because a template item is what seeds the task it creates: `buildDraftsFromTemplate`
-(`src/utils/templateUtils.ts`) reads the item's fields onto the draft, `buildDraftsFromTemplateTree`
-calls it, and `useTemplateStore`'s `applyTemplate` hands the result straight to
-`useTaskStore.addTask`. Nothing enforces the parity — they're separate interfaces — so adding a
-field to `Task` alone compiles fine and ships a setting nobody can pre-set from a template, with no
-error to catch it. Before calling a new per-task setting done, ask whether a template item should be
-able to seed it (a schedule/behavior toggle usually should; a runtime-only field like `completedAt`
-or `streakCount` shouldn't). If yes, that's four sites, not one: the field on `TemplateItem`, its
-default in `normalizeTemplateItem` (`src/utils/templateUtils.ts`, tolerant of older stored JSON
-missing it), its pass-through in `buildDraftsFromTemplate`, and a matching toggle in
-`TemplateItemEditor.tsx` alongside whatever `TaskEditor.tsx` grew.
+`src/__tests__/templateItemParity.test.ts` fails until you do: seed it (the field on `TemplateItem`,
+its default in `normalizeTemplateItem`, its copy in `buildDraftsFromTemplate`, a control in
+`TemplateItemEditor.tsx`) or name it in the test's list with the reason it isn't seeded.
 
 **Nor is a user-facing capability or `Task` field finished until you've decided whether the MCP
 server needs it.** `mcp/` redeploys on every merge that touches what it runs, so a changed util or

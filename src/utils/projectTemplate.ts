@@ -1,3 +1,4 @@
+import { blockerIdsOf } from './blocking';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task, TaskGroup, TaskTemplate, TemplateAnchor, TemplateItem, TemplateItemGroup } from '../types';
 import { generateId } from './id';
@@ -178,6 +179,20 @@ export function templateFromProject(
     deliverableSetsAway: task.deliverableSetsAway ?? false,
     chainEnabled: task.chainEnabled,
     chainItems: task.chainItems,
+    chainStepOnSchedule: task.chainStepOnSchedule,
+    recurrenceWeekOrdinal: task.recurrenceWeekOrdinal,
+    // The interval-derived form isn't a template field, so only a plain
+    // count carries (templateItemParity.test.ts).
+    targetCount: task.quotaIntervalMinutes == null ? task.targetCount : null,
+    targetUnit: task.targetUnit,
+    quotaPeriod: task.quotaPeriod,
+    allowOvershoot: task.allowOvershoot,
+    quotaReminders: task.quotaReminders,
+    phoneNumber: task.phoneNumber,
+    emailAddress: task.emailAddress,
+    // "Waiting on" inside the project comes back as "Waits on" between the
+    // items those tasks became; a blocker outside it is left behind, as a gate is.
+    blockedByItemIds: blockerIdsOf(task).filter(id => itemIdFor.has(id)).map(id => itemIdFor.get(id)!),
     subtasks: subtasks.map(title => ({ id: generateId(), title })),
     groupId: sectionId ? groupIdFor.get(sectionId) ?? null : null,
   }));

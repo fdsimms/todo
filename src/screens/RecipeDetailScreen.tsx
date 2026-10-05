@@ -1772,7 +1772,7 @@ export function RecipeDetailScreen() {
                 <Ionicons
                   name={recipe.vote === 'loved' ? 'thumbs-up' : 'thumbs-up-outline'}
                   size={iconSize.md}
-                  color={recipe.vote === 'loved' ? colors.orange : colors.textSecondary}
+                  color={recipe.vote === 'loved' ? colors.orangeText : colors.textSecondary}
                 />
               </TouchableOpacity>
             )}

@@ -19,6 +19,7 @@ const state = (over: Partial<RecordState> = {}): RecordState => ({
   exists: () => false,
   ruleList: () => [],
   hasNote: () => false,
+  calendarRequest: () => null,
   ...over,
 });
 
@@ -72,6 +73,22 @@ describe('agentRecordPlan', () => {
     expect(agentRecordPlan(made, state({ hasNote: () => true }))).toEqual({ kind: 'noteRemove', text: 'Prefers mornings' });
     expect(agentRecordPlan(forgot, state())).toEqual({ kind: 'noteAdd', text: 'Prefers mornings' });
     expect(agentRecordPlan(forgot, state({ hasNote: () => true }))).toEqual({ kind: 'none', reason: 'Undone' });
+  });
+
+  it('cancels a calendar request only while it is still waiting for the phone', () => {
+    const e = entry({ taskId: null, subject: 'event', action: 'created', title: 'Dentist', recordId: 'c1', revert: null });
+    const at = (status: 'pending' | 'written' | 'failed' | 'cancelled') => state({ calendarRequest: () => ({ status }) });
+    expect(agentRecordPlan(e, at('pending'))).toEqual({ kind: 'cancelCalendarRequest', id: 'c1' });
+    expect(agentUndoLabel(agentRecordPlan(e, at('pending')))).toBe('Don’t add');
+    expect(agentRecordPlan(e, at('written'))).toEqual({ kind: 'none', reason: 'On your calendar' });
+    expect(agentRecordPlan(e, at('failed'))).toEqual({ kind: 'none', reason: 'Not added' });
+    expect(agentRecordPlan(e, at('cancelled'))).toEqual({ kind: 'none', reason: 'Undone' });
+    expect(agentRecordPlan(e, state())).toEqual({ kind: 'none', reason: 'Removed since' });
+  });
+
+  it('offers nothing for the entry that records a cancelled request', () => {
+    const e = entry({ taskId: null, subject: 'event', action: 'cleared', title: 'Dentist', recordId: 'c1', revert: null });
+    expect(agentRecordPlan(e, state({ calendarRequest: () => ({ status: 'cancelled' }) }))).toEqual({ kind: 'none', reason: null });
   });
 
   it('never acts on an entry the app wrote, or on a recipe, template or stack', () => {

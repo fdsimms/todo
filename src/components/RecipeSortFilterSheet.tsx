@@ -173,7 +173,7 @@ export function RecipeSortFilterSheet({
                 <Ionicons
                   name="thumbs-up"
                   size={13}
-                  color={lovedOnly ? colors.onAccent : colors.orange}
+                  color={lovedOnly ? colors.onAccent : colors.orangeText}
                 />
                 <Text style={[styles.chipText, lovedOnly && styles.chipTextActive]}>
                   Loved only

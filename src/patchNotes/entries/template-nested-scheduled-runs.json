@@ -1,0 +1,1 @@
+{ "message": "Templates that run on a schedule now include the items of any template nested inside them. A blank like {nights} now fills in even when its question's name has capital letters, and blanks in a rotation's members are asked for.", "date": "2026-10-05" }

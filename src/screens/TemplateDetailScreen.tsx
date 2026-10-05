@@ -572,7 +572,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
         <Ionicons
           name={broken ? 'alert-circle' : 'git-branch-outline'}
           size={20}
-          color={broken ? colors.warning : colors.accent}
+          color={broken ? colors.warningText : colors.accent}
         />
       )}
       <View style={styles.itemInfo}>
@@ -597,7 +597,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
                 it twice would just be the same string with two verdicts. */}
             {missingRefsLabel ? (
               <View style={styles.categoryRow}>
-                <Ionicons name="alert-circle" size={iconSize.xs} color={colors.warning} />
+                <Ionicons name="alert-circle" size={iconSize.xs} color={colors.warningText} />
                 <Text style={styles.itemHintBroken} numberOfLines={2}>{missingRefsLabel}</Text>
               </View>
             ) : categoryEmoji !== null || item.category ? (
@@ -635,7 +635,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             accessibilityRole="button"
             accessibilityLabel="Replace nested template"
           >
-            <Ionicons name="swap-horizontal-outline" size={16} color={colors.warning} />
+            <Ionicons name="swap-horizontal-outline" size={16} color={colors.warningText} />
             <Text style={styles.brokenActionText}>Replace</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -645,7 +645,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             accessibilityRole="button"
             accessibilityLabel="Remove nested template item"
           >
-            <Ionicons name="trash-outline" size={16} color={colors.warning} />
+            <Ionicons name="trash-outline" size={16} color={colors.warningText} />
             <Text style={styles.brokenActionText}>Remove</Text>
           </TouchableOpacity>
         </View>
@@ -792,7 +792,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
   },
   itemTitleBroken: {
-    color: colors.warning,
+    color: colors.warningText,
     fontWeight: '600',
   },
   itemHintText: {
@@ -800,7 +800,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   itemHintBroken: {
-    color: colors.warning,
+    color: colors.warningText,
     fontSize: font.xs,
   },
   brokenActions: {
@@ -815,7 +815,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 4,
   },
   brokenActionText: {
-    color: colors.warning,
+    color: colors.warningText,
     fontSize: font.xs,
     fontWeight: '600',
   },

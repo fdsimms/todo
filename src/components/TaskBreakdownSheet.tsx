@@ -382,5 +382,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
     marginTop: spacing.md, paddingVertical: spacing.md,
   },
-  regenerateText: { color: colors.purple, fontSize: font.md, fontWeight: '500' },
+  regenerateText: { color: colors.purpleText, fontSize: font.md, fontWeight: '500' },
 });

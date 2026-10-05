@@ -36,6 +36,7 @@ import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
+import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
 import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -160,6 +161,10 @@ function AppRoot() {
       // those events rather than writing each again (#2950). Async and not
       // awaited; after the purges, so it reads no row they are about to delete.
       ['backfill calendar server ids', () => { void backfillCalendarExternalIds(); }],
+      // Calendar events an agent asked for while the app was closed, on the
+      // device chosen to write them. Async and not awaited, and idempotent: a
+      // request is answered once, and a later pass skips it.
+      ['write calendar requests', () => { void drainCalendarRequests(); }],
       // Read back any cooking step timer that was still counting down when the
       // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
       // which opens the database this reads from; before the permission

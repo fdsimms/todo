@@ -436,13 +436,13 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                     {offset === 0 && (
                       <>
                         <Animated.View style={[styles.stamp, styles.stampOut, { opacity: stampOpacity('out') }]}>
-                          <Text style={[styles.stampText, { color: colors.red }]}>Out of it</Text>
+                          <Text style={[styles.stampText, { color: colors.redText }]}>Out of it</Text>
                         </Animated.View>
                         <Animated.View style={[styles.stamp, styles.stampHave, { opacity: stampOpacity('have') }]}>
-                          <Text style={[styles.stampText, { color: colors.green }]}>Still have it</Text>
+                          <Text style={[styles.stampText, { color: colors.greenText }]}>Still have it</Text>
                         </Animated.View>
                         <Animated.View style={[styles.stamp, styles.stampLow, { opacity: stampOpacity('low') }]}>
-                          <Text style={[styles.stampText, { color: colors.orange }]}>Running low</Text>
+                          <Text style={[styles.stampText, { color: colors.orangeText }]}>Running low</Text>
                         </Animated.View>
                         <CardBody card={entry} styles={styles} />
                       </>
@@ -477,7 +477,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
               <Action
                 icon="contrast-outline"
                 label="Running low"
-                tint={colors.orange}
+                tint={colors.orangeText}
                 background={colors.orange + '26'}
                 onPress={() => flingOut('low')}
                 styles={styles}
@@ -774,7 +774,7 @@ const makeStyles = (colors: Colors) =>
       borderRadius: radius.full,
       backgroundColor: colors.warningBg,
     },
-    doubtText: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.orange },
+    doubtText: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.orangeText },
 
     stamp: {
       position: 'absolute',

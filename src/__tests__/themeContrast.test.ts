@@ -9,15 +9,23 @@ import { darkColors, darkPurpleColors, lightColors, type Colors } from '../theme
  * The palettes' own contrast guarantees, so a future colour edit can't quietly
  * undo the pass that established them.
  *
- * The rule these assert is the one the app settled on: `text` is what an
- * unselected control's label is, `textSecondary` is what information about a
- * row is, and `textTertiary` says a thing is *absent* or *done* — which is why
- * it's the one colour with no floor here. It measures 2.84:1 on a card in dark,
- * so anything it says can't be read; that's fine for "None" beside a field, and
- * was the bug everywhere it was carrying a due date, a category or a hint.
+ * Text greys are a ladder, each with a floor on the page and on a card:
+ * `text` (a control's label), `textSecondary` at 7:1 (information about a row,
+ * every section header) and `textTertiary` at 4.5:1 (a placeholder, an empty
+ * value). The gap between the last two is what keeps three greys telling
+ * apart: put `textTertiary` at the AA line and `textSecondary` has to sit well
+ * clear of it, or the two read as one colour.
+ *
+ * Every colour used as both text and a filled surface comes in three roles
+ * (see the note on `green` in `Colors`): the hue, `…Text` and `…Fill`. Each
+ * role gets its floor below, so a call site that picks by role can't miss it.
  */
 
 const AA = 4.5;
+/** WCAG AAA, which `textSecondary` meets so `textTertiary` can sit at AA below it. */
+const AAA = 7;
+/** WCAG 1.4.11: a control's boundary, an icon, a chart mark. */
+const NON_TEXT = 3;
 
 const channel = (c: number) => {
   const s = c / 255;
@@ -48,6 +56,12 @@ const luminance = (color: string) => {
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 };
 
+/** An opaque hex at a given alpha, in the `rgba()` form `parse` reads. */
+const hexWithAlpha = (hex: string, alpha: number) => {
+  const [r, g, b] = parse(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 /** Both colours must already be opaque — composite a tint with `over` first. */
 const contrast = (fg: string, bg: string) => {
   const [lighter, darker] = [luminance(fg), luminance(bg)].sort((a, b) => b - a);
@@ -67,11 +81,28 @@ describe.each(PALETTES)('%s palette', (_name, colors) => {
     expect(contrast(colors.text, colors[surface])).toBeGreaterThanOrEqual(AA);
   });
 
-  // The two surfaces a row's own metadata sits on: the page and a card. It
-  // deliberately isn't asserted on bgTertiary/bgQuaternary — those are control
-  // surfaces, and a control's label is `text`, not this.
   it.each(['bg', 'bgSecondary'] as const)('reads row metadata (`textSecondary`) on %s', surface => {
-    expect(contrast(colors.textSecondary, colors[surface])).toBeGreaterThanOrEqual(AA);
+    expect(contrast(colors.textSecondary, colors[surface])).toBeGreaterThanOrEqual(AAA);
+  });
+
+  // A control's label is `text`, but a hint or count still lands on a raised
+  // control now and then (a stepper's unit, a segment's caption).
+  it('reads `textSecondary` on bgTertiary', () => {
+    expect(contrast(colors.textSecondary, colors.bgTertiary)).toBeGreaterThanOrEqual(AA);
+  });
+
+  it.each(['bg', 'bgSecondary', 'bgTertiary'] as const)('reads a placeholder (`textTertiary`) on %s', surface => {
+    expect(contrast(colors.textTertiary, colors[surface])).toBeGreaterThanOrEqual(AA);
+  });
+
+  it('keeps `textSecondary` a clear step above `textTertiary`', () => {
+    expect(contrast(colors.textSecondary, colors.bgSecondary))
+      .toBeGreaterThan(contrast(colors.textTertiary, colors.bgSecondary) * 1.25);
+  });
+
+  // An unchecked checkbox sits on a card, and on the pressed row's bgTertiary.
+  it.each(['bgSecondary', 'bgTertiary'] as const)('outlines an empty control (`controlBorder`) on %s', surface => {
+    expect(contrast(colors.controlBorder, colors[surface])).toBeGreaterThanOrEqual(NON_TEXT);
   });
 
   it('reads a disclosure value / sheet header button on a card', () => {
@@ -97,5 +128,45 @@ describe.each(PALETTES)('%s palette', (_name, colors) => {
   // `src/theme/index.ts`. This is the guarantee that fix rests on.
   it('reads onAccent on an accentFill button', () => {
     expect(contrast(colors.onAccent, colors.accentFill)).toBeGreaterThanOrEqual(AA);
+  });
+
+  // The status hues, each by role. The tint is the pill an `InlineAction` or a
+  // negative chip draws its label on: the label's own colour at the alpha
+  // `InlineAction` uses, composited onto a card before it's measured.
+  const tintAlpha = colors.bg === lightColors.bg ? 0.12 : 0.15;
+  const tinted = (hex: string) => over(hexWithAlpha(hex, tintAlpha), colors.bgSecondary);
+
+  describe.each(['red', 'orange', 'green', 'purple'] as const)('%s', hue => {
+    const text = colors[`${hue}Text`];
+    const fill = colors[`${hue}Fill`];
+
+    it.each(['bg', 'bgSecondary', 'bgTertiary'] as const)('reads as text on %s', surface => {
+      expect(contrast(text, colors[surface])).toBeGreaterThanOrEqual(AA);
+    });
+
+    it('reads as text on its own tinted pill', () => {
+      expect(contrast(text, tinted(text))).toBeGreaterThanOrEqual(AA);
+      expect(contrast(text, tinted(colors[hue]))).toBeGreaterThanOrEqual(AA);
+    });
+
+    it('carries onAccent on its fill', () => {
+      expect(contrast(colors.onAccent, fill)).toBeGreaterThanOrEqual(AA);
+    });
+  });
+
+  // The plain hue is allowed as an icon for these three; orange isn't, which
+  // is why an orange glyph is `orangeText`.
+  describe.each(['red', 'green', 'purple', 'accent'] as const)('%s as an icon', hue => {
+    it.each(['bg', 'bgSecondary', 'bgTertiary'] as const)('reads on %s', surface => {
+      expect(contrast(colors[hue], colors[surface])).toBeGreaterThanOrEqual(NON_TEXT);
+    });
+  });
+
+  it.each(['bg', 'bgSecondary', 'bgTertiary'] as const)('reads `warningText` on %s', surface => {
+    expect(contrast(colors.warningText, colors[surface])).toBeGreaterThanOrEqual(AA);
+  });
+
+  it('reads onWarning on a warning fill', () => {
+    expect(contrast(colors.onWarning, colors.warning)).toBeGreaterThanOrEqual(AA);
   });
 });

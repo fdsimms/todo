@@ -1016,7 +1016,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 1,
   },
   answerText: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
-  completedLabel: { color: colors.green, fontSize: font.xs },
+  completedLabel: { color: colors.greenText, fontSize: font.xs },
   // The neutral twin of answerPill, and the same shape the quick-search card's
   // count wears. Enclosed rather than loose: "4 more dates" sitting next to
   // "Due Aug 26" otherwise reads as a qualifier on that date.
@@ -1027,7 +1027,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSunken,
   },
   countText: { color: colors.textSecondary, fontSize: font.xs },
-  archivedLabel: { color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  archivedLabel: { color: colors.orangeText, fontSize: font.xs, fontWeight: fontWeight.semibold },
   notesPreview: {
     color: colors.textTertiary,
     fontSize: font.xs,

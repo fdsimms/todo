@@ -388,5 +388,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowTitle: { color: colors.text, fontSize: font.md },
   rowMeta: { color: colors.textSecondary, fontSize: font.sm },
-  matched: { color: colors.green, fontWeight: fontWeight.semibold },
+  matched: { color: colors.greenText, fontWeight: fontWeight.semibold },
 });

@@ -24,6 +24,7 @@ import { nextPullCandidate } from '../utils/projectPull';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { projectCardCaption } from '../utils/projectList';
 import { isHeldBack, isQuotaOnPace, isTaskNotNeeded, isTaskVisible } from '../utils/visibilityUtils';
+import { proratedFrom } from '../utils/quotaSchedule';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSavedViewStore } from '../store/useSavedViewStore';
@@ -1101,8 +1102,9 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const weekly = tasks.find(t => t.quotaPeriod === 'week' && !t.rotationEnabled);
+    const weekly = tasks.find(t => t.title === 'Go for a run');
     expect(weekly).toBeDefined();
+    expect(weekly!.quotaPeriod).toBe('week');
     expect(weekly!.targetCount).toBe(3);
     expect(weekly!.progressCount).toBeGreaterThan(0);
     expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
@@ -1111,6 +1113,18 @@ describe('demo mode', () => {
     expect(weekly!.recurrenceType).toBe('weekly');
     // Whichever day the demo is entered on, the row is actually on screen.
     expect(isTaskVisible(weekly!)).toBe(true);
+  });
+
+  // A weekly target set up midweek asks for fewer that first week, and keeps
+  // the full count for the next. Invisible unless a row is actually scaled.
+  it('seeds a weekly target scaled down for its first week', () => {
+    useDemoStore.getState().enterDemoMode();
+    const scaled = useTaskStore.getState().tasks.find(t => t.title === 'Strength workout');
+    expect(scaled).toBeDefined();
+    expect(scaled!.targetCount).toBe(2);
+    expect(proratedFrom(scaled!)).toBe(4);
+    expect(scaled!.quotaStartedAt).not.toBeNull();
+    expect(isTaskVisible(scaled!)).toBe(true);
   });
 
   // A rotation is the one shape a plain weekly target can't express: it knows
@@ -1190,6 +1204,15 @@ describe('demo mode', () => {
     // And it lands in a container, so a run reads as one thing rather than
     // four loose tasks appearing unattended.
     expect(scheduled.applyContainer).not.toBe('none');
+  });
+
+  it('seeds template items that wait on another, count a target, and carry a phone number', () => {
+    useDemoStore.getState().enterDemoMode();
+    const items = useTemplateStore.getState().templates.flatMap(t => t.items);
+    const waiting = items.find(i => (i.blockedByItemIds ?? []).length > 0)!;
+    expect(items.some(i => i.id === waiting.blockedByItemIds![0])).toBe(true);
+    expect(items.some(i => i.targetCount != null)).toBe(true);
+    expect(items.some(i => !!i.phoneNumber)).toBe(true);
   });
 
   it('seeds a template item with a location', () => {

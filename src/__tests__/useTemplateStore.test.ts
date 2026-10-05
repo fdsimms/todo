@@ -417,6 +417,57 @@ describe('applyTemplate', () => {
     expect(mockGroupTasks).toHaveBeenCalledWith(['task-Passport', 'task-Visa'], 'Documents', 'Travel');
   });
 
+  // The selection every unattended caller builds (initialLeafSelection) names
+  // leaves only. The run itself has to add the nested template's ref item, or
+  // the scheduler and the MCP server silently drop every nested item.
+  it('creates a nested template\'s items from a selection that names only leaves', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({ id: 'packing', name: 'Packing', items: [makeItem({ id: 'p1', title: 'Charger' })] }),
+        makeTemplate({
+          id: 'trip',
+          name: 'Trip',
+          items: [
+            makeItem({ id: 't1', title: 'Book hotel' }),
+            makeItem({ id: 't2', refTemplateId: 'packing', refTemplateName: 'Packing' }),
+          ],
+        }),
+      ],
+    });
+    useTemplateStore.getState().applyTemplate('trip', new Set(['t1', 'p1']), { start: null, end: null });
+    expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Book hotel', 'Charger']);
+  });
+
+  it('creates no container when nothing selected can become a task', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({
+          id: 'trip',
+          name: 'Trip',
+          applyContainer: 'stack',
+          items: [makeItem({ id: 't2', refTemplateId: 'missing', refTemplateName: 'Gone' })],
+        }),
+      ],
+    });
+    const created = useTemplateStore.getState().applyTemplate('trip', new Set(['t2']), { start: null, end: null }, { runName: 'Lisbon' });
+    expect(created).toEqual([]);
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+  });
+
+  it('turns "waits on" into blockers, dropping an item that was not ticked', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [
+          makeItem({ id: 'a', title: 'Book' }),
+          makeItem({ id: 'b', title: 'Pay deposit', optional: true }),
+          makeItem({ id: 'c', title: 'Go', blockedByItemIds: ['a', 'b'] }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'c']), { start: null, end: null });
+    expect(mockUpdateTask).toHaveBeenCalledWith('task-Go', { blockedById: 'task-Book', blockedByIds: [] });
+  });
+
   it('yields zero tasks for a ref item pointing at a deleted template', () => {
     useTemplateStore.setState({
       templates: [
@@ -1164,6 +1215,19 @@ describe('setSchedule', () => {
     expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBe('2026-08-23');
   });
 
+  // A row that came back through sync (or an MCP write) can carry the same
+  // schedule with its keys in another order; that isn't a change.
+  it('keeps the key when the same schedule arrives with its keys reordered', () => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({ schedule: weekly, scheduleLastFiredKey: '2026-08-23' }),
+    ]);
+    useTemplateStore.getState().initialize();
+
+    const { anchorSpanDays, time, month, monthDay, weekday, frequency } = weekly;
+    useTemplateStore.getState().setSchedule('tpl-1', { anchorSpanDays, time, month, monthDay, weekday, frequency });
+    expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBe('2026-08-23');
+  });
+
   it('turns firing off without forgetting which period already ran', () => {
     (dbGetAllTemplates as jest.Mock).mockReturnValue([
       makeTemplate({ schedule: weekly, scheduleLastFiredKey: '2026-08-23' }),
@@ -1310,6 +1374,40 @@ describe('checkScheduledTemplates', () => {
     const titles = mockAddTask.mock.calls.map(c => c[0].title);
     expect(titles).toContain('Passport');
     expect(titles).not.toContain('Laptop');
+  });
+
+  it('includes the items of a nested template', () => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({ id: 'chores', name: 'Chores', items: [makeItem({ id: 'c1', title: 'Water plants' })] }),
+      makeTemplate({
+        id: 'reset',
+        name: 'Sunday reset',
+        schedule: weekly,
+        items: [
+          makeItem({ id: 'i1', title: 'Laundry' }),
+          makeItem({ id: 'i2', refTemplateId: 'chores', refTemplateName: 'Chores' }),
+        ],
+      }),
+    ]);
+    useTemplateStore.getState().initialize();
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask.mock.calls.map(c => c[0].title)).toEqual(['Laundry', 'Water plants']);
+  });
+
+  it('still runs the templates after one that throws', () => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({ id: 'a', name: 'First', schedule: weekly, items: [makeItem({ id: 'a1', title: 'Boom' })] }),
+      makeTemplate({ id: 'b', name: 'Second', schedule: weekly, items: [makeItem({ id: 'b1', title: 'Laundry' })] }),
+    ]);
+    useTemplateStore.getState().initialize();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockAddTask.mockImplementationOnce(() => { throw new Error('boom'); });
+
+    useTemplateStore.getState().checkScheduledTemplates();
+
+    expect(mockAddTask.mock.calls.map(c => c[0].title)).toEqual(['Boom', 'Laundry']);
+    expect(useTemplateStore.getState().templates.map(t => t.scheduleLastFiredKey)).toEqual(['2026-08-23', '2026-08-23']);
+    warn.mockRestore();
   });
 
   // The period is still consumed — otherwise this is re-diagnosed as due on
