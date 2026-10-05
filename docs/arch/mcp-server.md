@@ -272,8 +272,30 @@ agent's "after"**, because restoring "before" over an edit the person made since
 their change to put back one they never saw. It is derived on every read rather than stored, which
 keeps the ledger write-once and makes a second tap (or a revert made on the other phone) read as
 "Undone". A created task can be removed while it is still open, a completed one reopened through
-the store's own `uncompleteTask`. Grocery, project, meal and template entries are records only:
-each is a tap to change in the app.
+the store's own `uncompleteTask`. Everything else an agent writes is recorded with the row it is about (`recordId`), and some of it
+can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
+is still how the agent left it.
+
+- **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
+  or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
+  (the whole list before and after), and a note remembered or forgotten.
+- **Record only, on purpose:** a recipe, template, stack or project the agent created (each has
+  contents added afterward and no edit stamp to tell whether they were, and a project or stack owns
+  other rows), a grocery item taken off the list (putting it back would rebuild its quantity and aisle
+  from nothing), a project completion, and an automation switch (one setter per setting).
+- **A log entry or meal has nothing to compare**, so its undo is offered while it exists and the
+  confirmation says that anything changed on it since goes with it.
+- The store side is `src/utils/agentUndoRun.ts`: it reads each record through the store that owns it
+  and applies a plan through that store's own action, so removing a food entry retracts it from Health
+  the way a tap would. `agentUndo.ts` is the one question the screen asks, task or not.
+
+**One confirmed call is one batch.** `withWrite` in `server.ts` runs a confirmed write inside
+`replica.withBatch`, so every entry it records carries the same `batchId`. The Activity screen puts
+"Undo all N" on the newest undoable row of a batch that touched two or more tasks, and `revertBatch`
+(`agentRevert.ts`) runs each entry's own `agentRevertPlan` newest first, re-reading the task between
+steps (two edits to one task only pass the guard in that order). It is the per-row rule applied
+repeatedly, so a task changed since is skipped and reported, never overwritten. A preview records
+nothing and has no batch. Entries written before the column existed have none.
 
 ### Recording: a recipe, food, mood and a dose
 

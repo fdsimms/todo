@@ -1021,6 +1021,20 @@ export interface UnattendedEntry {
   subject: UnattendedSubject;
   /** An agent's edit or move, as before and after. Null for everything else. */
   revert: UnattendedRevert | null;
+  /**
+   * The confirmed agent call this entry came from. Every entry written by one
+   * confirmed write shares it, which is what lets the Activity screen offer
+   * "undo all" for a call rather than a row at a time. Null for the app's own
+   * rows and for agent rows written before this existed.
+   */
+  batchId?: string | null;
+  /**
+   * The row an agent's entry is about when that row is not a task: a grocery
+   * item, a meal, a log entry, a project, or the name of a rule list. It is
+   * what the Activity screen reads the record's current state by, and it is
+   * allowed to dangle for the reason `taskId` is. Null for everything else.
+   */
+  recordId?: string | null;
 }
 
 // A themed, long-running collection of loosely-dated tasks the user tracks

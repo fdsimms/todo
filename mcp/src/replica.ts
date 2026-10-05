@@ -560,6 +560,13 @@ export interface Replica {
    * the write returned; `effects` are the Activity entries it would have made.
    */
   dryRun<T>(fn: () => T): { result: T; effects: AgentLedgerEntry[] };
+  /**
+   * Run a confirmed write so every Activity entry it records shares one batch
+   * id (`UnattendedEntry.batchId`), which is what "undo all" on the phone acts
+   * on. Synchronous on purpose: the id is held only while `fn` runs, so two
+   * requests can never write under each other's.
+   */
+  withBatch<T>(batchId: string, fn: () => T): T;
   /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
   agentNotes(): AgentNote[];
   writeAgentNotes(notes: readonly AgentNote[]): void;
@@ -2056,6 +2063,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // Replaced once the replica is wrapped, below: a dry run has to capture
     // what the ledger wrapper records, so it lives outside this object.
     dryRun: () => { throw new Error('dryRun is only available on the wrapped replica.'); },
+    withBatch: () => { throw new Error('withBatch is only available on the wrapped replica.'); },
 
     agentNotes: () => notesModule().readAgentNotes(),
     writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
@@ -2856,10 +2864,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // can take it back. See agentLedger.ts. While a dry run is capturing, the
   // entries are collected instead, which is what a preview describes.
   let capturing: AgentLedgerEntry[] | null = null;
+  let currentBatch: string | null = null;
   const wrapped = withAgentLedger(replica, entries => {
     if (capturing) capturing.push(...entries);
-    else db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId));
+    else db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId, new Date(), currentBatch));
   });
+
+  wrapped.withBatch = <T>(batchId: string, fn: () => T): T => {
+    const outer = currentBatch;
+    currentBatch = batchId;
+    try {
+      return fn();
+    } finally {
+      currentBatch = outer;
+    }
+  };
 
   /** Thrown to roll a dry run back. Never escapes `dryRun`. */
   const DRY_RUN = Symbol('dry run');

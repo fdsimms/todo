@@ -101,3 +101,44 @@ describe('dryRun', () => {
   });
 });
 
+
+describe('batches', () => {
+  it('stamps every entry one confirmed write records with the same batch id, and none outside it', () => {
+    const a = replica.createTask({ title: 'Loose' });
+    replica.withBatch('batch-1', () => {
+      replica.updateTask(a.id, { title: 'Renamed' });
+      replica.createTask({ title: 'Second' });
+    });
+    replica.createTask({ title: 'After' });
+
+    const byTitle = Object.fromEntries(ledger().map(e => [`${e.action}:${e.title}`, e.batchId ?? null]));
+    expect(byTitle['edited:Renamed']).toBe('batch-1');
+    expect(byTitle['created:Second']).toBe('batch-1');
+    expect(byTitle['created:Loose']).toBeNull();
+    expect(byTitle['created:After']).toBeNull();
+  });
+
+  it('releases the batch when the write throws', () => {
+    expect(() => replica.withBatch('batch-2', () => replica.updateTask('nope', { title: 'x' }))).toThrow(/No task/);
+    replica.createTask({ title: 'Later' });
+    expect(ledger().find(e => e.title === 'Later')?.batchId ?? null).toBeNull();
+  });
+});
+
+describe('records an undo can find again', () => {
+  it('names the grocery item and the meal an entry is about', () => {
+    const outcome = replica.addGroceryItem('ledger test kefir');
+    const meal = replica.planMeal({ date: '2026-10-05', slot: 'dinner', title: 'Soup' });
+    const entries = ledger();
+    expect(entries.find(e => e.subject === 'grocery')?.recordId).toBe(outcome.item.id);
+    expect(entries.find(e => e.subject === 'meal')?.recordId).toBe(meal.id);
+  });
+
+  it('records a rule list as the whole list before and after, named by its type', () => {
+    const before = replica.ruleLists().title;
+    replica.setRuleList('title', []);
+    const entry = ledger().find(e => e.subject === 'automation')!;
+    expect(entry.recordId).toBe('title');
+    expect(entry.revert).toEqual({ before: { rules: before }, after: { rules: [] } });
+  });
+});
