@@ -61,6 +61,8 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   'blockedById',
   // The rest of the set, for the same reason: see Task.blockedByIds.
   'blockedByIds',
+  // Whether the wait runs to the end of a repeating blocker's series.
+  'waitForSeriesEnd',
   // "Only if that question gets this answer" is a gate like the two above.
   'answerGate',
   // Deliberately NOT here: postponeCount / postponeMuted. A scope:'occurrence'

@@ -916,6 +916,8 @@ const taskFieldsShape = {
     .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
     .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
+  waitForSeriesEnd: z.boolean().optional()
+    .describe('With waitsOn on a repeating task: keep waiting until its last repeat is done, not just the next one. A task that repeats with no end never releases this one.'),
   onlyIfAnswer: z.object({
     taskId: z.string().describe('A task that asks a Yes/No or pick-one question when completed.'),
     answers: z.array(z.string()).min(1).describe('The answers that show this task, spelled as the question offers them.'),

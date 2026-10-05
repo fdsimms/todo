@@ -2752,6 +2752,17 @@ export interface Task {
    * reader goes through `blockerIdsOf`, which treats a missing list as empty.
    */
   blockedByIds?: string[];
+  /**
+   * Hold this task until a repeating blocker has finished its *last*
+   * occurrence, not just the one it points at. Completing a repeating task
+   * spawns a successor with a new id, so without this the wait ends at the
+   * first completion. With it, a blocker that is done but has a live successor
+   * (`previousOccurrenceId`) still holds, and the hold ends when the series
+   * does (a count or end date runs out, or the successor is archived or
+   * deleted). Derived at read time by `isBlocked`, never stored per occurrence.
+   * A blocker that repeats with no end never releases the task.
+   */
+  waitForSeriesEnd?: boolean;
 
   /**
    * Shown only if another task's question gets one of these answers: "Book
