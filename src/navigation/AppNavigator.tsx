@@ -66,6 +66,7 @@ import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
 import { CookingBar } from '../components/CookingBar';
+import { FocusFloatingBar } from '../components/FocusBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -360,6 +361,9 @@ export default function AppNavigator() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [initialRouteName] = useState(initialScreenFromSettings);
   const [activeTab, setActiveTab] = useState(initialRouteName);
+  // Today draws its own inline strip for a focus session; everywhere else,
+  // pushed cards included, gets the floating one.
+  const [onToday, setOnToday] = useState(initialRouteName === 'Today');
   // Stable function reference (Zustand actions never change identity), so
   // selecting only this doesn't subscribe AppNavigator to lastVisitedScreen
   // itself — see initialScreenFromSettings above.
@@ -407,6 +411,7 @@ export default function AppNavigator() {
 
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
+    if (currentName) setOnToday(currentName === 'Today');
     if (!currentName || currentName === 'More' || PUSHED_ROUTES.has(currentName)) return;
     // Remembered so the next cold launch reopens here instead of always on
     // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
@@ -593,6 +598,9 @@ export default function AppNavigator() {
           comment for why a cook timer needs the app-wide bar that shopping
           trip deliberately doesn't get. */}
       <CookingBar />
+      {/* A minimized focus session's way back from every screen but Today,
+          which has its own inline strip. See FocusFloatingBar. */}
+      <FocusFloatingBar hidden={onToday} />
     </>
   );
 }

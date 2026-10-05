@@ -140,7 +140,7 @@ Where each component can appear.
 - `src/components/FabDropZones.tsx` — on GroceryScreen, MealPlanScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, TemplatesScreen, TodayScreen
 - `src/components/FinishLeftoverPrompt.tsx` — on app shell
 - `src/components/FinishShoppingSheet.tsx` — on GroceryScreen
-- `src/components/FocusBar.tsx` — on TodayScreen
+- `src/components/FocusBar.tsx` — on TodayScreen, app shell
 - `src/components/FocusSessionSheet.tsx` — on TodayScreen
 - `src/components/FocusSetupSheet.tsx` — on TodayScreen
 - `src/components/FollowUpTaskSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
