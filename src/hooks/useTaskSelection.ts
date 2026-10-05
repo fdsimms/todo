@@ -1,8 +1,8 @@
 import { Alert } from 'react-native';
 import type { Task } from '../types';
-import { isLiveRecurring, isMissableMealPlanTask } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRowSelection } from './useRowSelection';
+import { bulkDeletePrompt } from '../utils/bulkDelete';
 import { confirmDelete } from '../utils/confirmDelete';
 
 // Bulk selection for a task list: the shared row-selection machinery
@@ -20,18 +20,16 @@ export function useTaskSelection(allTasks: Task[]) {
   // into this same bulk path). A meal-plan task whose day has come is the
   // same ambiguity for a different reason: it has no series to end, but
   // deleting it outright still loses the record a mark-missed would have
-  // kept. For a mixed selection, "Mark Missed" marks just those tasks
-  // missed and deletes the rest; "Delete Everything" deletes the whole
-  // selection.
+  // kept. For a mixed selection, "Mark missed" marks just those tasks
+  // missed and deletes the rest; the destructive button deletes the whole
+  // selection. Which tasks are missable, and the words the question uses,
+  // are `bulkDeletePrompt`'s (src/utils/bulkDelete.ts).
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const count = ids.length;
     const plural = count === 1 ? 'task' : 'tasks';
-    const missableIds = ids.filter(id => {
-      const t = allTasks.find(x => x.id === id);
-      return t ? (isLiveRecurring(t) || isMissableMealPlanTask(t)) : false;
-    });
-    if (missableIds.length === 0) {
+    const prompt = bulkDeletePrompt(ids, allTasks);
+    if (prompt.kind === 'delete') {
       confirmDelete({
         title: `Delete ${count} ${plural}?`,
         message: `You're about to delete ${count} ${plural}. You can undo this by shaking your phone right after.`,
@@ -42,41 +40,7 @@ export function useTaskSelection(allTasks: Task[]) {
       });
       return;
     }
-    const restIds = ids.filter(id => !missableIds.includes(id));
-    // A single missable task (the common case — this same path now handles
-    // a lone task's delete too) knows definitively which kind it is, and a
-    // uniform multi-select does too once nothing outside the missable set
-    // is along for the ride. Only a genuinely mixed selection still needs
-    // the "or" — see TaskEditor's own single-task delete prompts, which
-    // this mirrors rather than hedging the way this one used to.
-    const missableTasks = missableIds
-      .map(id => allTasks.find(t => t.id === id))
-      .filter((t): t is Task => !!t);
-    const wholeSelectionMissable = restIds.length === 0;
-    // The message has to reflect which reason(s) are actually in the missable
-    // set, not just whether the selection also has non-missable tasks along
-    // for the ride — a recurring task selected next to an ordinary one has no
-    // meal-plan task in it at all, and saying "repeat or came from your meal
-    // plan" in that case is just wrong, not merely hedged.
-    const hasRecurring = missableTasks.some(isLiveRecurring);
-    const hasMealPlan = missableTasks.some(isMissableMealPlanTask);
-
-    let message: string;
-    let deleteLabel: string;
-    if (hasRecurring && !hasMealPlan) {
-      message = missableTasks.length === 1
-        ? 'This task repeats. Mark just this one missed, or delete it and stop it repeating?'
-        : 'These tasks repeat. Mark them missed instead, or delete them and stop them repeating?';
-      deleteLabel = wholeSelectionMissable ? 'Delete and stop repeating' : 'Delete anyway';
-    } else if (hasMealPlan && !hasRecurring) {
-      message = missableTasks.length === 1
-        ? 'This came from your meal plan. Mark it missed to keep a record, or delete it outright?'
-        : 'These came from your meal plan. Mark them missed to keep a record, or delete them outright?';
-      deleteLabel = wholeSelectionMissable ? 'Delete' : 'Delete anyway';
-    } else {
-      message = 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete your whole selection anyway?';
-      deleteLabel = 'Delete anyway';
-    }
+    const { missableIds, restIds, message, deleteLabel } = prompt;
 
     Alert.alert(
       `Delete ${count} ${plural}?`,

@@ -10,6 +10,8 @@ import {
 } from '../utils/pantryReviewTasks';
 import type { PantryReviewDeck } from '../utils/pantryReview';
 import type { Task } from '../types';
+import { dayKeyOf } from '../utils/dateUtils';
+import { subDays } from 'date-fns/subDays';
 
 // dateUtils reaches the settings store, which opens SQLite — the same stub the
 // pantry check's own suite uses. dayKeyToDate reads no setting.
@@ -73,7 +75,9 @@ describe('wantsPantryReview', () => {
 });
 
 describe('pantryReviewCadenceElapsed', () => {
-  const today = new Date('2026-08-22T12:00:00.000Z');
+  // A local noon, never a `Z` literal: the cadence counts calendar days in
+  // local time, and a UTC instant is a different date past the dateline.
+  const today = new Date(2026, 7, 22, 12);
 
   it('qualifies an install that has never been asked', () => {
     expect(pantryReviewCadenceElapsed(null, today)).toBe(true);
@@ -93,8 +97,7 @@ describe('pantryReviewCadenceElapsed', () => {
   });
 
   it('measures exactly the stated cadence', () => {
-    const last = new Date(today.getTime() - PANTRY_REVIEW_CADENCE_DAYS * 86_400_000);
-    expect(pantryReviewCadenceElapsed(last.toISOString().slice(0, 10), today)).toBe(true);
+    expect(pantryReviewCadenceElapsed(dayKeyOf(subDays(today, PANTRY_REVIEW_CADENCE_DAYS)), today)).toBe(true);
   });
 
   it('treats an unreadable mark as no mark rather than blocking for ever', () => {

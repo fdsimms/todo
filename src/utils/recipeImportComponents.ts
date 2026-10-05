@@ -1,8 +1,9 @@
 import type { Recipe } from '../types';
-import type { ExtractedRecipeReference, RecipeGroceryItem } from '../services/aiSuggestions';
+import type { ExtractedRecipe, ExtractedRecipeReference, RecipeGroceryItem } from '../services/aiSuggestions';
 import { groceryNameKey } from './groceryParse';
 import { recipeMap, wouldCreateRecipeCycle } from './recipeComponents';
-import { recipeByName } from './recipeUtils';
+import { MAX_RECIPE_PHOTOS, type RecipePhoto } from './recipePhoto';
+import { cleanRecipeName, recipeByName } from './recipeUtils';
 
 /**
  * Turning "…and there's a salsa verde on page 45" into something the import
@@ -156,4 +157,101 @@ export function coveredIngredients(
     if (name) covered.set(index, name);
   });
   return covered;
+}
+
+/**
+ * Where one referenced recipe has got to, in the import sheet that offered it.
+ * Keyed by the candidate's `key`, so a re-extraction that returns the same
+ * references lands on the same rows. `useRecipeComponentImports` drives the
+ * transitions; the rules below are the ones that read it.
+ */
+export type ComponentImportState =
+  | { status: 'idle' }
+  /** The picker is open, or its downscale is still running. */
+  | { status: 'picking' }
+  | { status: 'reading' }
+  /** `photoCount` is how many photos the read combined; see `nextComponentPhotos`. */
+  | { status: 'read'; extracted: ExtractedRecipe; photoCount: number }
+  /** Picked by hand from the recipe box (the hook's `linkTo`). */
+  | { status: 'linked'; recipe: Recipe }
+  | { status: 'failed'; message: string };
+
+/**
+ * The rows that start ticked when a run of candidates lands: the ones the box
+ * already holds a recipe for. Linking two recipes adds nothing and un-links in
+ * one tap on the recipe screen, so the tick is the answer that's right nearly
+ * every time. One that has to be photographed starts unticked, because there
+ * is nothing yet to tick *for*.
+ */
+export function seededComponentKeys(candidates: readonly ReferenceCandidate[]): Set<string> {
+  return new Set(candidates.filter(c => c.match).map(c => c.key));
+}
+
+/**
+ * The photo set a new photo of a referenced page makes, given what the row
+ * showed when it was taken.
+ *
+ * A photo taken while the row already shows a read result is *added* to it,
+ * the page-turn case `MAX_RECIPE_PHOTOS` caps: page 45 can run onto page 46
+ * same as any other. Any other prior status (idle, or a failed read) starts a
+ * fresh one-photo set instead: a failure has nothing worth combining with, and
+ * "try again" should mean exactly that rather than "add to whatever didn't
+ * work". A set already at the cap stays as it is.
+ */
+export function nextComponentPhotos(
+  prior: ComponentImportState | undefined,
+  priorPhotos: readonly RecipePhoto[] | undefined,
+  photo: RecipePhoto,
+): RecipePhoto[] {
+  const appending = prior?.status === 'read';
+  return (appending ? [...(priorPhotos ?? []), photo] : [photo]).slice(0, MAX_RECIPE_PHOTOS);
+}
+
+/**
+ * The keys whose ingredients the parent no longer has to shop for (the set
+ * `coveredIngredients` reads): a ticked reference the box already matched, one
+ * read off a photo and about to be created, or one linked by hand. An unread
+ * reference covers nothing, however it's ticked.
+ */
+export function coveringComponentKeys(
+  candidates: readonly ReferenceCandidate[],
+  accepted: ReadonlySet<string>,
+  states: Readonly<Record<string, ComponentImportState>>,
+): Set<string> {
+  const keys = new Set<string>();
+  for (const candidate of candidates) {
+    if (!accepted.has(candidate.key)) continue;
+    const state = states[candidate.key];
+    if (candidate.match || state?.status === 'read' || state?.status === 'linked') keys.add(candidate.key);
+  }
+  return keys;
+}
+
+/** What committing one row writes: nothing, a link to a recipe that exists, or a new recipe to link. */
+export type ComponentCommit =
+  | { kind: 'skip' }
+  | { kind: 'link'; recipeId: string }
+  | { kind: 'create'; name: string; extracted: ExtractedRecipe };
+
+/**
+ * What the sheet's Create/Add does with one candidate.
+ *
+ * An unticked row writes nothing. A ticked one links the recipe the box
+ * matched, else the one picked by hand, else creates the recipe its photo was
+ * read into, under the extraction's own name or, when the model read none, the
+ * name the referencing page used. A row with nothing read yet, or with no
+ * usable name either way, writes nothing: there is no recipe to make.
+ */
+export function componentCommitFor(
+  candidate: ReferenceCandidate,
+  accepted: ReadonlySet<string>,
+  state: ComponentImportState | undefined,
+): ComponentCommit {
+  if (!accepted.has(candidate.key)) return { kind: 'skip' };
+  if (candidate.match) return { kind: 'link', recipeId: candidate.match.id };
+  if (state?.status === 'linked') return { kind: 'link', recipeId: state.recipe.id };
+  if (state?.status !== 'read') return { kind: 'skip' };
+  const name = cleanRecipeName(state.extracted.name || candidate.reference.name);
+  if (!name) return { kind: 'skip' };
+  return { kind: 'create', name, extracted: state.extracted };
 }

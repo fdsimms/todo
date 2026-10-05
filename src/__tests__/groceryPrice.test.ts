@@ -207,21 +207,26 @@ describe('formatPrice', () => {
   });
 });
 
+// The age is judged on the local month, so these are local times rather than
+// `Z` literals (which only agree with the local month near Greenwich). A stamp
+// is the instant a local noon falls on, the shape the app stores.
+const pricedOn = (year: number, month: number, day: number) => new Date(year, month, day, 12).toISOString();
+
 describe('describePriceAge', () => {
-  const now = new Date('2026-08-12T00:00:00.000Z');
+  const now = new Date(2026, 7, 12);
 
   it('says "this month" rather than a date for a fresh price', () => {
-    expect(describePriceAge('2026-08-02T00:00:00.000Z', now)).toBe('this month');
+    expect(describePriceAge(pricedOn(2026, 7, 2), now)).toBe('this month');
   });
 
   it('names the month within the year, and adds the year outside it', () => {
-    expect(describePriceAge('2026-03-04T00:00:00.000Z', now)).toBe('Mar');
-    expect(describePriceAge('2024-03-04T00:00:00.000Z', now)).toBe('Mar 2024');
+    expect(describePriceAge(pricedOn(2026, 2, 4), now)).toBe('Mar');
+    expect(describePriceAge(pricedOn(2024, 2, 4), now)).toBe('Mar 2024');
   });
 });
 
 describe('describePriceContext', () => {
-  const now = new Date('2026-08-12T00:00:00.000Z');
+  const now = new Date(2026, 7, 12);
 
   it('is null when nothing has been priced', () => {
     expect(describePriceContext(makeItem(), now)).toBeNull();
@@ -229,7 +234,7 @@ describe('describePriceContext', () => {
 
   it('never repeats the number the field beside it is showing', () => {
     const line = describePriceContext(
-      makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-03-04T00:00:00.000Z', lastPriceQuantity: '2 lb' }),
+      makeItem({ lastPriceMinor: 429, lastPricedAt: pricedOn(2026, 2, 4), lastPriceQuantity: '2 lb' }),
       now
     );
     expect(line).toBe('Last paid for 2 lb · Mar');
@@ -239,7 +244,7 @@ describe('describePriceContext', () => {
   it('drops the quantity clause when there was none', () => {
     expect(
       describePriceContext(
-        makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-03-04T00:00:00.000Z' }),
+        makeItem({ lastPriceMinor: 429, lastPricedAt: pricedOn(2026, 2, 4) }),
         now
       )
     ).toBe('Last paid · Mar');
