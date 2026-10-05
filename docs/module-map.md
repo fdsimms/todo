@@ -500,7 +500,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +232 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +236 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, HEALTH_SYNC_TABLES, +12 more
 
 ## `src/services`

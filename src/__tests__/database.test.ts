@@ -110,6 +110,8 @@ import {
   dbRecipeImagePaths,
   dbFillTaskCalendarExternalIds,
   dbFillMealCalendarExternalIds,
+  dbUpdateTaskCalendarLinks,
+  dbUpdateMealCalendarLink,
   dbCalendarEventIdsWantingExternalIds,
   dbPruneSyncDeletions,
   isSyncableDatabase,
@@ -2217,21 +2219,22 @@ describe('backup and restore', () => {
       .toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
   });
 
+  const stampOf = (table: string, id: string) =>
+    (mockRawDb.prepare(`SELECT updated_at FROM ${table} WHERE id = ?`).get(id) as { updated_at: string | null }).updated_at;
+  const setStamp = (table: string, id: string, stamp: string) =>
+    mockRawDb.prepare(`UPDATE ${table} SET updated_at = ? WHERE id = ?`).run(stamp, id);
+  const meal = (id: string, calendarEventId: string | null, calendarEventExternalId: string | null = null) =>
+    dbInsertMealPlanEntry({
+      id, date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+      sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      calendarEventId, calendarEventExternalId,
+    });
+
   // #2950's launch backfill: the server id beside every event this phone wrote
   // before it kept one, filled in without the row reading as edited.
   describe('filling in calendar server ids', () => {
     beforeEach(() => mockRawDb.exec('DELETE FROM tasks; DELETE FROM meal_plan_entries;'));
-    const stampOf = (table: string, id: string) =>
-      (mockRawDb.prepare(`SELECT updated_at FROM ${table} WHERE id = ?`).get(id) as { updated_at: string | null }).updated_at;
-    const setStamp = (table: string, id: string, stamp: string) =>
-      mockRawDb.prepare(`UPDATE ${table} SET updated_at = ? WHERE id = ?`).run(stamp, id);
-    const meal = (id: string, calendarEventId: string | null, calendarEventExternalId: string | null = null) =>
-      dbInsertMealPlanEntry({
-        id, date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
-        sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-        recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
-        calendarEventId, calendarEventExternalId,
-      });
 
     it('lists every device event id with no server id beside it, once each', () => {
       dbInsertTask(makeTask({
@@ -2288,6 +2291,69 @@ describe('backup and restore', () => {
       dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-rewritten' }));
       expect(dbFillTaskCalendarExternalIds({ 'dl-1': 'ext-dl-1' })).toEqual([]);
       expect(dbGetAllTasks().find(t => t.id === 't1')?.calendarEventExternalId).toBeNull();
+    });
+  });
+
+  // The write a reconcile makes after a sync, onto rows another device edited:
+  // the link columns only, with the row's stamp put back, so this device's copy
+  // can't beat the peer's edit that brought the row here.
+  describe('writing a calendar link without restamping the row', () => {
+    beforeEach(() => mockRawDb.exec('DELETE FROM tasks; DELETE FROM meal_plan_entries;'));
+
+    it('writes only the task link columns named, and keeps the sync stamp', () => {
+      dbInsertTask(makeTask({
+        id: 't1', title: 'Pay rent', calendarEventId: 'dl-1', calendarEventExternalId: 'ext-dl-1',
+        completionCalendarEventId: 'done-1', completionCalendarEventExternalId: 'ext-done-1',
+      }));
+      setStamp('tasks', 't1', '2026-01-01T00:00:00.000Z');
+
+      // Each of the three pairs, as the three post-sync writes name them.
+      dbUpdateTaskCalendarLinks('t1', { completionCalendarEventId: null, completionCalendarEventExternalId: null });
+      dbUpdateTaskCalendarLinks('t1', { calendarEventId: 'dl-2', calendarEventExternalId: 'ext-dl-2' });
+      dbUpdateTaskCalendarLinks('t1', { timeBlockEventId: 'blk-1', timeBlockExternalId: 'ext-blk-1' });
+
+      expect(dbGetAllTasks().find(t => t.id === 't1')).toMatchObject({
+        title: 'Pay rent',
+        calendarEventId: 'dl-2', calendarEventExternalId: 'ext-dl-2',
+        completionCalendarEventId: null, completionCalendarEventExternalId: null,
+        timeBlockEventId: 'blk-1', timeBlockExternalId: 'ext-blk-1',
+      });
+      expect(stampOf('tasks', 't1')).toBe('2026-01-01T00:00:00.000Z');
+      // And so the row doesn't read as changed since a cursor past its old stamp.
+      expect(dbSyncChangesSince('2026-06-01T00:00:00.000Z').tables.tasks ?? []).toEqual([]);
+    });
+
+    it('does the same for a planned meal', () => {
+      meal('m1', 'meal-1');
+      setStamp('meal_plan_entries', 'm1', '2026-01-02T00:00:00.000Z');
+
+      dbUpdateMealCalendarLink('m1', { calendarEventId: 'meal-2', calendarEventExternalId: 'ext-meal-2' });
+
+      expect(dbGetMealPlanEntries('2026-08-13', '2026-08-13').find(e => e.id === 'm1'))
+        .toMatchObject({ title: 'Chili', calendarEventId: 'meal-2', calendarEventExternalId: 'ext-meal-2' });
+      expect(stampOf('meal_plan_entries', 'm1')).toBe('2026-01-02T00:00:00.000Z');
+      expect(dbSyncChangesSince('2026-06-01T00:00:00.000Z').tables.meal_plan_entries ?? []).toEqual([]);
+    });
+
+    // The ordinary whole-row write is the contrast: it restamps, which is what
+    // a row that genuinely changed here wants.
+    it('restamps through the ordinary update, which is what the reconcile after a local edit still uses', () => {
+      dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-1' }));
+      setStamp('tasks', 't1', '2026-01-01T00:00:00.000Z');
+
+      dbUpdateTask({ ...dbGetAllTasks().find(t => t.id === 't1')!, calendarEventId: 'dl-2' });
+
+      expect(stampOf('tasks', 't1')).not.toBe('2026-01-01T00:00:00.000Z');
+      expect((dbSyncChangesSince('2026-06-01T00:00:00.000Z').tables.tasks ?? []).map(r => r.id)).toEqual(['t1']);
+    });
+
+    it('writes nothing for a row that has gone, and nothing when no column is named', () => {
+      expect(() => dbUpdateTaskCalendarLinks('gone', { calendarEventId: 'dl-1' })).not.toThrow();
+      dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-1' }));
+      setStamp('tasks', 't1', '2026-01-01T00:00:00.000Z');
+      dbUpdateTaskCalendarLinks('t1', {});
+      expect(dbGetAllTasks().find(t => t.id === 't1')?.calendarEventId).toBe('dl-1');
+      expect(stampOf('tasks', 't1')).toBe('2026-01-01T00:00:00.000Z');
     });
   });
 
