@@ -2162,7 +2162,13 @@ export type GeneratedKind =
   // position weighIn is in. What stops a deleted one coming straight back is
   // waterShortfallDeclinedDayKey, and a completed one blocks a second through
   // `blocksOnFinished`.
-  | 'waterShortfall';
+  | 'waterShortfall'
+  // A snack suggestion once the afternoon has started and the food log is well
+  // short of the calorie target — see src/utils/snackNudgeTasks.ts. Day-keyed
+  // with no source row, waterShortfall's position: what stops a deleted one
+  // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
+  // a second through `blocksOnFinished`.
+  | 'snackNudge';
 
 /** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */
 export interface AnswerGate {

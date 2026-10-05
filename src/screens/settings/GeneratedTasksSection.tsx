@@ -41,6 +41,16 @@ import {
   WEIGH_IN_EVERY_DAYS_MAX,
   WEIGH_IN_EVERY_DAYS_MIN,
 } from '../../utils/weightTasks';
+import {
+  DEFAULT_SNACK_NUDGE_FROM_HOUR,
+  DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
+  SNACK_NUDGE_FROM_HOUR_MAX,
+  SNACK_NUDGE_FROM_HOUR_MIN,
+  SNACK_NUDGE_SHARE_PERCENT_MAX,
+  SNACK_NUDGE_SHARE_PERCENT_MIN,
+  SNACK_NUDGE_SHARE_PERCENT_STEP,
+  describeSnackNudgeHour,
+} from '../../utils/snackNudgeTasks';
 import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
@@ -336,6 +346,7 @@ export function GeneratedTasksSection() {
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
       case 'waterShortfall': s.setWaterShortfallTasks(next); break;
+      case 'snackNudge': s.setSnackNudgeTasks(next); break;
       // Exhaustive for setCategory's reason below: this returns void, so a
       // missing arm would be a switch that silently does nothing.
       default: {
@@ -380,6 +391,7 @@ export function GeneratedTasksSection() {
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
+      case 'snackNudge': return s.snackNudgeTaskCategory;
     }
   };
 
@@ -413,6 +425,7 @@ export function GeneratedTasksSection() {
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
+      case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
       // because they return a value. This one returns void, so a missing arm is
@@ -727,6 +740,54 @@ export function GeneratedTasksSection() {
               format={n => `${n}d`}
               label="Days without a weigh-in"
               describeValue={n => (n === 1 ? '1 day' : `${n ?? DEFAULT_WEIGH_IN_EVERY_DAYS} days`)}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'snackNudge') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="snackNudgeFromHour"
+            icon="time-outline"
+            label="Start suggesting at"
+            hint="The task never appears before this time of day."
+            value={describeSnackNudgeHour(s.snackNudgeFromHour)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.snackNudgeFromHour}
+              onChange={next => s.setSnackNudgeFromHour(next ?? DEFAULT_SNACK_NUDGE_FROM_HOUR)}
+              min={SNACK_NUDGE_FROM_HOUR_MIN}
+              max={SNACK_NUDGE_FROM_HOUR_MAX}
+              format={describeSnackNudgeHour}
+              label="Hour to start suggesting"
+              describeValue={n => describeSnackNudgeHour(n ?? DEFAULT_SNACK_NUDGE_FROM_HOUR)}
+            />
+          </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="snackNudgeSharePercent"
+            icon="nutrition-outline"
+            label="Suggest when below"
+            hint="Adds the task when the calories logged today are under this share of your calorie target."
+            value={`${s.snackNudgeSharePercent}% of target`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.snackNudgeSharePercent}
+              onChange={next => s.setSnackNudgeSharePercent(next ?? DEFAULT_SNACK_NUDGE_SHARE_PERCENT)}
+              min={SNACK_NUDGE_SHARE_PERCENT_MIN}
+              max={SNACK_NUDGE_SHARE_PERCENT_MAX}
+              step={SNACK_NUDGE_SHARE_PERCENT_STEP}
+              format={n => `${n}%`}
+              label="Percent of calorie target"
+              describeValue={n => `${n ?? DEFAULT_SNACK_NUDGE_SHARE_PERCENT}% of target`}
             />
           </View>
         </>

@@ -4328,6 +4328,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a snack suggestion under the Health category', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Health');
+    expect(useSettingsStore.getState().snackNudgeTaskCategory).toBe('Health');
+    expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
+  });
+
   it('seeds a weigh-in request, and no weight behind it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

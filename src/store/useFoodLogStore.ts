@@ -427,6 +427,9 @@ type FoodLogSet = (
 function syncWaterQuotaTasksIfToday(dayKey: string): void {
   if (dayKey !== dayKeyOf(getCurrentDayStart())) return;
   useTaskStore.getState().syncWaterQuotaTasks();
+  // The snack suggestion reads the same log, so a write that lands is also the
+  // moment it should come on or go away.
+  useTaskStore.getState().syncSnackNudgeTasks();
 }
 
 /**
@@ -795,7 +798,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       totalCount: Math.max(0, s.totalCount - idSet.size),
     }));
     const todayKey = dayKeyOf(getCurrentDayStart());
-    if (removed.some(e => e.dayKey === todayKey)) useTaskStore.getState().syncWaterQuotaTasks();
+    if (removed.some(e => e.dayKey === todayKey)) {
+      useTaskStore.getState().syncWaterQuotaTasks();
+      useTaskStore.getState().syncSnackNudgeTasks();
+    }
   },
 
   moveEntries(ids, slot) {
