@@ -3,6 +3,9 @@
  * `isHiddenForVacation`, the forgiveness is `vacationStreaks.ts`, and the
  * setter is the settings store's. What is checked here is that flipping the
  * switch from the server does what the Settings toggle does, and says so.
+ *
+ * Every test builds its own state (mode off, three tasks, one hidden category),
+ * so none of them depends on the one before it.
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
@@ -24,8 +27,18 @@ describe('the vacation switch', () => {
 
   beforeAll(() => {
     replica = openReplica(':memory:');
+  });
+
+  beforeEach(() => {
+    mockRaw.runSync('DELETE FROM tasks');
+    mockRaw.runSync('DELETE FROM categories');
+    mockRaw.runSync("DELETE FROM settings WHERE key IN ('vacationMode', 'vacationStart', 'vacationEnd', 'vacationDrivenBy')");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useSettingsStore } = require('../../../src/store/useSettingsStore');
+    useSettingsStore.setState({ vacationMode: false, vacationStart: null, vacationEnd: null, vacationDrivenBy: null });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useCategoryStore } = require('../../../src/store/useCategoryStore');
+    useCategoryStore.setState({ categories: [] });
     useCategoryStore.getState().addCategory('Home');
     useCategoryStore.getState().addCategory('Chores');
     useCategoryStore.getState().setCategoryHideOnVacation('Chores', true);
@@ -59,12 +72,14 @@ describe('the vacation switch', () => {
   });
 
   it('refuses to turn on again without an end date, and an end that is not after today', () => {
+    setVacationMode(replica, { on: true });
     expect(() => setVacationMode(replica, { on: true })).toThrow(/already on/);
     expect(() => setVacationMode(replica, { on: true, until: replica.todayKey() })).toThrow(/not after today/);
     expect(() => setVacationMode(replica, { on: true, until: 'someday' })).toThrow(/not a date I can read/);
   });
 
   it('moves only the end date while already on, and clears it with null', () => {
+    setVacationMode(replica, { on: true });
     const until = replica.shiftDayKey(replica.todayKey(), 5);
     const moved = setVacationMode(replica, { on: true, until });
     expect(moved.until).toBe(until);
@@ -77,6 +92,7 @@ describe('the vacation switch', () => {
   });
 
   it('turns off, bringing the tasks back and forgiving the protected streak, and refuses a second off', () => {
+    setVacationMode(replica, { on: true });
     const result = setVacationMode(replica, { on: false });
     expect(result.on).toBe(false);
     expect(result.forgivenStreaks).toBe(1);
