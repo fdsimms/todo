@@ -48,6 +48,7 @@ function log(dayKey: string, mood: number | null, over: Partial<MoodLog> = {}): 
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    dream: over.dream ?? null,
   };
 }
 

@@ -185,7 +185,7 @@ export function logWater(replica: Replica, input: LogWaterInput): LogWaterResult
 
 export function logMood(
   replica: Replica,
-  input: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null; at?: string },
+  input: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null; dream?: string | null; at?: string },
 ) {
   const log = replica.logMood({ ...input, at: atFrom(input.at) });
   return {
@@ -195,6 +195,7 @@ export function logMood(
     ...(log.symptoms.length > 0 ? { symptoms: log.symptoms } : {}),
     ...(log.contextTags.length > 0 ? { contextTags: log.contextTags } : {}),
     ...(log.note ? { note: log.note } : {}),
+    ...(log.dream ? { dream: log.dream } : {}),
   };
 }
 
@@ -232,7 +233,7 @@ export function deleteFoodEntry(replica: Replica, id: string) {
 export function updateMoodLog(
   replica: Replica,
   id: string,
-  patch: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null },
+  patch: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null; dream?: string | null },
 ) {
   const log = replica.updateMoodLog(id, patch);
   return {
@@ -242,6 +243,7 @@ export function updateMoodLog(
     ...(log.symptoms.length > 0 ? { symptoms: log.symptoms } : {}),
     ...(log.contextTags.length > 0 ? { contextTags: log.contextTags } : {}),
     ...(log.note ? { note: log.note } : {}),
+    ...(log.dream ? { dream: log.dream } : {}),
   };
 }
 

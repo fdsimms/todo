@@ -658,6 +658,27 @@ deliberately not all four. A clean sweep ("4 of 4 against 0 of 11") would read a
 a proof, and a demo of an association has no business looking like one, least of
 all for the read somebody might act on medically.
 
+## Dreams are a field on the entry, and nothing reads them
+
+`MoodLog.dream` is free text beside `note`, not its own entity. A dream is
+written down in the morning, so it files under the day you wake (the entry's own
+`dayKey`, backdating included) and rides the same sync, export and day page as
+the note. A separate table would have bought dream-only fields nobody asked for
+at the price of a medication-log-sized change.
+
+- **Nothing is derived from it, and `moodInsights.ts` never reads it.** There
+  is no dream-against-mood contrast, no recurring-theme detection and no
+  classification of what a dream "means". The only numbers are `dreamStats`
+  tallies (days with one, this month, last on), which count one thing and so
+  have no minimum, like the symptom page.
+- **A day with no dream is not "a day without a dream".** Nothing here can tell
+  not dreaming from not writing it down, so an empty day is absent from every
+  read, never a zero (rule 3 above).
+- **Search reads the note and the dream as one text** (`searchMoodLogs`), so
+  every word has to be in the same entry but may be split between the two. "Has
+  a dream" is a switch in the history filter that ANDs with the rest.
+- **It leaves the device as typed**: the last CSV column, no summary of it.
+
 ## Getting it off the device
 
 `moodExport.ts` writes the log as CSV and hands it to the share sheet. This note
