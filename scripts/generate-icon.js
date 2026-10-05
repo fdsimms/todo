@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Generates the app icons in assets/ and the connector icon in
- * mcp/src/serverIcon.ts.
+ * Generates the app icons in assets/, the connector icon in
+ * mcp/src/serverIcon.ts, and the separate layers in assets/icon-layers/ that
+ * Icon Composer builds the layered (Liquid Glass) icon from.
  *
  * The mark is "the beat": two dots and a check on one floor, ink on gold. It is
  * drawn from the geometry in `beatMark()` below rather than from an exported
@@ -132,10 +133,13 @@ const MARK = beatMark();
  * point is mapped back into unscaled space, which shrinks the stroke along with
  * the skeleton and keeps every target looking like the same logo.
  */
-function onMark(x, y, scale) {
+function onMark(x, y, scale, parts = 'all') {
   const px = (x - 0.5) / scale + 0.5;
   const py = (y - 0.5) / scale + 0.5;
-  for (const d of MARK.dots) if (Math.hypot(px - d.x, py - d.y) <= d.r) return true;
+  if (parts !== 'check') {
+    for (const d of MARK.dots) if (Math.hypot(px - d.x, py - d.y) <= d.r) return true;
+  }
+  if (parts === 'dots') return false;
   const [a, b, c] = MARK.check;
   return (
     distToSegment(px, py, a[0], a[1], b[0], b[1]) <= MARK.halfStroke ||
@@ -167,8 +171,10 @@ const WHITE = [255, 255, 255];
  * @param {number} [opts.tile]      draw a rounded gold tile this share of the canvas
  *                                  under the mark (transparent around it)
  * @param {number} opts.scale       mark scale about the center
+ * @param {string} [opts.parts]     'dots' or 'check' to draw only that part of the
+ *                                  mark; omitted = the whole mark
  */
-function render({ size, mark, background, tile, scale }) {
+function render({ size, mark, background, tile, scale, parts }) {
   const ss = size <= 256 ? 8 : 4; // supersampling per axis
   const channels = background ? 3 : 4;
   const out = Buffer.alloc(size * size * channels);
@@ -180,7 +186,7 @@ function render({ size, mark, background, tile, scale }) {
         for (let sx = 0; sx < ss; sx++) {
           const nx = (x + (sx + 0.5) / ss) / size;
           const ny = (y + (sy + 0.5) / ss) / size;
-          if (onMark(nx, ny, scale)) markHits++;
+          if (onMark(nx, ny, scale, parts)) markHits++;
           if (tile && onTile(nx, ny, tile)) tileHits++;
         }
       }
@@ -231,6 +237,32 @@ const files = [
 for (const [name, opts] of files) {
   fs.writeFileSync(path.join(assetsDir, name), render(opts));
   console.log(`wrote assets/${name} (${opts.size}x${opts.size})`);
+}
+
+// The layers for Icon Composer, which builds the layered icon iOS 26 renders
+// as Liquid Glass. The background is a fill set in Icon Composer itself (see the
+// README beside these), so only the two foreground groups are drawn, at the
+// same 1024 canvas and position as icon.png so they stack back into it. Each is
+// written as an SVG too, since Icon Composer keeps a vector layer sharp at every
+// size; the SVG is built from the same geometry, and a round-capped,
+// round-joined stroke is exactly the distance test `onMark` draws.
+const layersDir = path.join(assetsDir, 'icon-layers');
+fs.mkdirSync(layersDir, { recursive: true });
+const hex = rgb => '#' + rgb.map(c => c.toString(16).padStart(2, '0')).join('').toUpperCase();
+const px = v => +(v * 1024).toFixed(2);
+const svg = body =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\n${body}\n</svg>\n`;
+const layers = [
+  ['dots', svg(MARK.dots.map(d => `  <circle cx="${px(d.x)}" cy="${px(d.y)}" r="${px(d.r)}" fill="${hex(INK)}"/>`).join('\n'))],
+  ['check', svg(
+    `  <polyline points="${MARK.check.map(([x, y]) => `${px(x)},${px(y)}`).join(' ')}" fill="none" ` +
+    `stroke="${hex(INK)}" stroke-width="${px(MARK.halfStroke * 2)}" stroke-linecap="round" stroke-linejoin="round"/>`
+  )],
+];
+for (const [part, source] of layers) {
+  fs.writeFileSync(path.join(layersDir, `${part}.png`), render({ size: 1024, mark: INK, scale: 1, parts: part }));
+  fs.writeFileSync(path.join(layersDir, `${part}.svg`), source);
+  console.log(`wrote assets/icon-layers/${part}.png and ${part}.svg`);
 }
 
 // The connector's icon (MCP `serverInfo.icons`) is the app icon at 128px,
