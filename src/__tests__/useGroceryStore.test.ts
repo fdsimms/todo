@@ -923,7 +923,7 @@ describe('addManyFromText', () => {
   it('undoes against the list the paste went to, whichever list is active by then', () => {
     const milk = makeItem({ name: 'Milk', onList: false });
     seed([milk]);
-    useGroceryStore.getState().addManyFromText('milk');
+    useGroceryStore.getState().addManyFromText('Milk');
     expect(entryFor(useGroceryStore.getState().listEntries, milk.id, null)).not.toBeNull();
     const away = useGroceryStore.getState().addList('Airbnb')!;
     useGroceryStore.getState().setActiveList(away.id);
