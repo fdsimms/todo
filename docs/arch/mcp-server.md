@@ -541,6 +541,16 @@ The result, and so the preview, says what a person would check before saying yes
 dates and subtasks, the items **left out** and why (with their `itemId`s for `include`), the blanks
 left empty, and nested templates that no longer exist.
 
+**`template_library_check` reads the whole library at once** (`mcp/src/templateLibrary.ts`, pure).
+Per template it reports problems a run mishandles now (a nested template since deleted, a
+condition on a deleted question, a wait or gate on an item that is gone, a group that is gone) and
+warnings (`templateWarnings`, plus a question no title fills and no condition reads). Across
+templates it reports runs of three or more items copied into several templates, which is what a
+nested template is for, and pairs whose item lists overlap by 70% or more, which could be one
+template with a choice question. Items are compared with their blanks, case and spacing removed.
+It never edits: each finding says what an `update_template` would change, and that edit is
+previewed and confirmed like any other.
+
 `delete_template` has no archive to fall back on (a template has no archived state in the app), so
 it is the one delete the server offers. It leans on the preview every write already has: the dry
 run reports "Delete the template ... It cannot be restored from here" before anything is removed,

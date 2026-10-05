@@ -55,6 +55,7 @@ import {
   reopenTask,
   reorderTemplates,
   updateTemplate,
+  templateLibraryCheck,
   completeTask,
   updateAnswer,
   deferTask,
@@ -359,6 +360,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Stored task templates: name, category, how many items, the item groups, and the questions a run asks. Use this to find a template to nest inside another.',
     {},
     async () => json(await withFresh(() => listTemplates(replica)))
+  );
+
+  server.tool(
+    'template_library_check',
+    'Check every template at once. Per template: problems a run mishandles now (a nested template that no longer exists, a condition on a deleted question, a wait on an item that is gone) and warnings (a {blank} no question fills, a question nothing uses, settings a run drops). Across templates: runs of items copied into several templates (worth moving into one template and nesting it), and pairs of templates that are near-copies (worth merging into one with a choice question). It changes nothing: each finding says what an update_template would do, and the person approves that edit.',
+    {},
+    async () => json(await withFresh(() => templateLibraryCheck(replica)))
   );
 
   server.tool(

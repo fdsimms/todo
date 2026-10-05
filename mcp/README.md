@@ -106,6 +106,7 @@ only the fallback until the first sync.
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
 | `get_template` | One template in full, in the shape `create_template` and `update_template` take, with a `version` for `update_template`'s `expectedVersion`. |
+| `template_library_check` | Every template checked at once: broken pointers, unused questions, items copied across templates, near-copies. Suggests edits; changes nothing. |
 | `create_template` | **Write.** Builds a whole template in one call, and returns warnings for things it will do that were probably not meant. Needs `MCP_WRITE_TOKEN`. |
 | `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Lists the changes, and refuses an edit made against an old `version`. Needs `MCP_WRITE_TOKEN`. |
 | `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. Reports what it left out and why, and any blanks left empty. |

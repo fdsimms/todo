@@ -22,6 +22,7 @@ import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLo
 import type { AnswerEdit, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
+import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import {
   describeHealthTarget,
   describeRepeat,
@@ -906,6 +907,11 @@ export function listMedicationLogs(
       asNeeded: log.asNeeded ? true : undefined,
     })),
   };
+}
+
+/** Every template checked at once (templateLibrary.ts). Read-only. */
+export function templateLibraryCheck(replica: Replica): LibraryCheck {
+  return checkTemplateLibrary(replica.templates(), replica.categories().map(c => c.name));
 }
 
 /** One template as the plan that would recreate it, or null when none matches. */

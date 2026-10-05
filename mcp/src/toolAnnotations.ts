@@ -49,6 +49,7 @@ export const READ_TOOLS: Record<string, string> = {
   list_medication_logs: 'Medication log',
   list_templates: 'List templates',
   get_template: 'Read a template',
+  template_library_check: 'Check all templates',
   list_recipes: 'List recipes',
   get_recipe: 'Recipe details',
   list_meal_plan: 'Meal plan',
