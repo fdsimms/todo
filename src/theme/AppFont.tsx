@@ -4,7 +4,7 @@ import * as Font from 'expo-font';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveFontFace, type AppFont } from './fonts';
 import { textScale } from './index';
-import { FONT_ASSETS, PREVIEW_FONT_ASSETS } from './fontAssets';
+import { BRAND_FONT_ASSETS, FONT_ASSETS, PREVIEW_FONT_ASSETS } from './fontAssets';
 
 /**
  * The font every `Text` should render in, or `'system'` for the platform font.
@@ -129,6 +129,48 @@ export async function preloadAppFont(id: AppFont): Promise<void> {
     // hit the same warning path if this also fails there.
     console.warn(`Could not preload the ${id} font`, e);
   }
+}
+
+/** Whether `BRAND_FONT_ASSETS` registered. Module scope for the reason `loadedFonts` is. */
+let brandFontsLoaded = false;
+
+/**
+ * Loads the brand's display faces before the first frame, alongside
+ * `preloadAppFont` in `App.tsx`. A failure leaves titles on the system font,
+ * which is what `useBrandFace` returns until this has succeeded.
+ */
+export async function preloadBrandFonts(): Promise<void> {
+  if (brandFontsLoaded) return;
+  try {
+    await Font.loadAsync(BRAND_FONT_ASSETS);
+    brandFontsLoaded = true;
+  } catch (e) {
+    console.warn('Could not preload the brand font', e);
+  }
+}
+
+// `fontWeight: undefined` for the reason the patched Text clears it: the face
+// already is the weight, and naming one makes iOS look for a heavier member of
+// a one-face family and synthesise it.
+const BRAND_FACES = {
+  bold: { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: undefined },
+  heavy: { fontFamily: 'BricolageGrotesque_800ExtraBold', fontWeight: undefined },
+} satisfies Record<string, TextStyle>;
+
+/**
+ * The brand's display face for a title, to put after the title's own style:
+ * `heavy` for a screen's large title, `bold` for an empty state's.
+ *
+ * Only while the font picker is on its default. Someone who picked a typeface
+ * gets it on titles too, because the brand face over their pick reads as two
+ * fonts fighting; and with the picker on a font the patched Text would let this
+ * family win anyway, since "any opinion about the family" does. Null until the
+ * faces have loaded, so a failed load is the system font rather than a family
+ * that doesn't exist.
+ */
+export function useBrandFace(weight: keyof typeof BRAND_FACES): TextStyle | null {
+  const appFont = useContext(AppFontContext);
+  return appFont === 'system' && brandFontsLoaded ? BRAND_FACES[weight] : null;
 }
 
 export function AppFontProvider({ children }: { children: React.ReactNode }) {

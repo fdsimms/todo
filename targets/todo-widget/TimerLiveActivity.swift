@@ -63,10 +63,10 @@ private struct TimerDoneButton: View {
             Text("Done")
                 .font(.system(size: 13, weight: .semibold))
         }
-        .foregroundColor(.white)
+        .foregroundColor(palette.onBrand)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Capsule().fill(palette.accent))
+        .background(Capsule().fill(palette.brand))
     }
 }
 
@@ -113,9 +113,9 @@ private struct TimerLockScreenView: View {
         HStack(spacing: 12) {
             Image(systemName: context.attributes.symbolName)
                 .font(.system(size: 17))
-                .foregroundColor(palette.accent)
+                .foregroundColor(palette.brand)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(palette.accent.opacity(0.15)))
+                .background(Circle().fill(palette.brand.opacity(0.15)))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(context.attributes.title)
@@ -164,7 +164,7 @@ struct TimerLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.leading) {
                     Image(systemName: context.attributes.symbolName)
                         .font(.system(size: 20))
-                        .foregroundColor(palette.accent)
+                        .foregroundColor(palette.brand)
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -196,7 +196,7 @@ struct TimerLiveActivity: Widget {
                 }
             } compactLeading: {
                 Image(systemName: context.attributes.symbolName)
-                    .foregroundColor(palette.accent)
+                    .foregroundColor(palette.brand)
             } compactTrailing: {
                 // maxWidth 44 only fits mm:ss (e.g. "12:34"). Text(timerInterval:)
                 // switches to h:mm:ss once a run passes an hour ("4:08:22"), which
@@ -213,12 +213,12 @@ struct TimerLiveActivity: Widget {
                 .lineLimit(1)
             } minimal: {
                 Image(systemName: context.attributes.symbolName)
-                    .foregroundColor(palette.accent)
+                    .foregroundColor(palette.brand)
             }
             // Tapping anywhere non-interactive opens the app — same scheme
             // the Today widget uses (TodoTodayWidget.swift).
             .widgetURL(URL(string: "dundundun://"))
-            .keylineTint(palette.accent)
+            .keylineTint(palette.brand)
         }
     }
 }

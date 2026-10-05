@@ -2389,7 +2389,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 accessibilityRole="button"
                 accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
               >
-                <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+                <Ionicons name="arrow-up" size={18} color={!title.trim() || blocked !== null ? colors.textTertiary : colors.onAccent} />
               </TouchableOpacity>
             )}
           </View>

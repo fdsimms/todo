@@ -128,7 +128,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                             accessibilityRole="button"
                             accessibilityLabel={`Did ${task.title}`}
                           >
-                            <Ionicons name="checkmark" size={iconSize.sm} color={colors.green} />
+                            <Ionicons name="checkmark" size={iconSize.sm} color={colors.done} />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -197,6 +197,6 @@ function makeStyles(colors: Colors) {
       borderWidth: border.hairline,
     },
     choiceBtnNo: { borderColor: colors.red },
-    choiceBtnYes: { borderColor: colors.green },
+    choiceBtnYes: { borderColor: colors.done },
   });
 }

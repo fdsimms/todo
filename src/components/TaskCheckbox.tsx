@@ -270,7 +270,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
               so a laid-out glyph would push the meter off-centre. */}
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={styles.glyphLayer}>
-              {done && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
+              {done && <Ionicons name="checkmark" size={12} color={colors.onDone} />}
               {action === 'locked' && (
                 <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
               )}
@@ -278,7 +278,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
                 <Ionicons
                   name={slipped ? 'shield' : 'shield-checkmark'}
                   size={iconSize.xs}
-                  color={slipped ? colors.onAccent : colors.textSecondary}
+                  color={slipped ? colors.onFill : colors.textSecondary}
                 />
               )}
               {(action === 'ask' || action === 'pick-meal') && (
@@ -341,8 +341,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   boxDone: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   boxMeter: {
     borderColor: colors.accent,

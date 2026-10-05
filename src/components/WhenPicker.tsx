@@ -1286,7 +1286,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   clearLabel: {
-    color: colors.onAccent,
+    color: colors.onFill,
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },

@@ -67,7 +67,7 @@ function BurstPieceView({ piece, progress }: { piece: BurstPiece; progress: Shar
   return (
     <Reanimated.View style={[styles.piece, style]}>
       {piece.kind === 'coin'
-        ? <CoinIcon size={size} color={colors.warning} filled />
+        ? <CoinIcon size={size} color={colors.done} filled />
         : <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: sparkColor }} />}
     </Reanimated.View>
   );

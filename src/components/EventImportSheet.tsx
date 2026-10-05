@@ -347,7 +347,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
               accessibilityRole="button"
               accessibilityLabel="Remove this photo"
             >
-              <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+              <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -395,7 +395,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
           accessibilityRole="button"
           accessibilityLabel="Read the event"
         >
-          <Ionicons name="sparkles" size={iconSize.sm} color={colors.onAccent} />
+          <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
           <Text style={styles.runBtnText}>Read the event</Text>
         </TouchableOpacity>
       </>
@@ -503,7 +503,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: 14,
     },
     runBtnOff: { opacity: 0.4 },
-    runBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+    runBtnText: { color: colors.onFill, fontSize: font.md, fontWeight: fontWeight.semibold },
     error: { color: colors.redText, fontSize: font.sm },
   });
 }

@@ -40,7 +40,7 @@ import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
 import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
-import { preloadAppFont } from './src/theme/AppFont';
+import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { View } from 'react-native';
 
 // Held open until `AppGate` below knows which font to render in and has it
@@ -108,7 +108,7 @@ function AppGate() {
       runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
       runStartupStep('load settings', () => useSettingsStore.getState().initialize());
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());
-      await preloadAppFont(useSettingsStore.getState().appFont);
+      await Promise.all([preloadAppFont(useSettingsStore.getState().appFont), preloadBrandFonts()]);
       if (!cancelled) setReady(true);
     })();
     return () => { cancelled = true; };

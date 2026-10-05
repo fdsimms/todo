@@ -30,7 +30,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
-- `src/utils/allClear.ts` — completedOnDay, describeAllClear
+- `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/appGate.ts` — isGateTask, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, gateSubtitle
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
@@ -43,6 +43,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, discardBackupFile, pickBackupFile
+- `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
+- `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
