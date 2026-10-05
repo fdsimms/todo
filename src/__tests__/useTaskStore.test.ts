@@ -581,10 +581,27 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks clears calls, not return values, so every shared mock a test
+  // below overrides with mockReturnValue/mockResolvedValue is put back to its
+  // factory default here; otherwise the override outlives its test and the
+  // suite only passes in declaration order.
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
+  (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+  (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+  (dbGetMealPlanEntry as jest.Mock).mockReturnValue(null);
+  (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: null, externalId: null });
+  (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue(null);
+  const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as { useCalendarStore: { getState: jest.Mock } };
+  useCalendarStore.getState.mockReturnValue({ events: [], pastEvents: [], loaded: false });
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as { useWeatherStore: { getState: jest.Mock } };
+  useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  const { useTransitStore } = jest.requireMock('../store/useTransitStore') as { useTransitStore: { getState: jest.Mock } };
+  useTransitStore.getState.mockReturnValue({ snapshot: null });
+  const { useTravelTimeStore } = jest.requireMock('../store/useTravelTimeStore') as { useTravelTimeStore: { getState: jest.Mock } };
+  useTravelTimeStore.getState.mockReturnValue({ estimates: {} });
   useTaskStore.setState({
-    tasks: [], initialized: false, lastAction: null, undoStack: [], redoStack: [],
-    completionHoldIds: [], completionCollapseIds: [], quotaHoldIds: [],
+    tasks: [], tagRegistry: [], initialized: false, lastAction: null, undoStack: [], redoStack: [],
+    readyOffer: null, completionHoldIds: [], completionCollapseIds: [], quotaHoldIds: [],
   });
   useTaskGroupStore.setState({ groups: [], initialized: false });
   useProjectStore.setState({ projects: [], initialized: false });
@@ -15697,8 +15714,11 @@ describe('completing a leftover-backed meal task', () => {
     frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = (overrides: Partial<typeof leftover> = {}) => {
+    // pendingUseUpLeftoverId reset too: the finish prompt is skipped while a
+    // use-up sheet is open on the same container, and another test leaving
+    // one pending would turn that guard into an order dependency.
     useLeftoverStore.setState({
-      leftovers: [{ ...leftover, ...overrides }], pendingFinishLeftoverId: null, initialized: true,
+      leftovers: [{ ...leftover, ...overrides }], pendingFinishLeftoverId: null, pendingUseUpLeftoverId: null, initialized: true,
     });
   };
 

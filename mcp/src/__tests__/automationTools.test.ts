@@ -24,6 +24,15 @@ beforeAll(() => {
   replica = openReplica(':memory:');
 });
 
+beforeEach(() => {
+  // One replica for the file, so each test starts from an empty settings
+  // table: the switch one test turns on, and the rule lists another saves, are
+  // otherwise what the next test reads back. The refresh re-reads the store
+  // from the table, defaults and all.
+  mockRaw.runSync('DELETE FROM settings');
+  replica.refresh();
+});
+
 describe('automations', () => {
   it('lists every automation with its switch, and says what each needs on the phone', () => {
     const { automations } = listAutomations(replica);

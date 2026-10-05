@@ -32,6 +32,13 @@
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },
+    "modulePathIgnorePatterns": [
+      "<rootDir>/\\.claude/"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/\\.claude/"
+    ],
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx}",
       "!src/**/__tests__/**",
