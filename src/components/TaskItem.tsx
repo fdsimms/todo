@@ -75,7 +75,8 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelSourceEventId } from '../utils/travelTasks';
+import { travelModeFor, travelRowNote, travelSourceEventId } from '../utils/travelTasks';
+import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -534,6 +535,21 @@ export const TaskItem = React.memo(function TaskItem({
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
+  // A "Leave for X" row's trip estimate ("25 min by transit"). Every other row
+  // selects null, so a travel estimate refresh re-renders only travel rows.
+  const travelDefaultMode = useSettingsStore(s => s.travelMode);
+  const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
+  const travelNote = useTravelTimeStore(s => {
+    if (task.generatedKind !== 'travel' || !task.generatedSourceId) return null;
+    const eventId = travelSourceEventId(task.generatedSourceId);
+    if (!eventId) return null;
+    return travelRowNote(
+      task.generatedSourceId,
+      task.location ?? '',
+      s.estimates,
+      travelModeFor(eventId, travelEventPrefs, travelDefaultMode),
+    );
+  });
   const canBreakUp = !!anthropicApiKey || !!onEdit;
   const handleBreakUp = () => {
     setShowWhenPicker(false);
@@ -2602,7 +2618,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2660,6 +2676,14 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="notifications-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {reminderTimeLabel}
+                </Text>
+              </View>
+            )}
+            {travelNote !== null && (
+              <View style={styles.metaChip} accessibilityLabel={`Travel time ${travelNote}`}>
+                <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {travelNote}
                 </Text>
               </View>
             )}

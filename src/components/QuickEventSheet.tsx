@@ -34,6 +34,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, animation, ty
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { TRAVEL_ARRIVE_CHOICES, TRAVEL_MODES, describeArrival, type TravelMode } from '../utils/travelTasks';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
@@ -292,6 +293,15 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [typedBeforePick, setTypedBeforePick] = useState('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
+  // How this event is travelled to and how early to arrive: app-only, written
+  // to travelEventPrefs once the event saves. Null mode follows Settings.
+  const travelTasksOn = useSettingsStore(s => s.travelTasks);
+  const defaultTravelMode = useSettingsStore(s => s.travelMode);
+  const setTravelEventPref = useSettingsStore(s => s.setTravelEventPref);
+  const [travelModePick, setTravelModePick] = useState<TravelMode | null>(null);
+  const [arriveEarlyPick, setArriveEarlyPick] = useState(0);
+  const [travelModePickerVisible, setTravelModePickerVisible] = useState(false);
+  const [arrivePickerVisible, setArrivePickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
   const [busy, setBusy] = useState(false);
   // A start set by hand (the chip's picker) or by tapping the tooltip. A
@@ -354,6 +364,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setNotesOrLink(notesField);
     setCalendarPick(event.calendarId);
     setAlertPick(alertMinutesFromOffset(event.alertOffset, event.allDay));
+    const travelPref = useSettingsStore.getState().travelEventPrefs[target.eventId];
+    setTravelModePick(travelPref?.mode ?? null);
+    setArriveEarlyPick(travelPref?.arriveEarlyMinutes ?? 0);
     setAvailabilityPick(event.availability);
     const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
     setOriginalPeople(people);
@@ -384,6 +397,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setMemoryDismissedKey(null);
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
+    setTravelModePick(null);
+    setArriveEarlyPick(0);
+    setTravelModePickerVisible(false);
+    setArrivePickerVisible(false);
     void loadCalendars(defaults.calendarId, false);
     titleCaret.resetCaret(seededText);
     setBusy(false);
@@ -766,6 +783,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       availability: effectiveAvailability,
       at: Date.now(),
     }));
+    setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
     onSaved?.(saved.id);
     dismiss();
   };
@@ -810,6 +828,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       );
       return;
     }
+    setTravelEventPref(id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
     onSaved?.(id);
     dismiss();
   };
@@ -858,6 +877,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     { key: 'none', label: describeAlert(null) },
     ...ALERT_CHOICES.map(m => ({ key: String(m), label: describeAlert(m, allDay) })),
   ];
+
+  const travelModeOptions: EventOption[] = [
+    { key: 'default', label: `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
+    ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
+  ];
+  const arriveOptions: EventOption[] = TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) }));
+  // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
+  const showTravelChips = travelTasksOn && !allDay && !!effectiveLocation;
 
   // ==== render. Everything below is JSX ====
   return (
@@ -1178,6 +1205,35 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </TouchableOpacity>
             </View>
 
+            {showTravelChips && (
+              <View style={styles.toolbar}>
+                <TouchableOpacity
+                  style={[styles.toolChip, styles.toolChipWide, travelModePick !== null && styles.toolChipSet]}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setTravelModePickerVisible(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Getting there: ${TRAVEL_MODE_LABELS[travelModePick ?? defaultTravelMode]}`}
+                >
+                  <Ionicons name="navigate-outline" size={iconSize.sm} color={travelModePick !== null ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, travelModePick !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                    {TRAVEL_MODE_LABELS[travelModePick ?? defaultTravelMode]}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.toolChip, styles.toolChipWide, arriveEarlyPick !== 0 && styles.toolChipSet]}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Arrive: ${describeArrival(arriveEarlyPick)}`}
+                >
+                  <Ionicons name="flag-outline" size={iconSize.sm} color={arriveEarlyPick !== 0 ? colors.accent : colors.textSecondary} />
+                  <Text style={[styles.toolChipText, arriveEarlyPick !== 0 && styles.toolChipTextSet]} numberOfLines={1}>
+                    {describeArrival(arriveEarlyPick)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.toolbar}>
               <TouchableOpacity
                 style={[styles.toolChip, styles.toolChipWide, allDay && styles.toolChipSet]}
@@ -1309,9 +1365,27 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         }}
         onClose={() => setAlertPickerVisible(false)}
       />
+      <EventOptionSheet
+        visible={travelModePickerVisible}
+        title="Getting there"
+        options={travelModeOptions}
+        selectedKey={travelModePick ?? 'default'}
+        onSelect={key => setTravelModePick(key === 'default' ? null : (key as TravelMode))}
+        onClose={() => setTravelModePickerVisible(false)}
+      />
+      <EventOptionSheet
+        visible={arrivePickerVisible}
+        title="Arrive"
+        options={arriveOptions}
+        selectedKey={String(arriveEarlyPick)}
+        onSelect={key => setArriveEarlyPick(Number(key))}
+        onClose={() => setArrivePickerVisible(false)}
+      />
     </SheetModal>
   );
 }
+
+const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
 
 // Mirrors QuickAddModal's card, input and tooltip styles; the notes on why
 // each value is what it is live there.
