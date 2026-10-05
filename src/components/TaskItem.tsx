@@ -716,6 +716,13 @@ export const TaskItem = React.memo(function TaskItem({
   // agrees and the extra layer is invisible.
   const [collapsing, setCollapsing] = useState(false);
   const wasExpandedRef = useRef(expanded);
+  // The completion sequences below await animations before they ask the parent
+  // to collapse this row, and `onPress` is a toggle. Reading `expanded` from
+  // their closure would see the value at tap time: unfocus the row mid-send-off
+  // and the stale `true` toggled it back open, leaving the spotlight dimmed over
+  // a row that has left the list. Read the live value instead.
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
   const isSpotlighted = useSpotlightLinger(expanded) || collapsing;
   // Lets a paint-select drag find this row by its on-screen position. A no-op
   // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
@@ -1750,7 +1757,7 @@ export const TaskItem = React.memo(function TaskItem({
       // onPress, so the parent's expanded-row state is never told to clear —
       // collapse it ourselves or the spotlight overlay is stuck dimmed with
       // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
-      if (expanded) onPress(rowId);
+      if (expandedRef.current) onPress(rowId);
     });
   };
 
@@ -1809,7 +1816,7 @@ export const TaskItem = React.memo(function TaskItem({
       chainStepInPlace: true,
     });
     endQuotaHold();
-    if (expanded) onPress(rowId);
+    if (expandedRef.current) onPress(rowId);
   };
 
   // ==== completing, quota taps, and their undos ====
@@ -3927,7 +3934,7 @@ export const TaskItem = React.memo(function TaskItem({
                         // The task disappears from the list immediately, but nothing
                         // else clears the parent's expanded-row state — collapse it
                         // ourselves so the spotlight overlay doesn't get stuck.
-                        if (expanded) onPress(rowId);
+                        if (expandedRef.current) onPress(rowId);
                       }}
                       hitSlop={8}
                       // The same control does two things depending on where the
@@ -3964,7 +3971,7 @@ export const TaskItem = React.memo(function TaskItem({
                       onPress={async () => {
                         await haptics.impactMedium();
                         markMissed(task.id, { wholeChain: true });
-                        if (expanded) onPress(rowId);
+                        if (expandedRef.current) onPress(rowId);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
@@ -3985,7 +3992,7 @@ export const TaskItem = React.memo(function TaskItem({
                       onPress={async () => {
                         await haptics.tap();
                         skipNextRecurrence(task.id);
-                        if (expanded) onPress(rowId);
+                        if (expandedRef.current) onPress(rowId);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Skip this repeat of ${task.title}, without counting it as missed`}
