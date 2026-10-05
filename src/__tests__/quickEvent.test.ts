@@ -254,6 +254,8 @@ describe('parseQuickEvent, length', () => {
     expect(draft.start).toEqual(new Date(2026, 8, 26, 12, 0));
     expect(draft.durationMinutes).toBe(90);
     expect(draft.end).toEqual(new Date(2026, 8, 26, 13, 30));
+    // The length moves to the chip with the date, so its words leave the line.
+    expect(draft.phrase?.lineWithout).toBe('lunch');
   });
 
   it('reads a clock range as the start and the end', () => {
@@ -311,7 +313,7 @@ describe('parseQuickEvent, length', () => {
     expect(line.slice(...draft.locationSpan!)).toBe("at Joe's");
     expect(line.slice(...draft.alertSpan!)).toBe('alert 10m');
     expect(line.slice(...draft.durationSpan!)).toBe('for 90m');
-    expect(draft.phrase?.lineWithout).toBe("lunch alert 10m for 90m at Joe's");
+    expect(draft.phrase?.lineWithout).toBe("lunch alert 10m at Joe's");
   });
 
   it('says whether a time of day was read', () => {

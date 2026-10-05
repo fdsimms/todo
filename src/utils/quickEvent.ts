@@ -387,7 +387,13 @@ export function parseQuickEvent(
 
   // Taking the schedule phrase out of the line must leave the clauses that
   // followed it, or accepting the date would silently drop the place and alert.
-  const clauses = clausesFrom === null ? '' : input.slice(clausesFrom);
+  // A "for 3 hours" that set the length is the exception: accepting the phrase
+  // copies that length into the chip (`durationPick`), so its words leave the
+  // line with the date instead of lingering in the title.
+  let clauses = clausesFrom === null ? '' : input.slice(clausesFrom);
+  if (clausesFrom !== null && durationSpan && forMinutes !== null && durationMinutes === forMinutes) {
+    clauses = (input.slice(clausesFrom, durationSpan[0]).trimEnd() + input.slice(durationSpan[1])).replace(/^\s+$/, '');
+  }
   let phrase: QuickEventDraft['phrase'] = null;
   if (parsed || range) {
     const phraseStart = parsed ? parsed.matchStart : range!.start + (/^\s*/.exec(body.slice(range!.start))?.[0].length ?? 0);
