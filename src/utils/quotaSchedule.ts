@@ -24,6 +24,7 @@
  * ramp always did.
  */
 
+import type { Task } from '../types';
 import { hhmmToDate } from './clockTime';
 
 /** A run's bounds for one logical day. */
@@ -149,6 +150,92 @@ export function quotaWeekSpan(input: {
       : null;
 
   return { start: startedThisWeek ?? scheduledStart, end };
+}
+
+/**
+ * The full weekly target a part-week occurrence was scaled down from, or null
+ * when this occurrence carries the full target.
+ *
+ * A weekly target set up partway through a week starts with a smaller count
+ * for that first week (see `proratedWeeklyTarget`). The smaller number is the
+ * row's own `targetCount`, so every reader of a quota (meter, pace, completion,
+ * rollover) needs no second path, and the full one waits in `seriesDefaults`,
+ * the existing "this occurrence only" mechanism: completion and the rollover
+ * both build the successor from `{ ...task, ...seriesDefaults }`, so next
+ * week's row is back to the full count without anything here having to run.
+ */
+export function proratedFrom(
+  task: Pick<Task, 'quotaPeriod' | 'targetCount' | 'seriesDefaults'>,
+): number | null {
+  const full = task.seriesDefaults?.targetCount;
+  if (task.quotaPeriod !== 'week' || task.targetCount === null || full == null) return null;
+  return full > task.targetCount ? full : null;
+}
+
+/** How many days of its logical week `dayStart` leaves, counting its own: 7 on the first day, 1 on the last. */
+export function weekDaysLeft(dayStart: Date, weekStartsOn: 0 | 1): number {
+  return 7 - ((dayStart.getDay() - weekStartsOn + 7) % 7);
+}
+
+/**
+ * A weekly target scaled to the days left in its first week, or null when
+ * there is nothing to scale (a full week left, or a count that rounds back up
+ * to the whole target).
+ *
+ * Rounded rather than floored or ceiled, so "3 a week" from a Thursday (four
+ * days left) is 2. The floor is 1, not the 2 a quota otherwise needs:
+ * `isQuotaTask` accepts a 1 on exactly this kind of occurrence, because "once
+ * before Sunday" is the honest answer for a target set up on a Saturday.
+ */
+export function proratedWeeklyTarget(full: number, daysLeft: number): number | null {
+  if (daysLeft >= 7 || daysLeft < 1) return null;
+  const scaled = Math.max(1, Math.round((full * daysLeft) / 7));
+  return scaled < full ? scaled : null;
+}
+
+/**
+ * The patch that scales a weekly target's current occurrence from `full` down
+ * to `scaled`, or leaves it at `full` when `scaled` is null. Null when the row
+ * is already in the state asked for.
+ *
+ * `full` is passed rather than read off the row because the row may be
+ * mid-edit: an editor save that changes the target writes the new full count
+ * first, and a pending revert-to value left from before would hand next week
+ * the old one. Any `targetCount` in `seriesDefaults` is this function's (it is
+ * not a content field, so no "this task only" edit puts one there), so
+ * clearing it is always safe.
+ *
+ * The ramp starts on the anchor day (through `quotaStartedAt`, which
+ * `quotaWeekSpan` already honours inside its own week and every successor
+ * clears). Without that, a count scaled to the days left would still be paced
+ * from the start of the week and read as behind the moment it was saved.
+ */
+export function quotaProrationPatch(
+  task: Pick<Task, 'quotaPeriod' | 'targetCount' | 'seriesDefaults' | 'quotaStartedAt'>,
+  full: number | null,
+  scaled: number | null,
+  anchorDayStart: Date,
+): Partial<Task> | null {
+  const pending = task.seriesDefaults != null && 'targetCount' in task.seriesDefaults;
+  if (full === null || scaled === null || scaled >= full || task.quotaPeriod !== 'week') {
+    if (!pending) return null;
+    const { targetCount: _revertTo, ...rest } = task.seriesDefaults!;
+    return {
+      targetCount: full,
+      seriesDefaults: Object.keys(rest).length > 0 ? rest : null,
+      quotaStartedAt: null,
+    };
+  }
+  const startedAt = anchorDayStart.toISOString();
+  if (
+    pending && task.seriesDefaults!.targetCount === full &&
+    task.targetCount === scaled && task.quotaStartedAt === startedAt
+  ) return null;
+  return {
+    targetCount: scaled,
+    seriesDefaults: { ...(task.seriesDefaults ?? {}), targetCount: full },
+    quotaStartedAt: startedAt,
+  };
 }
 
 /**

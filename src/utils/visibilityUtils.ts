@@ -11,7 +11,7 @@ import { activeChainStep } from './chain';
 import { isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
-import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
+import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
 
@@ -568,8 +568,14 @@ function isPlacedOnADay(task: Task): boolean {
 // it again. Reaching targetCount completes the task like any other, so the
 // per-day reset is free: the next occurrence starts at progressCount 0.
 
+//
+// A target of 1 is an ordinary task everywhere except one place: the first
+// week of a weekly target scaled down to the days that were left in it (see
+// proratedFrom). That row is still counting toward a weekly target and has to
+// pace, roll over and hand the full count on like one.
 export function isQuotaTask(task: Task): boolean {
-  return task.targetCount !== null && task.targetCount > 1;
+  if (task.targetCount === null) return false;
+  return task.targetCount > 1 || (task.targetCount === 1 && proratedFrom(task) !== null);
 }
 
 /**

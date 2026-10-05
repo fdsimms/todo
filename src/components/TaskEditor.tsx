@@ -128,7 +128,8 @@ import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask } from '../utils/visibilityUtils';
+import { proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -510,6 +511,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
+  // Whether a weekly target set up partway through a week asks for fewer that
+  // first week. On by default; only offered when it would change the count.
+  const [prorateFirstWeek, setProrateFirstWeek] = useState(true);
   const [followWaterTarget, setFollowWaterTarget] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [showHealthTarget, setShowHealthTarget] = useState(false);
@@ -745,6 +749,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
@@ -892,7 +897,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPenaltyMinutes(task.penaltyMinutes ?? null);
       setGatesApps(task.gatesApps ?? false);
       setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
-      setTargetCount(task.targetCount ?? null);
+      // The full weekly count, not this week's scaled-down one: that's what
+      // the stepper edits, and the scaling is the toggle under it.
+      setTargetCount(proratedFrom(task) ?? task.targetCount ?? null);
+      setProrateFirstWeek(true);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
@@ -974,7 +982,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1073,7 +1081,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
-      targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
+      targetCount: task ? (proratedFrom(task) ?? task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
+      prorateFirstWeek: true,
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
@@ -1664,6 +1673,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       ? { monthDays: seriesMonthDaysFrom(allDates), repeatMonths: 1 }
       : undefined;
 
+    // After the row is written, so it scales whatever the save left there.
+    // `data` always carries the full count; this is the one place that turns
+    // it into this week's.
+    const applyProration = (id: string) => {
+      const row = useTaskStore.getState().tasks.find(t => t.id === id);
+      if (!row) return;
+      const patch = quotaProrationPatch(
+        row, targetCount, prorateFirstWeek ? proratedCount : null, prorationAnchor,
+      );
+      if (patch) updateTask(id, patch);
+    };
+
     const commitSave = (scope?: 'occurrence' | 'series') => {
       haptics.success();
       if (task) {
@@ -1678,6 +1699,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // what makes it visible today it must not also read as unseen.
           markSeenOnBecomeVisible: true,
         });
+        applyProration(task.id);
         // Other rows, so it can't ride along in `data`: "Blocks" writes each
         // picked task's own blockedById (see setBlockedTasks).
         setBlockedTasks(task.id, blocksIds);
@@ -1727,6 +1749,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // branches of this if consistent: addTaskSeries never applies them.
           // Quick add is where a rule fires, and it says so as you type.
           const created = addTask(newData, undefined, { skipTitleRules: true });
+          applyProration(created.id);
           if (blocksIds.length > 0) setBlockedTasks(created.id, blocksIds);
           // Subtasks typed in before the parent existed (see draftSubtasks) —
           // flush them to real rows now that there's a parent id to hang off.
@@ -1837,6 +1860,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * already is, and there's nothing to migrate or keep in step.
    */
   const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget, rotationEnabled });
+
+  // A weekly target set up partway through a week: how many the first week
+  // asks for instead (see proratedWeeklyTarget). Offered when the task is
+  // becoming a weekly target in this edit, or already is a scaled-down one;
+  // a weekly target whose week is already running keeps its count.
+  const wasProrated = task ? proratedFrom(task) !== null : false;
+  const prorationAnchor = (() => {
+    if (task && wasProrated && task.quotaStartedAt) {
+      return getTaskDayStart(new Date(task.quotaStartedAt), dayResetTime);
+    }
+    const today = getCurrentDayStart();
+    const due = dueDate ? getTaskDayStart(dueDate, dayResetTime) : today;
+    return due > today ? due : today;
+  })();
+  const prorationDaysLeft = weekDaysLeft(prorationAnchor, weekStartsOn);
+  const offersProration =
+    kind === 'target' && targetCount !== null && quotaIntervalMinutes === null && quotaPeriod === 'week' &&
+    (!task || wasProrated || !(task.quotaPeriod === 'week' && isQuotaTask(task)));
+  const proratedCount = offersProration && targetCount !== null
+    ? proratedWeeklyTarget(targetCount, prorationDaysLeft)
+    : null;
 
   // What the supply card reads back: the day the last unit gets spent, and the
   // day an order has to go in to beat it.
@@ -2217,6 +2261,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       windowStart, windowEnd,
       penaltyMinutes, gatesApps, penaltyCutoffTime,
       targetCount,
+      prorateFirstWeek,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
@@ -3328,7 +3373,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'target' ? [{
             key: 'dailyTarget', label: quotaPeriod === 'week' ? 'Weekly target' : 'Daily target', set: true,
-            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
+            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'prorate', 'this week', 'fewer', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
@@ -3448,6 +3493,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           : 'The count resets each day.'}
                       </Text>
                     </>
+                  )}
+                  {proratedCount !== null && targetCount !== null && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setProrateFirstWeek(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Fewer this week"
+                      accessibilityState={{ checked: prorateFirstWeek }}
+                    >
+                      <Ionicons name="calendar-outline" size={18} color={prorateFirstWeek ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Fewer this week</Text>
+                        <Text style={styles.optionHint}>
+                          {`Aim for ${[proratedCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} this week, since ${prorationDaysLeft === 1 ? '1 day is' : `${prorationDaysLeft} days are`} left in it. ${[targetCount, normalizeTargetUnit(targetUnit)].filter(Boolean).join(' ')} a week after that.`}
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, prorateFirstWeek && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, prorateFirstWeek && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
                   )}
                   {targetCount !== null && quotaPeriod === 'day' && (
                     <>

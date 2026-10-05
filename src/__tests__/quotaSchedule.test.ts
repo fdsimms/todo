@@ -6,6 +6,10 @@ import {
   isQuotaRunOver,
   quotaWeekStart,
   quotaWeekSpan,
+  proratedFrom,
+  weekDaysLeft,
+  proratedWeeklyTarget,
+  quotaProrationPatch,
 } from '../utils/quotaSchedule';
 
 const DAY = new Date('2026-08-26T00:00:00');
@@ -299,5 +303,86 @@ describe('quotaWeekSpan', () => {
   it('ignores an unparseable stamp rather than producing an invalid span', () => {
     expect(quotaWeekSpan({ quotaStartedAt: 'not a date', dayStart: wed, weekStartsOn: 0 }).start)
       .toEqual(new Date('2026-08-23T02:00:00'));
+  });
+});
+
+// A weekly target set up partway through a week, and the smaller count its
+// first week asks for.
+describe('weekly target proration', () => {
+  // Thu Aug 27 2026, with a 2am day reset kept on the instant.
+  const thu = new Date('2026-08-27T02:00:00');
+  const row = (o: Partial<Parameters<typeof quotaProrationPatch>[0]> = {}) => ({
+    quotaPeriod: 'week' as const,
+    targetCount: 3,
+    seriesDefaults: null,
+    quotaStartedAt: null,
+    ...o,
+  });
+
+  it('counts the days left in the week, its own included', () => {
+    expect(weekDaysLeft(thu, 1)).toBe(4); // Thu..Sun
+    expect(weekDaysLeft(thu, 0)).toBe(3); // Thu..Sat
+    expect(weekDaysLeft(new Date('2026-08-24T02:00:00'), 1)).toBe(7); // Monday
+    expect(weekDaysLeft(new Date('2026-08-30T02:00:00'), 1)).toBe(1); // Sunday
+  });
+
+  it('scales to the days left, rounding, and never below one', () => {
+    expect(proratedWeeklyTarget(3, 4)).toBe(2);
+    expect(proratedWeeklyTarget(5, 4)).toBe(3);
+    expect(proratedWeeklyTarget(3, 1)).toBe(1);
+    expect(proratedWeeklyTarget(7, 3)).toBe(3);
+  });
+
+  it('has nothing to offer on a full week, or when the count rounds back up', () => {
+    expect(proratedWeeklyTarget(3, 7)).toBeNull();
+    expect(proratedWeeklyTarget(3, 6)).toBeNull(); // 2.57 rounds to 3
+    expect(proratedWeeklyTarget(2, 6)).toBeNull(); // 1.71 rounds to 2
+  });
+
+  it('writes this week\'s count, the full one to come back to, and the ramp start', () => {
+    const patch = quotaProrationPatch(row(), 3, 2, thu);
+    expect(patch).toEqual({
+      targetCount: 2,
+      seriesDefaults: { targetCount: 3 },
+      quotaStartedAt: thu.toISOString(),
+    });
+    expect(proratedFrom({ ...row(), ...patch })).toBe(3);
+  });
+
+  it('keeps whatever else is waiting in seriesDefaults', () => {
+    const patch = quotaProrationPatch(row({ seriesDefaults: { title: 'Run' } }), 3, 2, thu);
+    expect(patch!.seriesDefaults).toEqual({ title: 'Run', targetCount: 3 });
+  });
+
+  it('does nothing to a row already in that state', () => {
+    const scaled = { ...row(), ...quotaProrationPatch(row(), 3, 2, thu)! };
+    expect(quotaProrationPatch(scaled, 3, 2, thu)).toBeNull();
+  });
+
+  it('puts the full count back when turned off, and clears the ramp start', () => {
+    const scaled = { ...row({ seriesDefaults: { title: 'Run' } }), ...quotaProrationPatch(row({ seriesDefaults: { title: 'Run' } }), 3, 2, thu)! };
+    expect(quotaProrationPatch(scaled, 3, null, thu)).toEqual({
+      targetCount: 3,
+      seriesDefaults: { title: 'Run' },
+      quotaStartedAt: null,
+    });
+  });
+
+  // An edit that raises the target writes the new full count first; the old
+  // one left waiting would hand next week 3 instead of 4.
+  it('replaces a stale full count rather than reverting to it', () => {
+    const edited = row({ targetCount: 4, seriesDefaults: { targetCount: 3 }, quotaStartedAt: thu.toISOString() });
+    expect(quotaProrationPatch(edited, 4, null, thu)).toEqual({ targetCount: 4, seriesDefaults: null, quotaStartedAt: null });
+    expect(quotaProrationPatch(edited, 4, 2, thu)!.seriesDefaults).toEqual({ targetCount: 4 });
+  });
+
+  it('leaves an ordinary weekly target alone', () => {
+    expect(quotaProrationPatch(row(), 3, null, thu)).toBeNull();
+    expect(proratedFrom(row())).toBeNull();
+  });
+
+  it('is only a weekly thing', () => {
+    expect(quotaProrationPatch(row({ quotaPeriod: 'day' }), 3, 2, thu)).toBeNull();
+    expect(proratedFrom(row({ quotaPeriod: 'day', targetCount: 2, seriesDefaults: { targetCount: 3 } }))).toBeNull();
   });
 });

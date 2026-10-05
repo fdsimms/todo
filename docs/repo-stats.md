@@ -8,11 +8,10 @@ CI fails if it is out of date. Run it after adding or growing a file.
 **Read narrowly.** 84 files are over 1,000 lines, 58 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (9.6k), `db/database.ts` (7.6k), `types/index.ts` (7.3k),
-`components/TaskEditor.tsx` (7.3k), `store/useGroceryStore.ts` (5.8k),
-`screens/TodayScreen.tsx` (5.3k), `components/TaskItem.tsx` (5.1k),
-`utils/demoSeed.ts` (5.0k), `store/useSettingsStore.ts` (4.9k),
-`components/QuickAddModal.tsx` (4.2k).
+`store/useTaskStore.ts` (9.6k), `db/database.ts` (7.6k), `components/TaskEditor.tsx` (7.4k),
+`types/index.ts` (7.3k), `store/useGroceryStore.ts` (5.8k), `screens/TodayScreen.tsx` (5.3k),
+`components/TaskItem.tsx` (5.1k), `utils/demoSeed.ts` (5.0k),
+`store/useSettingsStore.ts` (4.9k), `components/QuickAddModal.tsx` (4.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.

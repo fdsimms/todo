@@ -33,6 +33,7 @@ import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, R
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
+import { quotaProrationPatch } from './quotaSchedule';
 import { getCurrentDayStart, dayKeyOf, dateToHHMM } from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
@@ -723,6 +724,25 @@ export function seedDemoData(): void {
     quotaAlwaysVisible: true,
   });
   updateTask(runs.id, { progressCount: 1 });
+
+  // A weekly target set up partway through its first week, scaled down to
+  // the days that were left (see proratedWeeklyTarget). Through the same patch
+  // the editor writes, so the seeded row is exactly what the toggle makes:
+  // 2 this week, the full 4 again from next week.
+  const strength = addTask({
+    title: 'Strength workout',
+    notes: 'Four times a week. Started midweek, so this first week only asks for two.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 4,
+    targetUnit: 'workouts',
+    quotaPeriod: 'week',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    quotaAlwaysVisible: true,
+  });
+  const strengthScaled = quotaProrationPatch(strength, 4, 2, today);
+  if (strengthScaled) updateTask(strength.id, strengthScaled);
 
   // A rotation: the same weekly counting, but the units have names (see
   // utils/rotation.ts). This is the one shape a plain weekly target cannot
