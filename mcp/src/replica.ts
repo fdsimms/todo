@@ -34,6 +34,7 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import { shimModule } from './expoSqliteShim';
 import type {
   Category,
+  CoinEntry,
   Cookbook,
   DeliverableKind,
   EventTaskRule,
@@ -55,6 +56,7 @@ import type {
   Project,
   ProjectKind,
   Recipe,
+  Reward,
   TaskTemplate,
   TemplateItem,
   Task,
@@ -87,6 +89,7 @@ type FoodLogModule = typeof import('../../src/utils/foodLog');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
 type RewardsModule = typeof import('../../src/utils/rewards');
+type NegativeHabitsModule = typeof import('../../src/utils/negativeHabits');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
@@ -132,6 +135,10 @@ export interface ReplicaSettings {
   /** Simplified mode: the advanced half of the app is hidden. */
   simpleMode: boolean;
   rewardsEnabled: boolean;
+  /** The reward being saved for, or null. */
+  rewardGoalId: string | null;
+  /** How many coin bounties may be live at once. */
+  bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
   completedRetentionDays: number | null;
 }
@@ -170,6 +177,7 @@ export interface ReplicaLib {
   eventTasks: typeof import('../../src/utils/eventTasks');
   healthRules: typeof import('../../src/utils/healthRules');
   screenTimeRules: typeof import('../../src/utils/screenTimeRules');
+  rewards: typeof import('../../src/utils/rewards');
 }
 
 /** The rule lists an agent may edit, by the name the tools use. */
@@ -851,6 +859,58 @@ export interface Replica {
    * Refused for a subtask, a completed task and an archived one.
    */
   setTaskStack(taskId: string, stackId: string | null): Task;
+
+  /**
+   * The rewards ledger as it stands: every coin entry (newest first) and every
+   * reward (cheapest first), read from the database each call. The balance is
+   * never stored, so a reader sums `entries` (`rewards.coinBalance`).
+   */
+  rewardState(): { entries: CoinEntry[]; rewards: Reward[] };
+  /**
+   * A new reward, through `useRewardStore.addReward`. Refused while rewards are
+   * off, because the Rewards screen is hidden then and a reward made here would
+   * sit on a screen the person cannot open. Never a wish-list reward: those
+   * read their title off a list item and are made in the app.
+   */
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  /** Delete a reward. Coins already spent on it stay spent, as in the app. */
+  deleteReward(id: string): Reward;
+  /**
+   * Spend a reward's cost, through `useRewardStore.claimReward`. Throws with the
+   * reason when it cannot: rewards off, the balance short, or a one-time reward
+   * already claimed. A wish-list reward also checks its list item off, neutrally
+   * (no coins on top of the spend), as the Rewards screen does. Returns the
+   * spend entry, which `unclaimReward` takes back.
+   */
+  claimReward(id: string): CoinEntry;
+  /** Take back a claim by its spend entry: the undo for `claimReward`, which also reopens a wish-list item the claim checked off. */
+  unclaimReward(entryId: string): CoinEntry;
+  /** The reward being saved for (`rewardGoalId`), or null to clear it. A claimed or deleted reward is refused. */
+  setRewardGoal(id: string | null): Reward | null;
+  /**
+   * Post a bounty on an open task, or withdraw the one posted. `useTaskStore`'s
+   * `postBounty` / `withdrawBounty` rules: one bounty per occurrence, a limit on
+   * how many are live at once (`bountyLimit`), withdrawing spends it.
+   */
+  postBounty(id: string): Task;
+  withdrawBounty(id: string): Task;
+  /**
+   * Mark a repeating task's occurrence missed: `useTaskStore.markMissed`, which
+   * is `completeTask` with `missed: true`. The streak breaks, the next
+   * occurrence is created, and the coins it costs are written. `reopenTask`
+   * undoes it. Refused for a one-off task and for one that is not due yet, where
+   * the app would silently skip it instead.
+   */
+  markMissed(id: string): CompletedResult;
+  /**
+   * Log a slip against a "don't do this" habit, and take back today's latest one.
+   * A habit with a penalty is refused: the slip charges an app block on the
+   * phone, which only the phone can set.
+   */
+  logSlip(id: string): Task;
+  undoSlip(id: string): Task;
   /**
    * Move a project's dated tasks by the days its event (or any date) moved,
    * as the app's own offer does when the date is changed in the editor:
@@ -999,6 +1059,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
   const rewards = require('../../src/utils/rewards') as RewardsModule;
+  const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
@@ -1294,6 +1355,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // project here ignored that setting. createProjectPlan writes through it too.
   useProjectStore.getState().initialize();
   useTaskGroupStore.getState().initialize();
+  // Loaded for the same reason: `claimReward` judges the balance off the store's
+  // entries, and recordEarn/recordMiss only add to them. Left empty, a claim
+  // here saw a balance of whatever this process had earned since it started.
+  useRewardStore.getState().initialize();
 
   // Read caches, cleared per request by `refresh`. They exist because the
   // blocker registry resolves one id at a time: without them, a list of 200
@@ -1346,6 +1411,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     useCategoryStore.getState().initialize();
     useProjectStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
+    useRewardStore.getState().initialize();
   };
 
   /**
@@ -1505,6 +1571,114 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     if (errors.length > 0) throw new Error(errors.join(' '));
     return patch;
+  };
+
+  // ==== rewards ====
+  // The Rewards screen is hidden while the setting is off, so a write that
+  // would land on it (a reward, a goal, a bounty) is refused rather than
+  // quietly filling a screen the person cannot open.
+  const requireRewardsOn = (): void => {
+    if (!useSettingsStore.getState().rewardsEnabled) {
+      throw new Error('Rewards are switched off in the app. The person turns them on from the Rewards screen.');
+    }
+  };
+  const requireReward = (id: string): Reward => {
+    const reward = useRewardStore.getState().rewards.find(r => r.id === id);
+    if (!reward) throw new Error(`No reward with id ${id}. get_rewards lists them.`);
+    return reward;
+  };
+  const requireRewardCost = (cost: number): void => {
+    if (!Number.isInteger(cost) || cost <= 0 || cost > rewards.MAX_REWARD_COST) {
+      throw new Error(`A reward's cost is a whole number of coins from 1 to ${rewards.MAX_REWARD_COST}.`);
+    }
+  };
+  const setBountyPushes = (task: Task, bountyPushes: number): Task => {
+    // Through the same merge the app's updateTask runs; the app passes
+    // SKIP_POSTPONE here so posting is never counted as a push.
+    const updated = taskUpdate.mergeTaskUpdate(task, { bountyPushes }, {
+      scope: 'occurrence',
+      freshPinnedOrder: 0,
+      dayResetTime: useSettingsStore.getState().dayResetTime,
+    });
+    db.dbUpdateTask(updated);
+    refresh();
+    return updated;
+  };
+  const requireNegativeHabit = (id: string): Task => {
+    const task = tasks().find(t => t.id === id);
+    if (!task) throw new Error(`No task with id ${id}.`);
+    if (!negativeHabits.isNegativeTask(task) || task.archived) throw new Error('A slip is logged against an active "don\'t do this" habit, and that task is not one.');
+    // The app's slip also charges the penalty block on the phone's apps, which
+    // is device work this server cannot do. Refused rather than half-logged.
+    if (task.penaltyMinutes !== null) throw new Error('That habit has a penalty, and logging a slip charges an app block that only the phone can set. Log the slip in the app.');
+    return task;
+  };
+
+  /**
+   * The write a completion and a miss share: build the rows, write them, then
+   * the two records that are the app's own (a dose, the coins). A miss is the
+   * same walk with `missed: true`, so the streak breaks and the next occurrence
+   * is created by the one rule that does both.
+   */
+  const finishCompletion = (task: Task, options: CompletionOptions | undefined, mode: 'completed' | 'missed' | 'neutral'): CompletedResult => {
+    const id = task.id;
+    const missed = mode === 'missed';
+    const settings = useSettingsStore.getState();
+    const built = completion.buildCompletion(task, missed ? { missed: true } : mode === 'neutral' ? { ...options, neutral: true } : options, {
+      dayResetTime: settings.dayResetTime,
+      vacationMode: settings.vacationMode,
+      now: new Date(),
+      allTasks: tasks(),
+      subtasks: tasks().filter(t => t.parentId === id),
+    });
+    // Unreachable: completionRefusal above is the same guard buildCompletion
+    // runs. Narrowing rather than asserting, so a rule added to one and not
+    // the other surfaces as a refusal rather than as a crash.
+    if (!built) throw new Error('That task cannot be completed.');
+
+    db.dbUpdateTask(built.completed);
+    for (const row of [
+      ...(built.nextTask ? [built.nextTask] : []),
+      ...built.nextSubtasks,
+      ...(built.followUpTask ? [built.followUpTask] : []),
+      ...built.followUpSubtasks,
+      ...built.rolledOver,
+    ]) {
+      db.dbInsertTask(row);
+    }
+
+    // The one cross-store write kept, because it is a record rather than a
+    // device effect: a dose taken is a fact about the person, and dropping
+    // it would make a medication task completed here invisible in the log
+    // that exists to count exactly these. Read through `medicationFor` so a
+    // chain step carrying its own medication records that one.
+    const dose = missed ? null : medication.medicationFor(task);
+    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
+
+    // Coins, kept for the same reason: the ledger is a record, and a task
+    // finished here should earn what it would have earned on the phone.
+    // Through the app's own store and rules, keyed by the completed row, so
+    // the device that later syncs this completion converges on one entry.
+    // A no-op while rewards are off (the setting syncs, so this replica
+    // reads the same answer the phone does).
+    // A neutral completion is the app closing something on its own account, so
+    // it moves no coins either way (a claimed wish-list item is the one use).
+    if (mode !== 'neutral' && rewards.taskEarnsCoins(task)) {
+      const store = useRewardStore.getState();
+      const title = visibility.displayTitleFor(task);
+      const at = new Date().toISOString();
+      if (missed) store.recordMiss(id, rewards.coinsForLoss(task), title, at);
+      else store.recordEarn(id, rewards.coinsForCompletion(task, built.completed.streakCount), title, at);
+    }
+
+    refresh();
+    return {
+      completed: built.completed,
+      nextTask: built.nextTask,
+      followUpTask: built.followUpTask,
+      rolledOver: built.rolledOver,
+      loggedDose: dose !== null,
+    };
   };
 
   /**
@@ -1701,6 +1875,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
+        rewardGoalId: s.rewardGoalId,
+        bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
       };
     },
@@ -1767,6 +1943,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         eventTasks: require('../../src/utils/eventTasks'),
         healthRules: require('../../src/utils/healthRules'),
         screenTimeRules: require('../../src/utils/screenTimeRules'),
+        rewards: require('../../src/utils/rewards'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
@@ -2283,63 +2460,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     completeTask(id: string, options?: CompletionOptions): CompletedResult {
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
-      options = vetCompletion(task, options);
+      return finishCompletion(task, vetCompletion(task, options), 'completed');
+    },
 
-      const settings = useSettingsStore.getState();
-      const built = completion.buildCompletion(task, options, {
-        dayResetTime: settings.dayResetTime,
-        vacationMode: settings.vacationMode,
-        now: new Date(),
-        allTasks: tasks(),
-        subtasks: tasks().filter(t => t.parentId === id),
-      });
-      // Unreachable: completionRefusal above is the same guard buildCompletion
-      // runs. Narrowing rather than asserting, so a rule added to one and not
-      // the other surfaces as a refusal rather than as a crash.
-      if (!built) throw new Error('That task cannot be completed.');
-
-      db.dbUpdateTask(built.completed);
-      for (const row of [
-        ...(built.nextTask ? [built.nextTask] : []),
-        ...built.nextSubtasks,
-        ...(built.followUpTask ? [built.followUpTask] : []),
-        ...built.followUpSubtasks,
-        ...built.rolledOver,
-      ]) {
-        db.dbInsertTask(row);
-      }
-
-      // The one cross-store write kept, because it is a record rather than a
-      // device effect: a dose taken is a fact about the person, and dropping
-      // it would make a medication task completed here invisible in the log
-      // that exists to count exactly these. Read through `medicationFor` so a
-      // chain step carrying its own medication records that one.
-      const dose = medication.medicationFor(task);
-      if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
-
-      // Coins, kept for the same reason: the ledger is a record, and a task
-      // finished here should earn what it would have earned on the phone.
-      // Through the app's own store and rules, keyed by the completed row, so
-      // the device that later syncs this completion converges on one entry.
-      // A no-op while rewards are off (the setting syncs, so this replica
-      // reads the same answer the phone does).
-      if (rewards.taskEarnsCoins(task)) {
-        useRewardStore.getState().recordEarn(
-          id,
-          rewards.coinsForCompletion(task, built.completed.streakCount),
-          visibility.displayTitleFor(task),
-          new Date().toISOString(),
-        );
-      }
-
-      refresh();
-      return {
-        completed: built.completed,
-        nextTask: built.nextTask,
-        followUpTask: built.followUpTask,
-        rolledOver: built.rolledOver,
-        loggedDose: dose !== null,
-      };
+    markMissed(id: string): CompletedResult {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.completed) throw new Error('That task is already completed, so it cannot be marked missed.');
+      // The app's own guards (useTaskStore.markMissed): a one-off has no
+      // occurrence to miss, and a repeat that has not come round yet is skipped
+      // silently there. Refused here instead, because a tool that says "missed"
+      // and rolls the task forward unmissed is a claim the person did not make.
+      if (task.recurrenceType === 'none') throw new Error('Only a repeating task has an occurrence to miss. Archive a one-off task instead.');
+      const refusal = completion.completionRefusal(task);
+      if (refusal) throw new Error(refusal);
+      return finishCompletion(task, undefined, 'missed');
     },
 
     reopenTask(id: string): { task: Task; removed: Task[] } {
@@ -2707,6 +2842,146 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         ensureCategory(updated.category);
         db.dbUpdateTask(updated);
       });
+      refresh();
+      return updated;
+    },
+
+    rewardState(): { entries: CoinEntry[]; rewards: Reward[] } {
+      return {
+        entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
+        rewards: [...db.dbGetAllRewards()].sort((a, b) => a.cost - b.cost || (a.createdAt < b.createdAt ? -1 : 1)),
+      };
+    },
+
+    addReward(title, cost, details): Reward {
+      requireRewardsOn();
+      const name = title.trim();
+      if (!name) throw new Error('A reward needs a title.');
+      requireRewardCost(cost);
+      const reward = useRewardStore.getState().addReward(name, cost, details);
+      if (!reward) throw new Error('Could not add the reward.');
+      refresh();
+      return reward;
+    },
+
+    updateReward(id, patch): Reward {
+      requireRewardsOn();
+      const current = requireReward(id);
+      if (current.taskId) throw new Error('That reward is a wish-list item, so its title, note and link are the item\'s. Edit the item instead.');
+      if (patch.title !== undefined && !patch.title.trim()) throw new Error('A reward needs a title.');
+      if (patch.cost !== undefined) requireRewardCost(patch.cost);
+      useRewardStore.getState().updateReward(id, patch);
+      refresh();
+      return requireReward(id);
+    },
+
+    deleteReward(id): Reward {
+      requireRewardsOn();
+      const reward = requireReward(id);
+      useRewardStore.getState().deleteReward(id);
+      refresh();
+      return reward;
+    },
+
+    claimReward(id): CoinEntry {
+      requireRewardsOn();
+      const reward = requireReward(id);
+      const { entries } = useRewardStore.getState();
+      if (reward.oneTime && rewards.lastClaimedAt(entries, id) !== null) throw new Error(`"${reward.title}" is a one-time reward and has already been claimed.`);
+      // A wish-list reward is its list item: claiming it checks the item off, the
+      // app's `claim` in RewardsScreen. Judged before any coin moves, so a
+      // refusal leaves the balance alone.
+      const item = reward.taskId ? tasks().find(t => t.id === reward.taskId) : undefined;
+      if (reward.taskId) {
+        if (!item || !rewards.rewardIsOpen(reward, entries, item)) throw new Error(`"${reward.title}" is checked off, archived or gone from the list, so the reward is gone too.`);
+        const refusal = completion.completionRefusal(item);
+        if (refusal) throw new Error(refusal);
+      }
+      const balance = rewards.coinBalance(entries);
+      if (!rewards.canClaimReward(balance, reward.cost)) {
+        throw new Error(`"${reward.title}" costs ${reward.cost} coins and the balance is ${balance}.`);
+      }
+      let entry: CoinEntry | null = null;
+      db.dbTransaction(() => {
+        entry = useRewardStore.getState().claimReward(id);
+        if (!entry) throw new Error('Could not claim the reward.');
+        // Neutral, so checking the item off earns nothing on top of what was spent.
+        if (item) finishCompletion(item, undefined, 'neutral');
+      });
+      refresh();
+      return entry!;
+    },
+
+    unclaimReward(entryId): CoinEntry {
+      const entry = useRewardStore.getState().entries.find(e => e.id === entryId);
+      if (!entry || entry.kind !== 'spend') throw new Error(`No claim with id ${entryId}. Only a spend can be taken back.`);
+      // The app's undo for a wish-list claim puts the item back with the coins.
+      // Only an item checked off at or after the claim is reopened: one the person
+      // finished earlier is theirs, and a refused reopen stops the whole undo
+      // before any coin moves.
+      const reward = entry.rewardId ? useRewardStore.getState().rewards.find(r => r.id === entry.rewardId) : undefined;
+      const item = reward?.taskId ? tasks().find(t => t.id === reward.taskId) : undefined;
+      if (item?.completed && item.completedAt && item.completedAt >= entry.at) replica.reopenTask(item.id);
+      useRewardStore.getState().unclaim(entryId);
+      refresh();
+      return entry;
+    },
+
+    setRewardGoal(id): Reward | null {
+      requireRewardsOn();
+      let reward: Reward | null = null;
+      if (id !== null) {
+        reward = requireReward(id);
+        const source = reward.taskId ? tasks().find(t => t.id === reward!.taskId) : undefined;
+        if (!rewards.rewardIsOpen(reward, useRewardStore.getState().entries, source)) {
+          throw new Error(`"${reward.title}" has already been claimed or is gone, so it cannot be the goal.`);
+        }
+      }
+      useSettingsStore.getState().setRewardGoalId(id);
+      refresh();
+      return reward;
+    },
+
+    postBounty(id): Task {
+      requireRewardsOn();
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!rewards.canPostBounty(task)) {
+        throw new Error(task.bountyPushes != null
+          ? 'That task already had a bounty this occurrence, live or withdrawn. A repeating task can have another on its next occurrence.'
+          : 'A bounty needs an open, top-level task that is not a "don\'t do this" habit.');
+      }
+      const { bountyLimit } = useSettingsStore.getState();
+      if (rewards.liveBountyCount(tasks()) >= bountyLimit) {
+        throw new Error(`The bounty limit is ${bountyLimit} live at once. Withdraw one first.`);
+      }
+      return setBountyPushes(task, 0);
+    },
+
+    withdrawBounty(id): Task {
+      requireRewardsOn();
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!rewards.isBountyLive(task)) throw new Error('That task has no live bounty to withdraw.');
+      return setBountyPushes(task, rewards.BOUNTY_WITHDRAWN);
+    },
+
+    logSlip(id): Task {
+      const task = requireNegativeHabit(id);
+      const updated = { ...task, ...negativeHabits.slipPatch(task, dates.getCurrentDayStart()) };
+      db.dbUpdateTask(updated);
+      useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      refresh();
+      return updated;
+    },
+
+    undoSlip(id): Task {
+      const task = requireNegativeHabit(id);
+      const patch = negativeHabits.undoSlipPatch(task, dates.getCurrentDayStart());
+      if (!patch) throw new Error('No slip has been logged against that habit today, so there is nothing to undo.');
+      const updated = { ...task, ...patch };
+      db.dbUpdateTask(updated);
+      useRewardStore.getState().takeBackSlip(id);
       refresh();
       return updated;
     },

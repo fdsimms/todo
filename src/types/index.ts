@@ -960,7 +960,7 @@ export interface FocusSessionRecord {
  * `src/utils/retention.ts` for why this one may not default to forever the way
  * the Logbook's own window does.
  */
-export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed';
+export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed' | 'missed';
 
 /**
  * Who made the write: the app's own passes, or an agent working through the
@@ -978,7 +978,7 @@ export type UnattendedActor = 'app' | 'agent';
 /** What an agent's entry is about. Everything the app writes on its own is a task. */
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
-  | 'automation' | 'note' | 'stack';
+  | 'automation' | 'note' | 'stack' | 'reward';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were

@@ -145,6 +145,7 @@ export function describeEffects(effects: readonly AgentLedgerEntry[]): string[] 
           : `Create the ${noun} ${t}`;
       }
       case 'completed': return `Complete the ${noun} ${t}`;
+      case 'missed': return `Mark ${t} missed`;
       case 'moved': return `Move ${t}${changes.length ? `: ${changes.join('; ')}` : ''}`;
       case 'cleared': return `Archive ${t}`;
       case 'edited': return changes.length ? `Change ${t}: ${changes.join('; ')}` : `Change the ${noun} ${t}`;
