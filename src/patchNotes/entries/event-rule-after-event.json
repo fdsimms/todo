@@ -1,0 +1,4 @@
+{
+  "message": "Calendar event rules can now add their task after the event ends instead of before it, and can skip it when another matching event is already booked. Useful for \"Schedule next appointment\" after a visit.",
+  "date": "2026-10-05"
+}

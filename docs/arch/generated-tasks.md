@@ -1032,6 +1032,27 @@ events at once, where every other rule generator asks one question a day.**
   line, so `WidgetTask.eventTitle` carries the title alone (never a day word, which would be wrong
   after midnight) and Swift dims it after the task's title on the same line. It is null when the
   calendar wasn't read, as in a background refresh.
+- **A rule can fire after its event instead (`afterEvent`), and that needs a window of its own.**
+  "Schedule the next appointment" is a task for once the visit has happened. The fortnight
+  `useCalendarStore.events` holds can't serve it: it starts today, so an event that ended
+  yesterday has left it, and it ends in two weeks, so a follow-up booked for next month is
+  invisible. `followUpEvents` is a third read (a week back, `FOLLOW_UP_AHEAD_DAYS` ahead) taken
+  only while an enabled follow-up rule exists (`needsFollowUpWindow`), and `checkEventTasks`
+  refuses follow-ups until it has loaded, for `loaded`'s reason: an unread window must not read
+  as "nothing else is booked". `matchedEventTasks` skips these rules and `matchedFollowUpTasks`
+  judges them.
+  - **The handled entry outlives the event** (`followUpHandledUntil`: end plus the lookback). The
+    usual value is the event's end, which is when the sweep prunes it, so a follow-up written
+    after the end would be forgotten at once and rewritten after the user deleted it.
+  - **`skipIfUpcoming` is judged across the whole list and is not recorded.** Any other live match
+    that hasn't started means the follow-up is booked, so nothing is written for the finished
+    ones. The skip is not marked handled: if the booked event is cancelled inside the lookback the
+    task is wanted again. With it on, only the latest finished visit is asked about, so a run of
+    visits yields one task.
+  - **The task lands on the logical today**, not the event's day, which is already behind us.
+  - **The sweep re-runs when the windows land** (`useEventTaskSync`). The foreground sweep runs
+    before the read finishes, which costs a day for a lead-time rule and the whole task for this.
+    It is a hook because `useTaskStore` imports `useCalendarStore`, so the store can't call it.
 - **It ships off**, like every generator that adds a surface rather than replacing one, and it is
   gated on `calendarReadEnabled` as well as its own switch — a switched-off calendar read must not
   leave one part of the feature still writing rows.

@@ -612,6 +612,20 @@ export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory {
    * appear. See `eventTasks.ts`.
    */
   leadDays: number;
+  /**
+   * Fire once the event is over instead of ahead of it. The task lands on the
+   * day the event ended, and `leadDays` is ignored (always stored as 0). For a
+   * follow-up ("book the next appointment") that is only worth asking once the
+   * visit has happened. Absent reads as false, so every rule saved before this
+   * existed keeps firing ahead of its event.
+   */
+  afterEvent?: boolean;
+  /**
+   * With `afterEvent`: write nothing while another event that matches this rule
+   * is still ahead. The follow-up is already booked, so the task would be noise.
+   * Ignored on a rule that fires ahead of its event.
+   */
+  skipIfUpcoming?: boolean;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
   enabled: boolean;
 }

@@ -2,6 +2,7 @@ import {
   EVENT_LEAD_DAYS_MAX,
   EVENT_MATCH_MIN_LENGTH,
   EVENT_RULE_MAX_MATCHES,
+  FOLLOW_UP_LOOKBACK_DAYS,
   defaultEventRules,
   describeEventRule,
   describeRuleMatches,
@@ -10,8 +11,11 @@ import {
   eventTaskContextLabel,
   eventTaskRuleIdOf,
   eventTaskSourceId,
+  followUpHandledUntil,
   leadTimeReached,
   matchedEventTasks,
+  matchedFollowUpTasks,
+  needsFollowUpWindow,
   parseEventRules,
   parseEventTaskSourceId,
   parseHandledEventTasks,
@@ -614,5 +618,129 @@ describe('plurals and multiple keywords together', () => {
     const summary = summarizeRuleAgainstEvents(rule({ matches: ['de', ''] }), [event()], now);
     expect(summary.cues).toEqual([]);
     expect(describeRuleMatches(summary)).toBeNull();
+  });
+});
+
+describe('follow-up rules (afterEvent)', () => {
+  const visit = (over: Partial<BusyEvent> = {}) => event({
+    id: 'visit1',
+    title: 'Spring Health Appointment',
+    start: localIso('2026-10-05T11:00'),
+    end: localIso('2026-10-05T11:55'),
+    ...over,
+  });
+  const followUp = (over: Partial<EventTaskRule> = {}) => rule({
+    id: 'fu', matches: ['Spring Health Appointment'], title: 'Schedule next appointment',
+    afterEvent: true, ...over,
+  });
+  const after = new Date('2026-10-05T13:00');
+
+  it('writes nothing before the event ends, and nothing while it is under way', () => {
+    expect(matchedFollowUpTasks([followUp()], [visit()], new Date('2026-10-05T09:00'), {})).toEqual([]);
+    expect(matchedFollowUpTasks([followUp()], [visit()], new Date('2026-10-05T11:30'), {})).toEqual([]);
+  });
+
+  it('writes the task once the event is over', () => {
+    const out = matchedFollowUpTasks([followUp()], [visit()], after, {});
+    expect(out).toHaveLength(1);
+    expect(out[0].sourceId).toBe(eventTaskSourceId(eventOccurrenceKey(visit()), 'fu'));
+  });
+
+  it('is never produced by the ahead-of-event matcher', () => {
+    expect(matchedEventTasks([followUp()], [visit()], new Date('2026-10-05T09:00'), {})).toEqual([]);
+    expect(matchedEventTasks([followUp()], [visit()], after, {})).toEqual([]);
+  });
+
+  it('stops reaching back once the lookback has passed', () => {
+    const late = new Date(Date.parse(visit().end) + (FOLLOW_UP_LOOKBACK_DAYS + 1) * 24 * 60 * 60 * 1000);
+    expect(matchedFollowUpTasks([followUp()], [visit()], late, {})).toEqual([]);
+  });
+
+  it('skips an occurrence already handled', () => {
+    const sourceId = eventTaskSourceId(eventOccurrenceKey(visit()), 'fu');
+    expect(matchedFollowUpTasks([followUp()], [visit()], after, { [sourceId]: followUpHandledUntil(visit()) })).toEqual([]);
+  });
+
+  it('keeps its handled entry alive past the end of the event, so a deleted task is not written again', () => {
+    const out = matchedFollowUpTasks([followUp()], [visit()], after, {});
+    const handled = { [out[0].sourceId]: out[0].endsAt };
+    expect(pruneHandledEventTasks(handled, after)).toEqual(handled);
+    expect(matchedFollowUpTasks([followUp()], [visit()], after, pruneHandledEventTasks(handled, after))).toEqual([]);
+  });
+
+  describe('skipIfUpcoming', () => {
+    const next = visit({ id: 'visit2', start: localIso('2026-10-20T11:00'), end: localIso('2026-10-20T11:55') });
+
+    it('writes nothing while another matching event is ahead', () => {
+      expect(matchedFollowUpTasks([followUp({ skipIfUpcoming: true })], [visit(), next], after, {})).toEqual([]);
+    });
+
+    it('still writes when the rule does not ask to skip', () => {
+      expect(matchedFollowUpTasks([followUp()], [visit(), next], after, {})).toHaveLength(1);
+    });
+
+    it('writes once the booked event is gone', () => {
+      expect(matchedFollowUpTasks([followUp({ skipIfUpcoming: true })], [visit()], after, {})).toHaveLength(1);
+    });
+
+    it('is not held back by a cancelled event or by an event that does not match', () => {
+      const cancelled = { ...next, status: 'canceled' };
+      const other = event({ id: 'dentist', title: 'Dentist', start: localIso('2026-10-20T09:00'), end: localIso('2026-10-20T10:00') });
+      expect(matchedFollowUpTasks([followUp({ skipIfUpcoming: true })], [visit(), cancelled, other], after, {})).toHaveLength(1);
+    });
+
+    it('does not record a skip as handled, so a later cancellation still gets its task', () => {
+      // Pure function: nothing it returns marks the skipped visit, so the next
+      // sweep with the booked event gone writes it.
+      expect(matchedFollowUpTasks([followUp({ skipIfUpcoming: true })], [visit(), next], after, {})).toEqual([]);
+      expect(matchedFollowUpTasks([followUp({ skipIfUpcoming: true })], [visit()], after, {})).toHaveLength(1);
+    });
+
+    it('asks about only the latest finished visit, so one stretch of visits makes one task', () => {
+      const earlier = visit({ id: 'visit0', start: localIso('2026-10-03T11:00'), end: localIso('2026-10-03T11:55') });
+      const out = matchedFollowUpTasks([followUp({ skipIfUpcoming: true })], [earlier, visit()], after, {});
+      expect(out).toHaveLength(1);
+      expect(out[0].event.id).toBe('visit1');
+    });
+  });
+
+  it('is ignored for a disabled rule', () => {
+    expect(matchedFollowUpTasks([followUp({ enabled: false })], [visit()], after, {})).toEqual([]);
+  });
+});
+
+describe('follow-up rule storage and wording', () => {
+  it('round-trips afterEvent and skipIfUpcoming, and drops the lead', () => {
+    const [r] = parseEventRules(JSON.stringify([
+      { id: 'a', matches: ['x y z'], title: 'T', leadDays: 5, enabled: true, afterEvent: true, skipIfUpcoming: true },
+    ]));
+    expect(r.afterEvent).toBe(true);
+    expect(r.skipIfUpcoming).toBe(true);
+    expect(r.leadDays).toBe(0);
+  });
+
+  it('leaves a rule saved before these existed untouched', () => {
+    const [r] = parseEventRules(JSON.stringify([{ id: 'a', matches: ['flight'], title: 'T', leadDays: 2, enabled: true }]));
+    expect(r).not.toHaveProperty('afterEvent');
+    expect(r).not.toHaveProperty('skipIfUpcoming');
+    expect(r.leadDays).toBe(2);
+  });
+
+  it('ignores skipIfUpcoming on a rule that fires ahead of its event', () => {
+    const [r] = parseEventRules(JSON.stringify([{ id: 'a', matches: ['flight'], title: 'T', leadDays: 1, skipIfUpcoming: true }]));
+    expect(r).not.toHaveProperty('skipIfUpcoming');
+  });
+
+  it('describes the timing', () => {
+    expect(describeEventRule(rule({ afterEvent: true }))).toBe('"flight" · after it ends');
+    expect(describeEventRule(rule({ afterEvent: true, skipIfUpcoming: true })))
+      .toBe('"flight" · after it ends, unless another is booked');
+  });
+
+  it('reads the wide window only while an enabled follow-up rule needs it', () => {
+    expect(needsFollowUpWindow(true, [rule({ afterEvent: true })])).toBe(true);
+    expect(needsFollowUpWindow(false, [rule({ afterEvent: true })])).toBe(false);
+    expect(needsFollowUpWindow(true, [rule({ afterEvent: true, enabled: false })])).toBe(false);
+    expect(needsFollowUpWindow(true, [rule()])).toBe(false);
   });
 });

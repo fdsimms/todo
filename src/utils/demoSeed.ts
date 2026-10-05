@@ -1532,7 +1532,21 @@ export function seedDemoData(): void {
   addCategory('Calendar');
   setCategoryEmoji('Calendar', '📅');
   useSettingsStore.getState().setEventTaskCategory('Calendar');
-  const eventRules = defaultEventRules();
+  // A third rule beside the two defaults, so the rules sheet shows one that
+  // fires after its event rather than ahead of it. It has no seeded task: its
+  // task only exists once an event has ended, and the demo reads no calendar.
+  const eventRules = [
+    ...defaultEventRules(),
+    {
+      id: generateId(),
+      matches: ['Checkup'],
+      title: 'Schedule next appointment',
+      leadDays: 0,
+      afterEvent: true,
+      skipIfUpcoming: true,
+      enabled: true,
+    },
+  ];
   useSettingsStore.getState().setEventRules(eventRules);
   const [packRule] = eventRules;
   const demoFlight = {
