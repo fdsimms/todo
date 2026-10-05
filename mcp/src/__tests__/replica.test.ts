@@ -87,8 +87,19 @@ describe('the replica', () => {
     replica.refresh();
   });
 
+  // Every table but the two this file seeds once (settings holds the device id
+  // and the switches, categories the 'Home' every task needs) is cleared per
+  // test, read off sqlite_master rather than listed as database.test.ts does:
+  // a recipe, meal or person one test names could otherwise collide with
+  // another's, which passed in declaration order and in no other.
   beforeEach(() => {
-    mockRaw.runSync('DELETE FROM tasks');
+    const keep = new Set(['settings', 'categories']);
+    const tables = mockRaw.getAllSync<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+    );
+    for (const { name } of tables) {
+      if (!keep.has(name)) mockRaw.runSync(`DELETE FROM "${name}"`);
+    }
     replica.refresh();
   });
 
@@ -1351,6 +1362,11 @@ describe('the replica', () => {
     const coins = () => mockRaw.getAllSync<{ task_id: string; amount: number }>(
       "SELECT task_id, amount FROM coin_entries WHERE kind = 'earn'"
     );
+    // Start from rewards off and an empty ledger: the rewards block below turns
+    // the switch on and earns, and in random order it may already have run.
+    mockRaw.runSync("DELETE FROM settings WHERE key = 'rewardsEnabled'");
+    mockRaw.runSync('DELETE FROM coin_entries');
+    replica.refresh();
     const off = replica.createTask({ title: 'Before switching on' });
     replica.completeTask(off.id, {});
     expect(coins()).toEqual([]);

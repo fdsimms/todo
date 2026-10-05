@@ -28,6 +28,12 @@ describe('the rewards tools', () => {
   });
 
   it('reports rewards as off, with nothing kept, until the person turns them on', () => {
+    // Off by its own hand: in random order the block below may already have
+    // turned the switch on.
+    mockRaw.runSync("DELETE FROM settings WHERE key = 'rewardsEnabled'");
+    mockRaw.runSync('DELETE FROM coin_entries');
+    mockRaw.runSync('DELETE FROM rewards');
+    replica.refresh();
     const report = getRewards(replica);
     expect(report.enabled).toBe(false);
     expect(report.balance).toBe(0);
@@ -35,7 +41,13 @@ describe('the rewards tools', () => {
   });
 
   describe('with rewards on', () => {
-    beforeAll(() => {
+    beforeEach(() => {
+      // A fresh ledger, reward list and task table for each test: the balance
+      // one test reads is what another's claim or miss moved, so sharing them
+      // across the block passed in declaration order and in no other.
+      mockRaw.runSync('DELETE FROM coin_entries');
+      mockRaw.runSync('DELETE FROM rewards');
+      mockRaw.runSync('DELETE FROM tasks');
       mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardsEnabled', 'true')");
       replica.refresh();
       const t = replica.createTask({ title: 'Write the report', estimatedMinutes: 90 });

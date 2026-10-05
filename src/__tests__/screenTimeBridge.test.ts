@@ -45,6 +45,9 @@ beforeEach(() => {
   mockPlatformOS = 'ios';
   mockDemoMode = false;
   mockNativeMissing = false;
+  // Calls cleared too: the gate test counts them, and in random order another
+  // test's calls would otherwise still be on the mock.
+  mockNativeBridge.isScreenTimeAvailable.mockClear();
   mockNativeBridge.isScreenTimeAvailable.mockReturnValue(true);
 });
 

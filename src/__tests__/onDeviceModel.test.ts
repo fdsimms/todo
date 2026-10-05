@@ -8,11 +8,17 @@ jest.mock('../utils/demoState', () => ({
   setDemoModeActive: jest.fn(),
 }));
 
-jest.mock('todo-foundation-models', () => ({
+// Named so the test that stands a throwing factory in its place can put this
+// one back: `jest.doMock` outlives the test that called it, and the module
+// under test requires the bridge lazily, so every later test would otherwise
+// reach the throwing one.
+const mockNativeModule = () => ({
   isOnDeviceModelAvailable: () => mockAvailable(),
   onDeviceModelAvailability: () => mockAvailability(),
   generateOnDevice: (prompt: string, schema: unknown) => mockGenerate(prompt, schema),
-}), { virtual: true });
+});
+
+jest.mock('todo-foundation-models', () => mockNativeModule(), { virtual: true });
 
 import {
   isOnDeviceReady,
@@ -85,9 +91,13 @@ describe('runOnDevice', () => {
   it('rejects when the native module is missing', async () => {
     jest.resetModules();
     jest.doMock('todo-foundation-models', () => { throw new Error('not linked'); }, { virtual: true });
-    const { runOnDevice: run } = require('../services/onDeviceModel');
-    await expect(run('go', { name: 'X', fields: [] })).rejects.toThrow('On-device model unavailable');
-    jest.resetModules();
+    try {
+      const { runOnDevice: run } = require('../services/onDeviceModel');
+      await expect(run('go', { name: 'X', fields: [] })).rejects.toThrow('On-device model unavailable');
+    } finally {
+      jest.doMock('todo-foundation-models', () => mockNativeModule(), { virtual: true });
+      jest.resetModules();
+    }
   });
 });
 

@@ -321,17 +321,17 @@ beforeAll(() => {
   initDatabase();
 });
 
+// Every table, read off the schema rather than listed. A hand-kept list is what
+// left categories, task_groups, grocery_item_subs and grocery_store_aliases
+// carrying the previous test's rows, so a block reading `dbGetAll…()[0]` or
+// inserting a name that has to be unique passed in declaration order and in no
+// other. sqlite_* is SQLite's own bookkeeping; nothing here declares a foreign
+// key, so the order is free.
 beforeEach(() => {
-  mockRawDb.exec(
-    'DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects;' +
-    // The grocery tables clear together, because they point at each other: a
-    // link or a product left behind by the previous test names an item this
-    // one has just deleted, and every `dbGetAll…()[0]` read below would be
-    // holding somebody else's row.
-    'DELETE FROM grocery_items; DELETE FROM grocery_shops; DELETE FROM grocery_lists;' +
-    'DELETE FROM grocery_list_items;' +
-    'DELETE FROM grocery_item_shops; DELETE FROM grocery_item_products;'
-  );
+  const tables = mockRawDb
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    .all() as Array<{ name: string }>;
+  mockRawDb.exec(tables.map(t => `DELETE FROM "${t.name}";`).join(' '));
 });
 
 // ---------------------------------------------------------------------------

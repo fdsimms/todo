@@ -259,9 +259,10 @@ other passing-bug call, ask rather than guess or widen the PR.
 
 Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
 catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
-it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`,
-`useDemoStore.test.ts` again under `--randomize`, and all three doc checks in `--check` mode on
-every PR and every push to `main`** — that whole list, not just the tests. `npx expo export
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test` under
+`--randomize` (the whole suite is order-independent, and randomizing is what keeps it so), and all
+three doc checks in `--check` mode on every PR and every push to `main`** — that whole list, not
+just the tests. `npx expo export
 --platform ios` runs on every push to `main`, and on a PR only when it touches a path that can
 break the bundle (`package*.json`, `app.json`, `eas.json`, `patches/`, `plugins/`, `modules/`,
 `targets/`, `assets/`; the filter is in `.github/workflows/test.yml`).

@@ -56,7 +56,16 @@ describe('the catalog tools', () => {
     hasNote: () => false,
     calendarRequest: () => null,
   });
-  const entries = () => dbGetUnattendedLog().filter(e => e.subject === 'catalog').sort((a, b) => (a.at < b.at ? 1 : -1));
+  // Newest first by insertion order. Sorting on `at` alone is a coin flip when
+  // two writes land in the same millisecond, which a fast run does: the add and
+  // the change after it tie, and the comparator then picks either.
+  const entries = () => {
+    const ids = (mockRaw as unknown as { getAllSync: (sql: string) => { id: string }[] })
+      .getAllSync("SELECT id FROM unattended_log WHERE subject = 'catalog' ORDER BY rowid DESC")
+      .map(r => r.id);
+    const byId = new Map(dbGetUnattendedLog().map(e => [e.id, e]));
+    return ids.flatMap(id => (byId.has(id) ? [byId.get(id)!] : []));
+  };
 
   beforeAll(() => {
     replica = openReplica(':memory:');
@@ -66,6 +75,10 @@ describe('the catalog tools', () => {
     for (const t of ['grocery_items', 'grocery_list_items', 'grocery_item_products', 'grocery_item_shops', 'grocery_item_subs', 'grocery_store_aliases', 'grocery_shops', 'grocery_lists', 'recipes', 'unattended_log']) {
       mockRaw.runSync(`DELETE FROM ${t}`);
     }
+    // The remembered aisle filings live in settings, not in a grocery table: an
+    // earlier test that re-filed "milk" otherwise hands the next one a filing
+    // to start from, and forgetting it on the way back reads as a change.
+    mockRaw.runSync("DELETE FROM settings WHERE key = 'grocery_aisle_overrides'");
     replica.refresh();
   });
 
@@ -129,6 +142,13 @@ describe('the catalog tools', () => {
     });
 
     it('offers an undo of an aisle edit that also forgets the remembered filing, only while the item is as left', () => {
+      // The premise, stated rather than inherited from whichever test ran
+      // before: "milk" already has a remembered filing, so the edit and the
+      // undo each have one to move and to restore. Without it the way back
+      // leaves a filing the start did not have, and never reads as undone.
+      const remembered = replica.aisleNames()[0];
+      mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('grocery_aisle_overrides', ?)", [JSON.stringify({ milk: remembered })]);
+      replica.refresh();
       addGroceryItem(replica, 'milk');
       const original = replica.groceryItems()[0].aisle;
       const aisle = replica.aisleNames().find(a => a !== original)!;
