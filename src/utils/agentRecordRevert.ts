@@ -22,7 +22,7 @@ import type { CalendarRequestStatus, Project, UnattendedEntry } from '../types';
 
 /** The project fields an agent edit can change and a restore can write back. Mirrors `updateProject`'s patch. */
 export const PROJECT_REVERT_FIELDS = [
-  'title', 'notes', 'deadline', 'eventDate', 'category', 'defaultTaskCategory', 'nudgeCadenceDays', 'autoSchedule',
+  'title', 'notes', 'deadline', 'eventDate', 'category', 'defaultTaskCategory', 'taskDefaults', 'nudgeCadenceDays', 'autoSchedule',
   'nudgeOptIn', 'weekendSource', 'kind', 'ongoing', 'awayStart', 'awayEnd', 'awayPauses', 'destination', 'pausedUntil',
   'personIds', 'links', 'inOrder', 'showChecked',
 ] as const;

@@ -8504,6 +8504,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     projectStore.updateProject(created.id, {
       notes: source.notes,
       defaultTaskCategory: source.defaultTaskCategory,
+      taskDefaults: source.taskDefaults ?? null,
       ongoing: source.ongoing,
       nudgeOptIn: source.nudgeOptIn,
       nudgeCadenceDays: source.nudgeCadenceDays,

@@ -269,6 +269,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // the next task rather than frozen at mount.
   const hostDefaultCategory = () =>
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.defaultTaskCategory : null) ?? null;
+  // The project's own priority, difficulty and estimate, seeded the way its
+  // category is, so the sheet shows what the task will get. Only the project the
+  // sheet was opened into: one picked by hand mid-sheet is still covered by
+  // newTaskFromDraft for difficulty, which the sheet leaves null until chosen.
+  const hostFieldDefaults = () =>
+    (intoProjectId ? projects.find(p => p.id === intoProjectId)?.taskDefaults : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -564,9 +570,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const listTarget = isListProject(intoProjectId ?? keptProjectId);
     setTitle(nextTitle);
     titleCaret.resetCaret(nextTitle);
-    setPriority(newTaskDefaults.priority ?? 0);
-    setEffort(newTaskDefaults.effort ?? 0);
-    setDifficulty(null);
+    setPriority(hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0);
+    setEffort(hostFieldDefaults()?.effort ?? newTaskDefaults.effort ?? 0);
+    setDifficulty(hostFieldDefaults()?.difficulty ?? newTaskDefaults.difficulty ?? null);
     setEstimatedMinutes(null);
     setCustomEffortText('');
     setDueDate(defaultDueDate(listTarget));
@@ -705,8 +711,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // base is simply null, same as projectId.
     const baseCategory = seedRef.current?.category ?? hostDefaultCategory()
       ?? (isListProject(intoProjectId) ? null : newTaskDefaults.category);
-    const basePriority: Priority = newTaskDefaults.priority ?? 0;
-    const baseEffort: Effort = newTaskDefaults.effort ?? 0;
+    const basePriority: Priority = hostFieldDefaults()?.priority ?? newTaskDefaults.priority ?? 0;
+    const baseEffort: Effort = hostFieldDefaults()?.effort ?? newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
       ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [], linkUrl: null };
     const next = {

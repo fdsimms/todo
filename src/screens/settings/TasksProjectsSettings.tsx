@@ -24,8 +24,9 @@ import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
 import { categoryLabel } from '../../utils/categoryLabel';
-import { EFFORT_LABELS, type Effort, type TimeOfDay } from '../../types';
+import { EFFORT_LABELS, type Difficulty, type Effort, type TimeOfDay } from '../../types';
 import { PRIORITY_SEGMENTS } from '../../utils/prioritySegments';
+import { DIFFICULTY_SEGMENTS } from '../../utils/rewards';
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, cadenceUnitLabel,
   describeCadence, fromCadenceParts, toCadenceParts, withCadenceUnit,
@@ -51,6 +52,10 @@ const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
 // to 0 either way).
 const NEW_TASK_EFFORT_OPTIONS: SegmentOption<Effort>[] =
   EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : label }));
+const NEW_TASK_DIFFICULTY_OPTIONS: SegmentOption<Difficulty | null>[] = [
+  { value: null, label: 'None' },
+  ...DIFFICULTY_SEGMENTS,
+];
 const NEW_TASK_TIME_OF_DAY_OPTIONS: SegmentOption<TimeOfDay | null>[] = [
   { value: null, label: 'None' },
   { value: 'morning', label: 'Morning' },
@@ -314,6 +319,16 @@ export function TasksProjectsSettings() {
           selected={newTaskDefaults.effort ?? 0}
           onSelect={effort => setNewTaskDefaults({ effort })}
           accessibilityLabelFor={o => `Default effort: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+  entryId="newTaskDifficulty" icon="barbell-outline" label="Difficulty" hint="How hard a new task is to make yourself do. Only matters when rewards are on: hard tasks earn double coins and easy ones half." tight />
+        <SettingsSegments
+          attached
+          options={NEW_TASK_DIFFICULTY_OPTIONS}
+          selected={newTaskDefaults.difficulty}
+          onSelect={difficulty => setNewTaskDefaults({ difficulty })}
+          accessibilityLabelFor={o => `Default difficulty: ${o.label}`}
         />
         <View style={styles.sep} />
         <SettingsRow
