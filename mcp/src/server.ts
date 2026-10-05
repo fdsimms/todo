@@ -88,6 +88,7 @@ import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './app
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
 import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
+import { DEFAULT_SUGGESTION_LIMIT, unusedFeatures } from './adoptionTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
 import { createConfirmTokens, describeEffects, type ConfirmTokens } from './confirmWrites';
@@ -563,6 +564,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       includeFixes: z.boolean().optional(),
     },
     async input => json(await withFresh(() => appHelp(replica, input)))
+  );
+
+  server.tool(
+    'unused_features',
+    `App features this person's own data suggests they would get something from and are not using: for example many open tasks and no time estimates, or several projects and no templates. Each suggestion carries what was seen, what the feature does, and the Settings path when it is a setting. Raise a few at a time (default ${DEFAULT_SUGGESTION_LIMIT}) as options, never as a fault. If the person declines one, offer to remember that, naming its id, and it will not come up again. Features in areas they have switched off are never suggested.`,
+    { limit: z.number().int().positive().max(20).optional() },
+    async input => json(await withFresh(() => unusedFeatures(replica, input)))
   );
 
   server.tool(

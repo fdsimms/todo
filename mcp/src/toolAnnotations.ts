@@ -31,6 +31,7 @@ export const READ_TOOLS: Record<string, string> = {
   completion_history: 'What got done',
   review_tasks: 'Tasks worth a second look',
   app_help: 'How the app works',
+  unused_features: 'Features you might not be using',
   habit_patterns: 'How habits are going',
   mood_insights: 'Mood insights',
   plan_day: 'Plan the day',
