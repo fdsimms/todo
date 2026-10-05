@@ -731,7 +731,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   blockerWhen: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
   // Orange is reserved for the one date a task can actually be late for — see
   // describeBlockerWait, which only ever sets `late` for a blown deadline.
-  blockerWhenLate: { color: colors.orange, fontWeight: fontWeight.medium },
+  blockerWhenLate: { color: colors.orangeText, fontWeight: fontWeight.medium },
   waitCount: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.full,

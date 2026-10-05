@@ -1362,7 +1362,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // A second card under the same group label, like the away rows beneath the
   // deadline.
   stackedCard: { marginTop: spacing.md },
-  deleteLabel: { color: colors.red },
+  deleteLabel: { color: colors.redText },
   actionsCard: { marginTop: spacing.xl },
   // Matches EditorGroup's label, which this sheet can't use directly: its
   // cards carry their own horizontal margin, and these sit on the scroll

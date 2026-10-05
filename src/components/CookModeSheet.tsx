@@ -665,7 +665,7 @@ export function CookModeSheet({
                     <InlineAction
                       icon="help-circle-outline"
                       label="Ask about this step"
-                      tint={colors.purple}
+                      tint={colors.purpleText}
                       onPress={() => { haptics.tap(); animateLayout(); setAskOpen(true); }}
                     />
                   ) : (
@@ -715,7 +715,7 @@ export function CookModeSheet({
                             <InlineAction
                               icon="bookmark-outline"
                               label="Keep this note"
-                              tint={colors.purple}
+                              tint={colors.purpleText}
                               accessibilityLabel="Keep this answer as a note on this step"
                               onPress={() => {
                                 haptics.success();
@@ -1030,7 +1030,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   askError: {
-    color: colors.red,
+    color: colors.redText,
     fontSize: font.sm,
     lineHeight: lineHeight.sm,
   },

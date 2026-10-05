@@ -303,7 +303,7 @@ export function CalendarSettings() {
             icon={permission === 'granted' ? 'lock-open-outline' : 'lock-closed-outline'}
             iconColor={
               permission === 'granted' ? colors.accent
-              : permission === 'denied' ? colors.warning
+              : permission === 'denied' ? colors.warningText
               : undefined
             }
             label="Calendar access"
@@ -411,7 +411,7 @@ export function CalendarSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label={missingCount === calendarIds.length
               ? 'Those calendars aren’t on this device'
               : `${missingCount} chosen calendar${missingCount === 1 ? ' isn’t' : 's aren’t'} on this device`}
@@ -430,7 +430,7 @@ export function CalendarSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label={failedCalendarsLabel(failedIds.length, readCount)}
             hint="Often temporary. Try again later, or check the account in the Settings app under Calendar › Accounts."
           />

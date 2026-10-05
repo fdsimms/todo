@@ -204,7 +204,7 @@ export function BulkActionBar({
                   onPress={() => { haptics.success(); onComplete(); }}
                 >
                   <Ionicons name="checkmark-circle" size={24} color={colors.green} />
-                  <Text style={[styles.actionLabel, { color: colors.green }]}>Complete</Text>
+                  <Text style={[styles.actionLabel, { color: colors.greenText }]}>Complete</Text>
                 </PressableScale>
               )}
               <PressableScale
@@ -219,15 +219,15 @@ export function BulkActionBar({
                 onPress={() => { haptics.tap(); setCategoryVisible(true); }}
               >
                 <Ionicons name="folder" size={24} color={colors.purple} />
-                <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
+                <Text style={[styles.actionLabel, { color: colors.purpleText }]}>Move</Text>
               </PressableScale>
               {onTogglePin && (
                 <PressableScale
                   style={styles.actionBtn}
                   onPress={() => { haptics.tap(); onTogglePin(); }}
                 >
-                  <PinIcon filled={allPinned} size={24} color={colors.orange} />
-                  <Text style={[styles.actionLabel, { color: colors.orange }]}>
+                  <PinIcon filled={allPinned} size={24} color={colors.orangeText} />
+                  <Text style={[styles.actionLabel, { color: colors.orangeText }]}>
                     {allPinned ? 'Unpin' : 'Pin'}
                   </Text>
                 </PressableScale>
@@ -237,7 +237,7 @@ export function BulkActionBar({
                 onPress={() => { haptics.impactMedium(); onDelete(); }}
               >
                 <Ionicons name="trash" size={24} color={colors.red} />
-                <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>
+                <Text style={[styles.actionLabel, { color: colors.redText }]}>Delete</Text>
               </PressableScale>
               <PressableScale
                 style={styles.actionBtn}

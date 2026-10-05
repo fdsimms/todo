@@ -3210,7 +3210,7 @@ function FieldControl({
   if (field === 'streak') {
     return (
       <PressableScale
-        style={[styles.toggleButton, { backgroundColor: colors.orange }]}
+        style={[styles.toggleButton, { backgroundColor: colors.orangeFill }]}
         onPress={onStreak}
         accessibilityRole="button"
         accessibilityLabel="Show streak on row"
@@ -3331,7 +3331,7 @@ function SuggestionBar({
           <InlineAction
             label={error ? 'Try again' : 'Suggest with AI'}
             icon={error ? 'refresh' : 'sparkles-outline'}
-            tint={colors.purple}
+            tint={colors.purpleText}
             surface="page"
             onPress={onSuggest}
             accessibilityLabel={error
@@ -3585,7 +3585,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   suggestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   suggestStatusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   suggestNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
-  suggestError: { color: colors.red, fontSize: font.sm, lineHeight: lineHeight.sm },
+  suggestError: { color: colors.redText, fontSize: font.sm, lineHeight: lineHeight.sm },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   skipButton: {

@@ -82,6 +82,19 @@ describe('templateFromProject', () => {
     expect(draft.items[0]).toEqual(expect.objectContaining({ anchor: 'start', dueOffsetDays: -42 }));
   });
 
+  it('keeps "waiting on" inside the project, and a target, phone and email', () => {
+    const tasks = [
+      task({ id: 'a', title: 'Book venue', sortOrder: 1, phoneNumber: '555-0100', emailAddress: 'v@example.com' } as Partial<Task>),
+      task({ id: 'b', title: 'Send invites', sortOrder: 2, blockedById: 'a', blockedByIds: ['outside'], targetCount: 3, quotaPeriod: 'week' } as Partial<Task>),
+    ];
+    const draft = templateFromProject(project({}), tasks, []);
+    const [venue, invites] = draft.items;
+    // The blocker outside the project is left behind, as a gate is.
+    expect(invites.blockedByItemIds).toEqual([venue.id]);
+    expect(invites).toMatchObject({ targetCount: 3, quotaPeriod: 'week' });
+    expect(venue).toMatchObject({ phoneNumber: '555-0100', emailAddress: 'v@example.com' });
+  });
+
   it('keeps sections as item groups', () => {
     const tasks = [task({ id: 's', title: 'Order cake', groupId: 'food' })];
     const draft = templateFromProject(project({}), tasks, [group('food', 'Food', 1)]);

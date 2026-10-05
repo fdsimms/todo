@@ -343,7 +343,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
               <InlineAction
                 label={ideas.length > 0 ? 'More ideas' : 'Invent recipes'}
                 icon={ideas.length > 0 ? 'refresh' : 'sparkles-outline'}
-                tint={colors.purple}
+                tint={colors.purpleText}
                 onPress={() => { haptics.tap(); generate(); }}
                 accessibilityLabel={ideas.length > 0
                   ? 'Generate more recipe ideas'
@@ -390,7 +390,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   generating: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   generatingText: { fontSize: font.sm, color: colors.textSecondary },
   generateError: { gap: spacing.sm, alignItems: 'flex-start' },
-  generateErrorText: { fontSize: font.sm, color: colors.red, lineHeight: lineHeight.sm },
+  generateErrorText: { fontSize: font.sm, color: colors.redText, lineHeight: lineHeight.sm },
 
   row: {
     flexDirection: 'row',
@@ -414,5 +414,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textTertiary, lineHeight: lineHeight.xs },
   ideaActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
+  ideaError: { fontSize: font.xs, color: colors.redText, marginTop: spacing.xs },
 });

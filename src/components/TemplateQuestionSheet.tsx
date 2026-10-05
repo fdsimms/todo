@@ -418,7 +418,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
   },
   deleteLabel: {
-    color: colors.red,
+    color: colors.redText,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },

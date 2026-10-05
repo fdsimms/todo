@@ -652,7 +652,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               >
                 <Ionicons name="trash-outline" size={iconSize.md} color={colors.red} />
                 <View style={styles.toggleBody}>
-                  <Text style={[styles.toggleLabel, { color: colors.red }]}>Remove</Text>
+                  <Text style={[styles.toggleLabel, { color: colors.redText }]}>Remove</Text>
                   <Text style={styles.toggleHint}>
                     Forgets this swap. Neither item is deleted.
                   </Text>
@@ -778,7 +778,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                       <InlineAction
                         label="Suggest alternatives"
                         icon="sparkles-outline"
-                        tint={colors.purple}
+                        tint={colors.purpleText}
                         onPress={handleSuggest}
                         accessibilityLabel={`Suggest what to use instead of ${item.name}`}
                       />

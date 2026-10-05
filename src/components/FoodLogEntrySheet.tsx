@@ -1855,7 +1855,7 @@ function makeStyles(colors: Colors) {
       marginLeft: spacing.xs,
     },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
-    error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
+    error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
     // Wraps rather than truncating: the first pill carries the food's own name,
     // which can be a database description several words long.

@@ -497,7 +497,7 @@ const TemplateRow = React.memo(function TemplateRow({
             <Ionicons
               name="alert-circle"
               size={14}
-              color={colors.warning}
+              color={colors.warningText}
               accessibilityLabel={
                 broken
                   ? 'A nested template is missing'

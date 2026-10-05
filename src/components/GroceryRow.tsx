@@ -476,7 +476,7 @@ export const GroceryRow = React.memo(function GroceryRow({
                   the whole point is seeing it here, right before you'd pick
                   the same one up again. */}
               {preferredProduct?.rating === 'loved' && (
-                <Ionicons name="thumbs-up" size={iconSize.xs} color={colors.orange} />
+                <Ionicons name="thumbs-up" size={iconSize.xs} color={colors.orangeText} />
               )}
               {preferredProduct?.rating === 'avoid' && (
                 <Ionicons name="thumbs-down" size={iconSize.xs} color={colors.red} />
@@ -869,8 +869,8 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     checkboxChecked: {
-      backgroundColor: colors.green,
-      borderColor: colors.green,
+      backgroundColor: colors.greenFill,
+      borderColor: colors.greenFill,
       opacity: 0.7,
     },
     tapZone: {
@@ -905,7 +905,7 @@ function makeStyles(colors: Colors) {
     // away as soon as the text changes.
     nameError: {
       fontSize: font.sm,
-      color: colors.red,
+      color: colors.redText,
       marginTop: spacing.xxs,
     },
     // The fourth caption treatment, and the loudest of them — semibold on

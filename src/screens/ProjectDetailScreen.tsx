@@ -2716,7 +2716,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   infoLinkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 32 },
   infoLinkText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
   infoLinkHost: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
-  summaryOverdue: { color: colors.orange },
+  summaryOverdue: { color: colors.orangeText },
   summarySoon: { color: colors.text, fontWeight: fontWeight.medium },
   summaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   // The same drop slot Today leaves in a stack.

@@ -550,7 +550,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipText: { color: colors.text, fontSize: font.sm },
   hint: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xs },
-  error: { color: colors.red, fontSize: font.sm, marginTop: spacing.sm },
+  error: { color: colors.redText, fontSize: font.sm, marginTop: spacing.sm },
   actions: { marginTop: spacing.lg, gap: spacing.xs },
   action: {
     backgroundColor: colors.bgSecondary,
@@ -559,5 +559,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   actionText: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.medium },
-  actionDestructive: { color: colors.red },
+  actionDestructive: { color: colors.redText },
 });

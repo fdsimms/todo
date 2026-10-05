@@ -578,7 +578,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   timePillLabel: { color: colors.textTertiary, fontSize: font.xs },
   timePillValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
-  warningText: { color: colors.orange, fontSize: font.xs },
+  warningText: { color: colors.orangeText, fontSize: font.xs },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

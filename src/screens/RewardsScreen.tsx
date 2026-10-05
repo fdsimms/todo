@@ -73,6 +73,11 @@ import type { CoinEntry, Reward, Task } from '../types';
 /** How many history rows to draw. The balance is still summed over all of them. */
 const HISTORY_LIMIT = 50;
 
+/** Rows each long section shows before "Show more", and how many that button reveals. */
+const HISTORY_PREVIEW = 5;
+const HISTORY_STEP = 20;
+const LIST_PREVIEW = 4;
+
 /** The coin beside the balance. A hero, so a literal size like the number's own. */
 const BALANCE_COIN_SIZE = 52;
 
@@ -93,6 +98,15 @@ type Draft =
   | { mode: 'new' }
   | { mode: 'edit'; id: string }
   | { mode: 'item'; taskId: string };
+
+/** The footer row of a card that shows only part of its list. */
+function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () => void; styles: ReturnType<typeof makeStyles> }) {
+  return (
+    <View style={[styles.historyRow, styles.historyDivider, styles.showMore]}>
+      <InlineAction label={label} variant="neutral" onPress={() => { haptics.tap(); onPress(); }} />
+    </View>
+  );
+}
 
 export function RewardsScreen() {
   const colors = useColors();
@@ -163,6 +177,9 @@ export function RewardsScreen() {
   // Ideas are the whole section while you have no rewards, and a button away
   // once you do, so a list you've made your own isn't crowded by suggestions.
   const [ideasOpen, setIdeasOpen] = useState(false);
+  // How coins are earned and lost is reference text, not something to read on
+  // every visit, so it stays folded behind the header's help button.
+  const [rulesOpen, setRulesOpen] = useState(false);
   const showIdeas = ideas.length > 0 && (openRewards.length === 0 || ideasOpen);
 
   // The list whose items can be priced as rewards. Only offered at all while
@@ -176,6 +193,10 @@ export function RewardsScreen() {
     [list, tasks, pricedTaskIds],
   );
   const [listPickerOpen, setListPickerOpen] = useState(false);
+  // Long sections show a few rows and grow on request, so a big wish list or a
+  // year of history doesn't push everything else off the page.
+  const [historyShown, setHistoryShown] = useState(HISTORY_PREVIEW);
+  const [listExpanded, setListExpanded] = useState(false);
 
   // Live bounties, worth the most first. Posted from a task's editor, so this
   // section lists and withdraws them rather than posting.
@@ -332,8 +353,16 @@ export function RewardsScreen() {
   }, [setEnabled]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => (enabled
-    ? [{ icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' }]
-    : []), [enabled, turnOff]);
+    ? [
+        {
+          icon: 'help-circle-outline',
+          onPress: () => setRulesOpen(open => !open),
+          active: rulesOpen,
+          accessibilityLabel: rulesOpen ? 'Hide how coins work' : 'Show how coins work',
+        },
+        { icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' },
+      ]
+    : []), [enabled, turnOff, rulesOpen]);
 
   if (!enabled) {
     return (
@@ -354,7 +383,11 @@ export function RewardsScreen() {
     );
   }
 
-  const history = entries.slice(0, HISTORY_LIMIT);
+  const recentEntries = entries.slice(0, HISTORY_LIMIT);
+  const history = recentEntries.slice(0, historyShown);
+  const historyHidden = recentEntries.length - history.length;
+  const pickableItems = listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id));
+  const pickableShown = listExpanded ? pickableItems : pickableItems.slice(0, LIST_PREVIEW);
   const linkApps = linkAppsFor(kitchenEnabled);
   const customLink = knownLinkAppFor(draftLink) ? '' : draftLink;
 
@@ -587,7 +620,7 @@ export function RewardsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
+      <ScreenHeader title="Rewards" actions={actions} />
       <ScrollView
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
@@ -604,7 +637,7 @@ export function RewardsScreen() {
             <Reanimated.View style={coinStyle}>
               <CoinIcon size={BALANCE_COIN_SIZE} color={colors.warning} filled />
             </Reanimated.View>
-            <Text style={[styles.balance, balance < 0 && { color: colors.red }]}>{balance}</Text>
+            <Text style={[styles.balance, balance < 0 && { color: colors.redText }]}>{balance}</Text>
           </View>
           <Text style={styles.balanceUnit}>{Math.abs(balance) === 1 ? 'coin' : 'coins'}</Text>
           {goal && goalShown && (
@@ -624,9 +657,11 @@ export function RewardsScreen() {
               </Text>
             </View>
           )}
+          {rulesOpen && (
           <Text style={styles.rule}>
             {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
           </Text>
+          )}
         </View>
 
         <Text style={styles.sectionHeader}>Rewards</Text>
@@ -700,25 +735,30 @@ export function RewardsScreen() {
             ) : (
               <>
                 {draft?.mode === 'item' && renderDraft()}
-                {listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id)).length === 0 ? (
+                {pickableItems.length === 0 ? (
                   draft?.mode !== 'item' && (
                     <EmptyNote icon="list-outline">{`Everything on ${list.title} is already a reward.`}</EmptyNote>
                   )
                 ) : (
                   <View style={styles.historyCard}>
-                    {listItems
-                      .filter(t => !(draft?.mode === 'item' && draft.taskId === t.id))
-                      .map((item, i) => (
-                        <View key={item.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
-                          <Text style={[styles.historyLabel, styles.historyText]}>{item.title}</Text>
-                          <InlineAction
-                            label="Price it"
-                            icon="pricetag-outline"
-                            onPress={() => openDraft({ mode: 'item', taskId: item.id })}
-                            accessibilityLabel={`Make ${item.title} a reward`}
-                          />
-                        </View>
-                      ))}
+                    {pickableShown.map((item, i) => (
+                      <View key={item.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                        <Text style={[styles.historyLabel, styles.historyText]}>{item.title}</Text>
+                        <InlineAction
+                          label="Price it"
+                          icon="pricetag-outline"
+                          onPress={() => openDraft({ mode: 'item', taskId: item.id })}
+                          accessibilityLabel={`Make ${item.title} a reward`}
+                        />
+                      </View>
+                    ))}
+                    {pickableItems.length > LIST_PREVIEW && (
+                      <ShowMoreRow
+                        label={listExpanded ? 'Show less' : `Show ${pickableItems.length - LIST_PREVIEW} more`}
+                        onPress={() => setListExpanded(open => !open)}
+                        styles={styles}
+                      />
+                    )}
                   </View>
                 )}
                 <View style={styles.addRow}>
@@ -776,12 +816,19 @@ export function RewardsScreen() {
                 </View>
                 <View style={styles.amountRow}>
                   <CoinIcon size={iconSize.sm} color={colors.warning} filled />
-                  <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.green : colors.red }]}>
+                  <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.greenText : colors.redText }]}>
                     {signedAmount(entry)}
                   </Text>
                 </View>
               </View>
             ))}
+            {(historyHidden > 0 || historyShown > HISTORY_PREVIEW) && (
+              <ShowMoreRow
+                label={historyHidden > 0 ? `Show ${Math.min(historyHidden, HISTORY_STEP)} more` : 'Show less'}
+                onPress={() => setHistoryShown(n => (historyHidden > 0 ? n + HISTORY_STEP : HISTORY_PREVIEW))}
+                styles={styles}
+              />
+            )}
           </View>
         )}
       </ScrollView>
@@ -915,6 +962,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   historyDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   historyText: { flex: 1 },
+  showMore: { justifyContent: 'center' },
   historyLabel: { color: colors.text, fontSize: font.md },
   historyMeta: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   historyAmount: { fontSize: font.md, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },

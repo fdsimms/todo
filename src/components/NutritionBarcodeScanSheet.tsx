@@ -232,7 +232,7 @@ function makeStyles(colors: Colors) {
     body: { padding: spacing.md, gap: spacing.sm },
     statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     hint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
-    error: { color: colors.red, fontSize: font.sm, lineHeight: 18 },
+    error: { color: colors.redText, fontSize: font.sm, lineHeight: 18 },
     tryAgainRow: { flexDirection: 'row' },
   });
 }

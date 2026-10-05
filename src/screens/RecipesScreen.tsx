@@ -1212,7 +1212,7 @@ const RecipeRow = React.memo(function RecipeRow({
         </Text>
       </View>
       {recipe.vote === 'loved' && (
-        <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
+        <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orangeText} />
       )}
       {/* The third of the row's icon buttons, and the quietest of them:
           tertiary until tapped, where Plan is accent. A button rather than a
