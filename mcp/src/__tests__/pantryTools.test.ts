@@ -277,7 +277,13 @@ describe('pantry undo and log_leftover', () => {
     calendarRequest: () => null,
   });
 
-  const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry').sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+  // Newest by insertion order: two writes in the same millisecond share an `at`,
+  // and sorting on it alone picked the earlier one about one run in five.
+  const latest = () => {
+    const row = mockRaw.getFirstSync<{ id: string }>(
+      "SELECT id FROM unattended_log WHERE subject = 'pantry' ORDER BY rowid DESC LIMIT 1");
+    return dbGetUnattendedLog().find(e => e.id === row?.id)!;
+  };
 
   beforeAll(() => {
     replica = openReplica(':memory:');
