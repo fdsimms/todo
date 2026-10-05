@@ -96,12 +96,20 @@ describe('the catalog tools', () => {
       const aisle = replica.aisleNames().find(a => a !== replica.groceryItems()[0].aisle)!;
       updateGroceryItem(replica, { name: 'garbanzos', aisle });
       const key = replica.groceryItems().find(i => i.name === 'garbanzos')!.nameKey;
+      mockRaw.runSync(
+        "INSERT INTO recipes (id, name, name_key, ingredients, steps, created_at) VALUES ('r1','Hummus','hummus',?, '[]', ?)",
+        [JSON.stringify([{ id: 'i1', name: 'Garbanzos', nameKey: key, quantity: '1 can', section: null, choiceGroup: null, prep: null }]), new Date().toISOString()],
+      );
       expect(() => updateGroceryItem(replica, { name: 'garbanzos', rename: 'Chickpeas' })).toThrow(/already an item/);
       updateGroceryItem(replica, { name: 'garbanzos', rename: 'Garbanzo beans' });
       expect(replica.groceryItems().some(i => i.name === 'Garbanzo beans')).toBe(true);
       const renamed = replica.groceryItems().find(i => i.name === 'Garbanzo beans')!;
       expect(replica.aisleOverrides()[key]).toBeUndefined();
       expect(replica.aisleOverrides()[renamed.nameKey]).toBe(aisle);
+      // The recipe keeps its own wording and follows the item, and that
+      // survives a reload (the key is re-read from the stored line).
+      const line = replica.recipes().find(r => r.id === 'r1')!.ingredients[0];
+      expect(line).toMatchObject({ name: 'Garbanzos', nameKey: renamed.nameKey });
     });
 
     it('links stores and substitutes, and removes them', () => {

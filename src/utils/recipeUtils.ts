@@ -103,10 +103,17 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     }
   }
 
+  const derivedKey = groceryNameKey(name);
+  const repointedKey = typeof r.catalogKey === 'string' && r.catalogKey
+    && r.nameKey === r.catalogKey && r.catalogKey !== derivedKey
+    ? r.catalogKey
+    : null;
   const normalized: RecipeIngredient = {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     name,
-    nameKey: groceryNameKey(name),
+    // The derived key, unless a catalog rename repointed this line and nothing
+    // has edited the label since (see `RecipeIngredient.catalogKey`).
+    nameKey: repointedKey ?? groceryNameKey(name),
     quantity: typeof r.quantity === 'string'
       ? r.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH)
       : '',
@@ -122,6 +129,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   };
   // Same "written only when present" rule as noSwap/optional below — most
   // lines never have one.
+  if (repointedKey) normalized.catalogKey = repointedKey;
   if (example) normalized.example = example;
   // Written only when it's true, which is what makes the field optional worth
   // anything: "keep as written" is off for nearly every line in the app, and
@@ -396,7 +404,9 @@ export function remapIngredientKeyIn(
     changed.push({
       ...recipe,
       ingredients: recipe.ingredients.map(i =>
-        i.nameKey === fromKey ? { ...i, nameKey: toKey } : i
+        // `catalogKey` is what lets the repoint survive the next load, which
+        // recomputes `nameKey` from the label.
+        i.nameKey === fromKey ? { ...i, nameKey: toKey, catalogKey: toKey } : i
       ),
     });
   }
