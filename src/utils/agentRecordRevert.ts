@@ -1,4 +1,5 @@
 import type { CalendarRequestStatus, Project, UnattendedEntry } from '../types';
+import { catalogRecordPlan, type CatalogRecordPlan, type CatalogRecordState } from './agentCatalogRevert';
 import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from './agentPantryRevert';
 
 /**
@@ -37,7 +38,7 @@ export type RuleListName = 'title' | 'weather' | 'event' | 'health' | 'screenTim
 export const RULE_LIST_NAMES: readonly RuleListName[] = ['title', 'weather', 'event', 'health', 'screenTime'];
 
 /** What the plan needs to know about the world, so it can be tested without a store. */
-export interface RecordState extends PantryRecordState {
+export interface RecordState extends PantryRecordState, CatalogRecordState {
   project(id: string): Project | null;
   /** The item's entry on the list at home, or null when it is not on it. */
   groceryHome(itemId: string): { checked: boolean } | null;
@@ -58,6 +59,7 @@ export type AgentRecordPlan =
   | { kind: 'noteAdd'; text: string }
   | { kind: 'cancelCalendarRequest'; id: string }
   | Exclude<PantryRecordPlan, { kind: 'none' }>
+  | Exclude<CatalogRecordPlan, { kind: 'none' }>
   | { kind: 'none'; reason: string | null };
 
 const NONE: AgentRecordPlan = { kind: 'none', reason: null };
@@ -153,6 +155,9 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
     case 'pantry':
       return pantryRecordPlan(entry, state);
 
+    case 'catalog':
+      return catalogRecordPlan(entry, state);
+
     default:
       return NONE;
   }
@@ -172,7 +177,10 @@ export function agentRecordLabel(plan: AgentRecordPlan): string | null {
     case 'noteAdd':
     case 'restorePantryItem':
     case 'restoreLeftover':
+    case 'restoreCatalogItem':
       return 'Undo';
+    case 'restoreDeletedItem':
+      return 'Restore';
     // Not "Cancel": the confirmation's own dismiss button already says that.
     case 'cancelCalendarRequest':
       return 'Don’t add';
