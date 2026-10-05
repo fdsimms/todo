@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
 import { InputAccessoryView, Keyboard, Platform, StyleSheet, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, type Colors } from '../theme';
+import { spacing, type Colors } from '../theme';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import {
   isTopAccessory,
@@ -57,7 +57,7 @@ export function NumberPadAccessory() {
 
   const styles = makeStyles(colors);
   return (
-    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor="transparent">
+    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
       <View style={styles.bar}>
         <SheetHeaderButton label="Done" onPress={() => Keyboard.dismiss()} />
       </View>
@@ -74,10 +74,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
-    // Same rounded top as TitleTokenAccessory's bar, so every accessory
-    // bar meets the keyboard's corners the same way.
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    borderCurve: 'continuous',
   },
 });
