@@ -78,6 +78,9 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
   const matched = replica
     .tasks()
     .filter(isTopLevel)
+    // Archived is "out of every list" in the app (CLAUDE.md, "Projects"); an
+    // open archived row would otherwise fall through the other lenses into later.
+    .filter(t => !t.archived)
     .filter(t => (input.includeCompleted ? true : !t.completed))
     .filter(t => (input.category ? t.category === input.category : true))
     .filter(t => (input.tag ? t.tags.includes(input.tag) : true))
@@ -172,8 +175,12 @@ export interface GetTaskResult {
   window?: { start?: string; end?: string };
   /** Present only for a "don't do this" habit, which is never completed. */
   habit?: 'avoid';
-  /** The tasks this one is waiting on. */
-  waitsOn?: { id: string; title: string; done: boolean }[];
+  /**
+   * The tasks still holding this one back: `blockedById` and `blockedByIds`,
+   * read through the app's `liveBlockersOf`, so a finished, archived or
+   * deleted blocker is not listed (it holds nothing).
+   */
+  waitsOn?: { id: string; title: string }[];
   /** Shown only for these answers to that task's question; `answered` is what it got, once it has. */
   onlyIfAnswer?: { taskId: string; question: string; answers: string[]; answered?: string };
   /** "Every Nth completion, add this task." */
@@ -344,12 +351,8 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
       : undefined,
     habit: task.polarity === 'negative' ? 'avoid' : undefined,
     waitsOn: (() => {
-      const ids = [task.blockedById, ...(task.blockedByIds ?? [])].filter((id): id is string => !!id);
-      if (ids.length === 0) return undefined;
-      return ids.map(id => {
-        const b = replica.taskById(id);
-        return { id, title: b ? replica.displayTitle(b) : '(deleted task)', done: b ? b.completed : true };
-      });
+      const live = replica.liveBlockers(task);
+      return live.length > 0 ? live.map(b => ({ id: b.id, title: replica.displayTitle(b) })) : undefined;
     })(),
     onlyIfAnswer: task.answerGate
       ? (() => {
@@ -779,7 +782,7 @@ export function completeTask(
   const spawned: string[] = [];
   if (result.nextTask) {
     const when = result.nextTask.dueDate
-      ? `due ${result.nextTask.dueDate.slice(0, 10)}`
+      ? `due ${replica.dayKeyOf(result.nextTask.dueDate)}`
       : 'with no date';
     spawned.push(`The next occurrence was created, ${when}.`);
   }
@@ -986,7 +989,7 @@ export function applyTemplate(replica: Replica, ref: string, input: ApplyTemplat
     projectId: input.projectId,
   });
   return {
-    created: result.tasks.map(t => ({ id: t.id, title: t.title, ...(t.dueDate ? { dueDate: t.dueDate.slice(0, 10) } : {}) })),
+    created: result.tasks.map(t => ({ id: t.id, title: t.title, ...(t.dueDate ? { dueDate: replica.dayKeyOf(t.dueDate) } : {}) })),
     ...(result.container ? { container: result.container } : {}),
   };
 }

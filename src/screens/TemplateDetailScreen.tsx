@@ -221,9 +221,9 @@ export function TemplateDetailScreen() {
   const handleUngroup = (groupId: string, title: string) => {
     haptics.warning();
     confirmDelete({
-      title: 'Unstack',
-      message: `Remove the "${title}" stack? Its items stay in the template.`,
-      confirmLabel: 'Unstack',
+      title: 'Ungroup',
+      message: `Remove the "${title}" group? Its items stay in the template.`,
+      confirmLabel: 'Ungroup',
       onConfirm: () => {
         if (!templateId) return;
         animateLayout();
@@ -718,7 +718,7 @@ function TemplateGroupHeader({
       <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.groupHeaderText}>{title}</Text>
       <Text style={styles.groupHeaderCount}>{count}</Text>
-      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Unstack ${title}`}>
+      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
         <Ionicons name="close-circle-outline" size={16} color={colors.textTertiary} />
       </TouchableOpacity>
     </TouchableOpacity>

@@ -20,6 +20,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     deliverableKind: () => null,
     deliverableOptions: () => [],
     isBlocked: (t: Task) => !!t.blockedById,
+    liveBlockers: (t: Task) => tasks.filter(b => b.id === t.blockedById && !b.completed && !b.archived),
     isNotNeeded: () => false,
     ...over,
   } as unknown as Replica;
@@ -41,6 +42,14 @@ describe('getProject', () => {
     expect(result.open.map(t => t.id)).toEqual(['a', 'b']);
     expect(result.open[1]).toMatchObject({ subtasks: [{ id: 's', title: 'Rollers', done: false }], waitsOn: ['a'], blocked: true });
     expect(result.recentlyDone).toEqual([{ id: 'd', title: 'Measure', completedAt: '2026-10-01T10:00:00.000Z' }]);
+  });
+
+  it('does not name a finished blocker as waitsOn', () => {
+    const done = task({ id: 'a', title: 'Pick colour', completed: true, completedAt: '2026-10-01T10:00:00' });
+    const after = task({ id: 'b', title: 'Buy paint', blockedById: 'a' });
+    const result = getProject(stub([done, after], { isBlocked: () => false }), 'p1')!;
+    expect(result.open.map(t => t.id)).toEqual(['b']);
+    expect(result.open[0].waitsOn).toBeUndefined();
   });
 
   it('lists decisions from the replica, and carries an answer onto a recently done row', () => {

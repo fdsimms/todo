@@ -1,0 +1,4 @@
+{
+  "message": "The Claude app and claude.ai can now connect to your sync server as a custom connector, signing in with the password you set on the server. Writing is a separate permission you grant per connection.",
+  "date": "2026-10-05"
+}

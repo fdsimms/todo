@@ -118,7 +118,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
     if (!template) return;
     haptics.warning();
     const referencing = findTemplatesReferencing(templates, template.id);
-    const base = `Delete "${template.name}"? Tasks already created from it are unaffected. This can be undone with shake-to-undo.`;
+    const base = `Delete "${template.name}"? Tasks already created from it are unaffected. You can shake to undo this right after.`;
     const message = referencing.length === 0
       ? base
       : referencing.length === 1

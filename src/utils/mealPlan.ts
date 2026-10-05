@@ -580,7 +580,7 @@ export function describeWeekRange(days: readonly Date[]): string {
     last,
     !sameYear ? 'MMM d, yyyy' : first.getMonth() === last.getMonth() ? 'd' : 'MMM d'
   );
-  return `${start} – ${end}`;
+  return `${start}–${end}`;
 }
 
 /**

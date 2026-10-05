@@ -370,7 +370,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       <Text style={styles.rowTime}>
                         {event.allDay
                           ? 'All day'
-                          : `${formatTimeOfDay(new Date(event.start))} – ${formatTimeOfDay(new Date(event.end))}`}
+                          : `${formatTimeOfDay(new Date(event.start))}–${formatTimeOfDay(new Date(event.end))}`}
                       </Text>
                       {/* Which calendar, when it's worth saying — see Props.calendarsById. */}
                       {calendar && (

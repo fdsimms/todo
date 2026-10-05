@@ -329,7 +329,10 @@ export function completionHistory(replica: Replica, input: CompletionHistoryInpu
     !t.parentId
     && t.completed
     && (input.category ? t.category === input.category : true)
-    && (input.projectId ? t.projectId === input.projectId : true)
+    // A project's history leaves archived rows out, as every reader of a
+    // project's members does (CLAUDE.md, "Projects"); the whole log keeps
+    // them, as the Logbook does.
+    && (input.projectId ? t.projectId === input.projectId && !t.archived : true)
     && (input.tag ? t.tags.includes(input.tag) : true)
     && inRange(t);
 

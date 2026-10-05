@@ -582,7 +582,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
           }
           const details = parseToolText(out);
           if (details && typeof details === 'object' && 'error' in details) return out;
-          const willDo = describeEffects(effects);
+          const willDo = describeEffects(effects, replica.dayKeyOf);
           return json({
             preview: true,
             willDo: willDo.length > 0 ? willDo : ['Nothing in the app would change.'],

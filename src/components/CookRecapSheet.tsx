@@ -549,7 +549,7 @@ export function CookRecapSheet({
                 <Text style={styles.groupLabel}>{showPantry ? 'Restock' : 'Restock?'}</Text>
                 {!hideHelpText && (
                   <Text style={styles.hint}>
-                    Ingredients from this recipe that aren’t on your shopping list. Checked ones get added when
+                    Ingredients from this recipe that aren’t on your grocery list. Checked ones get added when
                     you tap Add.
                   </Text>
                 )}
@@ -568,7 +568,7 @@ export function CookRecapSheet({
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: on }}
                           accessibilityLabel={[row.name, shownQuantity].filter(Boolean).join(', ')}
-                          accessibilityHint="Adds it to your shopping list"
+                          accessibilityHint="Adds it to your grocery list"
                         >
                           <View style={[styles.checkbox, on && styles.checkboxOn]}>
                             {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
@@ -592,7 +592,7 @@ export function CookRecapSheet({
                     label={`Add ${restockAddCount} to list`}
                     icon="basket-outline"
                     onPress={handleAddToList}
-                    accessibilityLabel={`Add ${restockAddCount} ingredient${restockAddCount === 1 ? '' : 's'} to your shopping list`}
+                    accessibilityLabel={`Add ${restockAddCount} ingredient${restockAddCount === 1 ? '' : 's'} to your grocery list`}
                     style={styles.restockAdd}
                   />
                 )}

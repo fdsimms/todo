@@ -157,7 +157,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     <>
       <SettingsSection
         label="App lock"
-        footer={`Everything the app knows sits on this device, so an unlocked phone is the only thing between someone and your whole task list. This puts ${lockLabel} in front of it, with your device passcode as the fallback, the same as anywhere else. The grace period is there so switching to Messages and back doesn't ask again.`}
+        footer={`All of the app's data is stored on this device. Requires ${lockLabel} to open the app, with your device passcode as the fallback. The grace period sets how long after leaving the app you can come back without unlocking again.`}
       >
         <SettingsRow
           entryId="appLock"

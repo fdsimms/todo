@@ -1,0 +1,4 @@
+{
+  "message": "When Claude reads a task, it now sees whether finishing it late costs blocked apps, how many times it has slipped, and any bounty on it, so it knows what deferring or missing one would cost. It still cannot change any of them.",
+  "date": "2026-10-05"
+}

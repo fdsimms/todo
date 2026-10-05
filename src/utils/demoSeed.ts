@@ -446,7 +446,7 @@ export function seedDemoData(): void {
   // due date otherwise falls in.
   addTask({
     title: 'Renew passport',
-    notes: 'Expires in June — starting the paperwork in April keeps it well ahead of any trip.',
+    notes: 'Expires in June. Starting the paperwork in April keeps it well ahead of any trip.',
     category: 'Errands',
     dueDate: new Date(today.getFullYear(), 3, 15).toISOString(),
     recurrenceType: 'yearly',
@@ -1230,7 +1230,7 @@ export function seedDemoData(): void {
   });
   // Where the trip's booking lives, kept on the project page (Project.links).
   updateProject(lisbon.id, {
-    links: [{ id: 'demo-lisbon-flat', label: 'The flat in Alfama', url: 'https://example.com/lisbon-flat' }],
+    links: [{ id: 'demo-lisbon-flat', label: 'The apartment in Alfama', url: 'https://example.com/lisbon-flat' }],
   });
 
   // A party: RSVPs as one Pick-one task per guest, counted on the project page

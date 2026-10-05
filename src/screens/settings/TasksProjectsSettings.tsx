@@ -280,7 +280,7 @@ export function TasksProjectsSettings() {
           is a reason to meet them after the rest, not before it. */}
       <SettingsSection
         label="New tasks"
-        footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick. Typing a date in quick-add still wins over the destination below."
+        footer="What a fresh task starts with, and where quick add files it before you type anything. None of these override a value you actually pick. Typing a date in quick add still wins over the destination below."
       >
         <SettingsRow
   entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
@@ -328,13 +328,13 @@ export function TasksProjectsSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
-  entryId="newTaskDestination" icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date." tight />
+  entryId="newTaskDestination" icon="albums-outline" label="Where quick add lands" hint="Which list a quick-added task files into before you set a date." tight />
         <SettingsSegments
           attached
           options={NEW_TASK_DESTINATION_OPTIONS}
           selected={newTaskDefaults.destination}
           onSelect={destination => setNewTaskDefaults({ destination })}
-          accessibilityLabelFor={o => `Quick-add destination: ${o.label}`}
+          accessibilityLabelFor={o => `Quick add destination: ${o.label}`}
         />
         <View style={styles.sep} />
         <SettingsRow
@@ -727,7 +727,7 @@ export function TasksProjectsSettings() {
               label="Block apps until a task is done"
               hint={gateShieldEnabled
                 ? 'Tasks you mark keep the same apps blocked while they sit on Today undone. Finishing one, or moving it to another day, unblocks them'
-                : 'No task holds your apps'}
+                : 'No tasks block apps'}
               toggle={gateShieldEnabled}
               onPress={handleToggleGate}
             />

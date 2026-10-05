@@ -1,0 +1,4 @@
+{
+  "message": "Every task Claude creates now gets one of your categories. It is refused without one unless the project supplies a default or a title rule picks it, and a category name that isn't yours is refused rather than created unless Claude asks for a new one.",
+  "date": "2026-10-05"
+}

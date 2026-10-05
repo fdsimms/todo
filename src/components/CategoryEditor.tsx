@@ -171,8 +171,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     Alert.alert(
       defaultSegments.length > 0 ? `Move to ${segmentsSummary}?` : 'Clear time of day?',
       defaultSegments.length > 0
-        ? `${pendingCount} ${noun} in "${category}" will be held back until ${defaultSegments.join(' or ')} each day. This can be undone with shake-to-undo.`
-        : `${pendingCount} ${noun} in "${category}" will lose their time of day and show from the start of the day. This can be undone with shake-to-undo.`,
+        ? `${pendingCount} ${noun} in "${category}" will be held back until ${defaultSegments.join(' or ')} each day. You can shake to undo this right after.`
+        : `${pendingCount} ${noun} in "${category}" will lose their time of day and show from the start of the day. You can shake to undo this right after.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -253,8 +253,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     confirmDelete({
       title: 'Delete category',
       message: taskCount > 0
-        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. This can be undone with shake-to-undo.`
-        : `Delete "${category}"? This can be undone with shake-to-undo.`,
+        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. You can shake to undo this right after.`
+        : `Delete "${category}"? You can shake to undo this right after.`,
       onConfirm: () => { Keyboard.dismiss(); animateLayout(); deleteCategory(category); onClose(); },
     });
   };

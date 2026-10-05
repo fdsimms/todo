@@ -196,6 +196,14 @@ describe('completionHistory', () => {
     expect(cut.summary.completed).toBe(3);
   });
 
+  it("leaves an archived task out of a project's history, as the app's project readers do", () => {
+    const filed = task({ id: 'filed', title: 'Draft', completed: true, completedAt: '2026-10-03T09:00:00', projectId: 'p1', archived: true });
+    const r = stub([...tasks, filed], { projects: () => [project({ id: 'p1', title: 'Q4 report' })] });
+    expect(completionHistory(r, { days: 7, projectId: 'p1' }).tasks.map(t => t.id)).toEqual(['b']);
+    // The whole log keeps it, as the Logbook does.
+    expect(completionHistory(r, { days: 7 }).tasks.map(t => t.id)).toContain('filed');
+  });
+
   it('refuses a backwards range', () => {
     expect(() => completionHistory(replica, { from: '2026-10-05', to: '2026-10-01' })).toThrow(/after/);
   });

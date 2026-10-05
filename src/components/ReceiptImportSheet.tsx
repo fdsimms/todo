@@ -915,7 +915,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         <Text style={styles.intro}>
           {receipt.lines.length} {receipt.lines.length === 1 ? 'line' : 'lines'} read
           {receipt.totalMinor !== null
-            ? `, totalling ${formatPrice(receipt.totalMinor, currencySymbol)}`
+            ? `, totaling ${formatPrice(receipt.totalMinor, currencySymbol)}`
             : ''}
           . Nothing is recorded until you {pantry ? 'tap Add' : 'finish shopping'}.
         </Text>

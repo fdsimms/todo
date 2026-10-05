@@ -373,7 +373,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
 
             <Text style={styles.footerNote}>
               This records that the store has them, not that you’ve bought them there, so it
-              counts toward what a trip covers without pretending to be history. To take one back
+              counts toward what a trip covers but isn’t recorded as a purchase. To take one back
               off, open the item and use its store list.
             </Text>
           </ScrollView>

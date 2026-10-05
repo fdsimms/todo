@@ -431,7 +431,7 @@ export function LogbookScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Clear Logbook',
-      message: `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the logbook? This can be undone with shake-to-undo.`,
+      message: `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the Logbook? You can shake to undo this right after.`,
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();
@@ -446,7 +446,7 @@ export function LogbookScreen() {
     haptics.warning();
     confirmDelete({
       title: 'Delete Entry',
-      message: `Delete "${displayTitleFor(task)}" from the logbook? You can undo this by shaking your phone right after.`,
+      message: `Delete "${displayTitleFor(task)}" from the Logbook? You can undo this by shaking your phone right after.`,
       onConfirm: () => {
         animateLayout();
         deleteTask(task.id);
@@ -544,7 +544,7 @@ export function LogbookScreen() {
             icon: 'trash-outline',
             onPress: handleClearLogbook,
             disabled: selectionMode,
-            accessibilityLabel: 'Clear logbook',
+            accessibilityLabel: 'Clear Logbook',
           },
         ] : undefined, screenSettings.action)}
       />
@@ -597,7 +597,7 @@ export function LogbookScreen() {
                 }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel="Filter logbook"
+                accessibilityLabel="Filter Logbook"
               >
                 <Ionicons name="funnel-outline" size={13} color={colors.text} />
                 <Text style={styles.filterButtonText}>Filter</Text>

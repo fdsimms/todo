@@ -28,11 +28,17 @@ describe('confirm tokens', () => {
 });
 
 describe('describeEffects', () => {
+  // The replica's dayKeyOf: the local calendar day of an instant.
+  const dayOf = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   it('says plainly that a deleted template is not an archive', () => {
     expect(describeEffects([
       { action: 'cleared', subject: 'template', title: 'Trip', taskId: null },
       { action: 'moved', subject: 'template', title: '3 templates', taskId: null },
-    ])).toEqual([
+    ], dayOf)).toEqual([
       'Delete the template "Trip". It cannot be restored from here.',
       'Reorder "3 templates"',
     ]);
@@ -44,11 +50,11 @@ describe('describeEffects', () => {
       { action: 'edited', subject: 'task', title: 'Call the bank', taskId: 't',
         revert: { before: { title: 'Call bank', seenAt: null }, after: { title: 'Call the bank', seenAt: 'x' } } },
       { action: 'moved', subject: 'task', title: 'Taxes', taskId: 't',
-        revert: { before: { dueDate: '2026-10-04T04:00:00.000Z' }, after: { dueDate: '2026-10-07T04:00:00.000Z' } } },
+        revert: { before: { dueDate: '2026-10-04T00:00:00' }, after: { dueDate: '2026-10-07T00:00:00' } } },
       { action: 'created', subject: 'project', title: 'Move', taskId: null, count: 4 },
       { action: 'created', subject: 'grocery', title: 'Oat milk', taskId: null },
       { action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null },
-    ])).toEqual([
+    ], dayOf)).toEqual([
       'Create the task "Pay rent"',
       'Change "Call the bank": title from "Call bank" to "Call the bank"',
       'Move "Taxes": date from 2026-10-04 to 2026-10-07',

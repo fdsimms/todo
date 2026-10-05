@@ -433,6 +433,13 @@ export interface Replica {
   isUnscheduled(task: Task): boolean;
   isInbox(task: Task): boolean;
   isBlocked(task: Task): boolean;
+  /**
+   * The tasks this one still waits on: the blockers that can still hold it
+   * (`liveBlockersOf`), so a finished, archived or deleted one is not named.
+   * The answer-gate question that read also lists is left out, since the
+   * tools report it on its own (`onlyIfAnswer`).
+   */
+  liveBlockers(task: Task): Task[];
   /** On a branch that wasn't taken: its answer gate's question got another answer (`isTaskNotNeeded`). */
   isNotNeeded(task: Task): boolean;
   visibleAt(task: Task): Date;
@@ -486,6 +493,13 @@ export interface Replica {
   lookAhead(days: number): LookAhead;
   /** The logical day an instant falls on, under the user's `dayResetTime`. */
   logicalDayKeyOf(iso: string): string;
+  /**
+   * The calendar day an instant falls on, for a date the app anchors to a
+   * day's own start (`dueDate`, `deadline`, `deferUntil`): the app's own
+   * `dayKeyOf`, so a date at local midnight is neither the day before under a
+   * late `dayResetTime` nor the UTC date cut off the string.
+   */
+  dayKeyOf(iso: string): string;
   /** Completed by a person, as opposed to swept as missed. Every statistic counts only these. */
   isRealCompletion(task: Task): boolean;
   /** The app's own line on a live bounty (what it is worth, what the next push costs), or null when there is none. */
@@ -1640,6 +1654,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),
+    liveBlockers: (task: Task) => {
+      const own = new Set(blocking.blockerIdsOf(task));
+      return blocking.liveBlockersOf(task, blocking.resolverFor(tasks())).filter(b => own.has(b.id));
+    },
     isNotNeeded: (task: Task) => visibility.isTaskNotNeeded(task),
     visibleAt: (task: Task) => visibility.getVisibleAt(task),
 
@@ -1710,6 +1728,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     logicalDayKeyOf: (iso: string) =>
       dates.getLogicalDayKey(new Date(iso), useSettingsStore.getState().dayResetTime),
+    dayKeyOf: (iso: string) => dates.dayKeyOf(new Date(iso)),
     isRealCompletion: (task: Task) => missed.isRealCompletion(task),
     describeBounty: (task: Task) => rewards.describeBounty(task),
     onTimeSummary: (list: readonly Task[]) => stats.onTimeSummary(list),

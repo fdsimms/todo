@@ -143,7 +143,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
       return;
     }
     if (result === 'invalid') {
-      Alert.alert('That is not a weight', 'Enter a number your scale could have shown.');
+      Alert.alert('Enter a weight', 'Enter your weight as a number.');
       return;
     }
     // Demo mode refuses the write before the device is ever asked (see

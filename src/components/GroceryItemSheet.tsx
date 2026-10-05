@@ -871,7 +871,7 @@ export function GroceryItemSheet({
         negative: marked,
         accessibilityLabel: marked
           ? `${shop.name}, marked as not having ${wantedProduct}. Tap to clear.`
-          : `${shop.name}. Tap to say they haven’t got ${wantedProduct}.`,
+          : `${shop.name}. Tap to say they don’t have ${wantedProduct}.`,
         onPress: () => {
           haptics.tap();
           setProductUnavailable(item.id, shop.id, !marked);
@@ -1247,7 +1247,7 @@ export function GroceryItemSheet({
             {item.productStrict && !!wantedProduct && (
               <View style={styles.brandAtBlock}>
                 <Text style={styles.label}>
-                  {`Haven’t got ${wantedProduct}`.toUpperCase()}
+                  {`Doesn’t have ${wantedProduct}`.toUpperCase()}
                 </Text>
                 <PillGroup options={productNegativeOptions} noun="store" />
                 {/* The rule that makes the whole feature safe, said where
@@ -1255,7 +1255,7 @@ export function GroceryItemSheet({
                 <Text style={styles.hint}>
                   Only what you’ve marked here is left out. A store you haven’t
                   marked still counts: stores carry several versions, so getting
-                  a different one somewhere isn’t knowing they haven’t got yours.
+                  a different one somewhere doesn’t mean they don’t have yours.
                 </Text>
               </View>
             )}
@@ -1423,7 +1423,7 @@ export function GroceryItemSheet({
                 : opened
                   ? 'The day this should be used up by, counted from when you opened it.'
                   : item.expiresAt
-                  ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
+                  ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go bad, and the use-up task is dated from it."
                   : "How long this keeps once bought. It doesn't count down yet: finishing a shopping trip starts the clock from there, and adds the use-up task.",
               describeDisposalHistory(item),
             ].filter(Boolean).join(' ')}

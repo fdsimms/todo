@@ -1,0 +1,4 @@
+{
+  "message": "Fixed Claude's requests to your sync server hanging until they timed out whenever one sync got stuck. A read now waits at most 20 seconds for a sync in progress, then answers from what the server has.",
+  "date": "2026-10-05"
+}
