@@ -18,7 +18,7 @@ import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getCurrentDayStart, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
 import { quotaRunSpan, quotaTargetForInterval } from './quotaSchedule';
-import { isRotationTask } from './rotation';
+import { isRotationTask, rotationTargetTotal } from './rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
 import { normalizeTargetUnit } from './quotaUnit';
 import {
@@ -113,7 +113,7 @@ export function derivedTargetCount(task: Pick<Task,
   // is nothing to type and nothing that could disagree with the set. It is
   // checked ahead of the interval because the two are not a combination the
   // editor offers and the set is the more specific claim.
-  if (isRotationTask(task)) return task.rotationItems!.length;
+  if (isRotationTask(task)) return rotationTargetTotal(task.rotationItems!);
   if (task.quotaIntervalMinutes == null) return task.targetCount;
   const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
   const span = quotaRunSpan({

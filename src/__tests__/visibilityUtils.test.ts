@@ -166,6 +166,7 @@ const baseTask: Task = {
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',

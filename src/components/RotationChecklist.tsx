@@ -65,6 +65,9 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
           >
             {member.item.title}
           </Text>
+          {member.perWeek > 1 && (
+            <Text style={styles.when}>{Math.min(member.count, member.perWeek)}/{member.perWeek}</Text>
+          )}
           <Text style={[styles.when, member.item.id === lastId && styles.whenLast]}>
             {whenText(member, lastId, asOf, dayStart)}
           </Text>

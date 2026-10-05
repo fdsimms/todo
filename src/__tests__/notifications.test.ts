@@ -155,6 +155,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   progressCount: 0,
   tags: [],
   sortOrder: 1,

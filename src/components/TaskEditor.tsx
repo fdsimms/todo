@@ -121,6 +121,7 @@ import { EditorRow } from './EditorRow';
 import { EditorGroup } from './EditorGroup';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
+import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
@@ -1976,6 +1977,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       kindMemory.current.healthTarget = healthTarget;
     }
 
+    // Coming to Rotation with nothing remembered from an earlier visit: start
+    // from the steps or subtasks the task already has instead of an empty set.
+    // Chain steps are the closer match (an ordered list the user wrote as the
+    // set), so they win over subtasks. Both stay where they are, so switching
+    // back loses nothing.
+    if (next === 'rotation' && kindMemory.current.rotationItems.length === 0) {
+      const existingSubtasks: { title: string; linkUrl?: string | null }[] = task
+        ? subtasksOf(task.id).filter(t => !t.completed)
+        : draftSubtasks;
+      const seeded = rotationItemsFrom(
+        chainItems.length > 0 ? chainItems : existingSubtasks,
+        generateId,
+      );
+      if (seeded.length > 0) kindMemory.current.rotationItems = seeded;
+    }
+
     const baked = bakedFields(next, {
       timedMinutes: kindMemory.current.timedMinutes ?? DEFAULT_TIMED_MINUTES,
       targetCount: kindMemory.current.targetCount ?? DEFAULT_TARGET_COUNT,
@@ -3711,13 +3728,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   label="Rotation"
                   summary={
                     rotationItems.length > 1
-                      ? `${rotationItems.length} things, one each a week`
+                      ? `${rotationItems.length} things, ${rotationTargetTotal(rotationItems)} times a week`
                       : rotationItems.length === 1
                         ? '1 thing, add one more'
                         : 'Nothing in the set yet'
                   }
                   hint={
-                    'A set of things to get through once each per week, in any order. '
+                    'A set of things to get through each week, in any order. Each one has its own number of times a week. '
                     + 'Checking the task off asks which one you did, and it only shows up on Today when you fall behind.'
                   }
                   expanded={fieldOpen('rotationSet', true)}
@@ -3732,6 +3749,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       data={rotationItems}
                       onReorder={setRotationItems}
                       renderItem={(item, _displayIndex, drag) => (
+                      <View>
                       <View style={styles.rotationItemRow}>
                         <TouchableOpacity
                           onLongPress={drag}
@@ -3765,6 +3783,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         >
                           <Ionicons name="close" size={14} color={colors.textSecondary} />
                         </TouchableOpacity>
+                      </View>
+                      <View style={styles.rotationCountRow}>
+                        <Text style={styles.rotationCountLabel}>Times a week</Text>
+                        <CountStepper
+                          value={rotationPerWeek(item)}
+                          min={1}
+                          max={MAX_ROTATION_PER_WEEK}
+                          label={`times a week for ${item.title || 'this item'}`}
+                          format={n => `${n}×`}
+                          onChange={n => setRotationItems(prev => prev.map(
+                            r => (r.id === item.id ? withPerWeek(r, n ?? 1) : r)))}
+                        />
+                      </View>
                       </View>
                       )}
                     />
@@ -7375,6 +7406,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   chainModeBlock: { marginTop: spacing.md },
+  // Under the name rather than beside it: the row already holds a drag handle, a
+  // link and a remove button, and the name is the thing that has to win the row.
+  rotationCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: spacing.lg,
+    paddingBottom: spacing.xsm,
+  },
+  rotationCountLabel: { color: colors.textSecondary, fontSize: font.xs },
   rotationItemRow: {
     flexDirection: 'row',
     alignItems: 'center',

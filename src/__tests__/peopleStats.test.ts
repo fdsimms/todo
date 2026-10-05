@@ -66,6 +66,7 @@ function task(over: Partial<Task> = {}): Task {
     rotationLog: [],
     rotationPeriodStart: null,
     rotationLastDone: {},
+    rotationPlan: null,
     ...over,
   };
 }

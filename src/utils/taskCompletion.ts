@@ -605,6 +605,8 @@ export function buildCompletion(
         // is history across every period, so both carry.
         rotationLog: [],
         rotationPeriodStart: null,
+        // A plan names one day, and that day belongs to this occurrence.
+        rotationPlan: null,
         // ...and starts it from the window again. A run begun by hand at
         // 10:30 is a statement about this morning, not about the schedule
         // (see Task.quotaStartedAt), so it rides no successor.

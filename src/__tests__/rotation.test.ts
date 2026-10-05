@@ -17,6 +17,16 @@ import {
   rotationRemaining,
   rotationSummary,
   rotationUnpick,
+  rotationUnpickUncovers,
+  rotationUnitsLeft,
+  rotationTargetTotal,
+  rotationPerWeek,
+  rotationItemsFrom,
+  rotationCoveredOf,
+  withPerWeek,
+  parseRotationPlan,
+  plannedRotationItem,
+  rotationPlanFor,
   type RotationCarrier,
 } from '../utils/rotation';
 
@@ -42,6 +52,7 @@ function rot(overrides: Partial<RotationCarrier> = {}): RotationCarrier {
     rotationLog: [],
     rotationPeriodStart: null,
     rotationLastDone: {},
+    rotationPlan: null,
     ...overrides,
   };
 }
@@ -343,5 +354,142 @@ describe('rotationLastPick', () => {
 
   it('says nothing for a task that is not a rotation', () => {
     expect(rotationLastPickLabel(rot({ rotationItems: [], rotationLastDone: { es: MON.toISOString() } }), WED, 1)).toBeNull();
+  });
+});
+
+// Three runs and one ride, in any order.
+const WORKOUTS = [
+  { id: 'run', title: 'Run', linkUrl: null, perWeek: 3 },
+  { id: 'bike', title: 'Peloton ride', linkUrl: null },
+];
+
+function workouts(entries: string[], dayStart: Date = WED): RotationCarrier {
+  return {
+    ...loggedThisWeek(
+      entries.map((itemId, i) => ({ itemId, at: new Date(+MON + i * 3600000).toISOString() })),
+      dayStart,
+    ),
+    rotationItems: WORKOUTS,
+  };
+}
+
+describe('per-member counts', () => {
+  it('defaults to once and clamps to one a day', () => {
+    expect(rotationPerWeek({})).toBe(1);
+    expect(rotationPerWeek({ perWeek: 0 })).toBe(1);
+    expect(rotationPerWeek({ perWeek: 3 })).toBe(3);
+    expect(rotationPerWeek({ perWeek: 30 })).toBe(7);
+  });
+
+  it('adds the counts up to the set target', () => {
+    expect(rotationTargetTotal(WORKOUTS)).toBe(4);
+    expect(rotationTargetTotal(ITEMS)).toBe(5);
+  });
+
+  it('stores a count of one as no count, and keeps larger ones through a parse', () => {
+    expect(withPerWeek({ id: 'a', title: 'A', perWeek: 3 }, 1)).toEqual({ id: 'a', title: 'A' });
+    expect(parseRotationItems([{ id: 'a', title: 'A', perWeek: 3 }, { id: 'b', title: 'B', perWeek: 1 }]))
+      .toEqual([
+        { id: 'a', title: 'A', linkUrl: null, perWeek: 3 },
+        { id: 'b', title: 'B', linkUrl: null },
+      ]);
+  });
+
+  it('keeps a member outstanding until its own count is reached', () => {
+    const task = workouts(['run', 'run']);
+    const run = rotationMembers(task, WED, 1)[0];
+    expect(run.count).toBe(2);
+    expect(run.doneAt).toBeNull();
+    expect(rotationRemaining(task, WED, 1).map(i => i.id)).toEqual(['run', 'bike']);
+    expect(rotationDoneCount(task, WED, 1)).toBe(2);
+    expect(rotationUnitsLeft(task, WED, 1)).toBe(2);
+  });
+
+  it('covers a member on the pick that reaches its count', () => {
+    const task = workouts(['run', 'bike', 'run', 'run']);
+    const [run, bike] = rotationMembers(task, WED, 1);
+    expect(run.doneAt).not.toBeNull();
+    expect(bike.doneAt).not.toBeNull();
+    expect(rotationDoneCount(task, WED, 1)).toBe(4);
+    expect(rotationRemaining(task, WED, 1)).toEqual([]);
+  });
+
+  it('counts a pick as progress only while the member is under its count', () => {
+    expect(rotationCoversNew(workouts(['run', 'run']), 'run', WED, 1)).toBe(true);
+    expect(rotationCoversNew(workouts(['run', 'run', 'run']), 'run', WED, 1)).toBe(false);
+    expect(rotationCoversNew(workouts([]), 'bike', WED, 1)).toBe(true);
+    expect(rotationCoversNew(workouts(['bike']), 'bike', WED, 1)).toBe(false);
+  });
+
+  it('does not let a fourth run count toward the week', () => {
+    const task = workouts(['run', 'run', 'run', 'run']);
+    expect(rotationDoneCount(task, WED, 1)).toBe(3);
+    expect(rotationUnitsLeft(task, WED, 1)).toBe(1);
+  });
+
+  it('uncovers on an undo only when the member drops under its count', () => {
+    expect(rotationUnpickUncovers(workouts(['run', 'run']), WED, 1)).toBe(true);
+    expect(rotationUnpickUncovers(workouts(['run', 'run', 'run']), WED, 1)).toBe(true);
+    expect(rotationUnpickUncovers(workouts(['run', 'run', 'run', 'run']), WED, 1)).toBe(false);
+    expect(rotationUnpickUncovers(workouts([]), WED, 1)).toBe(false);
+  });
+
+  it('says units left in the summary, and flags a week that no longer fits', () => {
+    expect(rotationSummary(workouts(['run']), WED, 1)).toBe('3 left · 5 days');
+    expect(rotationOverCommitted(workouts(['run']), SAT, 1)).toBe(true);
+    expect(rotationOverCommitted(workouts(['run', 'run', 'run', 'bike']), SAT, 1)).toBe(false);
+  });
+
+  it('reads a closed ledger back against the set', () => {
+    expect(rotationCoveredOf(WORKOUTS, [
+      { itemId: 'run', at: MON.toISOString() },
+      { itemId: 'run', at: WED.toISOString() },
+      { itemId: 'bike', at: WED.toISOString() },
+      { itemId: 'bike', at: SAT.toISOString() },
+    ])).toEqual({ covered: 3, total: 4 });
+  });
+});
+
+describe('rotationItemsFrom', () => {
+  it('keeps order, titles and links, and drops blanks', () => {
+    let n = 0;
+    expect(rotationItemsFrom(
+      [{ title: ' Stretch ', linkUrl: 'https://a.test' }, { title: '  ' }, { title: 'Walk', linkUrl: '' }],
+      () => `id${++n}`,
+    )).toEqual([
+      { id: 'id1', title: 'Stretch', linkUrl: 'https://a.test' },
+      { id: 'id2', title: 'Walk', linkUrl: null },
+    ]);
+  });
+});
+
+describe("today's plan", () => {
+  it('parses stored JSON and refuses anything else', () => {
+    expect(parseRotationPlan('{"itemId":"run","dayKey":"2026-09-16"}')).toEqual({ itemId: 'run', dayKey: '2026-09-16' });
+    expect(parseRotationPlan(null)).toBeNull();
+    expect(parseRotationPlan('nope')).toBeNull();
+    expect(parseRotationPlan({ itemId: 1 })).toBeNull();
+  });
+
+  it('applies only on its own day and only to a member that still exists', () => {
+    const task = { ...workouts([]), rotationPlan: { itemId: 'bike', dayKey: '2026-09-16' } };
+    expect(plannedRotationItem(task, WED)?.id).toBe('bike');
+    expect(plannedRotationItem(task, SAT)).toBeNull();
+    expect(plannedRotationItem({ ...task, rotationPlan: { itemId: 'gone', dayKey: '2026-09-16' } }, WED)).toBeNull();
+  });
+
+  it('toggles: planning the planned member clears it', () => {
+    const task = workouts([]);
+    const planned = { ...task, rotationPlan: rotationPlanFor(task, 'run', WED) };
+    expect(planned.rotationPlan).toEqual({ itemId: 'run', dayKey: '2026-09-16' });
+    expect(rotationPlanFor(planned, 'run', WED)).toBeNull();
+    expect(rotationPlanFor(planned, 'bike', WED)).toEqual({ itemId: 'bike', dayKey: '2026-09-16' });
+  });
+
+  it('is spent by any pick that day, and left alone when planned for another day', () => {
+    const today = { ...workouts([]), rotationPlan: { itemId: 'bike', dayKey: '2026-09-16' } };
+    expect(rotationPick(today, 'run', WED, WED, 1)!.rotationPlan).toBeNull();
+    const other = { ...workouts([]), rotationPlan: { itemId: 'bike', dayKey: '2026-09-17' } };
+    expect(rotationPick(other, 'run', WED, WED, 1)!.rotationPlan).toEqual({ itemId: 'bike', dayKey: '2026-09-17' });
   });
 });

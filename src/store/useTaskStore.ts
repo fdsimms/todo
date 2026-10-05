@@ -207,7 +207,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { isRotationTask, rotationCoversNew, rotationPick, rotationUnpick } from '../utils/rotation';
+import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
@@ -1713,6 +1713,12 @@ interface TaskStore extends UndoHistoryActions {
   /** Log one pick against a rotation, completing the task if it covers the set. */
   logRotationUnit: (id: string, itemId: string) => void;
   unlogRotationUnit: (id: string) => void;
+  /**
+   * Plans a member for today (or clears it when it is already the one planned).
+   * A note about the day and nothing more: it hides and completes nothing, see
+   * `Task.rotationPlan`.
+   */
+  planRotationItem: (id: string, itemId: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
@@ -4241,6 +4247,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * a second Spanish leaves Spanish covered, because the first one still
    * counts.
    */
+  planRotationItem(id, itemId) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isRotationTask(task)) return;
+    const updated = { ...task, rotationPlan: rotationPlanFor(task, itemId, getCurrentDayStart()) };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   unlogRotationUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isRotationTask(task)) return;
@@ -4248,12 +4262,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const dayStart = getCurrentDayStart();
     const patch = rotationUnpick(task, dayStart, weekStartsOn);
     if (!patch) return;
-    const dropped = (task.rotationLog ?? [])[task.rotationLog.length - 1];
-    const stillCovered = patch.rotationLog.some(e => e.itemId === dropped.itemId);
+    const uncovers = rotationUnpickUncovers(task, dayStart, weekStartsOn);
     const updated = {
       ...task,
       ...patch,
-      progressCount: stillCovered ? task.progressCount : Math.max(0, task.progressCount - 1),
+      progressCount: uncovers ? Math.max(0, task.progressCount - 1) : task.progressCount,
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
@@ -7762,6 +7775,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       rotationLog: [],
       rotationPeriodStart: null,
       rotationLastDone: {},
+      rotationPlan: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -7985,6 +7999,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       rotationLog: [],
       rotationPeriodStart: null,
       rotationLastDone: {},
+      rotationPlan: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,

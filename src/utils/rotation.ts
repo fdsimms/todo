@@ -39,12 +39,22 @@
  */
 import type { RotationItem, RotationLogEntry, Task } from '../types';
 import { quotaWeekStart } from './quotaSchedule';
+import { format } from 'date-fns/format';
 
 /** A member paired with what the current period knows about it. */
 export interface RotationMember {
   item: RotationItem;
-  /** When it was logged in the current period, or null if it hasn't been. */
+  /**
+   * When this member's count for the period was reached (the instant of the
+   * pick that made it N of N), or null while it is still short. This is what
+   * "covered" means, so every reader that only asks done-or-not keeps working
+   * with a per-member count in place.
+   */
   doneAt: string | null;
+  /** Times it has been logged this period, repeats past its count included. */
+  count: number;
+  /** Times it is meant to be done in a period (at least 1). */
+  perWeek: number;
   /** When it was last logged in any period, or null if never. */
   lastDoneAt: string | null;
 }
@@ -56,6 +66,55 @@ export interface RotationCarrier {
   rotationLog?: RotationLogEntry[];
   rotationPeriodStart?: string | null;
   rotationLastDone?: Record<string, string>;
+  rotationPlan?: { itemId: string; dayKey: string } | null;
+}
+
+// The local `YYYY-MM-DD` of a logical day start. Same key as `dateUtils.dayKeyOf`,
+// restated here because that module reaches the settings store and the database,
+// and this one is pure logic that has to stay importable without them.
+const dayKeyOf = (date: Date): string => format(date, 'yyyy-MM-dd');
+
+/** The most one member can be asked for in a week: one a day. */
+export const MAX_ROTATION_PER_WEEK = 7;
+
+/** How many times a member is done per period: its own count, else once. */
+export function rotationPerWeek(item: Pick<RotationItem, 'perWeek'>): number {
+  const n = item.perWeek;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 1;
+  return Math.min(MAX_ROTATION_PER_WEEK, Math.max(1, Math.round(n)));
+}
+
+/** The member with its count set; a count of one is stored as no count. */
+export function withPerWeek(item: RotationItem, perWeek: number): RotationItem {
+  const { perWeek: _old, ...rest } = item;
+  const n = rotationPerWeek({ perWeek });
+  return n > 1 ? { ...rest, perWeek: n } : rest;
+}
+
+/**
+ * A rotation's set built from something the task already listed: its chain
+ * steps or its subtasks. Switching a task to Rotation starts from what it was
+ * rather than from an empty set, so the names and links already typed carry
+ * over. Blank titles are dropped, and order is kept because it is the order the
+ * picker uses. Each member starts at once a week.
+ */
+export function rotationItemsFrom(
+  sources: readonly { title: string; linkUrl?: string | null }[],
+  newId: () => string,
+): RotationItem[] {
+  return sources
+    .map(s => ({ title: s.title.trim(), linkUrl: s.linkUrl?.trim() || null }))
+    .filter(s => s.title.length > 0)
+    .map(s => ({ id: newId(), title: s.title, linkUrl: s.linkUrl }));
+}
+
+/**
+ * What the set adds up to: the task's `targetCount`. Three runs and one bike
+ * ride is a target of 4, which is what lets the meter and the pace ramp keep
+ * reading one number.
+ */
+export function rotationTargetTotal(items: readonly RotationItem[]): number {
+  return items.reduce((sum, i) => sum + rotationPerWeek(i), 0);
 }
 
 /**
@@ -91,7 +150,25 @@ export function parseRotationItems(raw: unknown): RotationItem[] {
       id: c.id as string,
       title: c.title as string,
       linkUrl: typeof c.linkUrl === 'string' && c.linkUrl ? (c.linkUrl as string) : null,
+      // Kept off the record when it is the default, so a set that never used
+      // counts round-trips byte for byte.
+      ...(typeof c.perWeek === 'number' && rotationPerWeek({ perWeek: c.perWeek }) > 1
+        ? { perWeek: rotationPerWeek({ perWeek: c.perWeek }) }
+        : {}),
     }));
+}
+
+/** Normalizes a stored plan; anything unrecognisable is no plan. */
+export function parseRotationPlan(raw: unknown): { itemId: string; dayKey: string } | null {
+  let value = raw;
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { itemId, dayKey } = value as Record<string, unknown>;
+  return typeof itemId === 'string' && typeof dayKey === 'string' && itemId && dayKey
+    ? { itemId, dayKey }
+    : null;
 }
 
 export function parseRotationLog(raw: unknown): RotationLogEntry[] {
@@ -164,11 +241,17 @@ export function rotationMembers(
 ): RotationMember[] {
   const log = activeRotationLog(task, dayStart, weekStartsOn);
   const lastDone = task.rotationLastDone ?? {};
-  return (task.rotationItems ?? []).map(item => ({
-    item,
-    doneAt: log.find(e => e.itemId === item.id)?.at ?? null,
-    lastDoneAt: lastDone[item.id] ?? null,
-  }));
+  return (task.rotationItems ?? []).map(item => {
+    const entries = log.filter(e => e.itemId === item.id);
+    const perWeek = rotationPerWeek(item);
+    return {
+      item,
+      doneAt: entries.length >= perWeek ? entries[perWeek - 1].at : null,
+      count: entries.length,
+      perWeek,
+      lastDoneAt: lastDone[item.id] ?? null,
+    };
+  });
 }
 
 /** The members still outstanding this period, in the set's own order. */
@@ -183,26 +266,54 @@ export function rotationRemaining(
 }
 
 /**
- * How many distinct members have been logged this period.
+ * How much of the set's target this period's picks have covered: each member
+ * counts up to its own count and no further.
  *
- * Distinct, because a member may be logged again after it's already down (the
- * picker allows it — listening to Spanish twice is a real thing to do and
- * refusing to record it would be the app arguing with you). A repeat is a real
- * log entry and a real `lastDoneAt` bump; what it is not is progress against
- * the week, because the week is about coverage.
+ * Capped per member, because a member may be logged again once it is at its
+ * count (the picker allows it, since a fourth run is a real run and refusing to
+ * record it would be the app arguing with you). A repeat is a real log entry
+ * and a real `lastDoneAt` bump; what it is not is progress against the week,
+ * because the week is about coverage.
  */
 export function rotationDoneCount(
   task: RotationCarrier,
   dayStart: Date,
   weekStartsOn: 0 | 1,
 ): number {
-  const log = activeRotationLog(task, dayStart, weekStartsOn);
-  return new Set(log.map(e => e.itemId)).size;
+  return rotationMembers(task, dayStart, weekStartsOn)
+    .reduce((sum, m) => sum + Math.min(m.count, m.perWeek), 0);
 }
 
 /**
- * Whether logging `itemId` would newly cover a member — i.e. whether it should
- * move `progressCount`. False for a repeat, which still logs.
+ * Covered against total for a ledger read back on its own, with no period
+ * check: the picks a closed week kept, against what the set asks for. Capped
+ * per member exactly as `rotationDoneCount` is.
+ */
+export function rotationCoveredOf(
+  items: readonly RotationItem[],
+  log: readonly RotationLogEntry[],
+): { covered: number; total: number } {
+  const covered = items.reduce(
+    (sum, i) => sum + Math.min(log.filter(e => e.itemId === i.id).length, rotationPerWeek(i)),
+    0,
+  );
+  return { covered, total: rotationTargetTotal(items) };
+}
+
+/** Picks still owed this period: the set's target less what has been covered. */
+export function rotationUnitsLeft(
+  task: RotationCarrier,
+  dayStart: Date,
+  weekStartsOn: 0 | 1,
+): number {
+  return rotationMembers(task, dayStart, weekStartsOn)
+    .reduce((sum, m) => sum + Math.max(0, m.perWeek - m.count), 0);
+}
+
+/**
+ * Whether logging `itemId` would newly cover part of the target: the member is
+ * still under its own count. That is whether it should move `progressCount`.
+ * False for a repeat past the count, which still logs.
  */
 export function rotationCoversNew(
   task: RotationCarrier,
@@ -210,8 +321,29 @@ export function rotationCoversNew(
   dayStart: Date,
   weekStartsOn: 0 | 1,
 ): boolean {
-  if (!(task.rotationItems ?? []).some(i => i.id === itemId)) return false;
-  return !activeRotationLog(task, dayStart, weekStartsOn).some(e => e.itemId === itemId);
+  const item = (task.rotationItems ?? []).find(i => i.id === itemId);
+  if (!item) return false;
+  const count = activeRotationLog(task, dayStart, weekStartsOn).filter(e => e.itemId === itemId).length;
+  return count < rotationPerWeek(item);
+}
+
+/**
+ * Whether taking back the newest pick lowers the covered total: true when the
+ * member it belongs to is, after the undo, under its own count. Undoing a fourth
+ * run leaves three runs covered, because the first three still count.
+ */
+export function rotationUnpickUncovers(
+  task: RotationCarrier,
+  dayStart: Date,
+  weekStartsOn: 0 | 1,
+): boolean {
+  const log = activeRotationLog(task, dayStart, weekStartsOn);
+  const dropped = log[log.length - 1];
+  if (!dropped) return false;
+  const item = (task.rotationItems ?? []).find(i => i.id === dropped.itemId);
+  if (!item) return false;
+  const after = log.slice(0, -1).filter(e => e.itemId === dropped.itemId).length;
+  return after < rotationPerWeek(item);
 }
 
 /**
@@ -242,7 +374,7 @@ export function rotationOverCommitted(
   weekStartsOn: 0 | 1,
 ): boolean {
   if (!isRotationTask(task)) return false;
-  const remaining = rotationRemaining(task, dayStart, weekStartsOn).length;
+  const remaining = rotationUnitsLeft(task, dayStart, weekStartsOn);
   if (remaining === 0) return false;
   return remaining > rotationDaysLeft(dayStart, weekStartsOn);
 }
@@ -260,7 +392,7 @@ export function rotationSummary(
   weekStartsOn: 0 | 1,
 ): string | null {
   if (!isRotationTask(task)) return null;
-  const remaining = rotationRemaining(task, dayStart, weekStartsOn).length;
+  const remaining = rotationUnitsLeft(task, dayStart, weekStartsOn);
   if (remaining === 0) return null;
   const days = rotationDaysLeft(dayStart, weekStartsOn);
   return `${remaining} left · ${days} ${days === 1 ? 'day' : 'days'}`;
@@ -282,7 +414,7 @@ export function rotationPick(
   at: Date,
   dayStart: Date,
   weekStartsOn: 0 | 1,
-): Pick<Task, 'rotationLog' | 'rotationPeriodStart' | 'rotationLastDone'> | null {
+): Pick<Task, 'rotationLog' | 'rotationPeriodStart' | 'rotationLastDone' | 'rotationPlan'> | null {
   if (!(task.rotationItems ?? []).some(i => i.id === itemId)) return null;
   const current = rotationPeriodStart(dayStart, weekStartsOn);
   const log = activeRotationLog(task, dayStart, weekStartsOn);
@@ -290,7 +422,39 @@ export function rotationPick(
     rotationLog: [...log, { itemId, at: at.toISOString() }],
     rotationPeriodStart: current.toISOString(),
     rotationLastDone: { ...(task.rotationLastDone ?? {}), [itemId]: at.toISOString() },
+    // Any pick spends the day's plan, planned member or not: the plan was a note
+    // about what today would be, and today now has an answer.
+    rotationPlan: task.rotationPlan && task.rotationPlan.dayKey === dayKeyOf(dayStart)
+      ? null
+      : task.rotationPlan ?? null,
   };
+}
+
+/**
+ * The member planned for today, or null: no plan, a plan for another day, or a
+ * plan naming a member that has since been removed. A stale plan is ignored
+ * rather than swept, the same rule `activeRotationLog` follows.
+ */
+export function plannedRotationItem(task: RotationCarrier, dayStart: Date): RotationItem | null {
+  const plan = task.rotationPlan;
+  if (!plan || plan.dayKey !== dayKeyOf(dayStart)) return null;
+  return (task.rotationItems ?? []).find(i => i.id === plan.itemId) ?? null;
+}
+
+/**
+ * The plan to store after choosing `itemId` for today. Choosing the member
+ * that is already planned clears it, which is how the picker's toggle undoes a
+ * plan without a second control.
+ */
+export function rotationPlanFor(
+  task: RotationCarrier,
+  itemId: string,
+  dayStart: Date,
+): { itemId: string; dayKey: string } | null {
+  if (!(task.rotationItems ?? []).some(i => i.id === itemId)) return task.rotationPlan ?? null;
+  return plannedRotationItem(task, dayStart)?.id === itemId
+    ? null
+    : { itemId, dayKey: dayKeyOf(dayStart) };
 }
 
 /**

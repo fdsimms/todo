@@ -34,7 +34,7 @@ import type {
 } from '../../src/types';
 import { minutesToEffort } from '../../src/utils/effort';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
-import { isRotationTask, MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
+import { isRotationTask, MIN_ROTATION_ITEMS, rotationPerWeek, rotationTargetTotal } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { localDateInput } from './timeZone';
@@ -508,7 +508,7 @@ export function taskFieldsPatch(
       Object.assign(patch, {
         rotationEnabled: true,
         rotationItems: items,
-        targetCount: items.length,
+        targetCount: rotationTargetTotal(items),
         quotaPeriod: 'week',
       } satisfies Partial<Task>);
     }
@@ -707,13 +707,14 @@ export function describeRepeat(t: Task): RepeatInput | null {
 }
 
 /** A rotation as `get_task` shows it: the members, and which this week's picks cover. */
-export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; lastDone?: string }[] } | null {
+export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string }[] } | null {
   if (!isRotationTask(t)) return null;
   const last = t.rotationLastDone ?? {};
   return {
     members: (t.rotationItems ?? []).map(m => ({
       title: m.title,
       doneThisWeek: doneIds.has(m.id),
+      ...(rotationPerWeek(m) > 1 ? { timesPerWeek: rotationPerWeek(m) } : {}),
       ...(last[m.id] ? { lastDone: last[m.id] } : {}),
     })),
   };
