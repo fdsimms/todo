@@ -701,13 +701,13 @@ const groupsSchema = z.array(z.object({
   checklist: z.boolean().optional().describe('Run into a project, the section is a checklist.'),
 })).optional();
 const questionsSchema = z.array(z.object({
-  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none.'),
+  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none. Item titles, notes, location, subtask titles and chain step titles replace {name} with the answer when the template is applied (case-insensitive; an unanswered blank is dropped). A title can do one sum on it, `{name + 1}`, `{name - 2}`, `{name * 2}` or `{name / 2}`: one operator and a literal number, no parentheses, fractions round up, never below 0. A name that no item mentions is allowed and fills nothing. A name like `days-2` is refused because it reads as a sum.'),
   prompt: z.string(),
   kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
   options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
   defaultValue: z.string().optional(),
   fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
-    .describe('A number question can take its answer off the anchor dates: days or nights.'),
+    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. Only a choice question can gate an item through conditions, so a number cannot express "only if days > 5": add a choice question for that.'),
 })).optional();
 const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
