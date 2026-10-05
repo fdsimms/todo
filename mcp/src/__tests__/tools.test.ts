@@ -70,6 +70,14 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     categories: () => [],
     groceryItems: () => [],
     groceryListEntries: () => [],
+    itemProducts: () => [],
+    leftovers: () => [],
+    updatePantryItem: () => { throw new Error('not stubbed'); },
+    updatePantryBox: () => { throw new Error('not stubbed'); },
+    addToPantry: () => { throw new Error('not stubbed'); },
+    answerPantryReview: () => { throw new Error('not stubbed'); },
+    updateLeftover: () => { throw new Error('not stubbed'); },
+    createLeftover: () => { throw new Error('not stubbed'); },
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
@@ -533,6 +541,7 @@ describe('listMoodLogs', () => {
       symptoms: [],
       contextTags: [],
       note: null,
+      dream: null,
       ...over,
     }) as MoodLog;
 

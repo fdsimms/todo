@@ -406,6 +406,7 @@ file: the two maps are indexes, not write-ups.
 | the Face ID app lock, and the cover over the app-switcher snapshot | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` + `modules/todo-privacy-shield/` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
+| what a pantry action does to a row (got it, out of it, frozen, opened, running low, a leftover), in the app and over MCP | `src/utils/pantryWrite.ts` — pure row rules that `useGroceryStore`, `useLeftoverStore` and the MCP replica all call; the stores keep only the `set()`, undo and use-up task. An agent's pantry write is undone from Activity by snapshot (`src/utils/agentPantryRevert.ts`) |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |

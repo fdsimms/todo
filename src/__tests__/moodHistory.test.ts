@@ -1,5 +1,7 @@
 import {
   EMPTY_MOOD_FILTER,
+  dreamStats,
+  hasWrittenDream,
   filterMoodLogs,
   groupLogsByDay,
   isMoodFilterActive,
@@ -27,6 +29,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    dream: over.dream ?? null,
   };
 }
 
@@ -52,7 +55,7 @@ describe('the filter', () => {
       log({ mood: 2, symptoms: [{ name: 'Headache', severity: 2 }] }),
     ];
     const filtered = filterMoodLogs(logs, {
-      moods: [2], symptomKeys: ['headache'], contextTagKeys: ['travel'], withNote: false,
+      moods: [2], symptomKeys: ['headache'], contextTagKeys: ['travel'], withNote: false, withDream: false,
     });
     expect(filtered).toHaveLength(1);
   });
@@ -290,5 +293,56 @@ describe('paging between written days', () => {
   it('is null at either end', () => {
     expect(adjacentLogDays(logs, '2026-08-01').previous).toBeNull();
     expect(adjacentLogDays(logs, '2026-08-09').next).toBeNull();
+  });
+});
+
+describe('dreams', () => {
+  it('counts a dream as written only when it has more than whitespace', () => {
+    expect(hasWrittenDream(log({ dream: 'Flying over a city' }))).toBe(true);
+    expect(hasWrittenDream(log({ dream: '   ' }))).toBe(false);
+    expect(hasWrittenDream(log())).toBe(false);
+  });
+
+  it('filters to entries with a dream and ANDs it with the rest', () => {
+    const logs = [log({ dream: 'Falling', mood: 2 }), log({ mood: 2 }), log({ dream: 'Beach', mood: 5 })];
+    const withDream = { ...EMPTY_MOOD_FILTER, withDream: true };
+    expect(isMoodFilterActive(withDream)).toBe(true);
+    expect(filterMoodLogs(logs, withDream)).toHaveLength(2);
+    expect(filterMoodLogs(logs, { ...withDream, moods: [2] })).toHaveLength(1);
+  });
+
+  it('searches the dream as well as the note, with every word in one entry', () => {
+    const logs = [
+      log({ note: 'Long day', dream: 'Missing a train' }),
+      log({ note: 'Train was late' }),
+      log({ dream: 'A quiet beach' }),
+    ];
+    expect(searchMoodLogs(logs, 'train')).toHaveLength(2);
+    expect(searchMoodLogs(logs, 'long train')).toHaveLength(1);
+    expect(searchMoodLogs(logs, 'beach')).toHaveLength(1);
+    expect(searchMoodLogs([log({ mood: 3 })], 'train')).toHaveLength(0);
+  });
+
+  it('tallies days and entries, and a day with no dream is not counted', () => {
+    const logs = [
+      log({ dayKey: '2026-10-02', dream: 'One' }),
+      log({ dayKey: '2026-10-02', dream: 'Two' }),
+      log({ dayKey: '2026-09-28', dream: 'Three' }),
+      log({ dayKey: '2026-10-03' }),
+    ];
+    expect(dreamStats(logs, '2026-10')).toEqual({
+      dayCount: 2, entryCount: 3, dayCountInMonth: 1, lastDayKey: '2026-10-02',
+    });
+  });
+
+  it('has no last day when nothing was written', () => {
+    expect(dreamStats([log()], '2026-10')).toEqual({
+      dayCount: 0, entryCount: 0, dayCountInMonth: 0, lastDayKey: null,
+    });
+  });
+
+  it('resurfaces a day that has only a dream in the looking back card', () => {
+    const logs = [log({ dayKey: '2026-09-05', mood: null, dream: 'A long corridor' })];
+    expect(lookBacks(logs, '2026-10-05').map(b => b.dayKey)).toEqual(['2026-09-05']);
   });
 });

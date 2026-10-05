@@ -23,6 +23,7 @@
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
 import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
+import { leftoverSnapshot, pantryRevertOf, pantrySnapshot, type PantryItemSnapshot } from '../../src/utils/agentPantryRevert';
 
 export interface AgentLedgerEntry {
   action: UnattendedEntry['action'];
@@ -98,6 +99,19 @@ export function toLedgerEntries(
 }
 
 export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerEntry[]) => void): Replica {
+  /** An item's pantry state, as the revert compares it: its fields, its boxes, and whether it is on the list at home. */
+  const pantryState = (itemId: string): PantryItemSnapshot | null => {
+    const item = replica.groceryItems().find(i => i.id === itemId);
+    if (!item) return null;
+    return pantrySnapshot(
+      item,
+      replica.itemProducts().filter(p => p.itemId === itemId),
+      replica.groceryListEntries().some(e => e.itemId === itemId && e.listId === null),
+    );
+  };
+  const pantryRevert = (before: PantryItemSnapshot | null, after: PantryItemSnapshot | null) =>
+    before && after ? pantryRevertOf(before, after) : null;
+
   const log = (entry: AgentLedgerEntry) => {
     try {
       record([entry]);
@@ -429,6 +443,62 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const item = replica.removeFromGroceryList(id);
       log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
+    },
+
+    updatePantryItem(id, change) {
+      const before = pantryState(id);
+      const outcome = replica.updatePantryItem(id, change);
+      if (outcome.changed.length > 0) {
+        log({ action: 'edited', subject: 'pantry', title: outcome.item.name, taskId: null, recordId: outcome.item.id, revert: pantryRevert(before, pantryState(id)), note: `Change "${outcome.item.name}" in the pantry: ${outcome.changed.join(', ')}` });
+      }
+      return outcome;
+    },
+
+    updatePantryBox(id, change) {
+      const itemId = replica.itemProducts().find(p => p.id === id)?.itemId;
+      const before = itemId ? pantryState(itemId) : null;
+      const outcome = replica.updatePantryBox(id, change);
+      if (outcome.changed.length > 0) {
+        log({ action: 'edited', subject: 'pantry', title: outcome.item.name, taskId: null, recordId: outcome.item.id, revert: pantryRevert(before, pantryState(outcome.item.id)), note: `Change a packet of "${outcome.item.name}" in the pantry: ${outcome.changed.join(', ')}` });
+      }
+      return outcome;
+    },
+
+    addToPantry(names) {
+      // One snapshot per item, taken before the call: a name may match an
+      // existing row (whose before is its row) or make one (whose before is a
+      // row nobody had said anything about).
+      const known = new Map(replica.groceryItems().map(i => [i.id, pantryState(i.id)]));
+      const added = replica.addToPantry(names);
+      for (const { item, isNew } of added) {
+        const after = pantryState(item.id);
+        // A row this call made had nothing said about it before: the same
+        // fields with no "Got it" and no boxes.
+        const before = isNew && after ? { ...after, item: { ...after.item, onHandUntil: null }, boxes: [] } : known.get(item.id) ?? null;
+        log({ action: 'edited', subject: 'pantry', title: item.name, taskId: null, recordId: item.id, revert: pantryRevert(before, after), note: `${isNew ? 'Add' : 'Mark'} "${item.name}" ${isNew ? 'to' : 'as on hand in'} the pantry` });
+      }
+      return added;
+    },
+
+    answerPantryReview(id, answer) {
+      const before = pantryState(id);
+      const item = replica.answerPantryReview(id, answer);
+      const what = answer === 'have' ? 'still on hand' : answer === 'low' ? 'running low' : 'out of it';
+      log({ action: 'edited', subject: 'pantry', title: item.name, taskId: null, recordId: item.id, revert: pantryRevert(before, pantryState(id)), note: `Answer the pantry review for "${item.name}": ${what}` });
+      return item;
+    },
+
+    updateLeftover(id, change) {
+      const prior = replica.leftovers().find(l => l.id === id);
+      const row = replica.updateLeftover(id, change);
+      log({ action: 'edited', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, revert: prior ? pantryRevertOf(leftoverSnapshot(prior), leftoverSnapshot(row)) : null, note: `Change the leftover "${row.title}"` });
+      return row;
+    },
+
+    createLeftover(draft) {
+      const row = replica.createLeftover(draft);
+      if (row) log({ action: 'created', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, note: `Log "${row.title}" as a leftover${row.frozenAt ? ' in the freezer' : ''}` });
+      return row;
     },
 
     planMeal(draft) {

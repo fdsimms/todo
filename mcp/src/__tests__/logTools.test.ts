@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, logFood, logMedication, logMood, saveRecipe } from '../logTools';
+import { atFrom, logFood, logMedication, logMood, saveRecipe, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -72,6 +72,12 @@ describe('logMood', () => {
     expect(second.mood).toBeUndefined();
     expect(second.symptoms).toEqual([{ name: 'Headache', severity: 2 }]);
     expect(second.contextTags).toEqual(['Poor sleep']);
+  });
+
+  it('records a dream on a check-in and lets it be cleared again', () => {
+    const made = logMood(replica, { dream: 'Flying over a city' });
+    expect(made.dream).toBe('Flying over a city');
+    expect(() => updateMoodLog(replica, made.id, { dream: null })).toThrow(/empty/);
   });
 
   it('refuses a rating off the scale and an empty check-in', () => {
