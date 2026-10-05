@@ -5,6 +5,8 @@ import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateSchedule } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
+import { onLogicalDay } from './clockTime';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, getDayStart } from './dateUtils';
 import type { TemplateAnchors } from './templateUtils';
 
@@ -169,11 +171,17 @@ export function dueTemplateRun(
   const today = startOfDay(getDayStart(now, dayResetTime));
   const periodKey = periodKeyFor(schedule.frequency, today, weekStartsOn);
   if (periodKey === template.scheduleLastFiredKey) return null;
+  if (schedule.frequency === 'weekly' && firedThisWeekUnderOtherStart(template.scheduleLastFiredKey, periodKey)) return null;
 
+  // The time is placed on the trigger day's *logical* day, so "01:00" under
+  // a 04:00 reset means the small hours after that day, not the night before
+  // it (which is still the previous logical day, and would fire and date the
+  // run a day early). A time that isn't HH:MM falls back to the default
+  // rather than rolling "25:00" into the next day.
   const triggerDay = triggerDayFor(schedule, today, weekStartsOn);
-  const [hh, mm] = schedule.time.split(':').map(Number);
-  const triggerInstant = new Date(triggerDay);
-  triggerInstant.setHours(Number.isFinite(hh) ? hh : 0, Number.isFinite(mm) ? mm : 0, 0, 0);
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.time) ? schedule.time : DEFAULT_TEMPLATE_SCHEDULE_TIME;
+  const noon = new Date(triggerDay.getFullYear(), triggerDay.getMonth(), triggerDay.getDate(), 12);
+  const triggerInstant = onLogicalDay(getDayStart(noon, dayResetTime), time);
   if (now.getTime() < triggerInstant.getTime()) return null;
 
   // Anchored on the logical day the run is *for*, not on the trigger day it
@@ -187,6 +195,24 @@ export function dueTemplateRun(
   };
 
   return { periodKey, anchors, runName: scheduledRunName(template.name, today) };
+}
+
+/**
+ * Whether a weekly schedule already ran this week, keyed under a different
+ * week start. The key is the week's first day, so changing `weekStartsOn`
+ * mid-week produces a new key for the same week, and the run would fire a
+ * second time. Last week's key is always exactly 7 days back; anything closer
+ * than that is this week under the old setting.
+ */
+function firedThisWeekUnderOtherStart(lastKey: string | null, weekKey: string): boolean {
+  if (!lastKey || !/^\d{4}-\d{2}-\d{2}$/.test(lastKey)) return false;
+  const gap = Math.abs(differenceInCalendarDays(dayKeyToLocalDate(weekKey), dayKeyToLocalDate(lastKey)));
+  return gap > 0 && gap < 7;
+}
+
+function dayKeyToLocalDate(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -4,6 +4,7 @@
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
 import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { canWaitForWeather } from './weatherCondition';
 import { startOfDay } from 'date-fns/startOfDay';
 import type {
@@ -188,13 +189,29 @@ export function buildDraftsFromTemplate(
       dueDate !== null && item.reminderOffsetMinutes !== null
         ? new Date(new Date(dueDate).getTime() - item.reminderOffsetMinutes * 60 * 1000).toISOString()
         : null;
+    // A repeating item's later occurrences are placed by completeTask, which
+    // carries a deadline only as `deadlineOffsetDays` and moves a reminder by
+    // `reminderOffsetDays`. Without those the fixed dates below apply to the
+    // first occurrence alone: the deadline is dropped from every later one,
+    // and a reminder set a day before lands on the due day instead.
+    const repeats = item.recurrenceType !== 'none';
+    const deadlineLead = item.dueOffsetDays !== null && item.deadlineOffsetDays !== null
+      ? item.dueOffsetDays - item.deadlineOffsetDays
+      : 0;
+    const reminderLead = dueDate !== null && reminderTime !== null
+      ? differenceInCalendarDays(new Date(dueDate), new Date(reminderTime))
+      : 0;
     return {
       title: item.title,
       notes: item.notes,
       dueDate,
       deferUntil: resolveOffsetDate(anchor, item.deferOffsetDays),
       deadline: resolveOffsetDate(anchor, item.deadlineOffsetDays),
-      deadlineOffsetDays: null,
+      // Signed like Task.deadlineOffsetDays (positive is before the due date),
+      // and never 0, which that field doesn't allow: a same-day deadline
+      // stays the fixed date.
+      deadlineOffsetDays: repeats && deadlineLead !== 0 ? deadlineLead : null,
+      reminderOffsetDays: repeats && reminderLead > 0 ? reminderLead : null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
       linkUrl: item.linkUrl ?? null,
@@ -354,6 +371,13 @@ export function expandTemplateItems(
   selectedIds: Set<string>,
   templatesById: Map<string, TaskTemplate>,
   visited: Set<string> = new Set(),
+  // Every template already expanded anywhere in this run, shared across the
+  // whole walk (where `visited` is per path, for cycles). A template reached
+  // twice (nested directly twice, or through two others) contributes its
+  // items once: the copies would be identical tasks, a selection keyed by
+  // item id can't tell them apart, and the run's gate and section wiring keys
+  // by item id too, so the second copy would collide with the first.
+  expanded: Set<string> = new Set(),
 ): ExpandedTemplateItem[] {
   const result: ExpandedTemplateItem[] = [];
   for (const item of items) {
@@ -362,9 +386,10 @@ export function expandTemplateItems(
       result.push({ item, sourceTemplateId });
       continue;
     }
-    if (visited.has(item.refTemplateId)) continue;
+    if (visited.has(item.refTemplateId) || expanded.has(item.refTemplateId)) continue;
     const target = templatesById.get(item.refTemplateId);
     if (!target) continue;
+    expanded.add(item.refTemplateId);
     result.push(
       ...expandTemplateItems(
         target.items,
@@ -372,6 +397,7 @@ export function expandTemplateItems(
         selectedIds,
         templatesById,
         new Set(visited).add(item.refTemplateId),
+        expanded,
       )
     );
   }

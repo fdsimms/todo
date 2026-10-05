@@ -253,6 +253,26 @@ describe('buildDraftsFromTemplate', () => {
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
 
+  // completeTask carries a deadline only as an offset and moves a reminder by
+  // whole days, so a repeating item's fixed dates alone stop at the first one.
+  it('gives a repeating item a deadline and reminder that carry to later occurrences', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({
+      recurrenceType: 'weekly', dueOffsetDays: 3, deadlineOffsetDays: 1, reminderOffsetMinutes: 24 * 60,
+    })], { start, end });
+    expect(draft.deadlineOffsetDays).toBe(2);
+    expect(draft.reminderOffsetDays).toBe(1);
+  });
+
+  it('leaves a one-off item and a same-day deadline on fixed dates', () => {
+    const [once] = buildDraftsFromTemplate([makeItem({ dueOffsetDays: 3, deadlineOffsetDays: 1, reminderOffsetMinutes: 1440 })], { start, end });
+    expect(once.deadlineOffsetDays).toBeNull();
+    expect(once.reminderOffsetDays).toBeNull();
+    const [sameDay] = buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', dueOffsetDays: 0, deadlineOffsetDays: 0, reminderOffsetMinutes: 60 })], { start, end });
+    expect(sameDay.deadlineOffsetDays).toBeNull();
+    expect(sameDay.reminderOffsetDays).toBeNull();
+    expect(sameDay.deadline).not.toBeNull();
+  });
+
   it('seeds the task with the item difficulty', () => {
     const [draft] = buildDraftsFromTemplate([makeItem({ difficulty: 'hard' })], noAnchors);
     expect(draft.difficulty).toBe('hard');
@@ -607,6 +627,18 @@ describe('expandTemplateItems / buildDraftsFromTemplateTree', () => {
     const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
     const expanded = expandTemplateItems(trip.items, trip.id, new Set(['t1', 'p1']), templatesById);
     expect(expanded.map(e => e.item.title)).toEqual(['Pack bag']);
+  });
+
+  // Identical copies can't be told apart by a selection keyed by item id, and
+  // the run's gate wiring keys by item id too, so a template reached twice
+  // contributes its items once.
+  it('expands a template reached twice only once', () => {
+    const shared = makeTemplate({ id: 's', items: [makeItem({ id: 's1', title: 'Charger' })] });
+    const mid = makeTemplate({ id: 'm', items: [refItem('m1', 's')] });
+    const top = makeTemplate({ id: 't', items: [refItem('t1', 's'), refItem('t2', 's'), refItem('t3', 'm')] });
+    const templatesById = new Map([[shared.id, shared], [mid.id, mid], [top.id, top]]);
+    const expanded = expandTemplateItems(top.items, top.id, new Set(['t1', 't2', 't3', 'm1', 's1']), templatesById);
+    expect(expanded.map(e => e.item.title)).toEqual(['Charger']);
   });
 
   it('does not infinite-loop on a cyclic reference', () => {
