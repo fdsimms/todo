@@ -45,6 +45,10 @@ export const READ_TOOLS: Record<string, string> = {
   list_stacks: 'List stacks',
   get_rewards: 'Coins and rewards',
   list_grocery_items: 'Grocery list',
+  list_pantry: 'What is in the pantry',
+  get_pantry_item: 'Pantry details for one item',
+  pantry_review: 'Pantry items in doubt',
+  use_up_recipes: 'What to use up, and what to cook with it',
   list_food_log: 'Food log',
   list_mood_logs: 'Mood log',
   list_calendar_requests: 'Calendar requests',
@@ -126,6 +130,11 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   add_grocery_item: { title: 'Add to the grocery list', destructive: false, idempotent: false },
   check_off_grocery_item: { title: 'Check off a grocery item', destructive: false, idempotent: true },
   remove_from_grocery_list: { title: 'Remove from the grocery list', destructive: false, idempotent: true },
+  update_pantry_item: { title: 'Change what is in the pantry', destructive: true, idempotent: true },
+  update_pantry_box: { title: 'Change one packet in the pantry', destructive: true, idempotent: true },
+  add_to_pantry: { title: 'Add to the pantry', destructive: false, idempotent: true },
+  answer_pantry_review: { title: 'Answer the pantry review', destructive: true, idempotent: true },
+  update_leftover: { title: 'Change a leftover', destructive: true, idempotent: true },
 };
 
 export function annotationsFor(name: string): ToolAnnotationSet {

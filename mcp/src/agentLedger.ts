@@ -431,6 +431,43 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return item;
     },
 
+    updatePantryItem(id, change) {
+      const outcome = replica.updatePantryItem(id, change);
+      if (outcome.changed.length > 0) {
+        log({ action: 'edited', subject: 'pantry', title: outcome.item.name, taskId: null, recordId: outcome.item.id, note: `Change "${outcome.item.name}" in the pantry: ${outcome.changed.join(', ')}` });
+      }
+      return outcome;
+    },
+
+    updatePantryBox(id, change) {
+      const outcome = replica.updatePantryBox(id, change);
+      if (outcome.changed.length > 0) {
+        log({ action: 'edited', subject: 'pantry', title: outcome.item.name, taskId: null, recordId: outcome.item.id, note: `Change a packet of "${outcome.item.name}" in the pantry: ${outcome.changed.join(', ')}` });
+      }
+      return outcome;
+    },
+
+    addToPantry(names) {
+      const added = replica.addToPantry(names);
+      for (const { item, isNew } of added) {
+        log({ action: 'edited', subject: 'pantry', title: item.name, taskId: null, recordId: item.id, note: `${isNew ? 'Add' : 'Mark'} "${item.name}" ${isNew ? 'to' : 'as on hand in'} the pantry` });
+      }
+      return added;
+    },
+
+    answerPantryReview(id, answer) {
+      const item = replica.answerPantryReview(id, answer);
+      const what = answer === 'have' ? 'still on hand' : answer === 'low' ? 'running low' : 'out of it';
+      log({ action: 'edited', subject: 'pantry', title: item.name, taskId: null, recordId: item.id, note: `Answer the pantry review for "${item.name}": ${what}` });
+      return item;
+    },
+
+    updateLeftover(id, change) {
+      const row = replica.updateLeftover(id, change);
+      log({ action: 'edited', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, note: `Change the leftover "${row.title}"` });
+      return row;
+    },
+
     planMeal(draft) {
       const entry = replica.planMeal(draft);
       log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });

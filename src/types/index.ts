@@ -979,6 +979,8 @@ export type UnattendedActor = 'app' | 'agent';
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
   | 'automation' | 'note' | 'stack' | 'reward'
+  // A change to what is in the kitchen (`pantryWrite.ts`): recorded, not undoable from Activity.
+  | 'pantry'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
   | 'event';
 

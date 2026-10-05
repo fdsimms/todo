@@ -11,6 +11,7 @@ import {
   dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { leftoverFinishedRow, leftoverFrozenRow, leftoverKeepDaysRow, leftoverReopenedRow } from '../utils/pantryWrite';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import {
   cleanLeftoverTitle,
@@ -382,29 +383,16 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   setKeepDays(id, days) {
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover) return;
-    const updated = { ...leftover, keepUntil: keepUntilKeyFor(leftover.storedAt, days) };
+    const updated = leftoverKeepDaysRow(leftover, days);
     save(set, updated);
     reconcileLeftoverTask(updated);
   },
 
   setFrozen(id, frozen) {
     const leftover = get().leftovers.find(l => l.id === id);
-    if (!leftover || !!leftover.frozenAt === frozen) return;
-    const now = new Date().toISOString();
-    const updated: Leftover = frozen
-      ? { ...leftover, frozenAt: now }
-      : {
-          ...leftover,
-          frozenAt: null,
-          // Out of the freezer is a fresh start in the fridge, so both dates
-          // move: `storedAt` to now (it's the anchor `describeAge` and
-          // `keepUntilKeyFor` both count from, and leaving it at the original
-          // put-away would have a portion frozen in July read as "40 days in
-          // the fridge" the moment it thaws), and `keepUntil` to the same
-          // window measured from that new anchor.
-          storedAt: now,
-          keepUntil: keepUntilKeyFor(now, keepDaysBetween(leftover.storedAt, leftover.keepUntil)),
-        };
+    if (!leftover) return;
+    const updated = leftoverFrozenRow(leftover, frozen, new Date().toISOString());
+    if (!updated) return;
     save(set, updated);
     // Freezing drops a use-up task that needsAttention no longer wants;
     // thawing spawns one if the restarted window lands inside the threshold.
@@ -439,8 +427,10 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
 
   finishLeftover(id, outcome) {
     const leftover = get().leftovers.find(l => l.id === id);
-    if (!leftover || leftover.finishedAt) return;
-    save(set, { ...leftover, finishedAt: new Date().toISOString(), outcome });
+    if (!leftover) return;
+    const finished = leftoverFinishedRow(leftover, outcome, new Date().toISOString());
+    if (!finished) return;
+    save(set, finished);
     // The row's no longer live, so its use-up task's job is done — dropped
     // directly rather than through reconcile, same call dropUseUpTask makes:
     // this is a row that won't be live any more, not a correction to one.
@@ -520,8 +510,9 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
 
   reopenLeftover(id) {
     const leftover = get().leftovers.find(l => l.id === id);
-    if (!leftover || !leftover.finishedAt) return;
-    const updated = { ...leftover, finishedAt: null, outcome: null };
+    if (!leftover) return;
+    const updated = leftoverReopenedRow(leftover);
+    if (!updated) return;
     save(set, updated);
     reconcileLeftoverTask(updated);
   },

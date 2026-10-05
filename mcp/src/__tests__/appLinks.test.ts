@@ -32,7 +32,7 @@ describe('appLinks', () => {
   // the app turns back into its own link, on a host it is associated with.
   it('hands out only links the app will open', () => {
     expect(UNIVERSAL_LINK_HOSTS).toContain('dundundun-mcp.fly.dev');
-    for (const href of [links.task('t1'), links.project('p1'), links.groceries(), links.recipe('r1'), links.mealPlan('2026-10-05'), links.person('x')]) {
+    for (const href of [links.task('t1'), links.project('p1'), links.groceries(), links.pantry(), links.recipe('r1'), links.mealPlan('2026-10-05'), links.person('x')]) {
       expect(appUrlFromUniversalLink(href)).toMatch(/^dundundun:\/\//);
     }
   });
