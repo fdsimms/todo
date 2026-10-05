@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { waitIdsOf, type TaskResolver } from './blocking';
+import { openOccurrenceOf, waitIdsOf, type TaskResolver } from './blocking';
 
 /**
  * How visibilityUtils resolves the task a task is waiting on (Task.blockedById)
@@ -84,6 +84,12 @@ export function waitingCountFor(id: string): number {
       // first slot was cleared by an older build can still hold the rest.
       for (const id of waitIdsOf(t)) {
         cachedCounts.set(id, (cachedCounts.get(id) ?? 0) + 1);
+        // A task waiting out a whole series is also waiting on the occurrence
+        // that is live now, which is the row the chip is drawn on.
+        if (t.waitForSeriesEnd) {
+          const open = openOccurrenceOf(resolveBlocker(id), resolveBlocker);
+          if (open && open.id !== id) cachedCounts.set(open.id, (cachedCounts.get(open.id) ?? 0) + 1);
+        }
       }
     }
   }

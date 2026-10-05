@@ -416,6 +416,15 @@ describe('describeBlocks', () => {
 describe('blockerRegistry', () => {
   afterEach(() => registerTaskSource(null));
 
+  it('counts a series-long waiter on the live occurrence too', () => {
+    const first = makeTask({ id: 'a1', recurrenceType: 'daily', completed: true });
+    const second = makeTask({ id: 'a2', recurrenceType: 'daily', previousOccurrenceId: 'a1' });
+    registerTaskSource(() => [first, second, makeTask({ id: 'w', blockedById: 'a1', waitForSeriesEnd: true })]);
+    expect(waitingCountFor('a2')).toBe(1);
+    registerTaskSource(() => [first, second, makeTask({ id: 'w', blockedById: 'a1' })]);
+    expect(waitingCountFor('a2')).toBe(0);
+  });
+
   it('resolves nothing until a source is registered', () => {
     registerTaskSource(null);
     expect(resolveBlocker('anything')).toBeUndefined();
