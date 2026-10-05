@@ -3,7 +3,7 @@
 // plain data, so stubbing that one field is enough to get at them.
 jest.mock('react-native', () => ({ StyleSheet: { hairlineWidth: 1 } }));
 
-import { darkColors, darkPurpleColors, lightColors, type Colors } from '../theme';
+import { darkColors, nightColors, lightColors, type Colors } from '../theme';
 
 /**
  * The palettes' own contrast guarantees, so a future colour edit can't quietly
@@ -69,8 +69,8 @@ const contrast = (fg: string, bg: string) => {
 };
 
 const PALETTES: [string, Colors][] = [
-  ['dark', darkColors],
-  ['darkPurple', darkPurpleColors],
+  ['black', darkColors],
+  ['night', nightColors],
   ['light', lightColors],
 ];
 
@@ -149,8 +149,8 @@ describe.each(PALETTES)('%s palette', (_name, colors) => {
       expect(contrast(text, tinted(colors[hue]))).toBeGreaterThanOrEqual(AA);
     });
 
-    it('carries onAccent on its fill', () => {
-      expect(contrast(colors.onAccent, fill)).toBeGreaterThanOrEqual(AA);
+    it('carries onFill on its fill', () => {
+      expect(contrast(colors.onFill, fill)).toBeGreaterThanOrEqual(AA);
     });
   });
 
@@ -164,6 +164,16 @@ describe.each(PALETTES)('%s palette', (_name, colors) => {
 
   it.each(['bg', 'bgSecondary', 'bgTertiary'] as const)('reads `warningText` on %s', surface => {
     expect(contrast(colors.warningText, colors[surface])).toBeGreaterThanOrEqual(AA);
+  });
+
+  // A checked box is a control in the checked state: the fill holds 3:1 on the
+  // card it sits on, and the check drawn on it reads as text would.
+  it('outlines a checked control (`done`) on a card', () => {
+    expect(contrast(colors.done, colors.bgSecondary)).toBeGreaterThanOrEqual(NON_TEXT);
+  });
+
+  it('reads onDone on a done fill', () => {
+    expect(contrast(colors.onDone, colors.done)).toBeGreaterThanOrEqual(AA);
   });
 
   it('reads onWarning on a warning fill', () => {

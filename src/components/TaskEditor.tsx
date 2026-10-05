@@ -6142,7 +6142,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 >
                   <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
                     {sub.completed && (
-                      <Ionicons name="checkmark" size={11} color={colors.onAccent} />
+                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
                     )}
                   </View>
                   </TouchableOpacity>
@@ -7239,7 +7239,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.orangeFill,
   },
   streakApplyBtnDisabled: { backgroundColor: colors.bgTertiary },
-  streakApplyText: { color: colors.onAccent, fontSize: font.sm, fontWeight: '600' },
+  streakApplyText: { color: colors.onFill, fontSize: font.sm, fontWeight: '600' },
   streakApplyTextDisabled: { color: colors.textTertiary },
   toggle: {
     width: 46, height: 27, borderRadius: 14,
@@ -7304,8 +7304,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexShrink: 0,
   },
   subtaskBoxDone: {
-    backgroundColor: colors.greenFill,
-    borderColor: colors.greenFill,
+    backgroundColor: colors.done,
+    borderColor: colors.done,
   },
   subtaskTitleWrapper: { flex: 1 },
   subtaskTitle: {

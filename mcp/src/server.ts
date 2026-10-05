@@ -81,6 +81,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
@@ -227,7 +228,7 @@ function withLink<T extends object>(result: T, link: string | undefined): T | (T
 }
 
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
+  const server = new McpServer({ name: 'dundundun', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
 
   // Every tool gets its title and read/write hints from one table
   // (toolAnnotations.ts) rather than an argument at each of thirty call sites.
@@ -333,9 +334,54 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_grocery_items',
-    'The home grocery list, with whether each item is checked off there. This is the list the grocery write tools act on. An item only on a separate list (a trip\'s list, say) is not included. Pass onListOnly: false to search the whole catalog instead.',
-    { onListOnly: z.boolean().optional() },
-    async input => json(await withFresh(() => listGroceryItems(replica, input)))
+    'The home grocery list, with whether each item is checked off there. Pass list to read a separate list (a trip\'s, say) instead. Pass onListOnly: false to search the whole catalog.',
+    { onListOnly: z.boolean().optional(), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.') },
+    async ({ list, ...input }) => json(await withFresh(() => listGroceryItems(replica, { ...input, listId: resolveList(replica, list)?.id ?? null })))
+  );
+
+  server.tool(
+    'grocery_setup',
+    "The grocery setup: the aisles, the stores (with their receipt style), and the lists (the list at home and any separate ones, with item counts). Start here before filing an item in an aisle, linking a store or using a separate list.",
+    {},
+    async () => json(await withFresh(() => grocerySetup(replica)))
+  );
+
+  server.tool(
+    'get_grocery_item',
+    "Everything recorded about one grocery item: aisle, quantity, note, last price, brands (boxes), the stores it comes from, substitutes, the lists it is on, and the names receipts print for it. Takes an id from list_grocery_items or a name. For its pantry state use get_pantry_item.",
+    { id: z.string().optional(), name: z.string().optional() },
+    async input => {
+      try {
+        return json(await withFresh(() => getGroceryItem(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that item.' });
+      }
+    }
+  );
+
+  const receiptLineRead = z.object({
+    label: z.string().min(1).describe('The line exactly as printed, abbreviations and all.'),
+    name: z.string().min(1).describe('The same line as a shopper would say it ("milk"). This is what gets matched.'),
+    quantity: z.string().optional(),
+    priceMinor: z.number().int().positive().nullable().optional().describe('The price in minor units (cents). Null or omitted when the line has none.'),
+  });
+
+  server.tool(
+    'match_receipt',
+    "Read a receipt against the catalog, with the app's own matching. You read the receipt (photo or text) and pass its lines here; this server cannot see images. Names this store printed before are matched first (remembered), then exact, likely and weak matches. scope list reads lines against what is on a list (a shopping trip), catalog against everything (the pantry). Writes nothing: show the person what you are unsure of, then call import_receipt with decisions.",
+    {
+      store: z.string().optional().describe('The store name printed at the top. Matched to the stores in grocery_setup.'),
+      scope: z.enum(['list', 'catalog']).optional(),
+      list: z.string().optional().describe('For scope list: a separate list. The list at home when omitted.'),
+      lines: z.array(receiptLineRead).min(1).max(100),
+    },
+    async ({ lines, ...rest }) => {
+      try {
+        return json(await withFresh(() => matchReceipt(replica, { ...rest, lines })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not match that receipt.' });
+      }
+    }
   );
 
   server.tool(
@@ -1565,15 +1611,16 @@ function registerWriteTools(
 
   server.tool(
     'add_grocery_item',
-    "Put something on the home grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    "Put something on the home grocery list, or on a separate list with list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
       name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
       quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
       note: z.string().nullable().optional(),
+      list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'),
     },
-    async ({ name, ...rest }) => {
+    async ({ name, list, ...rest }) => {
       try {
-        return json(withLink(await withWrite(() => addGroceryItem(replica, name, rest)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => addGroceryItem(replica, name, { ...rest, listId: resolveList(replica, list)?.id ?? null })), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add that.' });
       }
@@ -1583,10 +1630,10 @@ function registerWriteTools(
   server.tool(
     'check_off_grocery_item',
     'Check something off on the home grocery list, or un-check it with checked: false. Takes the item id from list_grocery_items.',
-    { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
-    async ({ id, checked }) => {
+    { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.'), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'), },
+    async ({ id, checked, list }) => {
       try {
-        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true, resolveList(replica, list)?.id ?? null)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not check that off.' });
       }
@@ -1595,11 +1642,11 @@ function registerWriteTools(
 
   server.tool(
     'remove_from_grocery_list',
-    'Take something off the home grocery list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
-    { id: z.string().min(1) },
-    async ({ id }) => {
+    'Take something off the home grocery list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. delete_grocery_item is the tool that deletes one, only when asked.',
+    { id: z.string().min(1), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'), },
+    async ({ id, list }) => {
       try {
-        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id, resolveList(replica, list)?.id ?? null)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
       }
@@ -1692,6 +1739,180 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => updateLeftover(replica, id, change)), LINKS?.pantry()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that leftover.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_grocery_item',
+    "Edit a grocery item in the catalog (id from list_grocery_items, or its name): rename it, move it to another aisle, set its quantity, note or last price, mark it a kind of another item, choose its preferred brand, link it to stores, or add or remove substitutes. Several fields per call. Aisles must be ones that exist (grocery_setup). Filing an aisle is remembered for the name, as it is in the app. Activity can undo changes to the item's own fields; a rename and store or substitute changes are recorded but not undoable. Brands themselves are save_grocery_box.",
+    {
+      id: z.string().optional(),
+      name: z.string().optional().describe('The item by name, when you have no id.'),
+      rename: z.string().min(1).optional().describe('A new name. Refused if another item has it; merging two items is done in the app.'),
+      aisle: z.string().optional(),
+      quantity: z.string().nullable().optional(),
+      note: z.string().optional(),
+      priceMinor: z.number().int().positive().nullable().optional().describe('The last price in minor units (cents), or null to clear. Paired with the current quantity.'),
+      priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
+      kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
+      preferredBoxId: z.string().nullable().optional().describe('A box id from get_grocery_item, or null for none.'),
+      onlyPreferredBrand: z.boolean().optional(),
+      linkStores: z.array(z.string()).optional().describe('Stores it can be bought at, by name or id.'),
+      unlinkStores: z.array(z.string()).optional(),
+      addSubstitutes: z.array(z.object({
+        name: z.string().optional(), itemId: z.string().optional(),
+        note: z.string().nullable().optional(),
+        ratioFrom: z.string().nullable().optional().describe('With ratioTo: "1 cup butter" = "3/4 cup oil".'),
+        ratioTo: z.string().nullable().optional(),
+        standing: z.boolean().optional().describe('Always use this instead, in recipes.'),
+        bothWays: z.boolean().optional(),
+      })).optional(),
+      removeSubstitutes: z.array(z.string()).optional().describe('Substitute items to remove, by name or id.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => updateGroceryItem(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_grocery_box',
+    "Add, edit or delete a brand or variant (a box) of a grocery item. Omit boxId to add one (needs a brand or a variant; the first box becomes the preferred one). Pass boxId to edit it, or delete: true to remove it, which also clears it as a preference and from stores' claims. A frozen portion is not editable here (update_pantry_box).",
+    {
+      id: z.string().optional(),
+      name: z.string().optional().describe('The item by name, when you have no id.'),
+      boxId: z.string().optional(),
+      brand: z.string().nullable().optional(),
+      variant: z.string().nullable().optional(),
+      note: z.string().optional(),
+      rating: z.string().nullable().optional().describe('The app\'s own rating words for a box (see get_grocery_item).'),
+      delete: z.boolean().optional(),
+    },
+    async ({ id, name, ...input }) => {
+      try {
+        return json(withLink(await withWrite(() => saveGroceryBox(replica, { id, name }, input as never)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that brand.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_store',
+    "Add a store, or rename one or set how its receipts read. store is an existing store's name or id to change; omit it (and pass name) to add a new one. receiptStyle itemized is an ordinary receipt, none is a store whose receipts are not worth reading. Deleting a store is done in the app.",
+    {
+      store: z.string().optional(),
+      name: z.string().optional(),
+      receiptStyle: z.enum(['itemized', 'none']).optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => saveStore(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that store.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_grocery_item',
+    "Delete a grocery item from the catalog for good: its brands, store links, substitutes, receipt names, prices and purchase history all go with it. Prefer remove_from_grocery_list, which only takes it off the list. The preview lists what goes. Recipes that name it keep working, since they match by name. Activity can restore it, with all of that, while nothing has re-created it. Only when the person asks to delete it.",
+    { id: z.string().optional(), name: z.string().optional() },
+    async input => {
+      try {
+        return json(await withWrite(() => deleteGroceryItem(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_grocery_list',
+    "Create a separate grocery list, for a trip away. The list at home is not created or deleted. Items go on it with add_grocery_item's list. A separate list records almost nothing when finished (no purchase counts, prices or use-by days), by the app's rule.",
+    { name: z.string().min(1) },
+    async ({ name }) => {
+      try {
+        return json(await withWrite(() => createGroceryList(replica, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_grocery_list',
+    'Rename a separate grocery list (by name or id).',
+    { list: z.string().min(1), name: z.string().min(1) },
+    async ({ list, name }) => {
+      try {
+        return json(await withWrite(() => renameGroceryList(replica, list, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_grocery_list',
+    'Delete a separate grocery list. Its items are taken off it and stay in the catalog. The list at home cannot be deleted. Not undoable from here.',
+    { list: z.string().min(1) },
+    async ({ list }) => {
+      try {
+        return json(await withWrite(() => deleteGroceryList(replica, list)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'finish_grocery_trip',
+    "Finish a shopping trip: everything checked off on the list is recorded as bought and leaves it (purchase counts, last purchased, use-by days from the shelf-life table, prices, and the store link when store is given). Only what is checked off is finished. For a separate list it records only that the items left. date is the day of the trip (YYYY-MM-DD), today when omitted. prices and frozen are by item name.",
+    {
+      list: z.string().optional().describe('A separate list. The list at home when omitted.'),
+      store: z.string().optional(),
+      date: dayKey.optional(),
+      prices: z.array(z.object({ name: z.string(), priceMinor: z.number().int().positive() })).optional(),
+      frozen: z.array(z.string()).optional().describe('Items going straight into the freezer.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => finishGroceryTrip(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not finish that trip.' });
+      }
+    }
+  );
+
+  server.tool(
+    'import_receipt',
+    "Do what the app's receipt flow does, from a receipt you read (use match_receipt first, and show the person lines you are unsure of). context shopping (default): each line is put on the list if it is not there, checked off, and the trip is finished with the prices (finish: false only checks them off); finishing records everything checked off on the list, including items checked off before this receipt. context pantry: the lines are marked on hand, a repeat purchase clears the old packet's opened, frozen and running-low state, and prices are noted; no purchase is recorded. Each line needs an itemId (a match) or a name (which finds or creates the item). The text printed on a line is remembered as this store's name for the item. The preview lists every line.",
+    {
+      context: z.enum(['shopping', 'pantry']).optional(),
+      list: z.string().optional().describe('Shopping on a separate list. The list at home when omitted.'),
+      store: z.string().optional(),
+      date: dayKey.optional().describe('The date printed on the receipt. Today when omitted.'),
+      finish: z.boolean().optional(),
+      lines: z.array(z.object({
+        label: z.string().min(1).describe('As printed.'),
+        itemId: z.string().optional(),
+        name: z.string().optional(),
+        quantity: z.string().nullable().optional(),
+        priceMinor: z.number().int().positive().nullable().optional(),
+        frozen: z.boolean().optional().describe('Going straight into the freezer.'),
+        rememberAlias: z.boolean().optional().describe('Remember the printed text as this store\'s name for the item. Default true for an existing item.'),
+      })).min(1).max(100),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => importReceipt(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not import that receipt.' });
       }
     }
   );

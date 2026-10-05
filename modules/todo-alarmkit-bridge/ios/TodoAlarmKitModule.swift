@@ -94,7 +94,13 @@ public class TodoAlarmKitModule: Module {
               let presentation = AlarmPresentation(alert: alert)
               let attributes = AlarmAttributes<TodoAlarmMetadata>(
                 presentation: presentation,
-                tintColor: .accentColor
+                // The mark's gold (colors.brand). It colors the title,
+                // countdown and Dynamic Island; the system fills only a
+                // secondary button with it, and this alarm has none, so the
+                // Stop button's white text never sits on gold. Written as
+                // `.init` for the same reason `.accentColor` was a bare member:
+                // this file doesn't import SwiftUI by name.
+                tintColor: .init(red: 1.0, green: 176.0 / 255.0, blue: 32.0 / 255.0)
               )
               let configuration = AlarmManager.AlarmConfiguration(
                 schedule: .fixed(fireDate),

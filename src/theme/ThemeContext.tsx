@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useDeferredValue, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import { darkColors, darkPurpleColors, lightColors, getShadows, type Colors, type ThemeMode } from './index';
+import { darkColors, nightColors, lightColors, getShadows, type Colors, type ThemeMode } from './index';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { AppFontProvider } from './AppFont';
 
@@ -31,8 +31,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     themeMode === 'darkPurple' ||
     (themeMode === 'system' && systemScheme !== 'light');
 
+  // 'dark' is the Black theme (the stored name predates it, see `ThemeMode`);
+  // every other dark resolution, the system's included, is the brand's Dark.
   const resolvedColors =
-    themeMode === 'darkPurple' ? darkPurpleColors : isDark ? darkColors : lightColors;
+    !isDark ? lightColors : themeMode === 'dark' ? darkColors : nightColors;
 
   const value = useMemo<ThemeContextValue>(
     () => ({ colors: resolvedColors, isDark, shadows: getShadows(isDark) }),

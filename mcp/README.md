@@ -102,6 +102,9 @@ only the fallback until the first sync.
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
+| `grocery_setup` | The aisles, the stores (with receipt style) and the lists (home and separate), with item counts. |
+| `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names. |
+| `match_receipt` | The app's receipt matching over lines Claude read. Writes nothing. |
 | `list_pantry` | What the app has a reason to think is in the kitchen: pantry, fridge and freezer, each with the app's reason, use-by day and freshness. `filter: use_up`, `frozen` or `fridge` narrows it. Has no quantities, on purpose. |
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
@@ -157,6 +160,13 @@ only the fallback until the first sync.
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
+| `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
+| `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item. |
+| `save_store` | **Write.** Add or rename a store, or set its receipt style. |
+| `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
+| `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
+| `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |
+| `import_receipt` | **Write.** The in-app receipt flow, from lines Claude read. |
 | `update_pantry_item` | **Write.** One item's pantry state: on hand, out (with how it went), staple, frozen, opened, running low, use-by day, shelf life, use-up task. Several fields per call. |
 | `update_pantry_box` | **Write.** The same for one packet or frozen portion of an item. |
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
@@ -188,9 +198,18 @@ with its aisle, purchase history, prices and pantry state intact. Singular and p
 the same item, so "serrano pepper" finds an existing "Serrano peppers" instead of minting a
 near-duplicate that splits one shelf item in two.
 
-For the same reason `remove_from_grocery_list` parks rather than deletes, and there is deliberately
-no tool that deletes a shelf item: dropping one destroys a substitute or a price history with no
-undo, and it is not the sort of thing to do on a model's say-so.
+For the same reason `remove_from_grocery_list` parks rather than deletes. `delete_grocery_item` exists
+for the person who asks for it: it previews what goes with the item (brands, store links, substitutes,
+receipt names), and the Activity entry carries a snapshot that puts all of it back while nothing has
+re-created the item. The app itself keeps no such snapshot, which is the only reason it has no undo.
+
+A receipt is read by Claude, not by this server (the phone reads one with on-device OCR or the user's own
+API key). `match_receipt` takes the lines Claude extracted and runs the app's own matching, store's
+remembered names first. `import_receipt` then does what the in-app scan flow does: on a shopping trip it
+puts each line on the list, checks it off, remembers the printed text as that store's name for the item and
+finishes the trip with the prices; for the pantry it marks the lines on hand without recording a purchase.
+Finishing a separate list records almost nothing (no purchase counts, prices or use-by days), which is the
+app's rule for a trip away.
 
 The pantry tools are the same rows through the same rules: `src/utils/pantryWrite.ts` decides what each
 change does to a row, and `useGroceryStore` and `useLeftoverStore` call it too. The one thing they

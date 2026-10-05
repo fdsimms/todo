@@ -247,7 +247,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               accessibilityRole="button"
               accessibilityLabel="Add item"
             >
-              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+              <Ionicons name="arrow-up" size={18} color={trimmedTitle ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
           </View>
 

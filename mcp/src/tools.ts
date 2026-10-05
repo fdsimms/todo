@@ -475,22 +475,22 @@ export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | un
 }
 
 /** The home list's entries, by item id. */
-function homeEntries(replica: Replica): Map<string, GroceryListEntry> {
+function homeEntries(replica: Replica, listId: string | null = null): Map<string, GroceryListEntry> {
   const out = new Map<string, GroceryListEntry>();
-  for (const e of replica.groceryListEntries()) if (e.listId === null) out.set(e.itemId, e);
+  for (const e of replica.groceryListEntries()) if (e.listId === listId) out.set(e.itemId, e);
   return out;
 }
 
-function serializeWithHome(replica: Replica, item: GroceryItem): SerializedGroceryItem {
-  return serializeGroceryItem(item, homeEntries(replica).get(item.id));
+function serializeWithHome(replica: Replica, item: GroceryItem, listId: string | null = null): SerializedGroceryItem {
+  return serializeGroceryItem(item, homeEntries(replica, listId).get(item.id));
 }
 
 /** The home list, or with `onListOnly: false` the whole catalog. */
 export function listGroceryItems(
   replica: Replica,
-  input: { onListOnly?: boolean } = {}
+  input: { onListOnly?: boolean; /** A separate list's id; the list at home when omitted. */ listId?: string | null } = {}
 ): SerializedGroceryItem[] {
-  const home = homeEntries(replica);
+  const home = homeEntries(replica, input.listId ?? null);
   const items = replica.groceryItems();
   const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => home.has(i.id));
   return wanted.map(i => serializeGroceryItem(i, home.get(i.id)));
@@ -848,7 +848,7 @@ export interface GroceryWriteResult {
 export function addGroceryItem(
   replica: Replica,
   name: string,
-  opts?: { quantity?: string | null; note?: string | null },
+  opts?: { quantity?: string | null; note?: string | null; listId?: string | null },
 ): GroceryWriteResult {
   const { item, isNew, wasOnList } = replica.addGroceryItem(name, opts);
   const outcome = isNew
@@ -856,21 +856,21 @@ export function addGroceryItem(
     : wasOnList
       ? `"${item.name}" was already on the list, so nothing moved. Its tick and its place in the aisle order are untouched.`
       : `"${item.name}" was already in the catalog, so it went back on the list with the aisle and history it already had.`;
-  return { item: serializeWithHome(replica, item), outcome };
+  return { item: serializeWithHome(replica, item, opts?.listId ?? null), outcome };
 }
 
-export function setGroceryChecked(replica: Replica, id: string, checked: boolean): GroceryWriteResult {
-  const item = replica.setGroceryChecked(id, checked);
+export function setGroceryChecked(replica: Replica, id: string, checked: boolean, listId: string | null = null): GroceryWriteResult {
+  const item = replica.setGroceryChecked(id, checked, listId);
   return {
-    item: serializeWithHome(replica, item),
+    item: serializeWithHome(replica, item, listId),
     outcome: checked ? `Checked "${item.name}" off.` : `Un-checked "${item.name}".`,
   };
 }
 
-export function removeFromGroceryList(replica: Replica, id: string): GroceryWriteResult {
-  const item = replica.removeFromGroceryList(id);
+export function removeFromGroceryList(replica: Replica, id: string, listId: string | null = null): GroceryWriteResult {
+  const item = replica.removeFromGroceryList(id, listId);
   return {
-    item: serializeWithHome(replica, item),
+    item: serializeWithHome(replica, item, listId),
     // Worth saying, because "remove" reads as a delete and this is not one.
     outcome: `Took "${item.name}" off the list. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
   };

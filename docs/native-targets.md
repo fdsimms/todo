@@ -120,7 +120,9 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   error. And there is no custom UI to write: the whole `ManagedSettingsUI` framework is two
   types, so what a caller supplies is a blur style, a background colour, one `UIImage`, three
   `Label`s and a button colour, which iOS arranges for you. Every app's shield screen has the
-  same shape for this reason.
+  same shape for this reason. The one image is drawn in code (`mark` in
+  `ShieldConfigurationExtension.swift`) rather than loaded: nothing in `plugins/` copies an asset
+  into an extension's bundle, and a missing one renders as nothing, not as a build error.
 - **`Application.localizedDisplayName` works inside a shield extension**, which is the one
   place a blocked app's name is readable at all — everywhere else in the app a picked app is
   an opaque token that only SwiftUI can render (see `modules/todo-screentime-bridge`). It is

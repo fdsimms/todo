@@ -290,6 +290,11 @@ interface SettingsStore {
   // entirely rather than gating at the callback, so turning it off actually
   // stops the sensor from running.
   shakeToUndoEnabled: boolean;
+  // Whether finishing the last task on Today plays three notes with the All
+  // clear beat (src/utils/beatSound.ts). Off by default: the haptic carries the
+  // moment on its own, and a sound nobody asked for is the fastest way to get
+  // one muted. Device-local, like hapticsEnabled.
+  beatSoundEnabled: boolean;
   // Whether a simple "delete this?" confirmation (recipe, template, tag,
   // category, leftover, grocery item/aisle/shop, clearing a list, …) shows an
   // Alert before firing — see src/utils/confirmDelete.ts, the one place that
@@ -1510,6 +1515,10 @@ interface SettingsStore {
   // shown, not answered, so dismissing it without resolving every row still
   // counts as today's showing and it doesn't reappear until tomorrow.
   morningCheckInLastDayKey: string | null;
+  // The logical day the All clear beat last played, or null if never. It plays
+  // once a day (`shouldPlayBeat` in src/utils/allClear.ts), so it stays a
+  // reward rather than noise. Device-local.
+  beatLastDayKey: string | null;
   // Which part(s) of the day the check-in is held back until. An empty list
   // shows it as soon as the pass writes it (the behavior, and the default,
   // before this setting existed) rather than "any time" being the better
@@ -1741,6 +1750,7 @@ interface SettingsStore {
   setPlaceSuggestionsEnabled: (on: boolean) => void;
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
+  setBeatSoundEnabled: (on: boolean) => void;
   setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setUnitSystem: (system: UnitSystem) => void;
@@ -1938,6 +1948,7 @@ interface SettingsStore {
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
   setMorningCheckInLastDayKey: (dayKey: string | null) => void;
+  setBeatLastDayKey: (dayKey: string | null) => void;
   setMoodLogTimeSegments: (segments: TimeOfDay[]) => void;
   setMoodNudgeTasks: (on: boolean) => void;
   setMoodNudgeTaskCategory: (category: string | null) => void;
@@ -2022,6 +2033,7 @@ const DEFAULT_SETTINGS = {
   placeSuggestionsEnabled: false,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
+  beatSoundEnabled: false,
   confirmBeforeDeleting: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
@@ -2427,6 +2439,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   placeSuggestionsEnabled: false,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
+  beatSoundEnabled: false,
   confirmBeforeDeleting: true,
   sortOption: 'default',
   filterPriorities: [],
@@ -2608,6 +2621,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
   morningCheckInLastDayKey: null,
+  beatLastDayKey: null,
   moodLogTimeSegments: [],
   moodNudgeTasks: false,
   moodNudgeTaskCategory: null,
@@ -2691,6 +2705,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Same reasoning as hapticsEnabled above: defaults on so an install that
     // predates the setting keeps shake-to-undo working.
     const shakeToUndoEnabled = dbGetSetting('shakeToUndoEnabled') !== 'false';
+    const beatSoundEnabled = dbGetSetting('beatSoundEnabled') === 'true';
+    const beatLastDayKey = dbGetSetting('beatLastDayKey') || null;
     const confirmBeforeDeleting = dbGetSetting('confirmBeforeDeleting') !== 'false';
     const storedSort = dbGetSetting('sortOption') as SortOption | null;
     const sortOption: SortOption =
@@ -3207,6 +3223,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       autoCompleteProjectsOnDone,
       autoRemoveExpiredTasks,
       backgroundRefreshEnabled,
+      beatLastDayKey,
+      beatSoundEnabled,
       birthdayGiftLeadDays,
       birthdayGiftTaskCategory,
       birthdayGiftTasks,
@@ -3569,6 +3587,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHapticsEnabled(on: boolean) {
     dbSetSetting('hapticsEnabled', on ? 'true' : 'false');
     set({ hapticsEnabled: on });
+  },
+
+  setBeatSoundEnabled(on: boolean) {
+    dbSetSetting('beatSoundEnabled', on ? 'true' : 'false');
+    set({ beatSoundEnabled: on });
   },
 
   setShakeToUndoEnabled(on: boolean) {
@@ -4060,6 +4083,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMoodLogLastDayKey(dayKey: string | null) {
     dbSetSetting('moodLogLastDayKey', dayKey ?? '');
     set({ moodLogLastDayKey: dayKey });
+  },
+
+  setBeatLastDayKey(dayKey: string | null) {
+    dbSetSetting('beatLastDayKey', dayKey ?? '');
+    set({ beatLastDayKey: dayKey });
   },
 
   setMorningCheckInLastDayKey(dayKey: string | null) {
