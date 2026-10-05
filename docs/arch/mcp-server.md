@@ -211,6 +211,13 @@ them rather than the few hundred the app ships. These are the two records kept t
 (a test for the index, a fragment per user-facing PR for the notes), so neither drifts the way a
 hand-written help corpus would.
 
+**`unused_features` is a hand-written table of checks, not an inference** (`adoptionTools.ts`).
+Each check is a feature plus a test on the replica for "this person's data shows the need and the
+feature isn't set up" (forty open tasks and no estimates), and it reports what it saw. A check never
+fires on "the setting is off" alone, which is true of every feature for everyone. Simplified mode
+drops the `advanced` checks, and a note naming a check's id silences it, so a declined suggestion
+isn't repeated. Adding a feature worth recommending is one entry in `ADOPTION_CHECKS`.
+
 **Patterns are the Stats and Mood screens' own reads** (`patternTools.ts`). `habit_patterns` is
 `rhythms.ts` and `estimateCalibration.ts` over each habit's occurrences, plus the streak and pace
 the rows carry; `mood_insights` composes `moodInsights.ts` the way `MoodScreen` does, with the same
