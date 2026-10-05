@@ -5,6 +5,7 @@ import {
   dueTemplateRun,
   periodKeyFor,
   scheduledRunName,
+  schedulesEqual,
   triggerDayFor,
 } from '../utils/templateSchedule';
 
@@ -90,6 +91,33 @@ describe('dueTemplateRun', () => {
   it('does not fire before the trigger time on the trigger day', () => {
     const sundayEarly = new Date(2026, 7, 23, 8, 0, 0);
     expect(dueTemplateRun(template(), sundayEarly, 0, '00:00')).toBeNull();
+  });
+
+  // An HH:MM earlier than the reset belongs to the small hours after the
+  // trigger day, not the night before it (still the previous logical day).
+  it('places a time earlier than the day reset after its day, not before it', () => {
+    const early = template({ schedule: schedule({ weekday: 0, time: '01:00' }), scheduleLastFiredKey: '2026-08-16' });
+    // Sunday's logical day runs 04:00 Sunday to 04:00 Monday, so its 01:00 is
+    // Monday 01:00. At Sunday 10am that hasn't come yet (a bare setHours on
+    // the calendar day read it as Sunday 01:00, already past).
+    expect(dueTemplateRun(early, new Date(2026, 7, 23, 10, 0, 0), 0, '04:00')).toBeNull();
+    // Monday 01:30 is still Sunday's logical day, and past its 01:00.
+    const due = dueTemplateRun(early, new Date(2026, 7, 24, 1, 30, 0), 0, '04:00');
+    expect(due?.periodKey).toBe('2026-08-23');
+  });
+
+  it('reads a time that is not HH:MM as the default rather than rolling it over', () => {
+    const bad = template({ schedule: schedule({ time: '25:00' }) });
+    expect(dueTemplateRun(bad, SUNDAY_10AM, 0, '00:00')?.periodKey).toBe('2026-08-23');
+  });
+
+  // The week's key is its first day, so switching week start mid-week makes
+  // a new key for the same week.
+  it('does not fire again this week after the week start changes', () => {
+    const fired = template({ schedule: schedule({ weekday: 3 }), scheduleLastFiredKey: '2026-08-23' });
+    expect(dueTemplateRun(fired, new Date(2026, 7, 27, 10, 0, 0), 1, '00:00')).toBeNull();
+    // The next week still fires.
+    expect(dueTemplateRun(fired, new Date(2026, 8, 3, 10, 0, 0), 1, '00:00')?.periodKey).toBe('2026-08-31');
   });
 
   it('does not fire twice for the same period', () => {
@@ -196,6 +224,20 @@ describe('describeTemplateSchedule', () => {
     longest.forEach(s => {
       expect(describeTemplateSchedule(s).length).toBeLessThanOrEqual(FITS);
     });
+  });
+});
+
+describe('schedulesEqual', () => {
+  it('compares field by field, so key order is not a change', () => {
+    const a = schedule({ weekday: 3 });
+    const reordered = Object.fromEntries(Object.entries(a).reverse()) as TemplateSchedule;
+    expect(schedulesEqual(a, reordered)).toBe(true);
+  });
+
+  it('sees a changed field, and tells null apart from a schedule', () => {
+    expect(schedulesEqual(schedule({ weekday: 3 }), schedule({ weekday: 4 }))).toBe(false);
+    expect(schedulesEqual(null, null)).toBe(true);
+    expect(schedulesEqual(schedule(), null)).toBe(false);
   });
 });
 

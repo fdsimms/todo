@@ -20,10 +20,10 @@ const ROOT = join(__dirname, '..', '..', '..');
 
 const NOT_EXPOSED: Record<string, string[]> = {
   // Pointers between the parts of a template. A plan names them instead (an
-  // item's groupKey, onlyIfAnswer by item key, refTemplate), and the applier
+  // item's groupKey, onlyIfAnswer and waitsOn by item key, refTemplate), and the applier
   // resolves those to these ids. `id` and `conditions` are in the schema, as
   // an update-only handle and as conditions written by question name.
-  'references a plan writes by name': ['groupId', 'answerGate', 'refTemplateId', 'refTemplateName'],
+  'references a plan writes by name': ['groupId', 'answerGate', 'refTemplateId', 'refTemplateName', 'blockedByItemIds'],
 
   // Blocking apps, charging a penalty and writing a dose are read-only over MCP
   // on a task, and a template would be a way round that (docs/arch/mcp-server.md,

@@ -92,6 +92,15 @@ describe('mergeTaskUpdate', () => {
     const next = mergeTaskUpdate(t, { title: 'Just this once' }, { ...ctx, scope: 'occurrence' });
     expect(next.seriesDefaults).toEqual({ title: 'Original' });
   });
+
+  // A whole-snapshot undo puts back what was there, and a weekly target's
+  // part-week scaling writes the full count it reverts to.
+  it('lets a patch naming seriesDefaults win outright', () => {
+    const t = { ...make({ title: 'Run' }), seriesDefaults: { title: 'Old' } };
+    expect(mergeTaskUpdate(t, { seriesDefaults: { targetCount: 3 } }, ctx).seriesDefaults).toEqual({ targetCount: 3 });
+    expect(mergeTaskUpdate(t, { seriesDefaults: null }, ctx).seriesDefaults).toBeNull();
+    expect(mergeTaskUpdate(t, { notes: 'x' }, ctx).seriesDefaults).toEqual({ title: 'Old' });
+  });
 });
 
 describe('seriesFanOutRows', () => {

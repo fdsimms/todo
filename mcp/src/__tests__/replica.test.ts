@@ -17,7 +17,16 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { createTask as createTaskTool, getTask as getTaskTool, updateTask as updateTaskTool } from '../tools';
+import {
+  applyTemplate as applyTemplateTool,
+  createTask as createTaskTool,
+  createTemplate as createTemplateTool,
+  getTask as getTaskTool,
+  getTemplate as getTemplateTool,
+  updateTask as updateTaskTool,
+  updateTemplate as updateTemplateTool,
+} from '../tools';
+import { templateToPlan, templateVersion } from '../templatePlan';
 
 let mockRaw: ShimDatabase;
 
@@ -600,6 +609,89 @@ describe('the replica', () => {
       expect(kept.items[1]).toMatchObject({ rotationEnabled: false, rotationItems: [] });
     });
 
+    // What get_template hands back has to be something update_template takes
+    // and stores unchanged, or an agent can't safely edit the template at all.
+    it('takes back what get_template returned and changes nothing, whatever the template holds', () => {
+      const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
+      const built = replica.createTemplate({
+        name: 'Everything',
+        questions: [
+          { name: 'kind', prompt: 'What kind?', kind: 'choice', options: ['Work', 'Holiday'] },
+          { prompt: 'Who is coming?', kind: 'people' },
+        ],
+        items: [
+          { title: 'Routine', chain: { steps: [{ title: 'One' }, { title: 'Two' }, { title: 'Three' }] } },
+          { title: 'Laptop', conditions: [{ question: 'kind', values: ['Work'] }] },
+          { title: 'Nest', refTemplate: inner.id },
+        ],
+      });
+      // States the app can produce that a plan has no words for: a chain picked
+      // up mid-way with a link on a step, a choice question with no name (it
+      // only decides what is ticked), and a nested template since deleted.
+      const stored = replica.templates().find(t => t.id === built.id)!;
+      stored.items[0].chainIndex = 1;
+      stored.items[0].chainItems[1].linkUrl = 'https://example.com';
+      stored.questions[0].name = '';
+      db().dbUpdateTemplate(stored);
+      replica.deleteTemplate(inner.id);
+
+      const before = replica.templates().find(t => t.id === built.id)!;
+      const { id, ...plan } = templateToPlan(before);
+      const after = replica.updateTemplate(id, plan, templateVersion(before));
+
+      expect(after.items).toEqual(before.items);
+      expect(after.questions).toEqual(before.questions);
+      expect(templateVersion(after)).toBe(templateVersion(before));
+    });
+
+    it('keeps a chain step\'s own id and fields when steps are reordered', () => {
+      const t = replica.createTemplate({ name: 'R', items: [{ title: 'x', chain: { steps: [{ title: 'A' }, { title: 'B' }] } }] });
+      const stored = replica.templates().find(s => s.id === t.id)!;
+      stored.items[0].chainItems[1].linkUrl = 'https://b.example';
+      db().dbUpdateTemplate(stored);
+      const updated = replica.updateTemplate(t.id, { items: [{ id: t.items[0].id, chain: { steps: [{ title: 'B' }, { title: 'A' }] } }] });
+      expect(updated.items[0].chainItems.map(c => [c.title, c.id])).toEqual([['B', stored.items[0].chainItems[1].id], ['A', stored.items[0].chainItems[0].id]]);
+      expect(updated.items[0].chainItems[0].linkUrl).toBe('https://b.example');
+    });
+
+    it('refuses an edit made against a version that is no longer current', () => {
+      const built = trip();
+      const read = templateVersion(built);
+      replica.updateTemplate(built.id, { name: 'Changed on the phone' });
+      expect(() => replica.updateTemplate(built.id, { name: 'Agent edit' }, read)).toThrow(/has changed since/);
+      expect(replica.templates().find(t => t.id === built.id)!.name).toBe('Changed on the phone');
+      const fresh = replica.templates().find(t => t.id === built.id)!;
+      expect(replica.updateTemplate(built.id, { name: 'Agent edit' }, templateVersion(fresh)).name).toBe('Agent edit');
+    });
+
+    it('takes an item out of its group with groupKey null', () => {
+      const built = trip();
+      const shirts = built.items[0];
+      const updated = replica.updateTemplate(built.id, { items: [{ id: shirts.id, groupKey: null }, { id: built.items[1].id }] });
+      expect(updated.items[0].groupId).toBeNull();
+    });
+
+    it('reports warnings, a version and the changes at the tool layer', () => {
+      const created = createTemplateTool(replica, { name: 'Trip', items: [{ title: 'Book flights to {where}', reminderOffsetMinutes: 30 }] });
+      expect(created.warnings?.join(' ')).toMatch(/\{where\}, which no question fills/);
+      expect(created.warnings?.join(' ')).toMatch(/no dueOffsetDays/);
+      expect(getTemplateTool(replica, created.id)!.version).toBe(created.version);
+
+      const read = getTemplateTool(replica, created.id)!;
+      const updated = updateTemplateTool(replica, created.id, {
+        name: 'Lisbon',
+        questions: [{ name: 'where', prompt: 'Where to?', kind: 'text' }],
+        items: [{ id: read.items![0].id, reminderOffsetMinutes: null }, { title: 'Pack' }],
+      }, read.version);
+      expect(updated.warnings).toBeUndefined();
+      expect(updated.changes).toEqual(expect.arrayContaining([
+        'Rename to "Lisbon".',
+        'Add item "Pack".',
+        'Change item "Book flights to {where}": reminderOffsetMinutes.',
+        'Add question "where".',
+      ]));
+    });
+
     it('refuses a one-step chain, a repeated rotation member, and both at once', () => {
       expect(() => replica.createTemplate({ name: 'A', items: [{ title: 'x', chain: { steps: [{ title: 'only' }] } }] })).toThrow(/at least two steps/);
       expect(() => replica.createTemplate({ name: 'B', items: [{ title: 'x', rotation: { members: ['a', 'A'] } }] })).toThrow(/all be different/);
@@ -712,6 +804,55 @@ describe('the replica', () => {
         expect(replica.tasks().filter(x => x.groupId === stack.id)).toHaveLength(2);
       });
 
+      // The default selection names leaves; the run has to find its way into
+      // a nested template by itself or everything inside one is dropped.
+      it('creates the items of a nested template', () => {
+        const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Charger', category: 'Home' }] });
+        const outer = replica.createTemplate({ name: 'Weekend', items: [{ title: 'Book hotel', category: 'Home' }, { title: 'Packing', refTemplate: packing.id }] });
+        const result = replica.applyTemplate(outer.id, {});
+        expect(result.tasks.map(x => x.title)).toEqual(['Book hotel', 'Charger']);
+      });
+
+      it('says what a run left out and why, and which blanks it left empty', () => {
+        const t = replica.createTemplate({
+          name: 'Trip',
+          questions: [{ name: 'Kind', prompt: 'What kind?', kind: 'choice', options: ['Holiday', 'Work'] }],
+          items: [
+            { title: 'Book a {Kind} hotel in {city}', category: 'Home' },
+            { title: 'Laptop', conditions: [{ question: 'Kind', values: ['Work'] }], category: 'Home' },
+            { title: 'Sunscreen', optional: true, category: 'Home' },
+          ],
+        });
+        const result = applyTemplateTool(replica, t.id, { answers: { kind: 'holiday' } });
+        // The answer matches its question and option whatever the case.
+        expect(result.created.map(c => c.title)).toEqual(['Book a Holiday hotel in']);
+        expect(result.leftOut).toEqual([
+          { itemId: t.items[1].id, title: 'Laptop', why: 'not ticked for these answers' },
+          { itemId: t.items[2].id, title: 'Sunscreen', why: 'optional, off unless included' },
+        ]);
+        expect(result.unfilledBlanks).toEqual(['city']);
+      });
+
+      it('makes an item wait on another, and gets the key back from get_template', () => {
+        const t = replica.createTemplate({ name: 'Wedding', items: [
+          { title: 'Book venue', key: 'venue', category: 'Home' },
+          { title: 'Send invites', waitsOn: ['venue'], category: 'Home' },
+        ] });
+        expect(t.items[1].blockedByItemIds).toEqual([t.items[0].id]);
+        expect(templateToPlan(t).items![1].waitsOn).toEqual([t.items[0].id]);
+        const result = replica.applyTemplate(t.id, {});
+        const invites = replica.tasks().find(x => x.id === result.tasks[1].id)!;
+        expect(invites.blockedById).toBe(result.tasks[0].id);
+      });
+
+      it('takes a nested template\'s own item to leave the whole block out', () => {
+        const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Charger', category: 'Home' }, { title: 'Socks', category: 'Home' }] });
+        const outer = replica.createTemplate({ name: 'Weekend', items: [{ title: 'Book hotel', category: 'Home' }, { title: 'Packing', refTemplate: packing.id }] });
+        const result = replica.applyTemplate(outer.id, { leaveOut: [outer.items[1].id] });
+        expect(result.tasks.map(x => x.title)).toEqual(['Book hotel']);
+        expect(result.leftOut.map(l => l.why)).toEqual(['left out by request', 'left out by request']);
+      });
+
       it('refuses a bad answer, an unknown item or project, and writes nothing', () => {
         const t = trip();
         const before = replica.tasks().length;
@@ -757,6 +898,29 @@ describe('the replica', () => {
 
   it('refuses a task with no title', () => {
     expect(() => replica.createTask({ title: '   ' })).toThrow('needs a title');
+  });
+
+  // The app's own default for a weekly target set up midweek. Thursday Aug 27
+  // 2026 with the replica's Sunday week start leaves 3 days: 4 a week is 2.
+  it('scales a new weekly target\'s first week to the days left in it', () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    jest.setSystemTime(new Date(2026, 7, 27, 12));
+    try {
+      const weekly = replica.createTask({
+        title: 'Strength', targetCount: 4, quotaPeriod: 'week', recurrenceType: 'weekly',
+        dueDate: new Date(2026, 7, 27, 12).toISOString(),
+      });
+      replica.scaleFirstWeek(weekly.id);
+      const scaled = replica.taskById(weekly.id)!;
+      expect(scaled.targetCount).toBe(2);
+      expect(scaled.seriesDefaults).toEqual({ targetCount: 4 });
+
+      const daily = replica.createTask({ title: 'Water', targetCount: 8, quotaPeriod: 'day', recurrenceType: 'daily' });
+      replica.scaleFirstWeek(daily.id);
+      expect(replica.taskById(daily.id)!.targetCount).toBe(8);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('leaves the reminder to the device that receives it', () => {
@@ -1142,6 +1306,153 @@ describe('the replica', () => {
     const task = replica.createTask({ title: 'Write the report', estimatedMinutes: 90 });
     replica.completeTask(task.id, {});
     expect(coins()).toEqual([{ task_id: task.id, amount: 5 }]);
+  });
+
+  describe('rewards', () => {
+    const balance = () => replica.lib().rewards.coinBalance(replica.rewardState().entries);
+    const earn = (minutes: number) => {
+      const t = replica.createTask({ title: `Earner ${Math.random()}`, estimatedMinutes: minutes });
+      replica.completeTask(t.id, {});
+    };
+
+    beforeAll(() => {
+      mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardsEnabled', 'true')");
+      replica.refresh();
+    });
+
+    it('adds, claims and takes back a reward against the stored balance', () => {
+      // The store is loaded from the database, so a balance earned before this
+      // process's reward store was last read still counts toward a claim.
+      earn(90);
+      const have = balance();
+      const reward = replica.addReward('Takeout', have, { note: 'the Thai place', oneTime: true });
+      expect(reward.oneTime).toBe(true);
+
+      const claim = replica.claimReward(reward.id);
+      expect(claim.kind).toBe('spend');
+      expect(balance()).toBe(0);
+      expect(() => replica.claimReward(reward.id)).toThrow(/already been claimed/);
+
+      replica.unclaimReward(claim.id);
+      expect(balance()).toBe(have);
+      replica.deleteReward(reward.id);
+    });
+
+    it('refuses a claim the balance does not cover, and says by how much', () => {
+      const reward = replica.addReward('Holiday', balance() + 50, {});
+      expect(() => replica.claimReward(reward.id)).toThrow(/costs \d+ coins and the balance is/);
+      replica.deleteReward(reward.id);
+    });
+
+    // The replica used to leave the store empty on open, so a claim judged the
+    // balance by what this process had earned since it started. A row already in
+    // the database has to count, and one written behind the replica's back is
+    // picked up on the next refresh.
+    it('reads the balance from the database, including rows it did not write', () => {
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const before = balance();
+      mockRaw.runSync(
+        "INSERT INTO coin_entries (id, kind, amount, at, task_id, reward_id, label) VALUES ('seeded-earn', 'earn', 7, '2026-01-01T00:00:00.000Z', NULL, NULL, 'Seeded')"
+      );
+      replica.refresh();
+      expect(store.getState().balance()).toBe(before + 7);
+      const reward = replica.addReward('Seeded treat', before + 7, {});
+      expect(replica.claimReward(reward.id).amount).toBe(before + 7);
+      replica.unclaimReward(replica.rewardState().entries.find(e => e.kind === 'spend' && e.rewardId === reward.id)!.id);
+      replica.deleteReward(reward.id);
+      mockRaw.runSync("DELETE FROM coin_entries WHERE id = 'seeded-earn'");
+      replica.refresh();
+    });
+
+    it('claims a wish-list reward by checking its item off without paying for the check-off, and unclaims it back', () => {
+      earn(90);
+      const have = balance();
+      const item = replica.createTask({ title: 'New boots' });
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const reward = store.getState().addReward('New boots', 3, { taskId: item.id });
+      replica.refresh();
+
+      const claim = replica.claimReward(reward.id);
+      expect(replica.taskById(item.id)!.completed).toBe(true);
+      expect(balance()).toBe(have - 3);
+
+      replica.unclaimReward(claim.id);
+      expect(replica.taskById(item.id)!.completed).toBe(false);
+      expect(balance()).toBe(have);
+      store.getState().deleteReward(reward.id);
+    });
+
+    it('refuses a wish-list claim once the item was checked off by hand', () => {
+      earn(90);
+      const item = replica.createTask({ title: 'Bought already' });
+      const store = require('../../../src/store/useRewardStore').useRewardStore; // eslint-disable-line @typescript-eslint/no-require-imports
+      const reward = store.getState().addReward('Bought already', 3, { taskId: item.id });
+      replica.completeTask(item.id, {});
+      replica.refresh();
+      expect(() => replica.claimReward(reward.id)).toThrow(/checked off, archived or gone/);
+      store.getState().deleteReward(reward.id);
+    });
+
+    it('refuses a fractional or oversized cost', () => {
+      expect(() => replica.addReward('Odd', 2.5, {})).toThrow(/whole number/);
+      expect(() => replica.addReward('Huge', 1_000_000, {})).toThrow(/whole number/);
+    });
+
+    it('chooses and clears the goal, and refuses one that is gone', () => {
+      const reward = replica.addReward('Book', 40, {});
+      expect(replica.setRewardGoal(reward.id)!.id).toBe(reward.id);
+      expect(replica.settings().rewardGoalId).toBe(reward.id);
+      replica.setRewardGoal(null);
+      expect(replica.settings().rewardGoalId).toBeNull();
+      replica.deleteReward(reward.id);
+      expect(() => replica.setRewardGoal(reward.id)).toThrow(/No reward/);
+    });
+
+    it('posts one bounty at the default limit, and a withdrawn one is spent', () => {
+      const a = replica.createTask({ title: 'Put off A' });
+      const b = replica.createTask({ title: 'Put off B' });
+      expect(replica.postBounty(a.id).bountyPushes).toBe(0);
+      expect(() => replica.postBounty(b.id)).toThrow(/limit is 1/);
+      replica.withdrawBounty(a.id);
+      expect(() => replica.postBounty(a.id)).toThrow(/already had a bounty/);
+      expect(replica.postBounty(b.id).bountyPushes).toBe(0);
+      replica.withdrawBounty(b.id);
+    });
+
+    it('marks a repeating occurrence missed, costs the coins, and reopens it with them back', () => {
+      earn(90);
+      const before = balance();
+      const dailyDue = new Date(Date.now() - 2 * 86_400_000).toISOString();
+      const t = replica.createTask({ title: 'Stretch daily', recurrenceType: 'daily', dueDate: dailyDue, estimatedMinutes: 30 });
+      const result = replica.markMissed(t.id);
+      expect(result.completed.missedAt).not.toBeNull();
+      expect(result.nextTask).not.toBeNull();
+      expect(balance()).toBeLessThan(before);
+
+      replica.reopenTask(t.id);
+      expect(balance()).toBe(before);
+    });
+
+    it('refuses to mark a one-off task missed', () => {
+      const t = replica.createTask({ title: 'One-off' });
+      expect(() => replica.markMissed(t.id)).toThrow(/repeating task/);
+    });
+
+    it('logs a slip, costs coins, and undoes both; refuses a habit with a penalty', () => {
+      earn(90);
+      const before = balance();
+      const habit = replica.createTask({ title: 'No biting nails', polarity: 'negative' });
+      const slipped = replica.logSlip(habit.id);
+      expect(slipped.slipCount).toBe(1);
+      expect(balance()).toBeLessThan(before);
+
+      expect(replica.undoSlip(habit.id).slipCount).toBe(0);
+      expect(balance()).toBe(before);
+      expect(() => replica.undoSlip(habit.id)).toThrow(/nothing to undo/);
+
+      const guarded = replica.createTask({ title: 'No scrolling', polarity: 'negative', penaltyMinutes: 30 });
+      expect(() => replica.logSlip(guarded.id)).toThrow(/penalty/);
+    });
   });
 
   it('refuses a task that is already completed', () => {

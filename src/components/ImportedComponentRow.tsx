@@ -261,11 +261,11 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
+    checkboxOn: { backgroundColor: colors.purpleFill, borderColor: colors.purpleFill },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
-    metaError: { color: colors.red },
+    metaError: { color: colors.redText },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   });
 }

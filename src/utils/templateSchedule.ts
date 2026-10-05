@@ -5,7 +5,8 @@ import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateSchedule } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
-import { hhmmOnLogicalDay, taskDayStart } from './clockTime';
+import { onLogicalDay } from './clockTime';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, getDayStart } from './dateUtils';
 import type { TemplateAnchors } from './templateUtils';
 
@@ -71,6 +72,22 @@ export function defaultTemplateSchedule(): TemplateSchedule {
     time: DEFAULT_TEMPLATE_SCHEDULE_TIME,
     anchorSpanDays: null,
   };
+}
+
+/**
+ * Whether two schedules ask the same question, field by field. A JSON
+ * comparison reads the same schedule with its keys in another order (a row
+ * that came back through sync, or an MCP write) as a change, and a change
+ * clears the period key, so the period would fire a second time.
+ */
+export function schedulesEqual(a: TemplateSchedule | null, b: TemplateSchedule | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.frequency === b.frequency
+    && a.weekday === b.weekday
+    && a.monthDay === b.monthDay
+    && a.month === b.month
+    && a.time === b.time
+    && (a.anchorSpanDays ?? null) === (b.anchorSpanDays ?? null);
 }
 
 /**
@@ -154,14 +171,17 @@ export function dueTemplateRun(
   const today = startOfDay(getDayStart(now, dayResetTime));
   const periodKey = periodKeyFor(schedule.frequency, today, weekStartsOn);
   if (periodKey === template.scheduleLastFiredKey) return null;
+  if (schedule.frequency === 'weekly' && firedThisWeekUnderOtherStart(template.scheduleLastFiredKey, periodKey)) return null;
 
+  // The time is placed on the trigger day's *logical* day, so "01:00" under
+  // a 04:00 reset means the small hours after that day, not the night before
+  // it (which is still the previous logical day, and would fire and date the
+  // run a day early). A time that isn't HH:MM falls back to the default
+  // rather than rolling "25:00" into the next day.
   const triggerDay = triggerDayFor(schedule, today, weekStartsOn);
-  // The time is a time of day on the trigger's *logical* day, so a time earlier
-  // than the reset ("02:00" under a 4 AM start) is the small hours at the end
-  // of that day. Set on the trigger day's calendar date instead it was already
-  // past when the day began, and the run fired at the day's start, a logical
-  // day early by the person's clock.
-  const triggerInstant = hhmmOnLogicalDay(taskDayStart(triggerDay, dayResetTime), schedule.time);
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.time) ? schedule.time : DEFAULT_TEMPLATE_SCHEDULE_TIME;
+  const noon = new Date(triggerDay.getFullYear(), triggerDay.getMonth(), triggerDay.getDate(), 12);
+  const triggerInstant = onLogicalDay(getDayStart(noon, dayResetTime), time);
   if (now.getTime() < triggerInstant.getTime()) return null;
 
   // Anchored on the logical day the run is *for*, not on the trigger day it
@@ -175,6 +195,24 @@ export function dueTemplateRun(
   };
 
   return { periodKey, anchors, runName: scheduledRunName(template.name, today) };
+}
+
+/**
+ * Whether a weekly schedule already ran this week, keyed under a different
+ * week start. The key is the week's first day, so changing `weekStartsOn`
+ * mid-week produces a new key for the same week, and the run would fire a
+ * second time. Last week's key is always exactly 7 days back; anything closer
+ * than that is this week under the old setting.
+ */
+function firedThisWeekUnderOtherStart(lastKey: string | null, weekKey: string): boolean {
+  if (!lastKey || !/^\d{4}-\d{2}-\d{2}$/.test(lastKey)) return false;
+  const gap = Math.abs(differenceInCalendarDays(dayKeyToLocalDate(weekKey), dayKeyToLocalDate(lastKey)));
+  return gap > 0 && gap < 7;
+}
+
+function dayKeyToLocalDate(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function clamp(value: number, min: number, max: number): number {

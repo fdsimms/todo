@@ -225,14 +225,91 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return task;
     },
 
+    // The rewards writes are record-only like a stack's: a reward or a claim has
+    // no task to revert to, and the way back is the paired tool (unclaim_reward,
+    // delete_reward) or the Rewards screen. Each says what it did in its note.
+    addReward(title, cost, details) {
+      const reward = replica.addReward(title, cost, details);
+      log({ action: 'created', subject: 'reward', title: reward.title, taskId: null, note: `Add the reward "${reward.title}" for ${reward.cost} coins` });
+      return reward;
+    },
+
+    updateReward(id, patch) {
+      const before = replica.rewardState().rewards.find(r => r.id === id);
+      const reward = replica.updateReward(id, patch);
+      const cost = before && before.cost !== reward.cost ? `, now ${reward.cost} coins (was ${before.cost})` : '';
+      log({ action: 'edited', subject: 'reward', title: reward.title, taskId: null, note: `Change the reward "${before?.title ?? reward.title}"${cost}` });
+      return reward;
+    },
+
+    deleteReward(id) {
+      const reward = replica.deleteReward(id);
+      log({ action: 'cleared', subject: 'reward', title: reward.title, taskId: null, note: `Delete the reward "${reward.title}". Coins already spent on it stay spent.` });
+      return reward;
+    },
+
+    claimReward(id) {
+      const wish = replica.rewardState().rewards.find(r => r.id === id)?.taskId;
+      const entry = replica.claimReward(id);
+      log({ action: 'created', subject: 'reward', title: entry.label, taskId: null, note: `Claim "${entry.label}", spending ${entry.amount} coins${wish ? ' and checking the item off the wish list' : ''}` });
+      return entry;
+    },
+
+    unclaimReward(entryId) {
+      const entry = replica.unclaimReward(entryId);
+      log({ action: 'cleared', subject: 'reward', title: entry.label, taskId: null, note: `Take back the claim on "${entry.label}", returning ${entry.amount} coins` });
+      return entry;
+    },
+
+    setRewardGoal(id) {
+      const reward = replica.setRewardGoal(id);
+      log({ action: 'edited', subject: 'reward', title: reward?.title ?? 'Saving goal', taskId: null, note: reward ? `Save for "${reward.title}"` : 'Stop saving for a reward' });
+      return reward;
+    },
+
+    // A bounty is a field on the task, so it carries the revert an edit does.
+    postBounty(id) {
+      const before = snapshot(id);
+      const task = replica.postBounty(id);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Post a coin bounty on "${task.title}"`, revert: before ? taskRevert(before, task) : null });
+      return task;
+    },
+
+    withdrawBounty(id) {
+      const before = snapshot(id);
+      const task = replica.withdrawBounty(id);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Withdraw the coin bounty on "${task.title}". It cannot be posted again on this occurrence.` });
+      return task;
+    },
+
+    // Its own action, but reverted like a completion: reopening is its way back,
+    // and uncompleteTask removes the row's miss entry along with the successor.
+    markMissed(id) {
+      const result = replica.markMissed(id);
+      log({ action: 'missed', subject: 'task', title: result.completed.title, taskId: id, note: `Mark "${result.completed.title}" missed, which breaks its streak and may cost coins` });
+      return result;
+    },
+
+    logSlip(id) {
+      const task = replica.logSlip(id);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Log a slip on "${task.title}", which resets its streak and may cost coins` });
+      return task;
+    },
+
+    undoSlip(id) {
+      const task = replica.undoSlip(id);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Take back today's latest slip on "${task.title}"` });
+      return task;
+    },
+
     createTemplate(plan) {
       const template = replica.createTemplate(plan);
       log({ action: 'created', subject: 'template', title: template.name, taskId: null });
       return template;
     },
 
-    updateTemplate(id, patch) {
-      const template = replica.updateTemplate(id, patch);
+    updateTemplate(id, patch, expectedVersion) {
+      const template = replica.updateTemplate(id, patch, expectedVersion);
       log({ action: 'edited', subject: 'template', title: template.name, taskId: null });
       return template;
     },
@@ -384,6 +461,24 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const entry = replica.logMedication(input);
       log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null, recordId: entry.id });
       return entry;
+    },
+
+    // A request, not an event: the preview says the phone adds it, because
+    // nothing here can, and the entry is what the phone's Activity screen shows
+    // for the event once it lands.
+    requestCalendarEvent(input) {
+      const request = replica.requestCalendarEvent(input);
+      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id });
+      return request;
+    },
+
+    cancelCalendarRequest(id) {
+      const request = replica.cancelCalendarRequest(id);
+      log({
+        action: 'cleared', subject: 'event', title: request.title, taskId: null, recordId: request.id,
+        note: `Cancel the request to add "${request.title}" to the calendar`,
+      });
+      return request;
     },
 
     // The whole list, before and after: a rule list is one stored blob, so a

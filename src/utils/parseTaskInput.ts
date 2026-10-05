@@ -12,7 +12,7 @@ import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
-import { hhmmOnLogicalDay, taskDayStart } from './clockTime';
+import { onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -2472,7 +2472,7 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
  * the line had none.
  *
  * `dueDate` is noon of the logical day, so the clock time is placed on that
- * day by hhmmOnLogicalDay: a time earlier than `dayResetTime` is the small
+ * day by onLogicalDay: a time earlier than `dayResetTime` is the small
  * hours at the day's *end*. Set on the due date's calendar date instead,
  * "remind me at 3am" typed at 1:30 AM under a 4 AM reset (still yesterday by
  * the person's clock) scheduled a reminder about 22 hours in the past. Under
@@ -2487,5 +2487,5 @@ export function scheduleClockInstant(
   const clock = schedule.explicitClockTime;
   if (!clock) return null;
   const hhmm = `${String(clock.h).padStart(2, '0')}:${String(clock.m).padStart(2, '0')}`;
-  return hhmmOnLogicalDay(taskDayStart(new Date(schedule.dueDate), dayResetTime), hhmm);
+  return onLogicalDay(taskDayStart(new Date(schedule.dueDate), dayResetTime), hhmm);
 }

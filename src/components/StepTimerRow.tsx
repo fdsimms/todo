@@ -97,7 +97,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
         <Ionicons
           name={ready ? 'alarm' : 'timer-outline'}
           size={18}
-          color={ready ? colors.orange : colors.accent}
+          color={ready ? colors.orangeText : colors.accent}
         />
         <Text
           style={styles.labels}
@@ -196,7 +196,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   clockReady: {
-    color: colors.orange,
+    color: colors.orangeText,
   },
   clockState: {
     color: colors.textSecondary,
@@ -204,14 +204,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   clockStateReady: {
-    color: colors.orange,
+    color: colors.orangeText,
   },
   context: {
     color: colors.textSecondary,
     fontSize: font.sm,
   },
   contextReady: {
-    color: colors.orange,
+    color: colors.orangeText,
     fontWeight: fontWeight.semibold,
   },
   primaryBtn: {
@@ -228,7 +228,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.smd,
   },
   primaryBtnRunning: {
-    backgroundColor: colors.orange,
+    backgroundColor: colors.orangeFill,
   },
   primaryBtnText: {
     color: colors.onAccent,

@@ -12,7 +12,7 @@ const ACTION_WIDTH = 80;
 interface WhenAction {
   /** Ionicon for the panel. Defaults to the clock used for rescheduling. */
   icon?: keyof typeof Ionicons.glyphMap;
-  /** Panel background. Defaults to colors.orange — the app's "when" color. */
+  /** Panel background. Defaults to colors.orangeFill — the app's "when" color. */
   tint?: string;
   onAction: () => void;
   /** Spoken label, e.g. `Reschedule ${task.title}`. */
@@ -223,13 +223,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   whenAction: {
     width: ACTION_WIDTH,
-    backgroundColor: colors.orange,
+    backgroundColor: colors.orangeFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deleteAction: {
     width: ACTION_WIDTH,
-    backgroundColor: colors.red,
+    backgroundColor: colors.redFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

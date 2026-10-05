@@ -2,7 +2,7 @@ import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot, Task } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
-import { hhmmOnLogicalDay } from './clockTime';
+import { onLogicalDay } from './clockTime';
 import { dayKeyOf, getDayStart, getTaskDayStart } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { isKeyInRange } from './mealPlan';
@@ -257,7 +257,7 @@ export function dueMealPlanNudge(
   // On the trigger's logical day, so a time earlier than the reset belongs to
   // the small hours at that day's end rather than to the morning before it
   // began (templateSchedule places its trigger the same way).
-  const triggerInstant = hhmmOnLogicalDay(getTaskDayStart(triggerDay), time);
+  const triggerInstant = onLogicalDay(getTaskDayStart(triggerDay), time);
   if (now.getTime() < triggerInstant.getTime()) return null;
 
   // The trigger's own week, not the one after (#1730) — see this function's

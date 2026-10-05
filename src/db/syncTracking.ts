@@ -82,6 +82,12 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // simply matches nothing on the other phone. Duplicates from two phones
   // linking the same occurrence offline are collapsed by the reader.
   { name: 'event_people_links', key: ['id'] },
+  // Events an agent asked for (calendarRequestDrain.ts). The whole point is
+  // to travel: the sync server writes the request and one phone writes the
+  // event, then the outcome comes back the same way. The event's id on the
+  // row is the calendar server's, never an EventKit one, so it means the same
+  // thing on every device.
+  { name: 'calendar_requests', key: ['id'] },
   // The medication log. Same health-record argument as mood_logs, with one
   // extra edge: a phone that only has half the doses answers "how often did I
   // reach for it" with a number that is simply too low, and nothing about that
@@ -341,6 +347,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // What the person wants an agent to keep in mind, read by the sync server and
   // edited on any device (src/utils/agentNotes.ts).
   'agentNotes',
+  // Which device writes the calendar events an agent asks for (a device id
+  // from dbGetDeviceId, or empty for none). Synced because "only one device"
+  // has to be a fact every device and the sync server agree on: choosing a
+  // new one switches the old one off by overwriting this, and the server
+  // refuses a request when nobody is set to write it. The calendar it goes
+  // into is `calendarRequestCalendarId`, which is device-local (below).
+  'calendarRequestDeviceId',
 
   // Automations: every generator's own switch, and the rules the person wrote
   // for the four that take rules, plus title rules. They were missing from
@@ -477,7 +490,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   notification schedules. Shared, both devices would fire the same
  *   notification and every reminder would arrive twice.
  * - `calendarIds`, `calendarReadEnabled`, `calendarPeopleHistory`,
- *   `deadlineCalendarId`, `completionCalendarId`, `mealCalendarId`, `remindersImport*`,
+ *   `deadlineCalendarId`, `completionCalendarId`, `mealCalendarId`, `calendarRequestCalendarId`,
+ *   `remindersImport*`,
  *   `groceryImport*` — identifiers for calendars and lists that exist on one
  *   device. Wrong, not just useless, on the other. `calendarPeopleHistory`
  *   is a preference rather than an id, but it refines `calendarReadEnabled`

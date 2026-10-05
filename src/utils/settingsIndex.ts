@@ -527,6 +527,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
+  { id: 'claudeCalendar', groupId: 'capture', label: 'Add Claude’s events to', section: 'Claude’s events on your calendar',
+    keywords: ['mcp', 'agent', 'ai', 'assistant', 'appointment', 'sync server', 'calendar'] },
 
   { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
     keywords: ['steps', 'fitness', 'activity', 'healthkit', 'walking', 'watch'] },

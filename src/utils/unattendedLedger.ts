@@ -53,11 +53,13 @@ export const UNATTENDED_ACTION_SPECS: Record<UnattendedAction, UnattendedActionS
   cleared: { action: 'cleared', verb: 'Cleared', icon: 'close-circle-outline', adds: false },
   expired: { action: 'expired', verb: 'Expired', icon: 'hourglass-outline', adds: false },
   purged: { action: 'purged', verb: 'Purged', icon: 'trash-outline', adds: false },
-  // The three only an agent writes (see UnattendedActor). An edit or a move
+  // The four only an agent writes (see UnattendedActor). An edit or a move
   // neither adds nor takes away, so neither is drawn as news.
   edited: { action: 'edited', verb: 'Edited', icon: 'create-outline', adds: false },
   moved: { action: 'moved', verb: 'Moved', icon: 'calendar-outline', adds: false },
   completed: { action: 'completed', verb: 'Completed', icon: 'checkmark-circle-outline', adds: false },
+  // Only an agent writes this too: a repeating task's occurrence the person told it they missed.
+  missed: { action: 'missed', verb: 'Marked missed', icon: 'alert-circle-outline', adds: false },
 };
 
 /** The name an agent's rows go under. The MCP server is reached from the Claude apps. */

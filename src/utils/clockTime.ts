@@ -57,27 +57,6 @@ export function taskDayStart(date: Date, dayResetTime: string): Date {
 }
 
 /**
- * An "HH:MM" clock time placed on the logical day that starts at `dayStart`.
- *
- * A clock time earlier than the day's start belongs to the small hours at the
- * *end* of that day, so it rolls onto the next calendar date: "01:00" on a day
- * that starts at 04:00 is tomorrow's 01:00, not an instant three hours before
- * the day began. Every placement of a clock time on a logical day goes through
- * this (visibilityUtils' onLogicalDay is this with the settings store in
- * front of it); a bare setHours on the day start was the shape that shipped a
- * window expired, hidden and swept all day, a quota owed in full the moment
- * it opened, and a trigger fired a logical day early.
- *
- * Store-free, like the rest of this module, so the schedulers that take the
- * reset time as a parameter can share it.
- */
-export function hhmmOnLogicalDay(dayStart: Date, hhmm: string): Date {
-  const t = hhmmToDate(hhmm, new Date(dayStart));
-  if (t < dayStart) t.setDate(t.getDate() + 1);
-  return t;
-}
-
-/**
  * A reminder's time of day carried onto another day: `original`'s clock time
  * placed on the logical day `onto` names (a stored anchor such as a due date,
  * so taskDayStart rather than logicalDayStart). Copying hours and minutes onto
@@ -85,7 +64,7 @@ export function hhmmOnLogicalDay(dayStart: Date, hhmm: string): Date {
  * its day under a 4 AM reset, a whole day early on every successor.
  */
 export function carryClockTime(onto: Date, original: Date, dayResetTime: string): Date {
-  return hhmmOnLogicalDay(taskDayStart(onto, dayResetTime), dateToHHMM(original));
+  return onLogicalDay(taskDayStart(onto, dayResetTime), dateToHHMM(original));
 }
 
 /**
@@ -175,4 +154,18 @@ export function clockTimeToken(use24Hour = false): string {
 /** Inverse of hhmmToDate — extracts "HH:MM" from a Date's clock time. */
 export function dateToHHMM(d: Date): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+/**
+ * An `HH:MM` placed on the logical day that starts at `dayStart`: a time
+ * earlier than the reset belongs to the small hours at the *end* of that day,
+ * so it rolls onto the next calendar date. See the note on its re-export in
+ * visibilityUtils for the bug a bare `setHours` on the day start caused.
+ */
+export function onLogicalDay(dayStart: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = new Date(dayStart);
+  t.setHours(h, m, 0, 0);
+  if (t < dayStart) t.setDate(t.getDate() + 1);
+  return t;
 }

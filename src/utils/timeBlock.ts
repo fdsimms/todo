@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { addMinutes } from 'date-fns/addMinutes';
 import type { Task } from '../types';
-import { hhmmOnLogicalDay, logicalDayStart, taskDayStart } from './clockTime';
+import { logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import type { BusyEvent } from './calendarBusy';
 import { freeGapsIn } from './calendarBusy';
 import { activeChainStep } from './chain';
@@ -73,13 +73,13 @@ function ceilToMinutes(date: Date, step: number): Date {
 }
 
 /**
- * `hhmm` on the logical day that starts at `dayStart` (see hhmmOnLogicalDay):
+ * `hhmm` on the logical day that starts at `dayStart` (see onLogicalDay):
  * a clock time earlier than the reset is the small hours at the day's end.
  * Applied to the day's calendar date instead, a "01:00" window start under a
  * 4 AM reset proposed a block a day early.
  */
 function timeOnDay(dayStart: Date, hhmm: string): Date {
-  return hhmmOnLogicalDay(dayStart, hhmm);
+  return onLogicalDay(dayStart, hhmm);
 }
 
 /**

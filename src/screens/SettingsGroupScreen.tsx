@@ -16,6 +16,7 @@ import { CalendarSettings } from './settings/CalendarSettings';
 import { DeadlineCalendarSettings } from './settings/DeadlineCalendarSettings';
 import { CompletionCalendarSettings } from './settings/CompletionCalendarSettings';
 import { MealCalendarSettings } from './settings/MealCalendarSettings';
+import { ClaudeCalendarSettings } from './settings/ClaudeCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
 import { HealthSettings } from './settings/HealthSettings';
 import { PermissionsSettings } from './settings/PermissionsSettings';
@@ -92,6 +93,7 @@ export function SettingsGroupScreen() {
           {groupId === 'capture' && <DeadlineCalendarSettings />}
           {groupId === 'capture' && <CompletionCalendarSettings />}
           {groupId === 'capture' && kitchenEnabled && <MealCalendarSettings />}
+          {groupId === 'capture' && <ClaudeCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
           {/* No 'generated' case: that group lives on the Automations screen
               (SettingsGroup.screen), so nothing routes it here. */}

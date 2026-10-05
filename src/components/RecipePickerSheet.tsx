@@ -501,7 +501,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                       </View>
                       {pickedId
                         ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
-                        : recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
+                        : recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orangeText} />}
                     </TouchableOpacity>
                   </React.Fragment>
                 );

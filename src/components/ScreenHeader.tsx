@@ -17,7 +17,7 @@ export interface ScreenHeaderAction {
   active?: boolean;
   tint?: 'accent' | 'orange';
   badge?: number;
-  /** Badge fill color; defaults to colors.red. Use for badges that aren't reporting something dire. */
+  /** Badge fill color; defaults to colors.redFill. Use for badges that aren't reporting something dire. */
   badgeColor?: string;
   /** Plain neutral dot instead of a numbered red badge — for a low-key "there's something here" signal. */
   badgeDot?: boolean;
@@ -118,7 +118,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
       </View>
       <View style={styles.actions}>
         {actions?.map((action, i) => {
-          const tintColor = action.tint === 'orange' ? colors.orange : colors.accent;
+          const tintColor = action.tint === 'orange' ? colors.orangeFill : colors.accentFill;
           const iconColor = action.disabled
             ? colors.textTertiary
             : action.active ? colors.onAccent : colors.textSecondary;
@@ -188,8 +188,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // the xxl line height makes noticeably taller than the glyphs.
   titleChevron: { marginTop: 3 },
   // textSecondary, not textTertiary: this carries information (a task count, a
-  // workload total), and textTertiary's ~3:1 contrast is under the 4.5:1 bar
-  // for 13pt text — the same reason the section-label rule moved off it.
+  // workload total), and textTertiary is the dimmest grey, kept for what's
+  // absent — the same reason the section-label rule moved off it.
   subtitle: {
     color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium,
     marginTop: spacing.xxs,
@@ -207,7 +207,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   badge: {
     position: 'absolute', top: -3, right: -3,
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
-    backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center',
   },
   badgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
   badgeDot: {

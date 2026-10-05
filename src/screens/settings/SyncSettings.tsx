@@ -191,7 +191,7 @@ export function SyncSettings() {
           icon="alert-circle-outline"
           iconColor={colors.red}
           label={problem}
-          labelColor={colors.red}
+          labelColor={colors.redText}
         />
       )}
     </SettingsSection>

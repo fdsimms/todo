@@ -644,7 +644,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 <Ionicons
                   name={s.kind === 'rest' ? 'cafe-outline' : 'ellipse-outline'}
                   size={iconSize.sm}
-                  color={s.kind === 'rest' ? colors.orange : colors.textTertiary}
+                  color={s.kind === 'rest' ? colors.orangeText : colors.textTertiary}
                 />
                 <Text style={styles.upNextTitle} numberOfLines={1}>
                   {s.kind === 'rest'
@@ -790,7 +790,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontVariant: ['tabular-nums'],
     marginTop: spacing.lg,
   },
-  clockDone: { color: colors.orange },
+  clockDone: { color: colors.orangeText },
   clockCaption: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xxs },
   progressWrap: { alignSelf: 'stretch', marginTop: spacing.lg },
   doneNote: {

@@ -26,7 +26,7 @@ interface Props {
    * chip rather than as a control.
    */
   variant?: Variant;
-  /** Overrides the accent tint — `colors.purple` for AI actions, `colors.warning` for repairs. */
+  /** Overrides the accent tint — `colors.purpleText` for AI actions, `colors.warningText` for repairs. */
   tint?: string;
   /**
    * Which surface the pill sits on, for the `neutral` variant only. `card` (the

@@ -1,4 +1,4 @@
-import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken, effectiveWindowEndTime, hhmmOnLogicalDay, carryClockTime } from '../utils/clockTime';
+import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken, effectiveWindowEndTime, onLogicalDay, carryClockTime } from '../utils/clockTime';
 
 const NOW = new Date(2025, 5, 10, 14, 30, 0); // Tue Jun 10 2025, 2:30 PM
 
@@ -152,24 +152,24 @@ describe('effectiveWindowEndTime', () => {
   });
 });
 
-describe('hhmmOnLogicalDay', () => {
+describe('onLogicalDay (clock time on a logical day)', () => {
   const dayStart = new Date(2026, 7, 26, 4, 0); // a day that starts at 04:00
 
   it('places a time after the reset on the day start\'s own date', () => {
-    expect(hhmmOnLogicalDay(dayStart, '09:30')).toEqual(new Date(2026, 7, 26, 9, 30));
-    expect(hhmmOnLogicalDay(dayStart, '04:00')).toEqual(dayStart);
+    expect(onLogicalDay(dayStart, '09:30')).toEqual(new Date(2026, 7, 26, 9, 30));
+    expect(onLogicalDay(dayStart, '04:00')).toEqual(dayStart);
   });
 
   // The small hours belong to the end of the logical day, not the morning
   // before it began.
   it('rolls a time earlier than the reset onto the next date', () => {
-    expect(hhmmOnLogicalDay(dayStart, '01:00')).toEqual(new Date(2026, 7, 27, 1, 0));
-    expect(hhmmOnLogicalDay(dayStart, '03:59')).toEqual(new Date(2026, 7, 27, 3, 59));
+    expect(onLogicalDay(dayStart, '01:00')).toEqual(new Date(2026, 7, 27, 1, 0));
+    expect(onLogicalDay(dayStart, '03:59')).toEqual(new Date(2026, 7, 27, 3, 59));
   });
 
   it('is the plain clock time under a midnight reset', () => {
     const midnight = new Date(2026, 7, 26, 0, 0);
-    expect(hhmmOnLogicalDay(midnight, '01:00')).toEqual(new Date(2026, 7, 26, 1, 0));
+    expect(onLogicalDay(midnight, '01:00')).toEqual(new Date(2026, 7, 26, 1, 0));
   });
 });
 

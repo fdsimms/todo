@@ -36,6 +36,13 @@ describe('agentRevertPlan', () => {
     expect(agentRevertLabel({ kind: 'uncomplete', taskId: 't1' })).toBe('Reopen');
   });
 
+  it('reopens an occurrence the agent marked missed, and reads a reopened one as undone', () => {
+    expect(agentRevertPlan(entry({ action: 'missed', revert: null }), task({ completed: true })))
+      .toEqual({ kind: 'uncomplete', taskId: 't1' });
+    expect(agentRevertPlan(entry({ action: 'missed', revert: null }), task()))
+      .toEqual({ kind: 'none', reason: 'Reopened since' });
+  });
+
   it('unarchives a task Claude archived, while it is still archived', () => {
     const archived = entry({ action: 'cleared', revert: { before: { archived: false }, after: { archived: true } } });
     expect(agentRevertPlan(archived, task({ archived: true } as Partial<Task>))).toMatchObject({ kind: 'restore', patch: { archived: false } });

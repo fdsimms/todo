@@ -113,7 +113,7 @@ export function SettingsScreen() {
 
   const tintOf = (tint: SettingsTint): string => (
     tint === 'accent' ? colors.accent
-    : tint === 'orange' ? colors.orange
+    : tint === 'orange' ? colors.orangeText
     : tint === 'red' ? colors.red
     : tint === 'green' ? colors.green
     : tint === 'purple' ? colors.purple

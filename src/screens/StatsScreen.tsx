@@ -516,7 +516,7 @@ export function StatsScreen() {
               <Text style={styles.summaryLabel}>This week</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={[styles.summaryValue, { color: colors.orange }]}>{streaks.length}</Text>
+              <Text style={[styles.summaryValue, { color: colors.orangeText }]}>{streaks.length}</Text>
               <Text style={styles.summaryLabel}>Active streaks</Text>
             </View>
           </View>
@@ -646,7 +646,7 @@ export function StatsScreen() {
                   <Text style={styles.rowText}>
                     {onTime.onTime}/{onTime.total} completed by their deadline
                   </Text>
-                  <Text style={[styles.badgeText, { color: onTime.rate >= 0.8 ? colors.green : onTime.rate >= 0.5 ? colors.orange : colors.red }]}>
+                  <Text style={[styles.badgeText, { color: onTime.rate >= 0.8 ? colors.greenText : onTime.rate >= 0.5 ? colors.orangeText : colors.redText }]}>
                     {Math.round(onTime.rate * 100)}%
                   </Text>
                 </View>
@@ -692,9 +692,9 @@ export function StatsScreen() {
                       <Ionicons
                         name="flame"
                         size={13}
-                        color={isStreakAtRecord(t) ? colors.red : colors.orange}
+                        color={isStreakAtRecord(t) ? colors.red : colors.orangeText}
                       />
-                      <Text style={[styles.badgeText, { color: isStreakAtRecord(t) ? colors.red : colors.orange }]}>
+                      <Text style={[styles.badgeText, { color: isStreakAtRecord(t) ? colors.redText : colors.orangeText }]}>
                         {t.streakCount}
                       </Text>
                     </View>
@@ -779,7 +779,7 @@ export function StatsScreen() {
                     </View>
                     <View style={styles.badge}>
                       <Ionicons name="close-circle" size={13} color={colors.red} />
-                      <Text style={[styles.badgeText, { color: colors.red }]}>{g.count}</Text>
+                      <Text style={[styles.badgeText, { color: colors.redText }]}>{g.count}</Text>
                     </View>
                   </View>
                 ))}

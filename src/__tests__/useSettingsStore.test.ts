@@ -7,6 +7,7 @@ jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbGetAllSettings: jest.fn(),
   dbSetSetting: jest.fn(),
+  dbGetDeviceId: jest.fn().mockReturnValue('device-self'),
 }));
 
 // The key lives in the keychain now — see secureApiKey.test.ts for the module
