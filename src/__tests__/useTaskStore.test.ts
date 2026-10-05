@@ -8283,6 +8283,20 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
   });
 
+  it.each([[false, false], [true, true]])('pinEachOccurrence=%s leaves the next occurrence pinned=%s', (each, pinned) => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      pinned: true,
+      pinEachOccurrence: each,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(pinned);
+  });
+
   it('decrements recurrenceCount', () => {
     const task = makeTask({
       id: 't1',
