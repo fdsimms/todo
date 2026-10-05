@@ -13,12 +13,25 @@ import { deliverableOptionsFor } from './deliverables';
  */
 
 /** Resolves a task id to its row, or undefined if there's no such task. */
-export type TaskResolver = (id: string) => Task | undefined;
+export type TaskResolver = ((id: string) => Task | undefined) & {
+  /**
+   * The row a task's completion spawned (`previousOccurrenceId` pointing back
+   * at it), if it has one. Optional: a resolver without it simply can't follow
+   * a series, so `waitForSeriesEnd` holds nothing there.
+   */
+  successorOf?: (id: string) => Task | undefined;
+};
 
 /** Build a resolver over a plain array. For tests and cold paths. */
 export function resolverFor(tasks: Task[]): TaskResolver {
   const byId = new Map(tasks.map(t => [t.id, t]));
-  return id => byId.get(id);
+  const next = new Map<string, Task>();
+  for (const t of tasks) {
+    if (t.previousOccurrenceId && !t.archived) next.set(t.previousOccurrenceId, t);
+  }
+  const resolve: TaskResolver = id => byId.get(id);
+  resolve.successorOf = id => next.get(id);
+  return resolve;
 }
 
 /**
@@ -130,12 +143,45 @@ function holds(t: Task | undefined, resolve: TaskResolver): t is Task {
 }
 
 /**
+ * The occurrence of a repeating blocker that is still open, found by following
+ * completed occurrences to the successor each one spawned. Undefined when the
+ * series has ended: the last occurrence is done, or its successor was archived
+ * or deleted. This is what `waitForSeriesEnd` waits on, derived each time so
+ * uncompleting an occurrence (which deletes its successor) needs no cascade.
+ */
+export function openOccurrenceOf(t: Task | undefined, resolve: TaskResolver): Task | undefined {
+  const seen = new Set<string>();
+  let cur = t;
+  while (cur && !seen.has(cur.id)) {
+    if (canBlock(cur)) return cur;
+    if (cur.archived) return undefined;
+    seen.add(cur.id);
+    cur = resolve.successorOf?.(cur.id);
+  }
+  return undefined;
+}
+
+/**
+ * The task holding `waiter` back on account of the blocker `id`, or undefined.
+ * With `waitForSeriesEnd` a finished blocker hands over to its open successor.
+ */
+function holder(waiter: Task, id: string, resolve: TaskResolver): Task | undefined {
+  const t = resolve(id);
+  if (holds(t, resolve)) return t;
+  if (!waiter.waitForSeriesEnd || !blockerIdsOf(waiter).includes(id)) return undefined;
+  const open = openOccurrenceOf(t, resolve);
+  return holds(open, resolve) ? open : undefined;
+}
+
+/**
  * The tasks still holding this one back, in order: every blocker that can
  * still block, then an unanswered gate question. A blocker on a branch not
  * taken holds nothing.
  */
 export function liveBlockersOf(task: Task, resolve: TaskResolver): Task[] {
-  return waitIdsOf(task).map(resolve).filter((t): t is Task => holds(t, resolve));
+  return waitIdsOf(task)
+    .map(id => holder(task, id, resolve))
+    .filter((t): t is Task => t !== undefined);
 }
 
 /**
@@ -152,7 +198,7 @@ export function blockerOf(task: Task, resolve: TaskResolver): Task | undefined {
  * several blockers it waits for all of them: any one still open holds it.
  */
 export function isBlocked(task: Task, resolve: TaskResolver): boolean {
-  return waitIdsOf(task).some(id => holds(resolve(id), resolve));
+  return waitIdsOf(task).some(id => holder(task, id, resolve) !== undefined);
 }
 
 /** Resolves a person id to their row, or undefined. `peopleRegistry` supplies it. */

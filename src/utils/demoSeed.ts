@@ -848,7 +848,7 @@ export function seedDemoData(): void {
   // The same added task on the other trigger: a counted repeat whose last
   // occurrence adds a follow-up. Invisible until the last class is done, so
   // the seed's job is the editor's "When the repeat ends" choice.
-  addTask({
+  const swimClass = addTask({
     title: 'Swim class',
     notes: 'Six weekly classes. Finishing the last one adds a task to sign up for the next session.',
     category: 'Health',
@@ -858,6 +858,15 @@ export function seedDemoData(): void {
     recurrenceCount: 6,
     followUpTaskAtEnd: true,
     followUpTaskTitle: 'Sign up for the next swim session',
+  });
+  // Waits for the whole six-week series rather than the first class.
+  addTask({
+    title: 'Book the pool party',
+    notes: 'Held back until the last swim class is done, not just the next one.',
+    category: 'Health',
+    effort: 1,
+    blockedById: swimClass.id,
+    waitForSeriesEnd: true,
   });
 
   // A decision task — one that completes by recording an answer rather than

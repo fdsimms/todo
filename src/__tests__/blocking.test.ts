@@ -173,6 +173,40 @@ describe('isBlocked / blockerOf', () => {
   });
 });
 
+describe('waitForSeriesEnd', () => {
+  const first = makeTask({ id: 'a1', title: 'Pimsleur', recurrenceType: 'daily', completed: true });
+  const second = makeTask({ id: 'a2', title: 'Pimsleur', recurrenceType: 'daily', previousOccurrenceId: 'a1' });
+  const plain = makeTask({ id: 'w', blockedById: 'a1' });
+  const waiter = { ...plain, waitForSeriesEnd: true };
+
+  it('releases at the first completion without the flag', () => {
+    expect(isBlocked(plain, resolverFor([first, second, plain]))).toBe(false);
+  });
+
+  it('keeps holding while a later occurrence is open, and names it', () => {
+    const r = resolverFor([first, second, waiter]);
+    expect(isBlocked(waiter, r)).toBe(true);
+    expect(blockerOf(waiter, r)?.id).toBe('a2');
+  });
+
+  it('follows several completed occurrences to the open one', () => {
+    const secondDone = { ...second, completed: true };
+    const third = makeTask({ id: 'a3', recurrenceType: 'daily', previousOccurrenceId: 'a2' });
+    expect(isBlocked(waiter, resolverFor([first, secondDone, third, waiter]))).toBe(true);
+  });
+
+  it('releases once the series ends, or its successor is archived or deleted', () => {
+    expect(isBlocked(waiter, resolverFor([first, { ...second, completed: true }, waiter]))).toBe(false);
+    expect(isBlocked(waiter, resolverFor([first, { ...second, archived: true }, waiter]))).toBe(false);
+    expect(isBlocked(waiter, resolverFor([first, waiter]))).toBe(false);
+  });
+
+  it('holds nothing when the resolver cannot follow a series', () => {
+    const bare = ((id: string) => [first, second, waiter].find(t => t.id === id)) as ReturnType<typeof resolverFor>;
+    expect(isBlocked(waiter, bare)).toBe(false);
+  });
+});
+
 describe('wouldCycle', () => {
   it('catches a task pointed at itself', () => {
     const a = makeTask({ id: 'a' });

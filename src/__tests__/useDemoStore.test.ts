@@ -880,6 +880,12 @@ describe('demo mode', () => {
     expect(s.waitingTasks().map(t => t.id)).toContain(waiter!.id);
     expect(s.blockedTasksOf(blocker!.id).map(t => t.id)).toEqual([waiter!.id]);
 
+    // And one that waits for a whole repeating series, not its first occurrence.
+    const party = s.tasks.find(t => t.title === 'Book the pool party');
+    const swim = s.tasks.find(t => t.title === 'Swim class');
+    expect(party?.blockedById).toBe(swim!.id);
+    expect(party?.waitForSeriesEnd).toBe(true);
+
     useDemoStore.getState().exitDemoMode();
   });
 
