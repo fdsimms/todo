@@ -11,6 +11,7 @@ import {
   registerPresentation,
   releasePresentation,
   releasePresentationClaim,
+  subscribeDismissAllSheets,
   subscribePresentation,
   type PresentationLevel,
 } from '../utils/sheetModal';
@@ -270,6 +271,18 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
   const shownRef = useRef(shown);
   shownRef.current = shown;
   useEffect(() => () => { if (shownRef.current) Keyboard.dismiss(); }, []);
+
+  // Closes on a link from outside the app (`requestDismissAllSheets`), through
+  // the caller's own `onRequestClose` so an unsaved-changes guard still runs.
+  // The lock screen is exempt: it is the one sheet that has to stay up.
+  const onRequestCloseRef = useRef(rest.onRequestClose);
+  onRequestCloseRef.current = rest.onRequestClose;
+  useEffect(() => {
+    if (preempts) return;
+    return subscribeDismissAllSheets(() => {
+      if (shownRef.current) onRequestCloseRef.current?.({} as never);
+    });
+  }, [preempts]);
 
   // Registering is not a development-only courtesy: it is what tells the sheet
   // *below* this one that it may not dismiss yet (see the closing effect). The

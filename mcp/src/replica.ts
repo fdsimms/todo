@@ -51,7 +51,13 @@ import type {
   GroceryList,
   GroceryListEntry,
   ItemProduct,
+  ItemShopLink,
+  ItemSubLink,
   Leftover,
+  ProductRating,
+  ReceiptStyle,
+  Shop,
+  StoreAlias,
   MealPlanEntry,
   MealSlot,
   MedicationLog,
@@ -69,6 +75,7 @@ import type {
   TaskDraft,
   TaskGroup,
 } from '../../src/types';
+import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { activeRotationLog } from '../../src/utils/rotation';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
@@ -213,6 +220,8 @@ export interface ReplicaLib {
   leftovers: typeof import('../../src/utils/leftovers');
   freshness: typeof import('../../src/utils/freshness');
   groceryParse: typeof import('../../src/utils/groceryParse');
+  receiptMatch: typeof import('../../src/utils/receiptMatch');
+  storeAliases: typeof import('../../src/utils/storeAliases');
   groceryPlural: typeof import('../../src/utils/groceryPlural');
 }
 
@@ -419,6 +428,82 @@ export interface PantryBoxOutcome {
   changed: string[];
 }
 
+
+export interface GroceryItemChange {
+  name?: string;
+  /** One of the aisles that exist. Remembered for the name, as filing it in the app is. */
+  aisle?: string;
+  quantity?: string | null;
+  note?: string;
+  /** A hand-set price in minor units, or null to clear. With shopId it also updates that store's existing link. */
+  price?: { minor: number | null; shopId?: string | null };
+  /** The generic this item is a variety of (a name), or null. */
+  varietyOf?: string | null;
+  preferredBoxId?: string | null;
+  strict?: boolean;
+  /** Stores this item can be bought at (store ids). */
+  linkShops?: string[];
+  unlinkShops?: string[];
+  addSubstitutes?: { itemId: string; note?: string | null; ratioFrom?: string | null; ratioTo?: string | null; standing?: boolean; bothWays?: boolean }[];
+  removeSubstitutes?: string[];
+}
+
+export interface GroceryItemOutcome {
+  item: GroceryItem;
+  changed: string[];
+  /**
+   * Whether the change touched only the item's own fields, which is what an
+   * Activity undo can put back. A rename, a store or substitute link and a
+   * store's price are recorded but not undoable.
+   */
+  reversible: boolean;
+}
+
+export interface GroceryBoxInput {
+  /** Omit to add a box. */
+  boxId?: string;
+  brand?: string | null;
+  variant?: string | null;
+  note?: string;
+  rating?: ProductRating | null;
+  delete?: boolean;
+}
+
+export interface ReceiptLineInput {
+  /** The text printed on the receipt, remembered as this store's name for the item. */
+  label: string;
+  /** An existing catalog item. Otherwise `name` finds one or makes one. */
+  itemId?: string;
+  name?: string;
+  quantity?: string | null;
+  priceMinor?: number | null;
+  /** Straight into the freezer. */
+  frozen?: boolean;
+  /** Default true when the line names an existing item. */
+  rememberAlias?: boolean;
+}
+
+export interface ReceiptImportInput {
+  /** shopping: check the lines off a list and finish the trip. pantry: say the person has them. */
+  context: 'shopping' | 'pantry';
+  listId: string | null;
+  shopId: string | null;
+  /** ISO instant the trip happened. */
+  purchasedAt: string;
+  /** Shopping only: finish the list afterwards, recording the purchase. */
+  finish: boolean;
+  lines: ReceiptLineInput[];
+}
+
+export interface ReceiptImportOutcome {
+  lines: { label: string; itemId: string; name: string; created: boolean; priceMinor: number | null; frozen: boolean; aliasRemembered: boolean }[];
+  /** Names of everything the trip finished, which includes anything already checked off on the list. */
+  finished: string[];
+  /** True for a separate list, where a trip records nothing but the unlisting. */
+  away: boolean;
+  shopId: string | null;
+}
+
 export type LeftoverDraftInput = import('../../src/utils/pantryWrite').LeftoverDraft;
 
 export interface LeftoverChange {
@@ -489,6 +574,8 @@ export interface ProjectPatch {
   eventDate?: string | null;
   category?: string | null;
   defaultTaskCategory?: string | null;
+  /** Priority (0 to 4, 0 meaning deliberately none), difficulty and estimate bucket (1 to 6) new tasks start with; null clears. */
+  taskDefaults?: { priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null } | null;
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
@@ -566,8 +653,6 @@ export interface Replica {
    * one at home.
    */
   groceryListEntries(): GroceryListEntry[];
-  /** The person's separate lists, in their order. The home list has no row (see `GroceryListEntry`). */
-  groceryLists(): GroceryList[];
   /**
    * A project's away span through the app's own reader (`awaySpanOf`), which
    * drops an end with no start or on or before it, so every project read here
@@ -936,9 +1021,6 @@ export interface Replica {
    * on the membership, and that db function is also the only writer of the
    * mirror columns on the item row (`dbSyncGroceryHomeColumns`), so the row and
    * the entry cannot disagree.
-   *
-   * `listId` names the trolley; omitted or null is the one at home. A caller
-   * that is not a person looking at the grocery screen always says which.
    */
   setGroceryChecked(id: string, checked: boolean, listId?: string | null): GroceryItem;
 
@@ -975,6 +1057,29 @@ export interface Replica {
   updateLeftover(id: string, change: LeftoverChange): Leftover;
   /** Log a container of cooked food. Null when the title is empty. */
   createLeftover(draft: LeftoverDraftInput): Leftover | null;
+
+  groceryLists(): GroceryList[];
+  shops(): Shop[];
+  itemShopLinks(): ItemShopLink[];
+  itemSubLinks(): ItemSubLink[];
+  storeAliases(): StoreAlias[];
+  /** Where the person filed each name last time, by name key. */
+  aisleOverrides(): Record<string, string>;
+  /** The aisles that exist, in the person's walk order. */
+  aisleNames(): string[];
+  updateGroceryItem(id: string, change: GroceryItemChange): GroceryItemOutcome;
+  /** Add, edit or delete one brand/variant box of an item. Returns what it left, or null for a delete. */
+  saveGroceryBox(itemId: string, input: GroceryBoxInput): ItemProduct | null;
+  saveShop(input: { id?: string; name?: string; receiptStyle?: ReceiptStyle }): Shop;
+  /** Removes the item and everything attached to it, returning what was removed so it can be put back. */
+  deleteGroceryItem(id: string): import('../../src/utils/groceryItemWrite').DeletedItemSnapshot;
+  createGroceryList(name: string): GroceryList;
+  renameGroceryList(id: string, name: string): GroceryList;
+  /** Items on it are unlisted, not deleted. */
+  deleteGroceryList(id: string): { list: GroceryList; unlisted: number };
+  /** Finish a list: ticked items are recorded as bought and leave it. */
+  finishGroceryTrip(input: { listId: string | null; shopId: string | null; purchasedAt: string; priceById?: Record<string, number>; frozenIds?: string[] }): { finished: string[]; away: boolean; shopId: string | null };
+  importReceipt(input: ReceiptImportInput): ReceiptImportOutcome;
 
   /**
    * The `Task` fields a `create_task`/`update_task` input stands for, checked
@@ -1261,6 +1366,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const aisles = require('../../src/utils/groceryAisles') as GroceryAislesModule;
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const pantryWrite = require('../../src/utils/pantryWrite') as typeof import('../../src/utils/pantryWrite');
+  const itemWrite = require('../../src/utils/groceryItemWrite') as typeof import('../../src/utils/groceryItemWrite');
+  const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
   const grocerySuggest = require('../../src/utils/grocerySuggest') as typeof import('../../src/utils/grocerySuggest');
   const shelfLife = require('../../src/utils/groceryShelfLife') as typeof import('../../src/utils/groceryShelfLife');
   const groceryLists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists');
@@ -1729,19 +1836,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (name && !useCategoryStore.getState().getCategoryByName(name)) useCategoryStore.getState().addCategory(name);
   };
 
-  /**
-   * How a message names the list `listId` points at ("home", or the list's
-   * own name quoted), refusing an id that is none of the person's lists rather
-   * than acting on an empty trolley nobody made. Null is the list at home,
-   * which has no row (`GroceryListEntry`).
-   */
-  const requireGroceryListName = (listId: string | null): string => {
-    if (listId === null) return 'home';
-    const list = db.dbGetAllGroceryLists().find(l => l.id === listId);
-    if (!list) throw new Error(`No grocery list with id ${listId}. list_grocery_lists names them.`);
-    return `"${list.name}"`;
-  };
-
   /** A step or task's fields, checked, with blockers resolved against the live tasks. */
   const taskPatch = (
     input: TaskFieldsInput,
@@ -2038,6 +2132,36 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // Today here while the app hides them.
   registerPausedProjectSource(projects);
 
+  /**
+   * Finish a list: ticked rows are recorded as bought and leave it. The data
+   * half of `useGroceryStore.finishShopping`; its use-up task and supply
+   * restock go through the task store, which the phone catches up on.
+   */
+  const finishTrip = (
+    listId: string | null,
+    shopId: string | null,
+    purchasedAt: string,
+    priceById: Record<string, number>,
+    frozenIds: ReadonlySet<string>,
+  ): { finished: string[]; away: boolean; shopId: string | null } => {
+    if (listId !== null && !db.dbGetAllGroceryLists().some(l => l.id === listId)) throw new Error(`No list with id ${listId}.`);
+    const items = db.dbGetAllGroceryItems();
+    const plan = itemWrite.planFinishShopping({
+      items,
+      entries: db.dbGetAllGroceryListEntries(),
+      shops: db.dbGetAllGroceryShops(),
+      listId,
+      shopId,
+      priceById,
+      purchasedAt,
+    });
+    const ids = db.dbFinishGroceryShopping(purchasedAt, plan.shopId, plan.expiresAtById, plan.priceById, frozenIds, listId);
+    if (plan.shopId && ids.length > 0) db.dbSetLastShopId(plan.shopId);
+    refresh();
+    const names = new Map(items.map(i => [i.id, i.name]));
+    return { finished: ids.map(i => names.get(i) ?? i), away: plan.away, shopId: plan.shopId };
+  };
+
   const replica: Replica = {
     path,
 
@@ -2199,6 +2323,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         leftovers: require('../../src/utils/leftovers'),
         freshness: require('../../src/utils/freshness'),
         groceryParse: parse,
+        receiptMatch: require('../../src/utils/receiptMatch'),
+        storeAliases: require('../../src/utils/storeAliases'),
         groceryPlural: require('../../src/utils/groceryPlural'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
@@ -3040,11 +3166,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     setGroceryChecked(id: string, checked: boolean, listId: string | null = null): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
-      const listName = requireGroceryListName(listId);
 
       // Checked belongs to a trolley, so there has to be one holding this item.
       const entry = db.dbGetAllGroceryListEntries().find(e => e.itemId === id && e.listId === listId);
-      if (!entry) throw new Error(`"${item.name}" is not on the ${listName} list, so there is nothing to check off.`);
+      if (!entry) throw new Error(`"${item.name}" is not on ${listId === null ? 'the home list' : 'that list'}, so there is nothing to check off.`);
 
       db.dbSetGroceryListEntry({ ...entry, checked });
       refresh();
@@ -3054,12 +3179,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     removeFromGroceryList(id: string, listId: string | null = null): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
-      const listName = requireGroceryListName(listId);
-      // That list's entry, not item.onList: that flag is also true for a row
-      // only on another list, which this would park without taking it off
+      // The entry on this list, not item.onList: that flag is also true for a
+      // row only on another list, which this would park without taking it off
       // anything.
-      const onThisList = db.dbGetAllGroceryListEntries().some(e => e.itemId === id && e.listId === listId);
-      if (!onThisList) throw new Error(`"${item.name}" is not on the ${listName} list.`);
+      const onList = db.dbGetAllGroceryListEntries().some(e => e.itemId === id && e.listId === listId);
+      if (!onList) throw new Error(`"${item.name}" is not on ${listId === null ? 'the home list' : 'that list'}.`);
 
       // A recipe's claim on the quantity ends with the shop, so it does not
       // ride back onto the catalog row, and nor does its credit: the same
@@ -3079,6 +3203,319 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
     },
 
+    shops: () => db.dbGetAllGroceryShops(),
+    itemShopLinks: () => db.dbGetAllItemShopLinks(),
+    itemSubLinks: () => db.dbGetAllItemSubLinks(),
+    storeAliases: () => db.dbGetAllStoreAliases(),
+    aisleOverrides: () => db.dbGetGroceryAisleOverrides(),
+    aisleNames: () => {
+      const items = db.dbGetAllGroceryItems();
+      return aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+    },
+
+    updateGroceryItem(id: string, change: GroceryItemChange): GroceryItemOutcome {
+      const start = db.dbGetAllGroceryItems().find(i => i.id === id);
+      if (!start) throw new Error(`No grocery item with id ${id}.`);
+      const nowIso = new Date().toISOString();
+      const changed: string[] = [];
+      let reversible = true;
+      db.dbTransaction(() => {
+        let item = start;
+        const save = (next: GroceryItem, what: string): void => {
+          db.dbUpdateGroceryItem(next);
+          item = next;
+          changed.push(what);
+        };
+        if (change.name !== undefined && change.name.trim() !== item.name) {
+          reversible = false;
+          const r = itemWrite.renameRows(db.dbGetAllGroceryItems(), id, change.name);
+          if ('refusal' in r) throw new Error(r.refusal);
+          db.dbUpdateGroceryItem(r.item);
+          for (const o of r.repointed) db.dbUpdateGroceryItem(o);
+          item = r.item;
+          changed.push(`renamed to "${r.item.name}"`);
+          // The remembered aisle and the recipes' ingredient keys follow the
+          // rename, or they stay stranded under the old spelling.
+          const moved = aisles.renameRememberedAisle(db.dbGetGroceryAisleOverrides(), r.oldKey, r.key);
+          if (moved) db.dbSetGroceryAisleOverrides(moved);
+          for (const recipe of recipeUtils.remapIngredientKeyIn(db.dbGetAllRecipes(), r.oldKey, r.key)) db.dbUpdateRecipe(recipe);
+        }
+        if (change.aisle !== undefined) {
+          const names = replica.aisleNames();
+          const match = names.find(n => n.toLowerCase() === change.aisle!.trim().toLowerCase());
+          if (!match) throw new Error(`There is no aisle called "${change.aisle}". The aisles are: ${names.join(', ')}.`);
+          if (match !== item.aisle) {
+            const next = { ...item, aisle: match };
+            save(next, `moved to ${match}`);
+            // Filing it is remembered for the name, as in the app.
+            const remembered = aisles.rememberAisles(db.dbGetGroceryAisleOverrides(), [next]);
+            if (remembered) db.dbSetGroceryAisleOverrides(remembered);
+          }
+        }
+        if (change.quantity !== undefined) {
+          const quantity = change.quantity?.trim() || null;
+          if (quantity !== item.quantity) save({ ...item, quantity, quantityFromRecipe: false }, quantity ? `quantity set to ${quantity}` : 'quantity cleared');
+        }
+        if (change.note !== undefined && change.note.trim() !== item.note) save({ ...item, note: change.note.trim() }, 'note changed');
+        if (change.price !== undefined) {
+          const shopId = change.price.shopId ?? null;
+          const link = shopId ? db.dbGetAllItemShopLinks().find(l => l.itemId === id && l.shopId === shopId) : undefined;
+          if (shopId) reversible = false;
+          const rows = itemWrite.pricedRows(item, link, change.price.minor, nowIso);
+          save(rows.item, change.price.minor === null ? 'price cleared' : 'price set');
+          if (rows.link) db.dbSetItemShopLink(rows.link);
+        }
+        if (change.varietyOf !== undefined) {
+          const key = change.varietyOf ? parse.groceryNameKey(change.varietyOf) || null : null;
+          const next = key === item.nameKey ? null : key;
+          if (next !== item.varietyOfKey) save({ ...item, varietyOfKey: next }, next ? `a kind of "${next}"` : 'no longer a kind of something');
+        }
+        if (change.preferredBoxId !== undefined) {
+          const next = itemWrite.preferredProductRow(item, db.dbGetAllItemProducts(), change.preferredBoxId);
+          if (next) save(next, 'preferred brand changed');
+        }
+        if (change.strict !== undefined && item.productStrict !== change.strict) {
+          save({ ...item, productStrict: change.strict }, change.strict ? 'only the preferred brand will do' : 'any brand will do');
+        }
+        const shopsById = new Map(db.dbGetAllGroceryShops().map(sh => [sh.id, sh]));
+        for (const shopId of change.linkShops ?? []) {
+          const shop = shopsById.get(shopId);
+          if (!shop) throw new Error(`No store with id ${shopId}.`);
+          reversible = false;
+          const row = itemWrite.shopLinkRow(db.dbGetAllItemShopLinks().find(l => l.itemId === id && l.shopId === shopId), id, shopId);
+          if (row) {
+            db.dbSetItemShopLink(row);
+            changed.push(`can be bought at ${shop.name}`);
+          }
+        }
+        for (const shopId of change.unlinkShops ?? []) {
+          if (!db.dbGetAllItemShopLinks().some(l => l.itemId === id && l.shopId === shopId)) continue;
+          reversible = false;
+          db.dbDeleteItemShopLink(id, shopId);
+          changed.push(`no longer linked to ${shopsById.get(shopId)?.name ?? 'a store'}`);
+        }
+        for (const sub of change.addSubstitutes ?? []) {
+          const target = db.dbGetAllGroceryItems().find(i => i.id === sub.itemId);
+          if (!target) throw new Error(`No grocery item with id ${sub.itemId}.`);
+          const rows = itemWrite.subLinkRows(id, sub.itemId, db.dbGetAllItemSubLinks(), sub, nowIso);
+          if (!rows) throw new Error('An item cannot be its own substitute.');
+          reversible = false;
+          for (const l of rows.written) db.dbSetItemSubLink(l);
+          for (const l of rows.cleared) db.dbSetItemSubLink(l);
+          changed.push(`${target.name} can stand in for it`);
+        }
+        for (const subId of change.removeSubstitutes ?? []) {
+          if (!db.dbGetAllItemSubLinks().some(l => l.itemId === id && l.subItemId === subId)) continue;
+          reversible = false;
+          db.dbDeleteItemSubLink(id, subId);
+          changed.push('a substitute removed');
+        }
+      });
+      refresh();
+      return { item: db.dbGetAllGroceryItems().find(i => i.id === id)!, changed, reversible };
+    },
+
+    saveGroceryBox(itemId: string, input: GroceryBoxInput): ItemProduct | null {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      const boxes = db.dbGetAllItemProducts();
+      let result: ItemProduct | null = null;
+      db.dbTransaction(() => {
+        if (input.delete) {
+          const box = boxes.find(b => b.id === input.boxId && b.itemId === itemId);
+          if (!box) throw new Error('That item has no such box.');
+          db.dbDeleteItemProduct(box.id);
+          return;
+        }
+        if (input.boxId) {
+          const box = boxes.find(b => b.id === input.boxId && b.itemId === itemId);
+          if (!box) throw new Error('That item has no such box.');
+          const edited = itemWrite.productEditRow(box, boxes, input);
+          if ('refusal' in edited) throw new Error(edited.refusal);
+          db.dbSetItemProduct(edited.row);
+          result = edited.row;
+          return;
+        }
+        const brand = input.brand?.trim() || null;
+        const variant = input.variant?.trim() || null;
+        const ensured = groceryAdd.ensureProductFor(itemId, brand, variant, boxes, new Date().toISOString());
+        if (!ensured) throw new Error('A box needs a brand or a variant.');
+        const box = ensured.created ? { ...ensured.product, note: input.note?.trim() ?? '', rating: input.rating ?? null } : ensured.product;
+        if (ensured.created) db.dbSetItemProduct(box);
+        // The first box becomes the preference, as naming one does in the app.
+        if (!item.preferredProductId) db.dbUpdateGroceryItem({ ...item, preferredProductId: box.id });
+        result = box;
+      });
+      refresh();
+      return result;
+    },
+
+    saveShop(input: { id?: string; name?: string; receiptStyle?: ReceiptStyle }): Shop {
+      const shops = db.dbGetAllGroceryShops();
+      let id = input.id;
+      db.dbTransaction(() => {
+        if (!id) {
+          if (!input.name) throw new Error('A new store needs a name.');
+          const shop = itemWrite.newShopRow(input.name, shops, generateId(), new Date().toISOString());
+          if (!shop) throw new Error(`There is already a store called "${input.name}", or the name is empty.`);
+          db.dbInsertGroceryShop(shop);
+          id = shop.id;
+          if (input.receiptStyle) db.dbSetShopReceiptStyle(shop.id, input.receiptStyle);
+          return;
+        }
+        const shop = shops.find(x => x.id === id);
+        if (!shop) throw new Error(`No store with id ${id}.`);
+        if (input.name !== undefined) {
+          const renamed = itemWrite.renamedShopRow(shop, input.name, shops);
+          if (!renamed) throw new Error(`There is already a store with that name, or the name is empty.`);
+          db.dbUpdateGroceryShop(renamed);
+        }
+        if (input.receiptStyle) db.dbSetShopReceiptStyle(shop.id, input.receiptStyle);
+      });
+      refresh();
+      return db.dbGetAllGroceryShops().find(x => x.id === id)!;
+    },
+
+    deleteGroceryItem(id: string): import('../../src/utils/groceryItemWrite').DeletedItemSnapshot {
+      const snapshot = itemWrite.deletedItemSnapshot(id, {
+        items: db.dbGetAllGroceryItems(),
+        entries: db.dbGetAllGroceryListEntries(),
+        boxes: db.dbGetAllItemProducts(),
+        shopLinks: db.dbGetAllItemShopLinks(),
+        subLinks: db.dbGetAllItemSubLinks(),
+        aliases: db.dbGetAllStoreAliases(),
+        aisleOverrides: db.dbGetGroceryAisleOverrides(),
+      });
+      if (!snapshot) throw new Error(`No grocery item with id ${id}.`);
+      db.dbDeleteGroceryItem(id);
+      refresh();
+      return snapshot;
+    },
+
+    createGroceryList(name: string): GroceryList {
+      const lists = db.dbGetAllGroceryLists();
+      const problem = itemWrite.listNameProblem(name, lists);
+      if (problem) throw new Error(problem);
+      const list = itemWrite.newListRow(name, lists, generateId(), new Date().toISOString());
+      db.dbInsertGroceryList(list);
+      refresh();
+      return list;
+    },
+
+    renameGroceryList(id: string, name: string): GroceryList {
+      const lists = db.dbGetAllGroceryLists();
+      const list = lists.find(l => l.id === id);
+      if (!list) throw new Error(`No list with id ${id}.`);
+      const problem = itemWrite.listNameProblem(name, lists, id);
+      if (problem) throw new Error(problem);
+      const updated = { ...list, name: name.trim() };
+      db.dbUpdateGroceryList(updated);
+      refresh();
+      return updated;
+    },
+
+    deleteGroceryList(id: string): { list: GroceryList; unlisted: number } {
+      const list = db.dbGetAllGroceryLists().find(l => l.id === id);
+      if (!list) throw new Error(`No list with id ${id}.`);
+      const cleared = db.dbDeleteGroceryList(id);
+      refresh();
+      return { list, unlisted: cleared.length };
+    },
+
+    finishGroceryTrip(input) {
+      return finishTrip(input.listId, input.shopId, input.purchasedAt, input.priceById ?? {}, new Set(input.frozenIds ?? []));
+    },
+
+    importReceipt(input: ReceiptImportInput): ReceiptImportOutcome {
+      const nowIso = new Date().toISOString();
+      const resolved: ReceiptImportOutcome['lines'] = [];
+      const priceById: Record<string, number> = {};
+      const frozen = new Set<string>();
+      let finished: { finished: string[]; away: boolean; shopId: string | null } = { finished: [], away: input.listId !== null, shopId: null };
+      db.dbTransaction(() => {
+        for (const line of input.lines) {
+          let item: GroceryItem;
+          let created = false;
+          if (line.itemId) {
+            const found = db.dbGetAllGroceryItems().find(i => i.id === line.itemId);
+            if (!found) throw new Error(`No grocery item with id ${line.itemId}.`);
+            item = found;
+          } else if (line.name?.trim()) {
+            if (input.context === 'shopping') {
+              const out = replica.addGroceryItem(line.name, { listId: input.listId, ...(line.quantity ? { quantity: line.quantity } : {}) });
+              item = out.item;
+              created = out.isNew;
+            } else {
+              const [out] = replica.addToPantry([line.name]);
+              if (!out) throw new Error(`"${line.name}" has no name in it.`);
+              item = out.item;
+              created = out.isNew;
+            }
+          } else {
+            throw new Error(`The receipt line "${line.label}" needs an itemId or a name.`);
+          }
+          const existedBefore = !created;
+
+          if (input.context === 'shopping') {
+            const entries = db.dbGetAllGroceryListEntries();
+            const entry = entries.find(e => e.itemId === item.id && e.listId === input.listId);
+            db.dbSetGroceryListEntry(entry
+              ? { ...entry, checked: true }
+              : { itemId: item.id, listId: input.listId, checked: true, choiceGroup: null, addedAt: nowIso, sortOrder: groceryLists.nextListSortOrder(entries, input.listId) });
+            if (line.priceMinor !== undefined && line.priceMinor !== null) priceById[item.id] = line.priceMinor;
+            if (line.frozen) frozen.add(item.id);
+          } else {
+            // A row named by id is marked on hand here; one named by name was
+            // already marked by `addToPantry`, whose rule this repeats.
+            if (line.itemId) {
+              const got = pantryWrite.onHandRow(item, grocerySuggest.defaultOnHandUntil(item, new Date()));
+              db.dbUpdateGroceryItem(got);
+              item = got;
+            }
+            // A new packet of something already in the catalog: the old
+            // packet's claims go, and so does the running-low entry.
+            if (existedBefore) {
+              const fresh = pantryWrite.acquiredRow(item);
+              if (fresh) {
+                for (const e of pantryWrite.runningLowEntries(db.dbGetAllGroceryListEntries(), item)) db.dbDeleteGroceryListEntry(e.itemId, e.listId);
+                db.dbUpdateGroceryItem(fresh);
+                item = fresh;
+              }
+            }
+            if (line.frozen) {
+              const f = pantryWrite.frozenRow(item, true, new Date());
+              if (f) {
+                db.dbUpdateGroceryItem(f);
+                item = f;
+              }
+            }
+            if (line.priceMinor !== undefined) {
+              const link = input.shopId ? db.dbGetAllItemShopLinks().find(l => l.itemId === item.id && l.shopId === input.shopId) : undefined;
+              const rows = itemWrite.pricedRows(item, link, line.priceMinor, nowIso);
+              db.dbUpdateGroceryItem(rows.item);
+              if (rows.link) db.dbSetItemShopLink(rows.link);
+            }
+          }
+
+          // Remembered only for a row the line named, as the app does for a row
+          // the person confirmed: a row this line minted has nothing to alias.
+          let aliasRemembered = false;
+          if (existedBefore && line.rememberAlias !== false && line.label.trim()) {
+            const alias = itemWrite.aliasRow(db.dbGetAllStoreAliases(), input.shopId, line.label, item.id, generateId(), nowIso);
+            if (alias) {
+              db.dbSetStoreAlias(alias);
+              aliasRemembered = true;
+            }
+          }
+          resolved.push({ label: line.label, itemId: item.id, name: item.name, created, priceMinor: line.priceMinor ?? null, frozen: !!line.frozen, aliasRemembered });
+        }
+        if (input.context === 'shopping' && input.finish) {
+          finished = finishTrip(input.listId, input.shopId, input.purchasedAt, priceById, frozen);
+        }
+      });
+      refresh();
+      return { lines: resolved, finished: finished.finished, away: finished.away, shopId: finished.shopId };
+    },
 
     itemProducts: () => db.dbGetAllItemProducts(),
     leftovers: () => db.dbGetAllLeftovers(),
@@ -3362,7 +3799,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const store = useProjectStore.getState();
       if (!store.projects.some(p => p.id === id)) throw new Error(`No project with id ${id}.`);
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A project title cannot be blank.');
-      const { completed, archived, newCategory, ...content } = patch;
+      const { completed, archived, newCategory, taskDefaults, ...rest } = patch;
+      const content: Parameters<typeof store.updateProject>[1] = { ...rest } as never;
+      if (taskDefaults !== undefined) {
+        content.taskDefaults = taskDefaults === null ? null : parseTaskFieldDefaults(taskDefaults);
+        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, and effort is 1 to 6.');
+      }
       if (content.defaultTaskCategory) {
         const errors: string[] = [];
         const named = categoryNamed(content.defaultTaskCategory, newCategory === true, errors, 'defaultTaskCategory');
@@ -3378,7 +3820,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // Everything that hangs off the span is settled here and written in the
       // same patch, so a half-written trip cannot land.
       const before = store.projects.find(p => p.id === id)!;
-      const { awayStart, awayEnd, destination, ...rest } = content;
+      const { awayStart, awayEnd, destination, ...contentRest } = content;
       const away: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'destination' | 'awayPauses' | 'awayListId'>> = {};
       if (awayStart !== undefined || awayEnd !== undefined || destination !== undefined) {
         const noonOf = (value: string, field: string): string => {
@@ -3419,7 +3861,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (destination !== undefined) away.destination = destination === null || !destination.trim() ? null : destination.trim();
         }
       }
-      const fields = { ...rest, ...away };
+      const fields = { ...contentRest, ...away };
       db.dbTransaction(() => {
         ensureCategory(fields.defaultTaskCategory);
         if (Object.keys(fields).length > 0) {

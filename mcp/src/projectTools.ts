@@ -34,6 +34,8 @@ export interface SerializedProjectDetail {
   eventDate?: string;
   category?: string;
   defaultTaskCategory?: string;
+  /** Priority (0 means none on purpose), difficulty and estimate bucket new tasks in it start with. */
+  taskDefaults?: { priority: number | null; difficulty: string | null; effort: number | null };
   completed?: boolean;
   archived?: boolean;
   /**
@@ -101,6 +103,7 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     ...(p.eventDate ? { eventDate: p.eventDate } : {}),
     ...(p.category ? { category: p.category } : {}),
     ...(p.defaultTaskCategory ? { defaultTaskCategory: p.defaultTaskCategory } : {}),
+    ...(p.taskDefaults ? { taskDefaults: p.taskDefaults } : {}),
     ...(p.completed ? { completed: true } : {}),
     ...(p.archived ? { archived: true } : {}),
     ...awayFields(replica, p),

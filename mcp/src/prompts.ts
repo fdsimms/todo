@@ -47,6 +47,19 @@ export const PROMPTS: PromptDef[] = [
 ${ASK_FIRST}`,
   },
   {
+    name: 'unstick_tasks',
+    title: 'Unstick my tasks',
+    description: 'Find tasks that keep getting pushed and work out what is in the way of each.',
+    text: () => `Help me get my stuck tasks moving.
+
+1. Call review_tasks and look at repeatedlyPostponed (and overdue, if it is short). Those are the tasks I keep pushing.
+2. Take them one at a time, most pushed first. For each, call get_task and tell me how long it has been drifting (postponed.since), what it is waiting on, and how big it looks.
+3. Ask me what is actually in the way rather than guessing: too big, unclear first step, waiting on someone, or I no longer want to do it. Then suggest one concrete way out: a smaller first step, a break into subtasks, a blocker to record, a specific day, or dropping it. Don't push me to keep it.
+4. Move on to the next one when I have decided. Stop when I say stop, and tell me how many are left.
+
+${ASK_FIRST}`,
+  },
+  {
     name: 'inbox_zero',
     title: 'Clear my Inbox',
     description: 'Go through untriaged tasks one at a time and file each one.',
@@ -99,6 +112,17 @@ ${ASK_FIRST}`,
 4. Agree a next step with me and offer to schedule it (a date this week, or pinned for today).
 
 ${ASK_FIRST}`,
+  },
+  {
+    name: 'improve_my_setup',
+    title: 'Improve my setup',
+    description: 'Features the app has that my own tasks suggest I would use.',
+    text: () => `Look at how I use the app and suggest better ways of working.
+
+1. Call get_overview, then unused_features.
+2. For each suggestion, say what you saw in my data, what the feature does, and where to turn it on (the Settings path, or what to tap). Skip anything in an area get_overview says is off.
+3. Offer them as options, a few at a time, never as something I have been doing wrong. If I pass on one, offer to remember that (naming its id in the note) so it does not come back.
+4. If a suggestion is something you can do for me with these tools, offer that, and apply it only after I say yes.`,
   },
   {
     name: 'how_do_i',

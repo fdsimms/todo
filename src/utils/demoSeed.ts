@@ -848,7 +848,7 @@ export function seedDemoData(): void {
   // The same added task on the other trigger: a counted repeat whose last
   // occurrence adds a follow-up. Invisible until the last class is done, so
   // the seed's job is the editor's "When the repeat ends" choice.
-  addTask({
+  const swimClass = addTask({
     title: 'Swim class',
     notes: 'Six weekly classes. Finishing the last one adds a task to sign up for the next session.',
     category: 'Health',
@@ -858,6 +858,15 @@ export function seedDemoData(): void {
     recurrenceCount: 6,
     followUpTaskAtEnd: true,
     followUpTaskTitle: 'Sign up for the next swim session',
+  });
+  // Waits for the whole six-week series rather than the first class.
+  addTask({
+    title: 'Book the pool party',
+    notes: 'Held back until the last swim class is done, not just the next one.',
+    category: 'Health',
+    effort: 1,
+    blockedById: swimClass.id,
+    waitForSeriesEnd: true,
   });
 
   // A decision task — one that completes by recording an answer rather than
@@ -1159,6 +1168,13 @@ export function seedDemoData(): void {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
   });
+  // Project.taskDefaults, invisible until a task is added to the project: ideas
+  // aren't ranked and are small, so nothing added here reaches Backfill. Set
+  // after the three above so they stay the "still to fill in" example.
+  updateProject(giftIdeas.id, { taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } });
+  addTask({ title: 'Something for Dad\'s birthday', projectId: giftIdeas.id });
+  // The same idea for a kind of task the app writes itself.
+  useSettingsStore.getState().setGeneratedTaskDefaults('birthdayGift', { priority: 2, difficulty: null, effort: 3 });
 
   // A project parked for a season (Project.pausedUntil): a weekly routine and a
   // one-off, both held off Today until the pause lifts in three weeks. Without
@@ -1516,7 +1532,21 @@ export function seedDemoData(): void {
   addCategory('Calendar');
   setCategoryEmoji('Calendar', '📅');
   useSettingsStore.getState().setEventTaskCategory('Calendar');
-  const eventRules = defaultEventRules();
+  // A third rule beside the two defaults, so the rules sheet shows one that
+  // fires after its event rather than ahead of it. It has no seeded task: its
+  // task only exists once an event has ended, and the demo reads no calendar.
+  const eventRules = [
+    ...defaultEventRules(),
+    {
+      id: generateId(),
+      matches: ['Checkup'],
+      title: 'Schedule next appointment',
+      leadDays: 0,
+      afterEvent: true,
+      skipIfUpcoming: true,
+      enabled: true,
+    },
+  ];
   useSettingsStore.getState().setEventRules(eventRules);
   const [packRule] = eventRules;
   const demoFlight = {

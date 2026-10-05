@@ -360,7 +360,7 @@ export function QuickAddProjectModal({
               accessibilityRole="button"
               accessibilityLabel="Create project"
             >
-              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+              <Ionicons name="arrow-up" size={18} color={title.trim() ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
           </View>
 

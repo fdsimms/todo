@@ -334,6 +334,7 @@ file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
+| priority, difficulty and estimate answered once for a group, so Backfill never asks (a project's list, or a kind of generated task) | `src/utils/taskFieldDefaults.ts` (the rules) + `Project.taskDefaults` + `generatedTaskDefaults` in `useSettingsStore`, read in `newTaskFromDraft`. A default fills a field nobody answered and never overrides one. `priority: 0` is an answer (stamps the priority backfill as dismissed), because a priority of 0 otherwise reads as missing. Backfill's whole-group toggle uses `backfillGroupMembers` |
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |
@@ -370,7 +371,7 @@ file: the two maps are indexes, not write-ups.
 | apps held until a task is done ("no YouTube before the walk") | `src/utils/appGate.ts` + `Task.gatesApps`. A gate is live exactly while `isTaskVisible` says its task is, and a negative task can never be one |
 | whether the apps are blocked *right now* | `src/utils/appShield.ts` (the rule) + `src/utils/appShieldReconcile.ts` (reads the stores; a plain function so background refresh can call it). The single arbiter over the focus shield, the penalty and the gate: they drive one system shield, so it ORs them |
 | a block that starts or ends with the app closed | `scheduleGateWindow`/`schedulePenaltyExpiry` in `todo-screentime-bridge` + `intervalDidStart`/`intervalDidEnd` in `targets/todo-activity-monitor/`. Read `gateWindowFor`'s horizon first: a schedule's bounds are clock times, not dates |
-| the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else |
+| the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else, plus the mark (drawn in code) and the button colour |
 | a project that knows when you're away, and every reader of that span | `src/utils/awayDates.ts` + `Project.awayStart`/`awayEnd` — see `docs/arch/away-dates.md`. Every "the user is away from home" reader goes through this span; read the doc before adding another |
 | moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
 | where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
@@ -406,6 +407,7 @@ file: the two maps are indexes, not write-ups.
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | what a pantry action does to a row (got it, out of it, frozen, opened, running low, a leftover), in the app and over MCP | `src/utils/pantryWrite.ts` — pure row rules that `useGroceryStore`, `useLeftoverStore` and the MCP replica all call; the stores keep only the `set()`, undo and use-up task. An agent's pantry write is undone from Activity by snapshot (`src/utils/agentPantryRevert.ts`) |
+| what a catalog edit, a brand, a store link, a substitute, a list name or finishing a trip does to a row, in the app and over MCP | `src/utils/groceryItemWrite.ts` — pure row rules that `useGroceryStore` and the MCP replica both call. A delete is undone from Activity by `DeletedItemSnapshot` (`src/utils/agentCatalogRevert.ts`); the app itself keeps no undo for one |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |
@@ -877,7 +879,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 ### Design system
 
-`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`, plus `lineHeight`, `checkboxRadius` and the `flattenOverlay` helper) and the color palettes (`darkColors`, `lightColors`, `darkPurpleColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
+`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`, plus `lineHeight`, `checkboxRadius` and the `flattenOverlay` helper) and the color palettes (`lightColors`, `nightColors` for Dark, and `darkColors` for Black; the stored `ThemeMode` strings predate the names, see its doc comment). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
 
 **The spacing scale has eight steps, not five.** `xs` (4) through `xl` (32) double at each step and
 are the backbone; `xxs` (2), `xsm` (6) and `smd` (12) fill the gaps between 4 and 8, and between 8
@@ -909,8 +911,10 @@ sized as an icon, a large hero number (a focus countdown, an estimate's total), 
 
 - `colors.backdrop` — every modal/sheet dim layer
 - `colors.blurFallback` — tint overlay behind `SafeBlurView` content
-- `colors.onAccent` — text/icons on filled accent/green/red surfaces (always white, both themes)
-- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onAccent`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
+- `colors.onAccent` — text/icons on an `accent`/`accentFill` surface. The accent is ink (near-black in Light, near-white in Dark and Black), so this follows it: white in Light, ink in the dark themes
+- `colors.onFill` — text/icons on every other coloured fill: a status `…Fill`, a tag, category or priority colour, a photo, the camera, a `backdrop` scrim (always white). A fill picked at runtime that may be either goes through `textOnFill(fill, colors)`
+- `colors.done`/`colors.onDone` — the gold of finishing: a checked completion checkbox anywhere (task, subtask, chain step, met target, checked grocery row), coins and streaks, with an ink check on it. Green is not "done"; it is a status hue
+- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onFill`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
 - `colors.controlBorder` — the outline of an empty checkbox-shaped control or a field's only boundary (3:1), never `bgQuaternary`, which is a surface
 - `colors.timeMorning/timeAfternoon/timeEvening` — time-of-day segment colors
 - `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior
@@ -979,8 +983,8 @@ right.
   Save / Done) and the current-value summaries in `EditorRow` / `CollapsibleField`**; an action gets
   a shape. Use `variant="neutral"` for the quieter half of a pair ("Add existing" beside "New
   task"), and — this is the non-obvious one — for an add button sitting at the end of a row of
-  *already tinted* chips. Tag chips tint themselves `tagColor(tag) + '33'` and `tagPalette[0]` is
-  the accent blue, so an accent pill there reads as one more tag rather than as a control.
+  *already tinted* chips. Tag chips tint themselves `tagColor(tag) + '33'`, so a tinted accent pill
+  at the end of that row reads as one more chip rather than as a control.
 - `SheetHeaderButton` (`src/components/SheetHeaderButton.tsx`) — the Cancel / Save / Done / Add text
   button in a sheet header, the second and last home of bare accent text. `role="confirm"` (the
   default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar

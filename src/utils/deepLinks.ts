@@ -9,6 +9,7 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
+import { requestDismissAllSheets } from './sheetModal';
 import {
   resetToToday,
   resetToGroceries,
@@ -856,7 +857,10 @@ export function useTaskDeepLinks(): void {
   useEffect(() => {
     // Held during a demo: see demoHold.ts.
     const handle = (url: string | null) => runOrHoldForDemo(() => {
-      handleIncomingUrl(url);
+      const added = handleIncomingUrl(url);
+      // A link from outside lands on its destination, not under whatever sheet
+      // was open when the app was left. A silent add leaves the screen alone.
+      if (url && !added) requestDismissAllSheets();
       if (url) openInAppUrl(url);
     });
     Linking.getInitialURL().then(handle).catch(() => {});

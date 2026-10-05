@@ -82,6 +82,27 @@ export const EVENT_RULE_MAX_MATCHES = 6;
 export const EVENT_LEAD_DAYS_MAX = 14;
 
 /**
+ * How long after an event ends a follow-up rule (`afterEvent`) may still write
+ * its task for it.
+ *
+ * It bounds two things at once. A rule switched on today does not reach back
+ * through the whole calendar for appointments finished months ago, and the
+ * handled record's entry for a follow-up outlives its event by exactly this
+ * long (see `followUpHandledUntil`), which is what stops a task the user swept
+ * away from being written again on the next foreground.
+ */
+export const FOLLOW_UP_LOOKBACK_DAYS = 7;
+
+/**
+ * How far ahead the follow-up read looks for another event that matches
+ * (`skipIfUpcoming`). A follow-up booked three months out is still a follow-up
+ * that is booked, so this is wider than the fortnight Today reads.
+ */
+export const FOLLOW_UP_AHEAD_DAYS = 180;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
  * The two rules the feature ships with, pre-filled the way
  * `defaultWeatherRules` is: the app knows the shape of the answer, and typing
  * one from scratch is the trip a shipped default saves. Both still carry their
@@ -132,7 +153,10 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
     // rule with no title has nothing to write. Dropped rather than repaired,
     // the call parseWeatherRules makes about a titleless entry.
     if (!title || matches.length === 0) continue;
-    const leadDays = typeof r.leadDays === 'number' && Number.isFinite(r.leadDays)
+    const afterEvent = r.afterEvent === true;
+    // A follow-up has no lead: it lands the day the event ends, so a stored
+    // lead would only be a number nothing reads and the editor hides.
+    const leadDays = !afterEvent && typeof r.leadDays === 'number' && Number.isFinite(r.leadDays)
       ? Math.min(EVENT_LEAD_DAYS_MAX, Math.max(0, Math.round(r.leadDays)))
       : 0;
     out.push({
@@ -141,6 +165,10 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
       title,
       leadDays,
       enabled: r.enabled !== false,
+      // Written only when set, so a rule saved before these existed round-trips
+      // byte for byte and sync doesn't see every rule as edited.
+      ...(afterEvent ? { afterEvent: true } : {}),
+      ...(afterEvent && r.skipIfUpcoming === true ? { skipIfUpcoming: true } : {}),
       ...parseRuleEstimate(r),
       ...parseRuleCategory(r),
     });
@@ -249,6 +277,9 @@ export function describeEventRule(rule: EventTaskRule): string {
   const cue = words.length === 1
     ? words[0]
     : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
+  if (rule.afterEvent) {
+    return `${cue} · after it ends${rule.skipIfUpcoming ? ', unless another is booked' : ''}`;
+  }
   if (rule.leadDays === 0) return `${cue} · same day`;
   if (rule.leadDays === 1) return `${cue} · 1 day before`;
   return `${cue} · ${rule.leadDays} days before`;
@@ -476,11 +507,86 @@ export function matchedEventTasks(
   for (const event of eligible) {
     for (const rule of rules) {
       if (!rule.enabled) continue;
+      // A follow-up is judged once its event is over, by `matchedFollowUpTasks`
+      // below; this loop only ever sees events still ahead.
+      if (rule.afterEvent) continue;
       if (!ruleMatchesTitle(rule, event.title)) continue;
       const sourceId = eventTaskSourceId(eventOccurrenceKey(event), rule.id);
       if (sourceId in handled) continue;
       if (!leadTimeReached(event, rule, now)) continue;
       out.push({ sourceId, rule, event, endsAt: event.end });
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether the follow-up window is worth reading: the generator is on and at
+ * least one enabled rule fires after its event. Anybody with none pays for no
+ * extra read.
+ */
+export function needsFollowUpWindow(eventTasksOn: boolean, rules: readonly EventTaskRule[]): boolean {
+  return eventTasksOn && rules.some(rule => rule.enabled && rule.afterEvent === true);
+}
+
+/**
+ * The handled record's expiry for a follow-up's occurrence: its end plus the
+ * lookback. `pruneHandledEventTasks` drops an entry once its value has passed,
+ * and a follow-up is written *after* the event ends, so an entry expiring at
+ * the end itself would be pruned the moment it was made and the task written
+ * again on the next sweep.
+ */
+export function followUpHandledUntil(event: Pick<BusyEvent, 'end'>): string {
+  return new Date(Date.parse(event.end) + FOLLOW_UP_LOOKBACK_DAYS * DAY_MS).toISOString();
+}
+
+/**
+ * Every follow-up task the `afterEvent` rules want written: an event that
+ * matched has ended, within `FOLLOW_UP_LOOKBACK_DAYS`, and nothing says to
+ * hold it back.
+ *
+ * `events` must reach both ways: back far enough to see an event that ended
+ * days ago, and ahead far enough to see the next one (the fortnight Today reads
+ * does neither). The caller passes the dedicated follow-up window.
+ *
+ * **`skipIfUpcoming` is judged on the whole list, not per occurrence.** Another
+ * event this rule matches that has not started yet means the follow-up is
+ * already booked, so nothing is written for any finished one. Such a skip is
+ * deliberately not recorded as handled: if the booked event is cancelled
+ * within the lookback, the task is still wanted, and the next sweep writes it.
+ * When several have finished and none is ahead, only the latest is asked
+ * about, so one visit never produces two identical tasks.
+ *
+ * An event still under way is neither finished nor upcoming, so it neither
+ * fires nor blocks. Pure and `now`-injected like `matchedEventTasks`.
+ */
+export function matchedFollowUpTasks(
+  rules: readonly EventTaskRule[],
+  events: readonly BusyEvent[],
+  now: Date,
+  handled: Readonly<HandledEventTasks>,
+): EventTaskMatch[] {
+  const nowMs = now.getTime();
+  const floorMs = nowMs - FOLLOW_UP_LOOKBACK_DAYS * DAY_MS;
+  const out: EventTaskMatch[] = [];
+
+  for (const rule of rules) {
+    if (!rule.enabled || !rule.afterEvent) continue;
+    const matching = events.filter(e => isLiveEvent(e) && ruleMatchesTitle(rule, e.title));
+    if (rule.skipIfUpcoming && matching.some(e => Date.parse(e.start) > nowMs)) continue;
+
+    let finished = matching
+      .filter(e => {
+        const end = Date.parse(e.end);
+        return Number.isFinite(end) && end <= nowMs && end > floorMs;
+      })
+      .sort((a, b) => Date.parse(a.end) - Date.parse(b.end));
+    if (rule.skipIfUpcoming) finished = finished.slice(-1);
+
+    for (const event of finished) {
+      const sourceId = eventTaskSourceId(eventOccurrenceKey(event), rule.id);
+      if (sourceId in handled) continue;
+      out.push({ sourceId, rule, event, endsAt: followUpHandledUntil(event) });
     }
   }
   return out;

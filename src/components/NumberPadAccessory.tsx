@@ -57,7 +57,7 @@ export function NumberPadAccessory() {
 
   const styles = makeStyles(colors);
   return (
-    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID}>
+    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
       <View style={styles.bar}>
         <SheetHeaderButton label="Done" onPress={() => Keyboard.dismiss()} />
       </View>

@@ -1298,7 +1298,7 @@ function makeStyles(colors: Colors) {
       top: '25%',
       bottom: '25%',
       borderWidth: 2,
-      borderColor: colors.onAccent,
+      borderColor: colors.onFill,
       borderRadius: radius.md,
       opacity: 0.6,
     },

@@ -53,7 +53,7 @@ export const APP_FONT_OPTIONS: AppFontOption[] = [
   {
     id: 'system',
     label: 'System',
-    hint: 'The default. SF Pro on iOS, Roboto on Android.',
+    hint: 'The default. SF Pro on iOS and Roboto on Android, with screen titles in Bricolage.',
   },
   {
     id: 'bricolage',

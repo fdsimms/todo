@@ -548,7 +548,7 @@ export function RewardsScreen() {
           <Text style={styles.rewardTitle}>{shown.title}</Text>
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
-            <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+            <CoinIcon size={iconSize.sm} color={colors.done} filled />
             <Text style={styles.rewardCost}>
               {reward.oneTime ? `${formatCoins(reward.cost)} · one time` : formatCoins(reward.cost)}
             </Text>
@@ -618,7 +618,7 @@ export function RewardsScreen() {
             accessibilityLabel={`Balance: ${formatCoins(balance)}`}
           >
             <Reanimated.View style={coinStyle}>
-              <CoinIcon size={BALANCE_COIN_SIZE} color={colors.warning} filled />
+              <CoinIcon size={BALANCE_COIN_SIZE} color={colors.done} filled />
             </Reanimated.View>
             <Text style={[styles.balance, balance < 0 && { color: colors.redText }]}>{balance}</Text>
           </View>
@@ -798,7 +798,7 @@ export function RewardsScreen() {
                   </Text>
                 </View>
                 <View style={styles.amountRow}>
-                  <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                  <CoinIcon size={iconSize.sm} color={colors.done} filled />
                   <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.greenText : colors.redText }]}>
                     {signedAmount(entry)}
                   </Text>
@@ -845,8 +845,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     // Warm, where every other card on the page is grey: this one is the point
-    // of the screen, and the gold is the coin's own colour.
-    backgroundColor: colors.warningBg,
+    // of the screen, and the gold is the coin's own colour. `brand` rather than
+    // `done`, which Light darkens only so a checkbox holds 3:1 on a card; a tint
+    // needs no contrast, and warningBg is orange, which means something else.
+    backgroundColor: colors.brand + '29',
     alignItems: 'center',
   },
   burstAnchor: { position: 'absolute', left: 0, right: 0 },
@@ -857,7 +859,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   goal: { alignSelf: 'stretch', marginBottom: spacing.md, gap: spacing.xs },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
   goalTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.warning },
+  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
   rule: { color: colors.textSecondary, fontSize: font.sm, textAlign: 'center' },
   // textSecondary, not textTertiary — the app-wide section-header rule.

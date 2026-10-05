@@ -223,6 +223,20 @@ describe('reviewTasks', () => {
     ]);
   });
 
+  it('lists tasks pushed at least minPushes times, most pushed first, leaving out muted and finished ones', () => {
+    const tasks = [
+      task({ id: 'p2', title: 'Twice', postponeCount: 2 }),
+      task({ id: 'p3', title: 'Thrice', postponeCount: 3 }),
+      task({ id: 'p7', title: 'Seven', postponeCount: 7, driftingSince: '2026-09-01' }),
+      task({ id: 'pm', title: 'Muted', postponeCount: 9, postponeMuted: true }),
+      task({ id: 'pd', title: 'Done', postponeCount: 5, completed: true, completedAt: '2026-10-02T10:00:00' }),
+    ];
+    const review = reviewTasks(stub(tasks));
+    expect(review.repeatedlyPostponed.items.map(t => [t.id, t.pushes])).toEqual([['p7', 7], ['p3', 3]]);
+    expect(review.minPushes).toBe(3);
+    expect(reviewTasks(stub(tasks), { minPushes: 2 }).repeatedlyPostponed.count).toBe(3);
+  });
+
   it('finds quiet projects, but not a list, a paused one, or one with nothing left', () => {
     const projects = [
       project({ id: 'quiet', title: 'Garage' }),

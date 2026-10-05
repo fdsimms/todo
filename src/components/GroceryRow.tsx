@@ -405,7 +405,7 @@ export const GroceryRow = React.memo(function GroceryRow({
             accessibility state follows: the dot is not its own element. */}
         <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
           {item.checked && (
-            <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
+            <Ionicons name="checkmark" size={iconSize.sm} color={colors.onDone} />
           )}
         </View>
       </TouchableOpacity>
@@ -869,8 +869,8 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     checkboxChecked: {
-      backgroundColor: colors.greenFill,
-      borderColor: colors.greenFill,
+      backgroundColor: colors.done,
+      borderColor: colors.done,
       opacity: 0.7,
     },
     tapZone: {

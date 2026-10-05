@@ -38,6 +38,24 @@ export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
 
 /**
+ * Answers to the three questions the backfill screen asks about every task,
+ * given once for a whole group of tasks instead of once per task: a project's
+ * list (`Project.taskDefaults`) or a kind of generated task (Settings'
+ * `generatedTaskDefaults`). Every field is null for "no default, ask me", and
+ * a default only ever fills a field nobody answered (see `newTaskFromDraft`).
+ *
+ * `priority: 0` is an answer, not an absence: it means "these have no
+ * priority, don't ask", and a task created under it is stamped as dismissed for
+ * the priority backfill, since a priority of 0 otherwise reads as missing.
+ */
+export interface TaskFieldDefaults {
+  priority: Priority | null;
+  difficulty: Difficulty | null;
+  /** An estimate bucket, 1 to 6. The minutes come from `EFFORT_MINUTES`. */
+  effort: Effort | null;
+}
+
+/**
  * Which direction a task's success runs in — see `Task.polarity`.
  *
  * 'positive' is every task that has ever existed here: something to do, and
@@ -594,6 +612,20 @@ export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory {
    * appear. See `eventTasks.ts`.
    */
   leadDays: number;
+  /**
+   * Fire once the event is over instead of ahead of it. The task lands on the
+   * day the event ended, and `leadDays` is ignored (always stored as 0). For a
+   * follow-up ("book the next appointment") that is only worth asking once the
+   * visit has happened. Absent reads as false, so every rule saved before this
+   * existed keeps firing ahead of its event.
+   */
+  afterEvent?: boolean;
+  /**
+   * With `afterEvent`: write nothing while another event that matches this rule
+   * is still ahead. The follow-up is already booked, so the task would be noise.
+   * Ignored on a rule that fires ahead of its event.
+   */
+  skipIfUpcoming?: boolean;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
   enabled: boolean;
 }
@@ -981,6 +1013,8 @@ export type UnattendedSubject =
   | 'automation' | 'note' | 'stack' | 'reward'
   // A change to what is in the kitchen (`pantryWrite.ts`), undoable by snapshot (`agentPantryRevert.ts`).
   | 'pantry'
+  // A change to the grocery catalog, a store or a separate list (`groceryItemWrite.ts`): an item's own fields and a deleted item are undoable (`agentCatalogRevert.ts`), the rest is a record.
+  | 'catalog'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
   | 'event';
 
@@ -1123,6 +1157,14 @@ export interface Project {
   // on this type follows: a project gets no default until somebody names one,
   // the same as weekendSource starting off and destination starting blank.
   defaultTaskCategory: string | null;
+  /**
+   * Priority, difficulty and time estimate every new task in this project
+   * starts with, so a list like a wish list doesn't put each item through the
+   * backfill screen. Optional so a row built before the field existed still
+   * type-checks; absent and null both mean no defaults. See `TaskFieldDefaults`
+   * and `src/utils/taskFieldDefaults.ts`.
+   */
+  taskDefaults?: TaskFieldDefaults | null;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;
@@ -2440,11 +2482,10 @@ export interface Task {
    * quota, counting anonymously exactly as it always has.
    *
    * **A rotation is a quota whose units have names**, and that framing is the
-   * whole implementation. Everything about when the row appears is the weekly
-   * quota's, unchanged: the pace ramp surfaces it when you fall behind and
-   * hides it while you are keeping up, so a five-member rotation over a week
-   * shows up on about five of the seven days, one at a time, and leaves the
-   * moment you log. What is new is only that logging asks *which*, and that
+   * whole implementation. When the row appears is the weekly quota's, except
+   * that a rotation never hides for being on pace (`quotaHidesWhenOnPace`): it
+   * stays on Today until every member is done, and a day you don't want it is a
+   * manual reschedule. What is new is only that logging asks *which*, and that
    * the row can say which are left.
    *
    * So `targetCount` is **derived** from `rotationItems.length` (see
@@ -2752,6 +2793,17 @@ export interface Task {
    * reader goes through `blockerIdsOf`, which treats a missing list as empty.
    */
   blockedByIds?: string[];
+  /**
+   * Hold this task until a repeating blocker has finished its *last*
+   * occurrence, not just the one it points at. Completing a repeating task
+   * spawns a successor with a new id, so without this the wait ends at the
+   * first completion. With it, a blocker that is done but has a live successor
+   * (`previousOccurrenceId`) still holds, and the hold ends when the series
+   * does (a count or end date runs out, or the successor is archived or
+   * deleted). Derived at read time by `isBlocked`, never stored per occurrence.
+   * A blocker that repeats with no end never releases the task.
+   */
+  waitForSeriesEnd?: boolean;
 
   /**
    * Shown only if another task's question gets one of these answers: "Book
@@ -6123,6 +6175,12 @@ export interface RecipeIngredient {
   // useGroceryStore.renameItem → useRecipeStore.remapIngredientKey, exactly as
   // renameRememberedAisle keeps the aisle memory in step.
   nameKey: string;
+  // The key a catalog rename or merge repointed this line to, while the label
+  // still says what it said. A read recomputes `nameKey` from `name`, which
+  // would undo the repoint on the next load, so it honors this instead, and only
+  // while `nameKey` still equals it: an edit that changes the name recomputes
+  // `nameKey` and so retires it. Absent on nearly every line.
+  catalogKey?: string;
   // Free text, '' when the recipe didn't say. Nothing does arithmetic on it.
   quantity: string;
   // null means "no opinion", so the lexicon and the user's own filings decide

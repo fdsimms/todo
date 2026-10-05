@@ -102,6 +102,12 @@ describe('parseQuickEvent, for the quick-add sheet', () => {
 });
 
 describe('parseQuickEvent, location and alert clauses', () => {
+  it('keeps the place out of the title when it follows a mention', () => {
+    const draft = parseQuickEvent('Movie with @gideon at home', opts);
+    expect(draft.title).toBe('Movie with Gideon');
+    expect(draft.location).toBe('home');
+  });
+
   it('reads a place and an alert after the schedule phrase', () => {
     const line = "lunch w/ @gideon fri 12p at Joe's alert 30m";
     const draft = parseQuickEvent(line, opts);
@@ -248,6 +254,8 @@ describe('parseQuickEvent, length', () => {
     expect(draft.start).toEqual(new Date(2026, 8, 26, 12, 0));
     expect(draft.durationMinutes).toBe(90);
     expect(draft.end).toEqual(new Date(2026, 8, 26, 13, 30));
+    // The length moves to the chip with the date, so its words leave the line.
+    expect(draft.phrase?.lineWithout).toBe('lunch');
   });
 
   it('reads a clock range as the start and the end', () => {
@@ -305,7 +313,7 @@ describe('parseQuickEvent, length', () => {
     expect(line.slice(...draft.locationSpan!)).toBe("at Joe's");
     expect(line.slice(...draft.alertSpan!)).toBe('alert 10m');
     expect(line.slice(...draft.durationSpan!)).toBe('for 90m');
-    expect(draft.phrase?.lineWithout).toBe("lunch alert 10m for 90m at Joe's");
+    expect(draft.phrase?.lineWithout).toBe("lunch alert 10m at Joe's");
   });
 
   it('says whether a time of day was read', () => {

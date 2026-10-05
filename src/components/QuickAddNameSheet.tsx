@@ -192,7 +192,7 @@ export function QuickAddNameSheet({
               accessibilityRole="button"
               accessibilityLabel={`Create ${noun}`}
             >
-              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+              <Ionicons name="arrow-up" size={18} color={trimmedName ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
           </View>
 

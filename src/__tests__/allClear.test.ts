@@ -1,4 +1,4 @@
-import { completedOnDay, describeAllClear } from '../utils/allClear';
+import { completedOnDay, describeAllClear, shouldPlayBeat } from '../utils/allClear';
 import type { Task } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -74,5 +74,29 @@ describe('describeAllClear', () => {
 
   it('explains an empty list caused by the filters instead', () => {
     expect(describeAllClear({ filtered: true, doneToday: 6 })).toBe('No tasks match these filters');
+  });
+});
+
+describe('shouldPlayBeat', () => {
+  const base = { filtered: false, doneToday: 3, lastDayKey: '2026-10-04', todayKey: '2026-10-05' };
+
+  it('plays on the first empty Today of a day something was finished', () => {
+    expect(shouldPlayBeat(base)).toBe(true);
+  });
+
+  it('plays when it has never played', () => {
+    expect(shouldPlayBeat({ ...base, lastDayKey: null })).toBe(true);
+  });
+
+  it('does not play twice in one logical day', () => {
+    expect(shouldPlayBeat({ ...base, lastDayKey: '2026-10-05' })).toBe(false);
+  });
+
+  it('does not play on a day nothing was finished', () => {
+    expect(shouldPlayBeat({ ...base, doneToday: 0 })).toBe(false);
+  });
+
+  it('does not play when a filter is what emptied the list', () => {
+    expect(shouldPlayBeat({ ...base, filtered: true })).toBe(false);
   });
 });

@@ -23,6 +23,7 @@
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
 import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
+import { catalogRevertOf, catalogSnapshot, deletedItemRevert } from '../../src/utils/agentCatalogRevert';
 import { leftoverSnapshot, pantryRevertOf, pantrySnapshot, type PantryItemSnapshot } from '../../src/utils/agentPantryRevert';
 
 export interface AgentLedgerEntry {
@@ -109,6 +110,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       replica.groceryListEntries().some(e => e.itemId === itemId && e.listId === null),
     );
   };
+  const listLabel = (listId: string | null): string => (listId === null ? 'the home list' : `the list "${replica.groceryLists().find(l => l.id === listId)?.name ?? 'unknown'}"`);
   const pantryRevert = (before: PantryItemSnapshot | null, after: PantryItemSnapshot | null) =>
     before && after ? pantryRevertOf(before, after) : null;
 
@@ -429,20 +431,95 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
-      if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null, recordId: outcome.item.id });
+      if (!outcome.wasOnList) {
+        // Undoing an add takes the item off the list at home, so one made on a
+        // separate list is recorded without that undo.
+        if ((opts?.listId ?? null) === null) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null, recordId: outcome.item.id });
+        else log({ action: 'created', subject: 'catalog', title: outcome.item.name, taskId: null, recordId: outcome.item.id, note: `Put "${outcome.item.name}" on ${listLabel(opts?.listId ?? null)}` });
+      }
       return outcome;
     },
 
-    setGroceryChecked(id, checked, listId) {
+    setGroceryChecked(id, checked, listId = null) {
       const item = replica.setGroceryChecked(id, checked, listId);
-      log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
+      if (listId === null) log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
+      else log({ action: 'edited', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `${checked ? 'Check off' : 'Uncheck'} "${item.name}" on ${listLabel(listId)}` });
       return item;
     },
 
-    removeFromGroceryList(id, listId) {
+    removeFromGroceryList(id, listId = null) {
       const item = replica.removeFromGroceryList(id, listId);
-      log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
+      if (listId === null) log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
+      else log({ action: 'cleared', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `Take "${item.name}" off ${listLabel(listId)}` });
       return item;
+    },
+
+    updateGroceryItem(id, change) {
+      const before = replica.groceryItems().find(i => i.id === id);
+      const beforeSnap = before ? catalogSnapshot(before, replica.aisleOverrides()) : null;
+      const outcome = replica.updateGroceryItem(id, change);
+      if (outcome.changed.length > 0) {
+        const afterSnap = catalogSnapshot(outcome.item, replica.aisleOverrides());
+        log({
+          action: 'edited', subject: 'catalog', title: outcome.item.name, taskId: null, recordId: outcome.item.id,
+          revert: outcome.reversible && beforeSnap ? catalogRevertOf(beforeSnap, afterSnap) : null,
+          note: `Change "${outcome.item.name}" in the catalog: ${outcome.changed.join(', ')}`,
+        });
+      }
+      return outcome;
+    },
+
+    saveGroceryBox(itemId, input) {
+      const item = replica.groceryItems().find(i => i.id === itemId);
+      const box = replica.saveGroceryBox(itemId, input);
+      const verb = input.delete ? 'Delete a brand of' : input.boxId ? 'Change a brand of' : 'Add a brand to';
+      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'item', taskId: null, recordId: itemId, note: `${verb} "${item?.name ?? 'an item'}"${box ? `: ${[box.brand, box.variant].filter(Boolean).join(' ')}` : ''}` });
+      return box;
+    },
+
+    saveShop(input) {
+      const shop = replica.saveShop(input);
+      log({ action: input.id ? 'edited' : 'created', subject: 'catalog', title: shop.name, taskId: null, recordId: shop.id, note: input.id ? `Change the store "${shop.name}"` : `Add the store "${shop.name}"` });
+      return shop;
+    },
+
+    deleteGroceryItem(id) {
+      const snapshot = replica.deleteGroceryItem(id);
+      log({
+        action: 'cleared', subject: 'catalog', title: snapshot.item.name, taskId: null, recordId: id, revert: deletedItemRevert(snapshot),
+        note: `Delete "${snapshot.item.name}" from the grocery catalog, with its ${snapshot.boxes.length} brands, ${snapshot.shopLinks.length} store links, ${snapshot.subLinks.length} substitutes and ${snapshot.aliases.length} receipt names`,
+      });
+      return snapshot;
+    },
+
+    createGroceryList(name) {
+      const list = replica.createGroceryList(name);
+      log({ action: 'created', subject: 'catalog', title: list.name, taskId: null, recordId: list.id, note: `Create the grocery list "${list.name}"` });
+      return list;
+    },
+
+    renameGroceryList(id, name) {
+      const list = replica.renameGroceryList(id, name);
+      log({ action: 'edited', subject: 'catalog', title: list.name, taskId: null, recordId: list.id, note: `Rename a grocery list to "${list.name}"` });
+      return list;
+    },
+
+    deleteGroceryList(id) {
+      const result = replica.deleteGroceryList(id);
+      log({ action: 'cleared', subject: 'catalog', title: result.list.name, taskId: null, recordId: id, note: `Delete the grocery list "${result.list.name}", taking ${result.unlisted} items off it (the items stay in the catalog)` });
+      return result;
+    },
+
+    finishGroceryTrip(input) {
+      const result = replica.finishGroceryTrip(input);
+      log({ action: 'completed', subject: 'catalog', title: listLabel(input.listId), taskId: null, count: result.finished.length, note: `Finish the shopping trip on ${listLabel(input.listId)}: ${result.finished.length} items bought${result.away ? ' (a separate list records only that they left it)' : ''}` });
+      return result;
+    },
+
+    importReceipt(input) {
+      const result = replica.importReceipt(input);
+      log({ action: 'completed', subject: 'catalog', title: 'Receipt', taskId: null, count: result.lines.length, note: `Import a receipt of ${result.lines.length} lines ${input.context === 'pantry' ? 'into the pantry' : `as a trip on ${listLabel(input.listId)}`}${result.finished.length ? `, finishing ${result.finished.length} items` : ''}` });
+      return result;
     },
 
     updatePantryItem(id, change) {
