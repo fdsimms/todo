@@ -47,6 +47,75 @@ export type TravelMode = 'driving' | 'transit' | 'walking';
 export const TRAVEL_MODES: readonly TravelMode[] = ['driving', 'transit', 'walking'];
 
 /**
+ * What one event overrides about its own trip: how it is travelled (null keeps
+ * the Settings mode) and how early to arrive (negative is late). App-only
+ * metadata like `eventPeople.ts`: EventKit has no public field for either, so
+ * nothing is written to the calendar event.
+ */
+export interface TravelEventPref {
+  mode: TravelMode | null;
+  /** Minutes to arrive before the start; negative arrives after it. 0 is on time. */
+  arriveEarlyMinutes: number;
+}
+
+/** Overrides by calendar event id, so a repeating event keeps its choice every week. */
+export type TravelEventPrefs = Readonly<Record<string, TravelEventPref>>;
+
+/** The arrival choices the event sheet offers: early (positive), on time, late (negative). */
+export const TRAVEL_ARRIVE_CHOICES: readonly number[] = [30, 15, 10, 5, 0, -5, -10, -15];
+
+export function clampArriveEarlyMinutes(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  const stepped = Math.round(value / 5) * 5;
+  return Math.min(60, Math.max(-30, stepped));
+}
+
+/** `travelEventPrefs` off settings, defensively; an entry that overrides nothing is dropped. */
+export function parseTravelEventPrefs(raw: unknown): TravelEventPrefs {
+  let value = raw;
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return {}; }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, TravelEventPref> = {};
+  for (const [eventId, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!eventId || !entry || typeof entry !== 'object') continue;
+    const { mode, arriveEarlyMinutes } = entry as Record<string, unknown>;
+    const pref: TravelEventPref = {
+      mode: TRAVEL_MODES.find(m => m === mode) ?? null,
+      arriveEarlyMinutes: clampArriveEarlyMinutes(arriveEarlyMinutes),
+    };
+    if (pref.mode !== null || pref.arriveEarlyMinutes !== 0) out[eventId] = pref;
+  }
+  return out;
+}
+
+/** The mode this event is travelled by: its own pick, else the Settings mode. */
+export function travelModeFor(eventId: string, prefs: TravelEventPrefs, defaultMode: TravelMode): TravelMode {
+  return prefs[eventId]?.mode ?? defaultMode;
+}
+
+/** Minutes to arrive before the start, for this event (0 when it has no override). */
+export function arriveEarlyFor(eventId: string, prefs: TravelEventPrefs): number {
+  return prefs[eventId]?.arriveEarlyMinutes ?? 0;
+}
+
+/** "10 min early", "On time", "5 min late". */
+export function describeArrival(arriveEarlyMinutes: number): string {
+  if (arriveEarlyMinutes === 0) return 'On time';
+  return `${Math.abs(arriveEarlyMinutes)} min ${arriveEarlyMinutes > 0 ? 'early' : 'late'}`;
+}
+
+/**
+ * The reminder lead for an event: the trip (typed or estimated) plus how early
+ * it should arrive, never below zero, so arriving late can't put the reminder
+ * after the start.
+ */
+export function leadWithArrival(leadMinutes: number, arriveEarlyMinutes: number): number {
+  return Math.max(0, leadMinutes + arriveEarlyMinutes);
+}
+
+/**
  * Added to an estimate before it becomes a reminder: a few minutes to get out
  * the door, which no routing estimate counts.
  */
@@ -325,6 +394,8 @@ export function matchedTravelTasks(
   handled: Readonly<HandledEventTasks>,
   /** Apple Maps estimates, passed only while `travelEstimates` is on. */
   estimated?: { estimates: TravelEstimates; mode: TravelMode; origin: string },
+  /** Per-event mode and arrival overrides. */
+  prefs: TravelEventPrefs = {},
 ): TravelMatch[] {
   const out: TravelMatch[] = [];
   const eligible = events
@@ -332,9 +403,11 @@ export function matchedTravelTasks(
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   for (const event of eligible) {
     const sourceId = travelSourceId(event);
-    const estimate = estimated ? estimateFor(event, estimated.estimates, estimated.mode, estimated.origin) : null;
+    const estimate = estimated
+      ? estimateFor(event, estimated.estimates, travelModeFor(event.id, prefs, estimated.mode), estimated.origin)
+      : null;
     const lead = estimate ? estimatedLeadMinutes(estimate.minutes) : travelLeadFor(event, leads);
-    const leaveAt = travelLeaveAt(event, lead);
+    const leaveAt = travelLeaveAt(event, leadWithArrival(lead, arriveEarlyFor(event.id, prefs)));
     if (!leaveAt) continue;
     out.push({
       sourceId,
@@ -408,4 +481,21 @@ export function travelTaskTitle(eventTitle: string, note: string | null, estimat
   const base = name ? `Leave for ${name}` : 'Leave for your next event';
   const notes = [estimateNote, note].filter((n): n is string => !!n);
   return notes.length > 0 ? `${base} (${notes.join(', ')})` : base;
+}
+
+/**
+ * The line a "Leave for X" row shows under its title: the held Apple Maps
+ * estimate ("25 min by transit"), or null when there is none, or the one held
+ * was for another place or mode. The row has no calendar event, so the match
+ * is on what the task kept: its source id and its copied location.
+ */
+export function travelRowNote(
+  sourceId: string,
+  location: string,
+  estimates: TravelEstimates,
+  mode: TravelMode,
+): string | null {
+  const held = estimates[sourceId];
+  if (!held || held.mode !== mode || held.location !== location.trim()) return null;
+  return describeTravelEstimate(held.minutes, held.mode);
 }
