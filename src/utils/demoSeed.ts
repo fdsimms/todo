@@ -2501,16 +2501,18 @@ function seedMoodLog(today: Date): void {
     symptoms?: [string, SymptomSeverity][];
     contextTags?: string[];
     note?: string;
+    // Free text only and read by no insight, so these leave every number below as is.
+    dream?: string;
   }[] = [
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5, contextTags: ['Vacation'] },
+    { back: 15, mood: 5, contextTags: ['Vacation'], dream: 'Walking along a beach I did not recognize, looking for a train station.' },
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
     { back: 13, mood: 4 },
     { back: 12, mood: 3 },
     { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
     { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'], dream: 'Missing a meeting I could not find the room for. Woke up twice.' },
     { back: 8, mood: 2, symptoms: [['Headache', 1]] },
     { back: 7, mood: 3 },
     { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
@@ -2532,6 +2534,7 @@ function seedMoodLog(today: Date): void {
       day.note ?? null,
       at,
       day.contextTags ?? [],
+      day.dream ?? null,
     );
   }
 

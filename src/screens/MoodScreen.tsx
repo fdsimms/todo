@@ -26,7 +26,7 @@ import {
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
-import { symptomStats, logsInDayRange, lookBacks } from '../utils/moodHistory';
+import { symptomStats, logsInDayRange, lookBacks, dreamStats } from '../utils/moodHistory';
 import { moodExportCsv, moodExportFileName, moodExportSummary } from '../utils/moodExport';
 import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -313,6 +313,7 @@ export function MoodScreen() {
   // gap size, so without this a symptom logged three times has no page reachable
   // from anywhere.
   const symptomList = useMemo(() => symptomStats(logs), [logs]);
+  const dreams = useMemo(() => dreamStats(logs, todayKey.slice(0, 7)), [logs, todayKey]);
 
   // Mood on the days one repeating task got done, against the days it didn't.
   // The app's answer to medication tracking: a tablet, a supplement or a walk
@@ -849,6 +850,26 @@ export function MoodScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+          )}
+
+          {/* Plain counts, shown only once a dream has been written: there is no
+              empty state to explain, and a day without one is not a finding. */}
+          {dreams.lastDayKey !== null && (
+            <>
+              <Text style={styles.sectionTitle}>DREAMS</Text>
+              <View
+                style={styles.card}
+                accessible
+                accessibilityLabel={`${dreams.dayCount} ${dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down, ${dreams.dayCountInMonth} this month, last on ${format(dayKeyToDate(dreams.lastDayKey), 'MMMM d')}`}
+              >
+                <Text style={styles.linkLabel}>
+                  {dreams.dayCount} {dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down
+                </Text>
+                <Text style={styles.linkMeta}>
+                  {dreams.dayCountInMonth} this month · last on {format(dayKeyToDate(dreams.lastDayKey), 'MMM d')}
+                </Text>
+              </View>
+            </>
           )}
 
           <Text style={styles.sectionTitle}>MILESTONES</Text>

@@ -240,6 +240,8 @@ export interface MoodInput {
   symptoms?: { name: string; severity?: number }[];
   contextTags?: string[];
   note?: string | null;
+  /** A dream the person woke up with. Filed under the day of the check-in. */
+  dream?: string | null;
   at?: Date;
 }
 
@@ -298,7 +300,7 @@ export interface FoodPatch {
   slot?: MealSlot | null;
 }
 
-export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note' | 'dream'>>;
 
 export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
@@ -2169,8 +2171,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         input.note ?? null,
         input.at,
         (input.contextTags ?? []).map(tag),
+        input.dream ?? null,
       );
-      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag, a note or a dream.');
       return log;
     },
 
@@ -2250,10 +2253,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
       if (patch.note !== undefined) next.note = patch.note;
+      if (patch.dream !== undefined) next.dream = patch.dream;
       // An edit may not empty the entry: a check-in recording nothing is a day
       // marked as logged with nothing on it. Delete it instead.
       const after = { ...existing, ...next };
-      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim() && !after.dream?.trim()) {
         throw new Error('That would leave the check-in empty. Delete it instead.');
       }
       useMoodStore.getState().updateLog(id, next);

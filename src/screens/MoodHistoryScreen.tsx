@@ -95,9 +95,14 @@ export function MoodHistoryScreen() {
   const groups: ChipFilterGroup[] = [
     {
       label: 'Writing',
-      options: [{ key: 'note', label: 'Has a note' }],
-      selected: filter.withNote ? ['note'] : [],
-      onToggle: () => setFilter(f => ({ ...f, withNote: !f.withNote })),
+      options: [
+        { key: 'note', label: 'Has a note' },
+        { key: 'dream', label: 'Has a dream' },
+      ],
+      selected: [...(filter.withNote ? ['note'] : []), ...(filter.withDream ? ['dream'] : [])],
+      onToggle: key => setFilter(f => (
+        key === 'dream' ? { ...f, withDream: !f.withDream } : { ...f, withNote: !f.withNote }
+      )),
     },
     {
       label: 'Mood',
@@ -136,6 +141,11 @@ export function MoodHistoryScreen() {
       key: 'with-note',
       label: 'Has a note',
       remove: () => setFilter(f => ({ ...f, withNote: false })),
+    }] : []),
+    ...(filter.withDream ? [{
+      key: 'with-dream',
+      label: 'Has a dream',
+      remove: () => setFilter(f => ({ ...f, withDream: false })),
     }] : []),
     ...filter.moods.map(mood => ({
       key: `mood-${mood}`,
