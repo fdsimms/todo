@@ -6,6 +6,7 @@ import {
   dbGetMealPlanEntry,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
+  dbUpdateMealCalendarLink,
   dbFillMealCalendarExternalIds,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
@@ -1278,7 +1279,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     moved.forEach(e => reconcileMealSlot(get, e));
     // The slots they came from, for moveEntry's reason one row at a time.
     originals.forEach(e => reconcileMealSlot(get, e));
-    moved.forEach(reconcileMealEvent);
+    moved.forEach(e => reconcileMealEvent(e));
 
     get().setLastAction({
       label: `${moved.length} meal${moved.length === 1 ? '' : 's'} moved`,
@@ -1289,7 +1290,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         originals.forEach(entry => patchInRange(set, get, entry));
         originals.forEach(e => reconcileMealSlot(get, e));
         moved.forEach(e => reconcileMealSlot(get, e));
-        originals.forEach(reconcileMealEvent);
+        originals.forEach(e => reconcileMealEvent(e));
       },
     });
   },
@@ -1339,7 +1340,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // to be asked about from the original: it isn't planned any more, and its
     // use-up task may need to come back (#2932).
     toUpdate.forEach(e => reconcileSlotLeftovers(get, e));
-    updated.forEach(reconcileMealEvent);
+    updated.forEach(e => reconcileMealEvent(e));
 
     get().setLastAction({
       label: `${updated.length} meal${updated.length === 1 ? '' : 's'} replaced`,
@@ -1348,7 +1349,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         const originalById = new Map(toUpdate.map(e => [e.id, e]));
         set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
         toUpdate.forEach(e => reconcileMealSlot(get, e));
-        toUpdate.forEach(reconcileMealEvent);
+        toUpdate.forEach(e => reconcileMealEvent(e));
       },
     });
   },
@@ -1380,7 +1381,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const byId = new Map(retitled.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
     retitled.forEach(e => reconcileMealSlot(get, e));
-    retitled.forEach(reconcileMealEvent);
+    retitled.forEach(e => reconcileMealEvent(e));
   },
 
   reconcileRecipeSlots(recipeIds) {
@@ -1555,10 +1556,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     void getCalendarPermission()
       .then(permission => {
         if (permission !== 'granted') return;
-        // Re-read after the await: the row may have moved on, or gone.
+        // Re-read after the await: the row may have moved on, or gone. The
+        // link each reconcile writes back lands on a row another device
+        // edited and this one didn't, so it keeps the row's sync stamp
+        // (`keepStamp`): restamped, the row would read as this device's edit
+        // of a moment ago and win the next merge over the peer's.
         for (const entry of plan.reconcile) {
           const current = resolveEntry(get, entry.id);
-          if (current) reconcileMealEvent(current);
+          if (current) reconcileMealEvent(current, { keepStamp: true });
         }
         for (const link of plan.remove) void deleteMealEvent(link);
       })
@@ -1603,7 +1608,7 @@ function writeCopies(
   created.forEach(dbInsertMealPlanEntry);
   created.forEach(entry => patchInRange(set, get, entry));
   created.forEach(e => reconcileMealSlot(get, e));
-  created.forEach(reconcileMealEvent);
+  created.forEach(e => reconcileMealEvent(e));
 
   const ids = new Set(created.map(e => e.id));
   get().setLastAction({
@@ -2030,8 +2035,18 @@ function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
  * device write was in flight is left alone rather than resurrected in SQLite.
  * The link is both ids, the device's and the calendar server's (#2950), so a
  * meal whose server id was read for the first time is written back too.
+ *
+ * `keepStamp` is passed by the one caller that runs unattended over rows this
+ * device didn't edit, `reconcileSyncedEvents`: the link columns are device-
+ * local and never sent, so writing them through the ordinary row update would
+ * only restamp a row another device edited as this device's edit of a moment
+ * ago, and the next merge would put this device's stale copy over the peer's.
+ * `dbUpdateMealCalendarLink` writes the link and puts the stamp back. Every
+ * other call follows a real local edit (a move, a retitle, a copy) on a row
+ * that genuinely changed here and was stamped for it, so the link rides the
+ * whole-row write as before.
  */
-function reconcileMealEvent(entry: MealPlanEntry): void {
+function reconcileMealEvent(entry: MealPlanEntry, write?: { keepStamp?: boolean }): void {
   syncMealEvent(entry)
     .then(link => {
       if (
@@ -2041,7 +2056,11 @@ function reconcileMealEvent(entry: MealPlanEntry): void {
       const current = resolveEntry(useMealPlanStore.getState, entry.id);
       if (!current) return;
       const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
-      dbUpdateMealPlanEntry(updated);
+      if (write?.keepStamp) {
+        dbUpdateMealCalendarLink(entry.id, { calendarEventId: link.eventId, calendarEventExternalId: link.externalId });
+      } else {
+        dbUpdateMealPlanEntry(updated);
+      }
       useMealPlanStore.setState(s => ({
         entries: s.entries.map(e => (e.id === entry.id ? updated : e)),
       }));

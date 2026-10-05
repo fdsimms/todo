@@ -13,6 +13,11 @@ them source rather than tests. The ten biggest source files:
 `utils/demoSeed.ts` (5.3k), `screens/TodayScreen.tsx` (5.3k),
 `components/TaskItem.tsx` (5.2k), `store/useSettingsStore.ts` (5.1k),
 `mcp/src/replica.ts` (4.5k).
+`store/useTaskStore.ts` (9.7k), `db/database.ts` (7.8k), `types/index.ts` (7.4k),
+`components/TaskEditor.tsx` (7.4k), `store/useGroceryStore.ts` (5.8k),
+`screens/TodayScreen.tsx` (5.3k), `components/TaskItem.tsx` (5.1k),
+`utils/demoSeed.ts` (5.0k), `store/useSettingsStore.ts` (5.0k),
+`components/QuickAddModal.tsx` (4.2k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.

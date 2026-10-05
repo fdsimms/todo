@@ -6,6 +6,7 @@ import {
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
+  dbUpdateTaskCalendarLinks,
   dbFillTaskCalendarExternalIds,
   dbDeleteTask,
   dbDeleteSubtasks,
@@ -544,6 +545,23 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
 }
 
 /**
+ * How a reconcile writes the calendar link it ends with.
+ *
+ * The link columns are device-local and never leave this device, so writing
+ * them changes nothing about the row a peer could want. Written through the
+ * ordinary row update they still restamp the row as edited here just now,
+ * which is right after a local edit (the row did change) and wrong for a pass
+ * that runs unattended over rows another device changed: there, every row it
+ * touched would read as this device's latest edit, at the one moment a peer's
+ * own edits are least likely to have all arrived, and the next sync would put
+ * this device's stale copy over each of them. `keepStamp` routes the write
+ * through `dbUpdateTaskCalendarLinks`, which puts the row's stamp back.
+ */
+interface ReconcileWrite {
+  keepStamp?: boolean;
+}
+
+/**
  * Brings a task's device deadline event in line with the task, fire-and-
  * forget — same shape as every `scheduleTaskReminder(...)` call in this
  * file: the write is async and best-effort, so nothing here awaits it.
@@ -555,8 +573,14 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
  * owns the decision of what the device event should look like; this is only
  * the plumbing back into SQLite and the store, which is why it lives here
  * rather than there — that file has no business reaching into this store.
+ *
+ * `keepStamp` (see `ReconcileWrite`) is passed by the one caller that runs
+ * unattended over rows this device didn't edit, `reconcileSyncedEvents`. Every
+ * other call follows a real local edit — a save, an insert, a completion, an
+ * undo — on a row that genuinely changed here and was stamped for it, so the
+ * link it writes back rides the ordinary whole-row write.
  */
-function reconcileDeadlineEvent(task: Task): void {
+function reconcileDeadlineEvent(task: Task, write?: ReconcileWrite): void {
   syncDeadlineEvent(task)
     .then(link => {
       if (
@@ -566,7 +590,11 @@ function reconcileDeadlineEvent(task: Task): void {
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
       const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
-      dbUpdateTask(updated);
+      if (write?.keepStamp) {
+        dbUpdateTaskCalendarLinks(task.id, { calendarEventId: link.eventId, calendarEventExternalId: link.externalId });
+      } else {
+        dbUpdateTask(updated);
+      }
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
     .catch(() => {});
@@ -1003,7 +1031,12 @@ export type TimeBlockPlan =
   | { mode: 'edit'; eventId: string }
   | { mode: 'create'; fields: TimeBlockFields };
 
-function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string | null): boolean {
+function setTimeBlockLink(
+  taskId: string,
+  link: CalendarEventLink,
+  from?: string | null,
+  write?: ReconcileWrite
+): boolean {
   const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
   if (!current) return false;
   if (from !== undefined && current.timeBlockEventId !== from) return false;
@@ -1011,7 +1044,14 @@ function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string
     return true;
   }
   const updated = { ...current, timeBlockEventId: link.eventId, timeBlockExternalId: link.externalId };
-  dbUpdateTask(updated);
+  // `keepStamp` reaches here only from `reconcileTimeBlockEvent` run after a
+  // sync (see ReconcileWrite); a tap in the editor, and the reconcile that
+  // follows a save, write the row as they always have.
+  if (write?.keepStamp) {
+    dbUpdateTaskCalendarLinks(taskId, { timeBlockEventId: link.eventId, timeBlockExternalId: link.externalId });
+  } else {
+    dbUpdateTask(updated);
+  }
   useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === taskId ? updated : t)) }));
   return true;
 }
@@ -1030,7 +1070,10 @@ function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string
  * decides when one event is safely the block, and it answers only for exactly
  * one.
  */
-async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: TimeBlockEvent } | null> {
+async function adoptTimeBlock(
+  task: Task,
+  write?: ReconcileWrite
+): Promise<{ eventId: string; event: TimeBlockEvent } | null> {
   const from = task.timeBlockEventId;
   const externalId = task.timeBlockExternalId ?? null;
   if (!from || !externalId) return null;
@@ -1038,7 +1081,7 @@ async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: Tim
   if (!adopted || adopted === from) return null;
   const event = await readTimeBlockEvent(adopted);
   if (!event) return null;
-  if (!setTimeBlockLink(task.id, { eventId: adopted, externalId }, from)) return null;
+  if (!setTimeBlockLink(task.id, { eventId: adopted, externalId }, from, write)) return null;
   return { eventId: adopted, event };
 }
 
@@ -1047,10 +1090,10 @@ async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: Tim
  * one made before the id was kept, or whose id the read straight after the
  * sheet didn't get. Written only while the task still points at that block.
  */
-function recordTimeBlockExternalId(taskId: string, eventId: string): void {
+function recordTimeBlockExternalId(taskId: string, eventId: string, write?: ReconcileWrite): void {
   readExternalEventId(eventId)
     .then(externalId => {
-      if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId);
+      if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId, write);
     })
     .catch(() => {});
 }
@@ -1074,18 +1117,21 @@ function recordTimeBlockExternalId(taskId: string, eventId: string): void {
  * the calendar server's id (`adoptTimeBlock`, #2950): an id that stopped
  * resolving because a backup was restored on a new phone is not a block the
  * user deleted.
+ *
+ * `write` is handed to every pointer write below it, for `reconcileDeadlineEvent`'s
+ * reason: after a sync they land on rows this device didn't edit.
  */
-function reconcileTimeBlockEvent(task: Task): void {
+function reconcileTimeBlockEvent(task: Task, write?: ReconcileWrite): void {
   const eventId = task.timeBlockEventId;
   if (!eventId) return;
   readTimeBlockEvent(eventId)
     .then(async event => {
-      const block = event ? { eventId, event } : await adoptTimeBlock(task);
+      const block = event ? { eventId, event } : await adoptTimeBlock(task, write);
       if (!block) {
-        setTimeBlockLink(task.id, NO_EVENT_LINK, eventId);
+        setTimeBlockLink(task.id, NO_EVENT_LINK, eventId, write);
         return;
       }
-      if (event && !task.timeBlockExternalId) recordTimeBlockExternalId(task.id, eventId);
+      if (event && !task.timeBlockExternalId) recordTimeBlockExternalId(task.id, eventId, write);
       const update = timeBlockUpdateFor(task, block.event);
       if (update) await updateTimeBlockEvent(block.eventId, update);
     })
@@ -2671,13 +2717,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Re-read after the await: the row may have moved on, or gone. A link
         // cleared meanwhile is not recreated here, for the reason the rule
         // gives for a task that never had one.
+        //
+        // Every write below lands on a row another device edited and this one
+        // didn't, and changes only the device-local link columns, so each
+        // keeps the row's sync stamp (`keepStamp`, `dbUpdateTaskCalendarLinks`):
+        // restamped, the row would read as this device's edit of a moment ago
+        // and win the next merge over the peer's edit that put it here.
+        const unattended: ReconcileWrite = { keepStamp: true };
         for (const task of plan.deadlines) {
           const current = find(task.id);
-          if (current?.calendarEventId) reconcileDeadlineEvent(current);
+          if (current?.calendarEventId) reconcileDeadlineEvent(current, unattended);
         }
         for (const task of plan.timeBlocks) {
           const current = find(task.id);
-          if (current) reconcileTimeBlockEvent(current);
+          if (current) reconcileTimeBlockEvent(current, unattended);
         }
         // Reopened on another device, so the completion this device's event
         // recorded didn't happen: the same delete and unlink `uncompleteTask`
@@ -2688,7 +2741,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           if (!current || current.completed || !current.completionCalendarEventId) continue;
           void deleteCompletionEvent(completionEventLink(current));
           const updated = { ...current, completionCalendarEventId: null, completionCalendarEventExternalId: null };
-          dbUpdateTask(updated);
+          dbUpdateTaskCalendarLinks(current.id, { completionCalendarEventId: null, completionCalendarEventExternalId: null });
           set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
         }
         for (const link of plan.remove) void deleteDeadlineEvent(link);
