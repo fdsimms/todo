@@ -28,8 +28,14 @@ export interface MilestoneRow {
 
 const EACH_IS_ITS_OWN = 'mood_insights reads mood before and after each milestone, on its own day, under its minimum-days rules. A start and a later stop are two milestones, read separately; do not pair them, and do not say a milestone caused a change.';
 
-function row(m: Milestone): MilestoneRow {
-  return { id: m.id, label: m.label, date: m.date.slice(0, 10) };
+/**
+ * The day a milestone is on, as the app keys it. The stored instant is noon of
+ * the picked day in the phone's zone, so its UTC date is the day before for a
+ * zone far enough east: the day comes from the replica's day key, never from
+ * cutting the ISO string.
+ */
+function row(replica: Replica, m: Milestone): MilestoneRow {
+  return { id: m.id, label: m.label, date: replica.logicalDayKeyOf(m.date) };
 }
 
 /** A bare day or an ISO instant as the noon the sheet would store, or a refusal naming the field. */
@@ -46,7 +52,7 @@ export interface MilestoneList {
 
 export function listMilestones(replica: Replica): MilestoneList {
   return {
-    milestones: replica.milestones().map(row),
+    milestones: replica.milestones().map(m => row(replica, m)),
     note: `${EACH_IS_ITS_OWN} Milestones reach this server only with Include health logs turned on for the sync server on the phone, so an empty list is not evidence that none were recorded.`,
   };
 }
@@ -60,7 +66,7 @@ export interface AddMilestoneInput {
 export function addMilestone(replica: Replica, input: AddMilestoneInput): { milestone: MilestoneRow; note: string } {
   const date = noonOf(input.date ?? replica.todayKey(), 'date');
   const milestone = replica.addMilestone(input.label, date);
-  return { milestone: row(milestone), note: EACH_IS_ITS_OWN };
+  return { milestone: row(replica, milestone), note: EACH_IS_ITS_OWN };
 }
 
 export interface MilestonePatchInput {
@@ -75,9 +81,9 @@ export function updateMilestone(replica: Replica, id: string, patch: MilestonePa
     ...(patch.label !== undefined ? { label: patch.label } : {}),
     ...(patch.date !== undefined ? { date: noonOf(patch.date, 'date') } : {}),
   });
-  return { milestone: row(milestone) };
+  return { milestone: row(replica, milestone) };
 }
 
 export function deleteMilestone(replica: Replica, id: string): { removed: MilestoneRow } {
-  return { removed: row(replica.deleteMilestone(id)) };
+  return { removed: row(replica, replica.deleteMilestone(id)) };
 }

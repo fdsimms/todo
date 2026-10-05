@@ -617,7 +617,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     // The preview still names it: that is for the person, before the write.
     addMilestone(label, date) {
       const milestone = replica.addMilestone(label, date);
-      log({ action: 'created', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: `Add the milestone "${milestone.label}" on ${milestone.date.slice(0, 10)}` });
+      log({ action: 'created', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: `Add the milestone "${milestone.label}" on ${replica.logicalDayKeyOf(milestone.date)}` });
       return milestone;
     },
 
@@ -626,7 +626,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const milestone = replica.updateMilestone(id, patch);
       const changes = [
         ...(before && before.label !== milestone.label ? [`label from "${before.label}" to "${milestone.label}"`] : []),
-        ...(before && before.date !== milestone.date ? [`date from ${before.date.slice(0, 10)} to ${milestone.date.slice(0, 10)}`] : []),
+        ...(before && before.date !== milestone.date ? [`date from ${replica.logicalDayKeyOf(before.date)} to ${replica.logicalDayKeyOf(milestone.date)}`] : []),
       ];
       log({ action: 'edited', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: changes.length ? `Change the milestone "${before!.label}": ${changes.join('; ')}` : `Leave the milestone "${milestone.label}" as it is` });
       return milestone;
@@ -634,7 +634,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     deleteMilestone(id) {
       const milestone = replica.deleteMilestone(id);
-      log({ action: 'cleared', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: `Delete the milestone "${milestone.label}" (${milestone.date.slice(0, 10)}). It cannot be restored from here.` });
+      log({ action: 'cleared', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: `Delete the milestone "${milestone.label}" (${replica.logicalDayKeyOf(milestone.date)}). It cannot be restored from here.` });
       return milestone;
     },
 
@@ -652,7 +652,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     setVacationMode(on, until) {
       const outcome = replica.setVacationMode(on, until);
-      const day = until ? ` until ${until.toISOString().slice(0, 10)}` : '';
+      const day = until ? ` until ${replica.logicalDayKeyOf(until.toISOString())}` : '';
       const hides = `${outcome.hiddenTasks} ${outcome.hiddenTasks === 1 ? 'task' : 'tasks'}${outcome.hiddenCategories.length ? ` and the ${outcome.hiddenCategories.length === 1 ? 'category' : 'categories'} ${outcome.hiddenCategories.join(', ')}` : ''}`;
       const note = outcome.endOnly
         ? `Set vacation mode to turn itself off${day || ' never'}; it stays on, hiding ${hides}`

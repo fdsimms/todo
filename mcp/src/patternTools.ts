@@ -305,8 +305,8 @@ export function moodInsights(replica: Replica): MoodInsights {
     milestones: replica.milestones().map(m => {
       const c = mi.milestoneMoodContrast(days, replica.logicalDayKeyOf(m.date));
       return c
-        ? { label: m.label, date: m.date.slice(0, 10), daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
-        : { label: m.label, date: m.date.slice(0, 10), note: 'Not enough logged days on both sides yet.' };
+        ? { label: m.label, date: replica.logicalDayKeyOf(m.date), daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
+        : { label: m.label, date: replica.logicalDayKeyOf(m.date), note: 'Not enough logged days on both sides yet.' };
     }),
     ...(knownFrom !== null
       ? { daysOutsideTaskHistory: days.filter(d => d.dayKey < knownFrom && d.mood !== null).length }
