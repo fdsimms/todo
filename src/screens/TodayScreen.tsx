@@ -3342,6 +3342,11 @@ export function TodayScreen() {
           groupId={item.group.id}
           dragTarget={dropTargetChannel}
         >
+          {/* The tray leaves in the same motion as its last rows, instead of
+              waiting out the rest of the completion hold after they fold away.
+              Its ids are the visible children only, so it never collapses
+              while any member is still live. */}
+          <CompletionCollapse taskIds={item.children.map(c => c.id)}>
           <TaskGroupTray>
             <TaskGroupHeader
               selectionMode={selectionMode}
@@ -3382,6 +3387,7 @@ export function TodayScreen() {
               />
             </TaskGroupBody>
           </TaskGroupTray>
+          </CompletionCollapse>
         </GroupDropTargetRow>
       );
     }
@@ -3540,6 +3546,7 @@ export function TodayScreen() {
   const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
+      <CompletionCollapse taskIds={children.map(c => c.id)}>
       <TaskGroupTray>
         <TaskGroupHeader
           selectionMode={selectionMode}
@@ -3557,6 +3564,7 @@ export function TodayScreen() {
           ))}
         </TaskGroupBody>
       </TaskGroupTray>
+      </CompletionCollapse>
     );
   };
 
@@ -3620,6 +3628,7 @@ export function TodayScreen() {
   const renderPinnedGroup = (group: TaskGroup, children: Task[]) => {
     const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
     return (
+    <CompletionCollapse taskIds={children.map(c => c.id)}>
     <TaskGroupTray>
       <TaskGroupHeader
         selectionMode={selectionMode}
@@ -3646,6 +3655,7 @@ export function TodayScreen() {
         ))}
       </TaskGroupBody>
     </TaskGroupTray>
+    </CompletionCollapse>
     );
   };
 
