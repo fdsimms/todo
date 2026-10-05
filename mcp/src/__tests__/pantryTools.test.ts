@@ -277,7 +277,9 @@ describe('pantry undo and log_leftover', () => {
     calendarRequest: () => null,
   });
 
-  const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry').sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+  // The log is already newest first. Re-sorting by `at` here returned an arbitrary entry
+  // whenever two writes landed in the same millisecond, which made these tests flaky.
+  const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry')[0];
 
   beforeAll(() => {
     replica = openReplica(':memory:');

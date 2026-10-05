@@ -188,6 +188,16 @@ export function CalendarScreen() {
   // Session-only, like the pinned block's `othersHidden`: which occurrences the
   // grid draws is a way of reading this month, not a preference about the app.
   const [projecting, setProjecting] = useState(true);
+  const [syncingCalendar, setSyncingCalendar] = useState(false);
+  const syncCalendar = useCallback(async () => {
+    setSyncingCalendar(true);
+    try {
+      const cal = useCalendarStore.getState();
+      await Promise.all([cal.refresh(), cal.refreshAhead()]);
+    } finally {
+      setSyncingCalendar(false);
+    }
+  }, []);
   // Month or one day on a clock. Session-only for the same reason `projecting`
   // is: which way you are reading this month is not a preference about the app.
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
@@ -965,6 +975,15 @@ export function CalendarScreen() {
           ? (weekOutstanding > 0 ? `${weekOutstanding} outstanding${weekHasToday ? ' this week' : ''}` : undefined)
           : (monthOutstanding > 0 ? `${monthOutstanding} outstanding in ${format(displayMonth, 'MMMM')}` : undefined)}
         actions={withScreenSettings([
+          // Re-reads the system calendar now, for an event just changed in
+          // another app. Absent when nothing is being read (or in a demo).
+          ...(calendarReadEnabled && !isDemoModeActive() ? [{
+            icon: 'sync-outline' as const,
+            onPress: () => { haptics.tap(); void syncCalendar(); },
+            loading: syncingCalendar,
+            disabled: syncingCalendar,
+            accessibilityLabel: 'Sync calendar events',
+          }] : []),
           {
             icon: 'today-outline',
             onPress: goToToday,
