@@ -21,6 +21,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    dream: over.dream ?? null,
   };
 }
 
@@ -96,7 +97,16 @@ describe('the file', () => {
 
   it('quotes a note holding a comma rather than splitting it across columns', () => {
     const csv = moodExportCsv([log({ note: 'Long day, skipped lunch' })]);
-    expect(rows(csv)[1].endsWith('"Long day, skipped lunch"')).toBe(true);
+    expect(rows(csv)[1].endsWith('"Long day, skipped lunch",')).toBe(true);
+  });
+});
+
+describe('the dream column', () => {
+  it('is the last column and carries the dream as typed', () => {
+    expect(MOOD_EXPORT_COLUMNS[MOOD_EXPORT_COLUMNS.length - 1]).toBe('Dream');
+    const csv = moodExportCsv([log({ dream: 'Lost, then found' }), log()]);
+    expect(rows(csv)[1].endsWith('"Lost, then found"')).toBe(true);
+    expect(rows(csv)[2].endsWith(',,')).toBe(true);
   });
 });
 

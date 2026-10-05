@@ -343,5 +343,6 @@ export function moodLogSummary(log: MoodLog): string {
   if (log.symptoms.length > 0) parts.push(log.symptoms.map(s => s.name).join(', '));
   if (log.contextTags.length > 0) parts.push(log.contextTags.join(', '));
   if (parts.length === 0 && log.note) return log.note;
+  if (parts.length === 0 && log.dream) return log.dream;
   return parts.join(' · ');
 }

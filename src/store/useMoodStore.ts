@@ -25,7 +25,7 @@ import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog'
  * wants several cuts of the whole history at once.
  */
 
-export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'note' | 'dream'>>;
 
 interface MoodStore {
   logs: MoodLog[];
@@ -58,6 +58,7 @@ interface MoodStore {
      */
     at?: Date,
     contextTags?: string[],
+    dream?: string | null,
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
@@ -78,15 +79,16 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     set({ logs: dbGetAllMoodLogs(), initialized: true });
   },
 
-  addLog(mood, symptoms, note = null, at, contextTags = []) {
+  addLog(mood, symptoms, note = null, at, contextTags = [], dream = null) {
     const cleaned = cleanSymptoms(symptoms);
     const cleanedTags = cleanContextTags(contextTags);
     const trimmedNote = note?.trim() || null;
+    const trimmedDream = dream?.trim() || null;
     // Refuses an entry that records nothing, the same rule `addNote` follows:
     // the sheet's Save is the only way in, and an empty row would be a day
     // marked as logged with nothing on it — which every read here would then
     // have to distinguish from a real one.
-    if (mood === null && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote) return null;
+    if (mood === null && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote && !trimmedDream) return null;
 
     const when = at ?? new Date();
     const log: MoodLog = {
@@ -100,6 +102,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
       symptoms: cleaned,
       contextTags: cleanedTags,
       note: trimmedNote,
+      dream: trimmedDream,
     };
     dbInsertMoodLog(log);
     // Newest first, matching what dbGetAllMoodLogs hands back on the next
@@ -116,6 +119,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     if (patch.symptoms !== undefined) next.symptoms = cleanSymptoms(patch.symptoms);
     if (patch.contextTags !== undefined) next.contextTags = cleanContextTags(patch.contextTags);
     if (patch.note !== undefined) next.note = patch.note?.trim() || null;
+    if (patch.dream !== undefined) next.dream = patch.dream?.trim() || null;
     // `loggedAt` and `dayKey` are deliberately not patchable. An entry records a
     // moment, and editing what you said about that moment must not move which
     // day it counts toward — that would rewrite history under every correlation
