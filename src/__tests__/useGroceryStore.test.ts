@@ -363,6 +363,10 @@ function seed(
     lastShopId: null,
     tripShopId: extra.tripShopId ?? null,
     tripStartedAt: extra.tripStartedAt ?? null,
+    // Reset with the trip's other two halves: setTripBudget refuses with no
+    // trip, so a budget a previous test left here would otherwise read as
+    // the refusal having failed.
+    tripBudgetMinor: null,
     cartHoldIds: [],
     disposalOffer: null,
     initialized: true,
