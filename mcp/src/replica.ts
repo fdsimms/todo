@@ -34,6 +34,7 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import { shimModule } from './expoSqliteShim';
 import type {
   Category,
+  ChainItem,
   Cookbook,
   DeliverableKind,
   EventTaskRule,
@@ -68,7 +69,7 @@ import type { AgentNote } from '../../src/utils/agentNotes';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
-import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
+import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateScheduleOf, templateToPlan, templateVersion, validateTemplatePlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
@@ -226,7 +227,10 @@ export interface TemplateRun {
   end?: Date | null;
   /** Answers to the template's questions, by the question's name. A question left out takes its default. */
   answers?: Record<string, string>;
-  /** Item ids to add to what the answers select (an optional item), or to take out of it. */
+  /**
+   * Item ids to add to what the answers select (an optional item), or to take
+   * out of it. A nested template's own item stands for every item inside it.
+   */
   include?: string[];
   leaveOut?: string[];
   /** Run into this existing project instead of the template's own container. */
@@ -237,6 +241,16 @@ export interface TemplateRunResult {
   tasks: Task[];
   /** What the run put the tasks in, by name, when it made one. */
   container: { kind: 'stack' | 'project' | 'task'; id: string; name: string } | null;
+  /**
+   * Items the run offered but did not create, and why: what the person would
+   * have seen unticked in the apply sheet. A run reported by its tasks alone
+   * hides exactly the part a caller is most likely to have got wrong.
+   */
+  leftOut: { itemId: string; title: string; why: string }[];
+  /** Blanks in the created text that had no value, and so were dropped from it. */
+  unfilledBlanks: string[];
+  /** Nested templates that no longer exist, so nothing came from them. */
+  brokenRefs: string[];
 }
 
 export interface PersonFields {
@@ -604,7 +618,7 @@ export interface Replica {
    * so it syncs like an edit made in the app. Throws, writing nothing, on an
    * invalid result, and refuses a nested reference that would form a cycle.
    */
-  updateTemplate(id: string, patch: TemplatePatch): TaskTemplate;
+  updateTemplate(id: string, patch: TemplatePatch, expectedVersion?: string): TaskTemplate;
 
   /**
    * Delete a template, by id or exact name. Nothing is archived: a template has
@@ -1185,9 +1199,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     const questionIds = new Map<string, string>();
     const questions = (plan.questions ?? []).map(question => {
-      const kept = question.name ? base?.questions.find(q => q.name === question.name) : undefined;
-      const stored = templateUtils.normalizeTemplateQuestion({ ...question, id: kept?.id ?? generateId() });
+      const { key, ...fields } = question;
+      // Kept by name, or for one with no name by the key get_template gave it
+      // (its id), so its conditions and a people question's id survive an edit.
+      const kept = question.name
+        ? base?.questions.find(q => q.name === question.name)
+        : key !== undefined ? base?.questions.find(q => q.id === key) : undefined;
+      const stored = templateUtils.normalizeTemplateQuestion({ ...fields, id: kept?.id ?? generateId() });
       if (stored.name) questionIds.set(stored.name, stored.id);
+      else if (key !== undefined) questionIds.set(key, stored.id);
       return stored;
     });
 
@@ -1206,14 +1226,27 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const stored = keptId !== undefined ? base?.items.find(i => i.id === keptId) : undefined;
       const sequence: Partial<TemplateItem> = chain === undefined && rotation === undefined ? {} : {
         chainEnabled: !!chain,
-        chainItems: chain ? chain.steps.map((s, i) => ({
-          id: stored?.chainItems[i]?.id ?? generateId(),
-          title: s.title.trim(),
-          estimatedMinutes: s.estimatedMinutes ?? null,
-          ...(s.asks ? { deliverableKind: s.asks } : {}),
-          ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
-        })) : [],
-        chainIndex: 0,
+        chainItems: chain ? chain.steps.map((s, i) => {
+          // A stored step is found by title first (a reorder or an insert
+          // keeps each step's own id and the fields a plan has no name for,
+          // like its link and medication), then by position (a rename).
+          const title = s.title.trim();
+          const byTitle = stored?.chainItems.find(c => c.title.trim().toLowerCase() === title.toLowerCase());
+          const keptStep = byTitle ?? (stored?.chainItems[i] && !chain.steps.some(o => o.title.trim().toLowerCase() === stored.chainItems[i].title.trim().toLowerCase()) ? stored.chainItems[i] : undefined);
+          const { deliverableKind: _k, deliverableDatesNextStep: _d, ...carried } = keptStep ?? ({} as Partial<ChainItem>);
+          void _k; void _d;
+          return {
+            ...carried,
+            id: keptStep?.id ?? generateId(),
+            title,
+            estimatedMinutes: s.estimatedMinutes ?? null,
+            ...(s.asks ? { deliverableKind: s.asks } : {}),
+            ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
+          };
+        }) : [],
+        // The step a run starts on has no name in a plan, so an edit keeps the
+        // stored one (clamped to the new length) rather than resetting it.
+        chainIndex: chain && stored?.chainEnabled ? Math.min(stored.chainIndex, chain.steps.length - 1) : 0,
         rotationEnabled: !!rotation,
         rotationItems: rotation ? rotation.members.map(m => {
           const title = m.trim();
@@ -1222,6 +1255,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         }) : [],
       };
       const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
+      // A reference whose target was deleted is kept as the stored item had
+      // it (validation lets exactly this through), rather than turned into a
+      // task item with no title.
+      const brokenKept = refTemplate !== undefined && !ref && stored?.refTemplateId === refTemplate ? stored : undefined;
       const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
       return templateUtils.normalizeTemplateItem({
         ...fields,
@@ -1233,15 +1270,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
               answers: onlyIfAnswer.answers.map(a => offered.find(o => o.toLowerCase() === a.trim().toLowerCase()) ?? a),
             }
           : null,
-        groupId: groupKey === undefined ? null : (groupIds.get(groupKey) ?? null),
+        groupId: groupKey == null ? null : (groupIds.get(groupKey) ?? null),
         conditions: (conditions ?? []).map(c => ({
           questionId: questionIds.get(c.question) ?? '',
           values: c.values,
         })),
-        refTemplateId: ref?.id ?? null,
+        refTemplateId: ref?.id ?? brokenKept?.refTemplateId ?? null,
         // Carried so a broken reference can still say what it pointed at,
         // which is what the field is for (see TemplateItem.refTemplateName).
-        refTemplateName: ref?.name ?? '',
+        refTemplateName: ref?.name ?? brokenKept?.refTemplateName ?? '',
       });
     });
     return { items, itemGroups, questions };
@@ -2094,12 +2131,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return template;
     },
 
-    updateTemplate(id: string, patch: TemplatePatch): TaskTemplate {
+    updateTemplate(id: string, patch: TemplatePatch, expectedVersion?: string): TaskTemplate {
       const existing = db.dbGetAllTemplates();
       const found = resolveRef(id, existing);
       if (found.length === 0) throw new Error(`No template with id or name "${id}".`);
       if (found.length > 1) throw new Error(`"${id}" names ${found.length} templates. Use an id.`);
       const before = found[0];
+      // Whole lists are rebuilt from what the caller sent, so an edit written
+      // against an older read would undo whatever changed since (on the phone,
+      // say). The version get_template gave says which read it was.
+      if (expectedVersion !== undefined && expectedVersion !== templateVersion(before)) {
+        throw new Error(`"${before.name}" has changed since that version was read. Read it again with get_template and redo the edit on what it holds now.`);
+      }
 
       const structural = patch.groups !== undefined || patch.questions !== undefined || patch.items !== undefined;
       let parts: Partial<Pick<TaskTemplate, 'items' | 'itemGroups' | 'questions'>> = {};
@@ -2172,30 +2215,76 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // Answers arrive by the blank's name; the run works in question ids.
       const typed: Record<string, string> = {};
       const errors: string[] = [];
-      for (const [name, value] of Object.entries(run.answers ?? {})) {
-        const question = questions.find(q => q.name === name && q.kind !== 'people');
+      for (const [name, raw] of Object.entries(run.answers ?? {})) {
+        // Matched the way a blank is: "Nights" and "nights" are one question.
+        const question = questions.find(q => q.name && templateUtils.placeholderKey(q.name) === templateUtils.placeholderKey(name) && q.kind !== 'people');
         if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
+        // A choice answer is spelled the way the option is, since a condition
+        // compares the stored strings exactly.
+        const value = question.kind === 'choice'
+          ? question.options.find(o => o.trim().toLowerCase() === raw.trim().toLowerCase()) ?? raw
+          : raw;
         if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
         if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
         typed[question.id] = value;
       }
-      const leaves = new Set(templateUtils.flattenApplyTree(tree).map(e => e.item.id));
-      for (const id of [...(run.include ?? []), ...(run.leaveOut ?? [])]) if (!leaves.has(id)) errors.push(`item id "${id}" is not an item of this run.`);
+      // An id may name a leaf, or a nested template's own item, which stands
+      // for every leaf under it: "leave out the packing list" is one id.
+      const nodesById = new Map<string, import('../../src/utils/templateUtils').ApplyTreeNode>();
+      const walk = (nodes: import('../../src/utils/templateUtils').ApplyTreeNode[]) => nodes.forEach(n => { nodesById.set(n.item.id, n); walk(n.children); });
+      walk(tree);
+      const leavesFor = (id: string) => {
+        const node = nodesById.get(id);
+        if (!node || node.broken) { errors.push(`item id "${id}" is not an item of this run.`); return []; }
+        return templateUtils.leafIdsUnder(node);
+      };
+      const include = (run.include ?? []).flatMap(leavesFor);
+      const leaveOut = new Set((run.leaveOut ?? []).flatMap(leavesFor));
       if (errors.length > 0) throw new Error(errors.join(' '));
 
       const answers = templateQuestions.resolveAnswers(questions, typed, anchors);
-      const selected = templateQuestions.initialLeafSelection(tree, questions, answers);
-      for (const id of run.include ?? []) selected.add(id);
-      for (const id of run.leaveOut ?? []) selected.delete(id);
+      const byDefault = templateQuestions.initialLeafSelection(tree, questions, answers);
+      const selected = new Set(byDefault);
+      for (const id of include) selected.add(id);
+      for (const id of leaveOut) selected.delete(id);
       if (selected.size === 0) throw new Error('Nothing in this template is selected for that run.');
 
+      const placeholders = templateQuestions.placeholderValuesFor(questions, answers);
       let container: TemplateRunResult['container'] = null;
       const created = runTemplateIn(template, byId, selected, anchors, {
         runName: run.runName,
-        placeholders: templateQuestions.placeholderValuesFor(questions, answers),
+        placeholders,
         targetProjectId: run.projectId,
       }, c => { container = c; });
-      return { tasks: created, container };
+
+      // Why each offered item is off, in the order the apply sheet would ask.
+      const leftOut: TemplateRunResult['leftOut'] = [];
+      const brokenRefs: string[] = [];
+      const explain = (nodes: import('../../src/utils/templateUtils').ApplyTreeNode[], underOptional: boolean) => {
+        for (const node of nodes) {
+          if (node.broken) { brokenRefs.push(node.item.refTemplateName || node.item.refTemplateId || '(unknown)'); continue; }
+          if (node.item.refTemplateId !== null) { explain(node.children, underOptional || node.item.optional); continue; }
+          if (selected.has(node.item.id)) continue;
+          const conditioned = templateQuestions.liveConditions(node.item.conditions, questions).length > 0;
+          const why = leaveOut.has(node.item.id) ? 'left out by request'
+            : underOptional ? 'inside a nested template that is optional (include its item to run it)'
+            : conditioned ? 'not ticked for these answers'
+            : node.item.optional ? 'optional, off unless included'
+            : 'not selected';
+          leftOut.push({ itemId: node.item.id, title: node.item.title, why });
+        }
+      };
+      explain(tree, false);
+
+      const ran = templateUtils.flattenApplyTree(tree).filter(e => selected.has(e.item.id)).map(e => e.item);
+      const filled = new Set(Object.entries(placeholders).filter(([, v]) => v.trim()).map(([k]) => k));
+      if (run.runName?.trim()) filled.add(templateUtils.RUN_PLACEHOLDER);
+      const unfilledBlanks = [
+        ...templateUtils.extractPlaceholders(ran),
+        ...(templateUtils.declaresRunPlaceholder(ran) ? [templateUtils.RUN_PLACEHOLDER] : []),
+      ].filter(name => !filled.has(name));
+
+      return { tasks: created, container, leftOut, unfilledBlanks, brokenRefs };
     },
 
     deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] } {

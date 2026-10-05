@@ -488,18 +488,38 @@ adds `update_template` has to add the guard with it.
 ### Editing one: `get_template` and `update_template`
 
 `get_template` returns a template as the plan that would recreate it (`templateToPlan`), and
-`update_template` takes any part of a plan, with what it leaves out unchanged. Three rules hold it:
+`update_template` takes any part of a plan, with what it leaves out unchanged. Four rules hold it:
 
 - **A list is replaced, not patched.** `groups`, `questions` and `items` point at one another, so
   each replaces its whole list when given. What keeps this from being a rewrite is that **ids
   survive by being named**: an item passes its `id`, a group uses its id as its `key`, a question
-  keeps its `name`. `{ id }` alone leaves an item exactly as stored.
+  keeps its `name` (one with no name, a people question or a choice that only decides what is
+  ticked, keeps the `key` `get_template` gave it, which is its id). `{ id }` alone leaves an item
+  exactly as stored.
+- **What `get_template` returns goes back in unchanged.** Handing the plan straight back stores the
+  same template (the replica test pins this down). So `templateToPlan` leaves out the pointers every
+  reader already ignores (a condition on a deleted question or with no values, a gate on an item
+  that is gone), validation lets a nested reference through when it was already broken on the
+  stored template, and the applier keeps what a plan has no words for: a chain's starting step, and
+  a step's link and medication (steps are matched by title, then by position).
 - **An item with an `id` starts from the stored item.** The zod item schema names only some of
   `TemplateItem`'s fields, so a plan that rebuilt each item from what the caller sent would drop
   the rest (link, chain, rotation, medication...) on every edit. Writing the given fields over the
   stored item is what makes the edit lossless. An item with no id is new; one left out is removed.
 - **A scalar-only edit never rebuilds the lists.** A rename or a schedule change leaves items
-  untouched, so a stored nested reference that has since gone dangling cannot block it.
+  untouched.
+- **An edit can say which read it was made against.** `get_template` returns a `version`
+  (`templateVersion`, a hash of the stored content leaving out `scheduleLastFiredKey`), and
+  `update_template`'s `expectedVersion` refuses the edit if the template changed since. Rebuilding
+  whole lists means an edit composed against an old read would otherwise undo whatever the phone
+  changed in between, and the confirm token binds the request, not the state.
+
+Create and edit also return **`warnings`** (`templateWarnings`): legal templates that probably
+don't do what was meant, like a `{blank}` no question fills (an unattended run drops it), a
+reminder with no due date, a weather wait on a repeating item, or a category that a run would
+create. They are warnings rather than refusals because the app's own editor makes every one of
+them. An edit's result lists its **`changes`** in plain words (`describeTemplateChanges`), and since
+the preview is the result with ids removed, that list is what the person confirms.
 
 **`apply_template` runs the app's own run logic.** The container choice, the run's category, the
 away span a trip's anchors become, item-group sections (a checklist flag included), the gates
@@ -509,9 +529,17 @@ and now called by both. It writes through a `TemplateRunSink`: the store supplie
 actions (undo, reminders, calendar events), the replica supplies one over the database. A second
 copy of those rules was never an option, for the reason `taskCompletion.ts` exists. Which items are
 on is the apply sheet's opening state (`initialLeafSelection`, which is also what a scheduled run
-uses), adjusted by `include` / `leaveOut` item ids; answers come in by the question's name and are
-checked against its kind. People questions are not answered over MCP, so no task is stamped with
-people. Run in one transaction; reminders and calendar events catch up on the phone.
+uses), adjusted by `include` / `leaveOut` item ids (a nested template's own item id stands for
+everything inside it); answers come in by the question's name, matched the way a blank is
+(ignoring case), and are checked against its kind. People questions are not answered over MCP, so
+no task is stamped with people. Run in one transaction; reminders and calendar events catch up on
+the phone. `applyTemplateRun` adds the nested templates above each selected leaf itself, since the
+selection every caller builds names leaves only and both the scheduler and the replica once
+dropped every nested item by not doing it.
+
+The result, and so the preview, says what a person would check before saying yes: each task's
+dates and subtasks, the items **left out** and why (with their `itemId`s for `include`), the blanks
+left empty, and nested templates that no longer exist.
 
 `delete_template` has no archive to fall back on (a template has no archived state in the app), so
 it is the one delete the server offers. It leans on the preview every write already has: the dry
@@ -526,8 +554,8 @@ A template's category is also registered in `template_categories`, which the edi
 The item schema was about twenty fields behind when it was added. The groups are the same
 decisions as on a task: gates, penalties and a medication are withheld. Chain and rotation are
 written as nested `chain` / `rotation` plan fields and turned into the item's step and member lists
-by the applier; on an edit, step ids are kept by position and member ids by title, because a
-recorded answer and a week's ledger are found through them.
+by the applier; on an edit, step ids are kept by title then by position, and member ids by title,
+because a recorded answer and a week's ledger are found through them.
 
 The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
 comparison is by value because the db reader and the writer build the object in different key

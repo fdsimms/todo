@@ -7,7 +7,8 @@
  * for a blob written by an older build and wrong for a caller composing a
  * template it believes it described correctly.
  */
-import { validateTemplatePlan, resolveRef, templateToPlan, type TemplatePlan } from '../templatePlan';
+import { describeTemplateChanges, templateWarnings, validateTemplatePlan, resolveRef, templateToPlan, type TemplatePlan } from '../templatePlan';
+import { normalizeTemplateItem } from '../../../src/utils/templateUtils';
 import type { TaskTemplate } from '../../../src/types';
 
 const template = (over: Partial<TaskTemplate> & { id: string; name: string }): TaskTemplate =>
@@ -305,5 +306,68 @@ describe('an edit to an existing template', () => {
     expect(asPlan.items![0]).toMatchObject({ id: 'i1', groupKey: 'g1' });
     expect(asPlan.items![1].conditions).toEqual([{ question: 'trip', values: ['Work'] }]);
     expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
+  });
+});
+
+describe('a question with no name', () => {
+  it('takes a key so a condition can name it, but only a choice can fill no blank that way', () => {
+    const p = plan({
+      questions: [{ key: 'q-kind', prompt: 'What kind?', kind: 'choice', options: ['Work', 'Holiday'] }],
+      items: [{ title: 'Laptop', conditions: [{ question: 'q-kind', values: ['Work'] }] }],
+    });
+    expect(errors(p)).toEqual([]);
+    expect(errors(plan({ questions: [{ key: 'q', prompt: 'Where?', kind: 'text' }] }))[0]).toContain('needs a name');
+    expect(errors(plan({ questions: [
+      { key: 'q', prompt: 'A?', kind: 'choice', options: ['a', 'b'] },
+      { key: 'q', prompt: 'B?', kind: 'choice', options: ['a', 'b'] },
+    ] }))).toContain('two questions share the key "q".');
+  });
+});
+
+describe('templateWarnings', () => {
+  const stored = (items: Parameters<typeof normalizeTemplateItem>[0][], over: Partial<TaskTemplate> = {}) =>
+    template({ id: 't', name: 'T', items: items.map(normalizeTemplateItem), ...over });
+
+  it('names a blank no question fills, but not {run} or a declared one', () => {
+    const t = stored([{ title: 'Pack for {where} ({run}), {nights} nights' }], {
+      questions: [{ id: 'q', name: 'Nights', prompt: '', kind: 'number', options: [], defaultValue: '', fromDates: 'none' }],
+    });
+    const warnings = templateWarnings(t, []);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('{where}');
+  });
+
+  it('flags combinations a run silently drops', () => {
+    const warnings = templateWarnings(stored([
+      { title: 'A', reminderOffsetMinutes: 10 },
+      { title: 'B', weatherWait: 'sunny', recurrenceType: 'daily' },
+      { title: 'C', dueOffsetDays: 0, deferOffsetDays: 2 },
+      { title: 'D', windowStart: '22:00', windowEnd: '02:00' },
+      { title: 'E', category: 'Nowhere' },
+    ]), ['Home']);
+    expect(warnings.map(w => w.slice(0, 10))).toEqual(['item "A" h', 'item "B" w', 'item "C" i', 'item "D" h', 'item "E" i']);
+  });
+
+  it('is quiet for an ordinary template', () => {
+    expect(templateWarnings(stored([{ title: 'Pack', category: 'home', dueOffsetDays: -1, reminderOffsetMinutes: 60 }]), ['Home'])).toEqual([]);
+  });
+});
+
+describe('describeTemplateChanges', () => {
+  it('says what an edit adds, removes and changes, by name', () => {
+    const before = template({ id: 't', name: 'Trip', items: [
+      normalizeTemplateItem({ id: 'a', title: 'Shirts' }),
+      normalizeTemplateItem({ id: 'b', title: 'Laptop' }),
+    ] });
+    const after = template({ id: 't', name: 'Trip', items: [
+      normalizeTemplateItem({ id: 'a', title: 'Shirts', dueOffsetDays: -1 }),
+      normalizeTemplateItem({ id: 'c', title: 'Charger' }),
+    ] });
+    expect(describeTemplateChanges(before, after)).toEqual([
+      'Change item "Shirts": dueOffsetDays.',
+      'Add item "Charger".',
+      'Remove item "Laptop".',
+    ]);
+    expect(describeTemplateChanges(before, before)).toEqual([]);
   });
 });

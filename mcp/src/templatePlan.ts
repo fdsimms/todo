@@ -47,7 +47,7 @@ import type {
   TimeOfDay,
 } from '../../src/types';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
-import { wouldCreateCycle } from '../../src/utils/templateUtils';
+import { RUN_PLACEHOLDER, itemPlaceholders, placeholderKey, wouldCreateCycle } from '../../src/utils/templateUtils';
 import { MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
 
 export const CONTAINERS: readonly TemplateContainer[] = ['none', 'stack', 'project', 'task'];
@@ -76,6 +76,13 @@ export interface QuestionPlan {
    * those can never be referenced or conditioned on.
    */
   name?: string;
+  /**
+   * A handle for a question with no name, which fills no blank: a choice
+   * that only decides what is ticked, or a people question. A condition names
+   * the question by its name or this key. `get_template` hands back the
+   * question's id here, and an update that keeps it keeps the question.
+   */
+  key?: string;
   prompt: string;
   kind: TemplateQuestionKind;
   /** Required for a choice, meaningless otherwise. The first is the default. */
@@ -86,7 +93,7 @@ export interface QuestionPlan {
 }
 
 export interface ConditionPlan {
-  /** A choice question's `name`. Only a choice can gate an item. */
+  /** A choice question's `name`, or its `key` when it has none. Only a choice can gate an item. */
   question: string;
   /** Which of that question's options switch this item on. */
   values: string[];
@@ -127,9 +134,9 @@ export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 
    * TemplateItem.answerGate: shown only for these answers to the question
    * the item with this `key` asks. Becomes Task.answerGate when applied.
    */
-  onlyIfAnswer?: { item: string; answers: string[] };
-  /** A `GroupPlan.key`. */
-  groupKey?: string;
+  onlyIfAnswer?: { item: string; answers: string[] } | null;
+  /** A `GroupPlan.key`. null (on an update) takes the item out of its group. */
+  groupKey?: string | null;
   conditions?: ConditionPlan[];
   /** An existing template's id, or its name when that names exactly one. */
   refTemplate?: string;
@@ -226,7 +233,13 @@ export function validateTemplatePlan(
   const questions = plan.questions ?? [];
   const choices = new Map<string, string[]>();
   const questionNames = new Set<string>();
+  const questionKeys = new Set<string>();
   for (const question of questions) {
+    if (question.key !== undefined) {
+      if (!question.key.trim()) errors.push('a question key cannot be blank.');
+      else if (questionKeys.has(question.key)) errors.push(`two questions share the key "${question.key}".`);
+      questionKeys.add(question.key);
+    }
     if (!oneOf(question.kind, QUESTION_KINDS)) {
       errors.push(`question kind must be one of ${QUESTION_KINDS.join(', ')}.`);
       continue;
@@ -247,7 +260,16 @@ export function validateTemplatePlan(
     }
 
     if (!question.name?.trim()) {
-      errors.push('every question except a people one needs a name.');
+      // A choice with a key and no name is the app's "only decides what is
+      // ticked" question: it fills no blank, and conditions name it by key.
+      if (question.kind === 'choice' && question.key?.trim()) {
+        const options = question.options ?? [];
+        if (options.length < 2) errors.push(`choice question "${question.key}" needs at least two options.`);
+        else choices.set(question.key, options);
+        questionNames.add(question.key);
+        continue;
+      }
+      errors.push('every question except a people one needs a name (or, for a choice that fills no blank, a key).');
       continue;
     }
     if (questionNames.has(question.name)) {
@@ -299,7 +321,7 @@ export function validateTemplatePlan(
     if (item.anchor !== undefined && !oneOf(item.anchor, ANCHORS)) {
       errors.push(`item "${label}" anchor must be start or end.`);
     }
-    if (item.groupKey !== undefined && !groupKeys.has(item.groupKey)) {
+    if (item.groupKey != null && !groupKeys.has(item.groupKey)) {
       errors.push(`item "${label}" names group "${item.groupKey}", which the plan does not define.`);
     }
     errors.push(...conditionErrors(item, label, choices, questionNames));
@@ -349,6 +371,12 @@ function refErrors(item: ItemPlan, label: string, existing: readonly TaskTemplat
   if (item.refTemplate === undefined) return [];
 
   const matches = resolveRef(item.refTemplate, existing);
+  // A reference the template already held when its target was deleted is
+  // kept as it stands (the app shows it as broken, and a run skips it).
+  // Refusing it would make every structural edit of such a template fail
+  // until someone found and removed the item by hand.
+  const self = selfId === undefined ? undefined : existing.find(t => t.id === selfId);
+  if (matches.length === 0 && self?.items.some(i => i.refTemplateId === item.refTemplate)) return [];
   if (matches.length === 0) return [`item "${label}" references template "${item.refTemplate}", which does not exist.`];
   if (matches.length > 1) {
     return [`item "${label}" references "${item.refTemplate}", which names ${matches.length} templates. Use an id.`];
@@ -490,8 +518,16 @@ export function scheduleErrors(schedule: SchedulePlan | null | undefined): strin
  * An item is also given a `key` when another item's answer gate points at it.
  */
 export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: string } {
-  const gateTargets = new Set(template.items.map(i => i.answerGate?.itemId).filter((x): x is string => !!x));
-  const questionName = new Map(template.questions.map(q => [q.id, q.name]));
+  // What the plan hands back has to pass validateTemplatePlan unchanged, or a
+  // template can't be edited at all. So pointers every reader already shrugs
+  // off (a condition on a deleted question or with no values, a gate on an
+  // item that is gone) are left out here rather than echoed back as errors.
+  const itemIds = new Set(template.items.map(i => i.id));
+  const liveGate = (item: TemplateItem) => (item.answerGate && itemIds.has(item.answerGate.itemId) ? item.answerGate : null);
+  const gateTargets = new Set(template.items.map(i => liveGate(i)?.itemId).filter((x): x is string => !!x));
+  // A question with no name is named by its id, so it keeps that id and its
+  // conditions still find it.
+  const questionHandle = new Map(template.questions.map(q => [q.id, q.name || q.id]));
   return {
     id: template.id,
     name: template.name,
@@ -501,7 +537,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
     schedule: template.schedule,
     groups: template.itemGroups.map(g => ({ key: g.id, title: g.title, ...(g.checklist ? { checklist: true } : {}) })),
     questions: template.questions.map(q => ({
-      ...(q.name ? { name: q.name } : {}),
+      ...(q.name ? { name: q.name } : { key: q.id }),
       prompt: q.prompt,
       kind: q.kind,
       ...(q.options.length ? { options: q.options } : {}),
@@ -519,12 +555,158 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
         ...(rotationEnabled && rotationItems.length >= 2 ? { rotation: { members: rotationItems.map(r => r.title) } } : {}),
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),
         ...(groupId ? { groupKey: groupId } : {}),
-        ...(conditions.length
-          ? { conditions: conditions.map(c => ({ question: questionName.get(c.questionId) ?? '', values: c.values })) }
-          : {}),
-        ...(answerGate ? { onlyIfAnswer: { item: answerGate.itemId, answers: answerGate.answers } } : {}),
+        ...(() => {
+          const live = conditions.filter(c => questionHandle.has(c.questionId) && c.values.length > 0);
+          return live.length ? { conditions: live.map(c => ({ question: questionHandle.get(c.questionId)!, values: c.values })) } : {};
+        })(),
+        ...(liveGate(item) ? { onlyIfAnswer: { item: answerGate!.itemId, answers: answerGate!.answers } } : {}),
         ...(refTemplateId ? { refTemplate: refTemplateId } : {}),
       };
     }),
   };
+}
+
+/**
+ * A short fingerprint of what a template holds, handed out by `get_template`
+ * and checked by `update_template`'s `expectedVersion`.
+ *
+ * `update_template` rebuilds whole lists from what the caller sends, so an
+ * edit composed against a read made before the phone changed the template
+ * would silently undo that change. There is no stored revision to compare,
+ * so this is a hash of the content itself. `scheduleLastFiredKey` is left out:
+ * it moves when a schedule fires, which is not an edit anyone made.
+ */
+export function templateVersion(template: TaskTemplate): string {
+  const { scheduleLastFiredKey, ...content } = template;
+  void scheduleLastFiredKey;
+  const text = JSON.stringify(stableValue(content));
+  // FNV-1a, 32-bit, twice with different seeds: no crypto needed, and a
+  // collision would only mean a stale edit is not caught.
+  const fnv = (seed: number) => {
+    let h = seed >>> 0;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  };
+  return fnv(0x811c9dc5) + fnv(0x01000193);
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value as object).sort()
+        .filter(k => (value as Record<string, unknown>)[k] !== undefined)
+        .map(k => [k, stableValue((value as Record<string, unknown>)[k])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Things a template will do that its author probably didn't mean, which the
+ * normalizer or a run would otherwise swallow without a word. Not errors: each
+ * is a legal template, and refusing them would refuse templates the app's own
+ * editor makes. Returned with a create or an edit so the caller can fix them
+ * or say why not.
+ */
+export function templateWarnings(
+  template: TaskTemplate,
+  /** Every task category the person has, to flag one a run would create. */
+  categories: readonly string[],
+): string[] {
+  const warnings: string[] = [];
+  const blankOwners = new Set(template.questions.map(q => placeholderKey(q.name)).filter(Boolean));
+  blankOwners.add(RUN_PLACEHOLDER);
+  const known = new Set(categories.map(c => c.toLowerCase()));
+  const label = (item: TemplateItem) => `item "${item.title || item.refTemplateName || item.id}"`;
+
+  for (const item of template.items) {
+    if (item.refTemplateId !== null) {
+      if (item.conditions.length > 0) warnings.push(`${label(item)} nests a template, so its conditions are ignored; only "optional" decides whether the nested block starts ticked.`);
+      continue;
+    }
+    const undeclared = itemPlaceholders(item).filter(name => !blankOwners.has(name));
+    for (const name of undeclared) {
+      warnings.push(`${label(item)} uses {${name}}, which no question fills. The app asks for it as a blank, but a scheduled run or apply_template leaves it empty and drops it from the text. Add a question named "${name}", or remove the braces if they are not a blank.`);
+    }
+    if (item.reminderOffsetMinutes != null && item.dueOffsetDays == null) {
+      warnings.push(`${label(item)} has reminderOffsetMinutes but no dueOffsetDays, so there is no date to remind before and no reminder is set.`);
+    }
+    if (item.weatherWait && (item.recurrenceType !== 'none' || item.chainEnabled)) {
+      warnings.push(`${label(item)} waits for weather but repeats or is a chain; only a one-off can wait, so the wait is dropped.`);
+    }
+    if (item.dueOffsetDays != null && item.deferOffsetDays != null && item.deferOffsetDays > item.dueOffsetDays) {
+      warnings.push(`${label(item)} is hidden until after its due date (deferOffsetDays ${item.deferOffsetDays} > dueOffsetDays ${item.dueOffsetDays}).`);
+    }
+    if (item.dueOffsetDays != null && item.deadlineOffsetDays != null && item.deadlineOffsetDays < item.dueOffsetDays) {
+      warnings.push(`${label(item)} has a deadline before its due date.`);
+    }
+    if (item.windowStart && item.windowEnd && item.windowEnd <= item.windowStart) {
+      warnings.push(`${label(item)} has a time window that ends before it starts, so the end is ignored.`);
+    }
+    if (item.recurrenceDays.length > 0 && item.recurrenceType !== 'weekly') {
+      warnings.push(`${label(item)} lists recurrenceDays but repeats ${item.recurrenceType}, so the days are ignored.`);
+    }
+    if (item.deliverableOptions && item.deliverableOptions.length > 0 && item.deliverableKind !== 'choice') {
+      warnings.push(`${label(item)} has deliverableOptions but does not ask a choice question, so they are unused.`);
+    }
+    if (item.category && !known.has(item.category.toLowerCase())) {
+      warnings.push(`${label(item)} is in category "${item.category}", which does not exist yet; running the template creates it.`);
+    }
+  }
+  return warnings;
+}
+
+/**
+ * What an edit changed, in plain words, for the preview an edit is confirmed
+ * from. "Change the template X" was all the person saw before, which is not
+ * something anyone can say yes to.
+ */
+export function describeTemplateChanges(before: TaskTemplate, after: TaskTemplate): string[] {
+  const out: string[] = [];
+  if (before.name !== after.name) out.push(`Rename to "${after.name}".`);
+  if (before.category !== after.category) out.push(`Category: ${before.category ?? 'none'} → ${after.category ?? 'none'}.`);
+  if (before.applyContainer !== after.applyContainer) out.push(`Runs into: ${before.applyContainer} → ${after.applyContainer}.`);
+  if (before.anchorsAreAway !== after.anchorsAreAway) out.push(after.anchorsAreAway ? 'Its dates now mean days away.' : 'Its dates no longer mean days away.');
+  if (JSON.stringify(stableValue(before.schedule)) !== JSON.stringify(stableValue(after.schedule))) {
+    out.push(after.schedule ? (before.schedule ? 'Change the schedule.' : 'Add a schedule.') : 'Remove the schedule.');
+  }
+
+  const title = (i: TemplateItem) => i.title || i.refTemplateName || '(untitled)';
+  const beforeItems = new Map(before.items.map(i => [i.id, i]));
+  const afterIds = new Set(after.items.map(i => i.id));
+  for (const item of after.items) {
+    const old = beforeItems.get(item.id);
+    if (!old) { out.push(`Add item "${title(item)}".`); continue; }
+    const fields = (Object.keys({ ...old, ...item }) as (keyof TemplateItem)[])
+      .filter(k => k !== 'id' && JSON.stringify(stableValue(old[k])) !== JSON.stringify(stableValue(item[k])));
+    if (fields.length > 0) out.push(`Change item "${title(old)}": ${fields.join(', ')}.`);
+  }
+  for (const item of before.items) if (!afterIds.has(item.id)) out.push(`Remove item "${title(item)}".`);
+  if (before.items.map(i => i.id).filter(id => afterIds.has(id)).join() !== after.items.map(i => i.id).filter(id => beforeItems.has(id)).join()) {
+    out.push('Reorder items.');
+  }
+
+  const qLabel = (q: TaskTemplate['questions'][number]) => q.name || q.prompt || q.id;
+  const beforeQ = new Map(before.questions.map(q => [q.id, q]));
+  const afterQ = new Set(after.questions.map(q => q.id));
+  for (const q of after.questions) {
+    const old = beforeQ.get(q.id);
+    if (!old) out.push(`Add question "${qLabel(q)}".`);
+    else if (JSON.stringify(stableValue(old)) !== JSON.stringify(stableValue(q))) out.push(`Change question "${qLabel(old)}".`);
+  }
+  for (const q of before.questions) if (!afterQ.has(q.id)) out.push(`Remove question "${qLabel(q)}".`);
+
+  const beforeG = new Map(before.itemGroups.map(g => [g.id, g]));
+  const afterG = new Set(after.itemGroups.map(g => g.id));
+  for (const g of after.itemGroups) {
+    const old = beforeG.get(g.id);
+    if (!old) out.push(`Add group "${g.title}".`);
+    else if (old.title !== g.title || !!old.checklist !== !!g.checklist) out.push(`Change group "${old.title}".`);
+  }
+  for (const g of before.itemGroups) if (!afterG.has(g.id)) out.push(`Remove group "${g.title}".`);
+  return out;
 }

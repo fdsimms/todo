@@ -231,8 +231,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return template;
     },
 
-    updateTemplate(id, patch) {
-      const template = replica.updateTemplate(id, patch);
+    updateTemplate(id, patch, expectedVersion) {
+      const template = replica.updateTemplate(id, patch, expectedVersion);
       log({ action: 'edited', subject: 'template', title: template.name, taskId: null });
       return template;
     },

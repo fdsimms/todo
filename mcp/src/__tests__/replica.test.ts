@@ -17,7 +17,16 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { createTask as createTaskTool, getTask as getTaskTool, updateTask as updateTaskTool } from '../tools';
+import {
+  applyTemplate as applyTemplateTool,
+  createTask as createTaskTool,
+  createTemplate as createTemplateTool,
+  getTask as getTaskTool,
+  getTemplate as getTemplateTool,
+  updateTask as updateTaskTool,
+  updateTemplate as updateTemplateTool,
+} from '../tools';
+import { templateToPlan, templateVersion } from '../templatePlan';
 
 let mockRaw: ShimDatabase;
 
@@ -600,6 +609,89 @@ describe('the replica', () => {
       expect(kept.items[1]).toMatchObject({ rotationEnabled: false, rotationItems: [] });
     });
 
+    // What get_template hands back has to be something update_template takes
+    // and stores unchanged, or an agent can't safely edit the template at all.
+    it('takes back what get_template returned and changes nothing, whatever the template holds', () => {
+      const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
+      const built = replica.createTemplate({
+        name: 'Everything',
+        questions: [
+          { name: 'kind', prompt: 'What kind?', kind: 'choice', options: ['Work', 'Holiday'] },
+          { prompt: 'Who is coming?', kind: 'people' },
+        ],
+        items: [
+          { title: 'Routine', chain: { steps: [{ title: 'One' }, { title: 'Two' }, { title: 'Three' }] } },
+          { title: 'Laptop', conditions: [{ question: 'kind', values: ['Work'] }] },
+          { title: 'Nest', refTemplate: inner.id },
+        ],
+      });
+      // States the app can produce that a plan has no words for: a chain picked
+      // up mid-way with a link on a step, a choice question with no name (it
+      // only decides what is ticked), and a nested template since deleted.
+      const stored = replica.templates().find(t => t.id === built.id)!;
+      stored.items[0].chainIndex = 1;
+      stored.items[0].chainItems[1].linkUrl = 'https://example.com';
+      stored.questions[0].name = '';
+      db().dbUpdateTemplate(stored);
+      replica.deleteTemplate(inner.id);
+
+      const before = replica.templates().find(t => t.id === built.id)!;
+      const { id, ...plan } = templateToPlan(before);
+      const after = replica.updateTemplate(id, plan, templateVersion(before));
+
+      expect(after.items).toEqual(before.items);
+      expect(after.questions).toEqual(before.questions);
+      expect(templateVersion(after)).toBe(templateVersion(before));
+    });
+
+    it('keeps a chain step\'s own id and fields when steps are reordered', () => {
+      const t = replica.createTemplate({ name: 'R', items: [{ title: 'x', chain: { steps: [{ title: 'A' }, { title: 'B' }] } }] });
+      const stored = replica.templates().find(s => s.id === t.id)!;
+      stored.items[0].chainItems[1].linkUrl = 'https://b.example';
+      db().dbUpdateTemplate(stored);
+      const updated = replica.updateTemplate(t.id, { items: [{ id: t.items[0].id, chain: { steps: [{ title: 'B' }, { title: 'A' }] } }] });
+      expect(updated.items[0].chainItems.map(c => [c.title, c.id])).toEqual([['B', stored.items[0].chainItems[1].id], ['A', stored.items[0].chainItems[0].id]]);
+      expect(updated.items[0].chainItems[0].linkUrl).toBe('https://b.example');
+    });
+
+    it('refuses an edit made against a version that is no longer current', () => {
+      const built = trip();
+      const read = templateVersion(built);
+      replica.updateTemplate(built.id, { name: 'Changed on the phone' });
+      expect(() => replica.updateTemplate(built.id, { name: 'Agent edit' }, read)).toThrow(/has changed since/);
+      expect(replica.templates().find(t => t.id === built.id)!.name).toBe('Changed on the phone');
+      const fresh = replica.templates().find(t => t.id === built.id)!;
+      expect(replica.updateTemplate(built.id, { name: 'Agent edit' }, templateVersion(fresh)).name).toBe('Agent edit');
+    });
+
+    it('takes an item out of its group with groupKey null', () => {
+      const built = trip();
+      const shirts = built.items[0];
+      const updated = replica.updateTemplate(built.id, { items: [{ id: shirts.id, groupKey: null }, { id: built.items[1].id }] });
+      expect(updated.items[0].groupId).toBeNull();
+    });
+
+    it('reports warnings, a version and the changes at the tool layer', () => {
+      const created = createTemplateTool(replica, { name: 'Trip', items: [{ title: 'Book flights to {where}', reminderOffsetMinutes: 30 }] });
+      expect(created.warnings?.join(' ')).toMatch(/\{where\}, which no question fills/);
+      expect(created.warnings?.join(' ')).toMatch(/no dueOffsetDays/);
+      expect(getTemplateTool(replica, created.id)!.version).toBe(created.version);
+
+      const read = getTemplateTool(replica, created.id)!;
+      const updated = updateTemplateTool(replica, created.id, {
+        name: 'Lisbon',
+        questions: [{ name: 'where', prompt: 'Where to?', kind: 'text' }],
+        items: [{ id: read.items![0].id, reminderOffsetMinutes: null }, { title: 'Pack' }],
+      }, read.version);
+      expect(updated.warnings).toBeUndefined();
+      expect(updated.changes).toEqual(expect.arrayContaining([
+        'Rename to "Lisbon".',
+        'Add item "Pack".',
+        'Change item "Book flights to {where}": reminderOffsetMinutes.',
+        'Add question "where".',
+      ]));
+    });
+
     it('refuses a one-step chain, a repeated rotation member, and both at once', () => {
       expect(() => replica.createTemplate({ name: 'A', items: [{ title: 'x', chain: { steps: [{ title: 'only' }] } }] })).toThrow(/at least two steps/);
       expect(() => replica.createTemplate({ name: 'B', items: [{ title: 'x', rotation: { members: ['a', 'A'] } }] })).toThrow(/all be different/);
@@ -704,6 +796,34 @@ describe('the replica', () => {
         const outer = replica.createTemplate({ name: 'Weekend', items: [{ title: 'Book hotel', category: 'Home' }, { title: 'Packing', refTemplate: packing.id }] });
         const result = replica.applyTemplate(outer.id, {});
         expect(result.tasks.map(x => x.title)).toEqual(['Book hotel', 'Charger']);
+      });
+
+      it('says what a run left out and why, and which blanks it left empty', () => {
+        const t = replica.createTemplate({
+          name: 'Trip',
+          questions: [{ name: 'Kind', prompt: 'What kind?', kind: 'choice', options: ['Holiday', 'Work'] }],
+          items: [
+            { title: 'Book a {Kind} hotel in {city}', category: 'Home' },
+            { title: 'Laptop', conditions: [{ question: 'Kind', values: ['Work'] }], category: 'Home' },
+            { title: 'Sunscreen', optional: true, category: 'Home' },
+          ],
+        });
+        const result = applyTemplateTool(replica, t.id, { answers: { kind: 'holiday' } });
+        // The answer matches its question and option whatever the case.
+        expect(result.created.map(c => c.title)).toEqual(['Book a Holiday hotel in']);
+        expect(result.leftOut).toEqual([
+          { itemId: t.items[1].id, title: 'Laptop', why: 'not ticked for these answers' },
+          { itemId: t.items[2].id, title: 'Sunscreen', why: 'optional, off unless included' },
+        ]);
+        expect(result.unfilledBlanks).toEqual(['city']);
+      });
+
+      it('takes a nested template\'s own item to leave the whole block out', () => {
+        const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Charger', category: 'Home' }, { title: 'Socks', category: 'Home' }] });
+        const outer = replica.createTemplate({ name: 'Weekend', items: [{ title: 'Book hotel', category: 'Home' }, { title: 'Packing', refTemplate: packing.id }] });
+        const result = replica.applyTemplate(outer.id, { leaveOut: [outer.items[1].id] });
+        expect(result.tasks.map(x => x.title)).toEqual(['Book hotel']);
+        expect(result.leftOut.map(l => l.why)).toEqual(['left out by request', 'left out by request']);
       });
 
       it('refuses a bad answer, an unknown item or project, and writes nothing', () => {
