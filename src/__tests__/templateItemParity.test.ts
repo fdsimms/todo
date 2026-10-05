@@ -26,7 +26,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   'state a task records as it runs': [
     'completed', 'completedAt', 'missedAt', 'autoScheduledAt', 'createdAt', 'seenAt', 'sortOrder', 'pinned',
     'pinnedOrder', 'backfillDismissedFields', 'progressCount', 'quotaStartedAt', 'rotationLog',
-    'rotationPeriodStart', 'rotationLastDone', 'supplyDeclinedAtCount', 'slipCount', 'slipDate', 'penaltyFiredAt',
+    'rotationPeriodStart', 'rotationLastDone', 'rotationPlan', 'supplyDeclinedAtCount', 'slipCount', 'slipDate', 'penaltyFiredAt',
     'penaltyCreditedAt', 'streakCount', 'streakDate', 'previousStreakCount', 'previousStreakDate', 'priorBestStreak',
     'archived', 'archivedAt', 'timerStartedAt', 'actualMinutes', 'estimateBeforeTiming', 'timerElapsedSeconds',
     'completionTimerStartedAt', 'previousOccurrenceId', 'pendingImport', 'postponeCount', 'postponeMuted',

@@ -5,6 +5,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { RotationChecklist } from './RotationChecklist';
+import { rotationCoveredOf } from '../utils/rotation';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { displayTitleFor } from '../utils/visibilityUtils';
@@ -60,10 +61,7 @@ export function RotationWeekSheet({ visible, task, onClose }: Props) {
     });
   };
 
-  const covered = task.rotationItems.filter(
-    item => task.rotationLog.some(entry => entry.itemId === item.id),
-  ).length;
-  const total = task.rotationItems.length;
+  const { covered, total } = rotationCoveredOf(task.rotationItems, task.rotationLog);
 
   return (
     <SheetModal

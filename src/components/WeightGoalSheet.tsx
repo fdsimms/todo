@@ -667,6 +667,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   }))}
                   value={macroPresetId}
                   onChange={next => { haptics.tap(); setMacroPresetId(next); }}
+                  onDeselect={() => { haptics.tap(); setMacroPresetId(null); }}
                   columns={2}
                   label="Macro split"
                 />
@@ -681,6 +682,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       <MacroCell styles={styles} label="Fat" grams={macros.fatG}
                         percent={macroPreset.split.fatPct} />
                     </View>
+                    {budgetWeightKg !== null && (
+                      <Text style={styles.help}>
+                        Protein works out to {(macros.proteinG / kgToUnit(budgetWeightKg, unit)).toFixed(1)} g
+                        per {unit} of your latest weight.
+                      </Text>
+                    )}
                     <InlineAction
                       icon="target"
                       label="Use these as my targets"

@@ -54,6 +54,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
   priority: 0, effort: 0, estimatedMinutes: null,

@@ -211,6 +211,12 @@ export interface RotationItem {
   // `linkUrl`: a rotation's members are siblings, so a member with no link of
   // its own has no link, where a chain *step* sensibly inherits the task's.
   linkUrl?: string | null;
+  // How many times this member is done in a period. Absent means once, which is
+  // what every set written before this existed says. A target of three runs and
+  // one bike ride is `perWeek: 3` on one member and nothing on the other; the
+  // set's target is the sum (`rotationTargetTotal`), and a pick only covers
+  // something while its member is under its own count.
+  perWeek?: number;
 }
 
 /**
@@ -2162,7 +2168,13 @@ export type GeneratedKind =
   // position weighIn is in. What stops a deleted one coming straight back is
   // waterShortfallDeclinedDayKey, and a completed one blocks a second through
   // `blocksOnFinished`.
-  | 'waterShortfall';
+  | 'waterShortfall'
+  // A snack suggestion once the afternoon has started and the food log is well
+  // short of the calorie target — see src/utils/snackNudgeTasks.ts. Day-keyed
+  // with no source row, waterShortfall's position: what stops a deleted one
+  // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
+  // a second through `blocksOnFinished`.
+  | 'snackNudge';
 
 /** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */
 export interface AnswerGate {
@@ -2563,6 +2575,16 @@ export interface Task {
    * you keep skipping is close enough to it to say so here.
    */
   rotationLastDone: Record<string, string>;
+  /**
+   * The member chosen for a day ahead of doing it: `{ itemId, dayKey }`, or
+   * null when nothing is planned. A plan is **a note about one logical day and
+   * nothing else**. It never hides, holds or completes anything on its own;
+   * the row reads it (`plannedRotationItem`) to offer a one-tap log of that
+   * member, and logging any pick on that day spends it. A plan whose `dayKey`
+   * is not today is ignored rather than swept, the same rule the ledger follows
+   * (`activeRotationLog`), so no maintenance pass has to clear it.
+   */
+  rotationPlan: { itemId: string; dayKey: string } | null;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
@@ -3718,6 +3740,7 @@ export type TaskDraft = Omit<
   | 'rotationLog'
   | 'rotationPeriodStart'
   | 'rotationLastDone'
+  | 'rotationPlan'
 >;
 
 // Which of the template's two anchor dates an item's offsets are relative

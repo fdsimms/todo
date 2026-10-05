@@ -12,7 +12,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
-import { rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
+import { plannedRotationItem, rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import type { Task } from '../types';
 
@@ -24,6 +24,12 @@ interface Props {
   onPick: (itemId: string) => void;
   /** Backs out — nothing is logged and the task stays where it was. */
   onCancel: () => void;
+  /**
+   * A member was chosen for today without being logged. Unlike a pick this
+   * leaves the sheet open, so the plan can be set and the right member then
+   * picked, or the sheet closed with the plan standing.
+   */
+  onPlan: (itemId: string) => void;
 }
 
 /**
@@ -54,7 +60,7 @@ interface Props {
  *   that watches which of five things you avoid is close enough to it to need
  *   saying twice.
  */
-export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
+export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -68,6 +74,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
   // worse answer than the one it opened with.
   const dayStart = useMemo(() => getCurrentDayStart(), [visible]);
   const members = rotationMembers(task, dayStart, weekStartsOn);
+  const planned = plannedRotationItem(task, dayStart);
   const remaining = members.filter(m => m.doneAt === null);
   const done = members.filter(m => m.doneAt !== null);
 
@@ -114,6 +121,11 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
   ) => {
     const ago = rotationLastDoneLabel(isDone ? member.doneAt : member.lastDoneAt, dayStart);
     const link = member.item.linkUrl?.trim() || null;
+    const isPlanned = planned?.id === member.item.id;
+    const progress = member.perWeek > 1
+      ? `${Math.min(member.count, member.perWeek)} of ${member.perWeek} this week`
+      : null;
+    const sub = [isPlanned ? 'Planned today' : null, progress, ago].filter(Boolean).join(' · ');
     return (
       <TouchableOpacity
         key={member.item.id}
@@ -136,8 +148,23 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
           <Text style={[styles.name, isDone && styles.nameDone]} numberOfLines={1}>
             {member.item.title}
           </Text>
-          {ago !== null && <Text style={styles.ago}>{ago}</Text>}
+          {sub !== '' && <Text style={[styles.ago, isPlanned && styles.agoPlanned]}>{sub}</Text>}
         </View>
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); onPlan(member.item.id); }}
+          hitSlop={8}
+          style={styles.linkButton}
+          accessibilityRole="button"
+          accessibilityLabel={isPlanned
+            ? `Remove ${member.item.title} from today's plan`
+            : `Plan ${member.item.title} for today`}
+        >
+          <Ionicons
+            name={isPlanned ? 'flag' : 'flag-outline'}
+            size={iconSize.sm}
+            color={isPlanned ? colors.accentText : colors.textSecondary}
+          />
+        </TouchableOpacity>
         {link !== null && (
           <TouchableOpacity
             onPress={() => openLink(link)}
@@ -281,4 +308,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary,
   },
   ago: { color: colors.textTertiary, fontSize: font.xxs, marginTop: spacing.xxs },
+  agoPlanned: { color: colors.accentText },
 });

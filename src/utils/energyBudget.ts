@@ -357,7 +357,7 @@ export const MACRO_PRESETS: readonly { id: string; label: string; split: MacroSp
   { id: 'balanced', label: 'Balanced', split: { proteinPct: 30, carbsPct: 40, fatPct: 30 } },
   { id: 'lowerCarb', label: 'Lower carb', split: { proteinPct: 30, carbsPct: 25, fatPct: 45 } },
   { id: 'higherCarb', label: 'Higher carb', split: { proteinPct: 25, carbsPct: 50, fatPct: 25 } },
-  { id: 'highProtein', label: 'High protein', split: { proteinPct: 40, carbsPct: 35, fatPct: 25 } },
+  { id: 'highProtein', label: 'High protein', split: { proteinPct: 35, carbsPct: 35, fatPct: 30 } },
 ];
 
 /** Grams of each macronutrient in `kcal` calories, split this way. */

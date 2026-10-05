@@ -389,6 +389,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'weekendNudgeTasks',
   'weighInTasks',
   'waterShortfallTasks',
+  'snackNudgeTasks',
 
   // Behaviour.
   'newTaskDefaults',

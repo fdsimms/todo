@@ -433,6 +433,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -12846,6 +12847,62 @@ describe('quota tasks', () => {
 
   const pods = () => useTaskStore.getState().tasks.find(t => t.id === 'pods')!;
 
+  describe('a rotation with per-member counts', () => {
+    const WORKOUTS = [
+      { id: 'run', title: 'Run', linkUrl: null, perWeek: 3 },
+      { id: 'bike', title: 'Peloton ride', linkUrl: null },
+    ];
+    const workouts = () => rotation({ rotationItems: WORKOUTS, targetCount: 4 });
+
+    it('closes the week only when every member has reached its own count', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'bike');
+      expect(pods().progressCount).toBe(3);
+      expect(pods().completed).toBe(false);
+
+      store.logRotationUnit('pods', 'run');
+      expect(pods().completed).toBe(true);
+    });
+
+    it('logs a fourth run without counting it', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      expect(pods().rotationLog).toHaveLength(4);
+      expect(pods().progressCount).toBe(3);
+      expect(pods().completed).toBe(false);
+    });
+
+    it('takes back a run without dropping a covered count', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'run');
+      store.logRotationUnit('pods', 'run');
+      store.unlogRotationUnit('pods');
+      expect(pods().progressCount).toBe(1);
+    });
+
+    it('plans a member for today and spends the plan on the next pick', () => {
+      useTaskStore.setState({ tasks: [workouts()] });
+      const store = useTaskStore.getState();
+      store.planRotationItem('pods', 'bike');
+      expect(pods().rotationPlan?.itemId).toBe('bike');
+
+      store.planRotationItem('pods', 'bike');
+      expect(pods().rotationPlan).toBeNull();
+
+      store.planRotationItem('pods', 'bike');
+      store.logRotationUnit('pods', 'run');
+      expect(pods().rotationPlan).toBeNull();
+    });
+  });
+
   describe('logRotationUnit', () => {
     it('records which member was done, not just that something was', () => {
       useTaskStore.setState({ tasks: [rotation()] });
@@ -13324,6 +13381,82 @@ describe('quota tasks', () => {
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
           useTaskStore.getState().syncWaterQuotaTasks();
           expect(shortfallTasks()).toHaveLength(0);
+        });
+      });
+
+      describe('the snack suggestion', () => {
+        const calorieEntry = (kcal: number): FoodLogEntry => ({
+          ...waterEntry(0),
+          id: 'c1',
+          label: 'Lunch',
+          nutrition: { ...panel(0), amounts: { calorieKcal: kcal } },
+        });
+        const snackTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'snackNudge');
+        const on = {
+          snackNudgeTasks: true, snackNudgeTaskCategory: 'Health', vacationMode: false,
+          activeEnergyBoost: null, nutritionTargets: { calorieKcal: 2000 },
+        };
+        const run = () => useTaskStore.getState().syncSnackNudgeTasks();
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => jest.useRealTimers());
+
+        it('writes one after the hour when the log is under half the target', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(1);
+          expect(snackTasks()[0].title).toBe('Have a snack (600 of 2,000 kcal logged)');
+        });
+
+        it('writes nothing before the hour', () => {
+          jest.setSystemTime(new Date(2026, 9, 5, 11, 0));
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing while the setting is off', () => {
+          withSettings({ ...on, snackNudgeTasks: false });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing for a day nothing was logged on', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('removes it once a logged snack brings the day past half', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(1);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600), calorieEntry(500)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('does not write one back the day it was deleted', () => {
+          withSettings({ ...on, snackNudgeDeclinedDayKey: dayKeyOf(getCurrentDayStart()) });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
+        });
+
+        it('waits for a reading when an active energy boost is configured', () => {
+          withSettings({ ...on, activeEnergyBoost: { baselineKcal: 500 } });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
+          run();
+          expect(snackTasks()).toHaveLength(0);
         });
       });
 

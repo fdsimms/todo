@@ -60,6 +60,13 @@ interface Props<T> {
    * dark palette `bgTertiary` stands off the page perfectly well.
    */
   surface?: 'page' | 'card';
+  /**
+   * Makes the chosen segment tappable again to clear the choice. For a control
+   * whose "nothing picked" state is real (the macro presets open with none
+   * chosen and a lit one reads as waiting to be applied). Omitted, a tap on the
+   * chosen segment does nothing, as before.
+   */
+  onDeselect?: () => void;
 }
 
 /**
@@ -134,7 +141,7 @@ interface Props<T> {
  * is that fix.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
-  options, value, onChange, columns, label, surface = 'card',
+  options, value, onChange, columns, label, surface = 'card', onDeselect,
 }: Props<T>) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -151,7 +158,10 @@ export function SegmentedControl<T extends string | number | boolean | null>({
           opt.disabled && styles.segmentDisabled,
         ]}
         onPress={() => {
-          if (selected) return;
+          if (selected) {
+            onDeselect?.();
+            return;
+          }
           haptics.tap();
           onChange(opt.value);
         }}

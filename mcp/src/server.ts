@@ -105,6 +105,11 @@ import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
+// A rotation member: a name, or a name with how many times a week.
+const rotationMemberSchema = z.union([
+  z.string().min(1),
+  z.object({ title: z.string().min(1), timesPerWeek: z.number().int().min(1).max(7).optional() }),
+]);
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
 
 const logRange = {
@@ -806,8 +811,8 @@ const itemSchema = z.object({
       answerSchedulesNextStep: z.boolean().optional().describe('With asks "date": the answer dates the next step.'),
     })).min(2),
   }).nullable().optional().describe('Steps done one after another, each appearing when the one before is done. On a repeating item the whole chain starts over on the schedule. null removes it.'),
-  rotation: z.object({ members: z.array(z.string().min(1)).min(2) }).nullable().optional()
-    .describe('Named things each done once a week in any order. Not with a chain. null removes it.'),
+  rotation: z.object({ members: z.array(rotationMemberSchema).min(2) }).nullable().optional()
+    .describe('Named things done each week in any order, each once unless it says timesPerWeek. Not with a chain. null removes it.'),
   deliverableSetsAway: z.boolean().optional().describe('Update-only detail of a date question: its answer sets the away dates.'),
   vacationPause: z.boolean().optional(),
   excludeFromSuggestions: z.boolean().optional(),
@@ -937,9 +942,9 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('A countdown the task runs once it is started, e.g. "stretch for 15 minutes". Also sets the estimate and effort from the countdown unless you name them. Not for a subtask. null removes it.'),
   rotation: z.object({
-    members: z.array(z.string()).describe('At least two different names, in the order to show them.'),
+    members: z.array(rotationMemberSchema).describe('At least two different members, in the order to show them. A member is a name, or { title, timesPerWeek } for one done more than once a week (1 to 7). A bare name keeps the count it already has.'),
   }).nullable().optional()
-    .describe('A set of things each done once a week, in any order ("a podcast in each of my five languages"). The weekly target is the number of members. A task with no repeat becomes weekly. Re-sending a member\'s name keeps its history. null removes it.'),
+    .describe('A set of things done each week, in any order ("a podcast in each of my five languages", or "three runs and one bike ride"). Each member is done once a week unless it says timesPerWeek. The weekly target is the sum of the counts. A task with no repeat becomes weekly. Re-sending a member\'s name keeps its history. null removes it.'),
   healthTarget: z.object({
     metric: z.enum(['steps', 'sleepHours', 'exerciseMinutes', 'activeEnergyKcal', 'standHours']),
     target: z.number().int().optional().describe('In the metric\'s own unit. Defaults to the app\'s starting value: 8000 steps, 8 hours, 30 minutes, 500 kcal, 12 hours.'),

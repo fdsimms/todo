@@ -84,6 +84,7 @@ jest.mock('../store/useTaskStore', () => ({
     getState: () => ({
       checkHealthTasks: mockCheckHealthTasks,
       syncWaterQuotaTasks: mockSyncWaterQuotaTasks,
+      syncSnackNudgeTasks: jest.fn(),
     }),
   },
 }));

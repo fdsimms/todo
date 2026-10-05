@@ -207,7 +207,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { isRotationTask, rotationCoversNew, rotationPick, rotationUnpick } from '../utils/rotation';
+import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
@@ -316,6 +316,10 @@ import { followedWaterTargetCount } from '../utils/waterTargetUnits';
 import {
   followedWaterTaskDoneOn, waterShortfallMl, waterShortfallTitle, WATER_SHORTFALL_NOTES,
 } from '../utils/waterShortfallTasks';
+import {
+  loggedKcalToday, snackNudgeApplies, snackNudgeTitle, SNACK_NUDGE_NOTES,
+} from '../utils/snackNudgeTasks';
+import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
 import {
   getCalendarPermission,
@@ -707,6 +711,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'waterShortfall':
       useSettingsStore.getState()
         .setWaterShortfallDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
+    // The same one-day stamp, for the same reason: the task is about today's
+    // food log, so deleting it means "not today".
+    case 'snackNudge':
+      useSettingsStore.getState()
+        .setSnackNudgeDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
@@ -1700,6 +1710,8 @@ interface TaskStore extends UndoHistoryActions {
    * line to begin with, so both are left to log purely from taps, as before.
    */
   syncWaterQuotaTasks: () => void;
+  /** The `snackNudge` pass, called from the food log's writes and the catch-up sweep. */
+  syncSnackNudgeTasks: () => void;
   /**
    * Write one pick into a rotation's ledger without completing anything, and
    * report whether the set is now covered.
@@ -1713,6 +1725,12 @@ interface TaskStore extends UndoHistoryActions {
   /** Log one pick against a rotation, completing the task if it covers the set. */
   logRotationUnit: (id: string, itemId: string) => void;
   unlogRotationUnit: (id: string) => void;
+  /**
+   * Plans a member for today (or clears it when it is already the one planned).
+   * A note about the day and nothing more: it hides and completes nothing, see
+   * `Task.rotationPlan`.
+   */
+  planRotationItem: (id: string, itemId: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
@@ -2245,6 +2263,72 @@ function reconcileWaterShortfall(args: {
       logHealthMetric: 'waterMl',
       logHealthAmount: owedMl ?? undefined,
       ...generatedBy('waterShortfall', args.todayKey),
+    }),
+  });
+}
+
+/**
+ * The `snackNudge` generator's whole pass. See `src/utils/snackNudgeTasks.ts`.
+ *
+ * Judged on every food log write for today and on every catch-up sweep: the
+ * first is what removes the task once a snack is logged, the second is what
+ * brings it on when 3 PM arrives with nothing having been logged since.
+ */
+function reconcileSnackNudge(tasks: Task[]): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.snackNudgeTasks || !settings.snackNudgeTaskCategory) return;
+  if (generatorPausedForVacation('snackNudge', settings.vacationMode)) return;
+  // The demo database holds a seeded task for this kind (demoSeed.ts) that no
+  // food log backs, and this pass would delete it as unwanted on the next sweep.
+  if (isDemoModeActive()) return;
+
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const healthToday = useHealthStore.getState().today;
+  const activeEnergyRead = healthToday?.dayKey === todayKey;
+  // A configured boost with no reading for today can't say what the target is,
+  // and a target that is unknown is not a target that is lower: leave whatever
+  // is there alone, the refusal reconcileWaterShortfall makes.
+  if (settings.activeEnergyBoost && !activeEnergyRead) return;
+
+  const targetKcal = effectiveCalorieTargetKcal(
+    settings.nutritionTargets.calorieKcal,
+    activeEnergyRead ? healthToday?.activeEnergyKcal ?? null : null,
+    settings.activeEnergyBoost,
+  );
+  const loggedKcal = loggedKcalToday(dbGetFoodLogEntries(todayKey, todayKey));
+  const wanted =
+    snackNudgeApplies(
+      loggedKcal, targetKcal, new Date(), settings.snackNudgeFromHour, settings.snackNudgeSharePercent,
+    ) &&
+    settings.snackNudgeDeclinedDayKey !== todayKey;
+
+  const dueDate = getCurrentDayStart();
+  dueDate.setHours(12, 0, 0, 0);
+
+  // A request from a day that has gone is dropped rather than deleted quietly
+  // with an opt-out: nobody declined it, the day just ended.
+  liveGeneratedTasksOfKind(tasks, 'snackNudge')
+    .filter(t => t.generatedSourceId !== todayKey)
+    .forEach(t => dropGeneratedTask('snackNudge', t.generatedSourceId));
+
+  reconcileGeneratedTask({
+    kind: 'snackNudge',
+    sourceId: todayKey,
+    wanted,
+    // A completed one blocks a second today: eating the snack and logging it
+    // should end the question, not ask it again at the next write.
+    blocksOnFinished: true,
+    drift: existing => {
+      if (loggedKcal === null || targetKcal === undefined) return null;
+      const title = snackNudgeTitle(loggedKcal, targetKcal);
+      return existing.title === title ? null : { title };
+    },
+    draft: () => ({
+      title: snackNudgeTitle(loggedKcal ?? 0, targetKcal ?? 0),
+      notes: SNACK_NUDGE_NOTES,
+      dueDate: dueDate.toISOString(),
+      category: settings.snackNudgeTaskCategory,
+      ...generatedBy('snackNudge', todayKey),
     }),
   });
 }
@@ -4241,6 +4325,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * a second Spanish leaves Spanish covered, because the first one still
    * counts.
    */
+  planRotationItem(id, itemId) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isRotationTask(task)) return;
+    const updated = { ...task, rotationPlan: rotationPlanFor(task, itemId, getCurrentDayStart()) };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   unlogRotationUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isRotationTask(task)) return;
@@ -4248,12 +4340,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const dayStart = getCurrentDayStart();
     const patch = rotationUnpick(task, dayStart, weekStartsOn);
     if (!patch) return;
-    const dropped = (task.rotationLog ?? [])[task.rotationLog.length - 1];
-    const stillCovered = patch.rotationLog.some(e => e.itemId === dropped.itemId);
+    const uncovers = rotationUnpickUncovers(task, dayStart, weekStartsOn);
     const updated = {
       ...task,
       ...patch,
-      progressCount: stillCovered ? task.progressCount : Math.max(0, task.progressCount - 1),
+      progressCount: uncovers ? Math.max(0, task.progressCount - 1) : task.progressCount,
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
@@ -4350,6 +4441,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       todayKey, totalMl, exerciseReadToday, exerciseMinutes,
       tasks: get().tasks,
     });
+  },
+
+  syncSnackNudgeTasks() {
+    reconcileSnackNudge(get().tasks);
   },
 
   holdQuotaOnToday(id) {
@@ -7762,6 +7857,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       rotationLog: [],
       rotationPeriodStart: null,
       rotationLastDone: {},
+      rotationPlan: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -7985,6 +8081,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       rotationLog: [],
       rotationPeriodStart: null,
       rotationLastDone: {},
+      rotationPlan: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,

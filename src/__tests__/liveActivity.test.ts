@@ -70,6 +70,7 @@ const BASE: Task = {
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   progressCount: 0,
   tags: [],
   sortOrder: 0,

@@ -169,7 +169,7 @@ export interface GetTaskResult {
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
-  rotation?: { members: { title: string; doneThisWeek: boolean; lastDone?: string }[] };
+  rotation?: { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string }[] };
   /** Configuration only: the server cannot read Apple Health, so it never says whether the target is reached. */
   healthTarget?: HealthTargetInput;
   /** A stock that counts down as the repeating task is completed; `groceryItem` is the catalog row it reorders (`supplyGroceryItemId`), where it is linked to one. */

@@ -45,7 +45,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // can restore it, a once-only stamp, a running timer's state, a rank.
   'machinery the app maintains': [
     'seenAt', 'sortOrder', 'pinnedOrder', 'backfillDismissedFields', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'quotaStartedAt', 'rotationLog', 'rotationPeriodStart', 'previousStreakCount',
+    'quotaStartedAt', 'rotationLog', 'rotationPeriodStart', 'rotationPlan', 'previousStreakCount',
     'previousStreakDate', 'priorBestStreak', 'previousFollowUpTaskTally', 'followUpTaskSourceId',
     'followUpTaskSourceTitle', 'generatedSourceId', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
     'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
