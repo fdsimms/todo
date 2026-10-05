@@ -11,19 +11,11 @@ import {
 import { useTaskStore } from './useTaskStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore } from './useProjectStore';
-import { awayNoonIso } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   normalizeTemplateItem,
   normalizeTemplateQuestion,
-  expandTemplateItems,
-  buildDraftsFromTemplateTree,
-  resolveApplyContainer,
-  substituteDraftPlaceholders,
-  substitutePlaceholders,
-  majorityCategory,
   buildApplyTree,
-  RUN_PLACEHOLDER,
   type TemplateAnchors,
 } from '../utils/templateUtils';
 import {
@@ -33,6 +25,7 @@ import {
   initialLeafSelection,
   personIdsForAnswers,
 } from '../utils/templateQuestions';
+import { applyTemplateRun } from '../utils/templateApply';
 import { dueTemplateRun } from '../utils/templateSchedule';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -439,192 +432,26 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const templatesById = new Map(get().templates.map(t => [t.id, t]));
     const template = templatesById.get(templateId);
     if (!template) return [];
-    const expanded = expandTemplateItems(template.items, templateId, selectedItemIds, templatesById);
 
-    // `{run}` is bound rather than collected, so a template only needs the one
-    // field filled in to get its context into the titles that travel alone.
-    const runName = (options?.runName ?? '').trim();
-    const placeholders = { ...(options?.placeholders ?? {}), [RUN_PLACEHOLDER]: runName };
-    const drafts = buildDraftsFromTemplateTree(expanded, anchors)
-      .map(d => substituteDraftPlaceholders(d, placeholders));
-
-    // An unnamed run has nothing to call a container, so it stays loose —
-    // which is also exactly the behavior every apply had before this existed.
-    let container = runName
-      ? resolveApplyContainer(template.applyContainer, expanded, templatesById)
-      : 'none';
-    if (options?.targetProjectId && container === 'project') container = 'stack';
-
-    const addTask = useTaskStore.getState().addTask;
-    const addSubtask = useTaskStore.getState().addSubtask;
-    const groupTasks = useTaskStore.getState().groupTasks;
-
+    // The decisions are `applyTemplateRun`'s, shared with the MCP server; this
+    // supplies the writes, each through the store action that owns it.
+    const tasks = useTaskStore.getState();
+    const projects = useProjectStore.getState();
+    const groups = useTaskGroupStore.getState();
     let createdTasks: Task[] = [];
     dbTransaction(() => {
-      // The container is created first so its id can ride in on the drafts;
-      // item-group stacks still happen in the second pass below, since those
-      // need ids addTask hasn't handed out yet. A project and an item-group
-      // stack coexist fine (projectId and groupId are independent), and
-      // resolveApplyContainer guarantees a run *stack* never collides with
-      // one — it upgrades that case to a project.
-      //
-      // The run stack's (and run task's) category is majorityCategory's read
-      // of its own members' categories, and every stack member adopts it —
-      // same "stack members share the stack's category" rule
-      // groupTasks/applyGroupCategory enforce everywhere else a stack exists.
-      // Without the second half, a template item explicitly categorized
-      // "Health" would still land in a stack that carries a *different*
-      // category, which is no more findable than the uncategorized stack
-      // this replaced. A run task's own subtasks don't get the same
-      // override — subtasks aren't independently filterable by category
-      // anywhere, so there's nothing for it to fix.
-      const runCategory = (container === 'stack' || container === 'task')
-        ? majorityCategory(drafts.map(d => d.category ?? null))
-        : null;
-      const runGroup = container === 'stack'
-        ? useTaskGroupStore.getState().createGroup(runName, runCategory)
-        : null;
-      // A trip's anchors are the days it is away, so they fill in the span the
-      // start anchor used to have nowhere to go into (see
-      // TaskTemplate.anchorsAreAway, and docs/arch/away-dates.md). Its deadline
-      // is left empty for one, deliberately: the end anchor is the day you get
-      // *back*, so writing it there gives a trip a "target to finish by" of the
-      // day you come home, when the date you have to be ready by is departure.
-      const runProject = (!options?.targetProjectId && container === 'project')
-        ? useProjectStore.getState().createProject(runName, template.anchorsAreAway
-            // The anchors *are* the trip, so they go in as the span and the
-            // deadline is left empty on purpose: the end anchor is the day you
-            // get back, and a "target to finish by" of the day you come home is
-            // the wrong date to put in front of anybody packing.
-            //
-            // An end with no start is dropped rather than stored, matching what
-            // `awaySpanOf` would read it as anyway — a column holding half a
-            // span nothing can answer about is a row waiting to confuse a later
-            // reader (or a sync peer) into completing it.
-            ? (anchors.start
-                ? {
-                    awayStart: awayNoonIso(anchors.start),
-                    awayEnd: anchors.end ? awayNoonIso(anchors.end) : null,
-                  }
-                : {})
-            // Without the flag the run's end anchor becomes the project's
-            // deadline. Its start anchor still places the *items*, which is the
-            // half that was ever load-bearing.
-            : { deadline: anchors.end?.toISOString() ?? null })
-        : null;
-      const projectId = options?.targetProjectId ?? runProject?.id ?? null;
-
-      // Applied into a project that already exists, the same anchors fill in
-      // whatever that project hasn't got yet: the trip span for a trip
-      // template, the deadline otherwise. Only an empty field is written. The
-      // sheet asked for these dates, and they used to go nowhere unless the
-      // template made a new project; a project that already has dates keeps
-      // them, since its own dates are the ones the person set on purpose.
-      if (options?.targetProjectId) {
-        const target = useProjectStore.getState().getProjectById(options.targetProjectId);
-        if (target) {
-          if (template.anchorsAreAway) {
-            if (!target.awayStart && anchors.start) {
-              useProjectStore.getState().updateProject(target.id, {
-                awayStart: awayNoonIso(anchors.start),
-                awayEnd: anchors.end ? awayNoonIso(anchors.end) : null,
-              });
-            }
-          } else if (!target.deadline && anchors.end) {
-            useProjectStore.getState().updateProject(target.id, { deadline: anchors.end.toISOString() });
-          }
-        }
-      }
-
-      // A 'task' container's parent is a real Task rather than a TaskGroup or
-      // Project, created up front like they are so its id can ride in on the
-      // item drafts below — as parentId rather than groupId, since every
-      // item becomes a subtask of it instead of a loose or grouped top-level
-      // task.
-      const runTask = container === 'task'
-        ? addTask({ title: runName, category: runCategory, ...(projectId ? { projectId } : {}) })
-        : null;
-
-      createdTasks = drafts.map(d => addTask({
-        ...d,
-        ...(runGroup ? { groupId: runGroup.id, category: runCategory } : {}),
-        ...(runTask ? { parentId: runTask.id } : {}),
-        // A subtask doesn't carry its own project membership, matching
-        // addSubtask's convention below — only the run task above represents
-        // the run inside a project.
-        ...(projectId && !runTask ? { projectId } : {}),
-        ...(options?.personIds && options.personIds.length > 0 ? { personIds: options.personIds } : {}),
-      }));
-
-      // Second pass: subtasks and groups need ids that don't exist until
-      // addTask returns, so they can't be part of the draft itself. Group keys
-      // are namespaced by sourceTemplateId since one apply can now pull items
-      // from multiple (nested) templates.
-      const createdTaskIdsByGroup = new Map<string, string[]>();
-      expanded.forEach(({ item, sourceTemplateId }, index) => {
-        const createdTask = createdTasks[index];
-        if (!createdTask) return;
-
-        // A 'task' container already spends the app's one supported level of
-        // subtask nesting turning each item into a subtask of runTask — an
-        // item's own subtask stubs, which normally nest a second level under
-        // createdTask, would be subtasks of a subtask, and nothing in the
-        // app renders, reorders or cascade-deletes those. Flattened onto
-        // runTask instead, as createdTask's own siblings, rather than
-        // silently dropped.
-        const subtaskParent = runTask ?? createdTask;
-        item.subtasks.forEach(stub =>
-          addSubtask(subtaskParent.id, substitutePlaceholders(stub.title, placeholders))
-        );
-
-        // Item-group sub-stacks only ever mean anything among top-level
-        // tasks — a 'task' container's items are already subtasks, invisible
-        // to every stack-rendering surface, so grouping them would only
-        // produce an orphaned stack nothing ever shows.
-        if (item.groupId && !runTask) {
-          const key = `${sourceTemplateId}:${item.groupId}`;
-          const list = createdTaskIdsByGroup.get(key) ?? [];
-          list.push(createdTask.id);
-          createdTaskIdsByGroup.set(key, list);
-        }
-      });
-
-      // An item's answer gate names another item of its own template; now
-      // that both are tasks it can name the task. Keyed by template like the
-      // groups above. Left off a 'task' container's items, which are subtasks,
-      // and off any whose question item wasn't ticked: a gate on a question
-      // nobody will be asked would hold the task back for good.
-      if (!runTask) {
-        const taskIdByItem = new Map(expanded.map(({ item, sourceTemplateId }, i) => [`${sourceTemplateId}:${item.id}`, createdTasks[i]?.id]));
-        expanded.forEach(({ item, sourceTemplateId }, index) => {
-          const gate = item.answerGate;
-          const question = gate ? taskIdByItem.get(`${sourceTemplateId}:${gate.itemId}`) : undefined;
-          if (gate && question && createdTasks[index]) {
-            useTaskStore.getState().updateTask(createdTasks[index].id, { answerGate: { taskId: question, answers: gate.answers } });
-          }
-        });
-      }
-
-      createdTaskIdsByGroup.forEach((taskIds, key) => {
-        const separatorIndex = key.indexOf(':');
-        const sourceTemplateId = key.slice(0, separatorIndex);
-        const groupId = key.slice(separatorIndex + 1);
-        const sourceTemplate = templatesById.get(sourceTemplateId);
-        const group = sourceTemplate?.itemGroups.find(g => g.id === groupId);
-        if (!group || taskIds.length === 0) return;
-        const category = expanded.find(
-          e => e.sourceTemplateId === sourceTemplateId && e.item.groupId === groupId
-        )?.item.category ?? null;
-        const section = groupTasks(taskIds, group.title, category);
-        // Applied into a project, a group is one of its sections: homed on its
-        // page (so it stays there once its tasks are done) and a checklist if
-        // it was saved as one. See TaskGroup.projectId and .checklist.
-        if (projectId) {
-          useTaskGroupStore.getState().updateGroup(section.id, { projectId, checklist: group.checklist ?? false });
-        }
+      createdTasks = applyTemplateRun(template, templatesById, selectedItemIds, anchors, options, {
+        addTask: draft => tasks.addTask(draft),
+        addSubtask: (parentId, title) => tasks.addSubtask(parentId, title),
+        createStack: (title, category) => groups.createGroup(title, category),
+        groupTasks: (ids, title, category) => tasks.groupTasks(ids, title, category),
+        createProject: (title, opts) => projects.createProject(title, opts),
+        getProject: id => projects.getProjectById(id) ?? undefined,
+        updateProject: (id, patch) => projects.updateProject(id, patch),
+        homeSection: (sectionId, projectId, checklist) => groups.updateGroup(sectionId, { projectId, checklist }),
+        setAnswerGate: (taskId, gate) => tasks.updateTask(taskId, { answerGate: gate }),
       });
     });
-
     return createdTasks;
   },
 

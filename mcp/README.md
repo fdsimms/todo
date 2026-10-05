@@ -105,7 +105,12 @@ only the fallback until the first sync.
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
+| `get_template` | One template in full, in the shape `create_template` and `update_template` take. |
 | `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
+| `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Needs `MCP_WRITE_TOKEN`. |
+| `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. |
+| `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
+| `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
@@ -116,6 +121,20 @@ only the fallback until the first sync.
 | `plan_meal` | **Write.** Puts a recipe, or just a title, on the meal plan. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
+| `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures). |
+| `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
+| `update_mood_log` | **Write.** Corrects a mood check-in. |
+| `delete_mood_log` | **Write.** Deletes a mood check-in. |
+| `update_medication_log` | **Write.** Corrects a recorded dose. |
+| `delete_medication_log` | **Write.** Deletes a recorded dose. |
+| `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
+| `update_meal` | **Write.** Moves a planned meal, renames a free-text one, or sets a recipe's scale. |
+| `remove_meal` | **Write.** Takes a meal off the plan. |
+| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details. Never a cadence, nudge, group or order. |
+| `update_person` | **Write.** Changes those same fields on a person. |
+| `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
+| `update_recipe` | **Write.** Changes a recipe; ingredients and steps replace the whole list. |
+| `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |

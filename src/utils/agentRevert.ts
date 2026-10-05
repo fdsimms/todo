@@ -20,8 +20,9 @@ import type { Task, UnattendedEntry } from '../types';
  * and a revert made on one phone shows as done on the other the moment the
  * task itself syncs.
  *
- * Only task entries can be undone. A grocery, project or meal entry is a record
- * of what was done and nothing more; those are a tap to change in the app.
+ * This is the task half. What an agent wrote to anything else is
+ * `agentRecordPlan` (agentRecordRevert.ts), and `agentUndoPlan` (agentUndo.ts)
+ * picks between them.
  */
 export type AgentRevertPlan =
   | { kind: 'delete'; taskId: string }
@@ -34,7 +35,9 @@ function same(a: unknown, b: unknown): boolean {
 }
 
 export function agentRevertPlan(entry: UnattendedEntry, task: Task | null): AgentRevertPlan {
-  if (entry.actor !== 'agent' || entry.subject !== 'task' || !entry.taskId) return { kind: 'none', reason: null };
+  // A person's history note is a task row the agent created, so it comes back out the same way.
+  const aboutATask = entry.subject === 'task' || (entry.subject === 'person' && entry.action === 'created');
+  if (entry.actor !== 'agent' || !aboutATask || !entry.taskId) return { kind: 'none', reason: null };
   if (!task) return { kind: 'none', reason: 'Since removed' };
 
   switch (entry.action) {

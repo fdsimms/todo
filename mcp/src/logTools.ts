@@ -16,7 +16,7 @@
  * Health, because only the device a meal was logged on writes it there.
  */
 import { NUTRIENT_KEYS, type MealSlot, type NutrientKey } from '../../src/types';
-import type { Replica } from './replica';
+import type { RecipePatch, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
@@ -146,5 +146,80 @@ export function logMedication(
     day: log.dayKey,
     takenAt: log.takenAt,
     summary: replica.medicationSummary(log),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Correcting and removing an entry
+// ---------------------------------------------------------------------------
+
+export function updateFoodEntry(
+  replica: Replica,
+  id: string,
+  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; slot?: MealSlot | null },
+) {
+  const entry = replica.updateFoodEntry(id, patch);
+  return { id: entry.id, day: entry.dayKey, label: entry.label, quantity: entry.quantity || undefined, slot: entry.slot ?? undefined };
+}
+
+export function deleteFoodEntry(replica: Replica, id: string) {
+  const entry = replica.deleteFoodEntry(id);
+  return { deleted: { id: entry.id, day: entry.dayKey, label: entry.label } };
+}
+
+export function updateMoodLog(
+  replica: Replica,
+  id: string,
+  patch: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null },
+) {
+  const log = replica.updateMoodLog(id, patch);
+  return {
+    id: log.id,
+    day: log.dayKey,
+    ...(log.mood != null ? { mood: log.mood } : {}),
+    ...(log.symptoms.length > 0 ? { symptoms: log.symptoms } : {}),
+    ...(log.contextTags.length > 0 ? { contextTags: log.contextTags } : {}),
+    ...(log.note ? { note: log.note } : {}),
+  };
+}
+
+export function deleteMoodLog(replica: Replica, id: string) {
+  const log = replica.deleteMoodLog(id);
+  return { deleted: { id: log.id, day: log.dayKey } };
+}
+
+export function updateMedicationLog(
+  replica: Replica,
+  id: string,
+  patch: { name?: string; amount?: number | null; unit?: string | null; asNeeded?: boolean; note?: string | null },
+) {
+  const log = replica.updateMedicationLog(id, patch);
+  return { id: log.id, day: log.dayKey, takenAt: log.takenAt, summary: replica.medicationSummary(log) };
+}
+
+export function deleteMedicationLog(replica: Replica, id: string) {
+  const log = replica.deleteMedicationLog(id);
+  return { deleted: { id: log.id, day: log.dayKey, summary: replica.medicationSummary(log) } };
+}
+
+// ---------------------------------------------------------------------------
+// Correcting and deleting a recipe
+// ---------------------------------------------------------------------------
+
+export function updateRecipe(replica: Replica, id: string, patch: RecipePatch): RecipeDetail & { ingredientsRead?: number; ingredientsGiven?: number } {
+  const recipe = replica.updateRecipe(id, patch);
+  const detail = getRecipe(replica, recipe.id)!;
+  return patch.ingredients
+    ? { ...detail, ingredientsGiven: patch.ingredients.length, ingredientsRead: recipe.ingredients.length }
+    : detail;
+}
+
+export function deleteRecipe(replica: Replica, id: string) {
+  const { recipe, plannedMeals } = replica.deleteRecipe(id);
+  return {
+    deleted: { id: recipe.id, name: recipe.name },
+    ...(plannedMeals > 0
+      ? { note: `${plannedMeals} planned ${plannedMeals === 1 ? 'meal' : 'meals'} made from it keep their title and no longer link to a recipe.` }
+      : {}),
   };
 }

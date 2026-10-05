@@ -21,7 +21,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/activityRings.ts` — ActivityRing, RingId, ActivityRings, RING_META, RING_ORDER, parseActivitySummary, ringFraction, isRingClosed, describeRing, ringsAccessibilityLabel, +1 more
 - `src/utils/agendaSpeech.ts` — AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda
 - `src/utils/agentNotes.ts` — AGENT_NOTES_KEY, AGENT_NOTES_LIMIT, AGENT_NOTE_MAX_LENGTH, AgentNote, parseAgentNotes, AgentNoteChange, addAgentNote, editAgentNote, removeAgentNote, readAgentNotes, +1 more
+- `src/utils/agentRecordRevert.ts` — PROJECT_REVERT_FIELDS, RecordLogSubject, RuleListName, RULE_LIST_NAMES, RecordState, AgentRecordPlan, agentRecordPlan, agentRecordLabel
 - `src/utils/agentRevert.ts` — AgentRevertPlan, agentRevertPlan, agentRevertLabel
+- `src/utils/agentUndo.ts` — AgentUndo, AgentUndoAction, AgentUndoReaders, agentUndoPlan, agentUndoLabel, BatchRevertResult, revertableInBatch, revertBatch
+- `src/utils/agentUndoRun.ts` — agentUndoReaders, applyAgentUndo
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
@@ -350,7 +353,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
+- `src/utils/taskReopen.ts` — reopenedTask
 - `src/utils/taskUpdate.ts` — CONTENT_FIELDS, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, seriesFanOutRows
+- `src/utils/templateApply.ts` — TemplateRunOptions, RunDraft, TemplateRunSink, applyTemplateRun
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, liveConditions, itemMatchesAnswers, initialLeafSelection, reselectForAnswers, personIdsFromAnswer, +6 more
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule

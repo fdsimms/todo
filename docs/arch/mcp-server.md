@@ -272,8 +272,30 @@ agent's "after"**, because restoring "before" over an edit the person made since
 their change to put back one they never saw. It is derived on every read rather than stored, which
 keeps the ledger write-once and makes a second tap (or a revert made on the other phone) read as
 "Undone". A created task can be removed while it is still open, a completed one reopened through
-the store's own `uncompleteTask`. Grocery, project, meal and template entries are records only:
-each is a tap to change in the app.
+the store's own `uncompleteTask`. Everything else an agent writes is recorded with the row it is about (`recordId`), and some of it
+can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
+is still how the agent left it.
+
+- **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
+  or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
+  (the whole list before and after), and a note remembered or forgotten.
+- **Record only, on purpose:** a recipe, template, stack or project the agent created (each has
+  contents added afterward and no edit stamp to tell whether they were, and a project or stack owns
+  other rows), a grocery item taken off the list (putting it back would rebuild its quantity and aisle
+  from nothing), a project completion, and an automation switch (one setter per setting).
+- **A log entry or meal has nothing to compare**, so its undo is offered while it exists and the
+  confirmation says that anything changed on it since goes with it.
+- The store side is `src/utils/agentUndoRun.ts`: it reads each record through the store that owns it
+  and applies a plan through that store's own action, so removing a food entry retracts it from Health
+  the way a tap would. `agentUndo.ts` is the one question the screen asks, task or not.
+
+**One confirmed call is one batch.** `withWrite` in `server.ts` runs a confirmed write inside
+`replica.withBatch`, so every entry it records carries the same `batchId`. The Activity screen puts
+"Undo all N" on the newest undoable row of a batch that touched two or more tasks, and `revertBatch`
+(`agentRevert.ts`) runs each entry's own `agentRevertPlan` newest first, re-reading the task between
+steps (two edits to one task only pass the guard in that order). It is the per-row rule applied
+repeatedly, so a task changed since is skipped and reported, never overwritten. A preview records
+nothing and has no batch. Entries written before the column existed have none.
 
 ### Recording: a recipe, food, mood and a dose
 
@@ -463,6 +485,54 @@ gains a reference, because the target may already reach back. A template being c
 the target of anything, since nothing that exists can name an id that has not been minted. Whatever
 adds `update_template` has to add the guard with it.
 
+### Editing one: `get_template` and `update_template`
+
+`get_template` returns a template as the plan that would recreate it (`templateToPlan`), and
+`update_template` takes any part of a plan, with what it leaves out unchanged. Three rules hold it:
+
+- **A list is replaced, not patched.** `groups`, `questions` and `items` point at one another, so
+  each replaces its whole list when given. What keeps this from being a rewrite is that **ids
+  survive by being named**: an item passes its `id`, a group uses its id as its `key`, a question
+  keeps its `name`. `{ id }` alone leaves an item exactly as stored.
+- **An item with an `id` starts from the stored item.** The zod item schema names only some of
+  `TemplateItem`'s fields, so a plan that rebuilt each item from what the caller sent would drop
+  the rest (link, chain, rotation, medication...) on every edit. Writing the given fields over the
+  stored item is what makes the edit lossless. An item with no id is new; one left out is removed.
+- **A scalar-only edit never rebuilds the lists.** A rename or a schedule change leaves items
+  untouched, so a stored nested reference that has since gone dangling cannot block it.
+
+**`apply_template` runs the app's own run logic.** The container choice, the run's category, the
+away span a trip's anchors become, item-group sections (a checklist flag included), the gates
+between items and the flattening of subtask stubs under a run task are one function,
+`applyTemplateRun` (`src/utils/templateApply.ts`), lifted out of `useTemplateStore.applyTemplate`
+and now called by both. It writes through a `TemplateRunSink`: the store supplies one made of its own
+actions (undo, reminders, calendar events), the replica supplies one over the database. A second
+copy of those rules was never an option, for the reason `taskCompletion.ts` exists. Which items are
+on is the apply sheet's opening state (`initialLeafSelection`, which is also what a scheduled run
+uses), adjusted by `include` / `leaveOut` item ids; answers come in by the question's name and are
+checked against its kind. People questions are not answered over MCP, so no task is stamped with
+people. Run in one transaction; reminders and calendar events catch up on the phone.
+
+`delete_template` has no archive to fall back on (a template has no archived state in the app), so
+it is the one delete the server offers. It leans on the preview every write already has: the dry
+run reports "Delete the template ... It cannot be restored from here" before anything is removed,
+and the result names any template that nested it, since the app leaves those references broken
+rather than rewriting them. `reorder_templates` puts the listed ids first and keeps the rest in
+their order, because the app's own reorder needs the whole list and a model rarely has it.
+A template's category is also registered in `template_categories`, which the editor lists from.
+
+**`templateItemCoverage.test.ts` is the `taskFieldCoverage` of template items**: every
+`TemplateItem` field is in the zod item schema or in a named not-exposed group with the reason.
+The item schema was about twenty fields behind when it was added. The groups are the same
+decisions as on a task: gates, penalties and a medication are withheld. Chain and rotation are
+written as nested `chain` / `rotation` plan fields and turned into the item's step and member lists
+by the applier; on an edit, step ids are kept by position and member ids by title, because a
+recorded answer and a week's ledger are found through them.
+
+The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
+comparison is by value because the db reader and the writer build the object in different key
+orders.
+
 ### Written through the db layer, not the store
 
 This is the opposite of the rule demo seeding follows, and for once that is correct.
@@ -608,6 +678,14 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
 - **`add_project_steps`** is `create_project`'s step writer pointed at a project that already
   exists: one call, validated in full first, written in one transaction. `after` counts over the
   batch; `waitsOn` names tasks already there.
+- **`reopen_task`** is the undo for a completion made by mistake. The row half is
+  `reopenedTask` (`src/utils/taskReopen.ts`), lifted out of `useTaskStore.uncompleteTask` for the
+  reason `taskCompletion.ts` was lifted out of `completeTask`, so the store and the replica share
+  one. The replica takes back what it wrote when it completed (coins, the dose) and removes the
+  occurrence the completion spawned unless that was completed since. It **refuses** what leaves
+  something on the phone it cannot undo: a calendar event the completion logged, a screen-time
+  credit, a meal marked cooked. The answer there is the app's Logbook, and saying so beats
+  reopening a row and leaving the event behind.
 - **`archive_task`** is the undo, and **there is deliberately no delete**. An archived row can be
   restored here or in the app; a deleted one cannot, and the model is the one deciding what to
   remove. It is the app's own `archiveTask` / `unarchiveTask` (unpin; restoring breaks the streak).
@@ -645,8 +723,9 @@ so the finished occurrences behind a repeating task stay where they were.
   Activity screen's revert restores it, since the ledger entry is an ordinary task edit
   (`groupId`, `sortOrder`, `category`).
 - **The stack itself is logged as `subject: 'stack'`**, a record only like a project's.
-- **No rename, delete or reorder.** Those are a tap in the app, and deleting a stack is a
-  cascade decision (`deleteGroup`) the model should not make.
+- **`rename_stack` renames and nothing else.** Deleting is a cascade decision (`deleteGroup`) the
+  model should not make, and changing the category would move every member, so those stay a tap in
+  the app. There is no reorder.
 
 ### Every task it creates has a category
 
@@ -710,6 +789,56 @@ thing; a copy that also holds every symptom they have recorded, every dose they 
 every meal they have eaten is health data in the sense a privacy label means it, and a hosted
 replica puts all of it on a machine with a public address. The read surface is one bearer token
 for everything, which is adequate for a laptop and is not adequate for that.
+
+### Correcting and deleting a log entry
+
+`update_` and `delete_` for food, mood and medication entries exist because a log written from a
+conversation is otherwise uncorrectable: a wrong figure or a doubled dose stayed until somebody
+opened the app. Three rules:
+
+- **An entry never changes day.** `dayKey` is stamped with the instant, as in the app, so a wrong
+  date is delete-and-log-again. Mood and medication reuse the stores' own `updateLog`, which already
+  refuses re-dating.
+- **Food figures are restated only on an estimated entry.** A measured one (a scan, a database
+  food) is re-measured against its own panel in the app, and a restated quantity there would
+  disagree with the figures beside it. A rename or a slot change is always fine.
+- **An entry already written to Apple Health is refused for figure edits and delete.** The server
+  cannot reach HealthKit, so removing the row would strand the sample in somebody's medical record,
+  the case `docs/arch/health-data.md` is arranged around. The refusal says to do it in the app.
+
+A mood check-in cannot be edited down to nothing (delete it), and a dose recorded by completing a
+task does not reopen the task: `reopen_task` takes both back.
+
+### Changing the meal plan
+
+`update_meal` moves a planned meal (another day or slot), renames a free-text one, or sets a
+recipe's scale; `remove_meal` takes it off. A meal backed by a recipe or a leftover keeps its name,
+as in the app. Both write only the entry row, like `plan_meal`: the slot's cook task and the
+calendar event are device work that catches up on the phone. **Marking a meal cooked is not
+exposed**, because the app's `setCooked` also opens pantry items, raises the cook recap and ticks
+the cook task, none of which a Node process can do, and a half-done "cooked" is worse than none.
+A meal already marked cooked is not removable here, since it is history behind the cooking stats.
+
+### People: who someone is, never how the friendship stands
+
+`create_person` and `update_person` write identity and contact details (name, nickname, kind, notes,
+what to ask about, birthday, phone, email, link). `docs/arch/people.md` is why the list stops there:
+**no cadence, no nudge opt-in, no group, no archive, no order.** Declaring a rhythm for someone is the
+user's own small act, and an agent doing it for them is the "make you declare a cadence" failure the
+doc opens with; a new person starts with none, as in the app (`blankPerson`). A birthday is checked
+as a real month and day (29 Feb is allowed) with an optional year, and the year is never turned into
+an age. History is still `add_person_history`.
+
+### Changing and deleting a recipe
+
+`update_recipe` changes scalar fields and replaces `ingredients` and `steps` as whole lists, using
+the same line parsing as `save_recipe` (so a line the app cannot read is counted, not silently
+kept). The recipe store's `renameRecipe` and `deleteRecipe` both end in the meal plan store, which a
+Node process cannot load, so the replica makes their writes itself: the renamed row, and the captured
+title on each meal planned from it. Everything that can refuse (a name clash in the same cookbook, a
+bad servings count) is checked before the first write, and the writes are one transaction.
+`delete_recipe` leaves planned meals as the app does (title kept, link gone) and reports how many;
+their Today tasks and events catch up on the phone. Moving a recipe between cookbooks stays in the app.
 
 ### The health logs have their own switch, and iCloud never gets them
 

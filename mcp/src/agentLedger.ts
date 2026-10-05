@@ -22,13 +22,18 @@
  */
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
+import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
 
 export interface AgentLedgerEntry {
   action: UnattendedEntry['action'];
   subject: UnattendedSubject;
   title: string;
   taskId: string | null;
+  /** The row an entry about something other than a task is about. See `UnattendedEntry.recordId`. */
+  recordId?: string | null;
   count?: number;
+  /** What the preview says for this effect, when the action and fields alone read too vaguely. Not recorded. */
+  note?: string;
   revert?: UnattendedRevert | null;
 }
 
@@ -58,7 +63,23 @@ export function taskRevert(before: Task, after: Task): UnattendedRevert | null {
   return Object.keys(out.after).length > 0 ? out : null;
 }
 
-export function toLedgerEntries(entries: readonly AgentLedgerEntry[], newId: () => string, now = new Date()): UnattendedEntry[] {
+/** `taskRevert` for a project, over only the fields a restore can write back (`PROJECT_REVERT_FIELDS`). */
+export function projectRevert(before: Record<string, unknown>, after: Record<string, unknown>): UnattendedRevert | null {
+  const out: UnattendedRevert = { before: {}, after: {} };
+  for (const key of PROJECT_REVERT_FIELDS) {
+    if (same(before[key], after[key])) continue;
+    out.before[key] = before[key] ?? null;
+    out.after[key] = after[key] ?? null;
+  }
+  return Object.keys(out.after).length > 0 ? out : null;
+}
+
+export function toLedgerEntries(
+  entries: readonly AgentLedgerEntry[],
+  newId: () => string,
+  now = new Date(),
+  batchId: string | null = null,
+): UnattendedEntry[] {
   const at = now.toISOString();
   return entries.map(e => ({
     id: newId(),
@@ -67,10 +88,12 @@ export function toLedgerEntries(entries: readonly AgentLedgerEntry[], newId: () 
     kind: null,
     title: e.title,
     taskId: e.taskId,
+    recordId: e.recordId ?? null,
     count: e.count ?? 1,
     actor: 'agent',
     subject: e.subject,
     revert: e.revert ?? null,
+    batchId,
   }));
 }
 
@@ -115,6 +138,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
+    reopenTask(id) {
+      const result = replica.reopenTask(id);
+      log({
+        action: 'edited', subject: 'task', title: result.task.title, taskId: id,
+        note: `Reopen "${result.task.title}"${result.removed.length ? `, and remove the ${result.removed.length === 1 ? 'task' : 'tasks'} its completion created` : ''}`,
+      });
+      return result;
+    },
+
     updateAnswer(id, answerEdit) {
       const before = snapshot(id);
       const task = replica.updateAnswer(id, answerEdit);
@@ -154,14 +186,33 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     updateProject(id, patch) {
+      const before = replica.projects().find(p => p.id === id) ?? null;
       const project = replica.updateProject(id, patch);
-      log({ action: patch.completed ? 'completed' : 'edited', subject: 'project', title: project.title, taskId: null });
+      // A completion is a state change with no restore (the fields below cannot
+      // reopen it), so only a plain edit carries a revert.
+      log({
+        action: patch.completed ? 'completed' : 'edited',
+        subject: 'project',
+        title: project.title,
+        taskId: null,
+        recordId: id,
+        revert: before && !patch.completed
+          ? projectRevert(before as unknown as Record<string, unknown>, project as unknown as Record<string, unknown>)
+          : null,
+      });
       return project;
     },
 
     createStack(title, category) {
       const stack = replica.createStack(title, category);
       log({ action: 'created', subject: 'stack', title: stack.title, taskId: null });
+      return stack;
+    },
+
+    renameStack(id, title) {
+      const before = replica.stacks().find(s => s.id === id);
+      const stack = replica.renameStack(id, title);
+      log({ action: 'edited', subject: 'stack', title: stack.title, taskId: null, note: `Rename the stack ${before ? `"${before.title}" ` : ''}to "${stack.title}"` });
       return stack;
     },
 
@@ -180,27 +231,132 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return template;
     },
 
+    updateTemplate(id, patch) {
+      const template = replica.updateTemplate(id, patch);
+      log({ action: 'edited', subject: 'template', title: template.name, taskId: null });
+      return template;
+    },
+
+    applyTemplate(ref, run) {
+      const result = replica.applyTemplate(ref, run);
+      const templateName = replica.templates().find(t => t.id === ref || t.name === ref)?.name ?? ref;
+      const name = result.container ? ` into "${result.container.name}"` : '';
+      log({
+        action: 'created', subject: 'task', title: result.tasks[0]?.title ?? ref, taskId: null, count: result.tasks.length,
+        note: `Run the template "${templateName}", creating ${result.tasks.length} ${result.tasks.length === 1 ? 'task' : 'tasks'}${name}`,
+      });
+      return result;
+    },
+
+    deleteTemplate(id) {
+      const result = replica.deleteTemplate(id);
+      log({ action: 'cleared', subject: 'template', title: result.template.name, taskId: null });
+      return result;
+    },
+
+    reorderTemplates(ids) {
+      const ordered = replica.reorderTemplates(ids);
+      log({ action: 'moved', subject: 'template', title: `${ordered.length} templates`, taskId: null });
+      return ordered;
+    },
+
+    updateFoodEntry(id, patch) {
+      const entry = replica.updateFoodEntry(id, patch);
+      log({ action: 'edited', subject: 'food', title: entry.label, taskId: null, note: `Correct the food log entry "${entry.label}"` });
+      return entry;
+    },
+
+    deleteFoodEntry(id) {
+      const entry = replica.deleteFoodEntry(id);
+      log({ action: 'cleared', subject: 'food', title: entry.label, taskId: null, note: `Delete "${entry.label}" from the food log` });
+      return entry;
+    },
+
+    updateMoodLog(id, patch) {
+      const entry = replica.updateMoodLog(id, patch);
+      log({ action: 'edited', subject: 'mood', title: entry.dayKey, taskId: null, note: `Correct the mood check-in from ${entry.dayKey}` });
+      return entry;
+    },
+
+    deleteMoodLog(id) {
+      const entry = replica.deleteMoodLog(id);
+      log({ action: 'cleared', subject: 'mood', title: entry.dayKey, taskId: null, note: `Delete the mood check-in from ${entry.dayKey}` });
+      return entry;
+    },
+
+    updateMedicationLog(id, patch) {
+      const entry = replica.updateMedicationLog(id, patch);
+      log({ action: 'edited', subject: 'medication', title: entry.name, taskId: null, note: `Correct the ${entry.name} dose from ${entry.dayKey}` });
+      return entry;
+    },
+
+    deleteMedicationLog(id) {
+      const entry = replica.deleteMedicationLog(id);
+      log({ action: 'cleared', subject: 'medication', title: entry.name, taskId: null, note: `Delete the ${entry.name} dose from ${entry.dayKey}` });
+      return entry;
+    },
+
+    updateMeal(id, patch) {
+      const before = replica.mealPlan('0000-01-01', '9999-12-31').find(e => e.id === id);
+      const entry = replica.updateMeal(id, patch);
+      const where = before && (before.date !== entry.date || before.slot !== entry.slot)
+        ? `Move "${entry.title}" from ${before.slot} on ${before.date} to ${entry.slot} on ${entry.date}`
+        : `Change the planned meal "${entry.title}"`;
+      log({ action: 'moved', subject: 'meal', title: entry.title, taskId: null, note: where });
+      return entry;
+    },
+
+    removeMeal(id) {
+      const entry = replica.removeMeal(id);
+      log({ action: 'cleared', subject: 'meal', title: entry.title, taskId: null, note: `Remove "${entry.title}" from ${entry.date}'s ${entry.slot}` });
+      return entry;
+    },
+
+    createPerson(fields) {
+      const person = replica.createPerson(fields);
+      log({ action: 'created', subject: 'person', title: person.name, taskId: null, note: `Add ${person.name} to your people` });
+      return person;
+    },
+
+    updatePerson(id, fields) {
+      const person = replica.updatePerson(id, fields);
+      log({ action: 'edited', subject: 'person', title: person.name, taskId: null, note: `Change ${person.name}'s details` });
+      return person;
+    },
+
+    updateRecipe(id, patch) {
+      const recipe = replica.updateRecipe(id, patch);
+      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${recipe.name}"` });
+      return recipe;
+    },
+
+    deleteRecipe(id) {
+      const result = replica.deleteRecipe(id);
+      log({ action: 'cleared', subject: 'recipe', title: result.recipe.name, taskId: null, note: `Delete the recipe "${result.recipe.name}". It cannot be restored from here.` });
+      return result;
+    },
+
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
-      if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });
+      if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null, recordId: outcome.item.id });
       return outcome;
     },
 
     setGroceryChecked(id, checked) {
       const item = replica.setGroceryChecked(id, checked);
-      log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null });
+      log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
     },
 
     removeFromGroceryList(id) {
       const item = replica.removeFromGroceryList(id);
-      log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null });
+      log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
     },
 
     planMeal(draft) {
       const entry = replica.planMeal(draft);
-      log({ action: 'created', subject: 'meal', title: entry.title, taskId: null });
+      log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
       return entry;
     },
 
@@ -212,7 +368,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     logFood(input) {
       const entry = replica.logFood(input);
-      log({ action: 'created', subject: 'food', title: entry.label, taskId: null });
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
       return entry;
     },
 
@@ -220,19 +376,30 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     // the Activity list would put somebody's health on a screen about the app.
     logMood(input) {
       const entry = replica.logMood(input);
-      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null });
+      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null, recordId: entry.id });
       return entry;
     },
 
     logMedication(input) {
       const entry = replica.logMedication(input);
-      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null });
+      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null, recordId: entry.id });
       return entry;
     },
 
+    // The whole list, before and after: a rule list is one stored blob, so a
+    // restore writes the old blob back and "still how the agent left it" is a
+    // comparison of two lists.
     setRuleList(type, rules) {
+      const before = replica.ruleLists()[type];
       replica.setRuleList(type, rules);
-      log({ action: 'edited', subject: 'automation', title: `${RULE_LIST_LABEL[type]} rules`, taskId: null });
+      log({
+        action: 'edited',
+        subject: 'automation',
+        title: `${RULE_LIST_LABEL[type]} rules`,
+        taskId: null,
+        recordId: type,
+        revert: { before: { rules: before }, after: { rules: replica.ruleLists()[type] } },
+      });
     },
 
     setGeneratorEnabled(key, on) {

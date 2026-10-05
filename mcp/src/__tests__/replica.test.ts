@@ -231,6 +231,167 @@ describe('the replica', () => {
     expect(replica.medicationSummary(doses[0])).toContain('Ibuprofen');
   });
 
+  describe('correcting and deleting log entries', () => {
+    beforeEach(() => {
+      mockRaw.runSync('DELETE FROM food_logs');
+      mockRaw.runSync('DELETE FROM mood_logs');
+      mockRaw.runSync('DELETE FROM medication_logs');
+    });
+
+    it('restates an estimated food entry, and leaves its day alone', () => {
+      const entry = replica.logFood({ label: 'Burrito', quantity: '1', amounts: { calorieKcal: 600 } });
+      const updated = replica.updateFoodEntry(entry.id, { label: 'Chicken burrito', amounts: { calorieKcal: 750, proteinG: 40 }, slot: 'lunch' });
+
+      expect(updated).toMatchObject({ label: 'Chicken burrito', slot: 'lunch', dayKey: entry.dayKey, atISO: entry.atISO });
+      expect(updated.nutrition.amounts).toMatchObject({ calorieKcal: 750, proteinG: 40 });
+      expect(() => replica.updateFoodEntry(entry.id, { label: ' ' })).toThrow(/needs a name/);
+      expect(() => replica.updateFoodEntry('nope', {})).toThrow(/No food entry/);
+    });
+
+    it('will not restate figures that were measured, or touch one already in Apple Health', () => {
+      const measured = replica.logFood({ label: 'Oats', amounts: { calorieKcal: 300 } });
+      mockRaw.runSync("UPDATE food_logs SET nutrition = json_set(nutrition, '$.source', 'openFoodFacts') WHERE id = ?", [measured.id]);
+      expect(() => replica.updateFoodEntry(measured.id, { amounts: { calorieKcal: 1 } })).toThrow(/measured/);
+      // A rename is not a figure, so it still goes through.
+      expect(replica.updateFoodEntry(measured.id, { label: 'Porridge oats' }).label).toBe('Porridge oats');
+
+      const synced = replica.logFood({ label: 'Soup', amounts: { calorieKcal: 200 } });
+      mockRaw.runSync("UPDATE food_logs SET health_sample_ids = '[\"s1\"]' WHERE id = ?", [synced.id]);
+      expect(() => replica.deleteFoodEntry(synced.id)).toThrow(/Apple Health/);
+      expect(() => replica.updateFoodEntry(synced.id, { amounts: { calorieKcal: 1 } })).toThrow(/Apple Health/);
+    });
+
+    it('deletes a food entry', () => {
+      const entry = replica.logFood({ label: 'Toast', amounts: { calorieKcal: 100 } });
+      expect(replica.deleteFoodEntry(entry.id).label).toBe('Toast');
+      expect(replica.foodLogEntries(entry.dayKey, entry.dayKey)).toEqual([]);
+    });
+
+    it('corrects a mood check-in in the spelling already used, and refuses to empty it', () => {
+      const log = replica.logMood({ mood: 3, symptoms: [{ name: 'Headache', severity: 2 }], note: 'meh' });
+      const updated = replica.updateMoodLog(log.id, { mood: 4, symptoms: [{ name: 'headache', severity: 3 }], note: null });
+
+      expect(updated).toMatchObject({ mood: 4, note: null, dayKey: log.dayKey });
+      expect(updated.symptoms).toEqual([{ name: 'Headache', severity: 3 }]);
+      expect(() => replica.updateMoodLog(log.id, { mood: null, symptoms: [] })).toThrow(/empty/);
+      expect(() => replica.updateMoodLog(log.id, { mood: 9 })).toThrow(/1 \(low\) to 5/);
+      expect(replica.deleteMoodLog(log.id).id).toBe(log.id);
+      expect(() => replica.deleteMoodLog(log.id)).toThrow(/No mood check-in/);
+    });
+
+    it('corrects a dose, keeping amount and unit together', () => {
+      const dose = replica.logMedication({ name: 'Ibuprofen', amount: 200, unit: 'mg' });
+      expect(replica.updateMedicationLog(dose.id, { amount: 400 })).toMatchObject({ amount: 400, unit: 'mg', name: 'Ibuprofen' });
+      expect(() => replica.updateMedicationLog(dose.id, { unit: null })).toThrow(/together/);
+      expect(replica.updateMedicationLog(dose.id, { name: 'ibuprofen', note: 'with food' })).toMatchObject({ name: 'Ibuprofen', note: 'with food' });
+      expect(replica.deleteMedicationLog(dose.id).id).toBe(dose.id);
+      expect(() => replica.deleteMedicationLog(dose.id)).toThrow(/No dose/);
+    });
+  });
+
+  describe('changing the meal plan', () => {
+    it('moves a meal to the end of another slot, and renames only a free-text one', () => {
+      const a = replica.planMeal({ date: '2026-09-20', slot: 'dinner', title: 'Takeout' });
+      replica.planMeal({ date: '2026-09-21', slot: 'lunch', title: 'Soup' });
+      const moved = replica.updateMeal(a.id, { date: '2026-09-21', slot: 'lunch', title: 'Pizza' });
+
+      expect(moved).toMatchObject({ date: '2026-09-21', slot: 'lunch', title: 'Pizza' });
+      expect(moved.sortOrder).toBeGreaterThan(replica.mealPlan('2026-09-21', '2026-09-21').find(e => e.title === 'Soup')!.sortOrder);
+
+      const recipe = replica.createRecipe({ name: 'Chili' });
+      const backed = replica.planMeal({ date: '2026-09-22', slot: 'dinner', recipeId: recipe.id });
+      expect(() => replica.updateMeal(backed.id, { title: 'Stew' })).toThrow(/recipe or leftover/);
+      expect(replica.updateMeal(backed.id, { scale: 2 }).recipeScale).toBe(2);
+      expect(() => replica.updateMeal(a.id, { scale: 2 })).toThrow(/recipe has a scale/);
+      expect(() => replica.updateMeal('nope', {})).toThrow(/No planned meal/);
+    });
+
+    it('removes a meal, but not one marked cooked', () => {
+      const a = replica.planMeal({ date: '2026-09-23', slot: 'dinner', title: 'Pasta' });
+      expect(replica.removeMeal(a.id).title).toBe('Pasta');
+      expect(replica.mealPlan('2026-09-23', '2026-09-23')).toEqual([]);
+
+      const b = replica.planMeal({ date: '2026-09-24', slot: 'dinner', title: 'Rice' });
+      mockRaw.runSync("UPDATE meal_plan_entries SET cooked_at = '2026-09-24T19:00:00.000Z' WHERE id = ?", [b.id]);
+      expect(() => replica.removeMeal(b.id)).toThrow(/marked cooked/);
+    });
+  });
+
+  describe('adding and changing a person', () => {
+    it('adds someone with nothing claimed about the friendship, and changes them', () => {
+      const person = replica.createPerson({ name: ' Sam ', birthday: { month: 2, day: 29 }, email: 'sam@example.com', askAbout: 'the move' });
+      expect(person).toMatchObject({ name: 'Sam', birthdayMonth: 2, birthdayDay: 29, birthYear: null, email: 'sam@example.com', askAbout: 'the move' });
+      // The rule the doc exists for: no rhythm is declared on anybody's behalf.
+      expect(person).toMatchObject({ cadenceDays: 0, nudgeOptIn: false, groupId: null });
+      expect(replica.people().some(p => p.id === person.id)).toBe(true);
+
+      const updated = replica.updatePerson(person.id, { nickname: 'Sammy', birthday: null, email: null });
+      expect(updated).toMatchObject({ nickname: 'Sammy', birthdayMonth: null, birthdayDay: null, email: null, name: 'Sam' });
+    });
+
+    it('refuses a birthday that is not a date, a blank name, and an unknown person', () => {
+      expect(() => replica.createPerson({ name: 'A', birthday: { month: 4, day: 31 } })).toThrow(/real month/);
+      expect(() => replica.createPerson({ name: 'A', birthday: { month: 5, day: 5, year: 1800 } })).toThrow(/1900/);
+      expect(() => replica.createPerson({ name: ' ' })).toThrow(/needs a name/);
+      expect(() => replica.updatePerson('nope', { nickname: 'x' })).toThrow(/No person/);
+    });
+  });
+
+  it('renames a stack without touching its category', () => {
+    const stack = replica.createStack('Morning', 'Home');
+    const renamed = replica.renameStack(stack.id, ' Mornings ');
+    expect(renamed).toMatchObject({ id: stack.id, title: 'Mornings', category: 'Home' });
+    expect(replica.stacks().find(s => s.id === stack.id)!.title).toBe('Mornings');
+    expect(() => replica.renameStack(stack.id, ' ')).toThrow(/needs a title/);
+    expect(() => replica.renameStack('nope', 'x')).toThrow(/No stack/);
+  });
+
+  describe('changing and deleting a recipe', () => {
+    it('changes scalar fields and replaces the lists, leaving the rest', () => {
+      const recipe = replica.createRecipe({ name: 'Edit Chili', servings: 4, ingredients: [{ text: '1 onion' }, { text: '2 cloves garlic' }], steps: [{ text: 'Chop' }, { text: 'Cook' }], tags: ['soup'] });
+      const updated = replica.updateRecipe(recipe.id, {
+        servings: 6,
+        notes: 'Better next day',
+        ingredients: [{ text: '3 onions' }],
+        steps: [{ text: 'Chop everything' }],
+      });
+
+      expect(updated).toMatchObject({ servings: 6, notes: 'Better next day', tags: ['soup'] });
+      expect(updated.ingredients.map(i => i.name)).toEqual(['onions']);
+      expect(updated.steps.map(s => s.text)).toEqual(['Chop everything']);
+      expect(() => replica.updateRecipe('nope', {})).toThrow(/No recipe/);
+    });
+
+    it('renames, retitles planned meals, and refuses a clash in the same cookbook', () => {
+      const a = replica.createRecipe({ name: 'Rename Soup' });
+      replica.createRecipe({ name: 'Rename Stew' });
+      const meal = replica.planMeal({ date: '2026-09-30', slot: 'dinner', recipeId: a.id });
+
+      expect(() => replica.updateRecipe(a.id, { name: 'rename stew' })).toThrow(/already a recipe/);
+      expect(() => replica.updateRecipe(a.id, { name: ' ' })).toThrow(/needs a name/);
+      const renamed = replica.updateRecipe(a.id, { name: 'Rename Broth' });
+      expect(renamed.name).toBe('Rename Broth');
+      expect(replica.mealPlan('2026-09-30', '2026-09-30').find(e => e.id === meal.id)!.title).toBe('Rename Broth');
+    });
+
+    it('leaves everything alone when the edit is refused', () => {
+      const a = replica.createRecipe({ name: 'Atomic A', servings: 2 });
+      replica.createRecipe({ name: 'Atomic B' });
+      expect(() => replica.updateRecipe(a.id, { servings: 9, name: 'Atomic B' })).toThrow();
+      expect(replica.recipes().find(r => r.id === a.id)!.servings).toBe(2);
+    });
+
+    it('deletes a recipe and says how many planned meals lose the link', () => {
+      const a = replica.createRecipe({ name: 'Delete Me' });
+      replica.planMeal({ date: '2026-10-01', slot: 'dinner', recipeId: a.id });
+      const result = replica.deleteRecipe(a.id);
+      expect(result).toMatchObject({ plannedMeals: 1 });
+      expect(replica.recipes().some(r => r.id === a.id)).toBe(false);
+      expect(replica.mealPlan('2026-10-01', '2026-10-01')[0].title).toBe('Delete Me');
+      expect(() => replica.deleteRecipe(a.id)).toThrow(/No recipe/);
+    });
+  });
+
   it('bounds a log range on the logical day rather than the calendar one', () => {
     // getLogicalToday honours dayResetTime, so a read at 1am under a 2am reset
     // asks about the day the user would name. Only the shape is asserted here;
@@ -317,6 +478,243 @@ describe('the replica', () => {
 
   it('reports every problem in one throw', () => {
     expect(() => replica.createTemplate({ name: '', items: [] })).toThrow(/name is required.*at least one item/);
+  });
+
+  describe('updateTemplate', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = () => require('../../../src/db/database');
+    beforeEach(() => mockRaw.runSync('DELETE FROM templates'));
+
+    const trip = () => replica.createTemplate({
+      name: 'Trip',
+      groups: [{ key: 'clothes', title: 'Clothes', checklist: true }],
+      questions: [{ name: 'trip', prompt: 'What kind of trip?', kind: 'choice', options: ['Work', 'Holiday'] }],
+      items: [
+        { title: 'Shirts', groupKey: 'clothes', dueOffsetDays: -1, estimatedMinutes: 10 },
+        { title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] },
+      ],
+    });
+
+    it('changes only the scalar fields it is given, leaving the items alone', () => {
+      const built = trip();
+      const updated = replica.updateTemplate(built.id, { name: ' Trip v2 ', category: 'Home', container: 'stack' });
+
+      expect(updated).toMatchObject({ id: built.id, name: 'Trip v2', category: 'Home', applyContainer: 'stack' });
+      expect(updated.items).toEqual(built.items);
+      expect(replica.templates().find(t => t.id === built.id)!.name).toBe('Trip v2');
+    });
+
+    it('finds the template by exact name too', () => {
+      trip();
+      expect(replica.updateTemplate('Trip', { anchorsAreAway: true }).anchorsAreAway).toBe(true);
+    });
+
+    it('clears the fired mark only when the schedule actually changes', () => {
+      const built = trip();
+      replica.updateTemplate(built.id, { schedule: { frequency: 'weekly', weekday: 1 } });
+      const stored = replica.templates().find(t => t.id === built.id)!;
+      // Simulate a period that already fired.
+      stored.scheduleLastFiredKey = '2026-W36';
+      db().dbUpdateTemplate(stored);
+
+      const same = replica.updateTemplate(built.id, { schedule: { frequency: 'weekly', weekday: 1 } });
+      expect(same.scheduleLastFiredKey).toBe('2026-W36');
+      const moved = replica.updateTemplate(built.id, { schedule: { frequency: 'weekly', weekday: 3 } });
+      expect(moved.scheduleLastFiredKey).toBeNull();
+      expect(replica.updateTemplate(built.id, { schedule: null }).schedule).toBeNull();
+    });
+
+    it('keeps an item by id with every field it had, including ones a plan cannot name', () => {
+      const built = trip();
+      const shirts = built.items.find(i => i.title === 'Shirts')!;
+      const laptop = built.items.find(i => i.title === 'Laptop')!;
+
+      const updated = replica.updateTemplate(built.id, {
+        items: [{ id: shirts.id, title: 'Shirts and socks' }, { id: laptop.id }, { title: 'Charger' }],
+      });
+
+      const kept = updated.items.find(i => i.id === shirts.id)!;
+      expect(kept).toMatchObject({ title: 'Shirts and socks', dueOffsetDays: -1, estimatedMinutes: 10, groupId: built.itemGroups[0].id });
+      // The condition still points at the same question, since a kept
+      // question keeps its id.
+      expect(updated.items.find(i => i.id === laptop.id)!.conditions).toEqual(laptop.conditions);
+      expect(updated.items.find(i => i.title === 'Charger')!.id).not.toBe(shirts.id);
+      expect(updated.itemGroups).toEqual(built.itemGroups);
+      expect(updated.questions).toEqual(built.questions);
+    });
+
+    it('removes an item that is left out', () => {
+      const built = trip();
+      const updated = replica.updateTemplate(built.id, { items: [{ id: built.items[0].id }] });
+      expect(updated.items).toHaveLength(1);
+    });
+
+    it('replaces questions and refuses a condition left pointing at a removed one', () => {
+      const built = trip();
+      expect(() => replica.updateTemplate(built.id, { questions: [] })).toThrow(/does not define/);
+      expect(replica.templates().find(t => t.id === built.id)!.questions).toHaveLength(1);
+    });
+
+    it('writes nothing when the edit is invalid', () => {
+      const built = trip();
+      expect(() => replica.updateTemplate(built.id, { name: 'Renamed', items: [{ id: 'nope', title: 'x' }] })).toThrow(/not an item of this template/);
+      expect(replica.templates().find(t => t.id === built.id)!.name).toBe('Trip');
+      expect(() => replica.updateTemplate(built.id, { name: ' ' })).toThrow(/name is required/);
+      expect(() => replica.updateTemplate('missing', { name: 'x' })).toThrow(/No template/);
+    });
+
+    it('refuses to nest a template inside itself, directly or through another', () => {
+      const a = replica.createTemplate({ name: 'A', items: [{ title: 'a1' }] });
+      const b = replica.createTemplate({ name: 'B', items: [{ title: 'Nest A', refTemplate: a.id }] });
+      expect(() => replica.updateTemplate(a.id, { items: [{ title: 'Nest A', refTemplate: a.id }] })).toThrow(/contain itself/);
+      expect(() => replica.updateTemplate(a.id, { items: [{ title: 'Nest B', refTemplate: b.id }] })).toThrow(/contain itself/);
+    });
+
+    it('writes a chain and a rotation on an item, and keeps their ids across an edit', () => {
+      const t = replica.createTemplate({
+        name: 'Routine',
+        items: [
+          { title: 'Book haircut', chain: { steps: [{ title: 'Book', asks: 'date', answerSchedulesNextStep: true, estimatedMinutes: 5 }, { title: 'Get haircut' }] } },
+          { title: 'Weekly reads', rotation: { members: ['Poetry', 'History'] } },
+        ],
+      });
+      const chain = t.items[0];
+      expect(chain).toMatchObject({ chainEnabled: true, chainIndex: 0 });
+      expect(chain.chainItems.map(c => c.title)).toEqual(['Book', 'Get haircut']);
+      expect(chain.chainItems[0]).toMatchObject({ deliverableKind: 'date', deliverableDatesNextStep: true, estimatedMinutes: 5 });
+      expect(t.items[1].rotationItems.map(r => r.title)).toEqual(['Poetry', 'History']);
+
+      // Renaming one step and adding a member keeps the ids that were there.
+      const updated = replica.updateTemplate(t.id, {
+        items: [
+          { id: chain.id, chain: { steps: [{ title: 'Book it', asks: 'date', answerSchedulesNextStep: true }, { title: 'Get haircut' }] } },
+          { id: t.items[1].id, rotation: { members: ['Poetry', 'History', 'Essays'] } },
+        ],
+      });
+      expect(updated.items[0].chainItems[0].id).toBe(chain.chainItems[0].id);
+      expect(updated.items[1].rotationItems.slice(0, 2).map(r => r.id)).toEqual(t.items[1].rotationItems.map(r => r.id));
+
+      // An item sent as { id } alone keeps both, and null removes one.
+      const kept = replica.updateTemplate(t.id, { items: [{ id: chain.id }, { id: t.items[1].id, rotation: null }] });
+      expect(kept.items[0].chainEnabled).toBe(true);
+      expect(kept.items[1]).toMatchObject({ rotationEnabled: false, rotationItems: [] });
+    });
+
+    it('refuses a one-step chain, a repeated rotation member, and both at once', () => {
+      expect(() => replica.createTemplate({ name: 'A', items: [{ title: 'x', chain: { steps: [{ title: 'only' }] } }] })).toThrow(/at least two steps/);
+      expect(() => replica.createTemplate({ name: 'B', items: [{ title: 'x', rotation: { members: ['a', 'A'] } }] })).toThrow(/all be different/);
+      expect(() => replica.createTemplate({ name: 'C', items: [{ title: 'x', chain: { steps: [{ title: 'a' }, { title: 'b', answerSchedulesNextStep: true }] }, rotation: { members: ['a', 'b'] } }] })).toThrow(/needs asks: "date"|both a chain and a rotation/);
+    });
+
+    it('registers a template category the editor can list', () => {
+      const built = trip();
+      replica.updateTemplate(built.id, { category: 'Travel' });
+      expect(db().dbGetAllTemplateCategories().map((c: { name: string }) => c.name)).toContain('Travel');
+    });
+
+    it('deletes a template and names the ones that nested it', () => {
+      const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
+      replica.createTemplate({ name: 'Outer', items: [{ title: 'Nest', refTemplate: inner.id }] });
+      const result = replica.deleteTemplate('Inner');
+      expect(result.nestedIn).toEqual(['Outer']);
+      expect(replica.templates().map(t => t.name)).toEqual(['Outer']);
+      expect(() => replica.deleteTemplate('Inner')).toThrow(/No template/);
+    });
+
+    it('reorders: the listed ones first, the rest after in their old order', () => {
+      const a = replica.createTemplate({ name: 'A', items: [{ title: 'x' }] });
+      const b = replica.createTemplate({ name: 'B', items: [{ title: 'x' }] });
+      const c = replica.createTemplate({ name: 'C', items: [{ title: 'x' }] });
+      expect(replica.reorderTemplates([c.id]).map(t => t.name)).toEqual(['C', 'A', 'B']);
+      expect(replica.templates().sort((x, y) => x.sortOrder - y.sortOrder).map(t => t.name)).toEqual(['C', 'A', 'B']);
+      expect(() => replica.reorderTemplates([a.id, a.id])).toThrow(/twice/);
+      expect(() => replica.reorderTemplates(['nope'])).toThrow(/No template/);
+      void b;
+    });
+
+    describe('running a template', () => {
+      const day = (y: number, m: number, d: number) => new Date(y, m - 1, d);
+      const trip = () => replica.createTemplate({
+        name: 'Trip',
+        container: 'project',
+        anchorsAreAway: true,
+        groups: [{ key: 'clothes', title: 'Clothes', checklist: true }],
+        questions: [
+          { name: 'kind', prompt: 'What kind of trip?', kind: 'choice', options: ['Holiday', 'Work'] },
+          { name: 'nights', prompt: 'How many nights?', kind: 'number', fromDates: 'nights' },
+        ],
+        items: [
+          { title: 'Pack {nights} shirts', groupKey: 'clothes', dueOffsetDays: -1, category: 'Home' },
+          { title: 'Laptop', conditions: [{ question: 'kind', values: ['Work'] }], category: 'Home' },
+          { title: 'Sunscreen', optional: true, category: 'Home', subtasks: [{ id: 's1', title: 'SPF 50' }] },
+        ],
+      });
+
+      it('creates a project with the away span, answers in titles, the section and its checklist flag', () => {
+        const t = trip();
+        const result = replica.applyTemplate(t.id, { runName: 'Lisbon', start: day(2026, 10, 10), end: day(2026, 10, 17) });
+
+        expect(result.container).toMatchObject({ kind: 'project', name: 'Lisbon' });
+        // Nights come off the dates, 10th to 17th being 7, and the work-only
+        // laptop and the optional sunscreen are off by default.
+        expect(result.tasks.map(x => x.title)).toEqual(['Pack 7 shirts']);
+        const project = replica.projects().find(p => p.id === result.container!.id)!;
+        expect(project.awayStart).toBeTruthy();
+        expect(result.tasks[0].projectId).toBe(project.id);
+        const section = replica.stacks().find(g => g.title === 'Clothes')!;
+        expect(section).toMatchObject({ projectId: project.id, checklist: true });
+        expect(replica.tasks().find(x => x.id === result.tasks[0].id)!.groupId).toBe(section.id);
+      });
+
+      it('follows the answers, and include / leaveOut', () => {
+        const t = trip();
+        const sunscreen = t.items.find(i => i.title === 'Sunscreen')!;
+        const shirts = t.items.find(i => i.title.startsWith('Pack'))!;
+        const result = replica.applyTemplate(t.id, {
+          answers: { kind: 'Work', nights: '3' },
+          include: [sunscreen.id],
+          leaveOut: [shirts.id],
+        });
+
+        expect(result.tasks.map(x => x.title).sort()).toEqual(['Laptop', 'Sunscreen']);
+        // Unnamed run: loose tasks, and the optional item's stub is a subtask.
+        expect(result.container).toBeNull();
+        const stub = replica.tasks().find(x => x.title === 'SPF 50');
+        expect(stub?.parentId).toBe(result.tasks.find(x => x.title === 'Sunscreen')!.id);
+      });
+
+      it('puts the items under one task when the container is a task, and into a stack otherwise', () => {
+        const one = replica.createTemplate({ name: 'Onboarding', container: 'task', items: [{ title: 'Laptop', category: 'Home', subtasks: [{ id: 'a', title: 'Order' }] }, { title: 'Badge', category: 'Home' }] });
+        const asTask = replica.applyTemplate(one.id, { runName: 'New hire' });
+        expect(asTask.container).toMatchObject({ kind: 'task', name: 'New hire' });
+        // The stub is flattened onto the run task rather than nested a level deeper.
+        expect(replica.tasks().find(x => x.title === 'Order')!.parentId).toBe(asTask.container!.id);
+
+        const stackT = replica.createTemplate({ name: 'Morning', container: 'stack', items: [{ title: 'Stretch', category: 'Home' }, { title: 'Water', category: 'Home' }] });
+        const asStack = replica.applyTemplate(stackT.id, { runName: 'Mornings' });
+        const stack = replica.stacks().find(g => g.id === asStack.container!.id)!;
+        expect(stack).toMatchObject({ title: 'Mornings', category: 'Home' });
+        expect(replica.tasks().filter(x => x.groupId === stack.id)).toHaveLength(2);
+      });
+
+      it('refuses a bad answer, an unknown item or project, and writes nothing', () => {
+        const t = trip();
+        const before = replica.tasks().length;
+        expect(() => replica.applyTemplate(t.id, { answers: { kind: 'Cruise' } })).toThrow(/must be one of Holiday, Work/);
+        expect(() => replica.applyTemplate(t.id, { answers: { nope: 'x' } })).toThrow(/no question named/);
+        expect(() => replica.applyTemplate(t.id, { include: ['zzz'] })).toThrow(/not an item of this run/);
+        expect(() => replica.applyTemplate(t.id, { projectId: 'nope' })).toThrow(/No project/);
+        expect(() => replica.applyTemplate('missing', {})).toThrow(/No template/);
+        expect(replica.tasks()).toHaveLength(before);
+      });
+    });
+
+    it('survives a pre-existing broken nested reference on a rename', () => {
+      const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
+      const outer = replica.createTemplate({ name: 'Outer', items: [{ title: 'Nest', refTemplate: inner.id }] });
+      db().dbDeleteTemplate(inner.id);
+      expect(replica.updateTemplate(outer.id, { name: 'Outer 2' }).items[0].refTemplateName).toBe('Inner');
+    });
   });
 
   it('creates a task through the app\'s own builder, defaults and all', () => {
@@ -591,6 +989,45 @@ describe('the replica', () => {
     // Both rows are in the database, which is what a device will pull.
     replica.refresh();
     expect(replica.tasks()).toHaveLength(2);
+  });
+
+  it('reopens a completed task and removes the occurrence it spawned', () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const task = replica.createTask({ title: 'Water the plants', recurrenceType: 'daily', dueDate: today.toISOString() });
+    const done = replica.completeTask(task.id, {});
+
+    const reopened = replica.reopenTask(task.id);
+
+    expect(reopened.task).toMatchObject({ id: task.id, completed: false, completedAt: null });
+    expect(reopened.removed.map(t => t.id)).toEqual([done.nextTask!.id]);
+    replica.refresh();
+    expect(replica.tasks().map(t => t.id)).toEqual([task.id]);
+  });
+
+  it('keeps a successor that was completed since', () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const task = replica.createTask({ title: 'Water the plants', recurrenceType: 'daily', dueDate: today.toISOString() });
+    const first = replica.completeTask(task.id, {});
+    // Due tomorrow, so completing it early is refused; make it due now first.
+    mockRaw.runSync('UPDATE tasks SET due_date = ? WHERE id = ?', [today.toISOString(), first.nextTask!.id]);
+    replica.refresh();
+    replica.completeTask(first.nextTask!.id, {});
+
+    expect(replica.reopenTask(task.id).removed.map(t => t.id)).not.toContain(first.nextTask!.id);
+  });
+
+  it('refuses to reopen what is not completed, and what only the phone can undo', () => {
+    const open = replica.createTask({ title: 'Open', category: 'Home' });
+    expect(() => replica.reopenTask(open.id)).toThrow(/not completed/);
+    expect(() => replica.reopenTask('nope')).toThrow(/No task/);
+
+    const logged = replica.createTask({ title: 'Logged', category: 'Home' });
+    replica.completeTask(logged.id, {});
+    mockRaw.runSync("UPDATE tasks SET completion_calendar_event_id = 'ev1' WHERE id = ?", [logged.id]);
+    replica.refresh();
+    expect(() => replica.reopenTask(logged.id)).toThrow(/calendar event/);
   });
 
   // getNextDueDate's { catchUp: true }, which completeTask passes because it is
