@@ -28,6 +28,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
+import { useClipboardImage } from '../hooks/useClipboardImage';
 
 type InputMode = 'paste' | 'photo';
 
@@ -142,6 +144,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       if (result.status === 'ok') {
         haptics.success();
         setPhoto(result.photo);
+        setMode('photo');
       } else if (result.status === 'denied') {
         alertPhotoAccessDenied(source, result.canAskAgain, 'read an event off a photo');
       } else if (result.status === 'failed') {
@@ -152,6 +155,8 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       setPicking(false);
     }
   }, []);
+
+  const clipboardHasImage = useClipboardImage(visible && mode === 'paste' && !text.trim());
 
   const ready = mode === 'photo' ? !!photo : !!text.trim();
 
@@ -315,6 +320,10 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
           ]}
           surface="page"
         />
+        )}
+
+        {mode === 'paste' && clipboardHasImage && (
+          <ClipboardPhotoOffer onPress={() => pick('clipboard')} disabled={picking} />
         )}
 
         {mode === 'paste' ? (

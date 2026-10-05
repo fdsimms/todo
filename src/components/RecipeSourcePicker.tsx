@@ -28,6 +28,8 @@ import { looksLikeBareUrl } from '../utils/recipeUtils';
 import { normalizeRecipeUrl } from '../utils/recipeUrl';
 import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
 import { TextField } from './TextField';
+import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
+import { useClipboardImage } from '../hooks/useClipboardImage';
 
 export type RecipeInputMode = 'paste' | 'link' | 'photo';
 
@@ -122,6 +124,7 @@ export function RecipeSourcePicker({
   // not be able to land on a refusal about a box it never renders.
   const paste = mode === 'paste' && !photoOnly && !linkOnly;
   const link = (mode === 'link' || linkOnly) && !photoOnly;
+  const clipboardHasImage = useClipboardImage(paste && !text.trim() && photos.length < maxPhotos);
   const bareUrl = paste && looksLikeBareUrl(text);
   const typedUrl = url.trim();
   const badUrl = link && !!typedUrl && !normalizeRecipeUrl(typedUrl);
@@ -177,6 +180,13 @@ export function RecipeSourcePicker({
           onChange={onChangeMode}
           options={MODE_OPTIONS}
           surface="page"
+        />
+      )}
+
+      {paste && clipboardHasImage && (
+        <ClipboardPhotoOffer
+          onPress={() => { onChangeMode('photo'); onPickPhoto('clipboard'); }}
+          disabled={picking}
         />
       )}
 

@@ -465,6 +465,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useAnswerFirstCompletion.ts` — useAnswerFirstCompletion
 - `src/hooks/useAppShieldSync.ts` — useAppShieldSync
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance
+- `src/hooks/useClipboardImage.ts` — useClipboardImage
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
 - `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
