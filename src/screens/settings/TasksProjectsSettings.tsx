@@ -101,7 +101,9 @@ export function TasksProjectsSettings() {
   const setFocusLiveActivity = useSettingsStore(s => s.setFocusLiveActivity);
   const focusHideTimers = useSettingsStore(s => s.focusHideTimers);
   const setFocusHideTimers = useSettingsStore(s => s.setFocusHideTimers);
-  const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes });
+  const focusBreaksEnabled = useSettingsStore(s => s.focusBreaksEnabled);
+  const setFocusBreaksEnabled = useSettingsStore(s => s.setFocusBreaksEnabled);
+  const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes, focusBreaksEnabled });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
@@ -515,7 +517,7 @@ export function TasksProjectsSettings() {
       <SettingsSection
         label="Focus sessions"
         footer={`${noBreaks
-          ? 'Both break triggers are off, so a session runs straight through with no breaks in it.'
+          ? 'Breaks are off, so a session runs straight through with no breaks in it.'
           : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}${
           Platform.OS === 'ios' ? ' The Lock Screen activity requires iOS 17.' : ''}`}
       >
@@ -557,6 +559,19 @@ export function TasksProjectsSettings() {
             describeValue={n => `${n} minutes`}
           />
         </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="focusBreaksEnabled"
+          icon="cafe-outline"
+          iconColor={focusBreaksEnabled ? colors.accent : undefined}
+          label="Breaks in focus sessions"
+          hint={focusBreaksEnabled
+            ? 'Sessions add breaks using the settings below. Turn off to start every session with no breaks. Your break settings are kept.'
+            : 'New sessions have no breaks. Turn on to use your break settings again.'}
+          toggle={focusBreaksEnabled}
+          onPress={() => setFocusBreaksEnabled(!focusBreaksEnabled)}
+        />
 
         <View style={styles.sep} />
         <SettingsRow
