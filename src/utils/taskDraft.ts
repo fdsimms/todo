@@ -42,6 +42,7 @@ import { getVisibleAt } from './visibilityUtils';
 import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
 import { canHoldSupply, clampSupplyReorderAt, DEFAULT_SUPPLY_REORDER_AT } from './supply';
+import { blockerFields, blockerIdsOf } from './blocking';
 
 // The time-of-day a brand-new task starts with: its own if the draft named
 // one, else its category's default (Category.defaultTimeSegments), else
@@ -413,8 +414,9 @@ export function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     location: draft.location ?? null,
-    blockedById: draft.blockedById ?? draft.blockedByIds?.[0] ?? null,
-    blockedByIds: draft.blockedById ? (draft.blockedByIds ?? []) : (draft.blockedByIds ?? []).slice(1),
+    // Through the one writer, so a draft naming the same task in both fields
+    // (or twice in the list) lands as one blocker rather than two.
+    ...blockerFields(blockerIdsOf({ blockedById: draft.blockedById ?? null, blockedByIds: draft.blockedByIds })),
     waitForSeriesEnd: draft.waitForSeriesEnd ?? false,
     answerGate: draft.answerGate ?? null,
     waitingOnPersonId: null,

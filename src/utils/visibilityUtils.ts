@@ -8,7 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
-import { isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
+import { blockerIdsOf, isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
@@ -59,7 +59,7 @@ export function isWithheld(task: Task): boolean {
  */
 export function isTaskNotNeeded(task: Task): boolean {
   if (task.completed || task.archived) return false;
-  if (!task.answerGate && !task.blockedById) return false;
+  if (!task.answerGate && blockerIdsOf(task).length === 0) return false;
   return isNotNeeded(task, resolveBlocker);
 }
 

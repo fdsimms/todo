@@ -33,6 +33,7 @@ import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { TemplateQuestionSheet } from './TemplateQuestionSheet';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -40,7 +41,12 @@ interface Props {
   onClose: () => void;
 }
 
-export function TemplateEditor({ visible, template, onClose }: Props) {
+export function TemplateEditor({ visible, template: liveTemplate, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the template in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const template = useSheetSubject(liveTemplate);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -71,8 +77,11 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
   // null = closed; a question = editing it; 'new' = writing one.
   const [editingQuestion, setEditingQuestion] = useState<TemplateQuestion | 'new' | null>(null);
 
+  // Keyed on `visible` too, now that the held template survives a close: a
+  // reopen on the same row has to reseed from it rather than show the last
+  // opening's state.
   useEffect(() => {
-    if (!template) return;
+    if (!visible || !template) return;
     setName(template.name);
     setCategory(template.category);
     setContainer(template.applyContainer);
@@ -83,7 +92,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
     setScheduleOpen(false);
     setTimePickerOpen(false);
     setEditingQuestion(null);
-  }, [template]);
+  }, [visible, template]);
 
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
   const closeContainer = () => { animateLayout(); setContainerOpen(false); };

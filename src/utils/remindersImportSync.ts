@@ -878,8 +878,14 @@ async function drainOnce(): Promise<ImportOutcome> {
             //
             // addByName rather than a raw insert, so a dictated "2 lb chicken"
             // splits its quantity off and a name already in the catalog is
-            // re-listed instead of duplicated — same as typing it.
-            useGroceryStore.getState().addByName(name);
+            // re-listed instead of duplicated — same as typing it. Onto the
+            // list at home by name, the same pin the mirror's import half
+            // sets: this runs from a sync pass, not a tap, so "the active
+            // list" is whatever happens to be on screen (an away list, once
+            // checkAwayGroceryList has switched to it), and a capture landing
+            // there was never a capture about that trip. No undo for the same
+            // reason: nothing here is something the user just did.
+            useGroceryStore.getState().addByName(name, undefined, undefined, { registerUndo: false, listId: null });
             if (taken) {
               const key = groceryItemKey(name);
               if (key) taken.add(key);

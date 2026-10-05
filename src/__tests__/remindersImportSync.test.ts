@@ -555,7 +555,7 @@ describe('importReminders — the grocery destination', () => {
     const outcome = await freshSync().importReminders();
 
     expect(outcome.imported).toBe(1);
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
     expect(mockAddTask).not.toHaveBeenCalled();
   });
 
@@ -676,7 +676,7 @@ describe('importReminders — the grocery destination', () => {
     expect(mockAddTask).toHaveBeenCalledTimes(1);
     expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'call the dentist' }));
     expect(mockAddByName).toHaveBeenCalledTimes(1);
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
   });
 
   // One misconfigured destination must not strand the other.
@@ -700,7 +700,7 @@ describe('importReminders — the grocery destination', () => {
     const outcome = await freshSync().importReminders();
 
     expect(outcome.imported).toBe(1);
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
   });
 });
 
@@ -946,7 +946,7 @@ describe('importReminders — groceries left in place', () => {
     const outcome = await freshSync().importReminders();
 
     expect(outcome).toMatchObject({ imported: 1, skipped: 0 });
-    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddByName).toHaveBeenCalledWith('milk', undefined, undefined, { registerUndo: false, listId: null });
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
 
@@ -968,7 +968,7 @@ describe('importReminders — groceries left in place', () => {
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: '2 lb chicken' })]);
 
     expect((await freshSync().importReminders()).imported).toBe(1);
-    expect(mockAddByName).toHaveBeenCalledWith('2 lb chicken');
+    expect(mockAddByName).toHaveBeenCalledWith('2 lb chicken', undefined, undefined, { listId: null, registerUndo: false });
   });
 
   it('lets a name the catalog has never seen through', async () => {
@@ -976,7 +976,7 @@ describe('importReminders — groceries left in place', () => {
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'eggs' })]);
 
     expect((await freshSync().importReminders()).imported).toBe(1);
-    expect(mockAddByName).toHaveBeenCalledWith('eggs');
+    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { listId: null, registerUndo: false });
   });
 });
 
@@ -1311,7 +1311,7 @@ describe('importReminders — the two-way grocery mirror', () => {
     await freshSync().importReminders();
 
     // The drain imported it, and nothing was written back out.
-    expect(mockAddByName).toHaveBeenCalledWith('eggs');
+    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { listId: null, registerUndo: false });
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
   });
 

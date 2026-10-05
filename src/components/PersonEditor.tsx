@@ -34,6 +34,7 @@ import {
 import { personHistory } from '../utils/personHistory';
 import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -70,7 +71,12 @@ function describeBirthday(month: number | null, day: number | null, year: number
  * about the relationship. See `docs/arch/people.md`; the shape of this form is
  * what stops the feature reading as a filing system for your friends.
  */
-export function PersonEditor({ visible, person, isNew, onClose }: Props) {
+export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the person in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const person = useSheetSubject(livePerson);
   const colors = useColors();
   const textScaleFactor = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);

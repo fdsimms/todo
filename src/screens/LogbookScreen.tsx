@@ -449,7 +449,9 @@ export function LogbookScreen() {
       message: `Delete "${displayTitleFor(task)}" from the Logbook? You can undo this by shaking your phone right after.`,
       onConfirm: () => {
         animateLayout();
-        deleteTask(task.id);
+        // skipGeneratedOptOut: deleting a logbook entry is deleting history,
+        // not declining the generator that wrote the task (see clearLogbook).
+        deleteTask(task.id, { skipGeneratedOptOut: true });
       },
     });
   };

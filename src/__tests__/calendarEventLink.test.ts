@@ -300,6 +300,16 @@ describe('deleteLinkedEvent', () => {
     mockExists.mockRejectedValue(new Error('boom'));
     await expect(deleteLinkedEvent({ eventId: 'evt-1', externalId: 'ext-1' }, pickAllDay)).resolves.toBeUndefined();
   });
+
+  // The one door the meal, deadline and completion deletes go through, so the
+  // demo gate their write halves each carry lives here once.
+  it('deletes nothing, and asks nothing, in demo mode', async () => {
+    mockDemoActive = true;
+    await deleteLinkedEvent({ eventId: 'evt-1', externalId: 'ext-1' }, pickAllDay);
+    expect(mockExists).not.toHaveBeenCalled();
+    expect(mockEventsWithExternalId).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
 });
 
 describe('uniqueLinks', () => {

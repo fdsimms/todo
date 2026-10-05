@@ -140,7 +140,9 @@ export function IngredientCatalogMatchSheet({
         <View style={styles.sectionCard}>
           <Text style={styles.groupLabel}>Did you mean</Text>
           {suggested.map(({ ingredient, match }) => (
-            <View key={ingredient.id} style={styles.row}>
+            // The names on their own full-width row and the actions under
+            // them: beside the Link pill the ingredient got what was left.
+            <View key={ingredient.id} style={styles.suggestedRow}>
               <View style={styles.rowBody}>
                 <Text style={styles.rowName} numberOfLines={1}>{ingredient.name}</Text>
                 <View style={styles.rowArrow}>
@@ -148,20 +150,23 @@ export function IngredientCatalogMatchSheet({
                   <Text style={styles.rowTarget} numberOfLines={1}>{match.suggestedName}</Text>
                 </View>
               </View>
-              <InlineAction
-                label="Link"
-                onPress={() => accept(ingredient, match)}
-                accessibilityLabel={`Rename ${ingredient.name} to ${match.suggestedName}`}
-              />
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${ingredient.name}`}
-                accessibilityHint="Double tap to pick a different item, or leave this line as it is"
-              >
-                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-              </TouchableOpacity>
+              <View style={styles.rowActions}>
+                <InlineAction
+                  label="Link"
+                  onPress={() => accept(ingredient, match)}
+                  accessibilityLabel={`Rename ${ingredient.name} to ${match.suggestedName}`}
+                />
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
+                  hitSlop={8}
+                  style={styles.rowOpen}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${ingredient.name}`}
+                  accessibilityHint="Double tap to pick a different item, or leave this line as it is"
+                >
+                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
           <Text style={styles.hint}>
@@ -244,6 +249,9 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
       paddingVertical: spacing.sm,
     },
+    suggestedRow: { paddingVertical: spacing.sm, gap: spacing.sm },
+    rowActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+    rowOpen: { marginLeft: 'auto' },
     rowBody: { flex: 1, gap: spacing.xxs },
     rowName: { flex: 1, fontSize: font.md, color: colors.text },
     rowArrow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

@@ -333,6 +333,11 @@ export async function writeAllDayEvent(
  *   or a deadline, `completionEventMatch` for a completion). A delete is harder
  *   to take back than the rewrite an adoption does, so nothing looser than the
  *   rule an adoption already trusts.
+ * - **Nothing is deleted in demo mode.** The write halves (`syncMealEvent`,
+ *   `syncDeadlineEvent`, `createCompletionEvent`) each refuse there, and this is
+ *   the one door their three deletes go through, so the gate lives here rather
+ *   than in each of them: a seeded row carrying a real event id would otherwise
+ *   have its event deleted from the user's calendar when the demo removed it.
  *
  * Fire-and-forget like the delete it replaces, and never throws.
  */
@@ -340,7 +345,7 @@ export async function deleteLinkedEvent(
   link: CalendarEventLink,
   pick: (matches: readonly ExternalEventMatch[]) => string | null
 ): Promise<void> {
-  if (!link.eventId) return;
+  if (!link.eventId || isDemoModeActive()) return;
   try {
     if (link.externalId && !(await calendarEventExists(link.eventId))) {
       const found = pick(await eventsWithExternalId(link.externalId));
