@@ -233,7 +233,7 @@ struct TodoKitchenWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: KitchenWidgetIntent.self, provider: KitchenProvider()) { entry in
             KitchenWidgetEntryView(entry: entry)
                 .containerBackground(for: .widget) {
-                    Color(UIColor.secondarySystemGroupedBackground)
+                    WidgetCardBackground()
                 }
         }
         .configurationDisplayName("Kitchen")

@@ -61,20 +61,66 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
   private func shield(named name: String?) -> ShieldConfiguration {
     ShieldConfiguration(
       backgroundBlurStyle: .systemMaterial,
+      icon: Self.mark,
       title: ShieldConfiguration.Label(text: Self.title(for: name), color: .label),
       subtitle: ShieldConfiguration.Label(text: Self.subtitle(), color: .secondaryLabel),
       // Says what the button does and nothing else. The action extension is
       // what makes it do it — a configuration extension never hears about a
       // tap, which is why the two are separate targets.
-      primaryButtonLabel: ShieldConfiguration.Label(text: "Close", color: .label),
-      primaryButtonBackgroundColor: .secondarySystemFill
+      //
+      // An ink button, like the app's own filled buttons: `.label` is near
+      // black in light and near white in dark, with `.systemBackground` on it.
+      // System colours rather than the app's hexes because they already
+      // follow the appearance, and the configuration is handed to the system
+      // to draw, where a custom dynamic colour isn't guaranteed to survive.
+      primaryButtonLabel: ShieldConfiguration.Label(text: "Close", color: .systemBackground),
+      primaryButtonBackgroundColor: .label
     )
   }
 
-  /// Deliberately no icon: an image would have to be an asset in this target's
-  /// own bundle, and a missing or wrongly-formatted one fails silently at
-  /// render rather than at build. The words carry the screen until there is a
-  /// reason to spend a build cycle proving an asset loads.
+  /// The app's mark: two dots and a check on the gold tile.
+  ///
+  /// Drawn here rather than loaded, because an image would have to be an
+  /// asset in this target's own bundle (no plugin copies one in), and a
+  /// missing or wrongly-formatted one fails silently at render rather than at
+  /// build. The coordinates are the app icon's (`beatMark()` in
+  /// `scripts/generate-icon.js`), as fractions of the tile, and the colours
+  /// are `brand`/`onBrand` from `src/theme/index.ts`: the same in light and
+  /// dark, like the icon.
+  private static let mark: UIImage = {
+    let side: CGFloat = 64
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 3
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+    return renderer.image { _ in
+      let gold = UIColor(red: 1, green: 176.0 / 255.0, blue: 32.0 / 255.0, alpha: 1)
+      let ink = UIColor(red: 23.0 / 255.0, green: 19.0 / 255.0, blue: 28.0 / 255.0, alpha: 1)
+
+      gold.setFill()
+      UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: side * 0.224).fill()
+
+      ink.setFill()
+      let dotRadius = side * 0.0608
+      for x in [0.2108, 0.3918] as [CGFloat] {
+        let center = CGPoint(x: side * x, y: side * 0.5965)
+        UIBezierPath(ovalIn: CGRect(
+          x: center.x - dotRadius, y: center.y - dotRadius,
+          width: dotRadius * 2, height: dotRadius * 2
+        )).fill()
+      }
+
+      let check = UIBezierPath()
+      check.move(to: CGPoint(x: side * 0.5483, y: side * 0.517))
+      check.addLine(to: CGPoint(x: side * 0.6333, y: side * 0.602))
+      check.addLine(to: CGPoint(x: side * 0.7948, y: side * 0.398))
+      check.lineWidth = side * 0.1105
+      check.lineCapStyle = .round
+      check.lineJoinStyle = .round
+      ink.setStroke()
+      check.stroke()
+    }
+  }()
+
   private static func title(for name: String?) -> String {
     guard let name, !name.isEmpty else { return "This app is blocked" }
     return "\(name) is blocked"
