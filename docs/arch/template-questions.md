@@ -34,6 +34,27 @@ beside it.
   zero (these are counts of things to take with you). A token that doesn't fit the shape falls back
   to being a name, exactly as before it existed — and `normalizePlaceholderName` now refuses to
   mint a blank that *would* fit it, so `{nights-2}` can only ever mean one thing.
+- **A sum can be capped, and a token can switch on a choice answer.** `{days + 1 max 7}` limits a
+  count (a long trip doesn't pack more than a week of shirts); `{laundry access = Yes ? days / 2 :
+  days + 1}` picks one of two counts by a choice question's answer, so one item serves both without a
+  second copy. Both stay inside the rule above rather than loosening it:
+  - `max N` is a whole number applied **after** rounding up, and works with or without an operator
+    (`{days max 7}`).
+  - A switch has exactly one comparison, `=`, against one option (case-insensitive), and each branch
+    is a plain blank, a sum, either with a cap, or a literal number. No nesting, no `!=`, no `and`:
+    a third answer is a second token, not a longer one.
+  - **The existing rules carry over unchanged.** A blank answer drops the token (an empty condition
+    blank, or an empty blank in the chosen branch), a fraction rounds up, a result never goes below
+    zero, and a malformed token stays literal text. A switch is not a condition: it changes a *number
+    in a title*, while the Only when conditions below still decide what is ticked, and only a choice
+    question can be the left side.
+  - A token reports every blank it reads (the condition and both branches), so each is asked once.
+    `normalizePlaceholderName` refuses a name that would parse as `x max N`, for the same reason it
+    refuses `x-2`.
+  - It does not make the answer a choice for you: the left side is just a blank, so it only does
+    anything when that blank is a choice question's name.
+  - The syntax is described to MCP clients in `BLANK_SYNTAX` (`mcp/src/server.ts`), appended to the
+    `create_template` and `update_template` descriptions.
 - **A condition decides an item's default tick, not whether it's offered.** Everything the template
   holds stays on screen and stays overridable — the request was "includes my laptop *by default*",
   and a hard filter is how a wrong answer hides items you then can't get back without editing the

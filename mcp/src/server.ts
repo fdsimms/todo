@@ -692,6 +692,13 @@ const itemSchema = z.object({
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
+/**
+ * The blank syntax an item's title, notes, location, subtasks and chain steps
+ * understand, written once for both template tools. The rules are
+ * templateUtils.ts's (tested); this is only the words a client reads.
+ */
+const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token.';
+
 const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
   .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
 const anchorsAreAwaySchema = z.boolean().optional().describe('Whether the anchor dates mean a period away from home.');
@@ -1240,7 +1247,7 @@ function registerWriteTools(
 
   server.tool(
     'create_template',
-    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.',
+    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.' + BLANK_SYNTAX,
     {
       name: z.string().min(1),
       category: z.string().nullable().optional(),
@@ -1265,7 +1272,7 @@ function registerWriteTools(
 
   server.tool(
     'update_template',
-    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name. Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused.',
+    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name. Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused.' + BLANK_SYNTAX,
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       name: z.string().min(1).optional(),
