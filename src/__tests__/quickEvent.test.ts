@@ -102,6 +102,12 @@ describe('parseQuickEvent, for the quick-add sheet', () => {
 });
 
 describe('parseQuickEvent, location and alert clauses', () => {
+  it('keeps the place out of the title when it follows a mention', () => {
+    const draft = parseQuickEvent('Movie with @gideon at home', opts);
+    expect(draft.title).toBe('Movie with Gideon');
+    expect(draft.location).toBe('home');
+  });
+
   it('reads a place and an alert after the schedule phrase', () => {
     const line = "lunch w/ @gideon fri 12p at Joe's alert 30m";
     const draft = parseQuickEvent(line, opts);
