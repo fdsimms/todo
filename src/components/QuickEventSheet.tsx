@@ -36,6 +36,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { TRAVEL_ARRIVE_CHOICES, TRAVEL_MODES, describeArrival, type TravelMode } from '../utils/travelTasks';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { DEFAULT_EVENT_MINUTES, describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
@@ -108,6 +109,13 @@ export interface QuickEventSeed {
   end?: Date;
   title?: string;
   personIds?: readonly string[];
+  /** An all-day event; `start` is its day. Used by an imported event with no clock time. */
+  allDay?: boolean;
+  location?: string;
+  /** Notes, or a lone link, for the "Notes or link" field. */
+  notes?: string;
+  /** Minutes before the start for the alert chip; omitted keeps the chip's default. */
+  alertMinutes?: number | null;
 }
 
 /** An existing event to open the card on, instead of a new one. */
@@ -377,8 +385,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!visible) return;
     const seededText = seed?.title ?? '';
     setText(seededText);
-    setLocation('');
-    setNotesOrLink('');
+    setLocation(seed?.location ?? '');
+    setNotesOrLink(seed?.notes ?? '');
     setRepeatPick(null);
     setPlaceResults([]);
     setPickedPlace(null);
@@ -388,7 +396,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const defaults = readQuickEventDefaults();
     setCalendarId(defaults.calendarId);
     setAlertDefault(defaults.alertMinutes);
-    setAlertPick(undefined);
+    setAlertPick(seed?.alertMinutes);
     setAvailability(defaults.availability);
     setCalendarPick(null);
     setAvailabilityPick(null);
@@ -410,7 +418,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (seed?.start && seed.end && seed.end > seed.start) {
       setDurationPick(Math.round((seed.end.getTime() - seed.start.getTime()) / 60000));
     }
-    setAllDay(false);
+    setAllDay(seed?.allDay === true);
     setOriginal(null);
     setOriginalNotesField('');
     setOriginalPeople([]);
@@ -784,6 +792,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       at: Date.now(),
     }));
     setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
+    useEventCreatedToastStore.getState().announce(saved.id, effectiveStart);
     onSaved?.(saved.id);
     dismiss();
   };
@@ -1418,7 +1427,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     justifyContent: 'center',
   },
   addBtnDisabled: { backgroundColor: colors.bgTertiary },
-  tooltipRow: { marginTop: -4, marginBottom: spacing.sm },
+  // Zero height with the bubble overflowing it: a popover over the fields, not a
+  // row that pushes them down and clips the card's last row off its capped height.
+  tooltipRow: { height: 0, marginTop: -4, zIndex: 2, overflow: 'visible' },
   tooltipAnchor: { alignSelf: 'flex-start' },
   tooltipCaret: {
     width: 0,

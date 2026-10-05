@@ -1,8 +1,11 @@
 import React, { useMemo } from 'react';
 import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme/ThemeContext';
+import { TAB_BAR_HEIGHT } from './DemoBanner';
+import { FAB_SIZE } from './Fab';
+import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { haptics } from '../utils/haptics';
 import { formatStopwatch } from '../utils/effort';
@@ -18,10 +21,21 @@ import {
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { isCookTimerRunning } from '../utils/recipeTimer';
+import { resetToFocusSession } from '../navigation/navigationRef';
 
 interface Props {
   /** Reopens the session sheet. */
   onOpen: () => void;
+  /**
+   * Floats above the tab bar instead of sitting in the page's flow, for every
+   * screen that isn't Today (see `FocusFloatingBar`). `lifted` raises it one
+   * bar's height so it clears `CookingBar` when both are showing.
+   */
+  floating?: boolean;
+  lifted?: boolean;
 }
 
 /**
@@ -39,8 +53,29 @@ interface Props {
  * rang, and reopening a full-screen countdown to stop the clock is two taps
  * where one will do.
  */
-export function FocusBar({ onOpen }: Props) {
-  const colors = useColors();
+/**
+ * The same strip, on every screen but Today, so a session that's been
+ * minimized still says it's running wherever you are. Today keeps its inline
+ * strip; tapping this one lands on Today with the sheet open
+ * (`resetToFocusSession`), since that's where the sheet is mounted.
+ */
+export function FocusFloatingBar({ hidden }: { hidden: boolean }) {
+  const cooking = useRecipeStore(s => s.recipes.some(isCookTimerRunning));
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const session = useFocusStore(s => s.session);
+  if (hidden || !session) return null;
+  return (
+    <View style={floatingWrap} pointerEvents="box-none">
+      <FocusBar floating lifted={cooking && kitchenEnabled} onOpen={resetToFocusSession} />
+    </View>
+  );
+}
+
+const floatingWrap = { position: 'absolute' as const, left: spacing.md, right: spacing.md, top: 0, bottom: 0 };
+
+export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
+  const { colors, shadows } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { session, now } = useFocusSession();
@@ -84,8 +119,13 @@ export function FocusBar({ onOpen }: Props) {
       ? `+${formatStopwatch(-remaining)}`
       : formatStopwatch(remaining);
 
+  const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg
+    + (lifted ? FLOATING_BAR_STEP : 0);
+
   return (
-    <View style={styles.container}>
+    <View
+      style={floating ? [styles.container, styles.floating, shadows.fab, { bottom }] : styles.container}
+    >
       <TouchableOpacity
         style={styles.summary}
         onPress={() => {
@@ -129,6 +169,9 @@ export function FocusBar({ onOpen }: Props) {
   );
 }
 
+/** Roughly one bar's height plus a gap, the room `lifted` leaves for CookingBar. */
+const FLOATING_BAR_STEP = 56;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
@@ -143,6 +186,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,
     borderRadius: radius.lg,
+  },
+  floating: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    borderWidth: border.md,
+    borderColor: colors.separator,
+    backgroundColor: colors.bgSecondary,
   },
   summary: {
     flex: 1,

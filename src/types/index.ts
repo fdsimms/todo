@@ -2488,11 +2488,10 @@ export interface Task {
    * quota, counting anonymously exactly as it always has.
    *
    * **A rotation is a quota whose units have names**, and that framing is the
-   * whole implementation. Everything about when the row appears is the weekly
-   * quota's, unchanged: the pace ramp surfaces it when you fall behind and
-   * hides it while you are keeping up, so a five-member rotation over a week
-   * shows up on about five of the seven days, one at a time, and leaves the
-   * moment you log. What is new is only that logging asks *which*, and that
+   * whole implementation. When the row appears is the weekly quota's, except
+   * that a rotation never hides for being on pace (`quotaHidesWhenOnPace`): it
+   * stays on Today until every member is done, and a day you don't want it is a
+   * manual reschedule. What is new is only that logging asks *which*, and that
    * the row can say which are left.
    *
    * So `targetCount` is **derived** from `rotationItems.length` (see

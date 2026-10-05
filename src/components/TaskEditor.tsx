@@ -3718,7 +3718,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }
                   hint={
                     'A set of things to get through once each per week, in any order. '
-                    + 'Checking the task off asks which one you did, and it only shows up on Today when you fall behind.'
+                    + 'Checking the task off asks which one you did, and it stays on Today until every one is done. Reschedule it on a day you don\'t want to do one.'
                   }
                   expanded={fieldOpen('rotationSet', true)}
                   onToggle={() => toggleField('rotationSet', true)}
