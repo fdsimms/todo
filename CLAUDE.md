@@ -909,7 +909,7 @@ sized as an icon, a large hero number (a focus countdown, an estimate's total), 
 - `colors.backdrop` — every modal/sheet dim layer
 - `colors.blurFallback` — tint overlay behind `SafeBlurView` content
 - `colors.onAccent` — text/icons on filled accent/green/red surfaces (always white, both themes)
-- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onAccent`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
+- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onAccent`** (`orangeFill` only under a bold label or an icon: it is held to 3:1, since an orange that holds white at 4.5:1 is brown); the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
 - `colors.controlBorder` — the outline of an empty checkbox-shaped control or a field's only boundary (3:1), never `bgQuaternary`, which is a surface
 - `colors.timeMorning/timeAfternoon/timeEvening` — time-of-day segment colors
 - `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior

@@ -60,7 +60,9 @@ export type Colors = {
    *   plain value can't carry a glyph on a light surface. 4.5:1 on `bg`,
    *   `bgSecondary` and `bgTertiary`, and on its own translucent pill.
    * - `…Fill` is the hue as a **surface carrying `onAccent`** white text or
-   *   icons (a destructive button, a swipe panel, a badge). 4.5:1 under white.
+   *   icons (a destructive button, a swipe panel, a badge). 4.5:1 under white,
+   *   except `orangeFill` at 3:1: white on orange only reaches 4.5:1 once the
+   *   orange is brown, so an orange fill carries only bold labels and icons.
    *
    * No single value can do both jobs: in dark a red that reads as text on a
    * card is too light to hold white text, and in light an orange that reads as
@@ -123,7 +125,7 @@ export const darkColors: Colors = {
   greenFill: '#418365',
   orange: '#FF9F0A',
   orangeText: '#FF9F0A',
-  orangeFill: '#AA6700',
+  orangeFill: '#DF7B00',
   red: '#FF453A',
   redText: '#FF594F',
   redFill: '#ED0D00',
@@ -169,7 +171,7 @@ export const darkPurpleColors: Colors = {
   greenFill: '#418365',
   orange: '#FF9F0A',
   orangeText: '#FF9F0A',
-  orangeFill: '#AA6700',
+  orangeFill: '#DF7B00',
   red: '#FF453A',
   redText: '#FF594F',
   redFill: '#ED0D00',
@@ -213,7 +215,7 @@ export const lightColors: Colors = {
   greenFill: '#3C8362',
   orange: '#FF9500',
   orangeText: '#9D5B00',
-  orangeFill: '#AD6500',
+  orangeFill: '#DF7B00',
   red: '#FF3B30',
   redText: '#D10B00',
   redFill: '#ED0D00',

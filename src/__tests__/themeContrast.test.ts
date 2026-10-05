@@ -149,8 +149,12 @@ describe.each(PALETTES)('%s palette', (_name, colors) => {
       expect(contrast(text, tinted(colors[hue]))).toBeGreaterThanOrEqual(AA);
     });
 
+    // Orange is held to the large/bold-text bar rather than AA: an orange that
+    // carries white at 4.5:1 is brown, and one shifted towards red to get there
+    // reads as the destructive red beside it. So `orangeFill` only ever carries
+    // a bold label or an icon (a Snooze button, the Later swipe panel, a badge).
     it('carries onAccent on its fill', () => {
-      expect(contrast(colors.onAccent, fill)).toBeGreaterThanOrEqual(AA);
+      expect(contrast(colors.onAccent, fill)).toBeGreaterThanOrEqual(hue === 'orange' ? NON_TEXT : AA);
     });
   });
 
