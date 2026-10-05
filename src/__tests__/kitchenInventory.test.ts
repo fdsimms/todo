@@ -572,6 +572,13 @@ describe('the two other pantry states', () => {
 // ─── boxes: two packets of one item, in two places ──────────────────────────
 
 describe('a box of its own', () => {
+  // The ids are `p-<n>` and rows sort on them as strings, so a counter that
+  // crossed from 9 to 10 flipped "keyed apart" below. Restarting it per test
+  // makes the ids the same whichever test ran first.
+  beforeEach(() => {
+    productSeq = 0;
+  });
+
   function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): ItemProduct {
     return {
       id: `p-${++productSeq}`,

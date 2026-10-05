@@ -157,6 +157,8 @@ describe('focusHistory', () => {
     task({ id: 'report', title: 'Write the report' });
     session('s1', 1, [{ task: 'report', planned: 25, actualSeconds: 1500 }, { task: 'gone', planned: 10, actualSeconds: 900 }]);
     session('s2', 40, [{ task: 'report', planned: 25, actualSeconds: 1200 }]);
+    // The rows went in under the replica's cache: read them back before asking.
+    replica.refresh();
 
     const result = focusHistory(replica, { days: 7 });
     expect(result.sessions.map(s => s.id)).toEqual(['s1']);

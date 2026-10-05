@@ -23,6 +23,14 @@ beforeAll(() => {
   replica = openReplica(':memory:');
 });
 
+// The food log is read across every day by the logFood tests, so a glass of
+// water the logWater tests left on another day would read as an entry the
+// write under test had made.
+beforeEach(() => {
+  mockRaw.runSync('DELETE FROM food_logs');
+  replica.refresh();
+});
+
 describe('saveRecipe', () => {
   it('reads each ingredient line, keeps alternatives as separate lines, and refuses a name already in the book', () => {
     const saved = saveRecipe(replica, {
