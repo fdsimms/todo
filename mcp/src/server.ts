@@ -661,6 +661,16 @@ const itemSchema = z.object({
   location: z.string().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional().describe('Hold the task until the next day with this forecast. Only for a one-off item.'),
   pinEachOccurrence: z.boolean().optional(),
+  chain: z.object({
+    steps: z.array(z.object({
+      title: z.string().min(1),
+      estimatedMinutes: z.number().int().positive().nullable().optional(),
+      asks: z.enum(['text', 'date', 'number', 'yesno']).nullable().optional().describe('A question this step asks when ticked.'),
+      answerSchedulesNextStep: z.boolean().optional().describe('With asks "date": the answer dates the next step.'),
+    })).min(2),
+  }).nullable().optional().describe('Steps done one after another, each appearing when the one before is done. On a repeating item the whole chain starts over on the schedule. null removes it.'),
+  rotation: z.object({ members: z.array(z.string().min(1)).min(2) }).nullable().optional()
+    .describe('Named things each done once a week in any order. Not with a chain. null removes it.'),
   deliverableSetsAway: z.boolean().optional().describe('Update-only detail of a date question: its answer sets the away dates.'),
   vacationPause: z.boolean().optional(),
   excludeFromSuggestions: z.boolean().optional(),

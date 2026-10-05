@@ -502,8 +502,10 @@ A template's category is also registered in `template_categories`, which the edi
 **`templateItemCoverage.test.ts` is the `taskFieldCoverage` of template items**: every
 `TemplateItem` field is in the zod item schema or in a named not-exposed group with the reason.
 The item schema was about twenty fields behind when it was added. The groups are the same
-decisions as on a task: gates, penalties and a medication are withheld, and chain and rotation
-need the converters `taskFields.ts` has and are not wired to template items yet.
+decisions as on a task: gates, penalties and a medication are withheld. Chain and rotation are
+written as nested `chain` / `rotation` plan fields and turned into the item's step and member lists
+by the applier; on an edit, step ids are kept by position and member ids by title, because a
+recorded answer and a week's ledger are found through them.
 
 The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
 comparison is by value because the db reader and the writer build the object in different key

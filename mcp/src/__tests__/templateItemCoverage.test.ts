@@ -34,10 +34,10 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'completionTimerMinutes', 'completionTimerNote', 'logMealSlot',
   ],
 
-  // Structured values create_task takes through validated shapes in
-  // taskFields.ts (chain, rotation). A template item would need the same
-  // converters; not done yet.
-  'structured, not wired up yet': ['chainEnabled', 'chainItems', 'chainIndex', 'rotationEnabled', 'rotationItems'],
+  // Written as `chain` and `rotation` in a plan, which the applier turns into
+  // these (step and member ids are kept by position and title on an edit).
+  // The chain's position is runtime state: a template always starts at step one.
+  'written as a nested plan field': ['chainEnabled', 'chainItems', 'chainIndex', 'rotationEnabled', 'rotationItems'],
 };
 
 const ALL_NOT_EXPOSED = Object.values(NOT_EXPOSED).flat();

@@ -56,6 +56,7 @@ import type {
   ProjectKind,
   Recipe,
   TaskTemplate,
+  TemplateItem,
   Task,
   TaskDraft,
   TaskGroup,
@@ -1192,11 +1193,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     const offeredBy = new Map((plan.items ?? []).filter(i => (i.key ?? i.id) !== undefined).map(i => [(i.key ?? i.id)!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
     const items = (plan.items ?? []).map(item => {
-      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, id: keptId, ...fields } = item;
+      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, id: keptId, chain, rotation, ...fields } = item;
+      // Step and member ids are kept by position and by title on an edit: a
+      // recorded answer and a week's ledger are both found through them.
+      const stored = keptId !== undefined ? base?.items.find(i => i.id === keptId) : undefined;
+      const sequence: Partial<TemplateItem> = chain === undefined && rotation === undefined ? {} : {
+        chainEnabled: !!chain,
+        chainItems: chain ? chain.steps.map((s, i) => ({
+          id: stored?.chainItems[i]?.id ?? generateId(),
+          title: s.title.trim(),
+          estimatedMinutes: s.estimatedMinutes ?? null,
+          ...(s.asks ? { deliverableKind: s.asks } : {}),
+          ...(s.answerSchedulesNextStep ? { deliverableDatesNextStep: true } : {}),
+        })) : [],
+        chainIndex: 0,
+        rotationEnabled: !!rotation,
+        rotationItems: rotation ? rotation.members.map(m => {
+          const title = m.trim();
+          const kept = stored?.rotationItems.find(o => o.title.trim().toLowerCase() === title.toLowerCase());
+          return kept ? { ...kept, title } : { id: generateId(), title, linkUrl: null };
+        }) : [],
+      };
       const ref = refTemplate === undefined ? null : resolveRef(refTemplate, existing)[0];
       const offered = onlyIfAnswer ? offeredBy.get(onlyIfAnswer.item) ?? [] : [];
       return templateUtils.normalizeTemplateItem({
         ...fields,
+        ...sequence,
         ...((key ?? keptId) !== undefined ? { id: itemIds.get((key ?? keptId)!) } : {}),
         answerGate: onlyIfAnswer
           ? {

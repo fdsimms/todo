@@ -47,6 +47,7 @@ import type {
 } from '../../src/types';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
 import { wouldCreateCycle } from '../../src/utils/templateUtils';
+import { MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
 
 export const CONTAINERS: readonly TemplateContainer[] = ['none', 'stack', 'project', 'task'];
 export const QUESTION_KINDS: readonly TemplateQuestionKind[] = ['text', 'number', 'choice', 'people'];
@@ -94,7 +95,20 @@ export interface ConditionPlan {
  * `normalizeTemplateItem` fills the rest — restating its defaults here would be
  * a second copy to keep in step.
  */
-export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate'>> {
+export interface ChainStepPlan {
+  title: string;
+  estimatedMinutes?: number | null;
+  /** A question this step asks when ticked. A step cannot ask a pick-one question. */
+  asks?: 'text' | 'date' | 'number' | 'yesno' | null;
+  /** Only with asks: 'date': the answer dates the step after it. */
+  answerSchedulesNextStep?: boolean;
+}
+
+export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate' | 'chainEnabled' | 'chainItems' | 'chainIndex' | 'rotationEnabled' | 'rotationItems'>> {
+  /** Steps done one after another, each appearing when the one before is done. null removes it. */
+  chain?: { steps: ChainStepPlan[] } | null;
+  /** Named things each done once a week in any order: two or more, all different. null removes it. */
+  rotation?: { members: string[] } | null;
   /** Required, except on an update where `id` names the item that already has one. */
   title?: string;
   /**
@@ -387,6 +401,26 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   if (item.recurrenceMonth != null && (item.recurrenceMonth < 1 || item.recurrenceMonth > 12)) {
     errors.push(`item "${label}" recurrenceMonth must be 1 to 12.`);
   }
+  const chain = item.chain;
+  if (chain) {
+    if (chain.steps.length < 2) errors.push(`item "${label}" chain needs at least two steps. One step is just a task.`);
+    chain.steps.forEach((step, i) => {
+      if (!step.title?.trim()) errors.push(`item "${label}" chain step ${i + 1} needs a title.`);
+      if (step.asks != null && !['text', 'date', 'number', 'yesno'].includes(step.asks)) {
+        errors.push(`item "${label}" chain step ${i + 1} asks must be text, date, number or yesno.`);
+      }
+      if (step.answerSchedulesNextStep && step.asks !== 'date') errors.push(`item "${label}" chain step ${i + 1} answerSchedulesNextStep needs asks: "date".`);
+      positive(step.estimatedMinutes, `chain step ${i + 1} estimatedMinutes`);
+    });
+  }
+  const rotation = item.rotation;
+  if (rotation) {
+    const names = rotation.members.map(m => (typeof m === 'string' ? m.trim() : ''));
+    if (names.length < MIN_ROTATION_ITEMS) errors.push(`item "${label}" rotation needs at least ${MIN_ROTATION_ITEMS} members. One is just a task.`);
+    if (names.some(n => !n)) errors.push(`item "${label}" rotation members cannot be blank.`);
+    if (new Set(names.map(n => n.toLowerCase())).size !== names.length) errors.push(`item "${label}" rotation members must all be different.`);
+  }
+  if (chain && rotation) errors.push(`item "${label}" cannot be both a chain and a rotation.`);
   if (item.polarity !== undefined && !['positive', 'negative'].includes(item.polarity)) {
     errors.push(`item "${label}" polarity must be positive or negative.`);
   }
@@ -465,9 +499,14 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       ...(q.fromDates !== 'none' ? { fromDates: q.fromDates } : {}),
     })),
     items: template.items.map(item => {
-      const { groupId, conditions, refTemplateId, refTemplateName, answerGate, ...fields } = item;
+      const { groupId, conditions, refTemplateId, refTemplateName, answerGate, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
+      void chainIndex;
       return {
         ...fields,
+        ...(chainEnabled && chainItems.length > 1
+          ? { chain: { steps: chainItems.map(c => ({ title: c.title, estimatedMinutes: c.estimatedMinutes, ...(c.deliverableKind ? { asks: c.deliverableKind as ChainStepPlan['asks'] } : {}), ...(c.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}) })) } }
+          : {}),
+        ...(rotationEnabled && rotationItems.length >= 2 ? { rotation: { members: rotationItems.map(r => r.title) } } : {}),
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),
         ...(groupId ? { groupKey: groupId } : {}),
         ...(conditions.length

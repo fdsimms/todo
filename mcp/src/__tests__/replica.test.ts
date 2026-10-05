@@ -570,6 +570,42 @@ describe('the replica', () => {
       expect(() => replica.updateTemplate(a.id, { items: [{ title: 'Nest B', refTemplate: b.id }] })).toThrow(/contain itself/);
     });
 
+    it('writes a chain and a rotation on an item, and keeps their ids across an edit', () => {
+      const t = replica.createTemplate({
+        name: 'Routine',
+        items: [
+          { title: 'Book haircut', chain: { steps: [{ title: 'Book', asks: 'date', answerSchedulesNextStep: true, estimatedMinutes: 5 }, { title: 'Get haircut' }] } },
+          { title: 'Weekly reads', rotation: { members: ['Poetry', 'History'] } },
+        ],
+      });
+      const chain = t.items[0];
+      expect(chain).toMatchObject({ chainEnabled: true, chainIndex: 0 });
+      expect(chain.chainItems.map(c => c.title)).toEqual(['Book', 'Get haircut']);
+      expect(chain.chainItems[0]).toMatchObject({ deliverableKind: 'date', deliverableDatesNextStep: true, estimatedMinutes: 5 });
+      expect(t.items[1].rotationItems.map(r => r.title)).toEqual(['Poetry', 'History']);
+
+      // Renaming one step and adding a member keeps the ids that were there.
+      const updated = replica.updateTemplate(t.id, {
+        items: [
+          { id: chain.id, chain: { steps: [{ title: 'Book it', asks: 'date', answerSchedulesNextStep: true }, { title: 'Get haircut' }] } },
+          { id: t.items[1].id, rotation: { members: ['Poetry', 'History', 'Essays'] } },
+        ],
+      });
+      expect(updated.items[0].chainItems[0].id).toBe(chain.chainItems[0].id);
+      expect(updated.items[1].rotationItems.slice(0, 2).map(r => r.id)).toEqual(t.items[1].rotationItems.map(r => r.id));
+
+      // An item sent as { id } alone keeps both, and null removes one.
+      const kept = replica.updateTemplate(t.id, { items: [{ id: chain.id }, { id: t.items[1].id, rotation: null }] });
+      expect(kept.items[0].chainEnabled).toBe(true);
+      expect(kept.items[1]).toMatchObject({ rotationEnabled: false, rotationItems: [] });
+    });
+
+    it('refuses a one-step chain, a repeated rotation member, and both at once', () => {
+      expect(() => replica.createTemplate({ name: 'A', items: [{ title: 'x', chain: { steps: [{ title: 'only' }] } }] })).toThrow(/at least two steps/);
+      expect(() => replica.createTemplate({ name: 'B', items: [{ title: 'x', rotation: { members: ['a', 'A'] } }] })).toThrow(/all be different/);
+      expect(() => replica.createTemplate({ name: 'C', items: [{ title: 'x', chain: { steps: [{ title: 'a' }, { title: 'b', answerSchedulesNextStep: true }] }, rotation: { members: ['a', 'b'] } }] })).toThrow(/needs asks: "date"|both a chain and a rotation/);
+    });
+
     it('registers a template category the editor can list', () => {
       const built = trip();
       replica.updateTemplate(built.id, { category: 'Travel' });
