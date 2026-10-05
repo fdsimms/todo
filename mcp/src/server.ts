@@ -680,7 +680,7 @@ const itemSchema = z.object({
   category: z.string().nullable().optional(),
   priority: z.number().int().min(0).max(4).optional(),
   effort: z.number().int().min(0).max(6).optional(),
-  difficulty: z.enum(['easy', 'normal', 'hard']).optional(),
+  difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   recurrenceType: z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly', 'hours']).optional(),
   recurrenceInterval: z.number().int().positive().optional(),
@@ -790,8 +790,8 @@ const taskFieldsShape = {
     .describe('The part of the day it shows up in. Usually one.'),
   priority: z.number().int().min(0).max(4).optional().describe('0 none, 1 low, 2 medium, 3 high, 4 urgent.'),
   effort: z.number().int().min(0).max(6).optional(),
-  difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional()
-    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
+  difficulty: z.enum(['trivial', 'easy', 'normal', 'hard']).nullable().optional()
+    .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves, trivial earns none.'),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),

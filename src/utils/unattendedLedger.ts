@@ -65,10 +65,20 @@ export const UNATTENDED_ACTION_SPECS: Record<UnattendedAction, UnattendedActionS
 /** The name an agent's rows go under. The MCP server is reached from the Claude apps. */
 export const AGENT_SOURCE = 'Claude';
 
+/**
+ * `kind` is read straight off a synced column, so a row written by a build that
+ * knows a generator this one doesn't carries a string with no spec. Every reader
+ * of `GENERATED_KIND_SPECS` goes through this rather than trusting the type, or
+ * one such row crashes the whole Activity screen on open.
+ */
+function isKnownKind(kind: string): kind is GeneratedKind {
+  return Object.prototype.hasOwnProperty.call(GENERATED_KIND_SPECS, kind);
+}
+
 /** The glyph for a row: the generator's own where there is one, else the action's. */
 export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'> & Partial<Pick<UnattendedEntry, 'actor'>>): string {
   if (entry.actor === 'agent') return UNATTENDED_ACTION_SPECS[entry.action].icon;
-  if (entry.kind !== null) return GENERATED_KIND_SPECS[entry.kind].icon;
+  if (entry.kind !== null && isKnownKind(entry.kind)) return GENERATED_KIND_SPECS[entry.kind].icon;
   return UNATTENDED_ACTION_SPECS[entry.action].icon;
 }
 
@@ -83,7 +93,7 @@ export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'> &
  */
 export function unattendedSource(entry: Pick<UnattendedEntry, 'action' | 'kind'> & Partial<Pick<UnattendedEntry, 'actor'>>): string {
   if (entry.actor === 'agent') return AGENT_SOURCE;
-  if (entry.kind !== null) return GENERATED_KIND_SPECS[entry.kind].label;
+  if (entry.kind !== null) return isKnownKind(entry.kind) ? GENERATED_KIND_SPECS[entry.kind].label : 'Automatic task';
   return entry.action === 'purged' ? 'Completed task cleanup' : 'Expired task sweep';
 }
 
@@ -181,7 +191,7 @@ export function unattendedSummary(entries: readonly UnattendedEntry[]): string {
 export function unattendedKinds(entries: readonly UnattendedEntry[]): GeneratedKind[] {
   const seen = new Set<GeneratedKind>();
   for (const entry of entries) {
-    if (entry.kind !== null) seen.add(entry.kind);
+    if (entry.kind !== null && isKnownKind(entry.kind)) seen.add(entry.kind);
   }
   return [...seen];
 }
