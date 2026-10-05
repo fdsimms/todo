@@ -68,10 +68,12 @@ private struct FocusActionButton: View {
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
             }
-            .foregroundColor(.white)
+            // Ink on both fills: it reads on the gold and on the orange alike,
+            // where white on orange did not.
+            .foregroundColor(palette.onBrand)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Capsule().fill(isStale && !attributes.paused ? palette.orange : palette.accent))
+            .background(Capsule().fill(isStale && !attributes.paused ? palette.orange : palette.brand))
         }
     }
 }
@@ -124,7 +126,7 @@ private struct FocusLockScreenView: View {
         // WidgetPalette.forScheme's own note.
         let palette = WidgetPalette.dark
         let overrun = context.isStale && !context.attributes.paused
-        let tint = overrun ? palette.orange : palette.accent
+        let tint = overrun ? palette.orange : palette.brand
 
         HStack(spacing: 12) {
             Image(systemName: context.attributes.symbolName)
@@ -180,7 +182,7 @@ struct FocusLiveActivity: Widget {
             // activities.
             let palette = WidgetPalette.dark
             let overrun = context.isStale && !context.attributes.paused
-            let tint = overrun ? palette.orange : palette.accent
+            let tint = overrun ? palette.orange : palette.brand
 
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
