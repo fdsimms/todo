@@ -1200,7 +1200,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     const offeredBy = new Map((plan.items ?? []).filter(i => (i.key ?? i.id) !== undefined).map(i => [(i.key ?? i.id)!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
     const items = (plan.items ?? []).map(item => {
-      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, id: keptId, chain, rotation, ...fields } = item;
+      const { groupKey, conditions, variants, refTemplate, key, onlyIfAnswer, id: keptId, chain, rotation, ...fields } = item;
       // Step and member ids are kept by position and by title on an edit: a
       // recorded answer and a week's ledger are both found through them.
       const stored = keptId !== undefined ? base?.items.find(i => i.id === keptId) : undefined;
@@ -1237,6 +1237,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         conditions: (conditions ?? []).map(c => ({
           questionId: questionIds.get(c.question) ?? '',
           values: c.values,
+        })),
+        variants: (variants ?? []).map(v => ({
+          questionId: questionIds.get(v.question) ?? '',
+          answer: v.answer,
+          ...(v.title ? { title: v.title } : {}),
+          ...(v.notes ? { notes: v.notes } : {}),
         })),
         refTemplateId: ref?.id ?? null,
         // Carried so a broken reference can still say what it pointed at,
@@ -2193,6 +2199,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const created = runTemplateIn(template, byId, selected, anchors, {
         runName: run.runName,
         placeholders: templateQuestions.placeholderValuesFor(questions, answers),
+        answers,
         targetProjectId: run.projectId,
       }, c => { container = c; });
       return { tasks: created, container };

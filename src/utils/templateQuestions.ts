@@ -21,7 +21,7 @@
  */
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
-import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateQuestion } from '../types';
+import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateQuestion } from '../types';
 import type { ApplyTreeNode, TemplateAnchors } from './templateUtils';
 
 /**
@@ -162,6 +162,65 @@ export function liveConditions(
   return conditions.filter(
     c => c.values.length > 0 && questions.some(q => q.id === c.questionId)
   );
+}
+
+/**
+ * The item as this run's answers read it: the first variant whose question was
+ * answered with its answer replaces the title and/or notes, and everything else
+ * about the item is left as it is (see `TemplateItemVariant` for why only text).
+ *
+ * Takes answers keyed by question id and nothing else. A variant naming a
+ * deleted question simply never matches, which is the resolve-or-shrug rule
+ * without needing the question list. Returns the same object when nothing
+ * matches, so a template with no variants costs nothing.
+ */
+export function applyItemVariant(item: TemplateItem, answers: Record<string, string>): TemplateItem {
+  const match = item.variants.find(v => (answers[v.questionId] ?? '') === v.answer);
+  if (!match) return item;
+  return {
+    ...item,
+    title: match.title?.trim() ? match.title : item.title,
+    notes: match.notes?.trim() ? match.notes : item.notes,
+  };
+}
+
+/** The override text a variant holds for one answer, or '' when there is none. */
+export function variantText(
+  variants: readonly TemplateItemVariant[],
+  questionId: string,
+  answer: string,
+  field: 'title' | 'notes',
+): string {
+  return variants.find(v => v.questionId === questionId && v.answer === answer)?.[field] ?? '';
+}
+
+/**
+ * The variants with one answer's title or notes set to `text`. A variant left
+ * with neither is removed rather than kept empty, so clearing both fields is
+ * how an answer goes back to the item's own text.
+ */
+export function setVariantText(
+  variants: readonly TemplateItemVariant[],
+  questionId: string,
+  answer: string,
+  field: 'title' | 'notes',
+  text: string,
+): TemplateItemVariant[] {
+  const existing = variants.find(v => v.questionId === questionId && v.answer === answer);
+  const next: TemplateItemVariant = { ...(existing ?? { questionId, answer }), [field]: text };
+  const empty = !next.title?.trim() && !next.notes?.trim();
+  const rest = variants.filter(v => v !== existing);
+  if (empty) return rest;
+  return existing ? variants.map(v => (v === existing ? next : v)) : [...rest, next];
+}
+
+/** The item editor's one-line summary of which answers have their own text ("Work, Beach"), or null when none do. */
+export function describeVariants(
+  variants: readonly TemplateItemVariant[],
+  questions: readonly TemplateQuestion[],
+): string | null {
+  const live = variants.filter(v => (v.title?.trim() || v.notes?.trim()) && questions.some(q => q.id === v.questionId));
+  return live.length > 0 ? live.map(v => v.answer).join(', ') : null;
 }
 
 /** True if the run's answers include this item — every live condition matched, with any one of its values enough. */

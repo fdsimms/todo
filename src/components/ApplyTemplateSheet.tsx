@@ -47,6 +47,7 @@ import {
   initialLeafSelection,
   reselectForAnswers,
   questionLabel,
+  applyItemVariant,
   personIdsFromAnswer,
   personIdsToAnswer,
   personIdsForAnswers,
@@ -341,6 +342,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
     const created = applyTemplate(template.id, flatSelection, anchors, {
       runName,
       placeholders: { ...placeholderValues, ...answerValues },
+      answers,
       targetProjectId: projectId,
       personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
     });
@@ -426,7 +428,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
     const sublabel = itemSublabel(node.item, anchors, template?.anchorsAreAway ?? false);
     // Shown substituted so the checklist is a live preview of the titles that
     // will actually be created, blanks and all.
-    const title = substitutePlaceholders(node.item.title, values);
+    const title = substitutePlaceholders(applyItemVariant(node.item, answers).title, values);
     return (
       <TouchableOpacity
         style={[styles.itemRow, indent]}

@@ -666,6 +666,21 @@ describe('the replica', () => {
         expect(replica.tasks().find(x => x.id === result.tasks[0].id)!.groupId).toBe(section.id);
       });
 
+      it('uses an item\'s variant for the answer, and keeps it through an edit', () => {
+        const t = replica.createTemplate({
+          name: 'Shirts',
+          questions: [{ name: 'laundry', prompt: 'Laundry?', kind: 'choice', options: ['Yes', 'No'] }, { name: 'days', prompt: 'Days?', kind: 'number' }],
+          items: [{ title: 'Pack {days + 1 max 7} shirts', category: 'Home', variants: [{ question: 'laundry', answer: 'Yes', title: 'Pack {days / 2} shirts' }] }],
+        });
+        expect(replica.applyTemplate(t.id, { answers: { laundry: 'Yes', days: '8' } }).tasks[0].title).toBe('Pack 4 shirts');
+        expect(replica.applyTemplate(t.id, { answers: { laundry: 'No', days: '20' } }).tasks[0].title).toBe('Pack 7 shirts');
+
+        // An edit that names only the id leaves the variant alone.
+        const kept = replica.updateTemplate(t.id, { items: [{ id: t.items[0].id }] });
+        expect(kept.items[0].variants).toHaveLength(1);
+        expect(kept.items[0].variants[0].questionId).toBe(kept.questions.find(q => q.name === 'laundry')!.id);
+      });
+
       it('follows the answers, and include / leaveOut', () => {
         const t = trip();
         const sunscreen = t.items.find(i => i.title === 'Sunscreen')!;

@@ -79,6 +79,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   refTemplateId: null,
   refTemplateName: '',
   conditions: [],
+  variants: [],
   ...overrides,
 });
 
@@ -894,6 +895,15 @@ describe('placeholder choice switch', () => {
     const item = makeItem({ title });
     expect(extractPlaceholders([item])).toEqual(['laundry access', 'days']);
     expect(withoutPlaceholder(title, 'days')).toBe('Pack shirts');
+  });
+
+  it('asks for a blank used only in a variant, and for {run} there', () => {
+    const item = makeItem({
+      title: 'Pack shirts',
+      variants: [{ questionId: 'q', answer: 'Yes', title: 'Pack {count} shirts for {run}' }],
+    });
+    expect(extractPlaceholders([item])).toEqual(['count']);
+    expect(declaresRunPlaceholder([item])).toBe(true);
   });
 
   it('leaves a malformed switch as literal text', () => {

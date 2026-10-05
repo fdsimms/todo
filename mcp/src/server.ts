@@ -632,6 +632,13 @@ const conditionSchema = z.object({
   values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on.'),
 });
 
+const variantSchema = z.object({
+  question: z.string().describe('The name of a choice question defined in this plan.'),
+  answer: z.string().describe('One of that question\'s options.'),
+  title: z.string().optional().describe('Replaces the item\'s title for this answer. Omit to keep it.'),
+  notes: z.string().optional().describe('Replaces the item\'s notes for this answer. Omit to keep them.'),
+});
+
 const itemSchema = z.object({
   id: z.string().optional().describe('Update only: the id of an item this template already has (get_template). It starts from the stored item and the other fields here change it.'),
   title: z.string().min(1).optional().describe('Required, except when id names an item that already has one.'),
@@ -679,6 +686,7 @@ const itemSchema = z.object({
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional(),
+  variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
@@ -696,7 +704,7 @@ const itemSchema = z.object({
  * understand, written once for both template tools. The rules are
  * templateUtils.ts's (tested); this is only the words a client reads.
  */
-const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token.';
+const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token. An item can also carry variants: its own title and/or notes for particular answers of a choice question.';
 
 const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
   .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
