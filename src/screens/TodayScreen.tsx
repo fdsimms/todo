@@ -841,7 +841,12 @@ export function TodayScreen() {
   // all". See useAnswerFirstCompletion. Selection is left alone until
   // something actually happens, so cancelling the confirm doesn't cost the
   // user the selection they just built.
-  const { requestComplete, enqueue, queueProps } = useAnswerFirstCompletion();
+  const handleOpenTaskFromDeliverable = useCallback((task: Task) => {
+    setEditingTask(task);
+    setEditorInitialDraft(null);
+    setEditorVisible(true);
+  }, []);
+  const { requestComplete, enqueue, queueProps } = useAnswerFirstCompletion(handleOpenTaskFromDeliverable);
   const handleBulkComplete = () => {
     const ids = Array.from(selectedIds);
     requestComplete({

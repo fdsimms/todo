@@ -13,8 +13,10 @@ import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { supplyReorderPackSeed } from '../utils/supply';
-import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow, formatTaskDate } from '../utils/dateUtils';
 import { isDayBefore } from '../utils/calendarGrid';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -69,6 +71,8 @@ interface Props {
   onConfirm: (value: string | null, reasoning?: DeliverableReasoning) => void;
   /** Backs out entirely — in 'complete' mode the task is left incomplete. */
   onCancel: () => void;
+  /** Opens the task editor or detail view. Optional. */
+  onOpenTask?: (task: Task) => void;
 }
 
 /**
@@ -87,10 +91,12 @@ interface Props {
  * non-interactive completion paths (bulk, cascade, widget, sweep) can't ask at
  * all — so an unanswered completion has to be an ordinary, unremarkable one.
  */
-export function DeliverablePromptSheet({ visible, task, mode = 'complete', onConfirm, onCancel }: Props) {
+export function DeliverablePromptSheet({ visible, task, mode = 'complete', onConfirm, onCancel, onOpenTask }: Props) {
   const colors = useColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const category = useCategoryStore(s => task.category ? s.categories.find(c => c.name === task.category) : null);
+  const project = useProjectStore(s => task.projectId ? s.projects.find(p => p.id === task.projectId) : null);
 
   // The active chain step's question when there is one, so a two-step chain
   // asks only at the step that carries it — see deliverableKindFor.
@@ -225,6 +231,26 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             accessibilityLabel={mode === 'edit' ? 'Save answer' : 'Complete with this answer'}
           />
         </View>
+
+        {onOpenTask && (
+          <TouchableOpacity
+            style={styles.taskInfoRow}
+            onPress={() => onOpenTask(task)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Open task details"
+          >
+            {category && (
+              <Text style={styles.taskInfoLabel}>{category.name}</Text>
+            )}
+            {task.dueDate && (
+              <Text style={styles.taskInfoLabel}>{formatTaskDate(task, dayResetTime)}</Text>
+            )}
+            {project && (
+              <Text style={styles.taskInfoLabel}>{project.title}</Text>
+            )}
+          </TouchableOpacity>
+        )}
 
         {/* Scrolls once Why is open: the card is capped above the keyboard
             (see CardSheet), and three fields can outgrow that. */}
@@ -400,6 +426,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   headerRight: { textAlign: 'right' },
+  taskInfoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    alignItems: 'center',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+  },
+  taskInfoLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
   label: {
     color: colors.textSecondary,
     fontSize: font.xs,

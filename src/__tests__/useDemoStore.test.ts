@@ -2098,6 +2098,10 @@ describe('demo seed — people', () => {
     // A quick task rated hard, which the time estimate alone would pay a coin.
     const dreaded = useTaskStore.getState().tasks.find(t => t.title === 'Call the dentist about the crown');
     expect(dreaded?.difficulty).toBe('hard');
+
+    // And one rated trivial, which earns nothing.
+    const chore = useTaskStore.getState().tasks.find(t => t.title === 'Water the desk plant');
+    expect(chore?.difficulty).toBe('trivial');
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {
