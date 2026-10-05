@@ -76,6 +76,7 @@ describe('the shipped defaults', () => {
   it('are a classic pomodoro: 25 on, 5 off, 15 every fourth break', () => {
     expect(FOCUS_DEFAULTS.workCapMinutes).toBe(25);
     expect(FOCUS_DEFAULTS.restAfterMinutes).toBe(25);
+    expect(FOCUS_DEFAULTS.defaultWorkMinutes).toBe(5);
     expect(FOCUS_DEFAULTS.restMinutes).toBe(5);
     expect(FOCUS_DEFAULTS.longRestEvery).toBe(4);
     expect(FOCUS_DEFAULTS.longRestMinutes).toBe(15);
