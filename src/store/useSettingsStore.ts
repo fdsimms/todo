@@ -111,6 +111,9 @@ import {
 import {
   clampTravelLeadMinutes,
   parseTravelLeadByCalendar,
+  parseTravelEventPrefs,
+  type TravelEventPref,
+  type TravelEventPrefs,
   TRAVEL_LEAD_MINUTES_DEFAULT,
   TRAVEL_MODES,
   type TravelLeadByCalendar,
@@ -1457,6 +1460,9 @@ interface SettingsStore {
   // Work get 45 minutes". Holds only the calendars someone set; the rest use
   // travelLeadMinutes. See TravelLeadByCalendar.
   travelLeadByCalendar: TravelLeadByCalendar;
+  // Per-event mode and arrival overrides set in the event sheet, by calendar
+  // event id. See TravelEventPref.
+  travelEventPrefs: TravelEventPrefs;
   // Whether a "Leave for X" reminder uses Apple Maps' estimate of the trip from
   // where the phone is, instead of travelLeadMinutes (which stays the fallback
   // for any event without one). Off by default: it sends the event's address
@@ -1931,6 +1937,7 @@ interface SettingsStore {
   setTravelMode: (mode: TravelMode) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
+  setTravelEventPref: (eventId: string, pref: TravelEventPref | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
   setTransitAlerts: (on: boolean) => void;
   setTransitLines: (lines: string[]) => void;
@@ -2600,6 +2607,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelTaskCategory: null,
   travelLeadMinutes: TRAVEL_LEAD_MINUTES_DEFAULT,
   travelLeadByCalendar: {},
+  travelEventPrefs: {},
   travelEstimates: false,
   travelMode: 'driving',
   travelOriginPlaceId: null,
@@ -3039,6 +3047,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       Number.isFinite(storedTravelLead) ? storedTravelLead : undefined,
     );
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
+    const travelEventPrefs = parseTravelEventPrefs(dbGetSetting('travelEventPrefs'));
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
@@ -3392,6 +3401,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       transitAlerts,
       transitLines,
       travelEstimates,
+      travelEventPrefs,
       travelLeadByCalendar,
       travelLeadMinutes,
       travelMode,
@@ -4014,6 +4024,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     else next[calendarId] = clampTravelLeadMinutes(minutes);
     dbSetSetting('travelLeadByCalendar', JSON.stringify(next));
     set({ travelLeadByCalendar: next });
+  },
+
+  // Null (or a pref that overrides nothing) removes the entry, so an event set
+  // back to the defaults follows them again.
+  setTravelEventPref(eventId: string, pref: TravelEventPref | null) {
+    const next = parseTravelEventPrefs({ ...get().travelEventPrefs, [eventId]: pref });
+    dbSetSetting('travelEventPrefs', JSON.stringify(next));
+    set({ travelEventPrefs: next });
   },
 
   // State rather than a preference, like setEventTaskHandled.

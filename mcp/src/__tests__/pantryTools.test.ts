@@ -271,6 +271,8 @@ describe('pantry undo and log_leftover', () => {
     groceryItem: (id: string) => r.groceryItems().find(i => i.id === id) ?? null,
     itemBoxes: (id: string) => r.itemProducts().filter(p => p.itemId === id),
     leftover: (id: string) => r.leftovers().find(l => l.id === id) ?? null,
+    aisleOverride: () => null,
+    itemKeyTaken: () => false,
     exists: () => false,
     ruleList: () => [],
     hasNote: () => false,

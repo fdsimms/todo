@@ -1133,8 +1133,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       if (i.id !== ingredientId) return i;
       const next = { ...i, ...patch };
       // The key is derived, never passed in — a patch that changes the name has
-      // to move the key with it or the bridge to the catalog goes stale.
-      return { ...next, nameKey: groceryNameKey(next.name) };
+      // to move the key with it or the bridge to the catalog goes stale. A patch
+      // that leaves the label alone keeps the key it had, which may be one a
+      // catalog rename repointed it to (`RecipeIngredient.catalogKey`);
+      // recomputing it from the label would undo that on any edit.
+      if (next.name === i.name) return { ...next, nameKey: i.nameKey, catalogKey: i.catalogKey };
+      const { catalogKey: _retired, ...rest } = next;
+      return { ...rest, nameKey: groceryNameKey(next.name) };
     });
 
     // A choice group's header defaults to "X or Y", joined from its members'

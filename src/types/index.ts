@@ -999,6 +999,8 @@ export type UnattendedSubject =
   | 'automation' | 'note' | 'stack' | 'reward'
   // A change to what is in the kitchen (`pantryWrite.ts`), undoable by snapshot (`agentPantryRevert.ts`).
   | 'pantry'
+  // A change to the grocery catalog, a store or a separate list (`groceryItemWrite.ts`): an item's own fields and a deleted item are undoable (`agentCatalogRevert.ts`), the rest is a record.
+  | 'catalog'
   // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
   | 'event';
 
@@ -6160,6 +6162,12 @@ export interface RecipeIngredient {
   // useGroceryStore.renameItem → useRecipeStore.remapIngredientKey, exactly as
   // renameRememberedAisle keeps the aisle memory in step.
   nameKey: string;
+  // The key a catalog rename or merge repointed this line to, while the label
+  // still says what it said. A read recomputes `nameKey` from `name`, which
+  // would undo the repoint on the next load, so it honors this instead, and only
+  // while `nameKey` still equals it: an edit that changes the name recomputes
+  // `nameKey` and so retires it. Absent on nearly every line.
+  catalogKey?: string;
   // Free text, '' when the recipe didn't say. Nothing does arithmetic on it.
   quantity: string;
   // null means "no opinion", so the lexicon and the user's own filings decide

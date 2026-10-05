@@ -276,7 +276,7 @@ the store's own `uncompleteTask`. Everything else an agent writes is recorded wi
 can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
 is still how the agent left it.
 
-- **Undoable:** a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
+- **Undoable:** a catalog item's own fields, and a deleted catalog item (see the catalog section), a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
 - **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
@@ -897,6 +897,43 @@ has the rules; two decisions are specific to the server.
   A leftover the agent logged is removable while it is open, like a log entry; a new catalog row
   from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
   list does.
+
+### The catalog: edits, delete with a snapshot, separate lists and receipts
+
+`grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`,
+`save_grocery_box`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
+`delete_grocery_list`, `finish_grocery_trip` and `import_receipt` (`mcp/src/groceryTools.ts`), with a `list`
+argument on the list tools. The row rules are `src/utils/groceryItemWrite.ts` (price, boxes, rename, store and
+substitute links, list names, aliases, finishing a trip), shared with `useGroceryStore` the way `pantryWrite.ts`
+is. Decisions specific to the server:
+
+- **A delete is undoable because the ledger carries what the app does not.** `dbDeleteGroceryItem` cascades to
+  the item's list entries, store links, substitutes (both directions), boxes and receipt names, and the app
+  keeps no snapshot, which is the whole reason it has no undo. The entry stores a `DeletedItemSnapshot`
+  (`deletedItemSnapshot`) plus the remembered aisle for the name, and `useGroceryStore.restoreDeletedItem` puts
+  all of it back, offered only while neither the id nor the name is back in the catalog
+  (`agentCatalogRevert.ts`). It does not touch what the app itself leaves dangling (a supply task, a food-log
+  row naming the item); a "Use up" task for it is dropped by the phone's catch-up pass.
+- **An edit is undoable only when it touched the item's own fields** (`CATALOG_REVERT_FIELDS`) and the
+  remembered aisle for its name, written back by `restoreCatalogItem`. A rename moves keys in other tables, and
+  store links, substitutes and boxes are other rows, so those are recorded in Activity and not undoable.
+- **An aisle must be one that exists.** Aisles are the person's walk order, so an agent naming a new one would
+  create a section nobody made; `grocery_setup` lists them and an unknown name is refused with the list.
+- **A receipt is read by Claude.** The server cannot see an image and the phone's reader (on-device OCR, or the
+  person's own API key) is not available here, so `match_receipt` takes the lines Claude extracted and runs
+  `matchReceiptLines` (remembered store names, then exact, likely, weak), and `import_receipt` does what the scan
+  flow writes: for shopping each line is joined to the list if needed, checked off and the trip finished
+  (`planFinishShopping` then `dbFinishGroceryShopping`); for the pantry it is `acquiredRow` + "Got it" and a
+  price, with no purchase recorded. The printed text is remembered as that store's name only for a line that
+  named an existing item, as the app does for a row the person confirmed. Finishing records everything checked
+  off on the list, including items checked off before the receipt, exactly as the finish sheet does.
+- **A separate list records almost nothing when finished.** No purchase count, price, store link or use-by day
+  (`docs/arch/groceries.md`, "An away trip records nothing"); `planFinishShopping` zeroes them and the result says so.
+- **Not written here:** the use-up task and the supply restock a finished trip also triggers in the app (both go
+  through the task store; the phone catches up), merging two items, deleting a store, and aisle-level edits
+  (renaming or deleting an aisle rewrites every item and store).
+- **Logged as `subject: 'catalog'`.** Writes to a separate list are recorded there too, never as a `grocery`
+  entry, because that subject's undo acts on the list at home.
 
 ### Correcting and deleting a log entry
 

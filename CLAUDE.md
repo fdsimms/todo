@@ -407,6 +407,7 @@ file: the two maps are indexes, not write-ups.
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | what a pantry action does to a row (got it, out of it, frozen, opened, running low, a leftover), in the app and over MCP | `src/utils/pantryWrite.ts` — pure row rules that `useGroceryStore`, `useLeftoverStore` and the MCP replica all call; the stores keep only the `set()`, undo and use-up task. An agent's pantry write is undone from Activity by snapshot (`src/utils/agentPantryRevert.ts`) |
+| what a catalog edit, a brand, a store link, a substitute, a list name or finishing a trip does to a row, in the app and over MCP | `src/utils/groceryItemWrite.ts` — pure row rules that `useGroceryStore` and the MCP replica both call. A delete is undone from Activity by `DeletedItemSnapshot` (`src/utils/agentCatalogRevert.ts`); the app itself keeps no undo for one |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |
