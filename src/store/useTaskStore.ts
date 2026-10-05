@@ -316,6 +316,10 @@ import { followedWaterTargetCount } from '../utils/waterTargetUnits';
 import {
   followedWaterTaskDoneOn, waterShortfallMl, waterShortfallTitle, WATER_SHORTFALL_NOTES,
 } from '../utils/waterShortfallTasks';
+import {
+  loggedKcalToday, snackNudgeApplies, snackNudgeTitle, SNACK_NUDGE_NOTES,
+} from '../utils/snackNudgeTasks';
+import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
 import {
   getCalendarPermission,
@@ -707,6 +711,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'waterShortfall':
       useSettingsStore.getState()
         .setWaterShortfallDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
+    // The same one-day stamp, for the same reason: the task is about today's
+    // food log, so deleting it means "not today".
+    case 'snackNudge':
+      useSettingsStore.getState()
+        .setSnackNudgeDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
@@ -1700,6 +1710,8 @@ interface TaskStore extends UndoHistoryActions {
    * line to begin with, so both are left to log purely from taps, as before.
    */
   syncWaterQuotaTasks: () => void;
+  /** The `snackNudge` pass, called from the food log's writes and the catch-up sweep. */
+  syncSnackNudgeTasks: () => void;
   /**
    * Write one pick into a rotation's ledger without completing anything, and
    * report whether the set is now covered.
@@ -2251,6 +2263,72 @@ function reconcileWaterShortfall(args: {
       logHealthMetric: 'waterMl',
       logHealthAmount: owedMl ?? undefined,
       ...generatedBy('waterShortfall', args.todayKey),
+    }),
+  });
+}
+
+/**
+ * The `snackNudge` generator's whole pass. See `src/utils/snackNudgeTasks.ts`.
+ *
+ * Judged on every food log write for today and on every catch-up sweep: the
+ * first is what removes the task once a snack is logged, the second is what
+ * brings it on when 3 PM arrives with nothing having been logged since.
+ */
+function reconcileSnackNudge(tasks: Task[]): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.snackNudgeTasks || !settings.snackNudgeTaskCategory) return;
+  if (generatorPausedForVacation('snackNudge', settings.vacationMode)) return;
+  // The demo database holds a seeded task for this kind (demoSeed.ts) that no
+  // food log backs, and this pass would delete it as unwanted on the next sweep.
+  if (isDemoModeActive()) return;
+
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const healthToday = useHealthStore.getState().today;
+  const activeEnergyRead = healthToday?.dayKey === todayKey;
+  // A configured boost with no reading for today can't say what the target is,
+  // and a target that is unknown is not a target that is lower: leave whatever
+  // is there alone, the refusal reconcileWaterShortfall makes.
+  if (settings.activeEnergyBoost && !activeEnergyRead) return;
+
+  const targetKcal = effectiveCalorieTargetKcal(
+    settings.nutritionTargets.calorieKcal,
+    activeEnergyRead ? healthToday?.activeEnergyKcal ?? null : null,
+    settings.activeEnergyBoost,
+  );
+  const loggedKcal = loggedKcalToday(dbGetFoodLogEntries(todayKey, todayKey));
+  const wanted =
+    snackNudgeApplies(
+      loggedKcal, targetKcal, new Date(), settings.snackNudgeFromHour, settings.snackNudgeSharePercent,
+    ) &&
+    settings.snackNudgeDeclinedDayKey !== todayKey;
+
+  const dueDate = getCurrentDayStart();
+  dueDate.setHours(12, 0, 0, 0);
+
+  // A request from a day that has gone is dropped rather than deleted quietly
+  // with an opt-out: nobody declined it, the day just ended.
+  liveGeneratedTasksOfKind(tasks, 'snackNudge')
+    .filter(t => t.generatedSourceId !== todayKey)
+    .forEach(t => dropGeneratedTask('snackNudge', t.generatedSourceId));
+
+  reconcileGeneratedTask({
+    kind: 'snackNudge',
+    sourceId: todayKey,
+    wanted,
+    // A completed one blocks a second today: eating the snack and logging it
+    // should end the question, not ask it again at the next write.
+    blocksOnFinished: true,
+    drift: existing => {
+      if (loggedKcal === null || targetKcal === undefined) return null;
+      const title = snackNudgeTitle(loggedKcal, targetKcal);
+      return existing.title === title ? null : { title };
+    },
+    draft: () => ({
+      title: snackNudgeTitle(loggedKcal ?? 0, targetKcal ?? 0),
+      notes: SNACK_NUDGE_NOTES,
+      dueDate: dueDate.toISOString(),
+      category: settings.snackNudgeTaskCategory,
+      ...generatedBy('snackNudge', todayKey),
     }),
   });
 }
@@ -4363,6 +4441,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       todayKey, totalMl, exerciseReadToday, exerciseMinutes,
       tasks: get().tasks,
     });
+  },
+
+  syncSnackNudgeTasks() {
+    reconcileSnackNudge(get().tasks);
   },
 
   holdQuotaOnToday(id) {

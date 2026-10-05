@@ -337,6 +337,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'health', 'track', 'log', 'generated', 'automatic'],
   waterShortfall: ['hydration', 'drink', 'target', 'exercise', 'health', 'food log',
     'generated', 'automatic'],
+  snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
+    'generated', 'automatic'],
 };
 
 /**
@@ -764,6 +766,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['weekend', 'threshold', 'bare', 'already planned', 'movie'] },
   { id: 'weighInEveryDays', requires: 'gen:weighIn', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
     keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
+  { id: 'snackNudgeFromHour', requires: 'gen:snackNudge', groupId: 'generated', label: 'Start suggesting at', section: 'Suggest a snack',
+    keywords: ['hour', 'time', 'afternoon', 'when', 'after lunch'] },
+  { id: 'snackNudgeSharePercent', requires: 'gen:snackNudge', groupId: 'generated', label: 'Suggest when below', section: 'Suggest a snack',
+    keywords: ['percent', 'calories', 'kcal', 'threshold', 'target', 'share'] },
   { id: 'birthdayGiftLeadDays', requires: 'gen:birthdayGift', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'mealPlanNudgeTime', requires: 'gen:mealPlanNudge', groupId: 'generated', label: 'Add the task on', section: 'Plan meals for the week',

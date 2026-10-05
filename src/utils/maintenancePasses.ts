@@ -99,6 +99,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // count it finished yesterday with. After the rollover above, which is what
     // creates today's occurrence; see Task.followWaterTarget.
     ['sync water quotas', () => tasks().syncWaterQuotaTasks()],
+    // Beside it, reading the same food log: 3 PM arriving is time passing, and
+    // the food log's own writes cover everything else. See snackNudgeTasks.ts.
+    ['sync snack nudge', () => tasks().syncSnackNudgeTasks()],
     // Let projects the user opted into auto-scheduling date their own next
     // task if they've run dry. After rolloverQuotas, which can complete and
     // spawn members and so change what a project counts as scheduled; and

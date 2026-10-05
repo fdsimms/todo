@@ -338,6 +338,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
 - `src/utils/slipConfirm.ts` — confirmSlip
+- `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence

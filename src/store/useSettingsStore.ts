@@ -28,6 +28,12 @@ import {
   type BodyProfile,
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
+import {
+  DEFAULT_SNACK_NUDGE_FROM_HOUR,
+  DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
+  clampSnackNudgeFromHour,
+  clampSnackNudgeSharePercent,
+} from '../utils/snackNudgeTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
@@ -1617,6 +1623,20 @@ interface SettingsStore {
   // the target is still above the total. Written by writeGeneratedOptOut's
   // waterShortfall case, held for that day only.
   waterShortfallDeclinedDayKey: string | null;
+  // Opt-in, off by default: a snack suggestion once the afternoon has started
+  // and the food log is well short of the calorie target. See
+  // src/utils/snackNudgeTasks.ts.
+  snackNudgeTasks: boolean;
+  snackNudgeTaskCategory: string | null;
+  // The logical day a snack task was last deleted on, written by
+  // writeGeneratedOptOut's snackNudge case and held for that day only.
+  snackNudgeDeclinedDayKey: string | null;
+  // The hour the suggestion may first appear, and the percentage of the calorie
+  // target below which the day reads as short. Settings rather than constants
+  // because when someone eats and how much they aim for are theirs to say. See
+  // DEFAULT_SNACK_NUDGE_FROM_HOUR and DEFAULT_SNACK_NUDGE_SHARE_PERCENT.
+  snackNudgeFromHour: number;
+  snackNudgeSharePercent: number;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1971,6 +1991,11 @@ interface SettingsStore {
   setWaterShortfallTasks: (on: boolean) => void;
   setWaterShortfallTaskCategory: (category: string | null) => void;
   setWaterShortfallDeclinedDayKey: (dayKey: string | null) => void;
+  setSnackNudgeTasks: (on: boolean) => void;
+  setSnackNudgeTaskCategory: (category: string | null) => void;
+  setSnackNudgeDeclinedDayKey: (dayKey: string | null) => void;
+  setSnackNudgeFromHour: (hour: number) => void;
+  setSnackNudgeSharePercent: (percent: number) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeIgnoresVacation: (on: boolean) => void;
@@ -2642,6 +2667,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterShortfallTasks: false,
   waterShortfallTaskCategory: null,
   waterShortfallDeclinedDayKey: null,
+  snackNudgeTasks: false,
+  snackNudgeTaskCategory: null,
+  snackNudgeDeclinedDayKey: null,
+  snackNudgeFromHour: DEFAULT_SNACK_NUDGE_FROM_HOUR,
+  snackNudgeSharePercent: DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
   weighInTaskCategory: null,
   weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
   weighInLastDayKey: null,
@@ -3102,6 +3132,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const waterShortfallTasks = dbGetSetting('waterShortfallTasks') === 'true';
     const waterShortfallTaskCategory = dbGetSetting('waterShortfallTaskCategory') || null;
     const waterShortfallDeclinedDayKey = dbGetSetting('waterShortfallDeclinedDayKey') || null;
+    const snackNudgeTasks = dbGetSetting('snackNudgeTasks') === 'true';
+    const snackNudgeTaskCategory = dbGetSetting('snackNudgeTaskCategory') || null;
+    const snackNudgeDeclinedDayKey = dbGetSetting('snackNudgeDeclinedDayKey') || null;
+    // Clamped on read as well as on write, for the reason weighInEveryDays is.
+    const storedSnackNudgeFromHour = parseInt(dbGetSetting('snackNudgeFromHour') ?? '', 10);
+    const snackNudgeFromHour = clampSnackNudgeFromHour(storedSnackNudgeFromHour);
+    const storedSnackNudgeSharePercent = parseInt(dbGetSetting('snackNudgeSharePercent') ?? '', 10);
+    const snackNudgeSharePercent = clampSnackNudgeSharePercent(storedSnackNudgeSharePercent);
     const weighInTaskCategory = dbGetSetting('weighInTaskCategory') || null;
     // Clamped on read as well as on write, for the reason the weekend lead
     // above is: a value can arrive from a peer on a different build, and the
@@ -3398,6 +3436,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       simpleMode,
       simpleTaskForm,
       sleepGoalMinutes,
+      snackNudgeDeclinedDayKey,
+      snackNudgeFromHour,
+      snackNudgeSharePercent,
+      snackNudgeTaskCategory,
+      snackNudgeTasks,
       sortOption,
       supplyReorderTaskCategory,
       supplyReorderTasks,
@@ -4209,6 +4252,33 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWaterShortfallDeclinedDayKey(dayKey: string | null) {
     dbSetSetting('waterShortfallDeclinedDayKey', dayKey ?? '');
     set({ waterShortfallDeclinedDayKey: dayKey });
+  },
+
+  setSnackNudgeTasks(on: boolean) {
+    dbSetSetting('snackNudgeTasks', String(on));
+    set({ snackNudgeTasks: on });
+  },
+
+  setSnackNudgeTaskCategory(category: string | null) {
+    dbSetSetting('snackNudgeTaskCategory', category ?? '');
+    set({ snackNudgeTaskCategory: category });
+  },
+
+  setSnackNudgeDeclinedDayKey(dayKey: string | null) {
+    dbSetSetting('snackNudgeDeclinedDayKey', dayKey ?? '');
+    set({ snackNudgeDeclinedDayKey: dayKey });
+  },
+
+  setSnackNudgeFromHour(hour: number) {
+    const clamped = clampSnackNudgeFromHour(hour);
+    dbSetSetting('snackNudgeFromHour', String(clamped));
+    set({ snackNudgeFromHour: clamped });
+  },
+
+  setSnackNudgeSharePercent(percent: number) {
+    const clamped = clampSnackNudgeSharePercent(percent);
+    dbSetSetting('snackNudgeSharePercent', String(clamped));
+    set({ snackNudgeSharePercent: clamped });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {
