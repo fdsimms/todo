@@ -83,6 +83,10 @@ The shipped defaults are a classic pomodoro (25 / 5 / 15 every fourth) with the
 task-count trigger **off** — on at 1 it turns a queue of three short tasks into
 three breaks in twenty minutes.
 
+Settings also has a master **Breaks in focus sessions** switch (`focusBreaksEnabled`,
+on by default). Off, `focusPlanOptionsFrom` reads both triggers as null, so every plan is
+break-free while the trigger and length values stay stored for when it is turned back on.
+
 The setup sheet's own Breaks toggle (`FocusSetupSheet`) lets a session run
 without breaks even when Settings has them configured, for the one-off "not
 this time" case — going to Settings to turn both triggers off and back on
@@ -176,6 +180,14 @@ fits what's left of the window drops out of the queue exactly as it would
 there. With no window set (the sheet's default), that means every eligible
 pinned task starts ticked — the literal request this shortcut exists to
 answer.
+
+## Off Today
+
+`FocusBar` is the strip on Today. Every other screen gets `FocusFloatingBar`,
+mounted once in `AppNavigator` beside `CookingBar` and lifted above it when both
+show. It hides only while the focused route is Today (a card pushed over Today
+shows it). The session sheet stays mounted by `TodayScreen`, so tapping the
+floating bar goes through `resetToFocusSession`.
 
 ## On the Lock Screen
 

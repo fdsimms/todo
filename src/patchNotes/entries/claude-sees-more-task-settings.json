@@ -1,4 +1,4 @@
 {
-  "message": "Claude can now see more of a task's settings when connected to the sync server: a task paused for vacation, a deadline or reminder worked out from the date, a water target that follows your food log goal, the people a task is about, and the dates of a series. It can also read and set a trip's away dates and destination, log a glass of water onto the day's entry, and read a separate grocery list by name.",
+  "message": "Claude can now see more of a task's settings when connected to the sync server: a task paused for vacation, a deadline or reminder worked out from the date, a water target that follows your food log goal, the people a task is about, and the dates of a series. It can also read and set a trip's away dates and destination and log a glass of water onto the day's entry.",
   "date": "2026-10-05"
 }

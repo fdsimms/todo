@@ -192,7 +192,7 @@ export function ImportedComponentRow({ candidate, state, accepted, parent, onTog
           accessibilityLabel={accessibilityLabel}
         >
           <View style={[styles.checkbox, accepted && styles.checkboxOn]}>
-            {accepted && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+            {accepted && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
           </View>
         </TouchableOpacity>
       ) : busy ? (

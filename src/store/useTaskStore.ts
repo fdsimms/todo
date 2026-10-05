@@ -351,6 +351,7 @@ import {
 import {
   eventTaskRuleIdOf,
   matchedEventTasks,
+  matchedFollowUpTasks,
   pruneHandledEventTasks,
   type HandledEventTasks,
 } from '../utils/eventTasks';
@@ -6525,7 +6526,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .forEach(task => deleteGeneratedTaskQuietly(task.id));
 
     const handled = pruneHandledEventTasks(settings.eventTaskHandled, now);
-    const matches = matchedEventTasks(settings.eventRules, calendar.events, now, handled);
+    // Follow-up rules read their own wider window and are refused while it is
+    // unread, for `loaded`'s reason: an empty list would read as "no other
+    // appointment is booked" and write a task that isn't wanted.
+    const followUps = calendar.followUpLoaded
+      ? matchedFollowUpTasks(settings.eventRules, calendar.followUpEvents, now, handled)
+      : [];
+    const matches = [
+      ...matchedEventTasks(settings.eventRules, calendar.events, now, handled),
+      ...followUps,
+    ];
+    const followUpSourceIds = new Set(followUps.map(m => m.sourceId));
+    // Noon on the logical day, off getCurrentDayStart rather than the clock so
+    // a follow-up written at 1 AM under a 2 AM reset belongs to the day the
+    // person is still in.
+    const followUpDay = getCurrentDayStart();
+    followUpDay.setHours(12, 0, 0, 0);
+    const followUpDueDate = followUpDay.toISOString();
 
     // Pruning alone can change the record, so it is written back even when
     // nothing matched — otherwise a finished occurrence's entry survives until
@@ -6549,6 +6566,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         drift: () => null,
         draft: () => ({
           ...taskFieldsFromEvent(match.event, match.rule.leadDays),
+          // A follow-up is written after its event, so the event's own day is
+          // already behind us; it belongs on the logical today instead.
+          ...(followUpSourceIds.has(match.sourceId) ? { dueDate: followUpDueDate } : {}),
           // The rule's title is what the task says; the event's is only what
           // matched it.
           title: match.rule.title,
@@ -6627,7 +6647,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       : undefined;
     const matches = matchedTravelTasks(
       { defaultMinutes: settings.travelLeadMinutes, byCalendar: settings.travelLeadByCalendar },
-      calendar.events, now, horizonEnd, handled, estimated);
+      calendar.events, now, horizonEnd, handled, estimated, settings.travelEventPrefs);
     // Read only while the switch is on, so turning it off takes the notes off
     // on the next sweep even if a snapshot is still held.
     const transit = settings.transitAlerts ? useTransitStore.getState().snapshot : null;
@@ -8511,6 +8531,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     projectStore.updateProject(created.id, {
       notes: source.notes,
       defaultTaskCategory: source.defaultTaskCategory,
+      taskDefaults: source.taskDefaults ?? null,
       ongoing: source.ongoing,
       nudgeOptIn: source.nudgeOptIn,
       nudgeCadenceDays: source.nudgeCadenceDays,

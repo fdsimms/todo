@@ -210,6 +210,8 @@ export interface TaskFieldsInput {
   window?: WindowInput | null;
   habit?: 'do' | 'avoid';
   waitsOn?: string[];
+  /** With waitsOn: keep waiting until a repeating blocker's last occurrence is done, not just its next. */
+  waitForSeriesEnd?: boolean;
   /** Shown only if that task's question gets one of these answers; null removes it. */
   onlyIfAnswer?: { taskId: string; answers: string[] } | null;
   followUp?: FollowUpInput | null;
@@ -680,6 +682,8 @@ export function taskFieldsPatch(
     waitsOn = [...new Set(input.waitsOn.filter(id => typeof id === 'string' && id))];
     if (current && waitsOn.includes(current.id)) errors.push('A task cannot wait on itself.');
   }
+
+  if (input.waitForSeriesEnd !== undefined) patch.waitForSeriesEnd = input.waitForSeriesEnd;
 
   // ---- answer gate ----------------------------------------------------------
   let onlyIfAnswer: { taskId: string; answers: string[] } | undefined;

@@ -65,10 +65,10 @@ private struct TripFinishButton: View {
             Text("Finish")
                 .font(.system(size: 13, weight: .semibold))
         }
-        .foregroundColor(.white)
+        .foregroundColor(palette.onBrand)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Capsule().fill(palette.accent))
+        .background(Capsule().fill(palette.brand))
     }
 }
 
@@ -115,7 +115,7 @@ private struct TripLockScreenView: View {
         // appearance, so light-scheme content would be black on #1C1C1E. See
         // WidgetPalette.forScheme's own note.
         let palette = WidgetPalette.dark
-        let tint = context.isStale ? palette.textSecondary : palette.accent
+        let tint = context.isStale ? palette.textSecondary : palette.brand
         HStack(spacing: 12) {
             Image(systemName: "storefront")
                 .font(.system(size: 17))
@@ -162,7 +162,7 @@ struct TripLiveActivity: Widget {
             // TimerLiveActivity: the island is always drawn on black, and the
             // Lock Screen card above is tinted dark by this file itself.
             let palette = WidgetPalette.dark
-            let tint = context.isStale ? palette.textSecondary : palette.accent
+            let tint = context.isStale ? palette.textSecondary : palette.brand
 
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -223,7 +223,7 @@ struct TripLiveActivity: Widget {
             // link the Lock Screen presentation above uses — unlike
             // TimerLiveActivity and the Today widget, which just open the app.
             .widgetURL(URL(string: "dundundun://groceries"))
-            .keylineTint(palette.accent)
+            .keylineTint(palette.brand)
         }
     }
 }

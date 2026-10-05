@@ -47,6 +47,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   add_grocery_item: ['remove_from_grocery_list', 'check_off_grocery_item'],
   add_to_pantry: ['update_pantry_item'],
   log_leftover: ['update_leftover'],
+  create_grocery_list: ['rename_grocery_list', 'delete_grocery_list'],
   save_rule: ['delete_rule'],
   save_recipe: ['update_recipe', 'delete_recipe'],
   add_person_history: ['reopen_task', 'archive_task'],
@@ -55,6 +56,8 @@ const COUNTERPARTS: Record<string, string[]> = {
 /** Creating tools with no counterpart, and why that is the right answer or a known gap. */
 const NO_COUNTERPART: Record<string, string> = {
   plan_day: 'Proposes an order and writes nothing, so there is nothing to put right.',
+  save_grocery_box: 'One tool adds, edits and deletes a box (boxId, delete: true), so it is its own correction.',
+  save_store: 'Adds and renames a store with the one tool; deleting a store rewrites its links and aliases, so that stays in the app.',
 };
 
 describe('creating tools and their counterparts', () => {

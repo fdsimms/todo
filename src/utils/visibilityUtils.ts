@@ -13,6 +13,7 @@ import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
+import { isRotationTask } from './rotation';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
 
 /**
@@ -641,6 +642,14 @@ export function quotaExpectedByNow(task: Task): number {
   return Math.min(target, Math.ceil((target * (+now - +start)) / (+end - +start)));
 }
 
+// Whether being on pace takes this target off Today. A rotation never does:
+// its members are a checklist for the week, so the row stays up until each is
+// done, and a day you don't want to do it is rescheduled by hand rather than
+// being decided for you by a pace ramp. Anything else follows its own opt-out.
+export function quotaHidesWhenOnPace(task: Task): boolean {
+  return !task.quotaAlwaysVisible && !isRotationTask(task);
+}
+
 export function isQuotaOnPace(task: Task): boolean {
   // An allowOvershoot task that has reached its target is never "on pace" —
   // quotaExpectedByNow caps at targetCount, so without this it would read as
@@ -722,7 +731,7 @@ export function isOnPaceQuota(task: Task): boolean {
   if (!isQuotaTask(task) || task.completed || task.archived) return false;
   // Being on pace never keeps this off Today when the task has opted out of
   // the hide, so it's never "the only thing" keeping it away.
-  if (task.quotaAlwaysVisible) return false;
+  if (!quotaHidesWhenOnPace(task)) return false;
   if (!isQuotaOnPace(task)) return false;
   // Asked as though it weren't a target at all: nothing else in isTaskVisible
   // reads targetCount, so dropping it lifts the pace gate specifically and
@@ -816,7 +825,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // right now. quotaAlwaysVisible opts a task out of this specific hide —
   // logging still paces normally (see isQuotaOnPace, isOnPaceQuota), it just
   // never disappears for being ahead of it.
-  if (isQuotaTask(task) && isQuotaOnPace(task) && !task.quotaAlwaysVisible) return false;
+  if (isQuotaTask(task) && isQuotaOnPace(task) && quotaHidesWhenOnPace(task)) return false;
 
   if (!isCategoryScheduleActive(task.category)) return false;
 

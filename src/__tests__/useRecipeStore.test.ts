@@ -671,6 +671,24 @@ describe('addStructuredIngredients', () => {
     expect(updated.nameKey).toBe('tomatoes');
   });
 
+  it('keeps a key a catalog rename repointed the line to through an edit that leaves the label alone', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const ingredient = useRecipeStore.getState().addIngredient(r.id, 'Tomatos')!;
+    useRecipeStore.getState().remapIngredientKey('tomatos', 'tomatoes');
+
+    useRecipeStore.getState().updateIngredient(r.id, ingredient.id, { quantity: '2 cans' });
+
+    const kept = useRecipeStore.getState().recipeById(r.id)!.ingredients[0];
+    expect(kept).toMatchObject({ name: 'Tomatos', nameKey: 'tomatoes', catalogKey: 'tomatoes', quantity: '2 cans' });
+
+    // Changing the label retires the repoint: the key follows the new name.
+    useRecipeStore.getState().updateIngredient(r.id, ingredient.id, { name: 'Plum tomatoes' });
+    const renamed = useRecipeStore.getState().recipeById(r.id)!.ingredients[0];
+    expect(renamed.nameKey).toBe('plum tomatoes');
+    expect(renamed.catalogKey).toBeUndefined();
+  });
+
   it('patches quantity and aisle without touching the key', () => {
     const r = makeRecipe('Ragu');
     seed([r]);

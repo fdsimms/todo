@@ -28,6 +28,8 @@ import { looksLikeBareUrl } from '../utils/recipeUtils';
 import { normalizeRecipeUrl } from '../utils/recipeUrl';
 import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
 import { TextField } from './TextField';
+import { ClipboardPhotoOffer } from './ClipboardPhotoOffer';
+import { useClipboardImage } from '../hooks/useClipboardImage';
 
 export type RecipeInputMode = 'paste' | 'link' | 'photo';
 
@@ -122,6 +124,7 @@ export function RecipeSourcePicker({
   // not be able to land on a refusal about a box it never renders.
   const paste = mode === 'paste' && !photoOnly && !linkOnly;
   const link = (mode === 'link' || linkOnly) && !photoOnly;
+  const clipboardHasImage = useClipboardImage(paste && !text.trim() && photos.length < maxPhotos);
   const bareUrl = paste && looksLikeBareUrl(text);
   const typedUrl = url.trim();
   const badUrl = link && !!typedUrl && !normalizeRecipeUrl(typedUrl);
@@ -180,6 +183,13 @@ export function RecipeSourcePicker({
         />
       )}
 
+      {paste && clipboardHasImage && (
+        <ClipboardPhotoOffer
+          onPress={() => { onChangeMode('photo'); onPickPhoto('clipboard'); }}
+          disabled={picking}
+        />
+      )}
+
       {paste ? (
         <TextField
           style={styles.pasteInput}
@@ -232,7 +242,7 @@ export function RecipeSourcePicker({
               accessibilityRole="button"
               accessibilityLabel="Remove this photo"
             >
-              <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+              <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -287,7 +297,7 @@ export function RecipeSourcePicker({
                     accessibilityRole="button"
                     accessibilityLabel={`Remove photo ${i + 1}`}
                   >
-                    <Ionicons name="close" size={iconSize.xs} color={colors.onAccent} />
+                    <Ionicons name="close" size={iconSize.xs} color={colors.onFill} />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -353,7 +363,7 @@ export function RecipeSourcePicker({
         accessibilityRole="button"
         accessibilityLabel={ctaLabel}
       >
-        <Ionicons name="sparkles" size={iconSize.sm} color={colors.onAccent} />
+        <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
         <Text style={styles.runBtnText}>{ctaLabel}</Text>
       </TouchableOpacity>
     </>
@@ -497,7 +507,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    thumbOrderText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.semibold },
+    thumbOrderText: { color: colors.onFill, fontSize: font.xxs, fontWeight: fontWeight.semibold },
     thumbClear: {
       position: 'absolute',
       top: 4,
@@ -530,6 +540,6 @@ function makeStyles(colors: Colors) {
       paddingVertical: 14,
     },
     runBtnOff: { opacity: 0.4 },
-    runBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+    runBtnText: { color: colors.onFill, fontSize: font.md, fontWeight: fontWeight.semibold },
   });
 }

@@ -56,3 +56,21 @@ export function describeAllClear(opts: { filtered: boolean; doneToday: number })
   }
   return 'Nothing to do right now';
 }
+
+/**
+ * Whether Today's empty state plays the beat (the mark animating in, with its
+ * haptic and, if switched on, its sound) rather than showing the mark at rest.
+ *
+ * Only on a day something was finished, since the beat marks finishing and an
+ * empty day has nothing to mark; never through a filter, which empties the list
+ * without anything being done; and once per logical day, so it stays a reward
+ * rather than something that replays every time Today happens to be empty.
+ */
+export function shouldPlayBeat(opts: {
+  filtered: boolean;
+  doneToday: number;
+  lastDayKey: string | null;
+  todayKey: string;
+}): boolean {
+  return !opts.filtered && opts.doneToday > 0 && opts.lastDayKey !== opts.todayKey;
+}

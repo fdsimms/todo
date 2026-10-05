@@ -286,3 +286,27 @@ export function subscribeSheetCover(level: PresentationLevel, fn: () => void): (
     for (const off of inner) off();
   };
 }
+
+const dismissAllListeners = new Set<() => void>();
+
+/**
+ * Asks every open sheet to close through its own `onRequestClose`.
+ *
+ * A link arriving from outside the app (a widget tap, a Live Activity button, a
+ * notification) switches tab or pushes a screen, but a sheet is presented from
+ * the root view controller and stays above whatever the navigator does, so it
+ * was left covering the destination. It goes through `onRequestClose` rather
+ * than forcing `visible` off, so a sheet with an unsaved-changes guard still
+ * asks before throwing anything away.
+ *
+ * A native `Alert` is not a sheet and cannot be dismissed from JS.
+ */
+export function requestDismissAllSheets(): void {
+  for (const fn of [...dismissAllListeners]) fn();
+}
+
+/** Registers a sheet for `requestDismissAllSheets`. Returns the unsubscribe. */
+export function subscribeDismissAllSheets(fn: () => void): () => void {
+  dismissAllListeners.add(fn);
+  return () => { dismissAllListeners.delete(fn); };
+}

@@ -12,7 +12,6 @@ import {
   getTask,
   listFoodLog,
   listGroceryItems,
-  listGroceryLists,
   listMedicationLogs,
   listMoodLogs,
   listProjects,
@@ -75,6 +74,21 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     groceryLists: () => [],
     awaySpan: () => null,
     itemProducts: () => [],
+    shops: () => [],
+    itemShopLinks: () => [],
+    itemSubLinks: () => [],
+    storeAliases: () => [],
+    aisleOverrides: () => ({}),
+    aisleNames: () => [],
+    updateGroceryItem: () => { throw new Error('not stubbed'); },
+    saveGroceryBox: () => { throw new Error('not stubbed'); },
+    saveShop: () => { throw new Error('not stubbed'); },
+    deleteGroceryItem: () => { throw new Error('not stubbed'); },
+    createGroceryList: () => { throw new Error('not stubbed'); },
+    renameGroceryList: () => { throw new Error('not stubbed'); },
+    deleteGroceryList: () => { throw new Error('not stubbed'); },
+    finishGroceryTrip: () => { throw new Error('not stubbed'); },
+    importReceipt: () => { throw new Error('not stubbed'); },
     leftovers: () => [],
     updatePantryItem: () => { throw new Error('not stubbed'); },
     updatePantryBox: () => { throw new Error('not stubbed'); },
@@ -513,67 +527,6 @@ describe('listGroceryItems', () => {
     ]);
     const catalog = listGroceryItems(replica, { onListOnly: false });
     expect(catalog.find(i => i.id === 'g3')).toEqual({ id: 'g3', name: 'Sunscreen', onList: false });
-  });
-
-  it('reads a separate list by id, with that list\'s own ticks, and refuses an id that is no list', () => {
-    const rows = [
-      { id: 'g1', name: 'Milk', onList: true, checked: false },
-      { id: 'g3', name: 'Sunscreen', onList: true, checked: false },
-    ] as GroceryItem[];
-    const replica = stubReplica({
-      groceryItems: () => rows,
-      groceryLists: () => [{ id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '' }],
-      groceryListEntries: () => [entry('g1', null, true), entry('g1', 'airbnb'), entry('g3', 'airbnb', true)],
-    });
-    expect(listGroceryItems(replica, { listId: 'airbnb' })).toEqual([
-      { id: 'g1', name: 'Milk', onList: true },
-      { id: 'g3', name: 'Sunscreen', onList: true, checked: true },
-    ]);
-    expect(listGroceryItems(replica).map(i => i.id)).toEqual(['g1']);
-    expect(() => listGroceryItems(replica, { listId: 'nope' })).toThrow(/No grocery list with id nope/);
-  });
-
-  it('lists every list, home first, with counts and the trip each one shops for', () => {
-    const replica = stubReplica({
-      groceryLists: () => [
-        { id: 'cabin', name: 'Cabin', sortOrder: 2, createdAt: '' },
-        { id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '' },
-      ],
-      groceryListEntries: () => [entry('g1', null, true), entry('g2', null), entry('g3', 'airbnb', true)],
-      projects: () => [
-        { id: 'p1', title: 'Lisbon', archived: false, completed: false, awayListId: 'airbnb' } as Project,
-        { id: 'p2', title: 'Old trip', archived: true, completed: false, awayListId: 'cabin' } as Project,
-      ],
-    });
-    expect(listGroceryLists(replica)).toEqual([
-      { id: null, name: 'Groceries', away: false, count: 2, remaining: 1 },
-      { id: 'airbnb', name: 'Airbnb', away: true, count: 1, remaining: 0, forTrip: { projectId: 'p1', title: 'Lisbon' } },
-      { id: 'cabin', name: 'Cabin', away: true, count: 0, remaining: 0 },
-    ]);
-  });
-
-  it('acts on the list named, hands the id to the replica, and says which list it acted on', () => {
-    const sunscreen = { id: 'g3', name: 'Sunscreen', onList: true, checked: false } as GroceryItem;
-    const checkFn = jest.fn(() => sunscreen);
-    const removeFn = jest.fn(() => sunscreen);
-    const addFn = jest.fn(() => ({ item: sunscreen, isNew: true, wasOnList: false }));
-    const replica = stubReplica({
-      groceryLists: () => [{ id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '' }],
-      groceryListEntries: () => [entry('g3', 'airbnb', true)],
-      setGroceryChecked: checkFn, removeFromGroceryList: removeFn, addGroceryItem: addFn,
-    });
-    const checked = setGroceryChecked(replica, 'g3', true, 'airbnb');
-    expect(checkFn).toHaveBeenCalledWith('g3', true, 'airbnb');
-    expect(checked.item).toEqual({ id: 'g3', name: 'Sunscreen', onList: true, checked: true });
-    expect(checked.outcome).toMatch(/on the "Airbnb" list/);
-    expect(removeFromGroceryList(replica, 'g3', 'airbnb').outcome).toMatch(/off the "Airbnb" list/);
-    expect(removeFn).toHaveBeenCalledWith('g3', 'airbnb');
-    expect(addGroceryItem(replica, 'sunscreen', { listId: 'airbnb' }).outcome).toMatch(/to the "Airbnb" list/);
-    expect(addFn).toHaveBeenCalledWith('sunscreen', { listId: 'airbnb' });
-    // Omitted means home, and reads as the list with no name.
-    expect(setGroceryChecked(replica, 'g3', true).outcome).toBe('Checked "Sunscreen" off.');
-    expect(checkFn).toHaveBeenLastCalledWith('g3', true, null);
-    expect(() => setGroceryChecked(replica, 'g3', true, 'nope')).toThrow(/No grocery list/);
   });
 
   it('describes a write\'s result by the home list too', () => {

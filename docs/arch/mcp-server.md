@@ -235,7 +235,9 @@ model.
   landed on, and reports missed occurrences separately.
 - `review_tasks` lists what has sat a long time and what looks duplicated. It is deliberately a
   list and not a verdict, and leaves lists, paused projects and dated series out of the places they
-  would otherwise be false positives.
+  would otherwise be false positives. Its `repeatedlyPostponed` section is the "stuck" read: open
+  tasks pushed `minPushes` (default 3) or more times, off `postponeCount`, with a muted task left
+  out because the person asked not to be nudged about it. The `unstick_tasks` prompt walks it.
 
 **`app_help` reads what the app already says about itself** (`helpTools.ts`): the Settings index
 through the app's own Settings search, with the person's kitchen and simplified-mode gates applied,
@@ -243,6 +245,13 @@ and every patch note in `src/patchNotes/entries/`. The server has the checkout, 
 them rather than the few hundred the app ships. These are the two records kept true by other means
 (a test for the index, a fragment per user-facing PR for the notes), so neither drifts the way a
 hand-written help corpus would.
+
+**`unused_features` is a hand-written table of checks, not an inference** (`adoptionTools.ts`).
+Each check is a feature plus a test on the replica for "this person's data shows the need and the
+feature isn't set up" (forty open tasks and no estimates), and it reports what it saw. A check never
+fires on "the setting is off" alone, which is true of every feature for everyone. Simplified mode
+drops the `advanced` checks, and a note naming a check's id silences it, so a declined suggestion
+isn't repeated. Adding a feature worth recommending is one entry in `ADOPTION_CHECKS`.
 
 **Patterns are the Stats and Mood screens' own reads** (`patternTools.ts`). `habit_patterns` is
 `rhythms.ts` and `estimateCalibration.ts` over each habit's occurrences, plus the streak and pace
@@ -309,7 +318,7 @@ the store's own `uncompleteTask`. Everything else an agent writes is recorded wi
 can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
 is still how the agent left it.
 
-- **Undoable:** a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
+- **Undoable:** a catalog item's own fields, and a deleted catalog item (see the catalog section), a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
 - **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
@@ -737,22 +746,13 @@ Checked lives on the membership row, and `dbSetGroceryListEntry` is also the onl
 mirror columns on the item (`dbSyncGroceryHomeColumns`), so the row and its entry cannot end up
 disagreeing. Removing parks the row and clears a recipe's claim on the quantity, which is two lines.
 
-**Every grocery tool is about one list, the read included, and it is the list at home unless a
-`listId` names another.** The writes all act on one list's entry, so `list_grocery_items` reports
-that list and each item's tick on it, read off `groceryListEntries()`. It used to filter on
-`GroceryItem.onList`, which is the broader "in any trolley" flag (see `docs/arch/groceries.md`): a
-trip's list came back merged into the one at home with no name on it, and check-off then refused
-those same items as not on the list. The serialized `onList` means the list asked about everywhere,
-including a write's result and the catalog view, and the remove guard and the add's "already on the
-list" answer ask the same question.
-
-`list_grocery_lists` names the lists, through the same `listPickerRows` the app's picker draws (home
-first, then the person's own in their order), with each one's counts and the trip it is the shopping
-list for where a live project's `awayListId` names it. **It does not say which list the phone is
-showing**, because `grocery_active_list` does not sync (`docs/arch/away-dates.md`): the replica's
-own active list is about the replica. That is also why the writes never default to an active list:
-CLAUDE.md's rule for a caller that is not a person looking at the grocery screen is to name the
-list, and an unknown `listId` is refused rather than acted on as an empty trolley.
+**Every grocery tool is about the list at home, the read included.** The writes all act on the home
+list's entry (`listId` null), so `list_grocery_items` reports that list and each item's tick on it,
+read off `groceryListEntries()`. It used to filter on `GroceryItem.onList`, which is the broader "in
+any trolley" flag (see `docs/arch/groceries.md`): a trip's list came back merged into the one at
+home with no name on it, and check-off then refused those same items as not on the list. The
+serialized `onList` means the home list everywhere, including a write's result and the catalog
+view, and the remove guard and the add's "already on the list" answer ask the same question.
 
 **Adding could not.** `planGroceryAdd` (`src/utils/groceryAdd.ts`) is `addByName`'s core, lifted out
 with `newItemRow`, `ensureProductFor` and `nextSortOrder`. Two things made a second implementation
@@ -962,6 +962,43 @@ has the rules; two decisions are specific to the server.
   A leftover the agent logged is removable while it is open, like a log entry; a new catalog row
   from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
   list does.
+
+### The catalog: edits, delete with a snapshot, separate lists and receipts
+
+`grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`,
+`save_grocery_box`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
+`delete_grocery_list`, `finish_grocery_trip` and `import_receipt` (`mcp/src/groceryTools.ts`), with a `list`
+argument on the list tools. The row rules are `src/utils/groceryItemWrite.ts` (price, boxes, rename, store and
+substitute links, list names, aliases, finishing a trip), shared with `useGroceryStore` the way `pantryWrite.ts`
+is. Decisions specific to the server:
+
+- **A delete is undoable because the ledger carries what the app does not.** `dbDeleteGroceryItem` cascades to
+  the item's list entries, store links, substitutes (both directions), boxes and receipt names, and the app
+  keeps no snapshot, which is the whole reason it has no undo. The entry stores a `DeletedItemSnapshot`
+  (`deletedItemSnapshot`) plus the remembered aisle for the name, and `useGroceryStore.restoreDeletedItem` puts
+  all of it back, offered only while neither the id nor the name is back in the catalog
+  (`agentCatalogRevert.ts`). It does not touch what the app itself leaves dangling (a supply task, a food-log
+  row naming the item); a "Use up" task for it is dropped by the phone's catch-up pass.
+- **An edit is undoable only when it touched the item's own fields** (`CATALOG_REVERT_FIELDS`) and the
+  remembered aisle for its name, written back by `restoreCatalogItem`. A rename moves keys in other tables, and
+  store links, substitutes and boxes are other rows, so those are recorded in Activity and not undoable.
+- **An aisle must be one that exists.** Aisles are the person's walk order, so an agent naming a new one would
+  create a section nobody made; `grocery_setup` lists them and an unknown name is refused with the list.
+- **A receipt is read by Claude.** The server cannot see an image and the phone's reader (on-device OCR, or the
+  person's own API key) is not available here, so `match_receipt` takes the lines Claude extracted and runs
+  `matchReceiptLines` (remembered store names, then exact, likely, weak), and `import_receipt` does what the scan
+  flow writes: for shopping each line is joined to the list if needed, checked off and the trip finished
+  (`planFinishShopping` then `dbFinishGroceryShopping`); for the pantry it is `acquiredRow` + "Got it" and a
+  price, with no purchase recorded. The printed text is remembered as that store's name only for a line that
+  named an existing item, as the app does for a row the person confirmed. Finishing records everything checked
+  off on the list, including items checked off before the receipt, exactly as the finish sheet does.
+- **A separate list records almost nothing when finished.** No purchase count, price, store link or use-by day
+  (`docs/arch/groceries.md`, "An away trip records nothing"); `planFinishShopping` zeroes them and the result says so.
+- **Not written here:** the use-up task and the supply restock a finished trip also triggers in the app (both go
+  through the task store; the phone catches up), merging two items, deleting a store, and aisle-level edits
+  (renaming or deleting an aisle rewrites every item and store).
+- **Logged as `subject: 'catalog'`.** Writes to a separate list are recorded there too, never as a `grocery`
+  entry, because that subject's undo acts on the list at home.
 
 ### Correcting and deleting a log entry
 

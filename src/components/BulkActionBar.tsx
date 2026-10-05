@@ -20,6 +20,7 @@ import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { tagColor } from '../utils/tagColor';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { TextField } from './TextField';
+import { GlassLayer, glassSupported } from './GlassLayer';
 
 interface Props {
   selectedCount: number;
@@ -178,9 +179,10 @@ export function BulkActionBar({
   return (
     <>
       <Animated.View
-        style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }, entranceStyle]}
+        style={[styles.container, glassSupported() ? styles.containerGlass : shadows.sheet, { bottom: bottomInset + spacing.sm }, entranceStyle]}
         onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
       >
+        <GlassLayer style={styles.glassRadius} />
         {panel === 'actions' && (
           <>
             <View style={styles.topRow}>
@@ -203,7 +205,7 @@ export function BulkActionBar({
                   style={styles.actionBtn}
                   onPress={() => { haptics.success(); onComplete(); }}
                 >
-                  <Ionicons name="checkmark-circle" size={24} color={colors.green} />
+                  <Ionicons name="checkmark-circle" size={24} color={colors.done} />
                   <Text style={[styles.actionLabel, { color: colors.greenText }]}>Complete</Text>
                 </PressableScale>
               )}
@@ -538,6 +540,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
   },
+  // The glass draws its own edge and depth, so the solid card's fill, hairline
+  // and drop shadow come off together.
+  containerGlass: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  glassRadius: { borderRadius: radius.lg },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',

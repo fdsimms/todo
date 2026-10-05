@@ -137,7 +137,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
             accessibilityRole="button"
             accessibilityLabel={`${running ? 'Pause' : 'Resume'} the ${name} timer`}
           >
-            <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={colors.onAccent} />
+            <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.onFill : colors.onAccent} />
           </TouchableOpacity>
         )}
 

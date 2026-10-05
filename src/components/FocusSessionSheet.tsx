@@ -402,7 +402,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const renderFinished = () => (
     <View style={styles.finishedBody}>
       <View style={styles.finishedIcon}>
-        <Ionicons name="checkmark-done" size={34} color={colors.green} />
+        <Ionicons name="checkmark-done" size={34} color={colors.done} />
       </View>
       <Text style={styles.finishedTitle}>Session done</Text>
       <Text style={styles.finishedSub}>
@@ -414,7 +414,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
         <View style={styles.finishedList}>
           {session.completedTaskIds.map(id => (
             <View key={id} style={styles.finishedRow}>
-              <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.green} />
+              <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.done} />
               <Text style={styles.finishedRowText} numberOfLines={1}>{titleOf(id)}</Text>
             </View>
           ))}
@@ -579,7 +579,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                     : `Mark ${titleOf(step.taskId)} done`
                 }
               >
-                <Ionicons name="checkmark-circle-outline" size={iconSize.md} color={colors.green} />
+                <Ionicons name="checkmark-circle-outline" size={iconSize.md} color={colors.done} />
                 <Text style={styles.secondaryLabel}>{quotaTask ? 'Log one' : 'Done'}</Text>
               </TouchableOpacity>
             )}

@@ -106,7 +106,7 @@ export function ImportApplyRow({
           accessibilityLabel={accessibilityLabel}
         >
           <View style={[styles.checkbox, checked && styles.checkboxOn]}>
-            {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+            {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onFill} />}
           </View>
         </TouchableOpacity>
 
@@ -163,7 +163,7 @@ export function ImportApplyRow({
                   >
                     <View style={[styles.lineCheckbox, lineChecked && styles.checkboxOn]}>
                       {lineChecked && (
-                        <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+                        <Ionicons name="checkmark" size={12} color={colors.onFill} />
                       )}
                     </View>
                   </TouchableOpacity>

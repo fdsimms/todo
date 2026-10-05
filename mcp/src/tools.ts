@@ -44,7 +44,6 @@ import { serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
 // Pure over the rows it is handed (types only), so safe to import for its
 // value where awayDates, which reaches the settings store, is not.
-import { HOME_LIST_NAME, listNameFor, listPickerRows, listRemainingCount } from '../../src/utils/groceryLists';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
 export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all'] as const;
@@ -523,87 +522,37 @@ export interface SerializedGroceryItem {
  * then couldn't be checked off; `GroceryItem.checked` is only a mirror of the
  * home entry.
  */
-export function serializeGroceryItem(i: GroceryItem, entry: GroceryListEntry | undefined): SerializedGroceryItem {
+export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | undefined): SerializedGroceryItem {
   return {
     id: i.id,
     name: i.name,
     quantity: i.quantity || undefined,
     aisle: i.aisle || undefined,
-    onList: entry !== undefined,
-    checked: entry?.checked ? true : undefined,
+    onList: home !== undefined,
+    checked: home?.checked ? true : undefined,
   };
 }
 
-/** One list's entries, by item id. Null is the list at home. */
-function listEntries(replica: Replica, listId: string | null): Map<string, GroceryListEntry> {
+/** The home list's entries, by item id. */
+function homeEntries(replica: Replica, listId: string | null = null): Map<string, GroceryListEntry> {
   const out = new Map<string, GroceryListEntry>();
   for (const e of replica.groceryListEntries()) if (e.listId === listId) out.set(e.itemId, e);
   return out;
 }
 
-function serializeOnList(replica: Replica, item: GroceryItem, listId: string | null): SerializedGroceryItem {
-  return serializeGroceryItem(item, listEntries(replica, listId).get(item.id));
+function serializeWithHome(replica: Replica, item: GroceryItem, listId: string | null = null): SerializedGroceryItem {
+  return serializeGroceryItem(item, homeEntries(replica, listId).get(item.id));
 }
 
-/**
- * The list a `listId` names, refusing an id that is not one of the person's
- * lists rather than quietly answering about an empty trolley. Omitted or null
- * is the list at home, which has no row of its own (`GroceryListEntry`).
- */
-export function requireGroceryList(replica: Replica, listId: string | null | undefined): { id: string | null; name: string } {
-  if (listId == null) return { id: null, name: HOME_LIST_NAME };
-  const lists = replica.groceryLists();
-  if (!lists.some(l => l.id === listId)) throw new Error(`No grocery list with id ${listId}. list_grocery_lists names them.`);
-  return { id: listId, name: listNameFor(listId, lists) };
-}
-
-/** One list (the home list unless `listId` says otherwise), or with `onListOnly: false` the whole catalog with that list's ticks. */
+/** The home list, or with `onListOnly: false` the whole catalog. */
 export function listGroceryItems(
   replica: Replica,
-  input: { onListOnly?: boolean; listId?: string | null } = {}
+  input: { onListOnly?: boolean; /** A separate list's id; the list at home when omitted. */ listId?: string | null } = {}
 ): SerializedGroceryItem[] {
-  const list = requireGroceryList(replica, input.listId);
-  const entries = listEntries(replica, list.id);
+  const home = homeEntries(replica, input.listId ?? null);
   const items = replica.groceryItems();
-  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => entries.has(i.id));
-  return wanted.map(i => serializeGroceryItem(i, entries.get(i.id)));
-}
-
-export interface SerializedGroceryList {
-  /** Null for the list at home, which every grocery tool means when no listId is given. */
-  id: string | null;
-  name: string;
-  /** A separate list is one you are away from home for (`isAwayList`): a shop from it records no purchase history. */
-  away: boolean;
-  /** Rows in its trolley, and how many are still to buy. */
-  count: number;
-  remaining: number;
-  /** The trip this list is the shopping list for (`Project.awayListId`), where a live project names it. */
-  forTrip?: { projectId: string; title: string };
-}
-
-/**
- * Every list, home first and then the person's own in their order, through the
- * same `listPickerRows` the app's picker draws. Which list the phone is
- * *showing* is deliberately not here: `grocery_active_list` does not sync
- * (docs/arch/away-dates.md), so the replica's own answer would be about the
- * replica.
- */
-export function listGroceryLists(replica: Replica): SerializedGroceryList[] {
-  const entries = replica.groceryListEntries();
-  const trips = new Map<string, Project>();
-  for (const p of replica.projects()) if (p.awayListId && !p.archived && !p.completed) trips.set(p.awayListId, p);
-  return listPickerRows(entries, replica.groceryLists()).map(row => {
-    const trip = row.id ? trips.get(row.id) : undefined;
-    return {
-      id: row.id,
-      name: row.name,
-      away: row.away,
-      count: row.count,
-      remaining: listRemainingCount(entries, row.id),
-      ...(trip ? { forTrip: { projectId: trip.id, title: trip.title } } : {}),
-    };
-  });
+  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => home.has(i.id));
+  return wanted.map(i => serializeGroceryItem(i, home.get(i.id)));
 }
 
 // ---------------------------------------------------------------------------
@@ -974,46 +923,34 @@ export interface GroceryWriteResult {
   outcome: string;
 }
 
-/**
- * The grocery writes act on the list at home unless `listId` names another,
- * and say which list they acted on when it is not the home one. CLAUDE.md's
- * rule for a caller that is not a person looking at the grocery screen: name
- * the list, never inherit whichever one happens to be open.
- */
 export function addGroceryItem(
   replica: Replica,
   name: string,
   opts?: { quantity?: string | null; note?: string | null; listId?: string | null },
 ): GroceryWriteResult {
-  const list = requireGroceryList(replica, opts?.listId);
-  const { item, isNew, wasOnList } = replica.addGroceryItem(name, { ...opts, listId: list.id });
-  const where = list.id === null ? 'the list' : `the "${list.name}" list`;
+  const { item, isNew, wasOnList } = replica.addGroceryItem(name, opts);
   const outcome = isNew
-    ? `Added "${item.name}" to ${where}, filed under ${item.aisle}.`
+    ? `Added "${item.name}" to the list, filed under ${item.aisle}.`
     : wasOnList
-      ? `"${item.name}" was already on ${where}, so nothing moved. Its checked state and its place in the aisle order are untouched.`
-      : `"${item.name}" was already in the catalog, so it went back on ${where} with the aisle and history it already had.`;
-  return { item: serializeOnList(replica, item, list.id), outcome };
+      ? `"${item.name}" was already on the list, so nothing moved. Its tick and its place in the aisle order are untouched.`
+      : `"${item.name}" was already in the catalog, so it went back on the list with the aisle and history it already had.`;
+  return { item: serializeWithHome(replica, item, opts?.listId ?? null), outcome };
 }
 
-export function setGroceryChecked(replica: Replica, id: string, checked: boolean, listId?: string | null): GroceryWriteResult {
-  const list = requireGroceryList(replica, listId);
-  const item = replica.setGroceryChecked(id, checked, list.id);
-  const where = list.id === null ? '' : ` on the "${list.name}" list`;
+export function setGroceryChecked(replica: Replica, id: string, checked: boolean, listId: string | null = null): GroceryWriteResult {
+  const item = replica.setGroceryChecked(id, checked, listId);
   return {
-    item: serializeOnList(replica, item, list.id),
-    outcome: checked ? `Checked "${item.name}" off${where}.` : `Un-checked "${item.name}"${where}.`,
+    item: serializeWithHome(replica, item, listId),
+    outcome: checked ? `Checked "${item.name}" off.` : `Un-checked "${item.name}".`,
   };
 }
 
-export function removeFromGroceryList(replica: Replica, id: string, listId?: string | null): GroceryWriteResult {
-  const list = requireGroceryList(replica, listId);
-  const item = replica.removeFromGroceryList(id, list.id);
-  const where = list.id === null ? 'the list' : `the "${list.name}" list`;
+export function removeFromGroceryList(replica: Replica, id: string, listId: string | null = null): GroceryWriteResult {
+  const item = replica.removeFromGroceryList(id, listId);
   return {
-    item: serializeOnList(replica, item, list.id),
+    item: serializeWithHome(replica, item, listId),
     // Worth saying, because "remove" reads as a delete and this is not one.
-    outcome: `Took "${item.name}" off ${where}. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
+    outcome: `Took "${item.name}" off the list. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
   };
 }
 

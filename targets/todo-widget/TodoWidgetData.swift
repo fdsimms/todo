@@ -369,14 +369,15 @@ extension Color {
     }
 }
 
-// Mirrors darkColors/lightColors in src/theme/index.ts — keep in sync if
-// those change. Only the tokens this widget actually uses.
+// Mirrors nightColors (Dark) and lightColors in src/theme/index.ts: keep in
+// sync if those change. Only the tokens these widgets and Live Activities use.
 struct WidgetPalette {
     let bg: Color
     let bgSecondary: Color
     let text: Color
     let textSecondary: Color
     let textTertiary: Color
+    // Ink: near-black in light, near-white in dark. Glyphs and the add button.
     let accent: Color
     // The over-run tint, matching colors.orange in src/theme/index.ts — what
     // FocusLiveActivity draws a focus step that has run past its target in,
@@ -385,31 +386,46 @@ struct WidgetPalette {
     let green: Color
     let red: Color
     let separator: Color
+    // A checked box: gold with an ink check, colors.done/onDone in the app.
+    let done: Color
+    let onDone: Color
+    // The mark's own gold and the ink drawn on it, colors.brand/onBrand: a Live
+    // Activity's tint, keyline and button, which read as the app's own.
+    let brand: Color
+    let onBrand: Color
 
     static let dark = WidgetPalette(
-        bg: Color(hex: "000000"),
-        bgSecondary: Color(hex: "1C1C1E"),
-        text: Color(hex: "FFFFFF"),
-        textSecondary: Color(hex: "8E8E93"),
-        textTertiary: Color(hex: "636366"),
-        accent: Color(hex: "0A84FF"),
+        bg: Color(hex: "100E13"),
+        bgSecondary: Color(hex: "1B1820"),
+        text: Color(hex: "F6F3F8"),
+        textSecondary: Color(hex: "B3ADBD"),
+        textTertiary: Color(hex: "8F889A"),
+        accent: Color(hex: "F6F3F8"),
         orange: Color(hex: "FF9F0A"),
         green: Color(hex: "30D158"),
         red: Color(hex: "FF453A"),
-        separator: Color(hex: "38383A")
+        separator: Color(hex: "3A3541"),
+        done: Color(hex: "FFB020"),
+        onDone: Color(hex: "17131C"),
+        brand: Color(hex: "FFB020"),
+        onBrand: Color(hex: "17131C")
     )
 
     static let light = WidgetPalette(
-        bg: Color(hex: "F2F2F7"),
+        bg: Color(hex: "F3F2F5"),
         bgSecondary: Color(hex: "FFFFFF"),
-        text: Color(hex: "000000"),
-        textSecondary: Color(hex: "6C6C70"),
-        textTertiary: Color(hex: "8A8A8E"),
-        accent: Color(hex: "007AFF"),
+        text: Color(hex: "17131C"),
+        textSecondary: Color(hex: "4F4A57"),
+        textTertiary: Color(hex: "6B6574"),
+        accent: Color(hex: "17131C"),
         orange: Color(hex: "FF9500"),
         green: Color(hex: "34C759"),
         red: Color(hex: "FF3B30"),
-        separator: Color(hex: "C6C6C8")
+        separator: Color(hex: "C9C6CF"),
+        done: Color(hex: "C98500"),
+        onDone: Color(hex: "17131C"),
+        brand: Color(hex: "FFB020"),
+        onBrand: Color(hex: "17131C")
     )
 
     // For a widget that sits on the wallpaper and takes the system's
@@ -424,5 +440,19 @@ struct WidgetPalette {
     // content agreeing with the background those same files already force.
     static func forScheme(_ scheme: ColorScheme) -> WidgetPalette {
         scheme == .dark ? .dark : .light
+    }
+}
+
+// A Home Screen widget's own background: the palette's card color
+// (colors.bgSecondary in the app), following the system appearance. A view
+// rather than a Color because `containerBackground` is applied in each
+// widget's configuration, outside the entry view that reads the scheme. The
+// system still removes it where it removes any container background (tinted
+// and clear Home Screens, StandBy), so it needs no case of its own for those.
+struct WidgetCardBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        WidgetPalette.forScheme(colorScheme).bgSecondary
     }
 }

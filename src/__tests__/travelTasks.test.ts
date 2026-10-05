@@ -2,6 +2,12 @@ import type { SavedPlace } from '../utils/savedPlaces';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
   clampTravelLeadMinutes,
+  arriveEarlyFor,
+  describeArrival,
+  leadWithArrival,
+  parseTravelEventPrefs,
+  travelModeFor,
+  travelRowNote,
   describeTravelEstimate,
   estimatedLeadMinutes,
   estimateFor,
@@ -379,5 +385,59 @@ describe('travelSourceEventId', () => {
   it('is null for a key with no event id', () => {
     expect(travelSourceEventId('no-separator')).toBeNull();
     expect(travelSourceEventId('|2026-10-05T14:00:00.000Z')).toBeNull();
+  });
+});
+
+describe('per-event travel overrides', () => {
+  const prefs = parseTravelEventPrefs({ 'evt-1': { mode: 'walking', arriveEarlyMinutes: 10 } });
+
+  it('parses defensively and drops an entry that overrides nothing', () => {
+    expect(parseTravelEventPrefs('not json')).toEqual({});
+    expect(parseTravelEventPrefs({ a: { mode: 'rocket', arriveEarlyMinutes: 0 } })).toEqual({});
+    expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 999 } })).toEqual({
+      a: { mode: null, arriveEarlyMinutes: 60 },
+    });
+  });
+
+  it('falls back to the Settings mode and an on-time arrival', () => {
+    expect(travelModeFor('evt-1', prefs, 'driving')).toBe('walking');
+    expect(travelModeFor('other', prefs, 'driving')).toBe('driving');
+    expect(arriveEarlyFor('other', prefs)).toBe(0);
+  });
+
+  it('never lets a late arrival put the reminder after the start', () => {
+    expect(leadWithArrival(30, 10)).toBe(40);
+    expect(leadWithArrival(5, -15)).toBe(0);
+  });
+
+  it('moves the reminder earlier for an early arrival and later for a late one', () => {
+    const base = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {})[0];
+    const early = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {}, undefined, prefs)[0];
+    const late = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {}, undefined,
+      parseTravelEventPrefs({ 'evt-1': { mode: null, arriveEarlyMinutes: -10 } }))[0];
+    expect(Date.parse(base.leaveAt) - Date.parse(early.leaveAt)).toBe(10 * 60 * 1000);
+    expect(Date.parse(late.leaveAt) - Date.parse(base.leaveAt)).toBe(10 * 60 * 1000);
+  });
+
+  it("reads an estimate filed under the event's own mode", () => {
+    const sourceId = travelSourceId(event());
+    const estimates = { [sourceId]: { minutes: 12, location: '123 Main St', mode: 'walking' as const, origin: 'current', at: NOW.getTime() } };
+    const [match] = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {},
+      { estimates, mode: 'driving', origin: 'current' }, prefs);
+    expect(match.estimate?.minutes).toBe(12);
+  });
+
+  it('describes arrival in plain words', () => {
+    expect(describeArrival(0)).toBe('On time');
+    expect(describeArrival(10)).toBe('10 min early');
+    expect(describeArrival(-5)).toBe('5 min late');
+  });
+
+  it('shows a held estimate on the row only for the same place and mode', () => {
+    const estimates = { k: { minutes: 25, location: '123 Main St', mode: 'transit' as const, origin: 'current', at: 0 } };
+    expect(travelRowNote('k', '123 Main St ', estimates, 'transit')).toBe('25 min by transit');
+    expect(travelRowNote('k', '123 Main St', estimates, 'driving')).toBeNull();
+    expect(travelRowNote('k', '9 Elm', estimates, 'transit')).toBeNull();
+    expect(travelRowNote('missing', '123 Main St', estimates, 'transit')).toBeNull();
   });
 });

@@ -384,6 +384,7 @@ export function completionHistory(replica: Replica, input: CompletionHistoryInpu
 export const DEFAULT_STALE_DAYS = 30;
 const INBOX_AGING_DAYS = 7;
 const QUIET_PROJECT_DAYS = 21;
+export const DEFAULT_MIN_PUSHES = 3;
 const SECTION_CAP = 25;
 
 export interface ReviewSection<T> {
@@ -402,9 +403,12 @@ export interface TaskReview {
   possibleDuplicates: ReviewSection<{ title: string; tasks: { id: string; category?: string; projectId?: string; dueDate?: string }[] }>;
   /** Active projects with work outstanding and nothing finished in three weeks. Lists and paused projects are left out. */
   quietProjects: ReviewSection<{ id: string; title: string; outstanding: number; lastCompletedAt?: string; daysQuiet: number }>;
+  /** Open tasks pushed to a later day at least `minPushes` times, most pushed first. A task the person muted is left out. */
+  repeatedlyPostponed: ReviewSection<SerializedTask & { pushes: number }>;
   /** Recurring tasks with the most occurrences swept as missed, all time. */
   mostMissed: ReviewSection<{ title: string; missed: number; lastMissedAt: string }>;
   staleDays: number;
+  minPushes: number;
 }
 
 function section<T>(all: T[]): ReviewSection<T> {
@@ -416,8 +420,9 @@ export function duplicateKey(title: string): string {
   return title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
 }
 
-export function reviewTasks(replica: Replica, input: { staleDays?: number } = {}): TaskReview {
+export function reviewTasks(replica: Replica, input: { staleDays?: number; minPushes?: number } = {}): TaskReview {
   const staleDays = Math.max(input.staleDays ?? DEFAULT_STALE_DAYS, 1);
+  const minPushes = Math.max(input.minPushes ?? DEFAULT_MIN_PUSHES, 1);
   const today = replica.todayKey();
   const all = replica.tasks();
   const open = all.filter(isOpenTopLevel);
@@ -491,13 +496,23 @@ export function reviewTasks(replica: Replica, input: { staleDays?: number } = {}
     .filter(p => p.daysQuiet >= QUIET_PROJECT_DAYS)
     .sort((a, b) => b.daysQuiet - a.daysQuiet);
 
+  // Pushed again and again is stuck even when it is never overdue, because
+  // each push lands it on a future day. Muted means the person asked not to be
+  // nudged about it, so it is not offered here either.
+  const postponed = open
+    .filter(t => (t.postponeCount ?? 0) >= minPushes && !t.postponeMuted)
+    .sort((a, b) => (b.postponeCount ?? 0) - (a.postponeCount ?? 0))
+    .map(t => ({ ...serializeTask(replica, t), pushes: t.postponeCount ?? 0 }));
+
   return {
     overdue: section(overdue),
     inboxAging: section(aged(t => replica.isInbox(t), INBOX_AGING_DAYS)),
     somedayAging: section(aged(t => replica.isUnscheduled(t), staleDays)),
     possibleDuplicates: section(duplicates),
     quietProjects: section(quiet),
+    repeatedlyPostponed: section(postponed),
     mostMissed: section(replica.mostMissed(all).map(g => ({ title: g.title, missed: g.count, lastMissedAt: g.lastMissedAt }))),
     staleDays,
+    minPushes,
   };
 }

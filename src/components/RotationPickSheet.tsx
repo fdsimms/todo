@@ -149,7 +149,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
             <Ionicons name="open-outline" size={iconSize.sm} color={colors.accentText} />
           </TouchableOpacity>
         )}
-        {isDone && <Ionicons name="checkmark" size={iconSize.md} color={colors.green} />}
+        {isDone && <Ionicons name="checkmark" size={iconSize.md} color={colors.done} />}
       </TouchableOpacity>
     );
   };

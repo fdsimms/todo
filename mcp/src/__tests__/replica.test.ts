@@ -1126,8 +1126,7 @@ describe('the replica', () => {
       replica.removeFromGroceryList(milk.id, 'cabin');
       replica.refresh();
       expect(replica.groceryListEntries().map(e => e.listId)).toEqual([null]);
-      expect(() => replica.setGroceryChecked(milk.id, true, 'cabin')).toThrow(/not on the "Cabin" list/);
-      expect(() => replica.setGroceryChecked(milk.id, true, 'nope')).toThrow(/No grocery list with id nope/);
+      expect(() => replica.setGroceryChecked(milk.id, true, 'cabin')).toThrow(/not on that list/);
       mockRaw.runSync('DELETE FROM grocery_lists');
     });
 
