@@ -5145,12 +5145,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  selectBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: spacing.md, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.accent,
-  },
-  selectText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   // ScrollView defaults its outer container to flexGrow/flexShrink: 1, which
   // let it balloon to fill the screen's remaining flex space (competing with
   // listWrapper below) instead of sizing to its own (short, pill-height)

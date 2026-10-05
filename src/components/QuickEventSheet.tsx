@@ -1258,8 +1258,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 <InlineAction
                   icon="trash-outline"
                   label="Delete event"
-                  variant="neutral"
-                  tint={colors.red}
+                  tint={colors.redText}
                   onPress={confirmDelete}
                   accessibilityLabel="Delete this event"
                 />
