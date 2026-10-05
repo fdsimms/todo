@@ -29,12 +29,20 @@ import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
+import { useUnattendedStore } from '../store/useUnattendedStore';
 import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { quotaProrationPatch } from './quotaSchedule';
-import { getCurrentDayStart, dayKeyOf, dateToHHMM } from './dateUtils';
+import {
+  getCurrentDayStart,
+  dayKeyOf,
+  dayKeyToDate,
+  dateToHHMM,
+  getDeadlineFromOffset,
+  nthWeekdayOfMonth,
+} from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
 import {
@@ -62,6 +70,8 @@ import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { frozenForMeal, mealThawLinkUrl, mealThawTitle } from './mealThawTasks';
 import { standingSwapMap } from './standingSwaps';
 import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
+import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from './moodTasks';
+import { buildMoodDays, lowMoodRun } from './moodInsights';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import {
   WEEKEND_NUDGE_TITLE,
@@ -114,10 +124,18 @@ export function seedDemoData(): void {
     addTag,
     archiveTask,
     pinGroup,
+    addTaskSeries,
+    markMissed,
     completeProject,
     archiveProject,
   } = useTaskStore.getState();
-  const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
+  const {
+    addCategory,
+    setCategoryEmoji,
+    setCategorySchedule,
+    setCategoryHideOnVacation,
+    setCategoryDefaultTimeSegments,
+  } = useCategoryStore.getState();
   const { createProject, updateProject, removeProjectRow, restoreProject } = useProjectStore.getState();
   // Projects have their own category pool, separate from the task categories
   // above — the Projects screen is built entirely around the sections it
@@ -641,7 +659,9 @@ export function seedDemoData(): void {
   // The same target counted off the food log instead of typed in: it logs 250ml
   // a glass and follows the 2,000ml water target seeded with the food log, so
   // its count is 8 and moves when that target does. Without a row like this the
-  // toggle reads as a setting nobody has used.
+  // toggle reads as a setting nobody has used. Today's seeded water finishes it
+  // through syncWaterQuotaTasks, and the target then rises: see the water block
+  // in seedFoodLog, which is where the `waterShortfall` task comes from.
   addTask({
     title: 'Reach my water target',
     category: 'Health',
@@ -1041,6 +1061,111 @@ export function seedDemoData(): void {
     reminderTime: setHours(addDays(today, 1), 8).toISOString(),
     reminderKind: 'persistent',
     effort: 1,
+  });
+
+  // --- A task given several dates (a series) -------------------------------
+  // Three rows sharing one seriesId, each an ordinary one-off on its own day
+  // (see the Series note in CLAUDE.md). Through addTaskSeries, the same entry
+  // point the editor's date picker uses, so the set carries no recurrence rule
+  // and a stack roster reads it back as one task. Future-dated, so the set is
+  // on Later: a date that already happened is history, not schedule.
+  addTaskSeries(
+    {
+      title: "Feed the neighbors' cat",
+      notes: 'Key is under the blue pot. Half a can, and refill the water bowl.',
+      category: 'Home',
+      effort: 1,
+    },
+    [addDays(today, 3), addDays(today, 4), addDays(today, 5)],
+  );
+
+  // --- A missed occurrence --------------------------------------------------
+  // Marked missed through markMissed rather than left overdue: a miss is a
+  // completed row with missedAt set (see src/utils/missed.ts), which is what
+  // the Logbook's Missed label and the Stats "most missed" card read, and
+  // nothing else in the seed produces one. The occurrence sat two days back,
+  // since markMissed refuses an occurrence whose day hasn't come, and the
+  // successor it spawns lands on the next pickup day, on Later. Before the
+  // coins are switched on (seedRewards), so the miss charges nothing: the
+  // seeded coin ledger carries its own.
+  const recycling = addTask({
+    title: 'Put the recycling out',
+    notes: 'Pickup is early, so it has to go out the night before.',
+    category: 'Home',
+    recurrenceType: 'weekly',
+    recurrenceDays: [subDays(today, 2).getDay()],
+    dueDate: subDays(today, 2).toISOString(),
+    effort: 1,
+  });
+  markMissed(recycling.id);
+
+  // --- A monthly repeat on the Nth weekday ----------------------------------
+  // recurrenceWeekOrdinal, otherwise invisible until a task uses it: "the
+  // second Tuesday" rather than a day of the month. Dated onto the grid's own
+  // next cell through nthWeekdayOfMonth, so the row sits where the engine
+  // would put it.
+  const thisMonthsMeeting = nthWeekdayOfMonth(today, 2, 2);
+  const hoaMeeting = dayKeyOf(thisMonthsMeeting) >= dayKeyOf(today)
+    ? thisMonthsMeeting
+    : nthWeekdayOfMonth(addMonths(today, 1), 2, 2);
+  addTask({
+    title: 'HOA meeting',
+    notes: 'Second Tuesday of the month, 7 PM in the clubhouse.',
+    category: 'Home',
+    dueDate: hoaMeeting.toISOString(),
+    recurrenceType: 'monthly',
+    recurrenceInterval: 1,
+    recurrenceDays: [2],
+    recurrenceWeekOrdinal: 2,
+    reminderTime: setHours(hoaMeeting, 18).toISOString(),
+    effort: 1,
+  });
+
+  // --- A deadline measured from the due date --------------------------------
+  // deadlineOffsetDays: the deadline is "five days after the 1st" rather than
+  // a fixed date, so each occurrence completeTask spawns gets its own (see
+  // Task.deadlineOffsetDays). Negative counts forward from the due date, and
+  // the row's deadline is written beside it the way the editor writes the
+  // pair, since nothing derives one from the other at creation.
+  const rentDue = new Date(today);
+  if (rentDue.getDate() !== 1) rentDue.setMonth(rentDue.getMonth() + 1, 1);
+  addTask({
+    title: 'Pay the rent',
+    notes: 'Due on the 1st. The late fee starts after the 5th.',
+    category: 'Home',
+    tags: ['bills'],
+    dueDate: rentDue.toISOString(),
+    recurrenceType: 'monthly',
+    recurrenceInterval: 1,
+    recurrenceMonthDay: 1,
+    deadlineOffsetDays: -5,
+    deadline: getDeadlineFromOffset(rentDue, -5).toISOString(),
+    priority: 3,
+    effort: 1,
+  });
+
+  // --- A category with hours of its own -------------------------------------
+  // The three category fields nothing shows until something uses them: a
+  // schedule (Category.scheduleDays/Start/End, which hides the category's
+  // tasks outside those hours and sends them to Later with the next window as
+  // their time), hide-on-vacation, and a default time of day for new tasks.
+  // The shift below names no timeSegments of its own, so what puts it in the
+  // morning is the category default, the way it would be for a task typed
+  // into quick add. Its own category rather than Work, whose tasks the rest
+  // of the seed needs on Today at every hour.
+  addCategory('Volunteering');
+  setCategoryEmoji('Volunteering', '🐾');
+  setCategorySchedule('Volunteering', [6], '09:00', '12:00');
+  setCategoryHideOnVacation('Volunteering', true);
+  setCategoryDefaultTimeSegments('Volunteering', ['morning']);
+  addTask({
+    title: 'Shelter shift',
+    notes: 'Saturday mornings at the animal shelter. Dog walking first, then the kennels.',
+    category: 'Volunteering',
+    recurrenceType: 'weekly',
+    recurrenceDays: [6],
+    dueDate: addDays(today, (6 - today.getDay() + 7) % 7).toISOString(),
+    effort: 3,
   });
 
   // --- Unscheduled (organized, but no date) --------------------------------
@@ -1631,6 +1756,24 @@ export function seedDemoData(): void {
     ...generatedBy('weighIn', dayKeyOf(today)),
   });
 
+  // A weight goal and a sleep goal. Both are the person's own typed numbers
+  // and live in settings rather than in Health (docs/arch/health-data.md, "A
+  // goal weight was on that list too"), which is what lets a demo carry them
+  // where it may carry no reading. The goal sheet stamps startKg from the
+  // reading that was current when the goal was saved, so this row says a goal
+  // was set three weeks ago and nothing about what the scale reads today; the
+  // Weight and Sleep screens draw each goal with no points against it, which
+  // is the honest state of a database holding no readings. Through the same
+  // setters the two sheets call, and with no body profile beside them, so the
+  // calorie figure a goal can feed stays untouched (autoCalorieTargetKcal).
+  useSettingsStore.getState().setWeightGoal({
+    startKg: 82,
+    startDayKey: dayKeyOf(subDays(today, 21)),
+    targetKg: 78,
+    rateKgPerWeek: 0.5,
+  });
+  useSettingsStore.getState().setSleepGoalMinutes(450);
+
   // A health-target task, the fifth kind. Seeded so the shape is visible even
   // though the demo can show no reading behind it: the row draws its chip only
   // once Health has a number, so in demo mode this reads as an ordinary task
@@ -1903,11 +2046,12 @@ export function seedDemoData(): void {
   if (useSettingsStore.getState().kitchenEnabled) seedFoodLog(today);
 
   seedPeople(today);
-  // Last, and unlike the people it needs no generator pass afterwards: both
-  // mood generators ship off, so a demo relying on them would show the feature
-  // only to somebody who had already found it. The history itself is what
-  // there is to see.
   seedMoodLog(today);
+  // The two tasks the mood log's generators write, laid down by hand after the
+  // log they read: checkMoodTasks refuses in demo mode (the entries under it
+  // are fiction), and both generators ship off besides, so a demo relying on
+  // the pass would show the feature only to somebody who had already found it.
+  seedMoodTasks(today);
   seedMilestone(today);
   seedAsNeededDoses(today);
   seedRewards(today);
@@ -2212,24 +2356,38 @@ function seedFoodLog(today: Date): void {
   }
 
   /**
-   * Today's water, part-way to its target.
+   * Today's water, and the one generator that reads the food log.
    *
    * **On today rather than back in the run**, because the water card is what
    * somebody handed the phone actually opens the food log onto, and a stepper
    * reading "None" over an empty bar is the feature looking unused rather than
-   * working. Part-way rather than met, so the bar says something.
+   * working.
    *
    * One row for the day, which is the feature: `waterHelping` builds exactly
    * what a run of presses would have left behind, and `isWaterEntry` is what
    * lets the stepper pick it back up. Nothing is hand-written here either.
+   *
+   * **Eight glasses, which finishes the daily water task through the real
+   * path**: `addEntry` runs `syncWaterQuotaTasks`, which completes a task that
+   * follows the target once the log reaches it. The target is then raised,
+   * which is the one case the finished task can't take on its own (see
+   * src/utils/waterShortfallTasks.ts), and the same sync writes the
+   * `waterShortfall` task for what is still owed. A generator run against the
+   * seeded log rather than a row written by hand, so its ledger entry is the
+   * generator's own, and the stepper still sits short of the target that now
+   * stands, so the bar under it says something.
    */
   {
-    const built = waterHelping(1250);
+    const built = waterHelping(2000);
     if (built) {
       const at = new Date(today);
       at.setHours(11, 0, 0, 0);
       addEntry({ ...built, grams: null, slot: null, at });
     }
+    useSettingsStore.getState().setWaterShortfallTasks(true);
+    useSettingsStore.getState().setWaterShortfallTaskCategory('Health');
+    setNutritionTarget('waterMl', 2500);
+    useTaskStore.getState().syncWaterQuotaTasks();
   }
 
   for (const meal of meals) {
@@ -2323,6 +2481,11 @@ function seedPeople(today: Date): void {
     birthdayDay: bdayFar.getDate(),
     nickname: 'Tess',
     phoneNumber: '555 0172',
+    // An address to compose to, otherwise the row's mail button and the
+    // editor's Email field never show. On one person only, for the reason the
+    // birth year is on one: the field exists without implying everybody's is
+    // worth filling in.
+    email: 'tess@example.com',
   });
 
   // A group, so a fresh install of demo mode actually shows the capability
@@ -2592,6 +2755,75 @@ function seedMoodLog(today: Date): void {
   }
 
   seedRepeatedHealthTask(today);
+}
+
+/**
+ * The mood log's two generated tasks, the daily check-in and the nudge, seeded
+ * as the rows `checkMoodTasks` would have written: that pass refuses in demo
+ * mode, and could not fire here anyway (see the note on the weigh-in request
+ * in seedDemoData, which draws the same line).
+ *
+ * **The nudge is dated by the generator's own rule, not by hand.** Its trigger
+ * is a run of low days in the person's own answers (`wantsMoodNudge`), so the
+ * row is placed on the first seeded day that rule says yes to, with the notes
+ * `moodNudgeNotes` would have written from the run on that day. Reading the
+ * seeded log back through the real decision is what keeps the task and the
+ * history it points at from disagreeing. It cannot be live: today is left
+ * unlogged on purpose (see seedMoodLog), so no run ends today, and the low
+ * patch it fired on turned a week ago. It is completed two days on, when the
+ * log turned, which is the Logbook's half of the feature. No ledger entry for
+ * it: the ledger stamps its own time, and an entry made today about a task
+ * from last week would be a false account.
+ *
+ * The check-in is today's, open, with the link that opens the mood sheet, and
+ * it goes into the unattended ledger the way the store records a generated row
+ * written straight through addTask (see checkMealPlanNudge). Both settings
+ * marks are stamped as the pass stamps them, so each slot reads as decided
+ * rather than as still pending.
+ */
+function seedMoodTasks(today: Date): void {
+  const settings = useSettingsStore.getState();
+  const { addTask, completeTask } = useTaskStore.getState();
+  settings.setMoodLogTasks(true);
+  settings.setMoodLogTaskCategory('Health');
+  settings.setMoodNudgeTasks(true);
+  settings.setMoodNudgeTaskCategory('Health');
+
+  // Off the mood entries alone, as checkMoodTasks builds it: the nudge reads
+  // only `mood`, so the task half of a MoodDay is left empty.
+  const days = buildMoodDays(useMoodStore.getState().logs, [], settings.dayResetTime);
+  for (let back = 17; back >= 1; back--) {
+    const dayKey = dayKeyOf(subDays(today, back));
+    if (!wantsMoodNudge(days, dayKey, settings.moodNudgeAfterDays, null)) continue;
+    settings.setMoodNudgeLastDayKey(dayKey);
+    const due = dayKeyToDate(dayKey);
+    due.setHours(12, 0, 0, 0);
+    const nudge = addTask({
+      title: MOOD_NUDGE_TITLE,
+      notes: moodNudgeNotes(lowMoodRun(days, dayKey)),
+      dueDate: due.toISOString(),
+      category: 'Health',
+      ...generatedBy('moodNudge', dayKey),
+    });
+    completeTask(nudge.id, { completedAt: setHours(addDays(due, 2), 19).toISOString() });
+    break;
+  }
+
+  const sourceId = moodLogSourceId(dayKeyOf(today), null);
+  settings.setMoodLogLastDayKey(sourceId);
+  const due = new Date(today);
+  due.setHours(12, 0, 0, 0);
+  const checkIn = addTask({
+    title: MOOD_LOG_TITLE,
+    dueDate: due.toISOString(),
+    timeSegments: [],
+    category: 'Health',
+    // The row's link button opens the sheet that answers it: the same literal
+    // checkMoodTasks writes.
+    linkUrl: 'dundundun://mood?log=1',
+    ...generatedBy('moodLog', sourceId),
+  });
+  useUnattendedStore.getState().recordGenerated('created', checkIn);
 }
 
 /**
