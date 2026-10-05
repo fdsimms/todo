@@ -36,6 +36,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { TRAVEL_ARRIVE_CHOICES, TRAVEL_MODES, describeArrival, type TravelMode } from '../utils/travelTasks';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { DEFAULT_EVENT_MINUTES, describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
@@ -784,6 +785,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       at: Date.now(),
     }));
     setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
+    useEventCreatedToastStore.getState().announce(saved.id, effectiveStart);
     onSaved?.(saved.id);
     dismiss();
   };

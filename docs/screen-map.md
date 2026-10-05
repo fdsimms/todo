@@ -132,6 +132,7 @@ Where each component can appear.
 - `src/components/ErrorBoundary.tsx` — on app shell
 - `src/components/EstimateAmountSheet.tsx` — on FoodLogScreen, app shell
 - `src/components/EstimateMealSheet.tsx` — on FoodLogScreen, app shell
+- `src/components/EventCreatedToast.tsx` — on app shell
 - `src/components/EventImportSheet.tsx` — on TodayScreen
 - `src/components/EventOptionSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/EventRulesSheet.tsx` — on AutomationsScreen
