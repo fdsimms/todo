@@ -20,7 +20,8 @@ export interface SerializedStack {
   projectId?: string;
   /**
    * Its open top-level tasks, in the stack's own order. A repeating task is one
-   * entry however many finished occurrences sit behind it.
+   * entry however many finished occurrences sit behind it, and a dated series is
+   * one entry however many dates it has.
    */
   members: { id: string; title: string }[];
 }
@@ -42,9 +43,12 @@ export interface StackWrite {
 }
 
 function serializeStack(replica: Replica, stack: ReturnType<Replica['stacks']>[number]): SerializedStack {
-  const members = replica
-    .tasks()
-    .filter(t => t.groupId === stack.id && !t.parentId && !t.completed && !t.archived)
+  // The open rows go through the app's own membership read (`groupRoster`,
+  // CLAUDE.md "Stacks"), which collapses a dated series to one entry. Open
+  // rows rather than the whole history, or the roster would keep the finished
+  // occurrence of a task completed today over the live one that replaced it.
+  const open = replica.tasks().filter(t => t.groupId === stack.id && !t.parentId && !t.completed && !t.archived);
+  const members = replica.lib().visibility.groupRoster(open)
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map(t => ({ id: t.id, title: replica.displayTitle(t) }));
   return {

@@ -2568,7 +2568,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return getVisibleAt(previewTask);
   }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
   // Says what happens and when, because the two halves are set separately and
   // a bare "2h" on the collapsed row reads as how long the task takes.

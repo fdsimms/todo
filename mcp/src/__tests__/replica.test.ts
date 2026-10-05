@@ -1882,6 +1882,22 @@ describe('the replica', () => {
       expect(() => replica.taskPatch({ category: 'Home', waitsOn: ['nope'] }, null, false)).toThrow(/no task with id nope/);
     });
 
+    it('names only the blockers still holding a task, and keys a date by its local day', () => {
+      const a = replica.createTask({ title: 'Buy paint' });
+      const b = replica.createTask({ title: 'Paint the hall' });
+      replica.updateTask(b.id, replica.taskPatch({ category: 'Home', waitsOn: [a.id] }, b, false));
+      replica.refresh();
+      expect(replica.liveBlockers(replica.taskById(b.id)!).map(t => t.id)).toEqual([a.id]);
+      expect(getTaskTool(replica, b.id)!.waitsOn).toEqual([{ id: a.id, title: 'Buy paint' }]);
+      replica.completeTask(a.id, {});
+      replica.refresh();
+      // A finished blocker holds nothing (`canBlock`), so it is not something the task waits on.
+      expect(replica.liveBlockers(replica.taskById(b.id)!)).toEqual([]);
+      expect(getTaskTool(replica, b.id)!.waitsOn).toBeUndefined();
+      // Local midnight is that day whatever the UTC date of the instant is.
+      expect(replica.dayKeyOf(new Date(2026, 9, 5, 0, 0).toISOString())).toBe('2026-10-05');
+    });
+
     it('refuses a completed task', () => {
       const t = replica.createTask({ title: 'Done' });
       replica.completeTask(t.id, {});

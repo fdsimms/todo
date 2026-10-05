@@ -390,7 +390,7 @@ export function buildGroceryListText(items: readonly GroceryItem[]): string {
  *
  * The heading says "This week's meals" only when the caller says the week is
  * this one (`thisWeek`); any other week is named by its dates, "Meals for
- * Oct 5 – 11", since the plan pages forward and back and "this week" over
+ * Oct 5–11", since the plan pages forward and back and "this week" over
  * next week's dinners tells the reader the wrong week. Left out, it's the
  * dates, which are never wrong.
  *

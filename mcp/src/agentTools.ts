@@ -20,6 +20,7 @@
  * `plan_day` and `rebalance_week` only propose. Applying a plan is a batch, so
  * there is one way to change several tasks and it always has a preview.
  */
+import { addDays } from 'date-fns/addDays';
 import type { Task, TaskDraft } from '../../src/types';
 import type { Replica } from './replica';
 import type { SerializedTask } from './serialize';
@@ -330,8 +331,10 @@ function minutesOf(hhmm: string): number {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
+const DAY_MINUTES = 24 * 60;
+
 function hhmm(minutes: number): string {
-  const m = Math.max(0, Math.min(minutes, 24 * 60 - 1));
+  const m = Math.max(0, Math.min(minutes, DAY_MINUTES - 1));
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
@@ -356,27 +359,41 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
   const lib = replica.lib();
   const settings = replica.settings();
   const today = replica.todayKey();
-  const todayStart = new Date(`${today}T00:00:00`);
   const now = new Date();
+  // The day runs from the person's own reset to the next one, not from
+  // calendar midnight (CLAUDE.md, "Scheduling decisions and dayResetTime").
+  // Every minute count below is measured from that start, and a clock time
+  // earlier than the reset belongs to the small hours at the end of the day
+  // (`onLogicalDay`'s rule): under a 04:00 reset, active hours ending at 02:00
+  // end late rather than before they start, and a plan asked for at 01:30 is
+  // still about the day being lived, with half an hour left in it. Measured
+  // from midnight, both read as a day that ends before it starts.
+  const todayStart = lib.dates.getDayStart(now, settings.dayResetTime);
+  const endOfDay = addDays(todayStart, 1);
+  const resetMin = minutesOf(settings.dayResetTime);
+  const dayMinutesOf = (clock: string): number => {
+    const m = minutesOf(clock) - resetMin;
+    return m < 0 ? m + DAY_MINUTES : m;
+  };
+  const clockOf = (minutes: number): string => hhmm((minutes + resetMin) % DAY_MINUTES);
   const nowMin = Math.max(0, clockMinutes(now, todayStart));
-  const from = input.startAt ? minutesOf(input.startAt) : Math.max(nowMin, minutesOf(settings.activeHoursStart));
-  const to = input.endAt ? minutesOf(input.endAt) : minutesOf(settings.activeHoursEnd);
+  const from = input.startAt ? dayMinutesOf(input.startAt) : Math.max(nowMin, dayMinutesOf(settings.activeHoursStart));
+  const to = input.endAt ? dayMinutesOf(input.endAt) : dayMinutesOf(settings.activeHoursEnd);
   if (to <= from) throw new Error('The day ends before it starts; give startAt and endAt as HH:MM.');
 
   const busy = (input.busy ?? [])
-    .map(b => ({ ...b, s: minutesOf(b.start), e: minutesOf(b.end) }))
+    .map(b => ({ ...b, s: dayMinutesOf(b.start), e: dayMinutesOf(b.end) }))
     .filter(b => b.e > b.s)
     .sort((a, b) => a.s - b.s);
 
   const all = replica.tasks();
   const assumed = lib.dayLoad.assumedMinutesFor(all);
-  const endOfDay = new Date(todayStart.getTime() + 24 * 3_600_000);
   const candidates = all.filter(t =>
     !t.parentId && !t.completed && !t.archived && t.polarity !== 'negative'
     && (replica.isVisible(t) || replica.visibleAt(t) < endOfDay));
 
   const waiting = candidates.filter(t => replica.isBlocked(t)).map(t => ({ id: t.id, title: replica.displayTitle(t) }));
-  const deadlineBy = (t: Task) => !!t.deadline && t.deadline.slice(0, 10) <= today;
+  const deadlineBy = (t: Task) => !!t.deadline && replica.dayKeyOf(t.deadline) <= today;
   const ranked = candidates
     .filter(t => !replica.isBlocked(t))
     .map(t => {
@@ -388,9 +405,9 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
       // Already on Today means it can start whenever the plan starts, short
       // of its own window; otherwise not before the moment the app shows it.
       const earliest = replica.isVisible(t)
-        ? Math.max(from, t.windowStart ? minutesOf(t.windowStart) : 0)
+        ? Math.max(from, t.windowStart ? dayMinutesOf(t.windowStart) : 0)
         : Math.max(from, clockMinutes(replica.visibleAt(t), todayStart));
-      const latest = t.windowEnd ? minutesOf(t.windowEnd) : to;
+      const latest = t.windowEnd ? dayMinutesOf(t.windowEnd) : to;
       if (t.windowStart || t.windowEnd) why.push(`time window ${t.windowStart ?? ''}–${t.windowEnd ?? ''}`);
       return { t, minutes: est ?? assumed, estimated: est != null, earliest, latest, why };
     })
@@ -428,13 +445,13 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
         id: c.t.id,
         title: replica.displayTitle(c.t),
         minutes: c.minutes,
-        reason: end > c.latest && c.latest < to ? `its window closes at ${hhmm(c.latest)}` : 'no room left before the day ends',
+        reason: end > c.latest && c.latest < to ? `its window closes at ${clockOf(c.latest)}` : 'no room left before the day ends',
       });
       continue;
     }
     plan.push({
-      start: hhmm(start),
-      end: hhmm(end),
+      start: clockOf(start),
+      end: clockOf(end),
       id: c.t.id,
       title: replica.displayTitle(c.t),
       minutes: c.minutes,
@@ -443,14 +460,16 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
     });
     cursor = end;
   }
-  plan.sort((a, b) => a.start.localeCompare(b.start));
+  // Already in order: the cursor only moves forward, so each slot starts at or
+  // after the one before it ends. Sorting by the clock string would put a
+  // slot in the small hours ahead of the evening one it follows.
 
   const busyMinutes = busy.reduce((n, b) => n + Math.max(0, Math.min(b.e, to) - Math.max(b.s, from)), 0);
   const plannedMinutes = plan.reduce((n, s) => n + s.minutes, 0);
   return {
     date: today,
-    from: hhmm(from),
-    to: hhmm(to),
+    from: clockOf(from),
+    to: clockOf(to),
     plan,
     busy: busy.map(({ start, end, label }) => ({ start, end, ...(label ? { label } : {}) })),
     doesNotFit,

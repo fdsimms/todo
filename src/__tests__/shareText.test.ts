@@ -519,10 +519,10 @@ describe('buildWeekPlanShareText', () => {
     const entries = [entry('2026-10-05', 'dinner', { title: 'Steak' })];
     const heading = (thisWeek?: boolean) =>
       buildWeekPlanShareText(days, entries, new Map(), { thisWeek }).split('\n')[0];
-    expect(heading(true)).toBe("This week's meals (Oct 5 – 11)");
-    expect(heading(false)).toBe('Meals for Oct 5 – 11');
+    expect(heading(true)).toBe("This week's meals (Oct 5–11)");
+    expect(heading(false)).toBe('Meals for Oct 5–11');
     // Unsaid, it's the dates, which are never wrong.
-    expect(heading(undefined)).toBe('Meals for Oct 5 – 11');
+    expect(heading(undefined)).toBe('Meals for Oct 5–11');
   });
 });
 

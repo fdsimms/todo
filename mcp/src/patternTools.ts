@@ -154,7 +154,7 @@ export function habitPatterns(replica: Replica, input: { days?: number } = {}): 
       title: replica.displayTitle(t),
       ...(describeRepeat(t) ? { repeat: describeRepeat(t)! } : {}),
       ...(t.polarity === 'negative' ? { avoid: true as const } : {}),
-      ...(t.streakCount > 0 && t.streakDate ? { streak: { count: t.streakCount, asOf: t.streakDate.slice(0, 10) } } : {}),
+      ...(t.streakCount > 0 && t.streakDate ? { streak: { count: t.streakCount, asOf: replica.logicalDayKeyOf(t.streakDate) } } : {}),
       ...(target ? { target } : {}),
       completed: done.length,
       missed: recent.length - done.length,
@@ -303,10 +303,11 @@ export function moodInsights(replica: Replica): MoodInsights {
       averageMood: round(r.mood),
     })),
     milestones: replica.milestones().map(m => {
-      const c = mi.milestoneMoodContrast(days, replica.logicalDayKeyOf(m.date));
+      const date = replica.logicalDayKeyOf(m.date);
+      const c = mi.milestoneMoodContrast(days, date);
       return c
-        ? { label: m.label, date: replica.logicalDayKeyOf(m.date), daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
-        : { label: m.label, date: replica.logicalDayKeyOf(m.date), note: 'Not enough logged days on both sides yet.' };
+        ? { label: m.label, date, daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
+        : { label: m.label, date, note: 'Not enough logged days on both sides yet.' };
     }),
     ...(knownFrom !== null
       ? { daysOutsideTaskHistory: days.filter(d => d.dayKey < knownFrom && d.mood !== null).length }

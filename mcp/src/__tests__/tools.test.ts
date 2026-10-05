@@ -101,6 +101,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
     isBlocked: (t: Task) => t.id.startsWith('blocked'),
+    liveBlockers: () => [],
     isNotNeeded: () => false,
     visibleAt: () => new Date('2099-01-01T00:00:00.000Z'),
     search: () => [],
@@ -197,6 +198,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     }),
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
+    dayKeyOf: (iso: string) => iso.slice(0, 10),
     isRealCompletion: (t: Task) => t.completed && !t.missedAt,
     describeBounty: () => null,
     onTimeSummary: () => ({ onTime: 0, total: 0, rate: 0 }),
@@ -271,6 +273,14 @@ describe('listTasks', () => {
     const tasks = [task({ id: 'today-1', title: 'Open' }), task({ id: 'today-2', title: 'Done', completed: true })];
     expect(listTasks(withTasks(tasks), { view: 'all' }).tasks).toHaveLength(1);
     expect(listTasks(withTasks(tasks), { view: 'all', includeCompleted: true }).tasks).toHaveLength(2);
+  });
+
+  it('leaves archived tasks out of every lens', () => {
+    // Archived is "out of every list" in the app, and an open archived row
+    // would otherwise fall through the other three lenses into later.
+    const tasks = [task({ id: 'later-1', title: 'Deferred' }), task({ id: 'later-2', title: 'Filed away', archived: true })];
+    expect(listTasks(withTasks(tasks), { view: 'later' }).tasks.map(t => t.id)).toEqual(['later-1']);
+    expect(listTasks(withTasks(tasks), { view: 'all' }).tasks.map(t => t.id)).toEqual(['later-1']);
   });
 
   it('filters by category, tag and project', () => {
@@ -419,6 +429,16 @@ describe('getTask', () => {
     expect(plain.excludeFromSuggestions).toBeUndefined();
     expect(plain.streakRequiresWindow).toBeUndefined();
   });
+  it('names as waitsOn only what the replica says still holds the task back', () => {
+    const blocker = task({ id: 'today-1', title: 'Pick colour' });
+    const waiting = task({ id: 'blocked-1', title: 'Buy paint', blockedById: 'today-1' });
+    const live = withTasks([blocker, waiting], { liveBlockers: t => (t.id === 'blocked-1' ? [blocker] : []) });
+    expect(getTask(live, 'blocked-1')!.waitsOn).toEqual([{ id: 'today-1', title: 'Pick colour' }]);
+    // A finished blocker holds nothing (replica.test.ts has the real rule), so
+    // the field is absent rather than listing it as done.
+    expect(getTask(withTasks([blocker, waiting]), 'blocked-1')!.waitsOn).toBeUndefined();
+  });
+
 });
 
 describe('listCategories', () => {

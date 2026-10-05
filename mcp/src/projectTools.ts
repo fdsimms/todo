@@ -57,7 +57,7 @@ export interface SerializedProjectDetail {
 export interface ProjectTask extends SerializedTask {
   /** The checklist under it, in order. */
   subtasks?: { id: string; title: string; done: boolean }[];
-  /** Ids of the tasks it waits on, when it waits on any. */
+  /** Ids of the tasks still holding it back, when any are. */
   waitsOn?: string[];
 }
 
@@ -115,7 +115,7 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
 
 function projectTask(replica: Replica, t: Task, all: Task[]): ProjectTask {
   const subs = all.filter(s => s.parentId === t.id).sort((a, b) => a.sortOrder - b.sortOrder);
-  const waits = [t.blockedById, ...(t.blockedByIds ?? [])].filter((id): id is string => !!id);
+  const waits = replica.liveBlockers(t).map(b => b.id);
   return {
     ...serializeTask(replica, t),
     ...(subs.length > 0 ? { subtasks: subs.map(s => ({ id: s.id, title: s.title, done: s.completed })) } : {}),

@@ -151,7 +151,7 @@ export function KitchenSettings() {
           icon="basket-outline"
           iconColor={restockOfferEnabled ? colors.accent : undefined}
           label="Restock after cooking"
-          hint="Include what the meal used that isn't on your shopping list, with a button to add it."
+          hint="Include what the meal used that isn't on your grocery list, with a button to add it."
           toggle={restockOfferEnabled}
           onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
           accessibilityLabel="Restock after cooking"

@@ -73,7 +73,7 @@ describe('habitPatterns', () => {
     const result = habitPatterns(replica);
     expect(result.habits.map(h => h.id)).toEqual(['live']);
     const stretch = result.habits[0];
-    expect(stretch).toMatchObject({ title: 'Stretch', completed: 6, missed: 0, streak: { count: 3 } });
+    expect(stretch).toMatchObject({ title: 'Stretch', completed: 6, missed: 0, streak: { count: 3, asOf: dayKey(1) } });
     expect(stretch.rhythm?.peakPartOfDay).toBe('morning');
     expect(stretch.timeOfDayMismatch).toMatchObject({ setTo: 'evening', doneIn: 'morning' });
     expect(result.overall.rhythm?.completions).toBe(6);
@@ -117,6 +117,13 @@ describe('moodInsights', () => {
     expect(result.moodAndCompletions).toMatchObject({ days: 14, direction: 'more done on better days', strength: 'strong' });
     expect(JSON.stringify(result)).not.toMatch(/"r":/);
     expect(result.rules.join(' ')).toMatch(/never causes/);
+  });
+
+  it('dates a milestone by the local day it was placed on, not the UTC date of its instant', () => {
+    mockRaw.runSync('INSERT INTO milestones (id, label, date, created_at) VALUES (?,?,?,?)', ['ms', 'New job', at(3, 12), at(3, 12)]);
+    replica.refresh();
+    const [milestone] = moodInsights(replica).milestones;
+    expect(milestone).toMatchObject({ label: 'New job', date: dayKey(3) });
   });
 });
 

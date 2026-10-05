@@ -89,7 +89,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     if (trimmedTitle !== cookbook.title || trimmedAuthor !== cookbook.author) {
       if (!renameCookbook(cookbookId, trimmedTitle, trimmedAuthor)) {
         Alert.alert(
-          'That book is already on the shelf',
+          'A cookbook with this title already exists',
           'Another cookbook already has this title and author.'
         );
         return;
@@ -126,7 +126,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     haptics.warning();
     confirmDelete({
       title: 'Merge these books?',
-      message: `"${loser.title}" will come off the shelf, and its recipes and index will move to "${cookbook.title}".`,
+      message: `"${loser.title}" will be deleted, and its recipes and index will move to "${cookbook.title}".`,
       confirmLabel: 'Merge',
       onConfirm: () => { haptics.success(); mergeCookbooks(cookbookId, loser.id); },
     });

@@ -142,6 +142,33 @@ describe('planDay', () => {
     expect(plan.doesNotFit.map(d => d.title)).toEqual(['Morning pages']);
     expect(plan.doesNotFit[0].reason).toMatch(/09:15/);
   });
+
+  it('counts the day from the person\'s own reset, so a plan asked for in the small hours is about the day being lived', () => {
+    // 01:30 under a 04:00 reset is still "yesterday" in the app, and a night
+    // owl's active hours can end after midnight. Measured from calendar
+    // midnight, both read as a day that ends before it starts.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useSettingsStore } = require('../../../src/store/useSettingsStore') as typeof import('../../../src/store/useSettingsStore');
+    const settings = useSettingsStore.getState();
+    jest.useFakeTimers({ now: new Date(2026, 9, 6, 1, 30) });
+    settings.setDayResetTime('04:00');
+    settings.setActiveHoursEnd('02:00');
+    try {
+      const due = new Date(2026, 9, 5, 12).toISOString();
+      replica.createTask({ title: 'Wind down', dueDate: due, estimatedMinutes: 20 });
+      replica.createTask({ title: 'Long read', dueDate: due, estimatedMinutes: 60 });
+      const plan = planDay(replica);
+      expect(plan.date).toBe('2026-10-05');
+      expect([plan.from, plan.to]).toEqual(['01:30', '02:00']);
+      expect(plan.plan.map(s => [s.title, s.start, s.end])).toEqual([['Wind down', '01:30', '01:50']]);
+      expect(plan.doesNotFit.map(d => d.title)).toEqual(['Long read']);
+    } finally {
+      settings.setDayResetTime('00:00');
+      settings.setMorningStart('06:00');
+      settings.setActiveHoursEnd('22:00');
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('rebalanceWeek', () => {

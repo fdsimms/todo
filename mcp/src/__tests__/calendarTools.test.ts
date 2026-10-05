@@ -130,7 +130,7 @@ describe('request_calendar_event', () => {
       ['created', 'event', 'Dentist', request.id],
       ['cleared', 'event', 'Dentist', request.id],
     ]);
-    expect(describeEffects(entries)).toEqual([
+    expect(describeEffects(entries, logged.dayKeyOf)).toEqual([
       'Ask the phone to add "Dentist" to the calendar the next time it syncs',
       'Cancel the request to add "Dentist" to the calendar',
     ]);
