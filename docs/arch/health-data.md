@@ -1397,7 +1397,8 @@ is a real dietary disagreement of exactly the kind `HEALTH_METRIC_DIRECTION`'s
 note above refuses to take a side in. What the app can honestly do is what a
 reference table does: name the splits, show what each works out to in grams
 (`macroGrams`, by the Atwater factors, which are label arithmetic and not an
-opinion), and let the person pick. Applying one writes the calorie target
+opinion), and let the person pick, or type their own split (`customSplit`, with fat as the
+remainder so the three always divide a whole day). Applying one writes the calorie target
 alongside the three macros, since a macro target that doesn't add up to the
 calorie figure it was split out of is three numbers with nothing holding them
 together. The split itself is not stored: it is a one-off choice made when

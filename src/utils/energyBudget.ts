@@ -360,6 +360,28 @@ export const MACRO_PRESETS: readonly { id: string; label: string; split: MacroSp
   { id: 'highProtein', label: 'High protein', split: { proteinPct: 35, carbsPct: 35, fatPct: 30 } },
 ];
 
+/**
+ * The id the macro control uses for a split the person typed rather than one of
+ * the presets. Not in `MACRO_PRESETS`, since a preset is a fixed split and this
+ * one is whatever `customSplit` is given.
+ */
+export const CUSTOM_MACRO_ID = 'custom';
+
+/**
+ * A split from the two shares the person sets, with fat as whatever is left.
+ *
+ * Fat is derived rather than typed so the three always divide a whole day: the
+ * grams below are worked out from the calorie figure, and a split that summed
+ * to 99 or 103 would leave the macros disagreeing with it. Null when protein
+ * and carbs together already pass 100, which the control's own limits prevent;
+ * it is here so a caller cannot build a split with a negative fat share.
+ */
+export function customSplit(proteinPct: number, carbsPct: number): MacroSplit | null {
+  const fatPct = 100 - proteinPct - carbsPct;
+  if (proteinPct < 0 || carbsPct < 0 || fatPct < 0) return null;
+  return { proteinPct, carbsPct, fatPct };
+}
+
 /** Grams of each macronutrient in `kcal` calories, split this way. */
 export interface MacroGrams {
   proteinG: number;

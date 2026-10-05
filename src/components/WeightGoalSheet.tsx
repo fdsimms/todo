@@ -24,6 +24,9 @@ import {
   ACTIVITY_LEVELS,
   EMPTY_BODY_PROFILE,
   MACRO_PRESETS,
+  CUSTOM_MACRO_ID,
+  customSplit,
+  type MacroSplit,
   MAX_HEIGHT_CM,
   MIN_BIRTH_YEAR,
   MIN_HEIGHT_CM,
@@ -164,6 +167,11 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
   // when applying targets, not a setting. See MACRO_PRESETS on why the app has
   // no opinion about which one.
   const [macroPresetId, setMacroPresetId] = useState<string | null>(null);
+  // The two shares behind the Custom option; fat is the remainder. Seeded from
+  // the preset that was lit when Custom is picked, so it is adjusted from
+  // somewhere rather than started blank.
+  const [customProteinPct, setCustomProteinPct] = useState(30);
+  const [customCarbsPct, setCustomCarbsPct] = useState(40);
 
   // What a recent typical day of this person's actually recorded, fetched while
   // the sheet is open and stored nowhere. Cleared rather than kept when the
@@ -335,10 +343,21 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     setNutritionTarget('calorieKcal', budget.proposedKcal);
   };
 
-  const macroPreset = MACRO_PRESETS.find(p => p.id === macroPresetId) ?? null;
-  const macros = budget === null || macroPreset === null
+  const macroSplit: MacroSplit | null = macroPresetId === CUSTOM_MACRO_ID
+    ? customSplit(customProteinPct, customCarbsPct)
+    : MACRO_PRESETS.find(p => p.id === macroPresetId)?.split ?? null;
+  const macros = budget === null || macroSplit === null
     ? null
-    : macroGrams(budget.proposedKcal, macroPreset.split);
+    : macroGrams(budget.proposedKcal, macroSplit);
+
+  const pickMacroSplit = (next: string | null) => {
+    haptics.tap();
+    if (next === CUSTOM_MACRO_ID && macroSplit !== null) {
+      setCustomProteinPct(macroSplit.proteinPct);
+      setCustomCarbsPct(macroSplit.carbsPct);
+    }
+    setMacroPresetId(next);
+  };
 
   // Writes the calorie target alongside the three macros, because a macro
   // target that doesn't add up to the calorie figure it was split out of is
@@ -656,31 +675,61 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 <Text style={styles.help}>
                   Optional, and nothing is picked for you. Each of these is a common
                   way to divide a day's calories, not a recommendation. Pick one to
-                  see what it comes out to, or leave this alone and set the three
-                  numbers yourself under Daily targets.
+                  see what it comes out to, or choose Custom to set your own split.
                 </Text>
 
                 <SegmentedControl
-                  options={MACRO_PRESETS.map(preset => ({
-                    value: preset.id as string | null,
-                    label: preset.label,
-                  }))}
+                  options={[
+                    ...MACRO_PRESETS.map(preset => ({
+                      value: preset.id as string | null,
+                      label: preset.label,
+                    })),
+                    { value: CUSTOM_MACRO_ID as string | null, label: 'Custom' },
+                  ]}
                   value={macroPresetId}
-                  onChange={next => { haptics.tap(); setMacroPresetId(next); }}
+                  onChange={pickMacroSplit}
                   onDeselect={() => { haptics.tap(); setMacroPresetId(null); }}
                   columns={2}
                   label="Macro split"
                 />
 
-                {macroPreset !== null && macros !== null && (
+                {macroPresetId === CUSTOM_MACRO_ID && (
+                  <>
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>Protein share</Text>
+                      <CountStepper
+                        value={customProteinPct}
+                        onChange={next => setCustomProteinPct(next ?? 0)}
+                        min={0}
+                        max={100 - customCarbsPct}
+                        format={n => `${n}%`}
+                        label="Protein share of calories"
+                      />
+                    </View>
+                    <View style={styles.field}>
+                      <Text style={styles.fieldLabel}>Carbs share</Text>
+                      <CountStepper
+                        value={customCarbsPct}
+                        onChange={next => setCustomCarbsPct(next ?? 0)}
+                        min={0}
+                        max={100 - customProteinPct}
+                        format={n => `${n}%`}
+                        label="Carbs share of calories"
+                      />
+                    </View>
+                    <Text style={styles.help}>Fat is whatever is left, so the three add up to 100%.</Text>
+                  </>
+                )}
+
+                {macroSplit !== null && macros !== null && (
                   <>
                     <View style={styles.macroRow}>
                       <MacroCell styles={styles} label="Protein" grams={macros.proteinG}
-                        percent={macroPreset.split.proteinPct} />
+                        percent={macroSplit.proteinPct} />
                       <MacroCell styles={styles} label="Carbs" grams={macros.carbsG}
-                        percent={macroPreset.split.carbsPct} />
+                        percent={macroSplit.carbsPct} />
                       <MacroCell styles={styles} label="Fat" grams={macros.fatG}
-                        percent={macroPreset.split.fatPct} />
+                        percent={macroSplit.fatPct} />
                     </View>
                     {budgetWeightKg !== null && (
                       <Text style={styles.help}>
