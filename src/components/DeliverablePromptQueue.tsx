@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
@@ -9,6 +10,8 @@ interface Props {
   ids: readonly string[];
   /** Takes `id` off the queue, whatever happened to it. */
   onResolved: (id: string) => void;
+  /** Opens the task editor or detail view. Optional. */
+  onOpenTask?: (task: Task) => void;
 }
 
 /**
@@ -35,7 +38,7 @@ interface Props {
  * through `visible`, because a sheet unmounted while it is on screen
  * skips SheetModal's ordered close (see useSheetSubject).
  */
-export function DeliverablePromptQueue({ ids, onResolved }: Props) {
+export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
 
   const head = ids[0] ?? null;
@@ -68,6 +71,7 @@ export function DeliverablePromptQueue({ ids, onResolved }: Props) {
         onResolved(shown.id);
       }}
       onCancel={() => onResolved(shown.id)}
+      onOpenTask={onOpenTask}
     />
   );
 }
