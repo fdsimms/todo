@@ -1192,6 +1192,15 @@ describe('demo mode', () => {
     expect(scheduled.applyContainer).not.toBe('none');
   });
 
+  it('seeds template items that wait on another, count a target, and carry a phone number', () => {
+    useDemoStore.getState().enterDemoMode();
+    const items = useTemplateStore.getState().templates.flatMap(t => t.items);
+    const waiting = items.find(i => (i.blockedByItemIds ?? []).length > 0)!;
+    expect(items.some(i => i.id === waiting.blockedByItemIds![0])).toBe(true);
+    expect(items.some(i => i.targetCount != null)).toBe(true);
+    expect(items.some(i => !!i.phoneNumber)).toBe(true);
+  });
+
   it('seeds a template item with a location', () => {
     useDemoStore.getState().enterDemoMode();
     const items = useTemplateStore.getState().templates.flatMap(t => t.items);

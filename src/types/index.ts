@@ -3793,6 +3793,39 @@ export interface TemplateItem {
   recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceCount: number | null;
+  // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
+  // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the
+  // other fields added after templates shipped: absent reads as null.
+  recurrenceWeekOrdinal?: number | null;
+
+  // Seed the counted-target fields of the same names: "8 glasses a day",
+  // "3 runs a week". A routine is exactly where a target belongs, and without
+  // these it had to be set on every task the template made. The interval form
+  // (quotaIntervalMinutes) and the water link are not seeded; see
+  // templateItemParity.test.ts for why.
+  targetCount?: number | null;
+  targetUnit?: string | null;
+  quotaPeriod?: QuotaPeriod;
+  allowOvershoot?: boolean;
+  quotaReminders?: boolean;
+
+  // Seeds Task.chainStepOnSchedule: on a repeating chain, each step waits for
+  // the next repeat rather than following the one before it straight away.
+  chainStepOnSchedule?: boolean;
+
+  // Seed Task.phoneNumber / emailAddress, siblings of linkUrl and location:
+  // the clinic to call, the office to email.
+  phoneNumber?: string | null;
+  emailAddress?: string | null;
+
+  /**
+   * "Waits on" before there is a task: other items of this template that must
+   * be done first. Named by item id, like `answerGate`, and turned into the
+   * task's blockers (`blockerFields`) once those items are tasks. An item that
+   * wasn't ticked, or isn't in this template, is dropped at apply time rather
+   * than left as a blocker that names nothing.
+   */
+  blockedByItemIds?: string[];
 
   vacationPause: boolean;
   // Seeds Task.excludeFromSuggestions on the task this item creates. Same

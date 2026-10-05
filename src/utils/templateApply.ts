@@ -75,6 +75,8 @@ export interface TemplateRunSink {
   /** A section that lands in a project is homed on its page, and a checklist if it was saved as one. */
   homeSection(sectionId: string, projectId: string, checklist: boolean): void;
   setAnswerGate(taskId: string, gate: { taskId: string; answers: string[] }): void;
+  /** The tasks this one waits on. The sink writes them through `blockerFields`. */
+  setBlockers(taskId: string, blockerTaskIds: string[]): void;
 }
 
 /**
@@ -216,6 +218,13 @@ export function applyTemplateRun(
       if (gate && question && createdTasks[index]) {
         sink.setAnswerGate(createdTasks[index].id, { taskId: question, answers: gate.answers });
       }
+      // "Waits on" another item, now that both are tasks. An item that wasn't
+      // ticked (or was nested elsewhere) made no task, so it is dropped rather
+      // than left as a blocker naming nothing.
+      const blockers = (item.blockedByItemIds ?? [])
+        .map(id => taskIdByItem.get(`${sourceTemplateId}:${id}`))
+        .filter((id): id is string => !!id);
+      if (blockers.length > 0 && createdTasks[index]) sink.setBlockers(createdTasks[index].id, blockers);
     });
   }
 

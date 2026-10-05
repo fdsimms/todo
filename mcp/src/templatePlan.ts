@@ -113,7 +113,7 @@ export interface ChainStepPlan {
   answerSchedulesNextStep?: boolean;
 }
 
-export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate' | 'chainEnabled' | 'chainItems' | 'chainIndex' | 'rotationEnabled' | 'rotationItems'>> {
+export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 'conditions' | 'refTemplateId' | 'answerGate' | 'blockedByItemIds' | 'chainEnabled' | 'chainItems' | 'chainIndex' | 'rotationEnabled' | 'rotationItems'>> {
   /** Steps done one after another, each appearing when the one before is done. null removes it. */
   chain?: { steps: ChainStepPlan[] } | null;
   /** Named things each done once a week in any order: two or more, all different. null removes it. */
@@ -135,6 +135,8 @@ export interface ItemPlan extends Partial<Omit<TemplateItem, 'id' | 'groupId' | 
    * the item with this `key` asks. Becomes Task.answerGate when applied.
    */
   onlyIfAnswer?: { item: string; answers: string[] } | null;
+  /** TemplateItem.blockedByItemIds: keys of other items in this plan to wait on. */
+  waitsOn?: string[];
   /** A `GroupPlan.key`. null (on an update) takes the item out of its group. */
   groupKey?: string | null;
   conditions?: ConditionPlan[];
@@ -313,6 +315,7 @@ export function validateTemplatePlan(
     } as Parameters<typeof deliverableOptionsFor>[0]));
   }
 
+  errors.push(...waitsOnErrors(items, itemAnswers));
   for (const item of items) {
     const label = item.title || '(untitled)';
     errors.push(...gateErrors(item, label, itemAnswers));
@@ -418,6 +421,35 @@ function gateErrors(item: ItemPlan, label: string, itemAnswers: Map<string, stri
     .map(a => `item "${label}" is only if "${gate.item}" = "${a}", which is not one of its answers (${offered.join(', ')}).`);
 }
 
+/**
+ * Every `waitsOn` names another keyed item, and no two items wait on each
+ * other however long the loop: a cycle would hold every task in it for good.
+ */
+function waitsOnErrors(items: readonly ItemPlan[], itemAnswers: Map<string, string[]>): string[] {
+  const errors: string[] = [];
+  const edges = new Map<string, string[]>();
+  for (const item of items) {
+    const label = item.title || '(untitled)';
+    const self = item.key ?? item.id;
+    for (const target of item.waitsOn ?? []) {
+      if (!itemAnswers.has(target)) errors.push(`item "${label}" waits on "${target}", which is not an item key in this plan.`);
+      else if (target === self) errors.push(`item "${label}" can't wait on itself.`);
+    }
+    if (self !== undefined) edges.set(self, (item.waitsOn ?? []).filter(t => t !== self));
+  }
+  const state = new Map<string, 'visiting' | 'done'>();
+  const visit = (key: string): boolean => {
+    if (state.get(key) === 'done') return false;
+    if (state.get(key) === 'visiting') return true;
+    state.set(key, 'visiting');
+    const looped = (edges.get(key) ?? []).some(visit);
+    state.set(key, 'done');
+    return looped;
+  };
+  if ([...edges.keys()].some(visit)) errors.push('items wait on each other in a loop, so none of them could ever start.');
+  return errors;
+}
+
 function rangeErrors(item: ItemPlan, label: string): string[] {
   const errors: string[] = [];
   const positive = (value: number | null | undefined, field: string) => {
@@ -466,6 +498,14 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
     errors.push(`item "${label}" weatherWait must be sunny, rainy, snowy, cold or hot.`);
   }
 
+  if (item.recurrenceWeekOrdinal != null) {
+    if (![1, 2, 3, 4, -1].includes(item.recurrenceWeekOrdinal)) errors.push(`item "${label}" recurrenceWeekOrdinal must be 1 to 4, or -1 for the last.`);
+    if (item.recurrenceType !== 'monthly') errors.push(`item "${label}" recurrenceWeekOrdinal only applies to a monthly repeat.`);
+    if ((item.recurrenceDays ?? []).length === 0) errors.push(`item "${label}" recurrenceWeekOrdinal needs the weekday in recurrenceDays.`);
+    if (item.recurrenceMonthDay != null) errors.push(`item "${label}" can't have both recurrenceWeekOrdinal and recurrenceMonthDay.`);
+  }
+  if (item.targetCount != null && item.targetCount < 2) errors.push(`item "${label}" targetCount must be 2 or more (one is just a task).`);
+  if (item.quotaPeriod !== undefined && !['day', 'week'].includes(item.quotaPeriod)) errors.push(`item "${label}" quotaPeriod must be day or week.`);
   if (item.recurrenceMonthDay != null && (item.recurrenceMonthDay < 1 || item.recurrenceMonthDay > 31)) {
     errors.push(`item "${label}" recurrenceMonthDay must be 1 to 31.`);
   }
@@ -524,7 +564,11 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
   // item that is gone) are left out here rather than echoed back as errors.
   const itemIds = new Set(template.items.map(i => i.id));
   const liveGate = (item: TemplateItem) => (item.answerGate && itemIds.has(item.answerGate.itemId) ? item.answerGate : null);
-  const gateTargets = new Set(template.items.map(i => liveGate(i)?.itemId).filter((x): x is string => !!x));
+  const liveWaits = (item: TemplateItem) => (item.blockedByItemIds ?? []).filter(id => itemIds.has(id) && id !== item.id);
+  const gateTargets = new Set([
+    ...template.items.map(i => liveGate(i)?.itemId).filter((x): x is string => !!x),
+    ...template.items.flatMap(liveWaits),
+  ]);
   // A question with no name is named by its id, so it keeps that id and its
   // conditions still find it.
   const questionHandle = new Map(template.questions.map(q => [q.id, q.name || q.id]));
@@ -545,7 +589,8 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       ...(q.fromDates !== 'none' ? { fromDates: q.fromDates } : {}),
     })),
     items: template.items.map(item => {
-      const { groupId, conditions, refTemplateId, refTemplateName, answerGate, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
+      const { groupId, conditions, refTemplateId, refTemplateName, answerGate, blockedByItemIds, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
+      void blockedByItemIds;
       void chainIndex;
       return {
         ...fields,
@@ -560,6 +605,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
           return live.length ? { conditions: live.map(c => ({ question: questionHandle.get(c.questionId)!, values: c.values })) } : {};
         })(),
         ...(liveGate(item) ? { onlyIfAnswer: { item: answerGate!.itemId, answers: answerGate!.answers } } : {}),
+        ...(liveWaits(item).length > 0 ? { waitsOn: liveWaits(item) } : {}),
         ...(refTemplateId ? { refTemplate: refTemplateId } : {}),
       };
     }),

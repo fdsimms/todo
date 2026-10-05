@@ -25,6 +25,7 @@ import {
   initialLeafSelection,
   personIdsForAnswers,
 } from '../utils/templateQuestions';
+import { blockerFields } from '../utils/blocking';
 import { applyTemplateRun } from '../utils/templateApply';
 import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
 import { useSettingsStore } from './useSettingsStore';
@@ -450,6 +451,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         updateProject: (id, patch) => projects.updateProject(id, patch),
         homeSection: (sectionId, projectId, checklist) => groups.updateGroup(sectionId, { projectId, checklist }),
         setAnswerGate: (taskId, gate) => tasks.updateTask(taskId, { answerGate: gate }),
+        setBlockers: (taskId, ids) => tasks.updateTask(taskId, blockerFields(ids)),
       });
     });
     return createdTasks;

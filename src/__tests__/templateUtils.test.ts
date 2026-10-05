@@ -273,6 +273,29 @@ describe('buildDraftsFromTemplate', () => {
     expect(sameDay.deadline).not.toBeNull();
   });
 
+  it('seeds a target, phone, email and the 2nd-weekday repeat, each only where it applies', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({
+      targetCount: 8, targetUnit: 'glasses', quotaReminders: true, phoneNumber: '555', emailAddress: 'a@b.c',
+      recurrenceType: 'monthly', recurrenceDays: [2], recurrenceWeekOrdinal: 2,
+    })], noAnchors);
+    expect(draft).toMatchObject({ targetCount: 8, targetUnit: 'glasses', quotaReminders: true, phoneNumber: '555', emailAddress: 'a@b.c', recurrenceWeekOrdinal: 2 });
+    // An ordinal means nothing on a weekly repeat, and a target's options
+    // nothing without the target.
+    const [weekly] = buildDraftsFromTemplate([makeItem({ recurrenceType: 'weekly', recurrenceWeekOrdinal: 2, quotaReminders: true, targetUnit: 'x' })], noAnchors);
+    expect(weekly).toMatchObject({ recurrenceWeekOrdinal: null, quotaReminders: false, targetUnit: null, targetCount: null });
+  });
+
+  it('seeds a chain step per repeat only on a chain that repeats', () => {
+    const chain = { chainEnabled: true, chainItems: [{ id: 'a', title: 'A', estimatedMinutes: null }, { id: 'b', title: 'B', estimatedMinutes: null }], chainStepOnSchedule: true };
+    expect(buildDraftsFromTemplate([makeItem({ ...chain, recurrenceType: 'daily' })], noAnchors)[0].chainStepOnSchedule).toBe(true);
+    expect(buildDraftsFromTemplate([makeItem(chain)], noAnchors)[0].chainStepOnSchedule).toBe(false);
+  });
+
+  it('reads a target below two, and a blocker on the item itself, as none', () => {
+    expect(normalizeTemplateItem({ targetCount: 1 }).targetCount).toBeNull();
+    expect(normalizeTemplateItem({ id: 'x', blockedByItemIds: ['x', 'y', 'y'] }).blockedByItemIds).toEqual(['y']);
+  });
+
   it('seeds the task with the item difficulty', () => {
     const [draft] = buildDraftsFromTemplate([makeItem({ difficulty: 'hard' })], noAnchors);
     expect(draft.difficulty).toBe('hard');

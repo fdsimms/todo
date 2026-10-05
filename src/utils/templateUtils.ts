@@ -66,6 +66,20 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
     recurrenceCount: raw.recurrenceCount ?? null,
+    recurrenceWeekOrdinal: raw.recurrenceWeekOrdinal ?? null,
+    // A target below 2 is no target (Task.targetCount's own floor), so it
+    // reads as none rather than seeding a quota of one.
+    targetCount: typeof raw.targetCount === 'number' && raw.targetCount >= 2 ? Math.round(raw.targetCount) : null,
+    targetUnit: raw.targetUnit ?? null,
+    quotaPeriod: raw.quotaPeriod === 'week' ? 'week' : 'day',
+    allowOvershoot: raw.allowOvershoot ?? false,
+    quotaReminders: raw.quotaReminders ?? false,
+    chainStepOnSchedule: raw.chainStepOnSchedule ?? false,
+    phoneNumber: raw.phoneNumber ?? null,
+    emailAddress: raw.emailAddress ?? null,
+    blockedByItemIds: Array.isArray(raw.blockedByItemIds)
+      ? [...new Set(raw.blockedByItemIds.filter((id): id is string => typeof id === 'string' && id !== '' && id !== raw.id))]
+      : [],
     vacationPause: raw.vacationPause ?? false,
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
     weatherWait: raw.weatherWait ?? null,
@@ -229,6 +243,17 @@ export function buildDraftsFromTemplate(
       recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
       recurrenceCount: item.recurrenceCount,
+      // Only a monthly repeat reads an ordinal (TaskEditor saves it the same way).
+      recurrenceWeekOrdinal: item.recurrenceType === 'monthly' ? item.recurrenceWeekOrdinal ?? null : null,
+      targetCount: item.targetCount ?? null,
+      targetUnit: item.targetCount != null ? item.targetUnit ?? null : null,
+      quotaPeriod: item.quotaPeriod ?? 'day',
+      allowOvershoot: item.targetCount != null && (item.allowOvershoot ?? false),
+      quotaReminders: item.targetCount != null && (item.quotaReminders ?? false),
+      // Only a repeating chain has a "next repeat" to wait for.
+      chainStepOnSchedule: item.chainEnabled && item.recurrenceType !== 'none' && (item.chainStepOnSchedule ?? false),
+      phoneNumber: item.phoneNumber ?? null,
+      emailAddress: item.emailAddress ?? null,
       vacationPause: item.vacationPause,
       excludeFromSuggestions: item.excludeFromSuggestions,
       weatherWait: canWaitForWeather(item) ? item.weatherWait ?? null : null,

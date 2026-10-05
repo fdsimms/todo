@@ -818,6 +818,18 @@ describe('the replica', () => {
         expect(result.unfilledBlanks).toEqual(['city']);
       });
 
+      it('makes an item wait on another, and gets the key back from get_template', () => {
+        const t = replica.createTemplate({ name: 'Wedding', items: [
+          { title: 'Book venue', key: 'venue', category: 'Home' },
+          { title: 'Send invites', waitsOn: ['venue'], category: 'Home' },
+        ] });
+        expect(t.items[1].blockedByItemIds).toEqual([t.items[0].id]);
+        expect(templateToPlan(t).items![1].waitsOn).toEqual([t.items[0].id]);
+        const result = replica.applyTemplate(t.id, {});
+        const invites = replica.tasks().find(x => x.id === result.tasks[1].id)!;
+        expect(invites.blockedById).toBe(result.tasks[0].id);
+      });
+
       it('takes a nested template\'s own item to leave the whole block out', () => {
         const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Charger', category: 'Home' }, { title: 'Socks', category: 'Home' }] });
         const outer = replica.createTemplate({ name: 'Weekend', items: [{ title: 'Book hotel', category: 'Home' }, { title: 'Packing', refTemplate: packing.id }] });

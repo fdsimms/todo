@@ -453,6 +453,20 @@ describe('applyTemplate', () => {
     expect(mockCreateGroup).not.toHaveBeenCalled();
   });
 
+  it('turns "waits on" into blockers, dropping an item that was not ticked', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [
+          makeItem({ id: 'a', title: 'Book' }),
+          makeItem({ id: 'b', title: 'Pay deposit', optional: true }),
+          makeItem({ id: 'c', title: 'Go', blockedByItemIds: ['a', 'b'] }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'c']), { start: null, end: null });
+    expect(mockUpdateTask).toHaveBeenCalledWith('task-Go', { blockedById: 'task-Book', blockedByIds: [] });
+  });
+
   it('yields zero tasks for a ref item pointing at a deleted template', () => {
     useTemplateStore.setState({
       templates: [

@@ -1134,6 +1134,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             if (task) db.dbUpdateTask({ ...task, answerGate: gate });
             refresh();
           },
+          setBlockers: (taskId, ids) => {
+            const task = db.dbGetAllTasks().find(t => t.id === taskId);
+            if (task) db.dbUpdateTask({ ...task, ...blocking.blockerFields(ids) });
+            refresh();
+          },
         });
       });
     } finally {
@@ -1220,7 +1225,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     }
     const offeredBy = new Map((plan.items ?? []).filter(i => (i.key ?? i.id) !== undefined).map(i => [(i.key ?? i.id)!, deliverables.deliverableOptionsFor(templateUtils.normalizeTemplateItem({ deliverableKind: i.deliverableKind ?? null, deliverableOptions: i.deliverableOptions }))]));
     const items = (plan.items ?? []).map(item => {
-      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, id: keptId, chain, rotation, ...fields } = item;
+      const { groupKey, conditions, refTemplate, key, onlyIfAnswer, waitsOn, id: keptId, chain, rotation, ...fields } = item;
       // Step and member ids are kept by position and by title on an edit: a
       // recorded answer and a week's ledger are both found through them.
       const stored = keptId !== undefined ? base?.items.find(i => i.id === keptId) : undefined;
@@ -1271,6 +1276,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             }
           : null,
         groupId: groupKey == null ? null : (groupIds.get(groupKey) ?? null),
+        // Left as stored when the plan doesn't say (an update writing other
+        // fields over a kept item), resolved from keys when it does.
+        ...(waitsOn !== undefined ? { blockedByItemIds: waitsOn.map(k => itemIds.get(k)).filter((id): id is string => !!id) } : {}),
         conditions: (conditions ?? []).map(c => ({
           questionId: questionIds.get(c.question) ?? '',
           values: c.values,

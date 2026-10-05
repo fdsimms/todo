@@ -324,6 +324,25 @@ describe('a question with no name', () => {
   });
 });
 
+describe('waitsOn', () => {
+  it('names keyed items, not itself, and no loop', () => {
+    expect(errors(plan({ items: [{ title: 'A', key: 'a' }, { title: 'B', key: 'b', waitsOn: ['a'] }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'B', waitsOn: ['nope'] }] }))[0]).toContain('not an item key');
+    expect(errors(plan({ items: [{ title: 'A', key: 'a', waitsOn: ['a'] }] }))).toContain('item "A" can\'t wait on itself.');
+    expect(errors(plan({ items: [
+      { title: 'A', key: 'a', waitsOn: ['c'] }, { title: 'B', key: 'b', waitsOn: ['a'] }, { title: 'C', key: 'c', waitsOn: ['b'] },
+    ] }))).toContain('items wait on each other in a loop, so none of them could ever start.');
+  });
+
+  it('checks a 2nd-weekday repeat is monthly, names its weekday and has no month day', () => {
+    expect(errors(plan({ items: [{ title: 'A', recurrenceType: 'monthly', recurrenceDays: [2], recurrenceWeekOrdinal: 2 }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'A', recurrenceType: 'weekly', recurrenceWeekOrdinal: 2 }] }))).toEqual([
+      'item "A" recurrenceWeekOrdinal only applies to a monthly repeat.',
+      'item "A" recurrenceWeekOrdinal needs the weekday in recurrenceDays.',
+    ]);
+  });
+});
+
 describe('templateWarnings', () => {
   const stored = (items: Parameters<typeof normalizeTemplateItem>[0][], over: Partial<TaskTemplate> = {}) =>
     template({ id: 't', name: 'T', items: items.map(normalizeTemplateItem), ...over });

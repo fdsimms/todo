@@ -556,6 +556,11 @@ decisions as on a task: gates, penalties and a medication are withheld. Chain an
 written as nested `chain` / `rotation` plan fields and turned into the item's step and member lists
 by the applier; on an edit, step ids are kept by title then by position, and member ids by title,
 because a recorded answer and a week's ledger are found through them.
+"Waits on" between items is `waitsOn`, a list of item keys like `onlyIfAnswer`'s, stored as
+`TemplateItem.blockedByItemIds` and turned into the tasks' blockers at run time (an item not ticked
+is dropped from the list). Validation refuses a loop, since every task in one would wait for good.
+`src/__tests__/templateItemParity.test.ts` is the app-side check behind this one: every `Task`
+field is seeded by a template item or named there with the reason it isn't.
 
 The schedule's fired mark is cleared only when the schedule changes, as `setSchedule` does; the
 comparison is by value because the db reader and the writer build the object in different key
