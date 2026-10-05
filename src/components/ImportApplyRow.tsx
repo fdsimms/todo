@@ -246,7 +246,7 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
       marginTop: 1,
     },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
+    checkboxOn: { backgroundColor: colors.purpleFill, borderColor: colors.purpleFill },
     body: { flex: 1, gap: spacing.xxs },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary },

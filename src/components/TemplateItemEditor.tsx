@@ -1169,7 +1169,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               accessibilityLabel="Pin every occurrence"
               accessibilityState={{ checked: pinEachOccurrence }}
             >
-              <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orange : colors.textSecondary} />
+              <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pin every occurrence</Text>
                 <Text style={styles.optionHint}>Each occurrence of tasks created from this item starts out pinned to Today</Text>
@@ -2576,9 +2576,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, paddingVertical: 7, borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
   },
-  timePillActive: { backgroundColor: colors.accent },
+  timePillActive: { backgroundColor: colors.accentFill },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  timePillTextActive: { color: colors.bg, fontWeight: '600' },
+  timePillTextActive: { color: colors.onAccent, fontWeight: '600' },
   groupLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8,

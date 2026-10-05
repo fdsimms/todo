@@ -1481,11 +1481,11 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.full,
       backgroundColor: colors.bgTertiary,
     },
-    optionOn: { backgroundColor: colors.accent },
+    optionOn: { backgroundColor: colors.accentFill },
     optionText: { color: colors.text, fontSize: font.sm },
     optionTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
     action: {
-      backgroundColor: colors.accent,
+      backgroundColor: colors.accentFill,
       borderRadius: radius.md,
       paddingVertical: spacing.md,
       alignItems: 'center',
@@ -1602,6 +1602,6 @@ function makeStyles(colors: Colors) {
     confirmTrackCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.xs },
     confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
     confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-    error: { color: colors.red, fontSize: font.sm, lineHeight: 18 },
+    error: { color: colors.redText, fontSize: font.sm, lineHeight: 18 },
   });
 }

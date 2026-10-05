@@ -1276,8 +1276,8 @@ export const TaskItem = React.memo(function TaskItem({
   const reminderTimeLabel = task.reminderTime ? formatTimeOfDay(new Date(task.reminderTime)) : null;
   const deadlineColor =
     deadlineDays === null ? colors.textSecondary
-    : deadlineDays < 0 ? colors.red
-    : deadlineDays <= 2 ? colors.orange
+    : deadlineDays < 0 ? colors.redText
+    : deadlineDays <= 2 ? colors.orangeText
     : colors.textSecondary;
   const isNew = isTaskNew(task);
 
@@ -1457,7 +1457,7 @@ export const TaskItem = React.memo(function TaskItem({
   // app's destructive colour elsewhere (out of stock, an expired window), so
   // it is only ever reached here alongside a flame and a rising count, where
   // nothing about it reads as a warning.
-  const streakColor = atRecord ? colors.red : colors.orange;
+  const streakColor = atRecord ? colors.redText : colors.orangeText;
 
   // Both read through the blocker index rather than scanning the task list, so
   // a long list stays O(1) per row. The selector still runs on every store
@@ -2380,7 +2380,7 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                   backgroundColor: quotaDone.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.accent, colors.green],
+                    outputRange: [colors.accent, colors.greenFill],
                   }),
                 },
               ]}
@@ -2410,7 +2410,7 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                   backgroundColor: quotaDone.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [colors.accent, colors.green],
+                    outputRange: [colors.accent, colors.greenFill],
                   }),
                 },
               ]}
@@ -2853,7 +2853,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={supplyOut ? 'cube' : 'cube-outline'}
                   size={iconSize.xs}
-                  color={supplyOut ? colors.red : supplyLow ? colors.orange : colors.textSecondary}
+                  color={supplyOut ? colors.red : supplyLow ? colors.orangeText : colors.textSecondary}
                 />
                 <Text
                   style={[
@@ -3294,7 +3294,7 @@ export const TaskItem = React.memo(function TaskItem({
           <PinIcon
             filled={pinOverride ?? task.pinned}
             size={iconSize.sm}
-            color={(pinOverride ?? task.pinned) ? colors.orange : colors.textSecondary}
+            color={(pinOverride ?? task.pinned) ? colors.orangeText : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
@@ -4447,13 +4447,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: checkboxRadius(CHECKBOX_SIZE),
     borderCurve: 'continuous',
     borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   circleCompleting: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
+    backgroundColor: colors.greenFill,
+    borderColor: colors.greenFill,
   },
   // The circle's glyph, lifted out of the circle entirely so nothing scales it
   // (see the note at the call site) and so it draws over the quota fill rather
@@ -4492,8 +4492,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // of the list, and red rather than the row's own priority colour because it
   // reports an outcome rather than a ranking.
   circleSlipped: {
-    backgroundColor: colors.red,
-    borderColor: colors.red,
+    backgroundColor: colors.redFill,
+    borderColor: colors.redFill,
   },
   // Height and colour both come from Animated values at the call site — see
   // quotaFill / quotaDone. It's a level in a container, so it's a plain
@@ -4682,7 +4682,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Only worn once what's outstanding no longer fits in the days left — see
   // rotationOverCommitted, which is deliberately a harder test than "behind".
-  rotationTight: { color: colors.orange },
+  rotationTight: { color: colors.orangeText },
   // Deliberately textSecondary rather than red: the shield beside it is already
   // carrying the alarm, and a second red thing on the same row would make one
   // slip look like two separate problems.
@@ -4701,18 +4701,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
-  supplyLabelLow: { color: colors.orange },
-  supplyLabelOut: { color: colors.red },
+  supplyLabelLow: { color: colors.orangeText },
+  supplyLabelOut: { color: colors.redText },
   streakChipText: {
     color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
   streakChipTextActive: {
-    color: colors.orange,
+    color: colors.orangeText,
   },
   windowLabel: {
-    color: colors.red,
+    color: colors.redText,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
@@ -4769,7 +4769,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 3,
   },
   timerPillReady: {
-    backgroundColor: colors.green,
+    backgroundColor: colors.greenFill,
   },
   countdownRow: {
     gap: 5,
@@ -4850,14 +4850,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
     borderCurve: 'continuous',
     borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   subtaskCheckDone: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
+    backgroundColor: colors.greenFill,
+    borderColor: colors.greenFill,
   },
   subtaskTitleWrapper: {
     flex: 1,
@@ -4983,7 +4983,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   chainStepListDotDone: {
-    backgroundColor: colors.green,
+    backgroundColor: colors.greenFill,
   },
   chainStepListDotActive: {
     backgroundColor: colors.accentFill,
@@ -5040,7 +5040,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
   },
   countdownLabelReady: {
-    color: colors.green,
+    color: colors.greenText,
   },
   // "2/3 planned" on a meal-plan nudge day. Matches the countdown's weight and
   // size rather than the subtask badge's, because it reads as this row's state
@@ -5053,7 +5053,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   plannedMealsLabelReady: {
-    color: colors.green,
+    color: colors.greenText,
   },
   // "Quiet 21 days" on a quiet project's review task — the only filled chip in
   // the meta line, and the only one that marks whose row this is rather than

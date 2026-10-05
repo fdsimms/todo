@@ -604,7 +604,7 @@ export function RewardsScreen() {
             <Reanimated.View style={coinStyle}>
               <CoinIcon size={BALANCE_COIN_SIZE} color={colors.warning} filled />
             </Reanimated.View>
-            <Text style={[styles.balance, balance < 0 && { color: colors.red }]}>{balance}</Text>
+            <Text style={[styles.balance, balance < 0 && { color: colors.redText }]}>{balance}</Text>
           </View>
           <Text style={styles.balanceUnit}>{Math.abs(balance) === 1 ? 'coin' : 'coins'}</Text>
           {goal && goalShown && (
@@ -776,7 +776,7 @@ export function RewardsScreen() {
                 </View>
                 <View style={styles.amountRow}>
                   <CoinIcon size={iconSize.sm} color={colors.warning} filled />
-                  <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.green : colors.red }]}>
+                  <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.greenText : colors.redText }]}>
                     {signedAmount(entry)}
                   </Text>
                 </View>

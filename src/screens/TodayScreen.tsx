@@ -359,7 +359,7 @@ function SectionHeader({
           accessibilityRole="button"
           accessibilityLabel={allPinned ? `Unpin the tasks shown under ${label}` : `Pin the tasks shown under ${label}`}
         >
-          <PinIcon filled={!!allPinned} size={iconSize.sm} color={allPinned ? colors.orange : colors.textTertiary} />
+          <PinIcon filled={!!allPinned} size={iconSize.sm} color={allPinned ? colors.orangeText : colors.textTertiary} />
         </TouchableOpacity>
       )}
       {scrim}
@@ -3697,7 +3697,7 @@ export function TodayScreen() {
     <FabDropZone zone={PINNED_DROP_ZONE}>
       <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
         <View style={styles.focusSectionTitleRow}>
-          <PinIcon filled size={13} color={colors.orange} />
+          <PinIcon filled size={13} color={colors.orangeText} />
           <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
         </View>
         <View style={styles.pinnedSectionActions}>
@@ -3722,7 +3722,7 @@ export function TodayScreen() {
             <Ionicons
               name={othersHidden ? 'eye-off' : 'eye-outline'}
               size={iconSize.sm}
-              color={othersHidden ? colors.orange : colors.textTertiary}
+              color={othersHidden ? colors.orangeText : colors.textTertiary}
             />
           </TouchableOpacity>
           {/* Gone during a bulk edit (same reasoning as Clear, right below)
@@ -5175,7 +5175,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   viewModePillBadge: {
     position: 'absolute', top: -4, right: -4,
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
-    backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center',
   },
   viewModePillBadgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
   // Same badge, muted: Unscheduled is a pile of things with no date, not a pile
@@ -5223,7 +5223,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 5,
   },
   focusSectionTitle: {
-    color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.orangeText, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   pinnedSectionActions: {

@@ -146,7 +146,7 @@ export function ClaudeCalendarSettings() {
           {permission === 'denied' ? (
             <SettingsRow
               icon="lock-closed-outline"
-              iconColor={colors.warning}
+              iconColor={colors.warningText}
               label="Calendar access"
               hint="Blocked. Nothing can be written until you turn it back on for this app."
               value="Open Settings"
@@ -178,7 +178,7 @@ export function ClaudeCalendarSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="alert-circle-outline"
-            iconColor={colors.warning}
+            iconColor={colors.warningText}
             label="That calendar isn’t on this device"
             hint="Pick again above, or turn this off."
           />

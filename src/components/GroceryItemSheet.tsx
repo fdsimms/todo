@@ -2014,7 +2014,7 @@ export function GroceryItemSheet({
             >
               <Ionicons name="trash-outline" size={iconSize.md} color={colors.red} />
               <View style={styles.actionBody}>
-                <Text style={[styles.actionLabel, { color: colors.red }]}>Forget this item</Text>
+                <Text style={[styles.actionLabel, { color: colors.redText }]}>Forget this item</Text>
                 <Text style={styles.actionHint}>
                   Deletes it and its history. There&apos;s no undo.
                 </Text>
@@ -2209,7 +2209,7 @@ function makeStyles(colors: Colors) {
     priceSymbol: { color: colors.textSecondary, fontSize: font.md },
     // No lineHeight, same as `input` — see the note there.
     priceInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },
-    error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
+    error: { fontSize: font.sm, color: colors.redText, marginTop: spacing.xs },
     mergeSuggestion: { alignSelf: 'flex-start', marginTop: spacing.sm },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
     choiceBlock: { alignItems: 'flex-start', marginBottom: spacing.sm },

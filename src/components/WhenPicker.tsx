@@ -678,7 +678,7 @@ export function WhenPicker({
                 styles={styles}
                 colors={colors}
                 icon="star"
-                iconColor={colors.warning}
+                iconColor={colors.warningText}
                 label="Today"
                 pending={pendingKey === 'today'}
                 popAnim={popAnim}
@@ -703,7 +703,7 @@ export function WhenPicker({
                   activeOpacity={interaction.activeOpacity}
                 >
                   <Ionicons name="sparkles" size={15} color={colors.purple} />
-                  <Text style={[styles.quickButtonLabel, { color: colors.purple, fontWeight: fontWeight.semibold }]}>
+                  <Text style={[styles.quickButtonLabel, { color: colors.purpleText, fontWeight: fontWeight.semibold }]}>
                     Suggest
                   </Text>
                 </TouchableOpacity>
@@ -786,7 +786,7 @@ export function WhenPicker({
                   size={13}
                   color={suggestError ? colors.red : colors.purple}
                 />
-                <Text style={[styles.suggestBannerText, suggestError && { color: colors.red }]} numberOfLines={2}>
+                <Text style={[styles.suggestBannerText, suggestError && { color: colors.redText }]} numberOfLines={2}>
                   {suggestError ?? suggestionLabel}
                 </Text>
               </View>
@@ -1274,13 +1274,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   dayTextSuggested: {
-    color: colors.purple,
+    color: colors.purpleText,
     fontWeight: fontWeight.semibold,
   },
   clearBtn: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
-    backgroundColor: colors.red,
+    backgroundColor: colors.redFill,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',

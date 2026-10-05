@@ -130,8 +130,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   title: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
   // textSecondary: this explains what the empty state means and what to do
-  // about it, not a dim aside — textTertiary's ~3:1 contrast is under the
-  // 4.5:1 bar for 13pt text. (CollapsibleField's own `summaryEmpty` keeps
+  // about it, not a dim aside, and textTertiary is the grey for a dim aside.
+  // (CollapsibleField's own `summaryEmpty` keeps
   // textTertiary on purpose, since dimness is that field's signal rather than
   // information — this isn't that case.)
   subtitle: {

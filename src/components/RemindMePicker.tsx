@@ -746,7 +746,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     alignItems: 'center',
   },
   clearLabel: {
-    color: colors.red,
+    color: colors.redText,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
   },

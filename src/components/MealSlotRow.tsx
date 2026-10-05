@@ -413,7 +413,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // same kind of fact. Semibold rather than regular because unlike a choice
   // this is a state and not a qualifier.
   logged: {
-    color: colors.green,
+    color: colors.greenText,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0,
     textTransform: 'none',
@@ -422,7 +422,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // evening, which neither the grey of a qualifier nor the green of a meal
   // that happened would say.
   busy: {
-    color: colors.orange,
+    color: colors.orangeText,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0,
     textTransform: 'none',

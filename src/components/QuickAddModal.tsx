@@ -3731,7 +3731,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     color: colors.text,
     fontSize: font.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.bgQuaternary,
+    borderBottomColor: colors.controlBorder,
     paddingVertical: 4,
   },
   toolChip: {
@@ -4088,7 +4088,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     color: colors.text,
     fontSize: font.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.bgQuaternary,
+    borderBottomColor: colors.controlBorder,
     paddingVertical: 4,
   },
   suggestionsScroll: {

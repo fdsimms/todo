@@ -252,7 +252,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   clearBtn: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
-    backgroundColor: colors.red,
+    backgroundColor: colors.redFill,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',

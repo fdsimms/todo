@@ -671,7 +671,7 @@ function makeStyles(colors: Colors) {
     photoRead: { gap: spacing.sm, marginBottom: spacing.sm },
     photoNote: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     photoError: {
-      color: colors.red,
+      color: colors.redText,
       fontSize: font.xs,
       lineHeight: 16,
       marginBottom: spacing.sm,
@@ -725,7 +725,7 @@ function makeStyles(colors: Colors) {
     // `InlineAction` needs (see its `suggestAsk` style).
     convertAction: { alignSelf: 'flex-start' },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
-    error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
+    error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.md },
     // Margin on both sides, same rule as photoRow above: the hint right below
     // it has no top margin of its own.
     divideRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },

@@ -42,7 +42,7 @@ interface Props {
  *
  * **A meal's glyph is a button, and it's drawn as one** — the fork and knife
  * sits inside a rounded box borrowed from the checkbox (`checkboxRadius`,
- * `border.md`, `bgQuaternary`; see GLYPH_BOX_SIZE for the one number that
+ * `border.md`, `controlBorder`; see GLYPH_BOX_SIZE for the one number that
  * differs) in the column the checkbox would have used. An event's does not, and
  * that split is the rule: the leading control says whether the row is yours to
  * finish.
@@ -276,7 +276,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: checkboxRadius(GLYPH_BOX_SIZE),
     borderCurve: 'continuous',
     borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
+    borderColor: colors.controlBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
