@@ -177,6 +177,9 @@ export function RewardsScreen() {
   // Ideas are the whole section while you have no rewards, and a button away
   // once you do, so a list you've made your own isn't crowded by suggestions.
   const [ideasOpen, setIdeasOpen] = useState(false);
+  // How coins are earned and lost is reference text, not something to read on
+  // every visit, so it stays folded behind the header's help button.
+  const [rulesOpen, setRulesOpen] = useState(false);
   const showIdeas = ideas.length > 0 && (openRewards.length === 0 || ideasOpen);
 
   // The list whose items can be priced as rewards. Only offered at all while
@@ -350,8 +353,16 @@ export function RewardsScreen() {
   }, [setEnabled]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => (enabled
-    ? [{ icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' }]
-    : []), [enabled, turnOff]);
+    ? [
+        {
+          icon: 'help-circle-outline',
+          onPress: () => setRulesOpen(open => !open),
+          active: rulesOpen,
+          accessibilityLabel: rulesOpen ? 'Hide how coins work' : 'Show how coins work',
+        },
+        { icon: 'power-outline', onPress: turnOff, accessibilityLabel: 'Turn off coins and rewards' },
+      ]
+    : []), [enabled, turnOff, rulesOpen]);
 
   if (!enabled) {
     return (
@@ -609,7 +620,7 @@ export function RewardsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
+      <ScreenHeader title="Rewards" actions={actions} />
       <ScrollView
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
@@ -646,9 +657,11 @@ export function RewardsScreen() {
               </Text>
             </View>
           )}
+          {rulesOpen && (
           <Text style={styles.rule}>
             {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
           </Text>
+          )}
         </View>
 
         <Text style={styles.sectionHeader}>Rewards</Text>
