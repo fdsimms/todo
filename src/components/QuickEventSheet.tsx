@@ -108,6 +108,13 @@ export interface QuickEventSeed {
   end?: Date;
   title?: string;
   personIds?: readonly string[];
+  /** An all-day event; `start` is its day. Used by an imported event with no clock time. */
+  allDay?: boolean;
+  location?: string;
+  /** Notes, or a lone link, for the "Notes or link" field. */
+  notes?: string;
+  /** Minutes before the start for the alert chip; omitted keeps the chip's default. */
+  alertMinutes?: number | null;
 }
 
 /** An existing event to open the card on, instead of a new one. */
@@ -377,8 +384,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (!visible) return;
     const seededText = seed?.title ?? '';
     setText(seededText);
-    setLocation('');
-    setNotesOrLink('');
+    setLocation(seed?.location ?? '');
+    setNotesOrLink(seed?.notes ?? '');
     setRepeatPick(null);
     setPlaceResults([]);
     setPickedPlace(null);
@@ -388,7 +395,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const defaults = readQuickEventDefaults();
     setCalendarId(defaults.calendarId);
     setAlertDefault(defaults.alertMinutes);
-    setAlertPick(undefined);
+    setAlertPick(seed?.alertMinutes);
     setAvailability(defaults.availability);
     setCalendarPick(null);
     setAvailabilityPick(null);
@@ -410,7 +417,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (seed?.start && seed.end && seed.end > seed.start) {
       setDurationPick(Math.round((seed.end.getTime() - seed.start.getTime()) / 60000));
     }
-    setAllDay(false);
+    setAllDay(seed?.allDay === true);
     setOriginal(null);
     setOriginalNotesField('');
     setOriginalPeople([]);
