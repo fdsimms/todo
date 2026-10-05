@@ -52,9 +52,9 @@ export const ESTIMATE_AMOUNT_OPTIONS: SegmentOption<number | null>[] = ESTIMATE_
   accessibilityLabel: a.spoken,
 }));
 
-type AmountUnit = 'grams' | 'percent';
+export type AmountUnit = 'grams' | 'percent';
 
-const UNIT_OPTIONS: SegmentOption<AmountUnit>[] = [
+export const UNIT_OPTIONS: SegmentOption<AmountUnit>[] = [
   { value: 'grams', label: 'g', accessibilityLabel: 'Grams' },
   { value: 'percent', label: '%', accessibilityLabel: 'Percent of the meal' },
 ];
@@ -64,7 +64,7 @@ const UNIT_OPTIONS: SegmentOption<AmountUnit>[] = [
  * number or is outside what `estimateAmountPatch` accepts. Grams are divided by
  * the meal's own stated weight, so the unit is offered only when there is one.
  */
-function factorFromTyped(text: string, unit: AmountUnit, wholeGrams: number | null): number | null {
+export function factorFromTyped(text: string, unit: AmountUnit, wholeGrams: number | null): number | null {
   const n = parseFloat(text.replace(',', '.'));
   if (!Number.isFinite(n) || n <= 0) return null;
   const factor = unit === 'grams' ? (wholeGrams ? n / wholeGrams : null) : n / 100;
@@ -73,12 +73,12 @@ function factorFromTyped(text: string, unit: AmountUnit, wholeGrams: number | nu
 }
 
 /** A multiple of the whole written in the field's unit, with no trailing dust. */
-function amountText(factor: number, unit: AmountUnit, wholeGrams: number | null): string {
+export function amountText(factor: number, unit: AmountUnit, wholeGrams: number | null): string {
   const n = unit === 'grams' && wholeGrams ? factor * wholeGrams : factor * 100;
   return String(Math.round(n * 10) / 10);
 }
 
-function amountRefusal(unit: AmountUnit, wholeGrams: number | null): string {
+export function amountRefusal(unit: AmountUnit, wholeGrams: number | null): string {
   const max = MAX_ESTIMATE_MULTIPLE;
   return unit === 'grams' && wholeGrams
     ? `Enter an amount above 0 g, up to ${Math.round(wholeGrams * max).toLocaleString()} g.`

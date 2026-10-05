@@ -49,7 +49,7 @@ import {
   type RecalledHelping,
 } from '../utils/foodRecall';
 import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
-import { MAX_ESTIMATE_MULTIPLE, describeEstimateCount, estimateCountNoun, scalePanelToAmount } from '../utils/foodLog';
+import { MAX_ESTIMATE_MULTIPLE, describeEstimateCount, estimateCountNoun, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { formatQuantityAmount } from '../utils/quantity';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -63,7 +63,7 @@ import { haptics } from '../utils/haptics';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CountStepper } from './CountStepper';
-import { ESTIMATE_AMOUNT_OPTIONS } from './EstimateAmountSheet';
+import { ESTIMATE_AMOUNT_OPTIONS, UNIT_OPTIONS, amountRefusal, amountText, factorFromTyped, type AmountUnit } from './EstimateAmountSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
@@ -157,6 +157,12 @@ interface StagedAmount {
   baseline: number | null;
   count: number | null;
   factor: number | null;
+  /**
+   * What was typed into a multiple's own amount field, or null while the field
+   * shows the chosen share. Typed text outranks `factor` until a share is picked.
+   */
+  typed: string | null;
+  unit: AmountUnit;
 }
 
 /** What logging a staged row writes, beside where and when it lands. */
@@ -599,6 +605,13 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    * field whose value is ignored is worse than none. A catalog row is weighed
    * against its own panel when that panel can be. See `recallAmountAsk`.
    */
+  /** The stated weight of the whole an estimate describes, when it has one. */
+  const wholeGramsOf = (staged: PendingRecallLog): number | null => {
+    if (staged.kind !== 'recall') return null;
+    const grams = wholeEstimate(staged.food)?.servingGrams;
+    return grams && grams > 0 ? grams : null;
+  };
+
   const askFor = (staged: PendingRecallLog): RecallAmountAsk => {
     if (staged.kind === 'recall') return recallAmountAsk(staged.food);
     return measuresByWeight(staged.food.nutrition) ? { kind: 'weight' } : { kind: 'none' };
@@ -624,6 +637,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       baseline,
       count: ask.kind === 'count' ? ask.opensAt ?? ask.count.count : null,
       factor: ask.kind === 'multiple' ? ask.opensAt : null,
+      typed: null,
+      unit: wholeGramsOf(staged) ? 'grams' : 'percent',
     };
   };
 
@@ -658,7 +673,13 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     if (ask.kind === 'count') {
       if (amount.count !== null && amount.count !== ask.opensAt) change = { factor: amount.count / ask.count.count };
     } else if (ask.kind === 'multiple') {
-      if (amount.factor !== null && amount.factor !== ask.opensAt) change = { factor: amount.factor };
+      let factor = amount.factor;
+      if (amount.typed !== null) {
+        factor = factorFromTyped(amount.typed, amount.unit, wholeGramsOf(staged));
+        // A typed amount that isn't usable is said, never swapped for a share.
+        if (factor === null) return { error: amountRefusal(amount.unit, wholeGramsOf(staged)) };
+      }
+      if (factor !== null && factor !== ask.opensAt) change = { factor };
     } else if (ask.kind === 'weight') {
       const text = amount.weight.trim();
       const grams = parseWeightGrams(text);
@@ -698,8 +719,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   /**
    * Opens a "you've had this before" row into its amount step. Tapping the row
    * used to log it outright, at whatever weight it carried, with nothing on
-   * screen saying so. The row's own + button is the one-tap log now, and says
-   * so by being a button; the row body is for changing the amount first.
+   * screen saying so. The row's own + button is the one-tap log now, and the
+   * "Change amount" button under the name is the way into this step; a bare
+   * name tap was found unguessable.
    */
   const openPending = (staged: PendingRecallLog) => {
     haptics.tap();
@@ -926,7 +948,11 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
           </View>
         );
       }
-      case 'multiple':
+      case 'multiple': {
+        const wholeGrams = wholeGramsOf(row);
+        const fieldText = amount.typed ?? (amount.factor === null ? '' : amountText(amount.factor, amount.unit, wholeGrams));
+        const typedBad = amount.typed !== null && amount.typed.trim() !== ''
+          && factorFromTyped(amount.typed, amount.unit, wholeGrams) === null;
         return (
           <View style={styles.confirmMultiple}>
             <Text style={styles.confirmMultipleLabel}>Amount to log</Text>
@@ -935,14 +961,44 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             <View style={styles.confirmTrackCard}>
               <SegmentedControl
                 options={ESTIMATE_AMOUNT_OPTIONS}
-                value={amount.factor}
-                onChange={factor => editPending({ factor })}
+                value={amount.typed === null ? amount.factor : null}
+                onChange={factor => editPending({ factor, typed: null })}
                 columns={3}
                 label={`Amount of ${food.label} to log`}
               />
             </View>
+            <View style={styles.confirmWeightRow}>
+              <Text style={styles.confirmWeightLabel}>Or enter an amount</Text>
+              <TextField
+                style={styles.confirmWeightInput}
+                value={fieldText}
+                onChangeText={text => editPending({ typed: text })}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                placeholder={amount.unit === 'grams' ? 'e.g. 30' : 'e.g. 50'}
+                placeholderTextColor={colors.textTertiary}
+                accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
+              />
+              {wholeGrams ? (
+                <SegmentedControl
+                  options={UNIT_OPTIONS}
+                  value={amount.unit}
+                  onChange={unit => editPending({
+                    unit,
+                    // Keep the amount shown, restated in the new unit.
+                    factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
+                    typed: null,
+                  })}
+                  label="Unit"
+                />
+              ) : (
+                <Text style={styles.confirmWeightUnit}>%</Text>
+              )}
+            </View>
+            {typedBad && <Text style={styles.error}>{amountRefusal(amount.unit, wholeGrams)}</Text>}
           </View>
         );
+      }
       case 'none':
         return null;
     }
@@ -979,16 +1035,18 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     const rowKcal = stagedKcal(row);
     return (
       <View key={`${row.kind}-${food.key}`} style={[styles.offerRow, index > 0 && styles.offerDivider]}>
-        <TouchableOpacity
-          style={styles.offerMain}
-          activeOpacity={interaction.activeOpacity}
-          onPress={() => openPending(row)}
-          accessibilityRole="button"
-          accessibilityLabel={`Change the amount of ${food.label} before logging. ${meta}`}
-        >
+        <View style={styles.offerMain}>
           <Text style={styles.offerName}>{food.label}</Text>
           <Text style={styles.offerMeta}>{meta}</Text>
-        </TouchableOpacity>
+          {/* On its own line under the name, so the name keeps the row's width. */}
+          <InlineAction
+            label="Change amount"
+            variant="neutral"
+            onPress={() => openPending(row)}
+            accessibilityLabel={`Change the amount of ${food.label} before logging. ${meta}`}
+            style={styles.offerChange}
+          />
+        </View>
         {rowKcal !== undefined && <KcalFigure styles={styles} kcal={rowKcal} />}
         <PressableScale
           style={styles.offerAdd}
@@ -1067,7 +1125,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                 })}
               </View>
               <Text style={styles.listHint}>
-                Tap + to log the same amount again, or tap a name to change the amount first.
+                Tap + to log the same amount again, or Change amount to log a different one.
               </Text>
             </>
           )}
@@ -1450,6 +1508,7 @@ function makeStyles(colors: Colors) {
     offerMain: { flex: 1, minWidth: 0, gap: spacing.xxs },
     offerName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     offerMeta: { color: colors.textSecondary, fontSize: font.xs },
+    offerChange: { alignSelf: 'flex-start', marginTop: spacing.xsm },
     offerAdd: {
       width: 32,
       height: 32,
@@ -1538,7 +1597,7 @@ function makeStyles(colors: Colors) {
     // The stepper's own pill is bgTertiary, the card's colour, so it takes the
     // field colour the weight input already uses to read as a control.
     confirmStepper: { backgroundColor: colors.bgSecondary },
-    confirmMultiple: { gap: spacing.sm },
+    confirmMultiple: { gap: spacing.smd },
     confirmMultipleLabel: { color: colors.text, fontSize: font.sm },
     confirmTrackCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.xs },
     confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
