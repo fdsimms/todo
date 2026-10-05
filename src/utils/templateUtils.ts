@@ -649,6 +649,16 @@ interface PlaceholderRef {
   operand: number;
 }
 
+/**
+ * The key a blank's value is filed and looked up under: lowercased, inner
+ * whitespace collapsed, exactly what `parsePlaceholderRef` reads off a token.
+ * Every map of values goes through it, so a question named "Nights" (stored
+ * as typed) fills `{nights}` rather than silently leaving it empty.
+ */
+export function placeholderKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 /** Read one `{...}` token's contents. Arithmetic wins whenever the shape matches — see normalizePlaceholderName, which refuses to mint a blank whose *name* would parse as one, so the two can't collide. */
 function parsePlaceholderRef(raw: string): PlaceholderRef {
   const trimmed = raw.trim();
@@ -703,6 +713,25 @@ function placeholderNamesIn(text: string): string[] {
 }
 
 /**
+ * Every field of an item a blank can sit in — the one list, so a field that
+ * gets substituted (`substituteDraftPlaceholders`) can't drift out of the set
+ * that's asked for, which is how rotation members came to be filled in but
+ * never asked about.
+ */
+function placeholderTexts(
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & { rotationItems?: { title: string }[] },
+): string[] {
+  return [
+    item.title,
+    item.notes,
+    item.location ?? '',
+    ...item.subtasks.map(s => s.title),
+    ...item.chainItems.map(c => c.title),
+    ...(item.rotationItems ?? []).map(r => r.title),
+  ];
+}
+
+/**
  * Every distinct placeholder the given items declare across their titles,
  * notes, locations, subtasks and chain steps — in first-appearance order, so the apply
  * sheet's inputs read in the same order as the checklist. `run` is excluded:
@@ -715,13 +744,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
       if (name !== RUN_PLACEHOLDER && !found.includes(name)) found.push(name);
     }
   };
-  for (const item of items) {
-    add(item.title);
-    add(item.notes);
-    add(item.location ?? '');
-    item.subtasks.forEach(s => add(s.title));
-    item.chainItems.forEach(c => add(c.title));
-  }
+  for (const item of items) placeholderTexts(item).forEach(add);
   return found;
 }
 
@@ -735,7 +758,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
  * ask it about the draft it's holding in state, which isn't an item yet.
  */
 export function itemPlaceholders(
-  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'>,
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & { rotationItems?: { title: string }[] },
 ): string[] {
   const found: string[] = [];
   const add = (text: string) => {
@@ -743,11 +766,7 @@ export function itemPlaceholders(
       if (!found.includes(name)) found.push(name);
     }
   };
-  add(item.title);
-  add(item.notes);
-  add(item.location ?? '');
-  item.subtasks.forEach(s => add(s.title));
-  item.chainItems.forEach(c => add(c.title));
+  placeholderTexts(item).forEach(add);
   return found;
 }
 
@@ -797,13 +816,7 @@ export function withoutPlaceholder(text: string, name: string): string {
 /** True if any of these items references `{run}` — i.e. wants the run name inlined into a title, not just used to name the container. */
 export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
   const hasRun = (text: string) => placeholderNamesIn(text).includes(RUN_PLACEHOLDER);
-  return items.some(item =>
-    hasRun(item.title) ||
-    hasRun(item.notes) ||
-    hasRun(item.location ?? '') ||
-    item.subtasks.some(s => hasRun(s.title)) ||
-    item.chainItems.some(c => hasRun(c.title))
-  );
+  return items.some(item => placeholderTexts(item).some(hasRun));
 }
 
 /** The spacing repair a removed value leaves behind — shared so a blank deleted in the editor reads exactly as one left unfilled at apply time. */
@@ -830,8 +843,15 @@ export function substitutePlaceholders(text: string, values: Record<string, stri
     return text;
   }
   PLACEHOLDER_PATTERN.lastIndex = 0;
+  // Tokens are read lowercased, so the values have to be keyed the same way
+  // or a caller passing `{ Where: 'Paris' }` fills nothing.
+  const keyed: Record<string, string> = {};
+  for (const [name, value] of Object.entries(values)) {
+    const key = placeholderKey(name);
+    if (!(key in keyed)) keyed[key] = value;
+  }
   const substituted = text.replace(PLACEHOLDER_PATTERN, (_, token: string) =>
-    resolvePlaceholderRef(parsePlaceholderRef(token), values) ?? ''
+    resolvePlaceholderRef(parsePlaceholderRef(token), keyed) ?? ''
   );
   return tidySubstituted(substituted);
 }

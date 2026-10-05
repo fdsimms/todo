@@ -5,6 +5,7 @@ import {
   dueTemplateRun,
   periodKeyFor,
   scheduledRunName,
+  schedulesEqual,
   triggerDayFor,
 } from '../utils/templateSchedule';
 
@@ -196,5 +197,19 @@ describe('describeTemplateSchedule', () => {
     longest.forEach(s => {
       expect(describeTemplateSchedule(s).length).toBeLessThanOrEqual(FITS);
     });
+  });
+});
+
+describe('schedulesEqual', () => {
+  it('compares field by field, so key order is not a change', () => {
+    const a = schedule({ weekday: 3 });
+    const reordered = Object.fromEntries(Object.entries(a).reverse()) as TemplateSchedule;
+    expect(schedulesEqual(a, reordered)).toBe(true);
+  });
+
+  it('sees a changed field, and tells null apart from a schedule', () => {
+    expect(schedulesEqual(schedule({ weekday: 3 }), schedule({ weekday: 4 }))).toBe(false);
+    expect(schedulesEqual(null, null)).toBe(true);
+    expect(schedulesEqual(schedule(), null)).toBe(false);
   });
 });

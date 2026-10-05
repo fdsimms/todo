@@ -19,7 +19,9 @@ import type { Project, Task, TaskTemplate } from '../types';
 import { awayNoonIso } from './awayDates';
 import {
   RUN_PLACEHOLDER,
+  buildApplyTree,
   buildDraftsFromTemplateTree,
+  expandSelectionWithAncestors,
   expandTemplateItems,
   majorityCategory,
   resolveApplyContainer,
@@ -88,7 +90,22 @@ export function applyTemplateRun(
   options: TemplateRunOptions | undefined,
   sink: TemplateRunSink,
 ): Task[] {
-  const expanded = expandTemplateItems(template.items, template.id, selectedItemIds, templatesById);
+  // `expandTemplateItems` only recurses into a nested template whose own ref
+  // item is selected, but the selection every caller builds (`initialLeafSelection`,
+  // a person's ticks) names leaves. Adding the ancestors here rather than at each
+  // call site is the point: the scheduler and the MCP server each forgot to, and
+  // every nested template's items silently dropped out of their runs. Ancestors
+  // of a leaf the caller didn't pick are never added, so this changes nothing
+  // for a caller that already passed them.
+  const selection = expandSelectionWithAncestors(
+    buildApplyTree(template.items, template.id, templatesById),
+    selectedItemIds,
+  );
+  const expanded = expandTemplateItems(template.items, template.id, selection, templatesById);
+  // Nothing to create (only broken references selected, say) means no
+  // container either: an empty stack or project every scheduled period is
+  // noise with nothing in it to explain itself.
+  if (expanded.length === 0) return [];
 
   // `{run}` is bound rather than collected, so a template only needs the one
   // field filled in to get its context into the titles that travel alone.

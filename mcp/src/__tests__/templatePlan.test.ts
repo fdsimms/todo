@@ -89,6 +89,25 @@ describe('what the normalizers would have swallowed', () => {
     ]);
   });
 
+  it('refuses a recurrence type the engine does not know', () => {
+    expect(errors(plan({ items: [{ title: 'Pack', recurrenceType: 'weekly' }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'Pack', recurrenceType: 'biweekly' as never }] }))[0])
+      .toContain('recurrenceType must be one of');
+  });
+
+  it('needs a completion choice to offer two options', () => {
+    expect(errors(plan({ items: [{ title: 'Pick', deliverableKind: 'choice', deliverableOptions: ['Only'] }] }))[0])
+      .toContain('needs at least two deliverableOptions');
+    expect(errors(plan({ items: [{ title: 'Pick', deliverableKind: 'choice', deliverableOptions: ['A', 'B'] }] }))).toEqual([]);
+  });
+
+  // TemplateSchedule.month is 1-12 (templateSchedule reads clamp(month, 1, 12) - 1).
+  // A 0-11 check made December impossible and every other month one early.
+  it('takes a schedule month as 1 to 12, the way the app stores it', () => {
+    expect(errors(plan({ schedule: { frequency: 'yearly', month: 12, monthDay: 1 } }))).toEqual([]);
+    expect(errors(plan({ schedule: { frequency: 'yearly', month: 0, monthDay: 1 } }))).toEqual(['schedule month must be 1 to 12.']);
+  });
+
   it('knows effort runs to 6, not to 4 like priority', () => {
     expect(errors(plan({ items: [{ title: 'Pack', effort: 6 }] }))).toEqual([]);
     expect(errors(plan({ items: [{ title: 'Pack', effort: 7 as never }] }))[0]).toContain('effort must be 0 to 6');

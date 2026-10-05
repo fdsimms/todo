@@ -23,6 +23,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateQuestion } from '../types';
 import type { ApplyTreeNode, TemplateAnchors } from './templateUtils';
+import { placeholderKey } from './templateUtils';
 
 /**
  * Every question asked by a run of this tree, in the order it should be shown:
@@ -137,8 +138,11 @@ export function placeholderValuesFor(
   const values: Record<string, string> = {};
   for (const question of questions) {
     if (!question.name) continue;
-    if (question.name in values) continue;
-    values[question.name] = answers[question.id] ?? '';
+    // Keyed the way a token is read, so "Nights" fills `{nights}` and the
+    // apply sheet doesn't also ask for it as an undeclared blank.
+    const key = placeholderKey(question.name);
+    if (key in values) continue;
+    values[key] = answers[question.id] ?? '';
   }
   return values;
 }

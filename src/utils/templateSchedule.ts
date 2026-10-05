@@ -73,6 +73,22 @@ export function defaultTemplateSchedule(): TemplateSchedule {
 }
 
 /**
+ * Whether two schedules ask the same question, field by field. A JSON
+ * comparison reads the same schedule with its keys in another order (a row
+ * that came back through sync, or an MCP write) as a change, and a change
+ * clears the period key, so the period would fire a second time.
+ */
+export function schedulesEqual(a: TemplateSchedule | null, b: TemplateSchedule | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.frequency === b.frequency
+    && a.weekday === b.weekday
+    && a.monthDay === b.monthDay
+    && a.month === b.month
+    && a.time === b.time
+    && (a.anchorSpanDays ?? null) === (b.anchorSpanDays ?? null);
+}
+
+/**
  * The calendar period a logical day falls in, under a given frequency.
  *
  * A week is keyed by its own first day rather than by an ISO week number, so it

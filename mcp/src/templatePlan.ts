@@ -36,6 +36,7 @@
 import type {
   Effort,
   Priority,
+  RecurrenceType,
   TaskTemplate,
   TemplateAnchor,
   TemplateContainer,
@@ -54,6 +55,7 @@ export const QUESTION_KINDS: readonly TemplateQuestionKind[] = ['text', 'number'
 export const QUESTION_SOURCES: readonly TemplateQuestionSource[] = ['none', 'days', 'nights'];
 export const SCHEDULE_FREQUENCIES: readonly TemplateScheduleFrequency[] = ['weekly', 'monthly', 'yearly'];
 export const ANCHORS: readonly TemplateAnchor[] = ['start', 'end'];
+export const RECURRENCE_TYPES: readonly RecurrenceType[] = ['none', 'daily', 'weekly', 'monthly', 'yearly', 'hours'];
 
 export interface GroupPlan {
   /**
@@ -139,7 +141,7 @@ export interface SchedulePlan {
   weekday?: number;
   /** 1-31, for monthly and yearly. */
   monthDay?: number;
-  /** 0-11, for yearly. */
+  /** 1-12, for yearly: `TemplateSchedule.month`'s own convention (January is 1). */
   month?: number;
   /** "HH:MM". */
   time?: string;
@@ -177,7 +179,7 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const DEFAULT_SCHEDULE = {
   weekday: 1,
   monthDay: 1,
-  month: 0,
+  month: 1,
   time: '09:00',
   anchorSpanDays: null,
 } as const;
@@ -394,6 +396,14 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
     if (value !== undefined && value !== null && value <= 0) errors.push(`item "${label}" ${field} must be above zero.`);
   };
 
+  // normalizeTemplateItem stores any string here verbatim, and a "biweekly"
+  // reads as a repeat in the editor while getNextDueDate matches none of it.
+  if (item.recurrenceType !== undefined && !RECURRENCE_TYPES.includes(item.recurrenceType)) {
+    errors.push(`item "${label}" recurrenceType must be one of ${RECURRENCE_TYPES.join(', ')}.`);
+  }
+  if (item.deliverableKind === 'choice' && (item.deliverableOptions ?? []).filter(o => o.trim()).length < 2) {
+    errors.push(`item "${label}" asks a choice question, which needs at least two deliverableOptions.`);
+  }
   positive(item.recurrenceInterval, 'recurrenceInterval');
   positive(item.estimatedMinutes, 'estimatedMinutes');
   positive(item.completionTimerMinutes, 'completionTimerMinutes');
@@ -467,8 +477,8 @@ export function scheduleErrors(schedule: SchedulePlan | null | undefined): strin
   if (schedule.monthDay !== undefined && (schedule.monthDay < 1 || schedule.monthDay > 31)) {
     errors.push('schedule monthDay must be 1 to 31.');
   }
-  if (schedule.month !== undefined && (schedule.month < 0 || schedule.month > 11)) {
-    errors.push('schedule month must be 0 to 11.');
+  if (schedule.month !== undefined && (schedule.month < 1 || schedule.month > 12)) {
+    errors.push('schedule month must be 1 to 12.');
   }
   return errors;
 }

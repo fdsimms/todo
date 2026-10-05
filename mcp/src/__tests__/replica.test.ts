@@ -697,6 +697,15 @@ describe('the replica', () => {
         expect(replica.tasks().filter(x => x.groupId === stack.id)).toHaveLength(2);
       });
 
+      // The default selection names leaves; the run has to find its way into
+      // a nested template by itself or everything inside one is dropped.
+      it('creates the items of a nested template', () => {
+        const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Charger', category: 'Home' }] });
+        const outer = replica.createTemplate({ name: 'Weekend', items: [{ title: 'Book hotel', category: 'Home' }, { title: 'Packing', refTemplate: packing.id }] });
+        const result = replica.applyTemplate(outer.id, {});
+        expect(result.tasks.map(x => x.title)).toEqual(['Book hotel', 'Charger']);
+      });
+
       it('refuses a bad answer, an unknown item or project, and writes nothing', () => {
         const t = trip();
         const before = replica.tasks().length;

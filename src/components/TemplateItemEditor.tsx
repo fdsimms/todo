@@ -531,8 +531,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
   // Every blank this item declares, across every field that can hold one.
   const blanks = useMemo(
-    () => itemPlaceholders({ title, notes, location: locationText, subtasks, chainItems }),
-    [title, notes, locationText, subtasks, chainItems]
+    () => itemPlaceholders({ title, notes, location: locationText, subtasks, chainItems, rotationItems }),
+    [title, notes, locationText, subtasks, chainItems, rotationItems]
   );
 
   // The new blank goes on the end of the title: it's the field every item has,

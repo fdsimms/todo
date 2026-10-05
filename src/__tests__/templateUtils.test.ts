@@ -666,6 +666,17 @@ describe('buildApplyTree / flattenApplyTree / expandSelectionWithAncestors', () 
 });
 
 describe('extractPlaceholders', () => {
+  // A rotation member's blank is substituted at apply time, so it has to be
+  // asked for too, or it always comes out empty.
+  it('reads blanks in rotation members', () => {
+    const item = normalizeTemplateItem({ title: 'Weekly cleaning', rotationEnabled: true, rotationItems: [
+      { id: 'r1', title: 'Clean {room}' },
+      { id: 'r2', title: 'Hoover' },
+    ] as TemplateItem['rotationItems'] });
+    expect(extractPlaceholders([item])).toEqual(['room']);
+    expect(itemPlaceholders(item)).toEqual(['room']);
+  });
+
   it("reads a blank that appears only in an item's location", () => {
     expect(extractPlaceholders([makeItem({ title: 'Check in', location: '{hotel}' })])).toEqual(['hotel']);
   });
@@ -846,6 +857,13 @@ describe('substitutePlaceholders', () => {
 
   it('matches the name case-insensitively', () => {
     expect(substitutePlaceholders('Book {Where}', { where: 'Denver' })).toBe('Book Denver');
+  });
+
+  // The other half of case-insensitive: a caller (the MCP server, a question
+  // named as typed) can hand over a capitalised key.
+  it('reads a value keyed with capitals', () => {
+    expect(substitutePlaceholders('Pack {nights} socks', { Nights: '7' })).toBe('Pack 7 socks');
+    expect(substitutePlaceholders('Book {where}', { ' Where ': 'Denver' })).toBe('Book Denver');
   });
 
   it('replaces every occurrence', () => {

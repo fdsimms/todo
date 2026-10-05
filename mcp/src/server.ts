@@ -651,7 +651,7 @@ const itemSchema = z.object({
   effort: z.number().int().min(0).max(6).optional(),
   difficulty: z.enum(['easy', 'normal', 'hard']).optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
-  recurrenceType: z.string().optional(),
+  recurrenceType: z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly', 'hours']).optional(),
   recurrenceInterval: z.number().int().positive().optional(),
   recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
   recurrenceMonthDay: z.number().int().min(1).max(31).nullable().optional(),
@@ -713,7 +713,7 @@ const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
   weekday: z.number().int().min(0).max(6).optional(),
   monthDay: z.number().int().min(1).max(31).optional(),
-  month: z.number().int().min(0).max(11).optional(),
+  month: z.number().int().min(1).max(12).optional().describe('Yearly: the month, 1 to 12 (January is 1).'),
   time: z.string().optional().describe('HH:MM.'),
   anchorSpanDays: z.number().int().nullable().optional(),
 }).nullable().optional();
