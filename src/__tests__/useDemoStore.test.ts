@@ -4278,6 +4278,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing is marked handled: the demo never ran the sweep, and a seeded
     // mark would be a claim about an occurrence that does not exist.
     expect(settings.eventTaskHandled).toEqual({});
+
+    // One rule fires after its event ends and stands down when another is booked.
+    expect(rules.some(r => r.afterEvent === true && r.skipIfUpcoming === true)).toBe(true);
   });
 
   it('seeds a leave-by task with its reminder and an MTA note', () => {

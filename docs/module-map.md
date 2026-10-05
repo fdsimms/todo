@@ -113,7 +113,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/eventPeople.ts` — EventPeopleIndex, EMPTY_EVENT_PEOPLE, eventPeopleKeys, indexEventPeople, peopleForEvent, EventPeopleWrite, planEventPeopleWrite, isEventPeopleLinkStale, staleEventPeopleIds, legacyEventPeopleRows, +3 more
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/eventTaskLinks.ts` — EventTaskLink, EventTaskLinks, eventTaskKey, tasksForEvent, withEventTasks, rekeyEventTasks, EVENT_TASK_LINK_GRACE_DAYS, pruneStaleEventTaskLinks, parseEventTaskLinks, MovedEvent, +4 more
-- `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, defaultEventRules, parseEventRules, ruleMatchesTitle, describeEventRule, eventIsRuleEligible, +16 more
+- `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, FOLLOW_UP_LOOKBACK_DAYS, FOLLOW_UP_AHEAD_DAYS, defaultEventRules, parseEventRules, ruleMatchesTitle, +21 more
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
@@ -468,6 +468,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
 - `src/hooks/useElsewhereSearch.ts` — useElsewhereSearch
 - `src/hooks/useEventTaskContext.ts` — useEventTaskContext
+- `src/hooks/useEventTaskSync.ts` — useEventTaskSync
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusPlanReconcile
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
