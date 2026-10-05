@@ -1875,6 +1875,9 @@ export function initDatabase(): void {
     // NULL on every existing row: not part of a confirmed agent call. See
     // UnattendedEntry.batchId.
     'ALTER TABLE unattended_log ADD COLUMN batch_id TEXT',
+    // NULL on every existing row: an entry about a task, or one with no row to
+    // read back. See UnattendedEntry.recordId.
+    'ALTER TABLE unattended_log ADD COLUMN record_id TEXT',
     // NULL on every existing row: shown whatever any question is answered.
     // JSON `{ taskId, answers }`. See Task.answerGate.
     'ALTER TABLE tasks ADD COLUMN answer_gate TEXT',
@@ -4497,6 +4500,7 @@ function rowToUnattendedEntry(row: Record<string, unknown>): UnattendedEntry {
     subject: ((row.subject as UnattendedSubject | null) ?? 'task'),
     revert: parseUnattendedRevert(row.revert_json),
     batchId: (row.batch_id as string) ?? null,
+    recordId: (row.record_id as string) ?? null,
   };
 }
 
@@ -4529,11 +4533,11 @@ export function dbInsertUnattendedEntries(entries: readonly UnattendedEntry[]): 
     for (const e of entries) {
       db.runSync(
         `INSERT OR REPLACE INTO unattended_log
-           (id, at, action, kind, title, task_id, row_count, actor, subject, revert_json, batch_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+           (id, at, action, kind, title, task_id, row_count, actor, subject, revert_json, batch_id, record_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [e.id, e.at, e.action, e.kind, e.title, e.taskId, e.count,
           e.actor === 'agent' ? 'agent' : null, e.subject === 'task' ? null : e.subject,
-          e.revert ? JSON.stringify(e.revert) : null, e.batchId ?? null]
+          e.revert ? JSON.stringify(e.revert) : null, e.batchId ?? null, e.recordId ?? null]
       );
     }
   });

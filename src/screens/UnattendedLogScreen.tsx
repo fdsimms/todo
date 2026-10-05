@@ -9,7 +9,14 @@ import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { InlineAction } from '../components/InlineAction';
-import { agentRevertLabel, agentRevertPlan, revertBatch, revertableInBatch, type AgentRevertPlan } from '../utils/agentRevert';
+import { agentUndoLabel, agentUndoPlan, revertBatch, revertableInBatch, type AgentUndo, type AgentUndoReaders } from '../utils/agentUndo';
+import { agentUndoReaders, applyAgentUndo } from '../utils/agentUndoRun';
+import { useProjectStore } from '../store/useProjectStore';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMoodStore } from '../store/useMoodStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -32,7 +39,7 @@ import {
   unattendedKinds,
   unattendedSummary,
 } from '../utils/unattendedLedger';
-import type { GeneratedKind, Task, UnattendedEntry } from '../types';
+import type { GeneratedKind, UnattendedEntry } from '../types';
 
 /**
  * What the app did while nobody was looking.
@@ -64,62 +71,77 @@ export function UnattendedLogScreen() {
 
   const [kind, setKind] = useState<GeneratedKind | null>(null);
 
-  // Only an agent's task rows can be taken back (see agentRevert.ts), so the
-  // lookup is built only when one is in the list.
-  const tasks = useTaskStore(s => s.tasks);
+  // What an agent's entry is about is read back from the store that owns it, so
+  // the undo is offered only while that record is still how the agent left it
+  // (agentUndo.ts). The slices are subscribed to so a row re-judges itself when
+  // one changes, and read only when an agent row is in the list.
   const hasAgentRows = useMemo(() => entries.some(e => e.actor === 'agent'), [entries]);
-  const taskById = useMemo(
-    () => (hasAgentRows ? new Map(tasks.map(t => [t.id, t])) : null),
-    [hasAgentRows, tasks],
+  const tasks = useTaskStore(s => s.tasks);
+  const projects = useProjectStore(s => s.projects);
+  const groceryEntries = useGroceryStore(s => s.listEntries);
+  const meals = useMealPlanStore(s => s.entries);
+  const foods = useFoodLogStore(s => s.entries);
+  const moods = useMoodStore(s => s.logs);
+  const doses = useMedicationStore(s => s.logs);
+  const titleRules = useSettingsStore(s => s.titleRules);
+  const weatherRules = useSettingsStore(s => s.weatherRules);
+  const eventRules = useSettingsStore(s => s.eventRules);
+  const healthRules = useSettingsStore(s => s.healthRules);
+  const screenTimeRules = useSettingsStore(s => s.screenTimeRules);
+  // Notes live in a synced setting rather than a store, so an undo bumps this
+  // to make the rows read again.
+  const [undoCount, setUndoCount] = useState(0);
+  const readers = useMemo(
+    () => (hasAgentRows ? agentUndoReaders() : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasAgentRows, tasks, projects, groceryEntries, meals, foods, moods, doses, titleRules, weatherRules, eventRules, healthRules, screenTimeRules, undoCount],
   );
 
-  // The newest row of each confirmed agent call that touched more than one
-  // task still open to an undo carries "Undo all", so one action per request
+  // The newest row of each confirmed agent call that changed more than one
+  // thing still open to an undo carries "Undo all", so one action per request
   // rather than one on every row of it.
   const batchHeads = useMemo(() => {
     const heads = new Map<string, number>();
-    if (!taskById) return heads;
-    const getTask = (id: string) => taskById.get(id) ?? null;
+    if (!readers) return heads;
+    const planFor = (e: UnattendedEntry) => agentUndoPlan(e, readers);
     const seen = new Set<string>();
     for (const e of entries) {
       // The head has to be a row that shows an undo of its own, or the button
       // would have nowhere to sit.
-      if (!e.batchId || !e.taskId || seen.has(e.batchId)) continue;
-      if (agentRevertPlan(e, getTask(e.taskId)).kind === 'none') continue;
+      if (!e.batchId || seen.has(e.batchId)) continue;
+      if (planFor(e).kind === 'none') continue;
       seen.add(e.batchId);
-      const n = revertableInBatch(entries, e.batchId, getTask);
+      const n = revertableInBatch(entries, e.batchId, planFor);
       if (n >= 2) heads.set(e.id, n);
     }
     return heads;
-  }, [entries, taskById]);
+  }, [entries, readers]);
 
   const handleRevertBatch = useCallback((entry: UnattendedEntry, count: number) => {
     const batchId = entry.batchId;
     if (!batchId) return;
     Alert.alert(
       `Undo ${count} changes?`,
-      'Puts back everything Claude changed in this request. A task you changed since is left as it is.',
+      'Puts back everything Claude changed in this request. Anything you changed since is left as it is.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Undo all',
           onPress: () => {
-            const store = useTaskStore.getState();
+            // Read from the stores at each step, so the second of two edits to
+            // one task is judged against the task the first one just restored.
             const result = revertBatch(
               useUnattendedStore.getState().entries,
               batchId,
-              id => useTaskStore.getState().tasks.find(t => t.id === id) ?? null,
-              plan => {
-                if (plan.kind === 'delete') store.deleteTask(plan.taskId);
-                else if (plan.kind === 'uncomplete') store.uncompleteTask(plan.taskId);
-                else store.updateTask(plan.taskId, plan.patch);
-              },
+              e => agentUndoPlan(e, agentUndoReaders()),
+              applyAgentUndo,
             );
+            setUndoCount(n => n + 1);
             haptics.success();
             if (result.skipped > 0) {
               Alert.alert(
                 `Undid ${result.reverted}`,
-                `${result.skipped} ${result.skipped === 1 ? 'task was' : 'tasks were'} left as they are because they changed since.`,
+                `${result.skipped} ${result.skipped === 1 ? 'change was' : 'changes were'} left as ${result.skipped === 1 ? 'it is' : 'they are'} because ${result.skipped === 1 ? 'it' : 'they'} changed since.`,
               );
             }
           },
@@ -128,23 +150,16 @@ export function UnattendedLogScreen() {
     );
   }, []);
 
-  const handleRevert = useCallback((entry: UnattendedEntry, plan: AgentRevertPlan) => {
-    const store = useTaskStore.getState();
-    const run = () => {
-      if (plan.kind === 'delete') store.deleteTask(plan.taskId);
-      else if (plan.kind === 'uncomplete') store.uncompleteTask(plan.taskId);
-      else if (plan.kind === 'restore') store.updateTask(plan.taskId, plan.patch);
-      haptics.success();
-    };
-    const title = plan.kind === 'delete' ? 'Remove this task?' : plan.kind === 'uncomplete' ? 'Reopen this task?' : 'Undo this change?';
-    const message = plan.kind === 'delete'
-      ? `Claude added "${entry.title}". Removing it deletes the task.`
-      : plan.kind === 'uncomplete'
-        ? `Claude completed "${entry.title}". Reopening it also removes the next occurrence it created, if any.`
-        : `Puts "${entry.title}" back the way it was before Claude changed it.`;
-    Alert.alert(title, message, [
+  const handleRevert = useCallback((entry: UnattendedEntry, plan: AgentUndo) => {
+    if (plan.kind === 'none') return;
+    const copy = undoCopy(entry, plan);
+    Alert.alert(copy.title, copy.message, [
       { text: 'Cancel', style: 'cancel' },
-      { text: agentRevertLabel(plan) ?? 'Undo', style: plan.kind === 'delete' ? 'destructive' : 'default', onPress: run },
+      {
+        text: agentUndoLabel(plan) ?? 'Undo',
+        style: copy.destructive ? 'destructive' : 'default',
+        onPress: () => { applyAgentUndo(plan); setUndoCount(n => n + 1); haptics.success(); },
+      },
     ]);
   }, []);
 
@@ -231,7 +246,7 @@ export function UnattendedLogScreen() {
         renderItem={({ item }) => (
           <ActivityRow
             entry={item}
-            task={item.actor === 'agent' && item.taskId && taskById ? taskById.get(item.taskId) ?? null : null}
+            readers={item.actor === 'agent' ? readers : null}
             onRevert={handleRevert}
             batchCount={batchHeads.get(item.id) ?? 0}
             onRevertBatch={handleRevertBatch}
@@ -268,13 +283,33 @@ export function UnattendedLogScreen() {
   );
 }
 
+/** What the confirmation says, per kind of undo. Plain about what is put back and what is lost. */
+function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none' }>): { title: string; message: string; destructive: boolean } {
+  const t = `"${entry.title}"`;
+  switch (plan.kind) {
+    case 'delete': return { title: 'Remove this task?', message: `Claude added ${t}. Removing it deletes the task.`, destructive: true };
+    case 'uncomplete': return { title: 'Reopen this task?', message: `Claude completed ${t}. Reopening it also removes the next occurrence it created, if any.`, destructive: false };
+    case 'restore': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreProject': return { title: 'Undo this change?', message: `Puts the project ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreRules': return { title: 'Undo this change?', message: `Puts the ${entry.title.toLowerCase()} back the way they were before Claude changed them.`, destructive: false };
+    case 'groceryRemove': return { title: 'Remove from the list?', message: `Claude added ${t} to the grocery list. This takes it back off.`, destructive: false };
+    case 'groceryCheck': return { title: 'Undo this change?', message: plan.checked ? `Checks ${t} off again.` : `Puts ${t} back on the list, unchecked.`, destructive: false };
+    case 'removeRecord': {
+      const what = plan.subject === 'meal' ? 'meal' : plan.subject === 'food' ? 'food log entry' : plan.subject === 'mood' ? 'mood check-in' : 'medication dose';
+      return { title: `Remove this ${what}?`, message: `Claude added this ${what}. Removing it deletes it, including anything you changed on it since.`, destructive: true };
+    }
+    case 'noteRemove': return { title: 'Forget this note?', message: `Removes the note ${t} from Notes for Claude.`, destructive: true };
+    case 'noteAdd': return { title: 'Restore this note?', message: `Puts the note ${t} back in Notes for Claude.`, destructive: false };
+  }
+}
+
 const ActivityRow = React.memo(function ActivityRow({
-  entry, task, onRevert, batchCount, onRevertBatch, styles, colors,
+  entry, readers, onRevert, batchCount, onRevertBatch, styles, colors,
 }: {
   entry: UnattendedEntry;
-  /** The task an agent's entry is about, as it stands now. Null for every other row. */
-  task: Task | null;
-  onRevert: (entry: UnattendedEntry, plan: AgentRevertPlan) => void;
+  /** How to read back what an agent's entry is about, as it stands now. Null for every other row. */
+  readers: AgentUndoReaders | null;
+  onRevert: (entry: UnattendedEntry, plan: AgentUndo) => void;
   /** How many of this request's changes can still be undone, on the request's newest row only; 0 elsewhere. */
   batchCount: number;
   onRevertBatch: (entry: UnattendedEntry, count: number) => void;
@@ -282,8 +317,8 @@ const ActivityRow = React.memo(function ActivityRow({
   colors: Colors;
 }) {
   const spec = UNATTENDED_ACTION_SPECS[entry.action];
-  const plan = entry.actor === 'agent' ? agentRevertPlan(entry, task) : null;
-  const revertLabel = plan ? agentRevertLabel(plan) : null;
+  const plan = readers ? agentUndoPlan(entry, readers) : null;
+  const revertLabel = plan ? agentUndoLabel(plan) : null;
   // Only the one action that put something in front of the user is tinted.
   // Drawing a tidy-up in the accent colour would make it look like news.
   const tint = spec.adds ? colors.accent : colors.textSecondary;
