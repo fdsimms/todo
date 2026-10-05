@@ -38,6 +38,24 @@ export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
 
 /**
+ * Answers to the three questions the backfill screen asks about every task,
+ * given once for a whole group of tasks instead of once per task: a project's
+ * list (`Project.taskDefaults`) or a kind of generated task (Settings'
+ * `generatedTaskDefaults`). Every field is null for "no default, ask me", and
+ * a default only ever fills a field nobody answered (see `newTaskFromDraft`).
+ *
+ * `priority: 0` is an answer, not an absence: it means "these have no
+ * priority, don't ask", and a task created under it is stamped as dismissed for
+ * the priority backfill, since a priority of 0 otherwise reads as missing.
+ */
+export interface TaskFieldDefaults {
+  priority: Priority | null;
+  difficulty: Difficulty | null;
+  /** An estimate bucket, 1 to 6. The minutes come from `EFFORT_MINUTES`. */
+  effort: Effort | null;
+}
+
+/**
  * Which direction a task's success runs in — see `Task.polarity`.
  *
  * 'positive' is every task that has ever existed here: something to do, and
@@ -1123,6 +1141,14 @@ export interface Project {
   // on this type follows: a project gets no default until somebody names one,
   // the same as weekendSource starting off and destination starting blank.
   defaultTaskCategory: string | null;
+  /**
+   * Priority, difficulty and time estimate every new task in this project
+   * starts with, so a list like a wish list doesn't put each item through the
+   * backfill screen. Optional so a row built before the field existed still
+   * type-checks; absent and null both mean no defaults. See `TaskFieldDefaults`
+   * and `src/utils/taskFieldDefaults.ts`.
+   */
+  taskDefaults?: TaskFieldDefaults | null;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;
@@ -1779,6 +1805,15 @@ export interface MoodLog {
   contextTags: string[];
   /** Whatever you wanted to say about it. Null rather than empty string. */
   note: string | null;
+  /**
+   * A dream you woke up with. Null rather than empty string.
+   *
+   * A field on the entry rather than its own entity: a dream is written down in
+   * the morning, so it files under the day you woke (this entry's `dayKey`) and
+   * rides the same sync, export and day page as the note. Free text only. The
+   * app derives nothing from it (see `docs/arch/mood-log.md`).
+   */
+  dream: string | null;
 }
 
 /**
@@ -2743,6 +2778,17 @@ export interface Task {
    * reader goes through `blockerIdsOf`, which treats a missing list as empty.
    */
   blockedByIds?: string[];
+  /**
+   * Hold this task until a repeating blocker has finished its *last*
+   * occurrence, not just the one it points at. Completing a repeating task
+   * spawns a successor with a new id, so without this the wait ends at the
+   * first completion. With it, a blocker that is done but has a live successor
+   * (`previousOccurrenceId`) still holds, and the hold ends when the series
+   * does (a count or end date runs out, or the successor is archived or
+   * deleted). Derived at read time by `isBlocked`, never stored per occurrence.
+   * A blocker that repeats with no end never releases the task.
+   */
+  waitForSeriesEnd?: boolean;
 
   /**
    * Shown only if another task's question gets one of these answers: "Book

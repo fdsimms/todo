@@ -334,6 +334,7 @@ file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
+| priority, difficulty and estimate answered once for a group, so Backfill never asks (a project's list, or a kind of generated task) | `src/utils/taskFieldDefaults.ts` (the rules) + `Project.taskDefaults` + `generatedTaskDefaults` in `useSettingsStore`, read in `newTaskFromDraft`. A default fills a field nobody answered and never overrides one. `priority: 0` is an answer (stamps the priority backfill as dismissed), because a priority of 0 otherwise reads as missing. Backfill's whole-group toggle uses `backfillGroupMembers` |
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |

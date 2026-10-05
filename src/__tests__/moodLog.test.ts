@@ -33,6 +33,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    dream: over.dream ?? null,
   };
 }
 
@@ -262,6 +263,7 @@ describe('an entry summary', () => {
 
   it('falls back to the note for an entry that is only a note', () => {
     expect(moodLogSummary(log({ mood: null, note: 'Slept badly' }))).toBe('Slept badly');
+    expect(moodLogSummary(log({ mood: null, dream: 'Flying' }))).toBe('Flying');
   });
 });
 

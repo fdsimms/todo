@@ -95,7 +95,7 @@ import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
-import { lookBacks } from '../utils/moodHistory';
+import { dreamStats, lookBacks } from '../utils/moodHistory';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -879,6 +879,12 @@ describe('demo mode', () => {
     expect(waiter?.blockedById).toBe(blocker!.id);
     expect(s.waitingTasks().map(t => t.id)).toContain(waiter!.id);
     expect(s.blockedTasksOf(blocker!.id).map(t => t.id)).toEqual([waiter!.id]);
+
+    // And one that waits for a whole repeating series, not its first occurrence.
+    const party = s.tasks.find(t => t.title === 'Book the pool party');
+    const swim = s.tasks.find(t => t.title === 'Swim class');
+    expect(party?.blockedById).toBe(swim!.id);
+    expect(party?.waitForSeriesEnd).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });
@@ -2049,6 +2055,12 @@ describe('demo seed — people', () => {
   it('seeds notes from further back, so the Looking back card has something to show', () => {
     const logs = useMoodStore.getState().logs;
     expect(lookBacks(logs, dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
+  });
+
+  it('seeds a couple of dreams, so the dream field and the DREAMS card have something to show', () => {
+    const stats = dreamStats(useMoodStore.getState().logs, dayKeyOf(getCurrentDayStart()).slice(0, 7));
+    expect(stats.dayCount).toBeGreaterThanOrEqual(2);
+    expect(stats.lastDayKey).not.toBeNull();
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {
@@ -4162,6 +4174,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(quotes).toBeDefined();
     expect(quotes!.projectId).toBe(kitchenRemodel!.id);
     expect(quotes!.category).toBe('Home');
+  });
+
+  it('seeds project task defaults and a task that starts with them', () => {
+    const { tasks } = useTaskStore.getState();
+    const gift = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
+    expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+    const dad = tasks.find(t => t.title === 'Something for Dad\'s birthday');
+    expect(dad).toBeDefined();
+    expect(dad!.difficulty).toBe('easy');
+    expect(dad!.estimatedMinutes).toBe(15);
+    // "No priority" is an answer, so Backfill has nothing to ask about it.
+    expect(dad!.priority).toBe(0);
+    expect(dad!.backfillDismissedFields).toContain('priority');
+    expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3 });
   });
 
   it('seeds a weather task and the rules alongside it', () => {

@@ -62,6 +62,7 @@ components below.
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, PaintSelection, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SelectionDot, +3 more
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, ScreenSettingsSheet, SearchField, TipHost
 - `src/screens/TodayScreen.tsx` — AddTaskFab, AllClearMark, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, DropTargetChannel, +37 more
+- `src/screens/TodayScreen.tsx` — AddTaskFab, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, DropTargetChannel, +37 more
 - `src/screens/UnattendedLogScreen.tsx` — EmptyState, HubPills, InlineAction, PillGroup, ScreenHeader, ScreenSettingsSheet
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl, WeightChart, WeightGoalSheet
 
@@ -297,6 +298,7 @@ Where each component can appear.
 - `src/components/TaskBreakdownSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/TaskCheckbox.tsx` — on SearchScreen, TodayScreen
 - `src/components/TaskEditor.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
+- `src/components/TaskFieldDefaultsFields.tsx` — on AutomationsScreen, ProjectDetailScreen, ProjectsScreen
 - `src/components/TaskGroupBody.tsx` — on ProjectDetailScreen, TodayScreen
 - `src/components/TaskGroupEditor.tsx` — on ProjectDetailScreen, SearchScreen, StacksScreen, TodayScreen
 - `src/components/TaskGroupHeader.tsx` — on ProjectDetailScreen, TodayScreen

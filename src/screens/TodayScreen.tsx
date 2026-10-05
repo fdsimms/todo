@@ -78,6 +78,10 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
+import { coinBalance } from '../utils/rewards';
+import { useRewardStore } from '../store/useRewardStore';
+import { CoinIcon } from '../components/CoinIcon';
+import { navigateToTab } from '../navigation/navigationRef';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { InlineNameField } from '../components/InlineNameField';
@@ -714,6 +718,8 @@ export function TodayScreen() {
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const coinEntries = useRewardStore(s => s.entries);
+  const coinTotal = useMemo(() => coinBalance(coinEntries), [coinEntries]);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
@@ -3616,22 +3622,23 @@ export function TodayScreen() {
     return items;
   }, [pinnedTasks, taskGroups]);
 
-  // A dragged group item moves as one block; the pinned order within it is
-  // left exactly as it was (see pinnedItems above) since there's no drag
-  // surface here for reordering a stack's own pinned members.
+  // A dragged group item moves as one block (long-press its header); the
+  // pinned order within it is left exactly as it was (see pinnedItems above)
+  // since there's no drag surface here for reordering a stack's own pinned
+  // members.
   const reorderPinnedItems = (next: PinnedListItem[]) => {
     const ids = next.flatMap(item => (item.type === 'group' ? item.children.map(c => c.id) : [item.task.id]));
     reorderPinnedTasks(ids);
   };
 
   // A stack's header inside the pinned block. Deliberately plainer than the
-  // main list's 'group' branch: no drag (moving a whole stack's position in
-  // the pinned order isn't wired up — see reorderPinnedItems above) and no
-  // GroupDropTargetRow (there's nothing here for a dragged task to join).
+  // main list's 'group' branch: its header drags the whole stack within the
+  // pinned order (the block's own SortableList supplies `drag`), and there is
+  // no GroupDropTargetRow (there's nothing here for a dragged task to join).
   // filtered is passed unconditionally: the "N/M done today" tally is
   // computed from the full roster, which would overstate what's actually
   // shown under a header rendering only its pinned members.
-  const renderPinnedGroup = (group: TaskGroup, children: Task[]) => {
+  const renderPinnedGroup = (group: TaskGroup, children: Task[], drag?: () => void) => {
     const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
     return (
     <CompletionCollapse taskIds={children.map(c => c.id)}>
@@ -3646,6 +3653,7 @@ export function TodayScreen() {
         expanded={open}
         onToggleCollapse={handlePinnedGroupToggleCollapse}
         {...groupHeaderProps}
+        onDrag={!selectionMode ? drag : undefined}
       />
       <TaskGroupBody expanded={open} hasChildren={children.length > 0}>
         {children.map(child => (
@@ -3794,7 +3802,7 @@ export function TodayScreen() {
         autoscroll={pinnedAndStackAutoscroll}
         renderItem={(item, _displayIndex, drag, isActive) =>
           item.type === 'group'
-            ? renderPinnedGroup(item.group, item.children)
+            ? renderPinnedGroup(item.group, item.children, drag)
             : renderTaskRow(item.task, {
                 drag,
                 isActive,
@@ -4143,6 +4151,7 @@ export function TodayScreen() {
   // is just that one chip, not the combined Today count.
   const viewFilterCount = viewMode === 'today' ? activeFilterCount : (filterHasReminder ? 1 : 0);
 
+  const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
   const headerActions: ScreenHeaderAction[] = [
     {
       icon: 'funnel' as const,
@@ -4203,10 +4212,26 @@ export function TodayScreen() {
           subtitle={workloadSubtitle}
           actions={headerActions}
           titleAdornment={
-            viewMode === 'today' && headerWeather ? (
+            viewMode === 'today' && (headerWeather || showCoinPill) ? (
               <View style={styles.headerWeather}>
-                <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
-                <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
+                {headerWeather && (
+                  <>
+                    <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
+                    <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
+                  </>
+                )}
+                {showCoinPill && (
+                  <TouchableOpacity
+                    style={styles.coinPill}
+                    onPress={() => navigateToTab('Rewards')}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${coinTotal} coins. Open Rewards`}
+                  >
+                    <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                    <Text style={styles.coinPillText}>{coinTotal}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : undefined
           }
@@ -5146,6 +5171,8 @@ export function TodayScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
+  coinPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary },
+  coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,

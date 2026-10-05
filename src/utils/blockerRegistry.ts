@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { waitIdsOf, type TaskResolver } from './blocking';
+import { openOccurrenceOf, waitIdsOf, type TaskResolver } from './blocking';
 
 /**
  * How visibilityUtils resolves the task a task is waiting on (Task.blockedById)
@@ -22,6 +22,7 @@ import { waitIdsOf, type TaskResolver } from './blocking';
 let source: (() => Task[]) | null = null;
 let cachedTasks: Task[] | null = null;
 let cachedById: Map<string, Task> | null = null;
+let cachedNext: Map<string, Task> | null = null;
 let cachedCountTasks: Task[] | null = null;
 let cachedCounts: Map<string, number> | null = null;
 
@@ -30,6 +31,7 @@ export function registerTaskSource(fn: (() => Task[]) | null): void {
   source = fn;
   cachedTasks = null;
   cachedById = null;
+  cachedNext = null;
   cachedCountTasks = null;
   cachedCounts = null;
 }
@@ -42,14 +44,26 @@ export function registerTaskSource(fn: (() => Task[]) | null): void {
  * than hiding work it can't account for.
  */
 export const resolveBlocker: TaskResolver = id => {
+  const tasks = index();
+  return tasks ? cachedById!.get(id) : undefined;
+};
+
+/** The successor index shares the id index's cache, so both rebuild together. */
+resolveBlocker.successorOf = id => (index() ? cachedNext!.get(id) : undefined);
+
+function index(): Task[] | null {
   const tasks = source?.();
-  if (!tasks) return undefined;
+  if (!tasks) return null;
   if (tasks !== cachedTasks) {
     cachedTasks = tasks;
     cachedById = new Map(tasks.map(t => [t.id, t]));
+    cachedNext = new Map();
+    for (const t of tasks) {
+      if (t.previousOccurrenceId && !t.archived) cachedNext.set(t.previousOccurrenceId, t);
+    }
   }
-  return cachedById!.get(id);
-};
+  return tasks;
+}
 
 /**
  * How many live tasks are waiting on this one — the "N waiting" chip.
@@ -70,6 +84,12 @@ export function waitingCountFor(id: string): number {
       // first slot was cleared by an older build can still hold the rest.
       for (const id of waitIdsOf(t)) {
         cachedCounts.set(id, (cachedCounts.get(id) ?? 0) + 1);
+        // A task waiting out a whole series is also waiting on the occurrence
+        // that is live now, which is the row the chip is drawn on.
+        if (t.waitForSeriesEnd) {
+          const open = openOccurrenceOf(resolveBlocker(id), resolveBlocker);
+          if (open && open.id !== id) cachedCounts.set(open.id, (cachedCounts.get(open.id) ?? 0) + 1);
+        }
       }
     }
   }

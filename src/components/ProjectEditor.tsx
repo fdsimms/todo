@@ -7,7 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Project, ProjectLink } from '../types';
+import type { Project, ProjectLink, TaskFieldDefaults } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { parseLabelledLink, linkHost } from '../utils/textLinks';
 import { generateId } from '../utils/id';
@@ -22,6 +22,11 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { TaskFieldDefaultsFields } from './TaskFieldDefaultsFields';
+import { InlineAction } from './InlineAction';
+import {
+  describeTaskFieldDefaults, existingTaskPatch, hasTaskFieldDefaults, tasksNeedingDefaults,
+} from '../utils/taskFieldDefaults';
 import { CategoryPickerList } from './CategoryPicker';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -122,6 +127,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // just above — see Project.defaultTaskCategory.
   const [defaultTaskCategory, setDefaultTaskCategory] = useState<string | null>(null);
   const [defaultTaskCategoryOpen, setDefaultTaskCategoryOpen] = useState(false);
+  const [taskDefaults, setTaskDefaults] = useState<TaskFieldDefaults | null>(null);
+  const [taskDefaultsOpen, setTaskDefaultsOpen] = useState(false);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const setLastAction = useTaskStore(s => s.setLastAction);
+  const updateTask = useTaskStore(s => s.updateTask);
   const taskCategories = useCategoryStore(useShallow(s => s.categories));
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
@@ -231,6 +241,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setCategory(project.category);
     setDefaultTaskCategory(project.defaultTaskCategory);
     setDefaultTaskCategoryOpen(false);
+    setTaskDefaults(project.taskDefaults ?? null);
+    setTaskDefaultsOpen(false);
     setDeadline(project.deadline ? new Date(project.deadline) : null);
     setEventDate(project.eventDate ? new Date(project.eventDate) : null);
     setAwayStart(project.awayStart ? new Date(project.awayStart) : null);
@@ -277,6 +289,39 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const projectTasks = useTaskStore(
     useShallow(s => (project ? s.tasks.filter(t => t.projectId === project.id) : [])),
   );
+  // The tasks the staged defaults would still change: only a field still unset
+  // is filled, so what someone already answered is never touched.
+  const applyableTasks = useMemo(
+    () => (project ? tasksNeedingDefaults(projectTasks, taskDefaults) : []),
+    [project, projectTasks, taskDefaults],
+  );
+  const applyableCount = applyableTasks.length;
+  const confirmApplyToExisting = () => {
+    const targets = applyableTasks;
+    if (targets.length === 0) return;
+    Alert.alert(
+      `Apply to ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}?`,
+      'Fills in only what is still unset on each task. Anything already answered stays as it is. A shake undoes it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          onPress: () => {
+            const snapshots = targets.map(t => ({ ...t }));
+            for (const t of targets) {
+              const patch = existingTaskPatch(t, taskDefaults);
+              if (patch) updateTask(t.id, patch);
+            }
+            haptics.success();
+            setLastAction({
+              label: `Defaults applied to ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}`,
+              undo: () => { for (const snap of snapshots) updateTask(snap.id, snap); },
+            });
+          },
+        },
+      ],
+    );
+  };
   const [shiftFrom, setShiftFrom] = useState<Date | null>(null);
   const [shiftTo, setShiftTo] = useState<Date | null>(null);
 
@@ -319,6 +364,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       notes,
       category: resolveCategory(),
       defaultTaskCategory,
+      taskDefaults: hasTaskFieldDefaults(taskDefaults) ? taskDefaults : null,
       deadline: deadline ? deadline.toISOString() : null,
       // Midday, like the away span, so a time zone can't move it a day.
       eventDate: eventDate ? awayNoonIso(eventDate) : null,
@@ -441,6 +487,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       notes !== project.notes ||
       category !== project.category ||
       defaultTaskCategory !== project.defaultTaskCategory ||
+      JSON.stringify(hasTaskFieldDefaults(taskDefaults) ? taskDefaults : null) !== JSON.stringify(hasTaskFieldDefaults(project.taskDefaults) ? project.taskDefaults : null) ||
       iso(deadline) !== (project.deadline ? new Date(project.deadline).toISOString() : null) ||
       (eventDate ? awayNoonIso(eventDate) : null) !== (project.eventDate ?? null) ||
       (awayStart ? awayNoonIso(awayStart) : null) !== project.awayStart ||
@@ -934,6 +981,27 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             value={defaultTaskCategory}
             onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
           />
+        </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="New task defaults"
+          summary={describeTaskFieldDefaults(taskDefaults) ?? undefined}
+          emptySummary="Ask for each task"
+          hint="Tasks added to this project start with these answers, so they don't come up in Backfill. Anything set on a task itself wins."
+          expanded={taskDefaultsOpen}
+          onToggle={() => setTaskDefaultsOpen(v => !v)}
+        >
+          <TaskFieldDefaultsFields value={taskDefaults} onChange={setTaskDefaults} showDifficulty={rewardsEnabled} />
+          {applyableCount > 0 && (
+            <View style={{ marginTop: spacing.md, alignItems: 'flex-start' }}>
+              <InlineAction
+                label={`Apply to ${applyableCount} existing ${applyableCount === 1 ? 'task' : 'tasks'}`}
+                icon="checkmark-done-outline"
+                onPress={confirmApplyToExisting}
+                variant="neutral"
+              />
+            </View>
+          )}
         </CollapsibleField>
         <View style={styles.sep} />
         <CollapsibleField

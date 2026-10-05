@@ -541,6 +541,7 @@ describe('listMoodLogs', () => {
       symptoms: [],
       contextTags: [],
       note: null,
+      dream: null,
       ...over,
     }) as MoodLog;
 

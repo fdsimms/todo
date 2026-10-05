@@ -7291,6 +7291,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // chain position — pushing dueDate/recurrenceCount here would burn a full
     // cycle of the recurrence on a step that isn't scheduled at all.
     const { dayResetTime } = useSettingsStore.getState();
+    // Same as completeTask's successor: the row stays pinned into its next
+    // occurrence only when the task asked for every occurrence to be, so a
+    // skip doesn't leave a pin on the block the user already cleared it from.
+    const pinReset: Partial<Task> = { pinned: !!task.pinEachOccurrence };
     const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
     const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
     if (chainAdvances && !atChainEnd) {
@@ -7300,18 +7304,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // recurrenceCount is left alone in both modes: skipping a step isn't
       // skipping a cycle (same reasoning as completeTask's two flags).
       if (!task.chainStepOnSchedule) {
-        get().updateTask(id, { ...contentReset, chainIndex: task.chainIndex + 1 });
+        get().updateTask(id, { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 });
         return;
       }
       const stepDue = getNextDueDate(task, dayResetTime, { catchUp: true });
       if (!stepDue) {
-        get().updateTask(id, { ...contentReset, chainIndex: task.chainIndex + 1 });
+        get().updateTask(id, { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 });
         return;
       }
       // Same shape as completeTask's successor: see reminderOnto.
       const stepReminder = reminderOnto(effective, stepDue, contentReset);
       get().updateTask(id, {
         ...contentReset,
+        ...pinReset,
         chainIndex: task.chainIndex + 1,
         dueDate: stepDue.toISOString(),
         deferUntil: null,
@@ -7342,6 +7347,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
       ...contentReset,
+      ...pinReset,
       dueDate: nextDue.toISOString(),
       deferUntil: null,
       ...nextReminder,
@@ -8504,6 +8510,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     projectStore.updateProject(created.id, {
       notes: source.notes,
       defaultTaskCategory: source.defaultTaskCategory,
+      taskDefaults: source.taskDefaults ?? null,
       ongoing: source.ongoing,
       nudgeOptIn: source.nudgeOptIn,
       nudgeCadenceDays: source.nudgeCadenceDays,
