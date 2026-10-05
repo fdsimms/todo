@@ -777,7 +777,7 @@ export function FinishShoppingSheet({
                       >
                         <View style={[styles.check, ticked && styles.checkOn]}>
                           {ticked && (
-                            <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+                            <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
                           )}
                         </View>
                         <Text style={styles.rowTitle} numberOfLines={1}>

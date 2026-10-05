@@ -203,7 +203,7 @@ export function BulkActionBar({
                   style={styles.actionBtn}
                   onPress={() => { haptics.success(); onComplete(); }}
                 >
-                  <Ionicons name="checkmark-circle" size={24} color={colors.green} />
+                  <Ionicons name="checkmark-circle" size={24} color={colors.done} />
                   <Text style={[styles.actionLabel, { color: colors.greenText }]}>Complete</Text>
                 </PressableScale>
               )}

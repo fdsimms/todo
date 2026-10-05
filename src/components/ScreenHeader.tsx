@@ -121,7 +121,8 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
           const tintColor = action.tint === 'orange' ? colors.orangeFill : colors.accentFill;
           const iconColor = action.disabled
             ? colors.textTertiary
-            : action.active ? colors.onAccent : colors.textSecondary;
+            : !action.active ? colors.textSecondary
+            : action.tint === 'orange' ? colors.onFill : colors.onAccent;
           return (
             <PressableScale
               key={`${action.icon}-${i}`}
@@ -209,7 +210,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center',
   },
-  badgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
+  badgeText: { color: colors.onFill, fontSize: font.xxs, fontWeight: fontWeight.bold },
   badgeDot: {
     position: 'absolute', top: 1, right: 1,
     width: 8, height: 8, borderRadius: 4,

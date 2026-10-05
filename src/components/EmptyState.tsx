@@ -106,7 +106,7 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
     >
       <Reanimated.View style={[styles.iconCircle, iconStyle]}>
         {icon === COIN_ICON
-          ? <CoinIcon size={44} color={colors.warning} filled />
+          ? <CoinIcon size={44} color={colors.done} filled />
           : <NamedIcon name={icon} size={34} color={colors.textTertiary} />}
       </Reanimated.View>
       <Text style={styles.title}>{title}</Text>

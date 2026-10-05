@@ -24,29 +24,31 @@ export type Colors = {
   text: string;
   textSecondary: string;
   textTertiary: string;
+  /**
+   * The interactive colour: ink. Near-black in Light, near-white in Dark and
+   * Black. It is the selected state of every chip, pill and segment, the
+   * filled "Add"/"Save" buttons, the tab bar's current tab and every glyph,
+   * border and bar that marks a control. It carries no hue on purpose, so the
+   * colours left on screen (`done` gold, red, the time-of-day and tag hues)
+   * each mean something.
+   */
   accent: string;
   accentSubtle: string;
   /**
    * Accent as *text*, for the three places bare accent text is sanctioned:
    * a sheet header button, a disclosure value, and an `InlineAction`'s accent
-   * label. `accent` is tuned as a fill — under text it measures 4.02:1 on a
-   * light card and 3.90:1 on an `accentSubtle` pill in dark, both under AA,
-   * so this is the same blue moved far enough for the text to be readable.
-   * Never use it as a background: a fill stays `accent`, or the two stop
-   * matching each other.
+   * label. With an ink accent this is the same value as `accent`; it stays a
+   * separate token so the text role keeps its own contrast floor in
+   * `themeContrast.test.ts`. Never use it as a background: a fill stays
+   * `accent`/`accentFill`, or the two stop matching each other.
    */
   accentText: string;
   /**
-   * Accent as a *fill carrying `onAccent` (white) text* — the opposite
-   * problem `accentText` solves, and the mirror-image token for it. `onAccent`
-   * on `accent` measures 3.65:1 in dark and 4.02:1 in light, both under the
-   * 4.5:1 AA bar for normal text, and it's the selected state of every chip,
-   * pill and segment plus the "Add"/"Save" filled buttons (#2196). `accent`
-   * itself stays iOS system blue on purpose — this is a second, slightly
-   * darker blue for exactly the surfaces that carry white text, so the
-   * identity color used for glyphs, borders and bars is untouched. Use this
-   * wherever `onAccent` sits on a filled surface; use `accent` everywhere
-   * else a fill is called for.
+   * Accent as a *fill carrying `onAccent`*: the selected state of every chip,
+   * pill and segment plus the "Add"/"Save" filled buttons. The same value as
+   * `accent` with an ink accent, kept separate for the same reason as
+   * `accentText`. Wherever `onAccent` sits on a filled surface, the surface is
+   * this; use `accent` everywhere else a fill is called for.
    */
   accentFill: string;
   /**
@@ -79,19 +81,44 @@ export type Colors = {
   purpleText: string;
   purpleFill: string;
   separator: string;
-  /** Text/icon color on filled accent/colored surfaces (always white, iOS-style). */
+  /**
+   * Text/icon colour on an `accent` or `accentFill` surface. It follows the
+   * accent, so it is white in Light and ink in Dark and Black, where the
+   * accent fill is near-white. A status fill (`redFill`, a swipe panel, a
+   * badge), a tag or category colour, a photo or the camera carries `onFill`
+   * instead, which is white in every theme.
+   */
   onAccent: string;
-  /** Bright yellow used for "new item" banners/alerts. */
+  /**
+   * Text/icon colour on a coloured fill that isn't the accent: the four status
+   * `…Fill`s, a tag, category or priority colour, a photo or the camera. Always
+   * white. Before the accent became ink this was `onAccent`'s second job.
+   */
+  onFill: string;
+  /**
+   * The colour of finishing: a checked completion checkbox (task, subtask,
+   * chain step, a met daily target, a checked grocery row), and the coin and
+   * streak marks. Marigold, darker in Light so the filled box still holds the
+   * 3:1 a control needs against a white card. Its glyph is `onDone`.
+   */
+  done: string;
+  /** The check drawn on a `done` fill: ink in every theme. */
+  onDone: string;
+  /**
+   * Orange used for "new item" banners and alerts. It was yellow until gold
+   * became the colour of finishing, and moved so the two don't read as one.
+   */
   warning: string;
   /**
-   * `warning` as text or an icon on an ordinary surface. Yellow is the same in
-   * dark, and an olive in light, where `warning` itself measures 1.3:1 on the
-   * page. A filled warning surface carries `onWarning`, so there is no fill.
+   * `warning` as text or an icon on an ordinary surface. The same orange in
+   * the dark themes, and a brown in light, where `warning` itself is too pale
+   * on the page. A filled warning surface carries `onWarning`, so there is no
+   * fill.
    */
   warningText: string;
   /** Subtle tinted background behind warning banners. */
   warningBg: string;
-  /** Text/icon color on filled warning surfaces (always dark, for contrast against yellow). */
+  /** Text/icon color on filled warning surfaces (always dark, for contrast against orange). */
   onWarning: string;
   backdrop: string;
   blurFallback: string;
@@ -102,8 +129,23 @@ export type Colors = {
   tagPalette: string[];
 };
 
+/**
+ * The stored theme setting. The strings predate the current names and are
+ * kept because the setting syncs between devices: `'dark'` is Black (true
+ * black, for OLED), `'darkPurple'` is Dark (the plum-tinted `nightColors`, and
+ * what `'system'` uses after dark), and `'light'` is Light.
+ */
 export type ThemeMode = 'dark' | 'light' | 'system' | 'darkPurple';
 
+// Ink and paper: the accent in every palette, and the check on a `done` fill.
+const INK = '#17131C';
+const PAPER = '#F6F3F8';
+
+/**
+ * Black: true black for OLED, and where anyone who picked the old Dark theme
+ * (stored as `'dark'`) lands, so their page stays black. The neutrals are the
+ * iOS greys it always had; the accent, `done` and `warning` are the brand's.
+ */
 export const darkColors: Colors = {
   bg: '#000000',
   bgSecondary: '#1C1C1E',
@@ -114,10 +156,10 @@ export const darkColors: Colors = {
   text: '#FFFFFF',
   textSecondary: '#A6A6AA',
   textTertiary: '#939396',
-  accent: '#0A84FF',
-  accentSubtle: 'rgba(10, 132, 255, 0.15)',
-  accentText: '#3D9BFF',
-  accentFill: '#0970D9',
+  accent: PAPER,
+  accentSubtle: 'rgba(246, 243, 248, 0.12)',
+  accentText: PAPER,
+  accentFill: PAPER,
   green: '#4C9A76',
   greenText: '#51A47D',
   greenFill: '#418365',
@@ -131,10 +173,13 @@ export const darkColors: Colors = {
   purpleText: '#C76DF4',
   purpleFill: '#B137EF',
   separator: '#38383A',
-  onAccent: '#FFFFFF',
-  warning: '#FFD60A',
-  warningText: '#FFD60A',
-  warningBg: 'rgba(255, 214, 10, 0.16)',
+  onAccent: INK,
+  onFill: '#FFFFFF',
+  done: '#FFB020',
+  onDone: INK,
+  warning: '#FF9F0A',
+  warningText: '#FF9F0A',
+  warningBg: 'rgba(255, 159, 10, 0.16)',
   onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.45)',
   blurFallback: 'rgba(28, 28, 30, 0.85)',
@@ -148,22 +193,25 @@ export const darkColors: Colors = {
   ],
 };
 
-// A softer alternative to the near-black default dark theme — same
-// semantic colors, base surfaces tinted with a subdued purple instead of pure black.
-export const darkPurpleColors: Colors = {
-  bg: '#16121F',
-  bgSecondary: '#1F1A2C',
-  bgTertiary: '#2A2338',
-  bgQuaternary: '#3A324A',
-  bgSunken: '#1A1526',
-  controlBorder: '#786798',
-  text: '#FFFFFF',
-  textSecondary: '#ACA4BA',
-  textTertiary: '#9289A3',
-  accent: '#0A84FF',
-  accentSubtle: 'rgba(10, 132, 255, 0.15)',
-  accentText: '#3D9BFF',
-  accentFill: '#0970D9',
+/**
+ * Dark: the brand's dark theme, and what `'system'` uses after dark. Near-black
+ * surfaces with a slight plum bias (stored as `'darkPurple'`, the theme it
+ * replaced), so a grey reads as chosen rather than inherited.
+ */
+export const nightColors: Colors = {
+  bg: '#100E13',
+  bgSecondary: '#1B1820',
+  bgTertiary: '#27232D',
+  bgQuaternary: '#36313D',
+  bgSunken: '#0B0A0E',
+  controlBorder: '#7B7388',
+  text: PAPER,
+  textSecondary: '#B3ADBD',
+  textTertiary: '#8F889A',
+  accent: PAPER,
+  accentSubtle: 'rgba(246, 243, 248, 0.12)',
+  accentText: PAPER,
+  accentFill: PAPER,
   green: '#4C9A76',
   greenText: '#53A680',
   greenFill: '#418365',
@@ -176,14 +224,17 @@ export const darkPurpleColors: Colors = {
   purple: '#BF5AF2',
   purpleText: '#C76FF4',
   purpleFill: '#B137EF',
-  separator: '#3D3550',
-  onAccent: '#FFFFFF',
-  warning: '#FFD60A',
-  warningText: '#FFD60A',
-  warningBg: 'rgba(255, 214, 10, 0.16)',
+  separator: '#3A3541',
+  onAccent: INK,
+  onFill: '#FFFFFF',
+  done: '#FFB020',
+  onDone: INK,
+  warning: '#FF9F0A',
+  warningText: '#FF9F0A',
+  warningBg: 'rgba(255, 159, 10, 0.16)',
   onWarning: '#000000',
-  backdrop: 'rgba(10, 6, 20, 0.5)',
-  blurFallback: 'rgba(31, 26, 44, 0.85)',
+  backdrop: 'rgba(8, 6, 12, 0.5)',
+  blurFallback: 'rgba(27, 24, 32, 0.85)',
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
@@ -194,20 +245,21 @@ export const darkPurpleColors: Colors = {
   ],
 };
 
+/** Light: ink on a cool, faintly plum page. */
 export const lightColors: Colors = {
-  bg: '#F2F2F7',
+  bg: '#F3F2F5',
   bgSecondary: '#FFFFFF',
-  bgTertiary: '#EFEFF4',
-  bgQuaternary: '#D1D1D6',
-  bgSunken: '#E7E7EC',
-  controlBorder: '#898996',
-  text: '#000000',
-  textSecondary: '#515154',
-  textTertiary: '#6C6C70',
-  accent: '#007AFF',
-  accentSubtle: 'rgba(0, 122, 255, 0.12)',
-  accentText: '#0B69D0',
-  accentFill: '#0068D9',
+  bgTertiary: '#EFEDF3',
+  bgQuaternary: '#D3D0D9',
+  bgSunken: '#E7E5EB',
+  controlBorder: '#8A8496',
+  text: INK,
+  textSecondary: '#4F4A57',
+  textTertiary: '#6B6574',
+  accent: INK,
+  accentSubtle: 'rgba(23, 19, 28, 0.08)',
+  accentText: INK,
+  accentFill: INK,
   green: '#3D8563',
   greenText: '#377759',
   greenFill: '#3C8362',
@@ -220,13 +272,16 @@ export const lightColors: Colors = {
   purple: '#AF52DE',
   purpleText: '#9F30D8',
   purpleFill: '#AA47DC',
-  separator: '#C6C6C8',
+  separator: '#C9C6CF',
   onAccent: '#FFFFFF',
-  warning: '#FFCC00',
-  warningText: '#836800',
-  warningBg: 'rgba(255, 204, 0, 0.16)',
+  onFill: '#FFFFFF',
+  done: '#C98500',
+  onDone: INK,
+  warning: '#FF9500',
+  warningText: '#9D5B00',
+  warningBg: 'rgba(255, 149, 0, 0.16)',
   onWarning: '#000000',
-  backdrop: 'rgba(0, 0, 0, 0.35)',
+  backdrop: 'rgba(23, 19, 28, 0.35)',
   blurFallback: 'rgba(255, 255, 255, 0.85)',
   timeMorning: '#FF9500',
   timeAfternoon: '#007AFF',
@@ -237,6 +292,16 @@ export const lightColors: Colors = {
     '#5856D6', '#FF2D55', '#32ADE6', '#FFCC00', '#A2845E',
   ],
 };
+
+/**
+ * The text/icon colour for a fill chosen at runtime, which may be the accent
+ * or a status colour (`freshnessFill`, a chip in its own colour). `onAccent`
+ * follows the accent and is ink in the dark themes, so it can't sit on a
+ * status fill; everything that isn't the accent carries `onFill`.
+ */
+export function textOnFill(fill: string, colors: Colors): string {
+  return fill === colors.accentFill || fill === colors.accent ? colors.onAccent : colors.onFill;
+}
 
 // Keep for backward compat — static references that don't need theming
 export const colors = darkColors;

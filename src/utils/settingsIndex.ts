@@ -395,7 +395,7 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Appearance
   { id: 'theme', groupId: 'appearance', label: 'Theme', section: 'Theme',
-    keywords: ['dark', 'light', 'purple', 'system', 'colour', 'color'] },
+    keywords: ['dark', 'light', 'black', 'night', 'oled', 'purple', 'system', 'colour', 'color'] },
   { id: 'fabHand', groupId: 'appearance', label: 'Add button', section: 'Theme',
     keywords: ['corner', 'left', 'right', 'handed', 'plus', 'fab'] },
   { id: 'typeface', groupId: 'appearance', label: 'Typeface', section: 'Typeface',

@@ -876,7 +876,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 ### Design system
 
-`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`, plus `lineHeight`, `checkboxRadius` and the `flattenOverlay` helper) and the color palettes (`darkColors`, `lightColors`, `darkPurpleColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
+`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`, plus `lineHeight`, `checkboxRadius` and the `flattenOverlay` helper) and the color palettes (`lightColors`, `nightColors` for Dark, and `darkColors` for Black; the stored `ThemeMode` strings predate the names, see its doc comment). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
 
 **The spacing scale has eight steps, not five.** `xs` (4) through `xl` (32) double at each step and
 are the backbone; `xxs` (2), `xsm` (6) and `smd` (12) fill the gaps between 4 and 8, and between 8
@@ -908,8 +908,10 @@ sized as an icon, a large hero number (a focus countdown, an estimate's total), 
 
 - `colors.backdrop` — every modal/sheet dim layer
 - `colors.blurFallback` — tint overlay behind `SafeBlurView` content
-- `colors.onAccent` — text/icons on filled accent/green/red surfaces (always white, both themes)
-- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onAccent`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
+- `colors.onAccent` — text/icons on an `accent`/`accentFill` surface. The accent is ink (near-black in Light, near-white in Dark and Black), so this follows it: white in Light, ink in the dark themes
+- `colors.onFill` — text/icons on every other coloured fill: a status `…Fill`, a tag, category or priority colour, a photo, the camera, a `backdrop` scrim (always white). A fill picked at runtime that may be either goes through `textOnFill(fill, colors)`
+- `colors.done`/`colors.onDone` — the gold of finishing: a checked completion checkbox anywhere (task, subtask, chain step, met target, checked grocery row), coins and streaks, with an ink check on it. Green is not "done"; it is a status hue
+- `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onFill`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor
 - `colors.controlBorder` — the outline of an empty checkbox-shaped control or a field's only boundary (3:1), never `bgQuaternary`, which is a surface
 - `colors.timeMorning/timeAfternoon/timeEvening` — time-of-day segment colors
 - `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior
@@ -978,8 +980,8 @@ right.
   Save / Done) and the current-value summaries in `EditorRow` / `CollapsibleField`**; an action gets
   a shape. Use `variant="neutral"` for the quieter half of a pair ("Add existing" beside "New
   task"), and — this is the non-obvious one — for an add button sitting at the end of a row of
-  *already tinted* chips. Tag chips tint themselves `tagColor(tag) + '33'` and `tagPalette[0]` is
-  the accent blue, so an accent pill there reads as one more tag rather than as a control.
+  *already tinted* chips. Tag chips tint themselves `tagColor(tag) + '33'`, so a tinted accent pill
+  at the end of that row reads as one more chip rather than as a control.
 - `SheetHeaderButton` (`src/components/SheetHeaderButton.tsx`) — the Cancel / Save / Done / Add text
   button in a sheet header, the second and last home of bare accent text. `role="confirm"` (the
   default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar

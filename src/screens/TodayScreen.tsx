@@ -5177,7 +5177,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center',
   },
-  viewModePillBadgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },
+  viewModePillBadgeText: { color: colors.onFill, fontSize: font.xxs, fontWeight: fontWeight.bold },
   // Same badge, muted: Unscheduled is a pile of things with no date, not a pile
   // of things owed, so a red alert dot overstates it — and two red dots side by
   // side stop reading as "this one needs you". Red stays the Inbox's alone.

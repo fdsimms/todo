@@ -890,7 +890,7 @@ const ProjectRow = React.memo(function ProjectRow({
                     accessibilityRole="button"
                     accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every item is checked' : 'every task is done'}`}
                   >
-                    <Ionicons name="checkmark-circle" size={16} color={colors.green} />
+                    <Ionicons name="checkmark-circle" size={16} color={colors.done} />
                   </TouchableOpacity>
                 )}
                 {/* Add to a list without hunting for its field: opens the

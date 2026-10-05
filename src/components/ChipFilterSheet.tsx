@@ -167,7 +167,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
                         {!active && option.color && (
                           <View style={[styles.chipDot, { backgroundColor: option.color }]} />
                         )}
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                        <Text style={[styles.chipText, active && styles.chipTextActive, active && option.color && styles.chipTextOnFill]}>
                           {option.label}
                         </Text>
                       </TouchableOpacity>
@@ -230,4 +230,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipDot: { width: 6, height: 6, borderRadius: radius.full },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  // An option with its own colour fills with it rather than the accent.
+  chipTextOnFill: { color: colors.onFill },
 });

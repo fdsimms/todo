@@ -54,20 +54,21 @@ describe('settingsSummaries', () => {
 
   describe('appearance', () => {
     it('names the theme and the typeface', () => {
-      expect(summarise().appearance).toBe('Dark · System');
+      expect(summarise().appearance).toBe('Black · System');
     });
 
     it('mentions haptics only when they are off', () => {
       expect(summarise().appearance).not.toContain('haptics');
-      expect(summarise({ hapticsEnabled: false }).appearance).toBe('Dark · System · No haptics');
+      expect(summarise({ hapticsEnabled: false }).appearance).toBe('Black · System · No haptics');
     });
 
-    it('falls back to Dark for an unrecognised theme', () => {
-      expect(summarise({ themeMode: 'nonsense' }).appearance).toContain('Dark');
+    // The stored names predate the themes they now mean (see `ThemeMode`).
+    it('falls back to Black, the default, for an unrecognised theme', () => {
+      expect(summarise({ themeMode: 'nonsense' }).appearance).toContain('Black');
     });
 
-    it('names the purple theme', () => {
-      expect(summarise({ themeMode: 'darkPurple' }).appearance).toContain('Purple');
+    it('names the stored darkPurple theme Dark', () => {
+      expect(summarise({ themeMode: 'darkPurple' }).appearance).toMatch(/^Dark/);
     });
   });
 

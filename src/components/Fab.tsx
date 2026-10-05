@@ -264,7 +264,7 @@ function FabButton({
       >
         {dragLabel ? (
           <View style={[styles.dragLabel, cancelArmed && styles.dragLabelCancel, shadows.fab]}>
-            <Text style={styles.dragLabelText} numberOfLines={1}>{dragLabel}</Text>
+            <Text style={[styles.dragLabelText, cancelArmed && styles.dragLabelTextCancel]} numberOfLines={1}>{dragLabel}</Text>
           </View>
         ) : null}
         <PressableScale
@@ -286,7 +286,11 @@ function FabButton({
           <Ionicons
             name={cancelArmed ? 'close' : icon}
             size={iconSize}
-            color={colors.onAccent}
+            color={
+              cancelArmed ? colors.onFill
+                : disabled && dimWhenDisabled ? colors.textTertiary
+                : colors.onAccent
+            }
           />
         </PressableScale>
       </Animated.View>
@@ -618,6 +622,8 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     backgroundColor: colors.redFill,
     shadowColor: colors.red,
   },
+  // The cancel label sits on redFill, a status colour, so it is onFill.
+  dragLabelTextCancel: { color: colors.onFill },
   well: {
     position: 'absolute',
     // Pinned to the same edge as the button, so the spot it left behind stays

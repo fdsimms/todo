@@ -13,9 +13,11 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
 const THEME_OPTIONS: SegmentOption<ThemeMode>[] = [
+  // The stored values predate the names: 'darkPurple' is Dark and 'dark' is
+  // Black (see `ThemeMode`), kept because the setting syncs between devices.
   { value: 'light', label: 'Light', icon: 'sunny' },
-  { value: 'dark', label: 'Dark', icon: 'moon' },
-  { value: 'darkPurple', label: 'Purple', icon: 'color-palette' },
+  { value: 'darkPurple', label: 'Dark', icon: 'moon' },
+  { value: 'dark', label: 'Black', icon: 'contrast' },
   { value: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 

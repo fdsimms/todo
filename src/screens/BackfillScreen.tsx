@@ -3199,8 +3199,8 @@ function FieldControl({
         accessibilityRole="button"
         accessibilityLabel="Show streak on row"
       >
-        <Ionicons name="flame" size={iconSize.md} color={colors.onAccent} />
-        <Text style={styles.toggleButtonText}>Show streak on row</Text>
+        <Ionicons name="flame" size={iconSize.md} color={colors.onFill} />
+        <Text style={[styles.toggleButtonText, styles.toggleButtonTextOnFill]}>Show streak on row</Text>
       </PressableScale>
     );
   }
@@ -3458,6 +3458,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
   },
   toggleButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  // For a toggleButton filled with a status colour (the streak's orange), not the accent.
+  toggleButtonTextOnFill: { color: colors.onFill },
   // The two person fields whose value is typed or stepped can sit at a state
   // that isn't a value yet (Never, an empty box). The button stays where it is
   // and reads back what it's waiting for rather than disappearing, so the card

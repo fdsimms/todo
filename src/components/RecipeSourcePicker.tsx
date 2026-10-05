@@ -232,7 +232,7 @@ export function RecipeSourcePicker({
               accessibilityRole="button"
               accessibilityLabel="Remove this photo"
             >
-              <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+              <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -287,7 +287,7 @@ export function RecipeSourcePicker({
                     accessibilityRole="button"
                     accessibilityLabel={`Remove photo ${i + 1}`}
                   >
-                    <Ionicons name="close" size={iconSize.xs} color={colors.onAccent} />
+                    <Ionicons name="close" size={iconSize.xs} color={colors.onFill} />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -353,7 +353,7 @@ export function RecipeSourcePicker({
         accessibilityRole="button"
         accessibilityLabel={ctaLabel}
       >
-        <Ionicons name="sparkles" size={iconSize.sm} color={colors.onAccent} />
+        <Ionicons name="sparkles" size={iconSize.sm} color={colors.onFill} />
         <Text style={styles.runBtnText}>{ctaLabel}</Text>
       </TouchableOpacity>
     </>
@@ -497,7 +497,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    thumbOrderText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.semibold },
+    thumbOrderText: { color: colors.onFill, fontSize: font.xxs, fontWeight: fontWeight.semibold },
     thumbClear: {
       position: 'absolute',
       top: 4,
@@ -530,6 +530,6 @@ function makeStyles(colors: Colors) {
       paddingVertical: 14,
     },
     runBtnOff: { opacity: 0.4 },
-    runBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+    runBtnText: { color: colors.onFill, fontSize: font.md, fontWeight: fontWeight.semibold },
   });
 }
