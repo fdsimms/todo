@@ -978,7 +978,7 @@ export type UnattendedActor = 'app' | 'agent';
 /** What an agent's entry is about. Everything the app writes on its own is a task. */
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
-  | 'automation' | 'note' | 'stack';
+  | 'automation' | 'note' | 'stack' | 'reward';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
