@@ -620,7 +620,7 @@ export function RewardsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
+      <ScreenHeader title="Rewards" actions={actions} />
       <ScrollView
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
