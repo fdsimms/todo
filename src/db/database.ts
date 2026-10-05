@@ -1677,6 +1677,8 @@ export function initDatabase(): void {
     // Freeform, non-symptom context ("vacation", "big deadline") — see
     // MoodLog.contextTags. Same shape as symptoms minus severity.
     "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
+    // MoodLog.dream. Null on every existing row: no entry has a dream until one is written.
+    'ALTER TABLE mood_logs ADD COLUMN dream TEXT',
     // Null on every existing row, and null is the honest reading: a food nobody
     // has looked up has unknown nutrition, which is a different thing from a
     // food with none. Nullable rather than defaulting to '{}' for that reason —
@@ -6358,6 +6360,7 @@ function rowToMoodLog(row: Record<string, unknown>): MoodLog {
     symptoms,
     contextTags,
     note: (row.note as string) || null,
+    dream: (row.dream as string | null) || null,
   };
 }
 
@@ -6380,21 +6383,21 @@ export function dbGetAllMoodLogs(): MoodLog[] {
 
 export function dbInsertMoodLog(log: MoodLog): void {
   db.runSync(
-    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note, dream)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       log.id, log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.dream,
     ]
   );
 }
 
 export function dbUpdateMoodLog(log: MoodLog): void {
   db.runSync(
-    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=? WHERE id=?`,
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=?, dream=? WHERE id=?`,
     [
       log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.id,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.dream, log.id,
     ]
   );
 }
