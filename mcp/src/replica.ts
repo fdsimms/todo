@@ -47,6 +47,7 @@ import type {
   TitleRule,
   WeatherRule,
   GroceryItem,
+  GroceryList,
   GroceryListEntry,
   MealPlanEntry,
   MealSlot,
@@ -66,6 +67,8 @@ import type {
   TaskGroup,
 } from '../../src/types';
 import { activeRotationLog } from '../../src/utils/rotation';
+import type { AwaySpan } from '../../src/utils/awayDates';
+import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
@@ -132,6 +135,8 @@ export interface ReplicaSettings {
   activeHoursEnd: string;
   vacationMode: boolean;
   vacationEnd: string | null;
+  /** The unit the person counts water in. Display only: `waterMl` is stored in millilitres whichever is picked. */
+  waterUnit: WaterUnit;
   /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
   kitchenEnabled: boolean;
   /** Simplified mode: the advanced half of the app is hidden. */
@@ -417,6 +422,33 @@ export interface ProjectPatch {
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
+  /**
+   * The away span (docs/arch/away-dates.md): the day you leave and the day you
+   * are back, stored at noon like `eventDate`. Checked the way the project
+   * editor checks them: an end needs a start and has to fall after it; moving
+   * the start moves an existing end with it, keeping the trip the same length;
+   * clearing the start clears the end, the destination and both nominations
+   * (`awayPauses`, `awayListId`) that hang off the span.
+   */
+  awayStart?: string | null;
+  awayEnd?: string | null;
+  /** Free text, where the trip is going. Needs a span to belong to. */
+  destination?: string | null;
+}
+
+/** A glass (or a bottle) of water, added onto the day's single water entry. */
+export interface WaterInput {
+  /** Millilitres added. */
+  ml: number;
+  at?: Date;
+}
+
+export interface WaterLogOutcome {
+  entry: FoodLogEntry;
+  /** Every entry on the day that states water, summed (`waterTotalMl`). */
+  dayTotalMl: number;
+  /** 'stepped' when the day's row was raised; 'created' for the first glass; 'added' when the day's row was already written to Apple Health and a second row had to carry this one. */
+  how: 'created' | 'stepped' | 'added';
 }
 
 export interface Replica {
@@ -464,8 +496,18 @@ export interface Replica {
    * one at home.
    */
   groceryListEntries(): GroceryListEntry[];
+  /** The person's separate lists, in their order. The home list has no row (see `GroceryListEntry`). */
+  groceryLists(): GroceryList[];
+  /**
+   * A project's away span through the app's own reader (`awaySpanOf`), which
+   * drops an end with no start or on or before it, so every project read here
+   * reports the span the phone would. Null when the project has none.
+   */
+  awaySpan(project: Project): AwaySpan | null;
 
   isVisible(task: Task): boolean;
+  /** Hidden because vacation mode is on: its own `vacationPause`, or a category set to hide on vacation. */
+  isHiddenForVacation(task: Task): boolean;
   /** Ids of a rotation's members already logged in the period it is in now. */
   rotationDoneIds(task: Task): string[];
   isUnscheduled(task: Task): boolean;
@@ -569,6 +611,15 @@ export interface Replica {
    * never written to Apple Health: only the device a meal is logged on may.
    */
   logFood(input: FoodInput): FoodLogEntry;
+  /**
+   * Water, onto the day's single water entry (`waterLog.ts`): the first glass
+   * creates the row through `buildFoodLogEntry`, every later one raises it, as
+   * the food log screen's stepper does. A row the phone has already written to
+   * Apple Health is not rewritten, since only that phone can correct the
+   * sample; the glass goes on a second row instead, which the app's totals sum
+   * exactly as they sum two rows left by a sync. Never a Health write itself.
+   */
+  logWater(input: WaterInput): WaterLogOutcome;
   /** A mood check-in through the mood store, symptoms and tags in the spellings already in the log. */
   logMood(input: MoodInput): MoodLog;
   /** A dose through the medication store, the name in the spelling already in the log. */
@@ -815,8 +866,11 @@ export interface Replica {
    * on the membership, and that db function is also the only writer of the
    * mirror columns on the item row (`dbSyncGroceryHomeColumns`), so the row and
    * the entry cannot disagree.
+   *
+   * `listId` names the trolley; omitted or null is the one at home. A caller
+   * that is not a person looking at the grocery screen always says which.
    */
-  setGroceryChecked(id: string, checked: boolean): GroceryItem;
+  setGroceryChecked(id: string, checked: boolean, listId?: string | null): GroceryItem;
 
   /**
    * Take something off the home list, which parks it rather than deleting it.
@@ -826,7 +880,7 @@ export interface Replica {
    * dropping one wrongly destroys a substitute or a price history with no undo.
    * A recipe's claim on the quantity ends with the shop, so that is cleared.
    */
-  removeFromGroceryList(id: string): GroceryItem;
+  removeFromGroceryList(id: string, listId?: string | null): GroceryItem;
 
   /**
    * The `Task` fields a `create_task`/`update_task` input stands for, checked
@@ -1577,6 +1631,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (name && !useCategoryStore.getState().getCategoryByName(name)) useCategoryStore.getState().addCategory(name);
   };
 
+  /**
+   * How a message names the list `listId` points at ("home", or the list's
+   * own name quoted), refusing an id that is none of the person's lists rather
+   * than acting on an empty trolley nobody made. Null is the list at home,
+   * which has no row (`GroceryListEntry`).
+   */
+  const requireGroceryListName = (listId: string | null): string => {
+    if (listId === null) return 'home';
+    const list = db.dbGetAllGroceryLists().find(l => l.id === listId);
+    if (!list) throw new Error(`No grocery list with id ${listId}. list_grocery_lists names them.`);
+    return `"${list.name}"`;
+  };
+
   /** A step or task's fields, checked, with blockers resolved against the live tasks. */
   const taskPatch = (
     input: TaskFieldsInput,
@@ -1886,8 +1953,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
     groceryListEntries: () => db.dbGetAllGroceryListEntries(),
+    groceryLists: () => db.dbGetAllGroceryLists(),
+    awaySpan(project: Project): AwaySpan | null {
+      const awayDates = require('../../src/utils/awayDates') as typeof import('../../src/utils/awayDates'); // eslint-disable-line @typescript-eslint/no-require-imports
+      return awayDates.awaySpanOf(project, useSettingsStore.getState().dayResetTime);
+    },
 
     isVisible: (task: Task) => visibility.isTaskVisible(task),
+    isHiddenForVacation: (task: Task) => visibility.isHiddenForVacation(task),
     rotationDoneIds: (task: Task) =>
       activeRotationLog(task, dates.getCurrentDayStart(), useSettingsStore.getState().weekStartsOn).map(e => e.itemId),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
@@ -1943,6 +2016,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         activeHoursEnd: s.activeHoursEnd,
         vacationMode: s.vacationMode,
         vacationEnd: s.vacationEnd,
+        waterUnit: s.waterUnit,
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
@@ -2149,6 +2223,50 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!entry) throw new Error('That entry could not be logged.');
       db.dbInsertFoodLogEntry(entry);
       return entry;
+    },
+
+    logWater(input: WaterInput): WaterLogOutcome {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const water = require('../../src/utils/waterLog') as typeof import('../../src/utils/waterLog');
+      const builder = require('../../src/utils/foodLogEntry') as typeof import('../../src/utils/foodLogEntry');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      if (!Number.isFinite(input.ml) || input.ml <= 0) throw new Error('Water is logged as a positive number of millilitres.');
+      const at = input.at ?? new Date();
+      const dayKey = dates.getLogicalDayKey(at);
+      const dayEntries = () => db.dbGetFoodLogEntries(dayKey, dayKey);
+      const existing = water.waterEntryOf(dayEntries());
+
+      // The day's row is stepped unless the phone has written it to Apple
+      // Health: that sample names the volume the row held, and only the device
+      // that wrote it can retract and rewrite it (reviseEntry). Rewriting the
+      // row here would leave the medical record saying less than the diary.
+      // A second row is what two devices leave after a sync, and every reader
+      // sums the day (waterTotalMl), so the figure against the target is right
+      // either way.
+      const stepping = existing !== null && existing.healthSampleIds.length === 0;
+      const total = (stepping ? existing.nutrition.amounts.waterMl ?? 0 : 0) + input.ml;
+      const built = water.waterHelping(total, at);
+      if (!built) throw new Error('That is not an amount of water the log can hold.');
+
+      let entry: FoodLogEntry;
+      if (stepping) {
+        entry = { ...existing, ...built };
+        db.dbUpdateFoodLogEntry(entry);
+      } else {
+        const row = builder.buildFoodLogEntry(
+          { ...built, grams: null, slot: null, recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, at },
+          key => db.dbGetFoodLogEntries(key, key),
+          generateId,
+        );
+        if (!row) throw new Error('That is not an amount of water the log can hold.');
+        db.dbInsertFoodLogEntry(row);
+        entry = row;
+      }
+      return {
+        entry,
+        dayTotalMl: water.waterTotalMl(dayEntries()),
+        how: stepping ? 'stepped' : existing ? 'added' : 'created',
+      };
     },
 
     logMood(input: MoodInput): MoodLog {
@@ -2808,27 +2926,29 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { item: plan.item, isNew: plan.isNew, wasOnList };
     },
 
-    setGroceryChecked(id: string, checked: boolean): GroceryItem {
+    setGroceryChecked(id: string, checked: boolean, listId: string | null = null): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
+      const listName = requireGroceryListName(listId);
 
       // Checked belongs to a trolley, so there has to be one holding this item.
-      const entry = db.dbGetAllGroceryListEntries().find(e => e.itemId === id && e.listId === null);
-      if (!entry) throw new Error(`"${item.name}" is not on the home list, so there is nothing to check off.`);
+      const entry = db.dbGetAllGroceryListEntries().find(e => e.itemId === id && e.listId === listId);
+      if (!entry) throw new Error(`"${item.name}" is not on the ${listName} list, so there is nothing to check off.`);
 
       db.dbSetGroceryListEntry({ ...entry, checked });
       refresh();
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
     },
 
-    removeFromGroceryList(id: string): GroceryItem {
+    removeFromGroceryList(id: string, listId: string | null = null): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
-      // The home entry, not item.onList: that flag is also true for a row
-      // only on a trip's list, which this would park without taking it off
+      const listName = requireGroceryListName(listId);
+      // That list's entry, not item.onList: that flag is also true for a row
+      // only on another list, which this would park without taking it off
       // anything.
-      const onHomeList = db.dbGetAllGroceryListEntries().some(e => e.itemId === id && e.listId === null);
-      if (!onHomeList) throw new Error(`"${item.name}" is not on the home list.`);
+      const onThisList = db.dbGetAllGroceryListEntries().some(e => e.itemId === id && e.listId === listId);
+      if (!onThisList) throw new Error(`"${item.name}" is not on the ${listName} list.`);
 
       // A recipe's claim on the quantity ends with the shop, so it does not
       // ride back onto the catalog row, and nor does its credit: the same
@@ -2842,7 +2962,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         sourceRecipeTitle: null,
       };
       db.dbUpdateGroceryItem(parked);
-      db.dbDeleteGroceryListEntry(id, null);
+      db.dbDeleteGroceryListEntry(id, listId);
 
       refresh();
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
@@ -2944,10 +3064,52 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!noon) throw new Error(`eventDate: "${content.eventDate}" is not a date I can read. Use an ISO date like 2027-06-14.`);
         content.eventDate = noon;
       }
+      // The away span, checked as ProjectEditor checks it (see ProjectPatch).
+      // Everything that hangs off the span is settled here and written in the
+      // same patch, so a half-written trip cannot land.
+      const before = store.projects.find(p => p.id === id)!;
+      const { awayStart, awayEnd, destination, ...rest } = content;
+      const away: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'destination' | 'awayPauses' | 'awayListId'>> = {};
+      if (awayStart !== undefined || awayEnd !== undefined || destination !== undefined) {
+        const noonOf = (value: string, field: string): string => {
+          const noon = eventNoonIso(value);
+          if (!noon) throw new Error(`${field}: "${value}" is not a date I can read. Use an ISO date like 2027-06-14.`);
+          return noon;
+        };
+        const start = awayStart === undefined ? before.awayStart : awayStart === null ? null : noonOf(awayStart, 'awayStart');
+        if (start === null) {
+          // Clearing the departure clears the return with it, and the
+          // destination and both nominations: each is about a trip that is no
+          // longer there (ProjectEditor's save does the same).
+          if (awayEnd) throw new Error('awayEnd needs awayStart: a return with no departure is not a trip.');
+          if (destination) throw new Error('destination needs awayStart: a place belongs to a trip, and this project has no away dates.');
+          Object.assign(away, { awayStart: null, awayEnd: null, destination: null, awayPauses: false, awayListId: null });
+        } else {
+          let end: string | null;
+          if (awayEnd !== undefined) {
+            end = awayEnd === null ? null : noonOf(awayEnd, 'awayEnd');
+          } else if (awayStart !== undefined && before.awayStart && before.awayEnd) {
+            // Moving the departure moves the return with it, keeping the trip
+            // the same length, as the editor does: a flight moved three days
+            // later is the same ten-day trip.
+            const shift = new Date(start).getTime() - new Date(before.awayStart).getTime();
+            end = new Date(new Date(before.awayEnd).getTime() + shift).toISOString();
+          } else {
+            end = before.awayEnd;
+          }
+          if (end !== null && new Date(end).getTime() <= new Date(start).getTime()) {
+            throw new Error('Coming back is before leaving. Pick a day after you leave.');
+          }
+          away.awayStart = start;
+          away.awayEnd = end;
+          if (destination !== undefined) away.destination = destination === null || !destination.trim() ? null : destination.trim();
+        }
+      }
+      const fields = { ...rest, ...away };
       db.dbTransaction(() => {
-        ensureCategory(content.defaultTaskCategory);
-        if (Object.keys(content).length > 0) {
-          store.updateProject(id, { ...content, ...(content.title ? { title: content.title.trim() } : {}) });
+        ensureCategory(fields.defaultTaskCategory);
+        if (Object.keys(fields).length > 0) {
+          store.updateProject(id, { ...fields, ...(fields.title ? { title: fields.title.trim() } : {}) });
         }
         if (completed !== undefined) useProjectStore.getState().applyProjectCompleted(id, completed);
         if (archived !== undefined) useProjectStore.getState().applyProjectArchived(id, archived);

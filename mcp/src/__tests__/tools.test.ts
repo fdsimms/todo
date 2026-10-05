@@ -8,9 +8,11 @@
  */
 import { serializeTask } from '../serialize';
 import {
+  addGroceryItem,
   getTask,
   listFoodLog,
   listGroceryItems,
+  listGroceryLists,
   listMedicationLogs,
   listMoodLogs,
   listProjects,
@@ -70,7 +72,10 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     categories: () => [],
     groceryItems: () => [],
     groceryListEntries: () => [],
+    groceryLists: () => [],
+    awaySpan: () => null,
     isVisible: (t: Task) => t.id.startsWith('today'),
+    isHiddenForVacation: (t: Task) => t.id.startsWith('vacation'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
     isBlocked: (t: Task) => t.id.startsWith('blocked'),
@@ -163,7 +168,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     nextBirthday: () => null,
     addPersonHistory: () => { throw new Error('not stubbed'); },
     settings: () => ({
-      dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationEnd: null,
+      dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationEnd: null, waterUnit: 'ml',
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
       kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, rewardGoalId: null, bountyLimit: 1, completedRetentionDays: null,
       calendarRequestsOn: false,
@@ -182,6 +187,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     tagRegistry: () => [],
     createRecipe: () => { throw new Error('not stubbed'); },
     logFood: () => { throw new Error('not stubbed'); },
+    logWater: () => { throw new Error('not stubbed'); },
     logMood: () => { throw new Error('not stubbed'); },
     logMedication: () => { throw new Error('not stubbed'); },
     ruleLists: () => ({ title: [], weather: [], event: [], health: [], screenTime: [] }),
@@ -344,6 +350,44 @@ describe('getTask', () => {
     expect(result.bounty).toEqual({ summary: '+5 extra when done.', pushes: 1 });
     expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
   });
+
+  it('explains a task held by vacation mode, which has no moment to surface at', () => {
+    const paused = task({ id: 'vacation-1', title: 'Water the plants', vacationPause: true });
+    const result = getTask(withTasks([paused], { visibleAt: () => new Date() }), 'vacation-1')!;
+    expect(result.hiddenReason).toBe('hidden while vacation mode is on');
+    expect(result.hiddenUntil).toBeUndefined();
+    // Visible tasks say nothing, whatever their flag.
+    expect(getTask(withTasks([task({ id: 'today-1', title: 'x', vacationPause: true })]), 'today-1')!.hiddenReason).toBeUndefined();
+  });
+
+  it('shows the rules behind a recomputed deadline or reminder, a followed water target, a linked supply, and the two per-task flags', () => {
+    const rich = task({
+      id: 'rich-2', title: 'Pay rent', deadlineOffsetDays: 3, reminderOffsetDays: 2,
+      targetCount: 8, quotaPeriod: 'day', progressCount: 2, followWaterTarget: true,
+      supplyCount: 4, supplyReorderAt: 1, supplyGroceryItemId: 'g1',
+      excludeFromSuggestions: true, streakRequiresWindow: true,
+    });
+    const result = getTask(withTasks([rich], { groceryItems: () => [{ id: 'g1', name: 'Filters' } as GroceryItem] }), 'rich-2')!;
+    expect(result.deadlineRule).toEqual({ daysBeforeDate: 3 });
+    expect(result.reminderRule).toEqual({ daysBeforeDate: 2 });
+    expect(result.target).toMatchObject({ count: 8, followsWaterTarget: true });
+    expect(result.supply).toEqual({ count: 4, reorderAt: 1, groceryItem: { id: 'g1', name: 'Filters' } });
+    expect(result.excludeFromSuggestions).toBe(true);
+    expect(result.streakRequiresWindow).toBe(true);
+
+    const monthly = task({ id: 'm', title: 'Invoice', deadlineMonthDay: -1, reminderTracksVisibility: true, supplyCount: 1, supplyReorderAt: 1, supplyGroceryItemId: 'gone' });
+    const r2 = getTask(withTasks([monthly]), 'm')!;
+    expect(r2.deadlineRule).toEqual({ dayOfMonth: 'last' });
+    expect(r2.reminderRule).toEqual({ whenItSurfaces: true });
+    // A deleted catalog row is left out rather than named by id.
+    expect(r2.supply).toEqual({ count: 1, reorderAt: 1 });
+
+    const plain = getTask(withTasks([task({ id: 'p', title: 'Plain', deadline: '2026-10-10T12:00:00.000Z' })]), 'p')!;
+    expect(plain.deadlineRule).toBeUndefined();
+    expect(plain.reminderRule).toBeUndefined();
+    expect(plain.excludeFromSuggestions).toBeUndefined();
+    expect(plain.streakRequiresWindow).toBeUndefined();
+  });
 });
 
 describe('listCategories', () => {
@@ -382,6 +426,21 @@ describe('listProjects', () => {
       projectProgress: () => ({ done: 3, total: 8 }),
     }))[0];
     expect(result).toMatchObject({ done: 3, total: 8, outstanding: 5 });
+  });
+
+  it('reports the away span through the app\'s own reader, so a half-set end is left out', () => {
+    const trip = { id: 'p2', title: 'Lisbon', notes: '', deadline: null, archived: false, awayStart: '2026-11-03T12:00:00.000Z', awayEnd: '2026-11-10T12:00:00.000Z', destination: 'Lisbon' } as Project;
+    const halfSet = { ...trip, id: 'p3', awayEnd: '2026-11-01T12:00:00.000Z', destination: null } as Project;
+    const replica = stubReplica({
+      projects: () => [trip, halfSet],
+      // The real awaySpanOf keeps an end only when it falls after the start.
+      awaySpan: (p: Project) => (p.awayStart ? { start: new Date(p.awayStart), end: p.awayEnd && p.awayEnd > p.awayStart ? new Date(p.awayEnd) : null } : null),
+    });
+    const [lisbon, half] = listProjects(replica);
+    expect(lisbon).toMatchObject({ awayStart: trip.awayStart, awayEnd: trip.awayEnd, destination: 'Lisbon' });
+    expect(half).toMatchObject({ awayStart: trip.awayStart });
+    expect(half).not.toHaveProperty('awayEnd');
+    expect(half).not.toHaveProperty('destination');
   });
 
   it('reports a finished project as nothing outstanding', () => {
@@ -437,6 +496,67 @@ describe('listGroceryItems', () => {
     ]);
     const catalog = listGroceryItems(replica, { onListOnly: false });
     expect(catalog.find(i => i.id === 'g3')).toEqual({ id: 'g3', name: 'Sunscreen', onList: false });
+  });
+
+  it('reads a separate list by id, with that list\'s own ticks, and refuses an id that is no list', () => {
+    const rows = [
+      { id: 'g1', name: 'Milk', onList: true, checked: false },
+      { id: 'g3', name: 'Sunscreen', onList: true, checked: false },
+    ] as GroceryItem[];
+    const replica = stubReplica({
+      groceryItems: () => rows,
+      groceryLists: () => [{ id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '' }],
+      groceryListEntries: () => [entry('g1', null, true), entry('g1', 'airbnb'), entry('g3', 'airbnb', true)],
+    });
+    expect(listGroceryItems(replica, { listId: 'airbnb' })).toEqual([
+      { id: 'g1', name: 'Milk', onList: true },
+      { id: 'g3', name: 'Sunscreen', onList: true, checked: true },
+    ]);
+    expect(listGroceryItems(replica).map(i => i.id)).toEqual(['g1']);
+    expect(() => listGroceryItems(replica, { listId: 'nope' })).toThrow(/No grocery list with id nope/);
+  });
+
+  it('lists every list, home first, with counts and the trip each one shops for', () => {
+    const replica = stubReplica({
+      groceryLists: () => [
+        { id: 'cabin', name: 'Cabin', sortOrder: 2, createdAt: '' },
+        { id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '' },
+      ],
+      groceryListEntries: () => [entry('g1', null, true), entry('g2', null), entry('g3', 'airbnb', true)],
+      projects: () => [
+        { id: 'p1', title: 'Lisbon', archived: false, completed: false, awayListId: 'airbnb' } as Project,
+        { id: 'p2', title: 'Old trip', archived: true, completed: false, awayListId: 'cabin' } as Project,
+      ],
+    });
+    expect(listGroceryLists(replica)).toEqual([
+      { id: null, name: 'Groceries', away: false, count: 2, remaining: 1 },
+      { id: 'airbnb', name: 'Airbnb', away: true, count: 1, remaining: 0, forTrip: { projectId: 'p1', title: 'Lisbon' } },
+      { id: 'cabin', name: 'Cabin', away: true, count: 0, remaining: 0 },
+    ]);
+  });
+
+  it('acts on the list named, hands the id to the replica, and says which list it acted on', () => {
+    const sunscreen = { id: 'g3', name: 'Sunscreen', onList: true, checked: false } as GroceryItem;
+    const checkFn = jest.fn(() => sunscreen);
+    const removeFn = jest.fn(() => sunscreen);
+    const addFn = jest.fn(() => ({ item: sunscreen, isNew: true, wasOnList: false }));
+    const replica = stubReplica({
+      groceryLists: () => [{ id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '' }],
+      groceryListEntries: () => [entry('g3', 'airbnb', true)],
+      setGroceryChecked: checkFn, removeFromGroceryList: removeFn, addGroceryItem: addFn,
+    });
+    const checked = setGroceryChecked(replica, 'g3', true, 'airbnb');
+    expect(checkFn).toHaveBeenCalledWith('g3', true, 'airbnb');
+    expect(checked.item).toEqual({ id: 'g3', name: 'Sunscreen', onList: true, checked: true });
+    expect(checked.outcome).toMatch(/on the "Airbnb" list/);
+    expect(removeFromGroceryList(replica, 'g3', 'airbnb').outcome).toMatch(/off the "Airbnb" list/);
+    expect(removeFn).toHaveBeenCalledWith('g3', 'airbnb');
+    expect(addGroceryItem(replica, 'sunscreen', { listId: 'airbnb' }).outcome).toMatch(/to the "Airbnb" list/);
+    expect(addFn).toHaveBeenCalledWith('sunscreen', { listId: 'airbnb' });
+    // Omitted means home, and reads as the list with no name.
+    expect(setGroceryChecked(replica, 'g3', true).outcome).toBe('Checked "Sunscreen" off.');
+    expect(checkFn).toHaveBeenLastCalledWith('g3', true, null);
+    expect(() => setGroceryChecked(replica, 'g3', true, 'nope')).toThrow(/No grocery list/);
   });
 
   it('describes a write\'s result by the home list too', () => {
@@ -628,6 +748,22 @@ describe('serializeTask', () => {
     expect(serializeTask(stubReplica(), one).chainStep).toBeUndefined();
   });
 
+  it('names the people a task is about, keeps a series id, and says when a task hides on vacation', () => {
+    const people = [{ id: 'per1', name: 'Gideon Reyes', nickname: 'Gid' }, { id: 'per2', name: 'Mom', nickname: '' }] as never[];
+    const r = stubReplica({ people: () => people });
+    const t = serializeTask(r, task({ id: 'a', title: 'Call', personIds: ['per1', 'per2', 'gone'], seriesId: 's1', vacationPause: true }));
+    // The nickname where there is one, the name otherwise, and an id with no
+    // person behind it dropped rather than reported nameless.
+    expect(t.people).toEqual([{ id: 'per1', name: 'Gid' }, { id: 'per2', name: 'Mom' }]);
+    expect(t.seriesId).toBe('s1');
+    expect(t.vacationPause).toBe(true);
+
+    const plain = serializeTask(r, task({ id: 'b', title: 'Plain', personIds: [], seriesId: null, vacationPause: false }));
+    expect(plain).not.toHaveProperty('people');
+    expect(plain).not.toHaveProperty('seriesId');
+    expect(plain).not.toHaveProperty('vacationPause');
+  });
+
   it('reports blocked separately from merely not being due', () => {
     expect(serializeTask(stubReplica(), task({ id: 'blocked-1', title: 'Waiting' })).blocked).toBe(true);
     expect(serializeTask(stubReplica(), task({ id: 'today-1', title: 'Free' })).blocked).toBeUndefined();
@@ -665,5 +801,24 @@ describe('createTask and updateTask', () => {
       updateTask: () => ({ task: existing, alsoUpdated: 2 }),
     });
     expect(updateTask(r, 'today-1', { notes: 'x' }).alsoUpdatedLaterDates).toBe(2);
+  });
+
+  it('says when a fixed deadline replaced the rule that recomputed it, and only then', () => {
+    const relative = task({ id: 'today-1', title: 'Rent', deadlineOffsetDays: 3 });
+    const cleared = { deadline: '2026-10-10T12:00:00.000Z', deadlineOffsetDays: null, deadlineMonthDay: null } as Partial<Task>;
+    const r = withTasks([relative], {
+      taskPatch: () => cleared,
+      updateTask: () => ({ task: { ...relative, ...cleared } as Task, alsoUpdated: 0 }),
+    });
+    expect(updateTask(r, 'today-1', { deadline: '2026-10-10' }).deadlineRuleCleared).toMatch(/fixed date given/);
+
+    const dropped = { deadline: null, deadlineOffsetDays: null, deadlineMonthDay: null } as Partial<Task>;
+    const r2 = withTasks([relative], { taskPatch: () => dropped, updateTask: () => ({ task: { ...relative, ...dropped } as Task, alsoUpdated: 0 }) });
+    expect(updateTask(r2, 'today-1', { deadline: null }).deadlineRuleCleared).toMatch(/no deadline either/);
+
+    // A fixed deadline that was already fixed says nothing.
+    const fixed = task({ id: 'today-2', title: 'Taxes', deadline: '2026-04-15T12:00:00.000Z' });
+    const r3 = withTasks([fixed], { taskPatch: () => ({ deadline: '2026-04-20T12:00:00.000Z' }), updateTask: () => ({ task: fixed, alsoUpdated: 0 }) });
+    expect(updateTask(r3, 'today-2', { deadline: '2026-04-20' })).not.toHaveProperty('deadlineRuleCleared');
   });
 });

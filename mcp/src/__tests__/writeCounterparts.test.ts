@@ -33,6 +33,9 @@ const COUNTERPARTS: Record<string, string[]> = {
   create_template: ['update_template', 'delete_template', 'reorder_templates'],
   create_person: ['update_person'],
   log_food: ['update_food_entry', 'delete_food_entry'],
+  // A water entry's figure is the stepper's own, not an estimate, so
+  // update_food_entry will not restate it; the row is deleted and relogged.
+  log_water: ['delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
   request_calendar_event: ['cancel_calendar_request'],
   log_medication: ['update_medication_log', 'delete_medication_log'],

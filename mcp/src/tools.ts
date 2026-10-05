@@ -25,11 +25,16 @@ import { isRotationTask } from '../../src/utils/rotation';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
 import {
+  describeDeadlineRule,
   describeHealthTarget,
+  describeReminderRule,
   describeRepeat,
   describeRotation,
   describeSupplyFields,
+  hasRelativeDeadline,
+  type DeadlineRule,
   type HealthTargetInput,
+  type ReminderRule,
   type RepeatInput,
   type SupplyInput,
   type TaskFieldsInput,
@@ -37,6 +42,9 @@ import {
 } from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
+// Pure over the rows it is handed (types only), so safe to import for its
+// value where awayDates, which reaches the settings store, is not.
+import { HOME_LIST_NAME, listNameFor, listPickerRows, listRemainingCount } from '../../src/utils/groceryLists';
 
 /** The four sub-views of TodayScreen, plus the everything case. */
 export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all'] as const;
@@ -152,16 +160,29 @@ export interface GetTaskResult {
   chain?: { index: number; steps: ChainStepDetail[]; stepsFollowSchedule?: boolean };
   /** The repeat rule, in the shape `create_task` and `update_task` take it. */
   repeat?: RepeatInput;
-  /** A count to reach per day or week, and how far today's (or this week's) has got. */
-  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean };
+  /**
+   * A count to reach per day or week, and how far today's (or this week's) has
+   * got. `followsWaterTarget` (`Task.followWaterTarget`) means the count is the
+   * food log's water goal divided by what one unit logs, worked out by the app
+   * each day: update_task refuses to set it.
+   */
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; followsWaterTarget?: true };
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
   rotation?: { members: { title: string; doneThisWeek: boolean; lastDone?: string }[] };
   /** Configuration only: the server cannot read Apple Health, so it never says whether the target is reached. */
   healthTarget?: HealthTargetInput;
-  /** A stock that counts down as the repeating task is completed. */
-  supply?: SupplyInput;
+  /** A stock that counts down as the repeating task is completed; `groceryItem` is the catalog row it reorders (`supplyGroceryItemId`), where it is linked to one. */
+  supply?: SupplyInput & { groceryItem?: { id: string; name: string } };
+  /** The deadline is recomputed from the date on every occurrence by this rule (read-only; a `deadline` written by update_task replaces it with a fixed date). */
+  deadlineRule?: DeadlineRule;
+  /** The reminder is placed by this rule rather than at a fixed time (read-only). */
+  reminderRule?: ReminderRule;
+  /** Left out of the app's suggested pins and focus queues (`excludeFromSuggestions`); still visible and still pinnable by hand. */
+  excludeFromSuggestions?: true;
+  /** A completion outside the task's own time window counts as done but does not extend the streak (`streakRequiresWindow`). */
+  streakRequiresWindow?: true;
   /**
    * Read-only, deliberately. Each of these changes something outside the task:
    * a gate or penalty blocks apps on the phone, and a medication makes
@@ -216,6 +237,13 @@ export interface GetTaskResult {
    * segment or a category schedule is what is holding it.
    */
   hiddenUntil?: string;
+  /**
+   * Why a task that is not on Today is hidden, when the reason is not a moment
+   * `hiddenUntil` can name: a task held while vacation mode is on (its own
+   * `vacationPause`, or a category set to hide on vacation) has no date it
+   * surfaces at, and reads as lost without this.
+   */
+  hiddenReason?: string;
 }
 
 /**
@@ -323,12 +351,25 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           done: task.progressCount ?? 0,
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
+          ...(task.followWaterTarget ? { followsWaterTarget: true as const } : {}),
         }
       : undefined,
     timed: task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,
     rotation: describeRotation(task, new Set(isRotationTask(task) ? replica.rotationDoneIds(task) : [])) ?? undefined,
     healthTarget: describeHealthTarget(task) ?? undefined,
-    supply: describeSupplyFields(task) ?? undefined,
+    supply: (() => {
+      const supply = describeSupplyFields(task);
+      if (!supply) return undefined;
+      // Named rather than left as an id, since the id means nothing without
+      // list_grocery_items; a row since deleted is left out, as everywhere a
+      // cross-row pointer dangles.
+      const item = task.supplyGroceryItemId ? replica.groceryItems().find(i => i.id === task.supplyGroceryItemId) : undefined;
+      return { ...supply, ...(item ? { groceryItem: { id: item.id, name: item.name } } : {}) };
+    })(),
+    deadlineRule: describeDeadlineRule(task) ?? undefined,
+    reminderRule: describeReminderRule(task) ?? undefined,
+    excludeFromSuggestions: task.excludeFromSuggestions ? true : undefined,
+    streakRequiresWindow: task.streakRequiresWindow ? true : undefined,
     gatesApps: task.gatesApps ? true : undefined,
     penalty: task.penaltyMinutes != null
       ? {
@@ -381,6 +422,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     project: project ? { id: project.id, title: project.title } : undefined,
     ...taskExtras(replica, task),
     hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
+    hiddenReason: !visible && replica.isHiddenForVacation(task) ? 'hidden while vacation mode is on' : undefined,
   };
 }
 
@@ -434,6 +476,7 @@ export function listProjects(replica: Replica): SerializedProject[] {
       title: p.title,
       notes: p.notes || undefined,
       deadline: p.deadline ?? undefined,
+      ...awayFields(replica, p),
       done,
       total,
       outstanding: total - done,
@@ -441,14 +484,30 @@ export function listProjects(replica: Replica): SerializedProject[] {
   });
 }
 
+/**
+ * A project's away span and destination as every project read shows them
+ * (docs/arch/away-dates.md). `awayEnd` comes through the app's own reader,
+ * which drops an end with no start or on or before it, so a half-set span is
+ * reported the way the phone reads it rather than as the two raw columns.
+ */
+export function awayFields(replica: Replica, p: Project): { awayStart?: string; awayEnd?: string; destination?: string } {
+  const span = replica.awaySpan(p);
+  if (!span) return {};
+  return {
+    awayStart: p.awayStart!,
+    ...(span.end && p.awayEnd ? { awayEnd: p.awayEnd } : {}),
+    ...(p.destination ? { destination: p.destination } : {}),
+  };
+}
+
 export interface SerializedGroceryItem {
   id: string;
   name: string;
   quantity?: string;
   aisle?: string;
-  /** On the home list right now, as opposed to sitting in the catalog. */
+  /** In the trolley of the list asked about (the home list unless a listId was given), as opposed to sitting in the catalog. */
   onList: boolean;
-  /** Checked off on the home list. */
+  /** Checked off on that list. */
   checked?: boolean;
 }
 
@@ -457,43 +516,94 @@ export interface SerializedGroceryItem {
  * it did. Separate so a write cannot describe an item differently from the way
  * a read does a moment later.
  *
- * **Membership and the tick are the home list's, read off its entry.** Every
- * grocery write here acts on the list at home, so that is the list a read has
- * to describe. `GroceryItem.onList` is the broader "in any trolley" flag, so a
- * row only on a trip's list read as on the list and then couldn't be checked
- * off; `GroceryItem.checked` is only a mirror of the home entry.
+ * **Membership and the tick are one list's, read off its entry.** Every grocery
+ * tool acts on one list (the one at home unless a `listId` names another), so
+ * that is the list a read has to describe. `GroceryItem.onList` is the broader
+ * "in any trolley" flag, so a row only on a trip's list read as on the list and
+ * then couldn't be checked off; `GroceryItem.checked` is only a mirror of the
+ * home entry.
  */
-export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | undefined): SerializedGroceryItem {
+export function serializeGroceryItem(i: GroceryItem, entry: GroceryListEntry | undefined): SerializedGroceryItem {
   return {
     id: i.id,
     name: i.name,
     quantity: i.quantity || undefined,
     aisle: i.aisle || undefined,
-    onList: home !== undefined,
-    checked: home?.checked ? true : undefined,
+    onList: entry !== undefined,
+    checked: entry?.checked ? true : undefined,
   };
 }
 
-/** The home list's entries, by item id. */
-function homeEntries(replica: Replica): Map<string, GroceryListEntry> {
+/** One list's entries, by item id. Null is the list at home. */
+function listEntries(replica: Replica, listId: string | null): Map<string, GroceryListEntry> {
   const out = new Map<string, GroceryListEntry>();
-  for (const e of replica.groceryListEntries()) if (e.listId === null) out.set(e.itemId, e);
+  for (const e of replica.groceryListEntries()) if (e.listId === listId) out.set(e.itemId, e);
   return out;
 }
 
-function serializeWithHome(replica: Replica, item: GroceryItem): SerializedGroceryItem {
-  return serializeGroceryItem(item, homeEntries(replica).get(item.id));
+function serializeOnList(replica: Replica, item: GroceryItem, listId: string | null): SerializedGroceryItem {
+  return serializeGroceryItem(item, listEntries(replica, listId).get(item.id));
 }
 
-/** The home list, or with `onListOnly: false` the whole catalog. */
+/**
+ * The list a `listId` names, refusing an id that is not one of the person's
+ * lists rather than quietly answering about an empty trolley. Omitted or null
+ * is the list at home, which has no row of its own (`GroceryListEntry`).
+ */
+export function requireGroceryList(replica: Replica, listId: string | null | undefined): { id: string | null; name: string } {
+  if (listId == null) return { id: null, name: HOME_LIST_NAME };
+  const lists = replica.groceryLists();
+  if (!lists.some(l => l.id === listId)) throw new Error(`No grocery list with id ${listId}. list_grocery_lists names them.`);
+  return { id: listId, name: listNameFor(listId, lists) };
+}
+
+/** One list (the home list unless `listId` says otherwise), or with `onListOnly: false` the whole catalog with that list's ticks. */
 export function listGroceryItems(
   replica: Replica,
-  input: { onListOnly?: boolean } = {}
+  input: { onListOnly?: boolean; listId?: string | null } = {}
 ): SerializedGroceryItem[] {
-  const home = homeEntries(replica);
+  const list = requireGroceryList(replica, input.listId);
+  const entries = listEntries(replica, list.id);
   const items = replica.groceryItems();
-  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => home.has(i.id));
-  return wanted.map(i => serializeGroceryItem(i, home.get(i.id)));
+  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => entries.has(i.id));
+  return wanted.map(i => serializeGroceryItem(i, entries.get(i.id)));
+}
+
+export interface SerializedGroceryList {
+  /** Null for the list at home, which every grocery tool means when no listId is given. */
+  id: string | null;
+  name: string;
+  /** A separate list is one you are away from home for (`isAwayList`): a shop from it records no purchase history. */
+  away: boolean;
+  /** Rows in its trolley, and how many are still to buy. */
+  count: number;
+  remaining: number;
+  /** The trip this list is the shopping list for (`Project.awayListId`), where a live project names it. */
+  forTrip?: { projectId: string; title: string };
+}
+
+/**
+ * Every list, home first and then the person's own in their order, through the
+ * same `listPickerRows` the app's picker draws. Which list the phone is
+ * *showing* is deliberately not here: `grocery_active_list` does not sync
+ * (docs/arch/away-dates.md), so the replica's own answer would be about the
+ * replica.
+ */
+export function listGroceryLists(replica: Replica): SerializedGroceryList[] {
+  const entries = replica.groceryListEntries();
+  const trips = new Map<string, Project>();
+  for (const p of replica.projects()) if (p.awayListId && !p.archived && !p.completed) trips.set(p.awayListId, p);
+  return listPickerRows(entries, replica.groceryLists()).map(row => {
+    const trip = row.id ? trips.get(row.id) : undefined;
+    return {
+      id: row.id,
+      name: row.name,
+      away: row.away,
+      count: row.count,
+      remaining: listRemainingCount(entries, row.id),
+      ...(trip ? { forTrip: { projectId: trip.id, title: trip.title } } : {}),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -741,6 +851,14 @@ export interface UpdateTaskResult extends GetTaskResult {
    * this does the same, so a caller should say so rather than report one task.
    */
   alsoUpdatedLaterDates?: number;
+  /**
+   * Set when the task's deadline was worked out from its date by a rule
+   * (`deadlineRule` on get_task) and this edit wrote a fixed deadline, which
+   * drops the rule the way the editor's "Fixed date" does. Said rather than
+   * left to be noticed, since the rule would otherwise have kept recomputing
+   * the deadline on every occurrence.
+   */
+  deadlineRuleCleared?: string;
 }
 
 /**
@@ -753,8 +871,19 @@ export function updateTask(replica: Replica, id: string, input: TaskFieldsInput)
   if (!current) throw new Error(`No task with id ${id}.`);
   const patch = replica.taskPatch(input, current, !!current.parentId);
   if (Object.keys(patch).length === 0) throw new Error('Nothing to change: name at least one field.');
+  const ruleCleared = hasRelativeDeadline(current) && 'deadline' in patch && patch.deadlineOffsetDays === null && patch.deadlineMonthDay === null;
   const { alsoUpdated } = replica.updateTask(id, patch);
-  return { ...getTask(replica, id)!, ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}) };
+  return {
+    ...getTask(replica, id)!,
+    ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}),
+    ...(ruleCleared
+      ? {
+          deadlineRuleCleared: patch.deadline
+            ? 'The deadline used to be worked out from the date on every occurrence; it is now the fixed date given, and later occurrences will not get one unless the rule is set again in the app.'
+            : 'The deadline used to be worked out from the date on every occurrence; clearing it also dropped that rule, so later occurrences get no deadline either.',
+        }
+      : {}),
+  };
 }
 
 export interface CompleteTaskResult {
@@ -843,34 +972,46 @@ export interface GroceryWriteResult {
   outcome: string;
 }
 
+/**
+ * The grocery writes act on the list at home unless `listId` names another,
+ * and say which list they acted on when it is not the home one. CLAUDE.md's
+ * rule for a caller that is not a person looking at the grocery screen: name
+ * the list, never inherit whichever one happens to be open.
+ */
 export function addGroceryItem(
   replica: Replica,
   name: string,
-  opts?: { quantity?: string | null; note?: string | null },
+  opts?: { quantity?: string | null; note?: string | null; listId?: string | null },
 ): GroceryWriteResult {
-  const { item, isNew, wasOnList } = replica.addGroceryItem(name, opts);
+  const list = requireGroceryList(replica, opts?.listId);
+  const { item, isNew, wasOnList } = replica.addGroceryItem(name, { ...opts, listId: list.id });
+  const where = list.id === null ? 'the list' : `the "${list.name}" list`;
   const outcome = isNew
-    ? `Added "${item.name}" to the list, filed under ${item.aisle}.`
+    ? `Added "${item.name}" to ${where}, filed under ${item.aisle}.`
     : wasOnList
-      ? `"${item.name}" was already on the list, so nothing moved. Its tick and its place in the aisle order are untouched.`
-      : `"${item.name}" was already in the catalog, so it went back on the list with the aisle and history it already had.`;
-  return { item: serializeWithHome(replica, item), outcome };
+      ? `"${item.name}" was already on ${where}, so nothing moved. Its tick and its place in the aisle order are untouched.`
+      : `"${item.name}" was already in the catalog, so it went back on ${where} with the aisle and history it already had.`;
+  return { item: serializeOnList(replica, item, list.id), outcome };
 }
 
-export function setGroceryChecked(replica: Replica, id: string, checked: boolean): GroceryWriteResult {
-  const item = replica.setGroceryChecked(id, checked);
+export function setGroceryChecked(replica: Replica, id: string, checked: boolean, listId?: string | null): GroceryWriteResult {
+  const list = requireGroceryList(replica, listId);
+  const item = replica.setGroceryChecked(id, checked, list.id);
+  const where = list.id === null ? '' : ` on the "${list.name}" list`;
   return {
-    item: serializeWithHome(replica, item),
-    outcome: checked ? `Checked "${item.name}" off.` : `Un-checked "${item.name}".`,
+    item: serializeOnList(replica, item, list.id),
+    outcome: checked ? `Checked "${item.name}" off${where}.` : `Un-checked "${item.name}"${where}.`,
   };
 }
 
-export function removeFromGroceryList(replica: Replica, id: string): GroceryWriteResult {
-  const item = replica.removeFromGroceryList(id);
+export function removeFromGroceryList(replica: Replica, id: string, listId?: string | null): GroceryWriteResult {
+  const list = requireGroceryList(replica, listId);
+  const item = replica.removeFromGroceryList(id, list.id);
+  const where = list.id === null ? 'the list' : `the "${list.name}" list`;
   return {
-    item: serializeWithHome(replica, item),
+    item: serializeOnList(replica, item, list.id),
     // Worth saying, because "remove" reads as a delete and this is not one.
-    outcome: `Took "${item.name}" off the list. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
+    outcome: `Took "${item.name}" off ${where}. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
   };
 }
 

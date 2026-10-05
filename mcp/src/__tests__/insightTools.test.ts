@@ -32,6 +32,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     taskById: (id: string) => tasks.find(t => t.id === id) ?? null,
     projects: () => [],
     projectProgress: () => ({ done: 0, total: 0 }),
+    awaySpan: () => null,
     categories: () => [],
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('someday'),

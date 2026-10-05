@@ -44,6 +44,7 @@ import {
   getTask,
   listFoodLog,
   listGroceryItems,
+  listGroceryLists,
   listMedicationLogs,
   listMoodLogs,
   createTask,
@@ -95,7 +96,7 @@ import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
@@ -310,7 +311,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_task',
-    'One task in full: its subtasks, its chain steps, its project, and why it is not on Today if it is not.',
+    'One task in full: its subtasks, its chain steps, its project, and why it is not on Today if it is not (hiddenUntil for a moment it will surface at, hiddenReason for a task held while vacation mode is on). Also the rules behind a deadline or reminder that is recomputed each occurrence, and whether a water target follows the food log\'s goal.',
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getTask(replica, id));
@@ -331,9 +332,25 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_grocery_items',
-    'The home grocery list, with whether each item is checked off there. This is the list the grocery write tools act on. An item only on a separate list (a trip\'s list, say) is not included. Pass onListOnly: false to search the whole catalog instead.',
-    { onListOnly: z.boolean().optional() },
-    async input => json(await withFresh(() => listGroceryItems(replica, input)))
+    'One grocery list, with whether each item is checked off on it: the home list unless listId names a separate one (from list_grocery_lists, a trip\'s list, say). An item only on another list is not included. Pass onListOnly: false to search the whole catalog instead, with whether each item is checked off on that list.',
+    {
+      onListOnly: z.boolean().optional(),
+      listId: z.string().optional().describe('A separate list\'s id, from list_grocery_lists. Leave out for the list at home.'),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => listGroceryItems(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'list_grocery_lists',
+    'Every grocery list: the one at home (id null, what the grocery tools mean when no listId is given) and each separate list, with how many items are on it and still to buy, and the trip it is the shopping list for where a project names it. Which list the phone is showing right now does not sync, so it is not reported.',
+    {},
+    async () => json(await withFresh(() => listGroceryLists(replica)))
   );
 
   server.tool(
@@ -918,7 +935,7 @@ function registerWriteTools(
 
   server.tool(
     'update_task',
-    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, timed, rotation, healthTarget, supply, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
+    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, timed, rotation, healthTarget, supply, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). A deadline written to a task whose deadline is worked out from its date (deadlineRule on get_task) replaces that rule with the fixed date, and the result says so. A target on a task that follows the food log\'s water goal (followsWaterTarget) is refused, since the app sets that count each day. Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -1016,6 +1033,23 @@ function registerWriteTools(
     async input => {
       try {
         return json(await withWrite(() => logFood(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_water',
+    'Log water the person drank. The app keeps one water entry a day and steps it up a glass at a time, so this adds onto today\'s entry (or the day named by at) rather than adding a row per glass; use it instead of log_food for water. Give the amount as ml or flOz. The result gives the day\'s total so far in the unit the person counts water in. Not sent to Apple Health: only the phone writes it there.',
+    {
+      ml: z.number().positive().optional().describe('Millilitres drunk. Give this or flOz.'),
+      flOz: z.number().positive().optional().describe('Fluid ounces drunk. Give this or ml.'),
+      at: z.string().optional().describe('When: an ISO date-time, or YYYY-MM-DD. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logWater(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
       }
@@ -1514,11 +1548,12 @@ function registerWriteTools(
 
   server.tool(
     'add_grocery_item',
-    "Put something on the home grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    "Put something on the grocery list: the home list, or a separate one when listId names it. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
       name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
       quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
       note: z.string().nullable().optional(),
+      listId: z.string().nullable().optional().describe('A separate list\'s id, from list_grocery_lists. Leave out for the list at home.'),
     },
     async ({ name, ...rest }) => {
       try {
@@ -1531,11 +1566,15 @@ function registerWriteTools(
 
   server.tool(
     'check_off_grocery_item',
-    'Check something off on the home grocery list, or un-check it with checked: false. Takes the item id from list_grocery_items.',
-    { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
-    async ({ id, checked }) => {
+    'Check something off on the grocery list (the home list, or a separate one when listId names it), or un-check it with checked: false. Takes the item id from list_grocery_items.',
+    {
+      id: z.string().min(1),
+      checked: z.boolean().optional().describe('Defaults to true.'),
+      listId: z.string().nullable().optional().describe('A separate list\'s id, from list_grocery_lists. Leave out for the list at home.'),
+    },
+    async ({ id, checked, listId }) => {
       try {
-        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true, listId)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not check that off.' });
       }
@@ -1544,11 +1583,14 @@ function registerWriteTools(
 
   server.tool(
     'remove_from_grocery_list',
-    'Take something off the home grocery list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
-    { id: z.string().min(1) },
-    async ({ id }) => {
+    'Take something off the grocery list (the home list, or a separate one when listId names it) without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
+    {
+      id: z.string().min(1),
+      listId: z.string().nullable().optional().describe('A separate list\'s id, from list_grocery_lists. Leave out for the list at home.'),
+    },
+    async ({ id, listId }) => {
       try {
-        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id)), LINKS?.groceries()));
+        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id, listId)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
       }
@@ -1609,13 +1651,16 @@ function registerWriteTools(
 
   server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes, deadline or event date, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task.',
+    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
       notes: z.string().optional(),
       deadline: z.string().nullable().optional(),
       eventDate: z.string().nullable().optional().describe('The day the project is for. Changing it leaves the tasks where they are unless moveTasks is set.'),
+      awayStart: z.string().nullable().optional().describe('YYYY-MM-DD: the day the person leaves, for a project that is a trip. Moving it moves an existing awayEnd by the same number of days. null clears the whole span, the destination, and the vacation mode and grocery list nominations that hang off it.'),
+      awayEnd: z.string().nullable().optional().describe('YYYY-MM-DD: the day they are back. Needs awayStart (given now or already set) and has to fall after it; null leaves a departure with no return yet.'),
+      destination: z.string().nullable().optional().describe('Where the trip is going, free text. Needs away dates; null clears it.'),
       moveTasks: z.boolean().optional().describe('With a new eventDate: move the project\'s dated tasks by the same number of days, as the app offers when the date is changed there. Ask the user first. Pinned, urgent and some other tasks are left in place and listed under notMoved.'),
       moveTasksFrom: z.string().optional().describe('Move the dated tasks after the event date has already been changed: the old event date. They move by the days from it to the event date now.'),
       category: z.string().nullable().optional(),

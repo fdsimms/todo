@@ -419,14 +419,14 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return outcome;
     },
 
-    setGroceryChecked(id, checked) {
-      const item = replica.setGroceryChecked(id, checked);
+    setGroceryChecked(id, checked, listId) {
+      const item = replica.setGroceryChecked(id, checked, listId);
       log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
     },
 
-    removeFromGroceryList(id) {
-      const item = replica.removeFromGroceryList(id);
+    removeFromGroceryList(id, listId) {
+      const item = replica.removeFromGroceryList(id, listId);
       log({ action: 'cleared', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
       return item;
     },
@@ -447,6 +447,14 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const entry = replica.logFood(input);
       log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
       return entry;
+    },
+
+    logWater(input) {
+      const outcome = replica.logWater(input);
+      // Stepping the day's row is an edit of a record the person already has;
+      // the first glass (or a second row beside one Health holds) is a new one.
+      log({ action: outcome.how === 'stepped' ? 'edited' : 'created', subject: 'food', title: outcome.entry.label, taskId: null, recordId: outcome.entry.id });
+      return outcome;
     },
 
     // Named for what it is and not for what it says: a rating or a symptom in

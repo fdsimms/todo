@@ -84,7 +84,8 @@ only the fallback until the first sync.
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
-| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; not sent to Apple Health. |
+| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; not sent to Apple Health. Refuses water, which is `log_water`'s. |
+| `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Not sent to Apple Health. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
 | `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
 | `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
@@ -93,14 +94,15 @@ only the fallback until the first sync.
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
-| `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. Also, where the task has them: who it waits on, contact details, streak, what completing it also logs (medication, Health, a meal), timer and Health target, postponement history, supply and rotation. |
-| `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion. |
-| `get_project` | One project: its open tasks in order (each with its checklist and blockers) and the most recently finished. |
+| `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today (`hiddenUntil`, or `hiddenReason` for a task held while vacation mode is on). Also, where the task has them: who it waits on, contact details, streak, what completing it also logs (medication, Health, a meal), timer and Health target, postponement history, supply (with the catalog row it reorders) and rotation, the rule behind a recomputed deadline or reminder, whether a water target follows the food log's goal, and the people it is about. |
+| `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion, with each trip's away dates and destination. |
+| `get_project` | One project: its open tasks in order (each with its checklist and blockers), the most recently finished, its decisions, and its away dates, destination and whether it pauses tasks while away. |
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
-| `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
+| `list_grocery_items` | The home grocery list, or a separate one by `listId`, or the whole catalog with `onListOnly: false`. An item only on another list is not included. |
+| `list_grocery_lists` | Every list: home first, then the person's own, each with its counts and the trip it shops for. Which list the phone is showing does not sync, so it is not reported. |
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
@@ -113,9 +115,9 @@ only the fallback until the first sync.
 | `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
 | `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
-| `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
+| `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. A fixed deadline replaces a deadline rule and the result says so; a target on a task that follows the water goal is refused. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
-| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. |
+| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project, or set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on). Its tasks are untouched. |
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
@@ -149,9 +151,9 @@ only the fallback until the first sync.
 | `update_recipe` | **Write.** Changes a recipe; ingredients and steps replace the whole list. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
-| `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
-| `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
-| `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
+| `add_grocery_item` | **Write.** Puts something on the home list, or a separate one by `listId`, re-using the shelf item the user already has where there is one. |
+| `check_off_grocery_item` | **Write.** Checks something off on the home list, or a separate one by `listId`, or un-checks it. |
+| `remove_from_grocery_list` | **Write.** Takes something off the home list, or a separate one by `listId`. Does not delete it. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no

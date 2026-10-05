@@ -1,4 +1,4 @@
-import { describeHealthTarget, describeRepeat, describeRotation, describeSupplyFields, LIMITS, taskFieldsPatch, type TaskFieldsInput } from '../taskFields';
+import { describeDeadlineRule, describeHealthTarget, describeReminderRule, describeRepeat, describeRotation, describeSupplyFields, hasRelativeDeadline, LIMITS, taskFieldsPatch, type TaskFieldsInput } from '../taskFields';
 import { HEALTH_TARGET_RANGES } from '../../../src/utils/healthTarget';
 import type { FollowUpTaskDraft, Task } from '../../../src/types';
 
@@ -27,6 +27,53 @@ const existing = (over: Partial<Task> = {}): Task => ({
 describe('pinning', () => {
   it('passes pin and pin-each-occurrence straight through', () => {
     expect(ok({ pinned: true, pinEachOccurrence: true })).toMatchObject({ pinned: true, pinEachOccurrence: true });
+  });
+});
+
+describe('a deadline worked out from the date', () => {
+  it('is dropped when a fixed deadline is written, or the deadline cleared, as the editor\'s "Fixed date" does', () => {
+    const relative = existing({ deadlineOffsetDays: 3, deadlineMonthDay: null });
+    expect(ok({ deadline: '2026-10-10' }, relative)).toMatchObject({ deadlineOffsetDays: null, deadlineMonthDay: null });
+    expect(ok({ deadline: null }, existing({ deadlineOffsetDays: null, deadlineMonthDay: -1 }))).toMatchObject({ deadline: null, deadlineOffsetDays: null, deadlineMonthDay: null });
+    // Nothing to drop on a fixed deadline, and nothing touched by an edit that
+    // leaves the deadline alone.
+    expect(ok({ deadline: '2026-10-10' }, existing({ deadlineOffsetDays: null, deadlineMonthDay: null }))).not.toHaveProperty('deadlineOffsetDays');
+    expect(ok({ notes: 'x' }, relative)).not.toHaveProperty('deadlineOffsetDays');
+  });
+
+  it('is described in the two directions, and the month day with its last-day case', () => {
+    expect(describeDeadlineRule({ deadlineOffsetDays: 3, deadlineMonthDay: null })).toEqual({ daysBeforeDate: 3 });
+    expect(describeDeadlineRule({ deadlineOffsetDays: -9, deadlineMonthDay: null })).toEqual({ daysAfterDate: 9 });
+    expect(describeDeadlineRule({ deadlineOffsetDays: null, deadlineMonthDay: 15 })).toEqual({ dayOfMonth: 15 });
+    expect(describeDeadlineRule({ deadlineOffsetDays: null, deadlineMonthDay: -1 })).toEqual({ dayOfMonth: 'last' });
+    expect(describeDeadlineRule({ deadlineOffsetDays: null, deadlineMonthDay: null })).toBeNull();
+    expect(hasRelativeDeadline(null)).toBe(false);
+  });
+});
+
+describe('a reminder placed by rule', () => {
+  it('is described as days before the date, or as the moment the task surfaces', () => {
+    expect(describeReminderRule({ reminderOffsetDays: 2, reminderTracksVisibility: false })).toEqual({ daysBeforeDate: 2 });
+    expect(describeReminderRule({ reminderOffsetDays: null, reminderTracksVisibility: true })).toEqual({ whenItSurfaces: true });
+    expect(describeReminderRule({ reminderOffsetDays: null, reminderTracksVisibility: false })).toBeNull();
+  });
+});
+
+describe('a target that follows the water goal', () => {
+  const water = existing({ followWaterTarget: true, targetCount: 8, quotaPeriod: 'day', logHealthMetric: 'waterMl', logHealthAmount: 250 });
+
+  it('refuses a count, since the app writes that each day', () => {
+    expect(errorsOf({ target: { count: 10, per: 'day' } }, water)).toMatch(/follows the food log's water goal/);
+    expect(patchOf({ target: { count: 10, per: 'day' } }, water).patch).not.toHaveProperty('targetCount');
+  });
+
+  it('lets the target go, and takes the flag with it', () => {
+    expect(ok({ target: null }, water)).toMatchObject({ targetCount: null, followWaterTarget: false });
+  });
+
+  it('leaves an ordinary target alone', () => {
+    expect(ok({ target: { count: 10, per: 'day' } }, existing({ followWaterTarget: false }))).toMatchObject({ targetCount: 10 });
+    expect(ok({ target: { count: 10, per: 'day' } })).not.toHaveProperty('followWaterTarget');
   });
 });
 

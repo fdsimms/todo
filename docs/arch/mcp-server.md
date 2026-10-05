@@ -167,6 +167,39 @@ Tasks are serialized by `mcp/src/serialize.ts` rather than handed over as raw `T
 budget on `supplyDeclinedAtCount` is a tool result with no room left for the task list. What the
 model gets is what a row shows, plus the state a question could be about.
 
+`mcp/src/__tests__/taskFieldCoverage.test.ts` is what keeps that projection honest: every `Task`
+field is either read or written somewhere in the surface, or named in its `NOT_EXPOSED` list with
+the reason. The list is short now. The settings that used to sit in it as "no MCP use yet" turned
+out to have one each, and the shape of each answer follows from what the field does:
+
+- **A hide with no moment** (`vacationPause`). `hiddenUntil` can only name a date, and a task held
+  while vacation mode is on has none, so the row carries the flag and `get_task` says
+  `hiddenReason: "hidden while vacation mode is on"` through `isHiddenForVacation`, the app's own
+  reader, which also covers a category set to hide on vacation.
+- **A count the app writes** (`followWaterTarget`). `syncWaterQuotaTasks` rewrites `targetCount`
+  every day from the food log's water goal, so a count written by `update_task` would be
+  overwritten with nothing said. `get_task` shows `followsWaterTarget` on the target and
+  `taskFields.ts` refuses a `target` on such a task; `target: null` is still allowed and takes the
+  flag with it, since a task with no target has nothing to follow.
+- **A date recomputed by rule** (`deadlineOffsetDays` / `deadlineMonthDay`, and
+  `reminderOffsetDays` / `reminderTracksVisibility`). Shown as `deadlineRule` and `reminderRule`,
+  read-only. A `deadline` written by `update_task` to a task with a rule clears the rule, which is
+  what the editor's "Fixed date" pill does; `mergeTaskUpdate` leaves the two fields alone, so the
+  clear is `taskFields.ts`'s job, and the result says `deadlineRuleCleared` rather than leaving the
+  phone to show a recomputed date over the one that was written.
+- **Pointers worth naming** (`personIds`, `seriesId`, `supplyGroceryItemId`). People come back as
+  `people: [{ id, name }]` on every row, resolved once per list; a `seriesId` is on the row so two
+  dates of one task read as one commitment rather than a duplicate; a supply's linked catalog row
+  is named inside `supply.groceryItem`. A pointer to a row that is gone is dropped, as everywhere a
+  cross-row pointer dangles in the app.
+- **Two flags with no write** (`excludeFromSuggestions`, `streakRequiresWindow`): on `get_task`,
+  read-only, because the question they answer ("why did the app not suggest this", "why did the
+  streak not move") comes up and the answer is not visible anywhere else.
+
+What stays in `NOT_EXPOSED` is a series' own repeat (`seriesMonthDays`, `seriesRepeatMonths`), which
+the app's editor does not offer either, and `deliverableSetsAway`, a template nomination that
+`complete_task`'s date answer already lands without the model needing to know the flag.
+
 ## Working as an agent's surface, not only a data API
 
 The tools above answer "show me X". Once the server was reachable from the Claude apps it became a
@@ -318,6 +351,20 @@ Health rows written here reach the phone whatever its "Include health logs" swit
 governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not what it accepts.
 The Activity entry for a mood check-in or a dose names the kind of record and not its content,
 since the Activity list is about the app and should not show somebody's health.
+
+**Water is its own tool, `log_water`, because the food log keeps one water entry a day.**
+`waterLog.ts`'s rule is that eight glasses are one row stepped up eight times, not eight rows in
+the meal sections, and an entry stating only `waterMl` *is* that row (`isWaterEntry` is derived,
+not stored). So `log_food` given water alone would have minted a second water row beside the
+day's, and it refuses and points at `log_water` instead. The replica's `logWater` steps the day's
+row through `waterHelping` and `dbUpdateFoodLogEntry`, or starts it with `buildFoodLogEntry`, the
+two writes the screen's own stepper makes. The one case it will not do is rewrite a row the phone
+has written to Apple Health: that sample names the volume the row held, and only `reviseEntry` on
+that phone can retract and rewrite it, so the glass goes on a second row and the result says so.
+Two rows is what a sync between two phones already leaves, and every reader sums the day
+(`waterTotalMl`), so the figure against the target is right either way. The result reports the
+day's total in the person's `waterUnit`, which is display only (`waterMl` is stored in
+millilitres whichever is picked), and takes the amount in either unit for the same reason.
 
 ### Automations, now that they sync
 
@@ -690,13 +737,22 @@ Checked lives on the membership row, and `dbSetGroceryListEntry` is also the onl
 mirror columns on the item (`dbSyncGroceryHomeColumns`), so the row and its entry cannot end up
 disagreeing. Removing parks the row and clears a recipe's claim on the quantity, which is two lines.
 
-**Every grocery tool is about the list at home, the read included.** The writes all act on the home
-list's entry (`listId` null), so `list_grocery_items` reports that list and each item's tick on it,
-read off `groceryListEntries()`. It used to filter on `GroceryItem.onList`, which is the broader "in
-any trolley" flag (see `docs/arch/groceries.md`): a trip's list came back merged into the one at
-home with no name on it, and check-off then refused those same items as not on the list. The
-serialized `onList` means the home list everywhere, including a write's result and the catalog
-view, and the remove guard and the add's "already on the list" answer ask the same question.
+**Every grocery tool is about one list, the read included, and it is the list at home unless a
+`listId` names another.** The writes all act on one list's entry, so `list_grocery_items` reports
+that list and each item's tick on it, read off `groceryListEntries()`. It used to filter on
+`GroceryItem.onList`, which is the broader "in any trolley" flag (see `docs/arch/groceries.md`): a
+trip's list came back merged into the one at home with no name on it, and check-off then refused
+those same items as not on the list. The serialized `onList` means the list asked about everywhere,
+including a write's result and the catalog view, and the remove guard and the add's "already on the
+list" answer ask the same question.
+
+`list_grocery_lists` names the lists, through the same `listPickerRows` the app's picker draws (home
+first, then the person's own in their order), with each one's counts and the trip it is the shopping
+list for where a live project's `awayListId` names it. **It does not say which list the phone is
+showing**, because `grocery_active_list` does not sync (`docs/arch/away-dates.md`): the replica's
+own active list is about the replica. That is also why the writes never default to an active list:
+CLAUDE.md's rule for a caller that is not a person looking at the grocery screen is to name the
+list, and an unknown `listId` is refused rather than acted on as an empty trolley.
 
 **Adding could not.** `planGroceryAdd` (`src/utils/groceryAdd.ts`) is `addByName`'s core, lifted out
 with `newItemRow`, `ensureProductFor` and `nextSortOrder`. Two things made a second implementation
@@ -745,6 +801,15 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   Moving the event is `update_project` with `moveTasks`, the app's own shift offer
   (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since
   nobody is there to tick it. Without `moveTasks` it moves nothing and says so.
+- **The away span** (`docs/arch/away-dates.md`) is on every project read as `awayStart`, `awayEnd`
+  and `destination`, through the replica's `awaySpan` (the app's `awaySpanOf`, so an end with no
+  start or on or before it is left out the way the phone leaves it out), and `update_project` sets
+  or clears it by the editor's rules: an end needs a start and falls after it, moving the start
+  moves an existing end by the same number of days, and clearing the start clears the end, the
+  destination and both nominations hanging off the span (`awayPauses`, `awayListId`). The
+  nominations themselves are not writable here. Whether vacation mode turns itself on for a trip
+  or the shopping list switches is the person's choice in the editor, and `get_project` shows the
+  first as `pausesTasksWhileAway` so the model can say what moving the dates will do.
 
 ### Stacks: a label, with one side effect the tools have to say out loud
 
