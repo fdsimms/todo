@@ -41,7 +41,7 @@ const KIND_OPTIONS: { value: TemplateQuestionKind; label: string }[] = [
 
 const KIND_NOTES: Record<TemplateQuestionKind, string> = {
   choice: 'Pick one of the answers below. Items can be set to be included only for some of them.',
-  number: 'Type a count. Item titles can do arithmetic on it: "Pack {nights / 2} pairs of jeans".',
+  number: 'Type a count. Item titles can do arithmetic on it: "Pack {nights / 2} pairs of jeans", or cap it: "{nights + 1 max 7}".',
   text: 'Type anything. Fills the blank of the same name in item titles and notes.',
   // Never creates a person, only picks from who's already been added — see
   // docs/arch/people.md. No "N of N" here: unlike choice, there's no fixed

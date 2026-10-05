@@ -2796,7 +2796,14 @@ function seedTemplates(): void {
     // A count off the dates, and the same count halved — one shirt a day, one
     // pair of jeans per two.
     { title: 'Pack {nights} shirts', dueOffsetDays: -1, category: 'Home' },
-    { title: 'Pack {nights / 2} pairs of jeans', dueOffsetDays: -1, category: 'Home' },
+    // Its own text for a work trip: slacks instead, capped, since a long
+    // trip doesn't need more than three pairs.
+    {
+      title: 'Pack {nights / 2} pairs of jeans',
+      dueOffsetDays: -1,
+      category: 'Home',
+      variants: [{ questionId: tripType.id, answer: 'Work', title: 'Pack {nights / 2 max 3} pairs of slacks' }],
+    },
     // And the conditioned one: ticked for a work trip, left off for a vacation.
     {
       title: 'Pack laptop and charger',

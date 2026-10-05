@@ -1239,6 +1239,12 @@ describe('demo mode', () => {
     expect(conditioned[0].conditions[0].questionId).toBe(choice.id);
     expect(choice.options).toEqual(expect.arrayContaining(conditioned[0].conditions[0].values));
 
+    // An item with its own text for one answer of that choice.
+    const varied = asking.items.filter(i => i.variants.length > 0);
+    expect(varied.length).toBeGreaterThan(0);
+    expect(varied[0].variants[0].questionId).toBe(choice.id);
+    expect(choice.options).toContain(varied[0].variants[0].answer);
+
     // And a people question — no name to fill a blank with, no options, no
     // default: normalizeTemplateQuestion forces all three empty for this kind.
     const who = asking.questions.find(q => q.kind === 'people')!;

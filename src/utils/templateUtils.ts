@@ -14,6 +14,7 @@ import type {
   TemplateContainer,
   TemplateItem,
   TemplateItemCondition,
+  TemplateItemVariant,
   TemplateQuestion,
   TemplateQuestionKind,
   TemplateQuestionSource,
@@ -92,6 +93,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     conditions: normalizeConditions(raw.conditions),
+    variants: normalizeVariants(raw.variants),
     answerGate: normalizeItemGate(raw.answerGate),
     refTemplateId: raw.refTemplateId ?? null,
     refTemplateName: raw.refTemplateName ?? '',
@@ -117,6 +119,24 @@ function normalizeConditions(raw: unknown): TemplateItemCondition[] {
       questionId: c.questionId,
       values: Array.isArray(c.values) ? c.values.filter((v): v is string => typeof v === 'string') : [],
     }));
+}
+
+/** Drop anything that isn't a `{questionId, answer}` pair, and keep only the text fields that carry something. */
+function normalizeVariants(raw: unknown): TemplateItemVariant[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TemplateItemVariant[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== 'object') continue;
+    const { questionId, answer, title, notes } = v as Partial<TemplateItemVariant>;
+    if (typeof questionId !== 'string' || typeof answer !== 'string' || !answer) continue;
+    out.push({
+      questionId,
+      answer,
+      ...(typeof title === 'string' && title.trim() ? { title } : {}),
+      ...(typeof notes === 'string' && notes.trim() ? { notes } : {}),
+    });
+  }
+  return out;
 }
 
 /**
@@ -619,12 +639,21 @@ export function expandSelectionWithAncestors(
 export const RUN_PLACEHOLDER = 'run';
 
 // Letters first so `{2}` and `{}` aren't mistaken for placeholders — a title
-// can legitimately contain braces. The optional tail is the arithmetic form
-// below; `-` needs no help from it, being a name character already.
-const PLACEHOLDER_PATTERN = /\{([a-zA-Z][a-zA-Z0-9 _-]*(?:\s*[-+*/]\s*\d+(?:\.\d+)?)?)\}/g;
+// can legitimately contain braces. The pieces below are the three forms a
+// token can take: a name with optional arithmetic and cap (EXPR), and a choice
+// switch between two of those (CHOICE). `-` needs no help from the arithmetic,
+// being a name character already. Built from parts so a token that fits none of
+// them is still left alone as literal text.
+const NAME_SRC = '[a-zA-Z][a-zA-Z0-9 _-]*';
+const NUM_SRC = '\\d+(?:\\.\\d+)?';
+const EXPR_SRC = `${NAME_SRC}(?:\\s*[-+*/]\\s*${NUM_SRC})?(?:\\s+max\\s+\\d+)?`;
+const BRANCH_SRC = `(?:${EXPR_SRC}|${NUM_SRC})`;
+const CHOICE_SRC = `${NAME_SRC}\\s*=\\s*[^{}?:=]+?\\s*\\?\\s*${BRANCH_SRC}\\s*:\\s*${BRANCH_SRC}`;
+const PLACEHOLDER_PATTERN = new RegExp(`\\{(${CHOICE_SRC}|${EXPR_SRC})\\}`, 'g');
 
 /**
- * Arithmetic on a blank — `{nights - 2}`, `{nights / 2}`, `{guests * 2}`.
+ * Arithmetic on a blank — `{nights - 2}`, `{nights / 2}`, `{guests * 2}` —
+ * optionally capped: `{days + 1 max 7}`.
  *
  * The point of the whole thing is a packing list that counts: a number
  * answered once ("7 nights") is rarely the number that goes in every title,
@@ -638,29 +667,85 @@ const PLACEHOLDER_PATTERN = /\{([a-zA-Z][a-zA-Z0-9 _-]*(?:\s*[-+*/]\s*\d+(?:\.\d
  * past that is a formula editor nobody asked for. A token that doesn't fit the
  * shape isn't an error — it falls back to being a name, exactly as it was
  * before this existed.
+ *
+ * `max N` is a ceiling on the finished count (a long trip doesn't pack more
+ * than a week of shirts), applied last, after rounding. It needs a whole
+ * number, and works with or without an operator (`{days max 7}`).
  */
-const PLACEHOLDER_ARITHMETIC = /^([a-zA-Z][a-zA-Z0-9 _-]*?)\s*([-+*/])\s*(\d+(?:\.\d+)?)$/;
+const PLACEHOLDER_EXPR = /^([a-zA-Z][a-zA-Z0-9 _-]*?)(?:\s*([-+*/])\s*(\d+(?:\.\d+)?))?(?:\s+max\s+(\d+))?$/;
 
-interface PlaceholderRef {
-  /** The blank being read — "nights" for `{nights / 2}`. */
+interface PlaceholderExpr {
+  /** The blank being read — "nights" for `{nights / 2}`. Empty for a literal number. */
   name: string;
   /** Null for a plain `{name}`, which is every token that predates the arithmetic form. */
   op: '+' | '-' | '*' | '/' | null;
   operand: number;
+  /** The `max N` ceiling, or null for none. */
+  cap: number | null;
+  /** A bare number, which only a choice branch may be (`{pool = Yes ? 2 : days}`). */
+  literal: number | null;
 }
 
-/** Read one `{...}` token's contents. Arithmetic wins whenever the shape matches — see normalizePlaceholderName, which refuses to mint a blank whose *name* would parse as one, so the two can't collide. */
-function parsePlaceholderRef(raw: string): PlaceholderRef {
+/**
+ * `{laundry access = Yes ? days / 2 : days + 1}`: one choice answer picks which
+ * of two counts the token is. Only ever `=`, only ever one comparison, and each
+ * side is an ordinary expression, which is what keeps it readable (see the
+ * note on PLACEHOLDER_EXPR for why it stops there).
+ */
+interface PlaceholderChoice {
+  /** The blank holding the answer, normally a choice question's name. */
+  blank: string;
+  /** The option it is compared with, case-insensitively. */
+  option: string;
+  then: PlaceholderExpr;
+  otherwise: PlaceholderExpr;
+}
+
+type PlaceholderRef = PlaceholderExpr | PlaceholderChoice;
+
+const normalizeBlankName = (raw: string) => raw.trim().replace(/\s+/g, ' ').toLowerCase();
+
+function parsePlaceholderExpr(raw: string): PlaceholderExpr {
   const trimmed = raw.trim();
-  const math = PLACEHOLDER_ARITHMETIC.exec(trimmed);
-  if (math) {
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    return { name: '', op: null, operand: 0, cap: null, literal: Number(trimmed) };
+  }
+  const m = PLACEHOLDER_EXPR.exec(trimmed);
+  if (m && (m[2] || m[4])) {
     return {
-      name: math[1].trim().replace(/\s+/g, ' ').toLowerCase(),
-      op: math[2] as PlaceholderRef['op'],
-      operand: Number(math[3]),
+      name: normalizeBlankName(m[1]),
+      op: (m[2] as PlaceholderExpr['op']) ?? null,
+      operand: m[3] ? Number(m[3]) : 0,
+      cap: m[4] ? Number(m[4]) : null,
+      literal: null,
     };
   }
-  return { name: trimmed.replace(/\s+/g, ' ').toLowerCase(), op: null, operand: 0 };
+  return { name: normalizeBlankName(trimmed), op: null, operand: 0, cap: null, literal: null };
+}
+
+/** Read one `{...}` token's contents. Arithmetic and `max` win whenever the shape matches — see normalizePlaceholderName, which refuses to mint a blank whose *name* would parse as one, so the two can't collide. */
+function parsePlaceholderRef(raw: string): PlaceholderRef {
+  const q = raw.indexOf('?');
+  const eq = raw.indexOf('=');
+  if (q > eq && eq > 0) {
+    const rest = raw.slice(q + 1);
+    const colon = rest.indexOf(':');
+    if (colon >= 0) {
+      return {
+        blank: normalizeBlankName(raw.slice(0, eq)),
+        option: raw.slice(eq + 1, q).trim().toLowerCase(),
+        then: parsePlaceholderExpr(rest.slice(0, colon)),
+        otherwise: parsePlaceholderExpr(rest.slice(colon + 1)),
+      };
+    }
+  }
+  return parsePlaceholderExpr(raw);
+}
+
+/** The blanks a token reads, in order and without repeats — a switch reads its condition and both branches. */
+function placeholderRefNames(ref: PlaceholderRef): string[] {
+  const names = 'blank' in ref ? [ref.blank, ref.then.name, ref.otherwise.name] : [ref.name];
+  return names.filter((n, i) => n && names.indexOf(n) === i);
 }
 
 /**
@@ -670,21 +755,35 @@ function parsePlaceholderRef(raw: string): PlaceholderRef {
  * only the arithmetic form needs it to be a number. A computed count **rounds
  * up and never goes below zero**: these are counts of things to take with you,
  * where three and a half pairs of jeans means four and where "-1 shirts" is
- * not a sentence.
+ * not a sentence. A `max` ceiling is applied after that. A switch whose
+ * condition blank is empty, or whose chosen branch has no value, is null like
+ * any other blank left unfilled.
  */
 function resolvePlaceholderRef(ref: PlaceholderRef, values: Record<string, string>): string | null {
+  if ('blank' in ref) {
+    const answer = (values[ref.blank] ?? '').trim();
+    if (!answer) return null;
+    const branch = answer.toLowerCase() === ref.option ? ref.then : ref.otherwise;
+    return resolvePlaceholderRef(branch, values);
+  }
+  const count = (n: number) => {
+    const rounded = Math.max(0, Math.ceil(n));
+    return String(ref.cap === null ? rounded : Math.min(rounded, ref.cap));
+  };
+  if (ref.literal !== null) return count(ref.literal);
   const raw = (values[ref.name] ?? '').trim();
   if (!raw) return null;
-  if (ref.op === null) return raw;
+  if (ref.op === null && ref.cap === null) return raw;
   const base = Number(raw);
   if (!Number.isFinite(base)) return null;
+  if (ref.op === null) return count(base);
   if (ref.op === '/' && ref.operand === 0) return null;
-  const result =
+  return count(
     ref.op === '+' ? base + ref.operand
     : ref.op === '-' ? base - ref.operand
     : ref.op === '*' ? base * ref.operand
-    : base / ref.operand;
-  return String(Math.max(0, Math.ceil(result)));
+    : base / ref.operand
+  );
 }
 
 /**
@@ -696,8 +795,9 @@ function resolvePlaceholderRef(ref: PlaceholderRef, values: Record<string, strin
 function placeholderNamesIn(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
-    const { name } = parsePlaceholderRef(match[1]);
-    if (name && !found.includes(name)) found.push(name);
+    for (const name of placeholderRefNames(parsePlaceholderRef(match[1]))) {
+      if (!found.includes(name)) found.push(name);
+    }
   }
   return found;
 }
@@ -721,6 +821,9 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
     add(item.location ?? '');
     item.subtasks.forEach(s => add(s.title));
     item.chainItems.forEach(c => add(c.title));
+    // A variant's text is only ever swapped in for the item's own, so its blanks
+    // are asked for too: otherwise one used in a variant alone is never filled.
+    item.variants.forEach(v => { add(v.title ?? ''); add(v.notes ?? ''); });
   }
   return found;
 }
@@ -735,7 +838,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
  * ask it about the draft it's holding in state, which isn't an item yet.
  */
 export function itemPlaceholders(
-  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'>,
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'> & Partial<Pick<TemplateItem, 'variants'>>,
 ): string[] {
   const found: string[] = [];
   const add = (text: string) => {
@@ -748,6 +851,7 @@ export function itemPlaceholders(
   add(item.location ?? '');
   item.subtasks.forEach(s => add(s.title));
   item.chainItems.forEach(c => add(c.title));
+  (item.variants ?? []).forEach(v => { add(v.title ?? ''); add(v.notes ?? ''); });
   return found;
 }
 
@@ -764,7 +868,8 @@ export function normalizePlaceholderName(raw: string): string | null {
   // A name the arithmetic form would claim ("nights-2") is refused rather than
   // resolved one way or the other: `{nights-2}` can only mean one thing, and a
   // blank that can never be filled in is worse than a name the user retypes.
-  if (PLACEHOLDER_ARITHMETIC.test(cleaned)) return null;
+  const expr = PLACEHOLDER_EXPR.exec(cleaned);
+  if (expr && (expr[2] || expr[4])) return null;
   return /^[a-z][a-z0-9 _-]*$/.test(cleaned) ? cleaned : null;
 }
 
@@ -789,7 +894,7 @@ export function withoutPlaceholder(text: string, name: string): string {
   if (!placeholderNamesIn(text).includes(name)) return text;
   PLACEHOLDER_PATTERN.lastIndex = 0;
   const stripped = text.replace(PLACEHOLDER_PATTERN, (match, token: string) =>
-    parsePlaceholderRef(token).name === name ? '' : match
+    placeholderRefNames(parsePlaceholderRef(token)).includes(name) ? '' : match
   );
   return tidySubstituted(stripped);
 }
@@ -802,7 +907,8 @@ export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
     hasRun(item.notes) ||
     hasRun(item.location ?? '') ||
     item.subtasks.some(s => hasRun(s.title)) ||
-    item.chainItems.some(c => hasRun(c.title))
+    item.chainItems.some(c => hasRun(c.title)) ||
+    item.variants.some(v => hasRun(v.title ?? '') || hasRun(v.notes ?? ''))
   );
 }
 

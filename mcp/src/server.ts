@@ -632,6 +632,13 @@ const conditionSchema = z.object({
   values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
 });
 
+const variantSchema = z.object({
+  question: z.string().describe('The name of a choice question defined in this plan.'),
+  answer: z.string().describe('One of that question\'s options.'),
+  title: z.string().optional().describe('Replaces the item\'s title for this answer. Omit to keep it.'),
+  notes: z.string().optional().describe('Replaces the item\'s notes for this answer. Omit to keep them.'),
+});
+
 const itemSchema = z.object({
   id: z.string().optional().describe('Update only: the id of an item this template already has (get_template). It starts from the stored item and the other fields here change it.'),
   title: z.string().min(1).optional().describe('Required, except when id names an item that already has one.'),
@@ -680,6 +687,7 @@ const itemSchema = z.object({
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional()
     .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
+  variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
@@ -691,6 +699,13 @@ const itemSchema = z.object({
     .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied.'),
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
+
+/**
+ * The blank syntax an item's title, notes, location, subtasks and chain steps
+ * understand, written once for both template tools. The rules are
+ * templateUtils.ts's (tested); this is only the words a client reads.
+ */
+const BLANK_SYNTAX = ' Text can hold {blanks} that a run fills in: {name} is a question\'s answer; {days + 1} does one sum (one operator and a number: + - * /) and rounds a fraction up; {days + 1 max 7} caps the count at 7; {laundry access = Yes ? days / 2 : days + 1} picks one of two counts by a choice answer (the question\'s name on the left, one of its options after =). A blank answer drops the token. An item can also carry variants: its own title and/or notes for particular answers of a choice question.';
 
 const containerSchema = z.enum(CONTAINERS as unknown as [string, ...string[]]).optional()
   .describe('What a run puts the tasks in: none, a stack, a project, or one task with subtasks.');
@@ -1242,7 +1257,7 @@ function registerWriteTools(
 
   server.tool(
     'create_template',
-    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.',
+    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.' + BLANK_SYNTAX,
     {
       name: z.string().min(1),
       category: z.string().nullable().optional(),
@@ -1267,7 +1282,7 @@ function registerWriteTools(
 
   server.tool(
     'update_template',
-    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name. Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused.',
+    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name. Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused.' + BLANK_SYNTAX,
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       name: z.string().min(1).optional(),

@@ -79,6 +79,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   refTemplateId: null,
   refTemplateName: '',
   conditions: [],
+  variants: [],
   ...overrides,
 });
 
@@ -836,6 +837,77 @@ describe('placeholder arithmetic', () => {
 
   it('takes the sums with the blank when it\'s removed', () => {
     expect(withoutPlaceholder('Pack {nights / 2} pairs of jeans', 'nights')).toBe('Pack pairs of jeans');
+  });
+});
+
+describe('placeholder cap', () => {
+  it('limits a count to the ceiling', () => {
+    expect(substitutePlaceholders('Pack {days + 1 max 7} shirts', { days: '14' })).toBe('Pack 7 shirts');
+    expect(substitutePlaceholders('Pack {days + 1 max 7} shirts', { days: '3' })).toBe('Pack 4 shirts');
+  });
+
+  it('rounds up before capping', () => {
+    expect(substitutePlaceholders('{days / 2 max 3}', { days: '5' })).toBe('3');
+    expect(substitutePlaceholders('{days / 2 max 9}', { days: '5' })).toBe('3');
+  });
+
+  it('works without an operator', () => {
+    expect(substitutePlaceholders('Pack {days max 7} shirts', { days: '10' })).toBe('Pack 7 shirts');
+  });
+
+  it('drops a cap on a non-number or a blank answer', () => {
+    expect(substitutePlaceholders('Pack {days max 7} shirts', { days: 'lots' })).toBe('Pack shirts');
+    expect(substitutePlaceholders('Pack {days max 7} shirts', {})).toBe('Pack shirts');
+  });
+
+  it('reads the blank once and refuses it as a name', () => {
+    expect(extractPlaceholders([makeItem({ title: '{days} and {days + 1 max 7}' })])).toEqual(['days']);
+    expect(normalizePlaceholderName('days max 7')).toBeNull();
+    expect(normalizePlaceholderName('maximum days')).toBe('maximum days');
+  });
+});
+
+describe('placeholder choice switch', () => {
+  const title = 'Pack {laundry access = Yes ? days / 2 : days + 1} shirts';
+
+  it('picks the branch the answer names, case-insensitively', () => {
+    expect(substitutePlaceholders(title, { 'laundry access': 'Yes', days: '8' })).toBe('Pack 4 shirts');
+    expect(substitutePlaceholders(title, { 'laundry access': 'yes', days: '8' })).toBe('Pack 4 shirts');
+    expect(substitutePlaceholders(title, { 'laundry access': 'No', days: '8' })).toBe('Pack 9 shirts');
+  });
+
+  it('rounds up and honors a cap inside a branch', () => {
+    expect(substitutePlaceholders(title, { 'laundry access': 'Yes', days: '7' })).toBe('Pack 4 shirts');
+    expect(substitutePlaceholders('{w = Work ? days max 5 : days max 9}', { w: 'Work', days: '12' })).toBe('5');
+  });
+
+  it('accepts a literal number as a branch', () => {
+    expect(substitutePlaceholders('Pack {pool = Yes ? 2 : days} suits', { pool: 'Yes', days: '3' })).toBe('Pack 2 suits');
+    expect(substitutePlaceholders('Pack {pool = Yes ? 2 : days} suits', { pool: 'No', days: '3' })).toBe('Pack 3 suits');
+  });
+
+  it('drops the token when the answer or the chosen branch is blank', () => {
+    expect(substitutePlaceholders(title, { days: '8' })).toBe('Pack shirts');
+    expect(substitutePlaceholders(title, { 'laundry access': 'Yes' })).toBe('Pack shirts');
+  });
+
+  it('reports every blank it reads and drops with any of them', () => {
+    const item = makeItem({ title });
+    expect(extractPlaceholders([item])).toEqual(['laundry access', 'days']);
+    expect(withoutPlaceholder(title, 'days')).toBe('Pack shirts');
+  });
+
+  it('asks for a blank used only in a variant, and for {run} there', () => {
+    const item = makeItem({
+      title: 'Pack shirts',
+      variants: [{ questionId: 'q', answer: 'Yes', title: 'Pack {count} shirts for {run}' }],
+    });
+    expect(extractPlaceholders([item])).toEqual(['count']);
+    expect(declaresRunPlaceholder([item])).toBe(true);
+  });
+
+  it('leaves a malformed switch as literal text', () => {
+    expect(substitutePlaceholders('Fix {a = b ? c} here', { a: 'b', c: '1' })).toBe('Fix {a = b ? c} here');
   });
 });
 
