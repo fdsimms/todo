@@ -629,7 +629,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
  */
 const conditionSchema = z.object({
   question: z.string().describe('The name of a choice question defined in this plan.'),
-  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on.'),
+  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
 });
 
 const variantSchema = z.object({
@@ -685,7 +685,8 @@ const itemSchema = z.object({
   excludeFromSuggestions: z.boolean().optional(),
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
-  conditions: z.array(conditionSchema).optional(),
+  conditions: z.array(conditionSchema).optional()
+    .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
   variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
@@ -715,13 +716,13 @@ const groupsSchema = z.array(z.object({
   checklist: z.boolean().optional().describe('Run into a project, the section is a checklist.'),
 })).optional();
 const questionsSchema = z.array(z.object({
-  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none.'),
+  name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none. Item titles, notes, location, subtask titles and chain step titles replace {name} with the answer when the template is applied (case-insensitive; an unanswered blank is dropped). A title can do one sum on it, `{name + 1}`, `{name - 2}`, `{name * 2}` or `{name / 2}`: one operator and a literal number, no parentheses, fractions round up, never below 0. A name that no item mentions is allowed and fills nothing. A name like `days-2` is refused because it reads as a sum.'),
   prompt: z.string(),
   kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
   options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
   defaultValue: z.string().optional(),
   fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
-    .describe('A number question can take its answer off the anchor dates: days or nights.'),
+    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. Only a choice question can gate an item through conditions, so a number cannot express "only if days > 5": add a choice question for that.'),
 })).optional();
 const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
