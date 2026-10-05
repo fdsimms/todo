@@ -368,7 +368,7 @@ function lookBackLabel(months: number): string {
  * Days you wrote something on, one month, three, six and then each year back
  * from `todayDayKey`, the diary's "on this day".
  *
- * **Only entries with a note count.** A mood with no words is a number, and a
+ * **Only entries with a note or a dream count.** A mood with no words is a number, and a
  * number from a year ago with nothing to say about it is not something to
  * resurface. **A day with nothing to show is absent, never filled in** (rule 3
  * of `moodInsights.ts`, here as a layout rule): no placeholder for the month
@@ -385,7 +385,7 @@ export function lookBacks(logs: readonly MoodLog[], todayDayKey: string): LookBa
   for (const months of LOOK_BACK_MONTHS) {
     const dayKey = format(addMonths(today, -months), 'yyyy-MM-dd');
     const written = logs
-      .filter(l => l.dayKey === dayKey && hasWrittenNote(l))
+      .filter(l => l.dayKey === dayKey && (hasWrittenNote(l) || hasWrittenDream(l)))
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
     if (written.length > 0) found.push({ label: lookBackLabel(months), dayKey, logs: written });
     if (found.length === MAX_LOOK_BACKS) break;

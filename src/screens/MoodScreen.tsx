@@ -489,13 +489,18 @@ export function MoodScreen() {
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); navigation.navigate('MoodDay', { dayKey: back.dayKey }); }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${back.logs.map(l => l.note).join('. ')}`}
+                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${back.logs.map(l => [l.note, l.dream ? `Dream: ${l.dream}` : null].filter(Boolean).join('. ')).join('. ')}`}
                   >
                     <Text style={styles.lookBackWhen}>
                       {back.label} · {format(dayKeyToDate(back.dayKey), 'EEE, MMM d, yyyy')}
                     </Text>
                     {back.logs.map(l => (
-                      <Text key={l.id} style={styles.lookBackNote} numberOfLines={6}>{l.note}</Text>
+                      <React.Fragment key={l.id}>
+                        {!!l.note && <Text style={styles.lookBackNote} numberOfLines={6}>{l.note}</Text>}
+                        {!!l.dream && (
+                          <Text style={styles.lookBackNote} numberOfLines={6}>Dream: {l.dream}</Text>
+                        )}
+                      </React.Fragment>
                     ))}
                   </TouchableOpacity>
                 ))}
@@ -857,18 +862,24 @@ export function MoodScreen() {
           {dreams.lastDayKey !== null && (
             <>
               <Text style={styles.sectionTitle}>DREAMS</Text>
-              <View
-                style={styles.card}
-                accessible
+              <TouchableOpacity
+                style={[styles.card, styles.linkRow]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); navigation.navigate('MoodHistory', { dreamsOnly: true }); }}
+                accessibilityRole="button"
+                accessibilityHint="Opens your history, showing only entries with a dream"
                 accessibilityLabel={`${dreams.dayCount} ${dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down, ${dreams.dayCountInMonth} this month, last on ${format(dayKeyToDate(dreams.lastDayKey), 'MMMM d')}`}
               >
-                <Text style={styles.linkLabel}>
-                  {dreams.dayCount} {dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down
-                </Text>
-                <Text style={styles.linkMeta}>
-                  {dreams.dayCountInMonth} this month · last on {format(dayKeyToDate(dreams.lastDayKey), 'MMM d')}
-                </Text>
-              </View>
+                <View style={styles.linkBody}>
+                  <Text style={styles.linkLabel}>
+                    {dreams.dayCount} {dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down
+                  </Text>
+                  <Text style={styles.linkMeta}>
+                    {dreams.dayCountInMonth} this month · last on {format(dayKeyToDate(dreams.lastDayKey), 'MMM d')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
             </>
           )}
 

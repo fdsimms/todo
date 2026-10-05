@@ -340,4 +340,9 @@ describe('dreams', () => {
       dayCount: 0, entryCount: 0, dayCountInMonth: 0, lastDayKey: null,
     });
   });
+
+  it('resurfaces a day that has only a dream in the looking back card', () => {
+    const logs = [log({ dayKey: '2026-09-05', mood: null, dream: 'A long corridor' })];
+    expect(lookBacks(logs, '2026-10-05').map(b => b.dayKey)).toEqual(['2026-09-05']);
+  });
 });
