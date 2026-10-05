@@ -177,6 +177,14 @@ there. With no window set (the sheet's default), that means every eligible
 pinned task starts ticked — the literal request this shortcut exists to
 answer.
 
+## Off Today
+
+`FocusBar` is the strip on Today. Every other screen gets `FocusFloatingBar`,
+mounted once in `AppNavigator` beside `CookingBar` and lifted above it when both
+show. It hides only while the focused route is Today (a card pushed over Today
+shows it). The session sheet stays mounted by `TodayScreen`, so tapping the
+floating bar goes through `resetToFocusSession`.
+
 ## On the Lock Screen
 
 `src/utils/focusLiveActivity.ts` puts the step you're on into a Live Activity,
