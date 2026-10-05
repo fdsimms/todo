@@ -19,7 +19,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -73,6 +73,8 @@ import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
+import { normalizeTargetUnit } from '../utils/quotaUnit';
+import { formatPhoneInput } from '../utils/phone';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
 
@@ -97,7 +99,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait';
+type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait' | 'target' | 'phone' | 'email' | 'waitsOn';
 
 interface Props {
   visible: boolean;
@@ -133,6 +135,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   );
   // TemplateItem.answerGate: "only if <another item> is answered …".
   const [answerGate, setAnswerGate] = useState<TemplateAnswerGate | null>(null);
+  // TemplateItem.blockedByItemIds: other items of this template to wait on.
+  const [blockedByItemIds, setBlockedByItemIds] = useState<string[]>([]);
   // The other items in this template that ask a Yes/No or Pick one question,
   // which is what an "Only if" can wait on. An item whose own gate leads back
   // here is left out: the two tasks would each wait on the other for good.
@@ -151,6 +155,27 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     return templateItems.filter(i =>
       i.id !== item?.id && !i.refTemplateId && deliverableOptionsFor(i).length >= 2 && !leadsBack(i));
   }, [templateItems, item?.id]);
+  // What "Waits on" can name: the other task items here, minus any that
+  // already wait (however indirectly) on this one, which would hold both for good.
+  const waitCandidates = useMemo(() => {
+    const byId = new Map(templateItems.map(i => [i.id, i]));
+    const waitsOnThis = (start: TemplateItem): boolean => {
+      const seen = new Set<string>();
+      const stack = [start];
+      while (stack.length > 0) {
+        const at = stack.pop()!;
+        if (at.id === item?.id) return true;
+        if (seen.has(at.id)) continue;
+        seen.add(at.id);
+        for (const id of at.blockedByItemIds ?? []) { const next = byId.get(id); if (next) stack.push(next); }
+      }
+      return false;
+    };
+    return templateItems.filter(i => i.id !== item?.id && !i.refTemplateId && !waitsOnThis(i));
+  }, [templateItems, item?.id]);
+  const waitsOnSummary = blockedByItemIds.length > 0
+    ? blockedByItemIds.map(id => templateItems.find(i => i.id === id)?.title || 'An item no longer here').join(', ')
+    : null;
   const gateItem = answerGate ? templateItems.find(i => i.id === answerGate.itemId) ?? null : null;
   const gateSummary = answerGate && answerGate.answers.length > 0
     ? `${gateItem?.title || 'An item no longer here'}: ${answerGate.answers.join(' or ')}`
@@ -232,6 +257,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
+  const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
+  const [targetCount, setTargetCount] = useState<number | null>(null);
+  const [targetUnitText, setTargetUnitText] = useState('');
+  const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
+  const [allowOvershoot, setAllowOvershoot] = useState(false);
+  const [quotaReminders, setQuotaReminders] = useState(false);
+  const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
+  const [phoneText, setPhoneText] = useState('');
+  const [emailText, setEmailText] = useState('');
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
   const [deliverableSetsAway, setDeliverableSetsAway] = useState(false);
@@ -318,6 +352,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
+    setRecurrenceWeekOrdinal(item?.recurrenceWeekOrdinal ?? draft?.recurrenceWeekOrdinal ?? null);
+    setTargetCount(item?.targetCount ?? draft?.targetCount ?? null);
+    setTargetUnitText(item?.targetUnit ?? draft?.targetUnit ?? '');
+    setQuotaPeriod(item?.quotaPeriod ?? draft?.quotaPeriod ?? 'day');
+    setAllowOvershoot(item?.allowOvershoot ?? draft?.allowOvershoot ?? false);
+    setQuotaReminders(item?.quotaReminders ?? draft?.quotaReminders ?? false);
+    setChainStepOnSchedule(item?.chainStepOnSchedule ?? draft?.chainStepOnSchedule ?? false);
+    setPhoneText(item?.phoneNumber ?? draft?.phoneNumber ?? '');
+    setEmailText(item?.emailAddress ?? draft?.emailAddress ?? '');
+    setBlockedByItemIds(item?.blockedByItemIds ?? draft?.blockedByItemIds ?? []);
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
     setDeliverableOptionsText((item?.deliverableOptions ?? draft?.deliverableOptions ?? []).join(', '));
     setDeliverableSetsAway(item?.deliverableSetsAway ?? draft?.deliverableSetsAway ?? false);
@@ -487,8 +531,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       polarity: chainEnabled && effectiveChainItems.length >= 2 ? 'positive' : polarity,
       recurrenceType,
       recurrenceInterval,
-      recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
-      recurrenceMonthDay: recurrenceType === 'monthly' || recurrenceType === 'yearly' ? recurrenceMonthDay : null,
+      // A monthly "2nd Tuesday" keeps its weekday in recurrenceDays and has no
+      // month day: the three rules TaskEditor saves with.
+      recurrenceDays: recurrenceType === 'weekly' || (recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null) ? recurrenceDays : [],
+      recurrenceMonthDay: recurrenceType === 'yearly' || (recurrenceType === 'monthly' && recurrenceWeekOrdinal === null) ? recurrenceMonthDay : null,
+      recurrenceWeekOrdinal: recurrenceType === 'monthly' ? recurrenceWeekOrdinal : null,
       recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
@@ -508,7 +555,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       rotationEnabled: rotationEnabled && rotationItems.length >= 2,
       rotationItems: rotationItems.length >= 2 ? rotationItems : [],
       chainIndex: effectiveChainItems.length > 0 ? Math.min(chainIndex, effectiveChainItems.length - 1) : 0,
+      // Only a repeating chain has a next repeat to wait for.
+      chainStepOnSchedule: chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       subtasks: effectiveSubtasks,
+      // The rest of a target is dropped with it, as TaskEditor saves it.
+      targetCount,
+      targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnitText) : null,
+      quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
+      allowOvershoot: targetCount !== null && allowOvershoot,
+      quotaReminders: targetCount !== null && quotaReminders,
+      phoneNumber: phoneText.trim() || null,
+      emailAddress: emailText.trim() || null,
+      // Only items still in the template, so a deleted one isn't carried.
+      blockedByItemIds: blockedByItemIds.filter(id => templateItems.some(i => i.id === id && i.id !== item?.id)),
     };
     if (item) {
       updateItem(templateId, item.id, updates);
@@ -535,8 +594,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
   // Every blank this item declares, across every field that can hold one.
   const blanks = useMemo(
-    () => itemPlaceholders({ title, notes, location: locationText, subtasks, chainItems }),
-    [title, notes, locationText, subtasks, chainItems]
+    () => itemPlaceholders({ title, notes, location: locationText, subtasks, chainItems, rotationItems, variants }),
+    [title, notes, locationText, subtasks, chainItems, rotationItems, variants]
   );
 
   // The new blank goes on the end of the title: it's the field every item has,
@@ -1054,6 +1113,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             afterCountLabel="After N"
             onSelectEndNever={() => setRecurrenceCount(null)}
             onSelectEndCount={() => setRecurrenceCount(c => c ?? 5)}
+            // A template has no date of its own to seed the weekday from, so
+            // "the Nth weekday" starts on Monday and the author picks.
+            weekOrdinal={{ value: recurrenceWeekOrdinal, onChange: setRecurrenceWeekOrdinal, seedWeekday: () => 1 }}
           />
         )}
       </View>
@@ -1416,6 +1478,92 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         )}
       </View>
 
+      {/* Target: a counted target ("8 glasses a day"), as TaskEditor's Daily
+          target row. The interval form and the water link aren't offered here;
+          see templateItemParity.test.ts. */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Target"
+          summary={targetCount !== null
+            ? `${targetCount}${normalizeTargetUnit(targetUnitText) ? ` ${normalizeTargetUnit(targetUnitText)}` : '×'} a ${quotaPeriod}`
+            : undefined}
+          emptySummary="None"
+          hint="Count it several times instead of ticking it once, like 8 glasses a day or 3 runs a week."
+          expanded={fieldOpen('target', targetCount !== null)}
+          onToggle={() => toggleField('target', targetCount !== null)}
+        >
+          <CountStepper
+            value={targetCount}
+            onChange={setTargetCount}
+            min={2}
+            max={99}
+            allowNull
+            start={2}
+            emptyLabel="None"
+            label={quotaPeriod === 'week' ? 'Weekly target' : 'Daily target'}
+          />
+          {targetCount !== null && (
+            <>
+              <View style={styles.chainModeBlock}>
+                <SegmentedControl
+                  label="Target per"
+                  value={quotaPeriod}
+                  onChange={setQuotaPeriod}
+                  options={[
+                    { value: 'day', label: 'Per day' },
+                    { value: 'week', label: 'Per week' },
+                  ]}
+                />
+              </View>
+              <TextField
+                style={[styles.fieldBox, styles.deliverableOptionsInput]}
+                value={targetUnitText}
+                onChangeText={setTargetUnitText}
+                placeholder="e.g. glasses"
+                placeholderTextColor={colors.textTertiary}
+                autoCorrect={false}
+                returnKeyType="done"
+                accessibilityLabel="What the target counts"
+              />
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setQuotaReminders(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Notify me when each one is due"
+                accessibilityState={{ checked: quotaReminders }}
+              >
+                <Ionicons name="notifications-outline" size={18} color={quotaReminders ? colors.accent : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Notify me when each one is due</Text>
+                  <Text style={styles.optionHint}>Send a notification at each one, instead of only showing the task on Today</Text>
+                </View>
+                <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Allow going past target"
+                accessibilityState={{ checked: allowOvershoot }}
+              >
+                <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Allow going past target</Text>
+                  <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at the end of the {quotaPeriod} with whatever count you reached</Text>
+                </View>
+                <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
+        </CollapsibleField>
+      </View>
+
       {/* Chain */}
       <View style={styles.sectionCard}>
           <CollapsibleField
@@ -1604,6 +1752,28 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   Tap a number to set which step a task made from this template starts on.
                   {chainIndex > 0 ? ` Starts on step ${chainIndex + 1}: ${chainItems[chainIndex]?.title}.` : ''}
                 </Text>
+              )}
+              {chainItems.length > 1 && (
+                <View style={styles.chainModeBlock}>
+                  <SegmentedControl
+                    label="Next step"
+                    value={chainStepOnSchedule}
+                    onChange={setChainStepOnSchedule}
+                    options={[
+                      { value: false, label: 'Right away', accessibilityLabel: 'Next step right away' },
+                      // Disabled rather than hidden, as in TaskEditor, so it's
+                      // visible that a repeat is what unlocks it.
+                      { value: true, label: 'On the next repeat', accessibilityLabel: 'Next step on the next repeat', disabled: recurrenceType === 'none' },
+                    ]}
+                  />
+                  <Text style={styles.optionHint}>
+                    {recurrenceType === 'none'
+                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                      : chainStepOnSchedule
+                        ? 'One step per repeat. The chain rotates through its steps rather than running straight through.'
+                        : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                  </Text>
+                </View>
               )}
             </>
           )}
@@ -1831,6 +2001,46 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         </View>
       )}
 
+      {/* Waits on: TaskEditor's "Waiting on", pointed at other items of this
+          template, since the tasks they become don't exist yet. Hidden while
+          there's nothing else here to wait on. */}
+      {(waitCandidates.length > 0 || blockedByItemIds.length > 0) && (
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Waits on"
+            summary={waitsOnSummary ?? undefined}
+            emptySummary="Nothing"
+            hint="Holds the task back until these items' tasks are done. An item left unticked when the template is applied is skipped."
+            expanded={fieldOpen('waitsOn', waitsOnSummary !== null)}
+            onToggle={() => toggleField('waitsOn', waitsOnSummary !== null)}
+          >
+            <View style={styles.blankRow}>
+              {waitCandidates.map(candidate => {
+                const on = blockedByItemIds.includes(candidate.id);
+                return (
+                  <TouchableOpacity
+                    key={candidate.id}
+                    style={[styles.conditionPill, on && styles.conditionPillOn]}
+                    onPress={() => {
+                      haptics.tap();
+                      setBlockedByItemIds(prev => (on ? prev.filter(id => id !== candidate.id) : [...prev, candidate.id]));
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={`Waits on ${candidate.title}`}
+                  >
+                    <Text style={[styles.conditionPillText, on && styles.conditionPillTextOn]} numberOfLines={1}>
+                      {candidate.title || 'Untitled'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </CollapsibleField>
+        </View>
+      )}
+
       {/* Subtasks */}
       <View style={styles.sectionCard}>
         <CollapsibleField
@@ -2037,6 +2247,50 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             autoCorrect={false}
             returnKeyType="done"
             accessibilityLabel="Location"
+          />
+        </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Phone"
+          summary={phoneText.trim() || undefined}
+          hint="A number each task made from this item can call, like the clinic or the office."
+          expanded={fieldOpen('phone')}
+          onToggle={() => toggleField('phone')}
+        >
+          <TextField
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={phoneText}
+            onChangeText={t => setPhoneText(formatPhoneInput(t))}
+            placeholder="e.g. (555) 010-0199"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="phone-pad"
+            returnKeyType="done"
+            accessibilityLabel="Phone number"
+          />
+        </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Email"
+          summary={emailText.trim() || undefined}
+          hint="An address each task made from this item can write to."
+          expanded={fieldOpen('email')}
+          onToggle={() => toggleField('email')}
+        >
+          <TextField
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={emailText}
+            onChangeText={setEmailText}
+            placeholder="e.g. office@example.com"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel="Email address"
           />
         </CollapsibleField>
       </View>
@@ -2406,5 +2660,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
   choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
+  // Space around a control stacked inside a collapsible field (the chain's
+  // Next step, the target's period), so it doesn't sit against the rows.
+  chainModeBlock: { marginTop: spacing.sm, marginBottom: spacing.sm, gap: spacing.xs },
   deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, minHeight: 40 },
 });

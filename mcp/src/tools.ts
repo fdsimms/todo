@@ -17,10 +17,12 @@
  * deferred task, a time-of-day segment that has not opened, a task held by a
  * blocker, a `dayResetTime` that is not midnight.
  */
-import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
+import { format } from 'date-fns/format';
+import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
 import type { AnswerEdit, Replica } from './replica';
-import { resolveRef, templateToPlan, type TemplatePatch, type TemplatePlan } from './templatePlan';
+import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
+import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
 import {
   describeHealthTarget,
@@ -678,6 +680,26 @@ export interface CreateTemplateResult {
   groups: number;
   questions: number;
   scheduled: boolean;
+  /** What get_template would now report, for a follow-up edit's expectedVersion. */
+  version: string;
+  /** Legal but probably unintended (templateWarnings). Fix them or tell the person why not. */
+  warnings?: string[];
+  /** update_template only: what the edit changed, in plain words. */
+  changes?: string[];
+}
+
+function templateResult(replica: Replica, built: TaskTemplate): CreateTemplateResult {
+  const warnings = templateWarnings(built, replica.categories().map(c => c.name));
+  return {
+    id: built.id,
+    name: built.name,
+    items: built.items.length,
+    groups: built.itemGroups.length,
+    questions: built.questions.length,
+    scheduled: built.schedule !== null,
+    version: templateVersion(built),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 /**
@@ -689,15 +711,7 @@ export interface CreateTemplateResult {
  * template is worse than none, because it looks finished in the user's list.
  */
 export function createTemplate(replica: Replica, plan: TemplatePlan): CreateTemplateResult {
-  const built = replica.createTemplate(plan);
-  return {
-    id: built.id,
-    name: built.name,
-    items: built.items.length,
-    groups: built.itemGroups.length,
-    questions: built.questions.length,
-    scheduled: built.schedule !== null,
-  };
+  return templateResult(replica, replica.createTemplate(plan));
 }
 
 /**
@@ -903,24 +917,28 @@ export function listMedicationLogs(
   };
 }
 
+/** Every template checked at once (templateLibrary.ts). Read-only. */
+export function templateLibraryCheck(replica: Replica): LibraryCheck {
+  return checkTemplateLibrary(replica.templates(), replica.categories().map(c => c.name));
+}
+
 /** One template as the plan that would recreate it, or null when none matches. */
 export function getTemplate(replica: Replica, ref: string) {
   const found = resolveRef(ref, replica.templates());
   if (found.length > 1) throw new Error(`"${ref}" names ${found.length} templates. Use an id.`);
-  return found[0] ? templateToPlan(found[0]) : null;
+  return found[0] ? { ...templateToPlan(found[0]), version: templateVersion(found[0]) } : null;
 }
 
-/** Apply an edit to a template. See `Replica.updateTemplate` for the rules. */
-export function updateTemplate(replica: Replica, ref: string, patch: TemplatePatch): CreateTemplateResult {
-  const built = replica.updateTemplate(ref, patch);
-  return {
-    id: built.id,
-    name: built.name,
-    items: built.items.length,
-    groups: built.itemGroups.length,
-    questions: built.questions.length,
-    scheduled: built.schedule !== null,
-  };
+/**
+ * Apply an edit to a template. See `Replica.updateTemplate` for the rules.
+ * `changes` is what the preview an edit is confirmed from shows the person.
+ */
+export function updateTemplate(replica: Replica, ref: string, patch: TemplatePatch, expectedVersion?: string): CreateTemplateResult {
+  const found = resolveRef(ref, replica.templates());
+  const before = found.length === 1 ? found[0] : undefined;
+  const built = replica.updateTemplate(ref, patch, expectedVersion);
+  const changes = before ? describeTemplateChanges(before, built) : [];
+  return { ...templateResult(replica, built), changes: changes.length > 0 ? changes : ['Nothing would change.'] };
 }
 
 export interface DeleteTemplateResult {
@@ -966,9 +984,23 @@ export interface ApplyTemplateInput {
 }
 
 export interface ApplyTemplateResult {
-  created: { id: string; title: string; dueDate?: string }[];
+  created: {
+    id: string;
+    title: string;
+    dueDate?: string;
+    deferUntil?: string;
+    deadline?: string;
+    reminderTime?: string;
+    subtasks?: string[];
+  }[];
   /** What the run put them in, when the template makes a stack, project or parent task. */
   container?: { kind: string; id: string; name: string };
+  /** Offered items the run did not create, with why. Their itemIds go in include. */
+  leftOut?: { itemId: string; title: string; why: string }[];
+  /** Blanks that had no value and were dropped from the text. Answer them, or set runName for {run}. */
+  unfilledBlanks?: string[];
+  /** Nested templates that no longer exist, so nothing came from them. */
+  brokenRefs?: string[];
 }
 
 /** A bare YYYY-MM-DD as that local day. Never via toISOString, which is UTC. */
@@ -993,8 +1025,29 @@ export function applyTemplate(replica: Replica, ref: string, input: ApplyTemplat
     leaveOut: input.leaveOut,
     projectId: input.projectId,
   });
+  // The preview of a run is this result with its ids removed, so it says
+  // everything a person would check before saying yes: the dates, what each
+  // task carries, and what the run is about to skip.
+  const all = replica.tasks();
   return {
-    created: result.tasks.map(t => ({ id: t.id, title: t.title, ...(t.dueDate ? { dueDate: t.dueDate.slice(0, 10) } : {}) })),
+    created: result.tasks.map(t => {
+      const subtasks = all.filter(x => x.parentId === t.id).map(x => x.title);
+      return {
+        id: t.id,
+        title: t.title,
+        // The person's own day (the process runs in their zone, timeZone.ts),
+        // never cut out of the UTC string: noon there is the day before in UTC
+        // anywhere past UTC+12.
+        ...(t.dueDate ? { dueDate: format(new Date(t.dueDate), 'yyyy-MM-dd') } : {}),
+        ...(t.deferUntil ? { deferUntil: format(new Date(t.deferUntil), 'yyyy-MM-dd') } : {}),
+        ...(t.deadline ? { deadline: format(new Date(t.deadline), 'yyyy-MM-dd') } : {}),
+        ...(t.reminderTime ? { reminderTime: t.reminderTime } : {}),
+        ...(subtasks.length > 0 ? { subtasks } : {}),
+      };
+    }),
     ...(result.container ? { container: result.container } : {}),
+    ...(result.leftOut.length > 0 ? { leftOut: result.leftOut } : {}),
+    ...(result.unfilledBlanks.length > 0 ? { unfilledBlanks: result.unfilledBlanks } : {}),
+    ...(result.brokenRefs.length > 0 ? { brokenRefs: result.brokenRefs } : {}),
   };
 }

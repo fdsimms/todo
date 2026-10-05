@@ -199,6 +199,13 @@ describe('placeholderValuesFor', () => {
     expect(placeholderValuesFor([nights], { 'q-nights': '7' })).toEqual({ nights: '7' });
   });
 
+  // Token lookup is lowercased, so the key has to be too: otherwise a question
+  // named "Nights" never fills `{nights}` and the apply sheet asks for it twice.
+  it('keys a capitalised name the way a token reads it', () => {
+    expect(placeholderValuesFor([makeQuestion({ id: 'q-nights', name: 'Nights' })], { 'q-nights': '7' }))
+      .toEqual({ nights: '7' });
+  });
+
   it('skips a question that fills no blank', () => {
     const gate = makeQuestion({ name: '' });
     expect(placeholderValuesFor([gate], { 'q-type': 'Work' })).toEqual({});

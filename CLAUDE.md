@@ -1255,19 +1255,9 @@ A schema version in `PRAGMA user_version` was the other way to do this and is de
 Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`). Tags are additionally tracked in a `tag_registry` key in the `settings` table, so a tag that exists but is currently unused doesn't disappear. Categories used to work the same way, but now live in their own `categories` table (they carry schedule/vacation fields a string list can't hold) — the `category_registry` setting is legacy, read only by the one-time migration in `initDatabase()` that backfills that table.
 
 **A new `Task` field is not finished until you've decided whether `TemplateItem` needs it too.**
-`TemplateItem` (`src/types/index.ts`) deliberately mirrors a large slice of `Task`'s fields —
-`vacationPause`, `excludeFromSuggestions`, `priority`, `effort`, the recurrence fields, and more —
-because a template item is what seeds the task it creates: `buildDraftsFromTemplate`
-(`src/utils/templateUtils.ts`) reads the item's fields onto the draft, `buildDraftsFromTemplateTree`
-calls it, and `useTemplateStore`'s `applyTemplate` hands the result straight to
-`useTaskStore.addTask`. Nothing enforces the parity — they're separate interfaces — so adding a
-field to `Task` alone compiles fine and ships a setting nobody can pre-set from a template, with no
-error to catch it. Before calling a new per-task setting done, ask whether a template item should be
-able to seed it (a schedule/behavior toggle usually should; a runtime-only field like `completedAt`
-or `streakCount` shouldn't). If yes, that's four sites, not one: the field on `TemplateItem`, its
-default in `normalizeTemplateItem` (`src/utils/templateUtils.ts`, tolerant of older stored JSON
-missing it), its pass-through in `buildDraftsFromTemplate`, and a matching toggle in
-`TemplateItemEditor.tsx` alongside whatever `TaskEditor.tsx` grew.
+`src/__tests__/templateItemParity.test.ts` fails until you do: seed it (the field on `TemplateItem`,
+its default in `normalizeTemplateItem`, its copy in `buildDraftsFromTemplate`, a control in
+`TemplateItemEditor.tsx`) or name it in the test's list with the reason it isn't seeded.
 
 **Nor is a user-facing capability or `Task` field finished until you've decided whether the MCP
 server needs it.** `mcp/` redeploys on every merge that touches what it runs, so a changed util or

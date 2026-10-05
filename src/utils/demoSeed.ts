@@ -2775,13 +2775,17 @@ function seedTemplates(): void {
   // No options, no name, no default to seed — a 'people' question has none of
   // those, its answer set is read live off the People screen at apply time.
   addQuestion(template.id, { prompt: "Who's coming?", kind: 'people' });
+  // Minted here so the flights item can wait on it.
+  const pickDatesId = generateId();
   const ITEMS: Partial<TemplateItem>[] = [
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a
     // decision by hand every trip.
-    { title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date', deliverableSetsAway: true },
+    { id: pickDatesId, title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date', deliverableSetsAway: true },
     { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
-    { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2 },
+    // The one item that waits on another, so "Waits on" isn't empty on every
+    // item in the demo: no flights before there are dates.
+    { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2, blockedByItemIds: [pickDatesId] },
     { title: 'Somewhere to stay in {destination}', dueOffsetDays: -14, effort: 2 },
     {
       title: 'Pack for {destination}',
@@ -2835,7 +2839,10 @@ function seedTemplates(): void {
     { title: 'Water the plants', category: 'Home', dueOffsetDays: 0, optional: true },
     // The one template item with a location, so the editor's Location row
     // isn't empty on every item in the demo.
-    { title: 'Drop off dry cleaning', category: 'Home', dueOffsetDays: 0, optional: true, location: 'Main Street Cleaners' },
+    // And the one with a phone number, for the same reason.
+    { title: 'Drop off dry cleaning', category: 'Home', dueOffsetDays: 0, optional: true, location: 'Main Street Cleaners', phoneNumber: '(555) 010-0142' },
+    // A counted target, so the editor's Target row has something in it.
+    { title: 'Go for a run', category: 'Home', dueOffsetDays: 0, targetCount: 3, quotaPeriod: 'week', targetUnit: 'runs' },
   ];
   RESET_ITEMS.forEach(item => addItem(reset.id, item));
   useTemplateStore.getState().setTemplateContainer(reset.id, 'stack');

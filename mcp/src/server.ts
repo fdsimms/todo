@@ -55,6 +55,7 @@ import {
   reopenTask,
   reorderTemplates,
   updateTemplate,
+  templateLibraryCheck,
   completeTask,
   updateAnswer,
   deferTask,
@@ -371,8 +372,15 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'template_library_check',
+    'Check every template at once. Per template: problems a run mishandles now (a nested template that no longer exists, a condition on a deleted question, a wait on an item that is gone) and warnings (a {blank} no question fills, a question nothing uses, settings a run drops). Across templates: runs of items copied into several templates (worth moving into one template and nesting it), and pairs of templates that are near-copies (worth merging into one with a choice question). It changes nothing: each finding says what an update_template would do, and the person approves that edit.',
+    {},
+    async () => json(await withFresh(() => templateLibraryCheck(replica)))
+  );
+
+  server.tool(
     'get_template',
-    'One template in full, in the same shape create_template and update_template take: its items (each with an id), item groups (keyed by id), questions, schedule and container. Read it before editing a template, since update_template changes only what you name.',
+    'One template in full, in the same shape create_template and update_template take: its items (each with an id), item groups (keyed by id), questions, schedule and container, plus its version. Read it before editing a template, since update_template changes only what you name, and pass the version back as expectedVersion. Handing back what it returns unchanged keeps the template exactly as it is.',
     { template: z.string().describe('A template id, or its exact name when that names only one (list_templates).') },
     async ({ template }) => {
       const found = await withFresh(() => getTemplate(replica, template));
@@ -674,13 +682,24 @@ const itemSchema = z.object({
   effort: z.number().int().min(0).max(6).optional(),
   difficulty: z.enum(['easy', 'normal', 'hard']).optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
-  recurrenceType: z.string().optional(),
+  recurrenceType: z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly', 'hours']).optional(),
   recurrenceInterval: z.number().int().positive().optional(),
   recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
   recurrenceMonthDay: z.number().int().min(1).max(31).nullable().optional(),
   recurrenceMonth: z.number().int().min(1).max(12).nullable().optional().describe('Yearly: the month, 1 to 12.'),
   recurrenceCount: z.number().int().positive().nullable().optional().describe('Stop repeating after this many occurrences.'),
   recurrenceFromCompletion: z.boolean().optional(),
+  recurrenceWeekOrdinal: z.number().int().min(-1).max(4).refine(n => n !== 0).nullable().optional()
+    .describe('Monthly only: "the 2nd Tuesday" is 2 with recurrenceDays [2]; -1 is the last. Not with recurrenceMonthDay.'),
+  targetCount: z.number().int().min(2).nullable().optional().describe('A counted target: done N times a day (or a week with quotaPeriod). null for an ordinary task.'),
+  targetUnit: z.string().nullable().optional().describe('What the target counts, e.g. "glasses".'),
+  quotaPeriod: z.enum(['day', 'week']).optional().describe('What targetCount is per. Default day.'),
+  allowOvershoot: z.boolean().optional().describe('With a target: let it be logged past the target.'),
+  quotaReminders: z.boolean().optional().describe('With a target: remind as each unit falls due.'),
+  chainStepOnSchedule: z.boolean().optional().describe('On a repeating chain: each step waits for the next repeat instead of following straight away.'),
+  phoneNumber: z.string().nullable().optional(),
+  emailAddress: z.string().nullable().optional(),
+  waitsOn: z.array(z.string()).optional().describe('Keys of other items in this plan that must be done first. The task waits on the tasks they become; an item not ticked in a run is dropped from the list.'),
   polarity: z.enum(['positive', 'negative']).optional().describe('negative makes it a habit of not doing something.'),
   linkUrl: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
@@ -700,7 +719,7 @@ const itemSchema = z.object({
   vacationPause: z.boolean().optional(),
   excludeFromSuggestions: z.boolean().optional(),
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
-  groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
+  groupKey: z.string().nullable().optional().describe('The key of a group defined in this plan. null takes the item out of its group.'),
   conditions: z.array(conditionSchema).optional()
     .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
   variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
@@ -711,8 +730,8 @@ const itemSchema = z.object({
   onlyIfAnswer: z.object({
     item: z.string().describe('The key of an item in this plan that asks a Yes/No or choice question.'),
     answers: z.array(z.string()).min(1),
-  }).optional()
-    .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied.'),
+  }).nullable().optional()
+    .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied. null removes it.'),
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
@@ -733,6 +752,7 @@ const groupsSchema = z.array(z.object({
 })).optional();
 const questionsSchema = z.array(z.object({
   name: z.string().optional().describe('The {blank} this fills. Omit for a people question, which fills none. Item titles, notes, location, subtask titles and chain step titles replace {name} with the answer when the template is applied (case-insensitive; an unanswered blank is dropped). A title can do one sum on it, `{name + 1}`, `{name - 2}`, `{name * 2}` or `{name / 2}`: one operator and a literal number, no parentheses, fractions round up, never below 0. A name that no item mentions is allowed and fills nothing. A name like `days-2` is refused because it reads as a sum.'),
+  key: z.string().optional().describe('For a question with no name (a people question, or a choice that only decides what is ticked): a handle conditions can name it by. get_template returns the question\'s id here; keep it to keep the question.'),
   prompt: z.string(),
   kind: z.enum(QUESTION_KINDS as unknown as [string, ...string[]]),
   options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
@@ -744,7 +764,7 @@ const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
   weekday: z.number().int().min(0).max(6).optional(),
   monthDay: z.number().int().min(1).max(31).optional(),
-  month: z.number().int().min(0).max(11).optional(),
+  month: z.number().int().min(1).max(12).optional().describe('Yearly: the month, 1 to 12 (January is 1).'),
   time: z.string().optional().describe('HH:MM.'),
   anchorSpanDays: z.number().int().nullable().optional(),
 }).nullable().optional();
@@ -1305,7 +1325,7 @@ function registerWriteTools(
 
   server.tool(
     'create_template',
-    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once.' + BLANK_SYNTAX,
+    'Create a task template: its items, item groups, the questions a run asks, an optional firing schedule, and references to other templates. Everything is created in one call; an invalid plan creates nothing and reports every problem at once. A valid plan can still come back with warnings: things the template will do that were probably not meant (a {blank} no question fills, a reminder with no due date, a category that does not exist yet). Fix them, or tell the person why they stay. Every {word in braces} in a title or notes is a blank: declare a question with that name for each one, or a scheduled run and apply_template drop it.' + BLANK_SYNTAX,
     {
       name: z.string().min(1),
       category: z.string().nullable().optional(),
@@ -1330,7 +1350,7 @@ function registerWriteTools(
 
   server.tool(
     'update_template',
-    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name. Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused.' + BLANK_SYNTAX,
+    'Edit a template. Only what you name changes: name, category (null clears), container, anchorsAreAway, schedule (null removes it). groups, questions and items each replace their whole list when given, because items point at the other two, so send the full list. Keep an existing item by passing its id from get_template: { id } alone leaves it exactly as it is, and other fields written with the id change just those. An item with no id is new, and one left out is removed. A group is kept by using its id as its key; a question by keeping its name (or, for one with no name, its key). Checked in full first: an invalid edit changes nothing and reports every problem at once, and nesting a template inside itself is refused. Pass expectedVersion from get_template so an edit made against an old read is refused instead of undoing changes made since. The result lists the changes, which the preview shows the person, and any warnings.' + BLANK_SYNTAX,
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       name: z.string().min(1).optional(),
@@ -1341,11 +1361,12 @@ function registerWriteTools(
       questions: questionsSchema,
       schedule: scheduleSchema,
       items: z.array(itemSchema).min(1).optional(),
+      expectedVersion: z.string().optional().describe('The version get_template returned. The edit is refused if the template has changed since.'),
     },
-    async ({ template, ...patch }) => {
+    async ({ template, expectedVersion, ...patch }) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return json(await withWrite(() => updateTemplate(replica, template, patch as any)));
+        return json(await withWrite(() => updateTemplate(replica, template, patch as any, expectedVersion)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the template.' });
       }
@@ -1354,15 +1375,15 @@ function registerWriteTools(
 
   server.tool(
     'apply_template',
-    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. Reminders and calendar events for the new tasks are set up by the phone.",
+    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. The preview lists each task with its dates and subtasks, the items left out and why (leftOut, with itemIds for include), blanks left empty (unfilledBlanks), and nested templates that no longer exist (brokenRefs): check those before confirming. Reminders and calendar events for the new tasks are set up by the phone.",
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       runName: z.string().optional().describe('Names the run, e.g. "Lisbon trip". Needed for the template to create its stack, project or parent task; without it the tasks are loose.'),
       startDate: z.string().optional().describe('YYYY-MM-DD: the anchor items count their start offsets from. For a trip, the first day away.'),
       endDate: z.string().optional().describe('YYYY-MM-DD: the end anchor. For a trip, the last day away.'),
       answers: z.record(z.string()).optional().describe('Answers by question name, e.g. { "trip": "Work", "nights": "7" }. A number question left out is read off the dates.'),
-      include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item).'),
-      leaveOut: z.array(z.string()).optional().describe('Item ids to switch off.'),
+      include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item). A nested template\'s own item id switches on everything inside it.'),
+      leaveOut: z.array(z.string()).optional().describe('Item ids to switch off. A nested template\'s own item id switches off everything inside it.'),
       projectId: z.string().optional().describe('An existing project to put the tasks in.'),
     },
     async ({ template, ...input }) => {
