@@ -3841,9 +3841,13 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   },
   reminderText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   reminderAccept: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  // Zero height with the bubble overflowing it: a popover over what's below, not
+  // a row that pushes it down.
   tooltipRow: {
+    height: 0,
     marginTop: -4,
-    marginBottom: spacing.sm,
+    zIndex: 2,
+    overflow: 'visible',
   },
   tooltipAnchor: {
     alignSelf: 'flex-start',
