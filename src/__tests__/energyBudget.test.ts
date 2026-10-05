@@ -7,6 +7,8 @@ import {
   MIN_PROPOSED_KCAL,
   KCAL_PER_GRAM,
   MACRO_PRESETS,
+  CUSTOM_MACRO_ID,
+  customSplit,
   ageFromBirthYear,
   calorieBudget,
   isWholeSplit,
@@ -281,6 +283,27 @@ describe('isProfileComplete', () => {
     expect(isProfileComplete(EMPTY_BODY_PROFILE)).toBe(false);
     expect(isProfileComplete(profile({ heightCm: null }))).toBe(false);
     expect(isProfileComplete({ ...profile(), activity: 'sedentary' })).toBe(true);
+  });
+});
+
+describe('custom macro split', () => {
+  it('takes fat as the remainder so the split always divides the whole day', () => {
+    const split = customSplit(30, 45);
+    expect(split).toEqual({ proteinPct: 30, carbsPct: 45, fatPct: 25 });
+    expect(isWholeSplit(split!)).toBe(true);
+  });
+
+  it('allows protein and carbs to use the whole day, leaving no fat', () => {
+    expect(customSplit(60, 40)).toEqual({ proteinPct: 60, carbsPct: 40, fatPct: 0 });
+  });
+
+  it('refuses shares that pass 100 or go negative', () => {
+    expect(customSplit(70, 40)).toBeNull();
+    expect(customSplit(-5, 40)).toBeNull();
+  });
+
+  it('uses an id that no preset holds', () => {
+    expect(MACRO_PRESETS.some(p => p.id === CUSTOM_MACRO_ID)).toBe(false);
   });
 });
 
