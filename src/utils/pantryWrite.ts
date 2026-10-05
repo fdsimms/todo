@@ -18,6 +18,7 @@
  * alone, the same split `update_meal` makes for a meal's cook task.
  */
 import type { GroceryItem, ItemProduct, Leftover, LeftoverOutcome } from '../types';
+import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { PORTION_PRODUCT_KEY, isPortionBox } from '../types';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
 import { expiresAtForOpening, expiresAtForPurchase } from './groceryShelfLife';
@@ -27,7 +28,8 @@ import { aisleForName, placeAisle } from './groceryAisles';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import { catalogItemForKey } from './groceryPlural';
 import { newItemRow, nextSortOrder } from './groceryAdd';
-import { keepDaysBetween, keepUntilKeyFor } from './leftovers';
+import { cleanLeftoverTitle, keepDaysBetween, keepUntilKeyFor } from './leftovers';
+import { clampCookedWeight } from './mealLog';
 
 /** The three columns that belong to one box of something, and end with it. */
 const BOX_STORY_CLEARED = { expiresAt: null, frozenAt: null, openedAt: null } as const;
@@ -341,4 +343,47 @@ export function leftoverReopenedRow(leftover: Leftover): Leftover | null {
 /** Keep it for this many days from the day it was stored. */
 export function leftoverKeepDaysRow(leftover: Leftover, days: number): Leftover {
   return { ...leftover, keepUntil: keepUntilKeyFor(leftover.storedAt, days) };
+}
+
+export interface LeftoverDraft {
+  title: string;
+  /** ISO instant it went in the fridge. Defaults to now. */
+  storedAt?: string;
+  /** Keep-for window in days, converted to a `keepUntil` day key on the way in. */
+  keepDays?: number;
+  /** The recipe it was made from, when logged off a cooked meal. */
+  recipeId?: string | null;
+  /** The planned meal it was logged from. */
+  sourceEntryId?: string | null;
+  /** Log this one straight into the freezer rather than into the fridge. */
+  frozen?: boolean;
+  /** What the container holds, in grams. Omitted for the containers nobody weighs. */
+  weightG?: number | null;
+}
+
+/**
+ * A new container. Null when the title is empty, the only thing refused.
+ *
+ * A container logged straight into the freezer is stamped with `storedAt`
+ * rather than with now: it went in when it was put away, which for a portion
+ * logged two days late would otherwise read as two days spent in the fridge.
+ */
+export function newLeftoverRow(draft: LeftoverDraft, id: string, nowIso: string): Leftover | null {
+  const title = cleanLeftoverTitle(draft.title);
+  if (!title) return null;
+  const storedAt = draft.storedAt ?? nowIso;
+  return {
+    id,
+    title,
+    recipeId: draft.recipeId ?? null,
+    sourceEntryId: draft.sourceEntryId ?? null,
+    storedAt,
+    keepUntil: keepUntilKeyFor(storedAt, draft.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT),
+    finishedAt: null,
+    outcome: null,
+    frozenAt: draft.frozen ? storedAt : null,
+    weightG: clampCookedWeight(draft.weightG ?? null),
+    createdAt: nowIso,
+    useUpTask: null,
+  };
 }

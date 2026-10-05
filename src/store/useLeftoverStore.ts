@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type { Leftover, LeftoverOutcome } from '../types';
-import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import {
   dbGetAllLeftovers,
   dbInsertLeftover,
@@ -11,7 +10,7 @@ import {
   dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { leftoverFinishedRow, leftoverFrozenRow, leftoverKeepDaysRow, leftoverReopenedRow } from '../utils/pantryWrite';
+import { leftoverFinishedRow, leftoverFrozenRow, leftoverKeepDaysRow, leftoverReopenedRow, newLeftoverRow, type LeftoverDraft } from '../utils/pantryWrite';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import {
   cleanLeftoverTitle,
@@ -36,28 +35,7 @@ import {
   undoHistoryActions,
 } from '../utils/undoHistory';
 
-export interface LeftoverDraft {
-  title: string;
-  /** ISO instant it went in the fridge. Defaults to now. */
-  storedAt?: string;
-  /** Keep-for window in days, converted to a `keepUntil` day key on the way in. */
-  keepDays?: number;
-  /** The recipe it was made from, when logged off a cooked meal. */
-  recipeId?: string | null;
-  /** The planned meal it was logged from. */
-  sourceEntryId?: string | null;
-  /**
-   * Log this one straight into the freezer rather than into the fridge — see
-   * `LeftoverDestination`, which is what the log sheet asks and where the
-   * "both" answer is turned into two of these.
-   */
-  frozen?: boolean;
-  /**
-   * What the container holds, in grams. Omitted for the containers nobody
-   * weighs, which is most of them. See `Leftover.weightG`.
-   */
-  weightG?: number | null;
-}
+export type { LeftoverDraft };
 
 /**
  * What's in the fridge.
@@ -189,6 +167,8 @@ interface LeftoverStore extends UndoHistoryActions {
    * "eaten" is a claim about a container that is still physically there.
    */
   reopenLeftover: (id: string) => void;
+  /** Writes a snapshot of the stored/keep/frozen/finished fields back, for the Activity screen's undo of an agent's change. */
+  restoreLeftover: (id: string, patch: Record<string, unknown>) => void;
   deleteLeftover: (id: string) => void;
 
   /**
@@ -319,35 +299,9 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   },
 
   logLeftover(draft) {
-    const title = cleanLeftoverTitle(draft.title);
-    if (!title) return null;
-
-    const storedAt = draft.storedAt ?? new Date().toISOString();
-    const leftover: Leftover = {
-      id: generateId(),
-      title,
-      recipeId: draft.recipeId ?? null,
-      sourceEntryId: draft.sourceEntryId ?? null,
-      storedAt,
-      keepUntil: keepUntilKeyFor(storedAt, draft.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT),
-      finishedAt: null,
-      outcome: null,
-      // Stamped with `storedAt` rather than with now: a container logged
-      // straight into the freezer went in when it was put away, which is the
-      // same instant the "Put away" chips are answering for. They come apart
-      // for a portion logged two days late, and taking the later of the two
-      // would have it read as having spent those days in the fridge.
-      //
-      // This used to be flatly null — the freezer was somewhere you moved a
-      // container that already existed, so `setFrozen` was the only way in.
-      // That held right up against batch cooking, where half the pot never
-      // sees the fridge at all: logging it and then freezing it was two steps
-      // to record one, and the fridge clock it ran in between was a lie.
-      frozenAt: draft.frozen ? storedAt : null,
-      weightG: clampCookedWeight(draft.weightG ?? null),
-      createdAt: new Date().toISOString(),
-      useUpTask: null,
-    };
+    // The row is `newLeftoverRow`'s, shared with the MCP server's log_leftover.
+    const leftover = newLeftoverRow(draft, generateId(), new Date().toISOString());
+    if (!leftover) return null;
     dbInsertLeftover(leftover);
     set(s => ({ leftovers: sortLeftovers([...s.leftovers, leftover]) }));
     reconcileLeftoverTask(leftover);
@@ -506,6 +460,14 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
       redo: () => get().finishLeftover(id, outcome),
       undo: () => get().reopenLeftover(id),
     });
+  },
+
+  restoreLeftover(id, patch) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (!leftover) return;
+    const updated = { ...leftover, ...patch } as Leftover;
+    save(set, updated);
+    reconcileLeftoverTask(updated);
   },
 
   reopenLeftover(id) {

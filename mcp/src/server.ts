@@ -81,7 +81,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
+import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
@@ -1680,6 +1680,23 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => updateLeftover(replica, id, change)), LINKS?.pantry()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that leftover.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_leftover',
+    "Log a container of cooked food that is now in the fridge, or in the freezer with frozen: true. keepDays is how long it keeps in the fridge (3 by default). It appears in list_pantry with a leftoverId. This does not link it to a recipe or a planned meal, and is not a food log entry: use log_food for what someone ate.",
+    {
+      title: z.string().min(1),
+      keepDays: z.number().int().min(1).max(365).optional(),
+      frozen: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => logLeftover(replica, input)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that leftover.' });
       }
     }
   );

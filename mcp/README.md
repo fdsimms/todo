@@ -160,6 +160,7 @@ only the fallback until the first sync.
 | `update_pantry_box` | **Write.** The same for one packet or frozen portion of an item. |
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
 | `answer_pantry_review` | **Write.** Records the person's answers (have, low, out) to `pantry_review` cards. |
+| `log_leftover` | **Write.** Logs a container of cooked food in the fridge or freezer. |
 | `update_leftover` | **Write.** Freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
@@ -193,7 +194,7 @@ undo, and it is not the sort of thing to do on a model's say-so.
 The pantry tools are the same rows through the same rules: `src/utils/pantryWrite.ts` decides what each
 change does to a row, and `useGroceryStore` and `useLeftoverStore` call it too. The one thing they
 do not write is the "Use up X" task, which goes through the task store; the phone reconciles it from
-the rows the next time it opens. Creating a leftover, logging cooked weight, a scanned or receipt
+the rows the next time it opens. Linking a leftover to the recipe it came from, logging cooked weight, a scanned or receipt
 batch and Siri's mark-as-used-up stay in the app.
 
 The three log tools are **empty until the phone sends the logs**: they reach the server only with

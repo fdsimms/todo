@@ -276,10 +276,10 @@ the store's own `uncompleteTask`. Everything else an agent writes is recorded wi
 can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
 is still how the agent left it.
 
-- **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
+- **Undoable:** a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
-- **Record only, on purpose:** a pantry change (see the pantry section), a recipe, template, stack, reward or project the agent created (each has
+- **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
   contents added afterward and no edit stamp to tell whether they were, and a project or stack owns
   other rows), a grocery item taken off the list (putting it back would rebuild its quantity and aisle
   from nothing), a project completion, and an automation switch (one setter per setting).
@@ -864,7 +864,7 @@ for everything, which is adequate for a laptop and is not adequate for that.
 ### The pantry: the same row rules, and what stays on the phone
 
 `list_pantry`, `get_pantry_item`, `pantry_review`, `use_up_recipes`, `update_pantry_item`,
-`update_pantry_box`, `add_to_pantry`, `answer_pantry_review` and `update_leftover`
+`update_pantry_box`, `add_to_pantry`, `answer_pantry_review`, `log_leftover` and `update_leftover`
 (`mcp/src/pantryTools.ts`, over the `Replica` methods of the same names). `docs/arch/groceries.md`
 has the rules; two decisions are specific to the server.
 
@@ -886,12 +886,17 @@ has the rules; two decisions are specific to the server.
   `KitchenScreen` gives for not keeping any.
 - **A review answer is the person's.** The tool descriptions say not to answer a card on their
   behalf, since the review exists to replace a guess with a claim.
-- **Left in the app on purpose:** creating a leftover (it is born from cooking, with the recipe and
-  plan entry it came from), the meal-log offer that eating one raises, a scanned or receipt batch
+- **Left in the app on purpose:** a leftover's link to the recipe and plan entry it came from, the meal-log offer that eating one raises, a scanned or receipt batch
   (`addManyToPantry`), the disposal follow-up question, and Siri's mark-as-used-up.
-- **Logged as `subject: 'pantry'`, record only.** Undoing a pantry write needs the item's row and its
-  boxes put back together, which the ledger's field-level revert does not carry. The Activity entry
-  names the item and what changed.
+- **Logged as `subject: 'pantry'`, and undoable by snapshot.** The ledger's usual revert is one flat
+  record of changed fields, and a pantry write touches an item, its boxes (a frozen portion made or
+  deleted) and the home list (running low joins it). So the entry stores the item's pantry fields,
+  its boxes and whether it was on the list, before and after (`agentPantryRevert.ts`), and Activity
+  offers an undo only while the item still matches the "after" snapshot, the rule every other undo
+  follows. The store side is `useGroceryStore.restorePantry` and `useLeftoverStore.restoreLeftover`.
+  A leftover the agent logged is removable while it is open, like a log entry; a new catalog row
+  from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
+  list does.
 
 ### Correcting and deleting a log entry
 

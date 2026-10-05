@@ -346,3 +346,10 @@ export function answerPantryReview(replica: Replica, answers: { id: string; answ
 export function updateLeftover(replica: Replica, id: string, change: LeftoverChange): SerializedLeftover {
   return serializeLeftover(replica.updateLeftover(id, change));
 }
+
+/** Log a container of cooked food, in the fridge or straight into the freezer. */
+export function logLeftover(replica: Replica, input: { title: string; keepDays?: number; frozen?: boolean }): SerializedLeftover {
+  const row = replica.createLeftover(input);
+  if (!row) throw new Error('A leftover needs a name.');
+  return serializeLeftover(row);
+}

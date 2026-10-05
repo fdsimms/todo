@@ -411,6 +411,8 @@ export interface PantryBoxOutcome {
   changed: string[];
 }
 
+export type LeftoverDraftInput = import('../../src/utils/pantryWrite').LeftoverDraft;
+
 export interface LeftoverChange {
   frozen?: boolean;
   /** Finish it, or null to reopen one that was finished. */
@@ -914,6 +916,8 @@ export interface Replica {
   /** One card of the pantry review. Every answer stamps the card as reviewed. */
   answerPantryReview(id: string, answer: 'have' | 'low' | 'out'): GroceryItem;
   updateLeftover(id: string, change: LeftoverChange): Leftover;
+  /** Log a container of cooked food. Null when the title is empty. */
+  createLeftover(draft: LeftoverDraftInput): Leftover | null;
 
   /**
    * The `Task` fields a `create_task`/`update_task` input stands for, checked
@@ -3119,6 +3123,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       refresh();
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
+    },
+
+    createLeftover(draft: LeftoverDraftInput): Leftover | null {
+      const row = pantryWrite.newLeftoverRow(draft, generateId(), new Date().toISOString());
+      if (!row) return null;
+      db.dbInsertLeftover(row);
+      refresh();
+      return row;
     },
 
     updateLeftover(id: string, change: LeftoverChange): Leftover {

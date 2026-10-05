@@ -1083,6 +1083,15 @@ interface GroceryStore extends UndoHistoryActions {
    */
   answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => ItemProduct[];
   /**
+   * Put an item's pantry state back exactly as an earlier snapshot had it (the
+   * Activity screen's undo of an agent's pantry write, `agentPantryRevert.ts`).
+   * `patch` is the item's pantry fields, `boxes` the item's boxes as they were
+   * (upserted, which also restores a deleted portion), `removeBoxIds` boxes
+   * that did not exist then, and `removeFromList` takes it back off the list at
+   * home when running low had put it there. Guarded on the row still existing.
+   */
+  restorePantry: (itemId: string, patch: Record<string, unknown>, boxes: ItemProduct[], removeBoxIds: string[], removeFromList: boolean) => void;
+  /**
    * Put one row back exactly as it was — the deck's Undo button.
    *
    * Takes the whole snapshot rather than an answer to invert, because the three
@@ -3747,6 +3756,29 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // "out of it" on a row already out has no task left to drop.
     if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
     return thawedPortions;
+  },
+
+  restorePantry(itemId, patch, boxes, removeBoxIds, removeFromList) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return;
+    const updated = { ...item, ...patch } as GroceryItem;
+    const gone = new Set(removeBoxIds);
+    dbTransaction(() => {
+      dbUpdateGroceryItem(updated);
+      for (const b of boxes) dbSetItemProduct(b);
+      for (const id of removeBoxIds) dbDeleteItemProduct(id);
+    });
+    const restored = new Map(boxes.map(b => [b.id, b]));
+    set(s => ({
+      items: s.items.map(i => (i.id === itemId ? updated : i)),
+      itemProducts: [
+        ...s.itemProducts.filter(p => !gone.has(p.id)).map(p => restored.get(p.id) ?? p),
+        ...boxes.filter(b => !s.itemProducts.some(p => p.id === b.id)),
+      ],
+    }));
+    if (removeFromList) get().removeFromListMany([itemId], { listId: null });
+    // The restored row may want, or no longer want, a use-up task.
+    reconcileUseUpTask(updated);
   },
 
   revertPantryAnswer(item, entry, portions = []) {

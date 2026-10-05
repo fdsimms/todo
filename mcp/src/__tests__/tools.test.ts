@@ -77,6 +77,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     addToPantry: () => { throw new Error('not stubbed'); },
     answerPantryReview: () => { throw new Error('not stubbed'); },
     updateLeftover: () => { throw new Error('not stubbed'); },
+    createLeftover: () => { throw new Error('not stubbed'); },
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),

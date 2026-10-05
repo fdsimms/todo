@@ -10,6 +10,7 @@ import {
   answerPantryReview,
   getPantryItem,
   listPantry,
+  logLeftover,
   pantryReview,
   updateLeftover,
   updatePantryBox,
@@ -240,7 +241,7 @@ describe('the pantry tools', () => {
     });
   });
 
-  it('records every pantry write in Activity under one subject, without an undo', () => {
+  it('records every pantry write in Activity under one subject, with the snapshot an undo reads', () => {
     addToPantry(replica, ['rice']);
     const id = replica.groceryItems()[0].id;
     updatePantryItem(replica, { id, status: 'out' });
@@ -248,6 +249,117 @@ describe('the pantry tools', () => {
     const entries = (require('../../../src/db/database') as typeof import('../../../src/db/database')).dbGetUnattendedLog();
     const pantry = entries.filter(e => e.subject === 'pantry');
     expect(pantry.map(e => e.actor)).toEqual(['agent', 'agent']);
-    expect(pantry.every(e => !e.revert)).toBe(true);
+    expect(pantry.every(e => e.revert && 'item' in e.revert.before && 'item' in e.revert.after)).toBe(true);
+  });
+});
+
+describe('pantry undo and log_leftover', () => {
+  // A separate block over the same replica, since the interesting question is
+  // what the Activity screen's undo would do with the entries a write left.
+  let replica: ReturnType<typeof openReplica>;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { agentRecordPlan } = require('../../../src/utils/agentRecordRevert') as typeof import('../../../src/utils/agentRecordRevert');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { dbGetUnattendedLog } = require('../../../src/db/database') as typeof import('../../../src/db/database');
+
+  const stateOf = (r: ReturnType<typeof openReplica>) => ({
+    project: () => null,
+    groceryHome: (id: string) => {
+      const e = r.groceryListEntries().find(x => x.itemId === id && x.listId === null);
+      return e ? { checked: e.checked } : null;
+    },
+    groceryItem: (id: string) => r.groceryItems().find(i => i.id === id) ?? null,
+    itemBoxes: (id: string) => r.itemProducts().filter(p => p.itemId === id),
+    leftover: (id: string) => r.leftovers().find(l => l.id === id) ?? null,
+    exists: () => false,
+    ruleList: () => [],
+    hasNote: () => false,
+    calendarRequest: () => null,
+  });
+
+  const latest = () => dbGetUnattendedLog().filter(e => e.subject === 'pantry').sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+
+  beforeAll(() => {
+    replica = openReplica(':memory:');
+  });
+
+  beforeEach(() => {
+    mockRaw.runSync('DELETE FROM grocery_items');
+    mockRaw.runSync('DELETE FROM grocery_list_items');
+    mockRaw.runSync('DELETE FROM grocery_item_products');
+    mockRaw.runSync('DELETE FROM leftovers');
+    mockRaw.runSync('DELETE FROM unattended_log');
+    replica.refresh();
+  });
+
+  it('offers an undo of an item change only while the item is still as it was left', () => {
+    addToPantry(replica, ['spinach']);
+    const id = replica.groceryItems()[0].id;
+    updatePantryItem(replica, { id, status: 'out', outcome: 'spoiled' });
+    const entry = latest();
+    expect(entry.revert).toBeTruthy();
+    const plan = agentRecordPlan(entry, stateOf(replica));
+    expect(plan).toMatchObject({ kind: 'restorePantryItem', itemId: id, patch: expect.objectContaining({ spoiledCount: 0 }) });
+
+    // Someone marks it on hand in the app afterwards: the agent's result is gone, so no undo.
+    updatePantryItem(replica, { id, status: 'have' });
+    expect(agentRecordPlan(entry, stateOf(replica))).toEqual({ kind: 'none', reason: 'Changed since' });
+  });
+
+  it('reads as undone once the before state is back', () => {
+    addToPantry(replica, ['rice']);
+    const id = replica.groceryItems()[0].id;
+    updatePantryItem(replica, { id, staple: true });
+    const entry = latest();
+    updatePantryItem(replica, { id, staple: false });
+    expect(agentRecordPlan(entry, stateOf(replica))).toEqual({ kind: 'none', reason: 'Undone' });
+  });
+
+  it('undoes running low by taking the item back off the list, and a frozen portion by removing it', () => {
+    addToPantry(replica, ['butter']);
+    const id = replica.groceryItems()[0].id;
+    updatePantryItem(replica, { id, runningLow: true, freezeSome: true });
+    const plan = agentRecordPlan(latest(), stateOf(replica));
+    expect(plan).toMatchObject({ kind: 'restorePantryItem', removeFromList: true, removeBoxIds: [replica.itemProducts()[0].id], boxes: [] });
+  });
+
+  it('restores a deleted portion from the before snapshot', () => {
+    addToPantry(replica, ['bread']);
+    const id = replica.groceryItems()[0].id;
+    updatePantryItem(replica, { id, freezeSome: true });
+    const portion = replica.itemProducts()[0];
+    updatePantryBox(replica, portion.id, { status: 'out' });
+    const plan = agentRecordPlan(latest(), stateOf(replica));
+    expect(plan).toMatchObject({ kind: 'restorePantryItem', boxes: [expect.objectContaining({ id: portion.id, isPortion: true })] });
+  });
+
+  it('undoes marking a name on hand that the catalog did not have by clearing the claim', () => {
+    addToPantry(replica, ['flour']);
+    const plan = agentRecordPlan(latest(), stateOf(replica));
+    expect(plan).toMatchObject({ kind: 'restorePantryItem', patch: expect.objectContaining({ onHandUntil: null }) });
+  });
+
+  it('logs a leftover, offers to remove it while it is open, and refuses once it is finished', () => {
+    const made = logLeftover(replica, { title: 'Chili', keepDays: 4 });
+    expect(listPantry(replica).entries.map(e => e.leftoverId)).toEqual([made.id]);
+    expect(agentRecordPlan(latest(), stateOf(replica))).toEqual({ kind: 'removeLeftover', id: made.id });
+    updateLeftover(replica, made.id, { finished: 'eaten' });
+    expect(agentRecordPlan(dbGetUnattendedLog().filter(e => e.subject === 'pantry' && e.action === 'created')[0], stateOf(replica)))
+      .toEqual({ kind: 'none', reason: 'Finished since' });
+    expect(() => logLeftover(replica, { title: '   ' })).toThrow(/name/);
+  });
+
+  it('logs straight into the freezer', () => {
+    logLeftover(replica, { title: 'Stock', frozen: true });
+    expect(listPantry(replica, { filter: 'frozen' }).entries.map(e => e.title)).toEqual(['Stock']);
+  });
+
+  it('undoes a leftover freeze by its own snapshot', () => {
+    const made = logLeftover(replica, { title: 'Soup' });
+    updateLeftover(replica, made.id, { frozen: true });
+    // Both entries can share a millisecond, so pick the edit by its action.
+    const edit = dbGetUnattendedLog().find(e => e.subject === 'pantry' && e.action === 'edited')!;
+    const plan = agentRecordPlan(edit, stateOf(replica));
+    expect(plan).toMatchObject({ kind: 'restoreLeftover', id: made.id, patch: expect.objectContaining({ frozenAt: null }) });
   });
 });

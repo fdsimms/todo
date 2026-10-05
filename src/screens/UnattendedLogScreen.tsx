@@ -13,6 +13,7 @@ import { agentUndoLabel, agentUndoPlan, revertBatch, revertableInBatch, type Age
 import { agentUndoReaders, applyAgentUndo } from '../utils/agentUndoRun';
 import { useProjectStore } from '../store/useProjectStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
@@ -79,6 +80,9 @@ export function UnattendedLogScreen() {
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
   const groceryEntries = useGroceryStore(s => s.listEntries);
+  const groceryItems = useGroceryStore(s => s.items);
+  const itemBoxes = useGroceryStore(s => s.itemProducts);
+  const leftovers = useLeftoverStore(s => s.leftovers);
   const meals = useMealPlanStore(s => s.entries);
   const foods = useFoodLogStore(s => s.entries);
   const moods = useMoodStore(s => s.logs);
@@ -94,7 +98,7 @@ export function UnattendedLogScreen() {
   const readers = useMemo(
     () => (hasAgentRows ? agentUndoReaders() : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasAgentRows, tasks, projects, groceryEntries, meals, foods, moods, doses, titleRules, weatherRules, eventRules, healthRules, screenTimeRules, undoCount],
+    [hasAgentRows, tasks, projects, groceryEntries, groceryItems, itemBoxes, leftovers, meals, foods, moods, doses, titleRules, weatherRules, eventRules, healthRules, screenTimeRules, undoCount],
   );
 
   // The newest row of each confirmed agent call that changed more than one
@@ -300,6 +304,9 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     }
     case 'noteRemove': return { title: 'Forget this note?', message: `Removes the note ${t} from Notes for Claude.`, destructive: true };
     case 'noteAdd': return { title: 'Restore this note?', message: `Puts the note ${t} back in Notes for Claude.`, destructive: false };
+    case 'restorePantryItem': return { title: 'Undo this change?', message: `Puts ${t} in the pantry back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreLeftover': return { title: 'Undo this change?', message: `Puts the leftover ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'removeLeftover': return { title: 'Remove this leftover?', message: `Claude logged ${t}. Removing it deletes it, including anything you changed on it since.`, destructive: true };
     case 'cancelCalendarRequest': return { title: 'Don’t add this event?', message: `Claude asked to add ${t} to your calendar, and it hasn’t been added yet. This stops it from being added.`, destructive: false };
   }
 }
