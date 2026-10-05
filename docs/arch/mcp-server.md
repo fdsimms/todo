@@ -276,7 +276,7 @@ the store's own `uncompleteTask`. Everything else an agent writes is recorded wi
 can be undone too, by the same rule (`src/utils/agentRecordRevert.ts`): offered only while the record
 is still how the agent left it.
 
-- **Undoable:** a project's plain edit (its fields before and after), a grocery item added to the list
+- **Undoable:** a pantry change (by snapshot, see the pantry section), a project's plain edit (its fields before and after), a grocery item added to the list
   or checked and unchecked, a meal, food entry, mood check-in or dose the agent wrote, a rule list
   (the whole list before and after), and a note remembered or forgotten.
 - **Record only, on purpose:** a recipe, template, stack, reward or project the agent created (each has
@@ -860,6 +860,43 @@ thing; a copy that also holds every symptom they have recorded, every dose they 
 every meal they have eaten is health data in the sense a privacy label means it, and a hosted
 replica puts all of it on a machine with a public address. The read surface is one bearer token
 for everything, which is adequate for a laptop and is not adequate for that.
+
+### The pantry: the same row rules, and what stays on the phone
+
+`list_pantry`, `get_pantry_item`, `pantry_review`, `use_up_recipes`, `update_pantry_item`,
+`update_pantry_box`, `add_to_pantry`, `answer_pantry_review`, `log_leftover` and `update_leftover`
+(`mcp/src/pantryTools.ts`, over the `Replica` methods of the same names). `docs/arch/groceries.md`
+has the rules; two decisions are specific to the server.
+
+- **Every pantry write is `src/utils/pantryWrite.ts`, shared with the stores.** `useGroceryStore`
+  cannot load in Node, and each of its pantry actions was a row transform fused to a `set()`, an
+  undo and a use-up reconcile. The transform is lifted out the way `planGroceryAdd` was, and
+  `setOnHandUntil`, `markOutOfMany`, `setFrozen`, `setOpened`, `answerPantryReview`, the box actions,
+  `freezePortion`, `addToPantry` and the leftover store's freeze, finish and reopen all call it. A
+  pantry rule fixed in one place is fixed for the phone and the server.
+- **The use-up task is not written here.** It goes through the task store, which is unreachable from
+  Node, so a change that would spawn or drop one leaves it to the phone's catch-up pass
+  (`reconcileAllUseUpTasks`), which converges from the rows alone. The same split `update_meal` makes
+  for a meal's cook task. `update_pantry_item`'s `useUpTask` sets the item's own flag, which that
+  pass then honors.
+- **Reads are the app's readers.** `list_pantry` is `kitchenInventory` (so a row appears only when
+  `probablyHaveReason` vouches for it), `pantry_review` is `buildPantryReviewDeck`, `use_up_recipes`
+  is `useUpRecipes` over `useUpEntries`. `get_pantry_item` reports `unknown` where the app has no
+  opinion, never `out`: a null reason is ignorance. There are no quantities, for the reason
+  `KitchenScreen` gives for not keeping any.
+- **A review answer is the person's.** The tool descriptions say not to answer a card on their
+  behalf, since the review exists to replace a guess with a claim.
+- **Left in the app on purpose:** a leftover's link to the recipe and plan entry it came from, the meal-log offer that eating one raises, a scanned or receipt batch
+  (`addManyToPantry`), the disposal follow-up question, and Siri's mark-as-used-up.
+- **Logged as `subject: 'pantry'`, and undoable by snapshot.** The ledger's usual revert is one flat
+  record of changed fields, and a pantry write touches an item, its boxes (a frozen portion made or
+  deleted) and the home list (running low joins it). So the entry stores the item's pantry fields,
+  its boxes and whether it was on the list, before and after (`agentPantryRevert.ts`), and Activity
+  offers an undo only while the item still matches the "after" snapshot, the rule every other undo
+  follows. The store side is `useGroceryStore.restorePantry` and `useLeftoverStore.restoreLeftover`.
+  A leftover the agent logged is removable while it is open, like a log entry; a new catalog row
+  from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
+  list does.
 
 ### Correcting and deleting a log entry
 

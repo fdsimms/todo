@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
+import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { tasksAskingOnCompletion, unansweredCompletionCopy } from '../utils/bulkCompletion';
 
@@ -40,7 +41,7 @@ interface CompleteRequest {
  * `enqueue` for a single task), and render
  * `<DeliverablePromptQueue {...queueProps} />` somewhere in the host.
  */
-export function useAnswerFirstCompletion() {
+export function useAnswerFirstCompletion(onOpenTask?: (task: Task) => void) {
   const [queueIds, setQueueIds] = useState<readonly string[]>(NOTHING_QUEUED);
 
   const requestComplete = useCallback(({ ids, complete }: CompleteRequest) => {
@@ -89,5 +90,5 @@ export function useAnswerFirstCompletion() {
     [],
   );
 
-  return { requestComplete, enqueue, queueProps: { ids: queueIds, onResolved } };
+  return { requestComplete, enqueue, queueProps: { ids: queueIds, onResolved, onOpenTask } };
 }
