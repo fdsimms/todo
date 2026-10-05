@@ -64,7 +64,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
 - `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, eventFieldsForRequest
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
-- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +22 more
+- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +23 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/cardAnchor.ts` — CardAnchor, CardPlacement, ANCHOR_GAP, ANCHOR_REACH, ANCHOR_EDGE, cardAnchorPlacement
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
@@ -422,6 +422,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, TRIP_WINDOW_DAYS, useCalendarStore, useCalendarSync
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, ensureGeneratedTaskCategory, ensureGeneratedTaskCategories
 - `src/store/useDemoStore.ts` — clearUndoHistories, useDemoStore
+- `src/store/useEventCreatedToastStore.ts` — CreatedEvent, useEventCreatedToastStore
 - `src/store/useEventPeopleStore.ts` — EVENT_PEOPLE_SETTING_KEY, EVENT_PEOPLE_MIGRATION_FLAG, useEventPeopleStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
 - `src/store/useEventTaskLinkStore.ts` — EVENT_TASK_LINKS_SETTING_KEY, useEventTaskLinkStore

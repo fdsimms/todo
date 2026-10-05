@@ -57,6 +57,7 @@ import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { CoinToast } from '../components/CoinToast';
+import { EventCreatedToast } from '../components/EventCreatedToast';
 import { ReadyOfferBar } from '../components/ReadyOfferBar';
 import { TripDatePrompt } from '../components/TripDatePrompt';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
@@ -570,6 +571,9 @@ export default function AppNavigator() {
       {/* Beside it: the coins a tick just earned are a moment, not a screen.
           See CoinToast. */}
       <CoinToast />
+      {/* And the event a person just added: a moment with one tap to see it
+          in the system calendar. See EventCreatedToast. */}
+      <EventCreatedToast />
       {/* Beside it, for the same reason: "X is ready" is a moment after a
           tap, not a screen. See ReadyOfferBar. */}
       <ReadyOfferBar />
