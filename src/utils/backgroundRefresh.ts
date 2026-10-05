@@ -83,6 +83,7 @@ import * as TaskManager from 'expo-task-manager';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { drainCalendarRequests } from './calendarRequestDrain';
 import { registerSyncReload, useSyncStore } from '../store/useSyncStore';
 import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
@@ -216,6 +217,10 @@ registerSyncReload(applied => {
   useSettingsStore.getState().initialize();
   useTaskStore.getState().reconcileSyncedEvents(applied);
   useMealPlanStore.getState().reconcileSyncedEvents(applied);
+  // A calendar request an agent made arrives this way, so this is when one
+  // can be written. Not filtered on the report: a pass with nothing pending
+  // reads one small table and stops.
+  void drainCalendarRequests();
 });
 
 TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {

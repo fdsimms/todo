@@ -112,6 +112,9 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     deleteMoodLog: () => { throw new Error('not stubbed'); },
     updateMedicationLog: () => { throw new Error('not stubbed'); },
     deleteMedicationLog: () => { throw new Error('not stubbed'); },
+    calendarRequests: () => [],
+    requestCalendarEvent: () => { throw new Error('not stubbed'); },
+    cancelCalendarRequest: () => { throw new Error('not stubbed'); },
     updateMeal: () => { throw new Error('not stubbed'); },
     removeMeal: () => { throw new Error('not stubbed'); },
     createPerson: () => { throw new Error('not stubbed'); },
@@ -149,7 +152,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     settings: () => ({
       dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationEnd: null,
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
-      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, completedRetentionDays: null,
+      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, completedRetentionDays: null, calendarRequestsOn: false,
     }),
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),

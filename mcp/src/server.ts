@@ -92,6 +92,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
+import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
@@ -338,6 +339,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Logged food over a range of days, with summed nutrients. A nutrient nobody logged is absent rather than zero. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listFoodLog(replica, input)))
+  );
+
+  server.tool(
+    'list_calendar_requests',
+    'Events you asked the phone to add with request_calendar_event, newest first, and what happened to each: pending (waiting for the phone to sync), written (on the calendar), failed (with the reason), or cancelled. Also whether any device is set to add them. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
+    { status: z.enum(['pending', 'written', 'failed', 'cancelled']).optional() },
+    async input => json(await withFresh(() => listCalendarRequests(replica, input)))
   );
 
   server.tool(
@@ -1011,6 +1019,38 @@ function registerWriteTools(
         return json(await withWrite(() => logMedication(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not record that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'request_calendar_event',
+    'Ask the person\'s phone to add an event to their calendar. The server cannot reach the calendar, so this queues the event and the one device they chose in Settings adds it the next time it syncs; until then it is not on the calendar, so say it is queued, not added. Refused when no device is set to add them (get_overview features.calendarRequests). Give start as YYYY-MM-DD for an all-day event (end is then the last day, default the same day), or YYYY-MM-DDTHH:MM in their time zone for a timed one (end defaults to an hour later). Nothing here can change or delete an event once it is added.',
+    {
+      title: z.string().min(1),
+      start: z.string().min(1).describe('YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM in their time zone.'),
+      end: z.string().optional().describe('All day: the last day, YYYY-MM-DD. Timed: YYYY-MM-DDTHH:MM. Default: same day, or an hour after start.'),
+      location: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => requestCalendarEvent(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not queue that event.' });
+      }
+    }
+  );
+
+  server.tool(
+    'cancel_calendar_request',
+    'Take back a calendar request that is still pending, so the phone never adds it. One already on the calendar can only be removed by the person, in their calendar app.',
+    { id: z.string().min(1).describe('The id from list_calendar_requests or request_calendar_event.') },
+    async input => {
+      try {
+        return json(await withWrite(() => cancelCalendarRequest(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not cancel that request.' });
       }
     }
   );

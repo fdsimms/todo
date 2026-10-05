@@ -125,6 +125,8 @@ only the fallback until the first sync.
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
+| `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. The server never touches the calendar itself. |
+| `list_calendar_requests` | Those requests and what became of each: pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |

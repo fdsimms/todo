@@ -978,7 +978,9 @@ export type UnattendedActor = 'app' | 'agent';
 /** What an agent's entry is about. Everything the app writes on its own is a task. */
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
-  | 'automation' | 'note' | 'stack';
+  | 'automation' | 'note' | 'stack'
+  // A calendar request (`CalendarRequest`): the agent asked, a device writes the event.
+  | 'event';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -7184,6 +7186,48 @@ export const LEFTOVER_RETENTION_DAYS = 60;
  * completions forever" also means "keep four years of dinners".
  */
 export const MEAL_PLAN_RETENTION_DAYS = 180;
+
+/**
+ * Where a calendar request stands (see `CalendarRequest`). `pending` until the
+ * device named by `calendarRequestDeviceId` picks it up; that device moves it
+ * to `written` or `failed`. `cancelled` is the requester taking it back while
+ * it was still pending.
+ */
+export type CalendarRequestStatus = 'pending' | 'written' | 'failed' | 'cancelled';
+
+/**
+ * An event an agent asked to have put on the calendar (`request_calendar_event`
+ * in the MCP server, see `docs/arch/mcp-server.md`). The server cannot reach a
+ * calendar, so it writes this synced row and the one device chosen in Settings
+ * writes the event when the row arrives (`src/utils/calendarRequestDrain.ts`),
+ * then stamps the outcome back onto the row so the requester can see it.
+ *
+ * The row is a request, not a link: nothing keeps the event in step with it
+ * afterwards, and the app never edits or deletes an event it wrote this way.
+ */
+export interface CalendarRequest {
+  id: string;
+  title: string;
+  /** ISO. For an all-day event, local midnight of its first day. */
+  startAt: string;
+  /** ISO, exclusive. For an all-day event, local midnight of the day after its last. */
+  endAt: string;
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
+  status: CalendarRequestStatus;
+  /** Why it failed, in words a person can read. Null unless `failed`. */
+  failureReason: string | null;
+  /**
+   * The calendar server's id for the event written (`calendarItemExternalIdentifier`),
+   * when the writing device could read one. Unlike an EventKit id it names the
+   * same event on every device, which is why it is allowed to sync.
+   */
+  eventExternalId: string | null;
+  /** ISO, when it left `pending`. Null while pending. */
+  resolvedAt: string | null;
+  createdAt: string;
+}
 
 /**
  * Who one calendar event occurrence is with — the app's own note about an

@@ -129,6 +129,7 @@ export function describeEffects(effects: readonly AgentLedgerEntry[]): string[] 
       case 'automation': return `Change automations: ${e.title}`;
       case 'note': return e.action === 'cleared' ? `Forget the note ${t}` : `Remember the note ${t}`;
       case 'meal': return `Plan ${t} on the meal plan`;
+      case 'event': return `Ask the phone to add ${t} to the calendar the next time it syncs`;
       case 'template':
         if (e.action === 'cleared') return `Delete the template ${t}. It cannot be restored from here.`;
         if (e.action === 'moved') return `Reorder ${t}`;

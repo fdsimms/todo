@@ -386,6 +386,24 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    // A request, not an event: the preview says the phone adds it, because
+    // nothing here can, and the entry is what the phone's Activity screen shows
+    // for the event once it lands.
+    requestCalendarEvent(input) {
+      const request = replica.requestCalendarEvent(input);
+      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id });
+      return request;
+    },
+
+    cancelCalendarRequest(id) {
+      const request = replica.cancelCalendarRequest(id);
+      log({
+        action: 'cleared', subject: 'event', title: request.title, taskId: null, recordId: request.id,
+        note: `Cancel the request to add "${request.title}" to the calendar`,
+      });
+      return request;
+    },
+
     // The whole list, before and after: a rule list is one stored blob, so a
     // restore writes the old blob back and "still how the agent left it" is a
     // comparison of two lists.
