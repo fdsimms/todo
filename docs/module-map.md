@@ -302,7 +302,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +44 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
-- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MIN_ROTATION_ITEMS, isRotationTask, parseRotationItems, parseRotationLog, parseRotationLastDone, rotationPeriodStart, activeRotationLog, rotationMembers, +11 more
+- `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, rotationMemberToInput, rotationItemsFrom, +26 more
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
@@ -338,6 +338,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
 - `src/utils/slipConfirm.ts` — confirmSlip
+- `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence

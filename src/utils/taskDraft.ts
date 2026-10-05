@@ -248,6 +248,7 @@ export function newTaskFromDraft(
     rotationLog: [],
     rotationPeriodStart: null,
     rotationLastDone: {},
+    rotationPlan: null,
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.

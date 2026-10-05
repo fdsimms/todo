@@ -76,7 +76,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   rotationItems: [],
   rotationLog: [],
   rotationPeriodStart: null,
-  rotationLastDone: {},
+  rotationLastDone: {}, rotationPlan: null,
   ...overrides,
 });
 

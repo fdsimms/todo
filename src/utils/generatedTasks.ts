@@ -174,6 +174,10 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // Appended, beside nothing: it is about a water target rather than a person,
   // a project or a meal, and is the only generator that reads the food log.
   'waterShortfall',
+  // Appended beside it: both read the food log against a target. Neither is
+  // part of the other, since one asks about water already owed and this about
+  // the day's food.
+  'snackNudge',
 ];
 
 /**
@@ -235,7 +239,8 @@ export type GeneratedEnabledKey =
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks'
   | 'weighInTasks'
-  | 'waterShortfallTasks';
+  | 'waterShortfallTasks'
+  | 'snackNudgeTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -955,6 +960,28 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: false,
     // Not a notice: drinking the water is the work, and completing the row logs
     // it, the same as the daily task would.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Ships off, like every generator that adds a surface. At most one a day, and
+  // a completed or deleted one blocks the next, so it can't pile up.
+  snackNudge: {
+    kind: 'snackNudge',
+    // Work the app invents, so it stands down on vacation like the rest.
+    pausedOnVacation: true,
+    enabledKey: 'snackNudgeTasks',
+    label: 'Suggest a snack',
+    onHint: 'Adds a task in the afternoon when the food log is low against the calorie target',
+    offHint: 'No task when the food log is low on calories',
+    icon: 'nutrition-outline',
+    // Its source id is the day key it was raised on, waterShortfall's position.
+    // snackNudgeDeclinedDayKey is what stops a deleted one coming straight back
+    // the same day.
+    sourced: false,
+    // Not a notice: eating the snack is the decision, and logging it removes the
+    // task, so it is something to act on rather than something to tick.
     notice: false,
     kitchen: false,
     categorized: true,

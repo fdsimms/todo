@@ -87,6 +87,7 @@ const BLANK_SNOOZE_TASK: Task = {
   rotationLog: [],
   rotationPeriodStart: null,
   rotationLastDone: {},
+  rotationPlan: null,
   healthMetric: null,
   healthTarget: null, healthFollowGoal: false, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null, estimateBeforeTiming: null,
 };
