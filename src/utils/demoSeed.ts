@@ -1168,6 +1168,13 @@ export function seedDemoData(): void {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
   });
+  // Project.taskDefaults, invisible until a task is added to the project: ideas
+  // aren't ranked and are small, so nothing added here reaches Backfill. Set
+  // after the three above so they stay the "still to fill in" example.
+  updateProject(giftIdeas.id, { taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } });
+  addTask({ title: 'Something for Dad\'s birthday', projectId: giftIdeas.id });
+  // The same idea for a kind of task the app writes itself.
+  useSettingsStore.getState().setGeneratedTaskDefaults('birthdayGift', { priority: 2, difficulty: null, effort: 3 });
 
   // A project parked for a season (Project.pausedUntil): a weekly routine and a
   // one-off, both held off Today until the pause lifts in three weeks. Without

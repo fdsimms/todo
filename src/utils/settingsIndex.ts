@@ -379,6 +379,14 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       section: 'Automations',
       keywords: GENERATED_KEYWORDS[spec.kind],
     },
+    {
+      ...shared,
+      id: `gen:${spec.kind}:defaults`,
+      label: 'Task defaults',
+      section: spec.label,
+      keywords: ['priority', 'difficulty', 'estimate', 'time', 'backfill'],
+      requires: `gen:${spec.kind}`,
+    },
     ...(spec.categorized ? [{
       ...shared,
       id: `gen:${spec.kind}:category`,
@@ -594,6 +602,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['default', 'new task', 'flag', 'important', 'urgent'] },
   { id: 'newTaskEffort', groupId: 'tasksProjects', label: 'Effort', section: 'New tasks',
     keywords: ['default', 'new task', 'size', 'estimate', 'small', 'large'] },
+  { id: 'newTaskDifficulty', groupId: 'tasksProjects', label: 'Difficulty', section: 'New tasks',
+    keywords: ['default', 'new task', 'easy', 'hard', 'coins', 'rewards'] },
   { id: 'newTaskTimeOfDay', groupId: 'tasksProjects', label: 'Time of day', section: 'New tasks',
     keywords: ['default', 'new task', 'morning', 'afternoon', 'evening', 'night', 'segment'] },
   { id: 'newTaskDestination', groupId: 'tasksProjects', label: 'Where quick-add lands', section: 'New tasks',

@@ -4176,6 +4176,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(quotes!.category).toBe('Home');
   });
 
+  it('seeds project task defaults and a task that starts with them', () => {
+    const { tasks } = useTaskStore.getState();
+    const gift = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
+    expect(gift?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+    const dad = tasks.find(t => t.title === 'Something for Dad\'s birthday');
+    expect(dad).toBeDefined();
+    expect(dad!.difficulty).toBe('easy');
+    expect(dad!.estimatedMinutes).toBe(15);
+    // "No priority" is an answer, so Backfill has nothing to ask about it.
+    expect(dad!.priority).toBe(0);
+    expect(dad!.backfillDismissedFields).toContain('priority');
+    expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3 });
+  });
+
   it('seeds a weather task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

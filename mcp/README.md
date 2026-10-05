@@ -122,7 +122,7 @@ only the fallback until the first sync.
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
-| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. |
+| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project, or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). Its existing tasks are untouched. |
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |

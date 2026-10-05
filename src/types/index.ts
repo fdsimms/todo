@@ -38,6 +38,24 @@ export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
 
 /**
+ * Answers to the three questions the backfill screen asks about every task,
+ * given once for a whole group of tasks instead of once per task: a project's
+ * list (`Project.taskDefaults`) or a kind of generated task (Settings'
+ * `generatedTaskDefaults`). Every field is null for "no default, ask me", and
+ * a default only ever fills a field nobody answered (see `newTaskFromDraft`).
+ *
+ * `priority: 0` is an answer, not an absence: it means "these have no
+ * priority, don't ask", and a task created under it is stamped as dismissed for
+ * the priority backfill, since a priority of 0 otherwise reads as missing.
+ */
+export interface TaskFieldDefaults {
+  priority: Priority | null;
+  difficulty: Difficulty | null;
+  /** An estimate bucket, 1 to 6. The minutes come from `EFFORT_MINUTES`. */
+  effort: Effort | null;
+}
+
+/**
  * Which direction a task's success runs in — see `Task.polarity`.
  *
  * 'positive' is every task that has ever existed here: something to do, and
@@ -1125,6 +1143,14 @@ export interface Project {
   // on this type follows: a project gets no default until somebody names one,
   // the same as weekendSource starting off and destination starting blank.
   defaultTaskCategory: string | null;
+  /**
+   * Priority, difficulty and time estimate every new task in this project
+   * starts with, so a list like a wish list doesn't put each item through the
+   * backfill screen. Optional so a row built before the field existed still
+   * type-checks; absent and null both mean no defaults. See `TaskFieldDefaults`
+   * and `src/utils/taskFieldDefaults.ts`.
+   */
+  taskDefaults?: TaskFieldDefaults | null;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;

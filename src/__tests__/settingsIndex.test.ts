@@ -97,7 +97,7 @@ describe('settings index', () => {
     // a generator added to GENERATED_KINDS grows a row on its own and only the
     // index has to be remembered separately. Comparing the two lists is what
     // makes that unrepresentable.
-    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category'));
+    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category') && !e.id.endsWith(':defaults'));
 
     it('indexes every generator that gets a row, in order, and nothing else', () => {
       expect(toggleEntries.map(e => e.label)).toEqual(GENERATED_KIND_LIST.map(s => s.label));
