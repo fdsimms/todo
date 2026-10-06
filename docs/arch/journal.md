@@ -90,3 +90,15 @@ Each screen's Share action writes that kind as CSV (`journalExport.ts`), the
 medication export's flow: the summary is confirmed first, every entry is a row
 oldest first with its day and instant, nothing is derived, and the file is
 deleted the moment the share sheet closes.
+
+## Light formatting, drawn on read
+
+An entry is stored as the plain text typed, and `JournalText` draws a small
+slice of Markdown over it (`journalMarkdown.ts`): headings, bullets, numbered
+items, quotes, bold and italics. Stored plain on purpose, so search, sync,
+export and the MCP tools are untouched, and an entry written before the
+formatting existed reads exactly as it did. A marker with no partner stays as
+typed rather than vanishing into a style. Where styles are wrong (a screen
+reader's label, a clipped preview like Looking back) `journalPlainText` strips
+the markers. A formatting toolbar or styles shown while typing was the other
+option and was left out: it needs a native editor and a stored document format.

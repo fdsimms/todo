@@ -11,6 +11,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Milestone, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
 import { useJournalStore } from '../store/useJournalStore';
+import { journalPlainText } from '../utils/journalMarkdown';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -490,7 +491,7 @@ export function MoodScreen() {
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); navigation.navigate('MoodDay', { dayKey: back.dayKey }); }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${[...back.logs.map(l => l.note), ...back.journal.map(e => (e.kind === 'dream' ? `Dream: ${e.text}` : e.text))].filter(Boolean).join('. ')}`}
+                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${[...back.logs.map(l => l.note), ...back.journal.map(e => (e.kind === 'dream' ? `Dream: ${journalPlainText(e.text)}` : journalPlainText(e.text)))].filter(Boolean).join('. ')}`}
                   >
                     <Text style={styles.lookBackWhen}>
                       {back.label} · {format(dayKeyToDate(back.dayKey), 'EEE, MMM d, yyyy')}
@@ -500,7 +501,7 @@ export function MoodScreen() {
                     ))}
                     {back.journal.map(e => (
                       <Text key={e.id} style={styles.lookBackNote} numberOfLines={6}>
-                        {e.kind === 'dream' ? `Dream: ${e.text}` : e.text}
+                        {e.kind === 'dream' ? `Dream: ${journalPlainText(e.text)}` : journalPlainText(e.text)}
                       </Text>
                     ))}
                   </TouchableOpacity>

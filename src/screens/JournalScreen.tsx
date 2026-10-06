@@ -28,6 +28,8 @@ import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { JournalText } from '../components/JournalText';
+import { journalPlainText } from '../utils/journalMarkdown';
 
 /**
  * The journal, or the dream log: one screen over `useJournalStore`, split by
@@ -199,10 +201,10 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => openEdit(entry)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit ${copy.one} from ${format(new Date(entry.loggedAt), 'h:mm a')}: ${entry.text}`}
+                  accessibilityLabel={`Edit ${copy.one} from ${format(new Date(entry.loggedAt), 'h:mm a')}: ${journalPlainText(entry.text)}`}
                 >
                   <Text style={styles.entryTime}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
-                  <Text style={styles.entryText}>{entry.text}</Text>
+                  <JournalText text={entry.text} textStyle={styles.entryText} />
                 </TouchableOpacity>
               ))}
             </View>

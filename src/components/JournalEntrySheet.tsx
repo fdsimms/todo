@@ -181,6 +181,11 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         )}
       </View>
 
+      {/* What the light formatting is, said once where it's typed. */}
+      <Text style={styles.formatHint}>
+        Use **bold**, *italics*, # for a heading, - for a list item and &gt; for a quote.
+      </Text>
+
       {editing && (
         <TouchableOpacity
           style={[styles.card, styles.deleteRow]}
@@ -241,6 +246,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  formatHint: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   deleteRow: {
     flexDirection: 'row',

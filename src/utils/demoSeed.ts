@@ -2906,7 +2906,8 @@ function seedJournal(today: Date): void {
     return d;
   };
   addEntry('journal', 'Deadline is close. Made a list of what is actually left and it is shorter than it felt.', at(10, 21));
-  addEntry('journal', 'Slept in, then a long walk by the river. First day in a while that felt unhurried.', at(4, 18));
+  // Formatted, so the light Markdown the journal draws has something to show.
+  addEntry('journal', '# Slow Saturday\nSlept in, then a **long** walk by the river.\n- Call Mom\n- Start the next book', at(4, 18));
   addEntry('journal', 'Good meeting this morning. Want to remember to thank Sam for covering on Friday.', at(1, 9));
   addEntry('dream', 'Walking along a beach I did not recognize, looking for a train station.', at(15, 7));
   addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7));
