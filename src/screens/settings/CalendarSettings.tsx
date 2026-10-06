@@ -28,6 +28,7 @@ import { useCategoryStore, ensureCalendarEventCategory } from '../../store/useCa
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import { SavedPlacesRows } from './SavedPlacesRows';
+import { SavedEventsRows } from './SavedEventsRows';
 
 const MAPS_APP_OPTIONS: SegmentOption<MapsApp>[] = [
   { value: 'apple', label: 'Apple Maps', icon: 'map-outline' },
@@ -569,6 +570,7 @@ export function CalendarSettings() {
         accessibilityLabel="Suggest places"
       />
       <SavedPlacesRows />
+      <SavedEventsRows />
     </SettingsSection>
   );
 }

@@ -41,19 +41,22 @@ import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { DEFAULT_EVENT_MINUTES, describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
 import { calendarCovers, firstFreeSlot, overlappingEvents } from '../utils/eventConflicts';
+import { eventMemoryKey, readEventMemory, rememberEvent, writeEventMemory, type EventMemory } from '../utils/eventMemory';
 import {
   describeSavedEvent,
-  eventMemoryKey,
-  isEventSaved,
-  readEventMemory,
-  rememberEvent,
-  savedEvents,
-  setEventSaved,
-  writeEventMemory,
-  type EventMemory,
+  findSavedEvent,
+  readSavedEvents,
+  recordSavedEventUse,
+  removeSavedEvent,
+  savedEventRecall,
+  sortedSavedEvents,
+  suggestSavedEvents,
+  writeSavedEvents,
   type SavedEvent,
-} from '../utils/eventMemory';
+  type SavedEventFields,
+} from '../utils/savedEvents';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { defaultNewEventSpan } from '../utils/eventPeople';
 import {
   readQuickEventDefaults,
@@ -279,6 +282,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // tooltip, or a date picked by hand), the way repeatPick keeps a repeat.
   const [durationPick, setDurationPick] = useState<number | null>(null);
   const [eventMemory, setEventMemory] = useState<EventMemory>({});
+  // Events kept for re-adding (`savedEvents.ts`), read on open since a sync can change them.
+  const [savedEventList, setSavedEventList] = useState<SavedEvent[]>([]);
   // The title whose remembered values the user waved off for this event.
   const [memoryDismissedKey, setMemoryDismissedKey] = useState<string | null>(null);
   // The overlap row shows one event and a count; a tap lists every one.
@@ -413,6 +418,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setAvailabilityPick(null);
     setDurationPick(null);
     setEventMemory(readEventMemory());
+    setSavedEventList(readSavedEvents());
     setMemoryDismissedKey(null);
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
@@ -521,7 +527,13 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // ==== what the event resolves to: memory, length, free slot, conflicts ====
   // The last event saved with this title, unless waved off for this one.
   const memoryKey = eventMemoryKey(draft.title);
-  const recalled = !isEditing && memoryKey && memoryKey !== memoryDismissedKey ? eventMemory[memoryKey] ?? null : null;
+  // A saved event with this title outranks the memory: it is the one the
+  // person kept, and can edit. Its calendar is matched by name on this device.
+  const savedEventMatch = !isEditing ? findSavedEvent(savedEventList, draft.title) : null;
+  const remembered = memoryKey ? eventMemory[memoryKey] ?? null : null;
+  const recalled = !isEditing && memoryKey && memoryKey !== memoryDismissedKey
+    ? (savedEventMatch ? savedEventRecall(savedEventMatch, calendars, remembered?.calendarId ?? null) : remembered)
+    : null;
   // Typed length, then one kept from the line, then last time's, then an hour.
   const effectiveDuration =
     draft.durationMinutes ?? durationPick ?? recalled?.durationMinutes ?? DEFAULT_EVENT_MINUTES;
@@ -629,8 +641,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
   // ==== saved events ====
   // Listed while the line is empty, so a regular is a tap and then a day.
-  const savedList = useMemo(() => savedEvents(eventMemory), [eventMemory]);
+  const savedList = useMemo(() => sortedSavedEvents(savedEventList), [savedEventList]);
   const showSaved = !isEditing && text.trim() === '' && savedList.length > 0;
+  // Typing a few letters of one offers it, while the line is still only a
+  // title: once a day or a person is in it, swapping the line would drop them.
+  const savedEventSuggestions = useMemo(
+    () => (!isEditing && text.trim() === draft.title.trim() ? suggestSavedEvents(savedEventList, draft.title) : []),
+    [isEditing, text, draft.title, savedEventList],
+  );
 
   const pickSaved = (event: SavedEvent) => {
     haptics.tap();
@@ -645,17 +663,17 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     haptics.warning();
     Alert.alert(
       `Remove “${event.title}” from saved?`,
-      'It stops showing here. Typing the title still fills in what it had last time.',
+      'It is removed on all your devices. Typing the title on this phone still fills in what it had last time.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            const next = setEventSaved(readEventMemory(), event.title, false);
-            writeEventMemory(next);
+            const next = removeSavedEvent(readSavedEvents(), event.title);
+            writeSavedEvents(next);
             animateLayout();
-            setEventMemory(next);
+            setSavedEventList(next);
           },
         },
       ],
@@ -828,7 +846,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       return;
     }
     writeQuickEventDefaults({ calendarId: saved.calendarId, alertMinutes: effectiveAlert, availability: effectiveAvailability });
-    const remembered = rememberEvent(eventMemory, draft.title, {
+    writeEventMemory(rememberEvent(eventMemory, draft.title, {
       location: effectiveLocation,
       place: effectivePlace ? { latitude: effectivePlace.latitude, longitude: effectivePlace.longitude } : null,
       durationMinutes: allDay ? null : effectiveDuration,
@@ -836,13 +854,30 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       alertMinutes: effectiveAlert,
       availability: effectiveAvailability,
       at: Date.now(),
-    });
-    writeEventMemory(remembered);
+    }));
+    // A saved event is refreshed with what this one was added with; anything
+    // else is offered for saving on the toast. Read fresh, not from state, so
+    // a sync that landed while the card was open isn't written back over.
+    const savedFields: SavedEventFields = {
+      location: effectiveLocation,
+      place: effectivePlace ? { latitude: effectivePlace.latitude, longitude: effectivePlace.longitude } : null,
+      durationMinutes: allDay ? null : effectiveDuration,
+      alertMinutes: effectiveAlert,
+      availability: effectiveAvailability,
+      calendarTitle: calendars.find(c => c.id === saved.calendarId)?.title ?? effectiveCalendar?.title ?? null,
+    };
+    const savedBefore = readSavedEvents();
+    const savedAfter = recordSavedEventUse(savedBefore, draft.title, savedFields, effectiveStart, Date.now());
+    if (savedAfter !== savedBefore) {
+      writeSavedEvents(savedAfter);
+      // A new appointment starts a new booking cycle, so the old "Book …" goes now.
+      useTaskStore.getState().checkBookEventTasks();
+    }
     setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
     useEventCreatedToastStore.getState().announce(
       saved.id,
       effectiveStart,
-      isEventSaved(remembered, draft.title) ? undefined : draft.title.trim(),
+      savedAfter !== savedBefore ? undefined : { title: draft.title.trim(), fields: savedFields, start: effectiveStart },
     );
     onSaved?.(saved.id);
     dismiss();
@@ -1094,7 +1129,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                       delayLongPress={interaction.delayLongPress}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`${event.title}, ${describeSavedEvent(event.entry)}`}
+                      accessibilityLabel={`${event.title}, ${describeSavedEvent(event)}`}
                       accessibilityHint="Fills in the event. Long press to remove it from saved."
                       accessibilityActions={[{ name: 'longpress', label: 'Remove from saved' }]}
                       onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') confirmUnsave(event); }}
@@ -1102,11 +1137,31 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                       <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
                       <View style={styles.savedText}>
                         <Text style={styles.placeName} numberOfLines={1}>{event.title}</Text>
-                        <Text style={styles.placeAddress} numberOfLines={1}>{describeSavedEvent(event.entry)}</Text>
+                        <Text style={styles.placeAddress} numberOfLines={1}>{describeSavedEvent(event)}</Text>
                       </View>
                     </TouchableOpacity>
                   ))}
                 </View>
+              </View>
+            )}
+            {savedEventSuggestions.length > 0 && (
+              <View style={[styles.savedList, styles.savedBlock]}>
+                {savedEventSuggestions.map((event, i) => (
+                  <TouchableOpacity
+                    key={eventMemoryKey(event.title)}
+                    style={[styles.savedRow, i > 0 && styles.placeRowRuled]}
+                    onPress={() => pickSaved(event)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use saved event ${event.title}, ${describeSavedEvent(event)}`}
+                  >
+                    <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
+                    <View style={styles.savedText}>
+                      <Text style={styles.placeName} numberOfLines={1}>{event.title}</Text>
+                      <Text style={styles.placeAddress} numberOfLines={1}>{describeSavedEvent(event)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
             <View style={styles.locationRow}>
@@ -1386,7 +1441,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               <View style={styles.captionRow}>
                 <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.captionText} numberOfLines={1}>
-                  {recalled?.saved
+                  {savedEventMatch
                     ? `Filled in from your saved “${draft.title.trim()}”`
                     : `Filled in from your last “${draft.title.trim()}”`}
                 </Text>

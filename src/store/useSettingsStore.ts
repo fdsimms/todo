@@ -1643,6 +1643,10 @@ interface SettingsStore {
   // DEFAULT_SNACK_NUDGE_FROM_HOUR and DEFAULT_SNACK_NUDGE_SHARE_PERCENT.
   snackNudgeFromHour: number;
   snackNudgeSharePercent: number;
+  // Off by default: "Book <saved event>" when its interval is nearly up. Giving
+  // a saved event an interval turns it on. See src/utils/savedEventTasks.ts.
+  bookEventTasks: boolean;
+  bookEventTaskCategory: string | null;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1999,6 +2003,8 @@ interface SettingsStore {
   setWaterShortfallTaskCategory: (category: string | null) => void;
   setWaterShortfallDeclinedDayKey: (dayKey: string | null) => void;
   setSnackNudgeTasks: (on: boolean) => void;
+  setBookEventTasks: (on: boolean) => void;
+  setBookEventTaskCategory: (category: string | null) => void;
   setSnackNudgeTaskCategory: (category: string | null) => void;
   setSnackNudgeDeclinedDayKey: (dayKey: string | null) => void;
   setSnackNudgeFromHour: (hour: number) => void;
@@ -2679,6 +2685,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   waterShortfallDeclinedDayKey: null,
   snackNudgeTasks: false,
   snackNudgeTaskCategory: null,
+  bookEventTasks: false,
+  bookEventTaskCategory: null,
   snackNudgeDeclinedDayKey: null,
   snackNudgeFromHour: DEFAULT_SNACK_NUDGE_FROM_HOUR,
   snackNudgeSharePercent: DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
@@ -3144,6 +3152,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const waterShortfallTaskCategory = dbGetSetting('waterShortfallTaskCategory') || null;
     const waterShortfallDeclinedDayKey = dbGetSetting('waterShortfallDeclinedDayKey') || null;
     const snackNudgeTasks = dbGetSetting('snackNudgeTasks') === 'true';
+    const bookEventTasks = dbGetSetting('bookEventTasks') === 'true';
+    const bookEventTaskCategory = dbGetSetting('bookEventTaskCategory') || null;
     const snackNudgeTaskCategory = dbGetSetting('snackNudgeTaskCategory') || null;
     const snackNudgeDeclinedDayKey = dbGetSetting('snackNudgeDeclinedDayKey') || null;
     // Clamped on read as well as on write, for the reason weighInEveryDays is.
@@ -3288,6 +3298,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       birthdayTaskCategory,
       birthdayTasks,
       bodyProfile,
+      bookEventTaskCategory,
+      bookEventTasks,
       bountyLimit,
       calendarEventCategory,
       calendarIds,
@@ -4269,6 +4281,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setSnackNudgeTasks(on: boolean) {
     dbSetSetting('snackNudgeTasks', String(on));
     set({ snackNudgeTasks: on });
+  },
+
+  setBookEventTasks(on: boolean) {
+    dbSetSetting('bookEventTasks', String(on));
+    set({ bookEventTasks: on });
+  },
+
+  setBookEventTaskCategory(category: string | null) {
+    dbSetSetting('bookEventTaskCategory', category ?? '');
+    set({ bookEventTaskCategory: category });
   },
 
   setSnackNudgeTaskCategory(category: string | null) {

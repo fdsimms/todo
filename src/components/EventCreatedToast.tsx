@@ -6,7 +6,7 @@ import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTheme } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
-import { readEventMemory, setEventSaved, writeEventMemory } from '../utils/eventMemory';
+import { readSavedEvents, saveEventAs, writeSavedEvents } from '../utils/savedEvents';
 import { haptics } from '../utils/haptics';
 
 // Long enough to reach for the button, short enough to stay out of the way.
@@ -14,7 +14,7 @@ const VISIBLE_MS = 5000;
 
 /**
  * "Added to Calendar" with an Open button, after an event is added by hand,
- * and a Save button when the event isn't a saved one yet (`eventMemory.ts`):
+ * and a Save button when the event isn't a saved one yet (`savedEvents.ts`):
  * the moment someone has just typed a regular out is when keeping it is cheapest.
  * Unlike `CoinToast` it takes touches, since the button is the point. Mounted
  * once at the navigator root so it survives the card that raised it closing.
@@ -47,10 +47,10 @@ export function EventCreatedToast() {
   };
 
   const justSaved = savedKey === created.key;
-  const saveTitle = created.saveTitle;
+  const saveAs = created.saveAs;
   const save = () => {
-    if (!saveTitle) return;
-    writeEventMemory(setEventSaved(readEventMemory(), saveTitle, true));
+    if (!saveAs) return;
+    writeSavedEvents(saveEventAs(readSavedEvents(), saveAs.title, saveAs.fields, saveAs.start, Date.now()));
     haptics.success();
     setSavedKey(created.key);
   };
@@ -62,12 +62,12 @@ export function EventCreatedToast() {
     >
       <View style={[styles.bar, shadows.fab]} accessibilityLiveRegion="polite">
         <Text style={styles.label}>{justSaved ? 'Saved for next time' : 'Added to Calendar'}</Text>
-        {saveTitle && !justSaved && (
+        {saveAs && !justSaved && (
           <TouchableOpacity
             onPress={save}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`Save ${saveTitle} to add again quickly`}
+            accessibilityLabel={`Save ${saveAs.title} to add again quickly`}
             hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
           >
             <Text style={styles.action}>Save</Text>

@@ -178,6 +178,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // part of the other, since one asks about water already owed and this about
   // the day's food.
   'snackNudge',
+  // Appended: the one generator whose source is a calendar event the person
+  // keeps for re-adding (savedEvents.ts).
+  'bookEvent',
 ];
 
 /**
@@ -240,7 +243,8 @@ export type GeneratedEnabledKey =
   | 'weekendNudgeTasks'
   | 'weighInTasks'
   | 'waterShortfallTasks'
-  | 'snackNudgeTasks';
+  | 'snackNudgeTasks'
+  | 'bookEventTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -986,6 +990,25 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Health',
+  },
+  // Ships off; giving a saved event a booking interval (Settings › Calendar ›
+  // Saved events) is what turns it on, since that is already the opt-in.
+  bookEvent: {
+    kind: 'bookEvent',
+    // Booking is work the app is reminding you of, so it waits out vacation.
+    pausedOnVacation: true,
+    enabledKey: 'bookEventTasks',
+    label: 'Book saved events',
+    onHint: 'Adds a task to book a saved event when its interval is nearly up',
+    offHint: 'No task to book a saved event',
+    icon: 'calendar-number-outline',
+    // A saved event lives in a setting, not a row, like eventTask's rules.
+    sourced: false,
+    // Something to do (make the call), not something to acknowledge.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Personal',
   },
 };
 

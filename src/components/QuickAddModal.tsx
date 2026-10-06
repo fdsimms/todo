@@ -86,6 +86,7 @@ import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
 import { readQuickEventDefaults, writeQuickEventDefaults } from '../utils/quickEventDefaults';
 import { quickEventFromLine, quickEventSaveFields } from '../utils/quickEventSave';
 import { readEventMemory, recallEvent, rememberEvent, writeEventMemory } from '../utils/eventMemory';
+import { findSavedEvent, readSavedEvents, recordSavedEventUse, savedEventRecall, writeSavedEvents } from '../utils/savedEvents';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { addDays } from 'date-fns/addDays';
 import { calendarCovers, firstFreeSlot } from '../utils/eventConflicts';
@@ -1856,8 +1857,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const memory = readEventMemory();
     // Read once, here, rather than subscribed to: the line is only resolved on Add.
     const calendar = useCalendarStore.getState();
+    const remembered = recallEvent(memory, draft.title);
+    // A saved event outranks the memory, as in the event card. No calendar list
+    // is read here, so its calendar comes from the memory or the default.
+    const savedBefore = readSavedEvents();
+    const savedEvent = findSavedEvent(savedBefore, draft.title);
     const input = quickEventFromLine(draft, {
-      recalled: recallEvent(memory, draft.title),
+      recalled: savedEvent ? savedEventRecall(savedEvent, [], remembered?.calendarId ?? null) : remembered,
       defaults,
       freeSlotFor: minutes => {
         const d = draft.start;
@@ -1888,6 +1894,18 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       availability: input.availability,
       at: Date.now(),
     }));
+    const savedAfter = recordSavedEventUse(savedBefore, draft.title, {
+      location: input.location ?? null,
+      place: input.place ?? null,
+      durationMinutes: input.durationMinutes,
+      alertMinutes: input.alertMinutes,
+      availability: input.availability,
+      calendarTitle: savedEvent?.calendarTitle ?? null,
+    }, input.start, Date.now());
+    if (savedAfter !== savedBefore) {
+      writeSavedEvents(savedAfter);
+      useTaskStore.getState().checkBookEventTasks();
+    }
     dismiss();
   };
 
