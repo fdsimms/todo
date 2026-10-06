@@ -3347,7 +3347,9 @@ export function TodayScreen() {
             colors={colors}
             collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
-            onPin={isCategory ? () => handlePinCategory(item.label) : undefined}
+            // A section holding only context rows (Calendar Events) has no task
+            // to pin, so it offers no pin at all rather than one that does nothing.
+            onPin={isCategory && categoryTasks.length > 0 ? () => handlePinCategory(item.label) : undefined}
             allPinned={isCategory ? allPinned : undefined}
             count={isCategory ? sectionDisplayCounts.get(item.label) ?? 0 : undefined}
             summary={isCategory ? contextSummaries.get(item.label) : undefined}
@@ -3786,6 +3788,9 @@ export function TodayScreen() {
           {!selectionMode && (
             <TouchableOpacity
               onPress={() => {
+                // One pinned task is a single unpin, which is cheap to redo,
+                // so there is nothing "all" about it worth stopping to confirm.
+                if (pinnedTasks.length === 1) { clearAllPins(); return; }
                 Alert.alert(
                   'Unpin all tasks?',
                   'This removes every task from the Pinned Tasks block. Their own rows are unaffected.',

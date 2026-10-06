@@ -148,7 +148,7 @@ Where each component can appear.
 - `src/components/FocusSetupSheet.tsx` — on TodayScreen
 - `src/components/FollowUpTaskSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/FoodLogEntrySheet.tsx` — on FoodLogScreen, app shell
-- `src/components/FreezeWhenBlurred.tsx` — not reached from any screen
+- `src/components/FreezeWhenBlurred.tsx` — on app shell
 - `src/components/FridgeHistorySheet.tsx` — on MealPlanScreen
 - `src/components/GlassLayer.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MoodScreen, PeopleScreen, +20 more
 - `src/components/GroceryAISheet.tsx` — on GroceryScreen
@@ -354,6 +354,7 @@ Where each component can appear.
 - `src/screens/settings/PermissionsSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/PrivacyAiSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/RemindersCaptureSettings.tsx` — on SettingsGroupScreen
+- `src/screens/settings/SavedEventsRows.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SavedPlacesRows.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsChoiceTray.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsFocus.tsx` — on AutomationsScreen, SettingsGroupScreen

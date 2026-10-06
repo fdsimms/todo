@@ -376,7 +376,7 @@ jest.mock('../store/useTransitStore', () => ({
 }));
 jest.mock('../store/useTravelTimeStore', () => ({
   useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
-  currentTravelOrigin: jest.fn(() => null),
+  travelOriginOfEvent: jest.fn(() => null),
 }));
 
 jest.mock('react-native', () => ({
@@ -13420,6 +13420,81 @@ describe('quota tasks', () => {
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
           useTaskStore.getState().syncWaterQuotaTasks();
           expect(shortfallTasks()).toHaveLength(0);
+        });
+      });
+
+      describe('booking a saved event', () => {
+        const { dbGetSetting: getSetting, dbSetSetting: setSetting } =
+          jest.requireMock('../db/database') as { dbGetSetting: jest.Mock; dbSetSetting: jest.Mock };
+        const lastStart = new Date(2025, 9, 13, 9).toISOString();
+        const saved = (over: Record<string, unknown> = {}) => ({
+          title: 'Optometrist', location: null, place: null, durationMinutes: 60, alertMinutes: null,
+          availability: 'busy', calendarTitle: null, at: 1, lastStart, bookEveryMonths: 12,
+          bookDeclinedFor: null, ...over,
+        });
+        const withSaved = (list: unknown[]) =>
+          getSetting.mockImplementation((key: string) => (key === 'savedEvents' ? JSON.stringify(list) : null));
+        const bookTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'bookEvent' && !t.completed);
+        const on = { bookEventTasks: true, bookEventTaskCategory: 'Personal', vacationMode: false };
+        const run = () => useTaskStore.getState().checkBookEventTasks();
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 10, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => {
+          jest.useRealTimers();
+          getSetting.mockReset().mockReturnValue(null);
+        });
+
+        it('writes one once the interval is nearly up', () => {
+          withSettings(on);
+          withSaved([saved()]);
+          run();
+          expect(bookTasks()).toHaveLength(1);
+          expect(bookTasks()[0]).toMatchObject({
+            title: 'Book Optometrist', category: 'Personal', generatedSourceId: 'optometrist|2025-10-13',
+          });
+          run();
+          expect(bookTasks()).toHaveLength(1);
+        });
+
+        it('writes nothing while the switch is off or before it is due', () => {
+          withSettings({ ...on, bookEventTasks: false });
+          withSaved([saved()]);
+          run();
+          expect(bookTasks()).toHaveLength(0);
+          withSettings(on);
+          withSaved([saved({ lastStart: new Date(2026, 3, 1, 9).toISOString() })]);
+          run();
+          expect(bookTasks()).toHaveLength(0);
+        });
+
+        it('drops the task once the next appointment is added', () => {
+          withSettings(on);
+          withSaved([saved()]);
+          run();
+          withSaved([saved({ lastStart: new Date(2026, 9, 20, 9).toISOString() })]);
+          run();
+          expect(bookTasks()).toHaveLength(0);
+        });
+
+        it('stamps the decline on the saved event when the task is deleted', () => {
+          withSettings(on);
+          withSaved([saved()]);
+          run();
+          setSetting.mockClear();
+          useTaskStore.getState().deleteTask(bookTasks()[0].id);
+          const write = setSetting.mock.calls.find(([key]) => key === 'savedEvents');
+          expect(JSON.parse(write![1])[0].bookDeclinedFor).toBe(lastStart);
+        });
+
+        it('does not write one for a declined cycle', () => {
+          withSettings(on);
+          withSaved([saved({ bookDeclinedFor: lastStart })]);
+          run();
+          expect(bookTasks()).toHaveLength(0);
         });
       });
 

@@ -69,6 +69,9 @@ beforeEach(() => {
     calendarEventCategory: null,
     healthReadEnabled: false,
     healthCategory: null,
+    // ensureHealthCategory folds the new section, so a test that ran it leaves
+    // Health here for whichever test the random order puts next.
+    collapsedCategories: [],
     mealCookTasks: false,
     mealCookTaskCategory: null,
     groceryUseUpTasks: false,

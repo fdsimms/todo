@@ -826,6 +826,13 @@ re-deriving:
   onto today or later by its date or a defer. A started chain is the user's, the same line the
   drift draws, and a moved row was a decision about when to deal with it. The mark is untouched, so
   a dropped day is never written again, and the log nudge is what asks about a past meal.
+- **A slot with food logged in it loses its row** (`loggedMealSlotTasks`, run by
+  `syncLoggedMealSlotTasks`). Logging lunch by hand answers Choose, Prepare and Eat at once, and the
+  row used to stay on Today for a meal already in the log. The join is the (day, slot) pair, the
+  same one `mealLogCoverage.ts` makes, and it drops the row even mid-chain. It is a drop with no
+  opt-out and never a completion: nothing here may assert a particular planned dish was eaten (see
+  `mealLogCoverage.ts`), and `cookedAt` stays unstamped. Triggered by food log writes and by
+  `checkMealSlotTasks`; deleting the entry later does not bring the row back.
 - **A week at a time** (`MEAL_SLOT_TASK_DAYS`), matching the meal plan's own `upcomingDays` and the
   horizon the weekly nudge asks about. This shipped as today-only, on the grounds that a week of
   rows saying "Choose lunch" would be noise; it isn't, because those meals genuinely are undecided
@@ -1108,13 +1115,13 @@ argued out before it was built; read them before reopening one.
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place
     picked in quick add), else Apple Maps' first match for the location text.
-- **One event can override the mode and how early to arrive, and that stays in the app.** The quick
-  event sheet shows "Getting there" and "Arrive" chips for an event with a place and a time, saved
+- **One event can override the mode, how early to arrive and where the trip starts, and that stays in the app.** The quick
+  event sheet shows "Getting there" and "Arrive" chips for an event with a place and a time (plus "Start from" while estimates are on), saved
   to `travelEventPrefs` (`TravelEventPref`) by calendar event id, so a repeating event keeps its
   choice every week. EventKit has no public field for a travel mode or arrival buffer, so nothing
   is written to the calendar event. A pref overrides `travelMode` (`travelModeFor`) and shifts the
   reminder by `arriveEarlyMinutes` on top of the lead or estimate (`leadWithArrival`, never below
-  zero). Estimates are filed under the mode they were asked for, so a pref asks again. The row shows
+  zero). Estimates are filed under the mode they were asked for, so a pref asks again, and the same goes for a different starting point (`originPlaceId`: a saved place, `TRAVEL_ORIGIN_PHONE`, or null to follow Settings; `travelOriginForEvent` resolves it, and a removed place follows Settings rather than becoming the phone). The row shows
   a held estimate as a chip (`travelRowNote`); with `travelEstimates` off there is none to show.
 - **The starting point is the phone's position or a saved place, chosen once** (`travelOriginPlaceId`,
   shown as "Start from"). The phone's position is the wrong origin for most of what this makes: a
@@ -1519,6 +1526,32 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
   One from a past day is dropped rather than deleted quietly.
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
+
+## `bookEvent`: booking a saved event again
+
+A saved event (`src/utils/savedEvents.ts`, an event kept for re-adding from the
+quick event card) can carry an interval, `bookEveryMonths`, set in Settings ›
+Calendar › Saved events. `reconcileBookEvents` writes "Book Optometrist"
+`BOOK_LEAD_DAYS` (30) before that interval is up, counted from `lastStart`, the
+start of the last event added from it. Rules are in `src/utils/savedEventTasks.ts`.
+
+- **The interval is the opt-in.** The generator's switch ships off, and giving
+  an event an interval turns it on (with its category), since a stepper that
+  silently did nothing would be the worse answer. Turning the switch off in
+  Automations still stops it.
+- **The source id is the event and the cycle** (`key|YYYY-MM-DD`). Adding the
+  next appointment, from the card or quick add, moves `lastStart` and so the
+  id: the old cycle's live task is dropped (no opt-out), and both callers run
+  the pass right after so it goes at once. A completed task blocks a second for
+  its cycle through `blocksOnFinished`.
+- **A delete stamps `bookDeclinedFor`** with the cycle's `lastStart` on the
+  saved event itself, so the "no" syncs with the event, lasts exactly one
+  cycle, and goes when the event is removed. Undo clears it.
+- **The source is a synced setting**, so two devices reconcile the same cycle to
+  the same derived id. Nothing is drifted: the due day changes only with a new
+  cycle, which is a new source.
+- Pauses on vacation, refuses in demo mode, files under its own category
+  setting (default Personal).
 
 ## A rule's own category
 

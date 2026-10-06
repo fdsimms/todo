@@ -108,6 +108,8 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
+import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
+import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
 import { forgiveVacationStreaks } from '../utils/vacationStreaks';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
@@ -206,7 +208,7 @@ import {
 } from '../utils/supply';
 import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
@@ -372,7 +374,7 @@ import {
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
-import { currentTravelOrigin, useTravelTimeStore } from './useTravelTimeStore';
+import { travelOriginOfEvent, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
@@ -748,6 +750,15 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       useSettingsStore.getState()
         .setSnackNudgeDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
+    // On the saved event itself, scoped to the cycle the task was for: the
+    // next appointment added from it starts a fresh one. Undo clears it.
+    case 'bookEvent': {
+      const list = readSavedEvents();
+      const event = list.find(e => bookSourceId(e) === sourceId);
+      if (!event) return;
+      writeSavedEvents(updateSavedEvent(list, event.title, { bookDeclinedFor: value === false ? event.lastStart : null }));
+      return;
+    }
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
     // nudgeCadenceDays, and both mean "never chase me about this again" — far
@@ -1764,6 +1775,8 @@ interface TaskStore extends UndoHistoryActions {
   syncWaterQuotaTasks: () => void;
   /** The `snackNudge` pass, called from the food log's writes and the catch-up sweep. */
   syncSnackNudgeTasks: () => void;
+  /** The `bookEvent` pass: "Book <saved event>" once its interval is nearly up. */
+  checkBookEventTasks: () => void;
   /**
    * Write one pick into a rotation's ledger without completing anything, and
    * report whether the set is now covered.
@@ -1884,6 +1897,8 @@ interface TaskStore extends UndoHistoryActions {
    * for why the day is both the unit and the whole opt-out.
    */
   checkMealSlotTasks: () => void;
+  /** Drop the meal tasks whose (day, slot) already has food logged in it. */
+  syncLoggedMealSlotTasks: () => void;
   /**
    * Fill the already-written days with meals just switched on in Settings —
    * see the implementation for why the mark is never rewound instead.
@@ -2317,6 +2332,55 @@ function reconcileWaterShortfall(args: {
       ...generatedBy('waterShortfall', args.todayKey),
     }),
   });
+}
+
+/**
+ * The `bookEvent` generator's whole pass. See `src/utils/savedEventTasks.ts`.
+ *
+ * Its sources are the saved events, a synced setting read fresh each time.
+ * A live task for a cycle that no longer wants one (the next appointment was
+ * added, the interval was cleared, the event was removed) is dropped without
+ * an opt-out: nobody declined it.
+ */
+function reconcileBookEvents(tasks: Task[]): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.bookEventTasks || !settings.bookEventTaskCategory) return;
+  if (generatorPausedForVacation('bookEvent', settings.vacationMode)) return;
+  // Saved events are a setting the demo database doesn't hold for real.
+  if (isDemoModeActive()) return;
+
+  const today = getLogicalToday();
+  const wanted = new Map<string, SavedEvent>();
+  for (const event of readSavedEvents()) {
+    const id = bookSourceId(event);
+    if (id && wantsBookTask(event, today)) wanted.set(id, event);
+  }
+
+  liveGeneratedTasksOfKind(tasks, 'bookEvent')
+    .filter(t => !t.generatedSourceId || !wanted.has(t.generatedSourceId))
+    .forEach(t => dropGeneratedTask('bookEvent', t.generatedSourceId));
+
+  const category = settings.bookEventTaskCategory;
+  for (const [sourceId, event] of wanted) {
+    reconcileGeneratedTask({
+      kind: 'bookEvent',
+      sourceId,
+      wanted: true,
+      // Ticked off means booked for this cycle; adding the appointment then
+      // moves the source to the next one.
+      blocksOnFinished: true,
+      // The date is the source's, and only a new cycle moves it, which is a new
+      // source id. Nothing to drift.
+      drift: () => null,
+      draft: () => ({
+        title: bookTaskTitle(event.title),
+        notes: bookTaskNotes(event),
+        dueDate: (bookDueDay(event) ?? today).toISOString(),
+        category,
+        ...generatedBy('bookEvent', sourceId),
+      }),
+    });
+  }
 }
 
 /**
@@ -4522,6 +4586,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     reconcileSnackNudge(get().tasks);
   },
 
+  checkBookEventTasks() {
+    reconcileBookEvents(get().tasks);
+  },
+
   holdQuotaOnToday(id) {
     if (!get().quotaHoldIds.includes(id)) {
       set(s => ({ quotaHoldIds: [...s.quotaHoldIds, id] }));
@@ -5721,6 +5789,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     staleMealSlotTasks(get().tasks, today).forEach(task =>
       dropGeneratedTask('mealSlot', task.generatedSourceId)
     );
+    // And the rows for a meal that is already in the food log, which food
+    // logged straight into the day would otherwise leave sitting on Today.
+    get().syncLoggedMealSlotTasks();
 
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
@@ -5760,6 +5831,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * past the mark, which with a week's window is a week of silence after
    * answering a question in Settings.
    */
+  syncLoggedMealSlotTasks() {
+    const tasks = get().tasks;
+    if (liveGeneratedTasksOfKind(tasks, 'mealSlot').length === 0) return;
+    // The window the pass writes, read from SQLite: the food log store holds
+    // only the range a screen has open. A past day's rows are the stale
+    // sweep's, so the read starts at the logical today.
+    const today = dayKeyOf(getLogicalToday());
+    const logged = loggedMealSlotKeys(
+      dbGetFoodLogEntries(today, shiftDayKey(today, MEAL_SLOT_TASK_DAYS - 1))
+    );
+    // dropGeneratedTask writes no opt-out and the mark keeps the day from
+    // being written again, so a row dropped here stays dropped even if the
+    // entry is deleted later.
+    loggedMealSlotTasks(tasks, logged).forEach(task =>
+      dropGeneratedTask('mealSlot', task.generatedSourceId)
+    );
+  },
+
   backfillMealSlotTasks(slots) {
     const settings = useSettingsStore.getState();
     // The same gate the pass above takes. Unreachable today — the only caller
@@ -6818,7 +6907,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? {
           estimates: useTravelTimeStore.getState().estimates,
           mode: settings.travelMode,
-          origin: travelOriginKey(currentTravelOrigin()),
+          originKeyFor: (eventId: string) => travelOriginKey(travelOriginOfEvent(eventId)),
         }
       : undefined;
     const matches = matchedTravelTasks(

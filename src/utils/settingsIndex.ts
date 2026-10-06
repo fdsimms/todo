@@ -339,6 +339,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
     'generated', 'automatic'],
+  bookEvent: ['appointment', 'checkup', 'doctor', 'dentist', 'optometrist', 'remind', 'yearly',
+    'generated', 'automatic'],
 };
 
 /**
@@ -520,8 +522,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['refresh', 'force', 'manual', 'reload', 'events', 'stale'] },
   { id: 'calendarVacationHidden', groupId: 'capture', label: 'Hide during vacation', section: 'Calendar',
     keywords: ['away', 'exclude', 'work calendar', 'trip'] },
+  { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'capture', label: 'Show events on Today', section: 'Calendar',
+    keywords: ['hide events', 'rows', 'list', 'feed', 'off', 'agenda'] },
   { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'capture', label: 'Show events under', section: 'Calendar',
-    keywords: ['category', 'section', 'today', 'events on today', 'hide events', 'file', 'where'] },
+    keywords: ['category', 'section', 'file', 'where'] },
   { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
   { id: 'mapsApp', groupId: 'capture', label: 'Directions', section: 'Calendar',
@@ -530,6 +534,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
   { id: 'savedPlaces', groupId: 'capture', label: 'Saved places', section: 'Calendar',
     keywords: ['home', 'work', 'location', 'address', 'event', 'name', 'bookmark', 'favorite'] },
+  { id: 'savedEvents', groupId: 'capture', label: 'Saved events', section: 'Calendar',
+    keywords: ['appointment', 'regular', 'repeat', 'bookmark', 'favorite', 'book', 'checkup', 'reminder'] },
   { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
@@ -897,6 +903,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'version', groupId: 'about', label: 'Version', section: 'About', keywords: ['build'] },
   { id: 'patchNotes', groupId: 'about', label: "What's New", section: 'About',
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
+  { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
+    keywords: ['debug', 'blank screen'] },
 ];
 
 /**

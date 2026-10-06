@@ -28,7 +28,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
-import { allElsewhere, describeElsewhere, quickElsewhere, type ElsewhereResult } from '../utils/searchElsewhere';
+import { allElsewhere, describeElsewhere, quickElsewhere, QUICK_ELSEWHERE_LIMIT, type ElsewhereResult } from '../utils/searchElsewhere';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
@@ -439,18 +439,26 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
   // Screens, settings, people, recipes and groceries: everything that isn't a
   // task. Searchable only where the side menu still offers it (see
-  // useElsewhereSearch), and at most QUICK_ELSEWHERE_LIMIT rows of them.
+  // useElsewhereSearch).
   const elsewhereSections = useElsewhereSearch(debouncedQuery, visible);
-  const elsewhereResults = useMemo(() => quickElsewhere(elsewhereSections), [elsewhereSections]);
-  const elsewhereTotal = useMemo(() => allElsewhere(elsewhereSections).length, [elsewhereSections]);
+  const allElsewhereResults = useMemo(() => allElsewhere(elsewhereSections), [elsewhereSections]);
+  const elsewhereTotal = allElsewhereResults.length;
 
-  // Those rows spend the card's seven slots rather than adding to them.
+  // Tasks, stacks and projects take the card's slots first; the non-task rows
+  // below them spend only what is left (at most QUICK_ELSEWHERE_LIMIT).
   const { groupResults, projectResults, results, total: taskTotal } = useMemo(
     () => quickSearch(
-      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT - elsewhereResults.length, heldIds,
+      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT, heldIds,
       groups, rosterByGroupId, projects, progressByProject
     ),
-    [tasks, debouncedQuery, projectNamesById, elsewhereResults.length, heldIds, groups, rosterByGroupId, projects, progressByProject]
+    [tasks, debouncedQuery, projectNamesById, heldIds, groups, rosterByGroupId, projects, progressByProject]
+  );
+  const elsewhereResults = useMemo(
+    () => quickElsewhere(
+      elsewhereSections,
+      Math.min(QUICK_ELSEWHERE_LIMIT, QUICK_SEARCH_LIMIT - groupResults.length - projectResults.length - results.length)
+    ),
+    [elsewhereSections, groupResults.length, projectResults.length, results.length]
   );
   // The footer's count is what the Search screen will show, which is now
   // everything this card found, not just the tasks.
@@ -594,15 +602,6 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
           {hasResults && (
             <View style={styles.results}>
-              {elsewhereResults.map(result => (
-                <QuickSearchElsewhereRow
-                  key={result.key}
-                  result={result}
-                  onSelect={handleSelectElsewhere}
-                  styles={styles}
-                  colors={colors}
-                />
-              ))}
               {/* Stacks and projects lead, same order and reasoning as the
                   Search screen's own sections (see the doc comment above). */}
               {groupResults.map(result => (
@@ -633,6 +632,15 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
                   result={result}
                   onSelect={handleSelect}
                   onTicked={hold}
+                  styles={styles}
+                  colors={colors}
+                />
+              ))}
+              {elsewhereResults.map(result => (
+                <QuickSearchElsewhereRow
+                  key={result.key}
+                  result={result}
+                  onSelect={handleSelectElsewhere}
                   styles={styles}
                   colors={colors}
                 />

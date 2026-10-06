@@ -72,13 +72,13 @@ describe('contextSectionSummaries', () => {
     expect(contextSectionSummaries(items).get('Health')).toBe('5,348 steps · 510 active cal');
   });
 
-  it('counts events and names the next timed one, skipping all-day', () => {
+  it('names the next timed event with its time first, skipping all-day', () => {
     const items = [
       header('Calendar'),
       ctx(row('event-a', 'event', { title: 'Birthday', caption: 'All day' })),
       ctx(row('event-b', 'event', { title: 'Dentist', caption: '2:30 PM' })),
     ];
-    expect(contextSectionSummaries(items).get('Calendar')).toBe('2 events · next Dentist 2:30 PM');
+    expect(contextSectionSummaries(items).get('Calendar')).toBe('2:30 PM Dentist');
   });
 
   it('names the running event instead of the next one', () => {
@@ -87,7 +87,7 @@ describe('contextSectionSummaries', () => {
       ctx(row('event-a', 'event', { title: 'Standup', caption: 'Now', now: true })),
       ctx(row('event-b', 'event', { title: 'Dentist', caption: '2:30 PM' })),
     ];
-    expect(contextSectionSummaries(items).get('Calendar')).toBe('2 events · Standup now');
+    expect(contextSectionSummaries(items).get('Calendar')).toBe('Now: Standup');
   });
 
   it('says nothing for a section that also holds a task, a meal or a moved event', () => {

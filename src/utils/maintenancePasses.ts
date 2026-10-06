@@ -102,6 +102,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Beside it, reading the same food log: 3 PM arriving is time passing, and
     // the food log's own writes cover everything else. See snackNudgeTasks.ts.
     ['sync snack nudge', () => tasks().syncSnackNudgeTasks()],
+    // A saved event's booking interval running out is a day passing, so it is
+    // caught up here. Reads only its own setting; see savedEventTasks.ts.
+    ['check book-event tasks', () => tasks().checkBookEventTasks()],
     // Let projects the user opted into auto-scheduling date their own next
     // task if they've run dry. After rolloverQuotas, which can complete and
     // spawn members and so change what a project counts as scheduled; and
