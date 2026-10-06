@@ -86,9 +86,12 @@ export function InlineAction({
     <PressableScale
       style={[
         styles.pill,
-        // Tighter, even padding without a label — closer to a circle around
-        // the icon alone, rather than the wider pill a run of text needs.
-        { backgroundColor: bg, paddingHorizontal: label ? 12 : spacing.sm },
+        // Without a label the pill is a circle: minWidth matches minHeight
+        // (32), since 14pt of icon plus padding alone came to 30 x 32, an
+        // oval. justifyContent keeps the icon centered in the wider box.
+        label
+          ? { backgroundColor: bg, paddingHorizontal: 12 }
+          : { backgroundColor: bg, paddingHorizontal: spacing.sm, minWidth: 32, justifyContent: 'center' },
         disabled && styles.disabled,
         style,
       ]}

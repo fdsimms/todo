@@ -1037,32 +1037,51 @@ export function GroceryItemSheet({
                 bought,
               ].filter(Boolean).join(' · ');
               return (
-                <TouchableOpacity
+                <View
                   key={product.id}
                   style={[styles.subRow, i > 0 && styles.subRowDivided]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => {
-                    haptics.tap();
-                    setProductSheet(product.id);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${describeProduct(product)}${isPreferred ? ', the one you want' : ''}${meta ? `. ${meta}` : ''}`}
-                  accessibilityHint="Opens this product, where you can rate, edit or remove it"
                 >
-                  <View style={styles.subBody}>
-                    <View style={styles.productNameRow}>
+                  {/* The preference is marked on the row rather than shown by
+                      reordering alone ("first" is not a thing anyone reads as
+                      "chosen"), and it is set from here: choosing a product
+                      used to take opening its sheet. Tapping the chosen one
+                      again clears it, same as "No preference" below. */}
+                  <TouchableOpacity
+                    style={styles.productRadio}
+                    activeOpacity={interaction.activeOpacity}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 4 }}
+                    onPress={() => {
+                      haptics.tap();
+                      setPreferredProduct(item.id, isPreferred ? null : product.id);
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: isPreferred }}
+                    accessibilityLabel={`${describeProduct(product)}, the one you want`}
+                  >
+                    <Ionicons
+                      name={isPreferred ? 'radio-button-on' : 'radio-button-off'}
+                      size={22}
+                      color={isPreferred ? colors.accent : colors.controlBorder}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.productBody}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => {
+                      haptics.tap();
+                      setProductSheet(product.id);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${describeProduct(product)}${meta ? `. ${meta}` : ''}`}
+                    accessibilityHint="Opens this product, where you can rate, edit or remove it"
+                  >
+                    <View style={styles.subBody}>
                       <Text style={styles.subName} numberOfLines={1}>{describeProduct(product)}</Text>
-                      {/* The preference is marked on the row rather than
-                          shown by reordering alone: the list is short, and
-                          "first" is not a thing anyone reads as "chosen". */}
-                      {isPreferred && (
-                        <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
-                      )}
+                      {!!meta && <Text style={styles.subMeta} numberOfLines={1}>{meta}</Text>}
                     </View>
-                    {!!meta && <Text style={styles.subMeta} numberOfLines={1}>{meta}</Text>}
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                </TouchableOpacity>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
               );
             })}
             {/* One row, not two stacked pills: they're a pair of controls
@@ -2122,7 +2141,8 @@ function makeStyles(colors: Colors) {
     // The tick sits beside the name rather than at the row's trailing edge,
     // where the chevron already is — two glyphs at the same end read as one
     // control with a decoration on it.
-    productNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    productRadio: { justifyContent: 'center' },
+    productBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     subMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     // Clears the last row, and gives the field's own bottom padding something
     // to sit under rather than jamming the pill against the separator below.

@@ -14,7 +14,6 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { freshest, redoIsCurrent, topOf } from '../utils/undoHistory';
-import { GlassLayer, glassSupported } from './GlassLayer';
 
 /** What the bar is currently offering: the undo of an action, or its redo. */
 type Shown = { mode: 'undo' | 'redo'; label: string; run: () => void };
@@ -24,6 +23,10 @@ type Shown = { mode: 'undo' | 'redo'; label: string; run: () => void };
 // read a label and reach for the button — the same trade-off shake-to-undo
 // avoids by asking first instead of guessing.
 const VISIBLE_MS = 6000;
+
+// The bar is deliberately a solid card, not Liquid Glass. It floats over list
+// rows and the FABs, and glass let their text and purple bleed through the
+// label and the button, which made it hard to read.
 
 /**
  * Undo #1691 — the only route to `undoLastAction()` used to be shaking the
@@ -156,8 +159,7 @@ export function UndoBar() {
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <View style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}>
-        <GlassLayer style={styles.glassRadius} />
+      <View style={[styles.bar, shadows.fab]}>
         <Text style={styles.label} numberOfLines={1}>
           {shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
         </Text>
@@ -190,12 +192,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,
   },
-  // The glass supplies its own fill, edge and depth, so the solid card's come off together.
-  barGlass: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  glassRadius: { borderRadius: radius.lg },
   label: {
     flex: 1,
     color: colors.text,

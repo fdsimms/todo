@@ -14,7 +14,6 @@ import { spacing, radius, font, fontWeight, border, type Colors } from '../theme
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { GlassLayer, glassSupported } from './GlassLayer';
 
 // Longer than the undo bar's six seconds: this one asks a question with two
 // answers rather than offering one button.
@@ -77,8 +76,7 @@ export function ReadyOfferBar() {
         <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
           {/* The name gets its own line: it's the one thing to read, and two
               buttons beside it would cut it short. */}
-          <View style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}>
-            <GlassLayer style={styles.glassRadius} />
+          <View style={[styles.bar, shadows.fab]}>
             <Text style={styles.label} numberOfLines={2}>{label}</Text>
             <View style={styles.actions}>
               <InlineAction
@@ -130,12 +128,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
-  // The glass supplies its own fill, edge and depth, so the solid card's come off together.
-  barGlass: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  glassRadius: { borderRadius: radius.lg },
   label: {
     color: colors.text,
     fontSize: font.md,

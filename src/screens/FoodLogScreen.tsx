@@ -61,7 +61,6 @@ import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
-import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
@@ -939,20 +938,6 @@ export function FoodLogScreen() {
     describeAgainstTarget(key, totals.total[key], effectiveTargets)
       ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`;
 
-  // What the log is, then the ways in this install actually has (#2928). Only
-  // the ones that would work are named: a search with no key or a scan
-  // simplified mode took away is a way in that isn't there.
-  const emptyWaysIn = [
-    'pick a food that has nutrition on it',
-    ...(scanShown ? ['scan a package'] : []),
-    ...(canSearchFoods ? ['search a food database'] : []),
-    ...(estimateRoute !== 'unavailable' ? ['describe a meal'] : []),
-  ];
-  const emptySubtitle = "Write down what you ate and see the day's totals. You can "
-    + (emptyWaysIn.length === 1
-      ? emptyWaysIn[0]
-      : `${emptyWaysIn.slice(0, -1).join(', ')} or ${emptyWaysIn[emptyWaysIn.length - 1]}`)
-    + '.';
 
   // Shown whenever there's something to say — a stated nutrient or a target
   // for one — regardless of whether the day has any entries yet. Withheld
@@ -1163,14 +1148,6 @@ export function FoodLogScreen() {
             {totalsCard}
             {waterCard}
           </View>
-          <EmptyState
-            icon="restaurant-outline"
-            title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
-            subtitle={emptySubtitle}
-            actionLabel="Log something"
-            onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
-            bottomOffset={tabBarHeight + FAB_SIZE + spacing.md}
-          />
         </ScrollView>
       ) : (
         <PaintSelectionProvider {...paintProps}>
