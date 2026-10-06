@@ -3347,7 +3347,9 @@ export function TodayScreen() {
             colors={colors}
             collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
-            onPin={isCategory ? () => handlePinCategory(item.label) : undefined}
+            // A section holding only context rows (Calendar Events) has no task
+            // to pin, so it offers no pin at all rather than one that does nothing.
+            onPin={isCategory && categoryTasks.length > 0 ? () => handlePinCategory(item.label) : undefined}
             allPinned={isCategory ? allPinned : undefined}
             count={isCategory ? sectionDisplayCounts.get(item.label) ?? 0 : undefined}
             summary={isCategory ? contextSummaries.get(item.label) : undefined}
