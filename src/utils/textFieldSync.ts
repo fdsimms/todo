@@ -64,15 +64,25 @@ export function initialFieldSync(value: string, styleKey: string): FieldSync {
  * an empty string has no attributes to change and a style change can't push
  * anything at all. That makes a field that opened empty (quick add, every
  * "add a…" box) immune to style changes too, not just to typing.
+ *
+ * Immune is also the catch: the words typed into such a field keep the
+ * attributes they were typed with, so a colour flipping to transparent under a
+ * highlight overlay left the already-typed text dark, drawn on top of the
+ * overlay's copy of it (the doubled, misaligned title in the new-task sheet).
+ * So when the style changes and the tree is empty but the field has words, the
+ * same words are written back with a command, which rebuilds them with the
+ * current attributes. Same text, so the caret is left where it was.
  */
 export function nextFieldSync(
   prev: FieldSync,
   value: string,
   styleKey: string,
 ): { sync: FieldSync; write: string | null } {
-  const write = value !== prev.known ? value : null;
+  const styleChanged = styleKey !== prev.styleKey;
+  const restyle = styleChanged && prev.tree === '' && value !== '';
+  const write = value !== prev.known || restyle ? value : null;
   const known = value;
-  const tree = styleKey !== prev.styleKey && prev.tree !== '' ? known : prev.tree;
+  const tree = styleChanged && prev.tree !== '' ? known : prev.tree;
   return { sync: { known, tree, styleKey }, write };
 }
 
