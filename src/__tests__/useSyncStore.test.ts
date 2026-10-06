@@ -9,7 +9,7 @@ import {
   SYNC_EPOCH,
 } from '../store/useSyncStore';
 import { dbGetSetting, dbGetSyncCursor, dbSetSetting, dbSetSyncCursor } from '../db/database';
-import { HEALTH_SYNC_TABLES } from '../db/syncTracking';
+import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import { runSyncAll } from '../utils/syncEngine';
@@ -87,6 +87,7 @@ beforeEach(() => {
     serverUrl: '',
     hasServerToken: false,
     serverHealthLogs: false,
+    serverJournal: false,
   });
   (dbGetSyncCursor as jest.Mock).mockReturnValue(null);
   (loadSecureKey as jest.Mock).mockResolvedValue('');
@@ -345,18 +346,18 @@ describe('health logs', () => {
     useSyncStore.setState({ enabled: true });
 
     await useSyncStore.getState().syncNow();
-    expect(transportsPassed()[0].withhold?.tables).toEqual(HEALTH_SYNC_TABLES);
+    expect(transportsPassed()[0].withhold?.tables).toEqual([...HEALTH_SYNC_TABLES, ...JOURNAL_SYNC_TABLES]);
   });
 
-  it('are withheld from the server by default', async () => {
+  it('are withheld from the server by default, and so is the journal', async () => {
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
     withServer();
 
     await useSyncStore.getState().syncNow();
-    expect(transportsPassed()[0].withhold?.tables).toEqual(HEALTH_SYNC_TABLES);
+    expect(transportsPassed()[0].withhold?.tables).toEqual([...HEALTH_SYNC_TABLES, ...JOURNAL_SYNC_TABLES]);
   });
 
-  it('go to the server once the switch is on, while iCloud still withholds them', async () => {
+  it('go to the server once the switch is on, while iCloud still withholds them and the journal stays back', async () => {
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
     (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
     useSyncStore.setState({ enabled: true, serverUrl: 'https://sync.example.com', serverHealthLogs: true });
@@ -364,7 +365,7 @@ describe('health logs', () => {
     await useSyncStore.getState().syncNow();
     const [icloud, server] = transportsPassed();
     expect(icloud.withhold).toBeDefined();
-    expect(server.withhold).toBeUndefined();
+    expect(server.withhold?.tables).toEqual(JOURNAL_SYNC_TABLES);
   });
 
   it('switch is stored per device and read back on launch', () => {
@@ -390,6 +391,51 @@ describe('health logs', () => {
     useSyncStore.setState({ serverUrl: 'https://sync.example.com' });
     await useSyncStore.getState().syncNow();
     expect(cursors.get('server:push')).toBe(SYNC_EPOCH);
+  });
+});
+
+describe('the journal', () => {
+  it('goes to the server on its own switch, separately from health logs', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ enabled: true, serverUrl: 'https://sync.example.com', serverJournal: true });
+
+    await useSyncStore.getState().syncNow();
+    const [icloud, server] = transportsPassed();
+    expect(icloud.withhold?.tables).toEqual(expect.arrayContaining(JOURNAL_SYNC_TABLES));
+    expect(server.withhold?.tables).toEqual(HEALTH_SYNC_TABLES);
+  });
+
+  it('sends nothing held back once both switches are on', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ serverUrl: 'https://sync.example.com', serverHealthLogs: true, serverJournal: true });
+
+    await useSyncStore.getState().syncNow();
+    expect(transportsPassed()[0].withhold).toBeUndefined();
+  });
+
+  it('stores its switch per device and keeps its own resend mark', async () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+    useSyncStore.setState({ serverJournal: true });
+    settings.set('syncServerJournalResendFrom', NOTHING_OWED);
+
+    useSyncStore.getState().setServerJournal(false);
+    expect(settings.get('syncServerJournal')).toBe('0');
+    expect(settings.get('syncServerJournalResendFrom')).toBe('2026-09-01T00:00:00.000Z');
+    // The health logs' mark is untouched by the journal's switch.
+    expect(settings.get(SERVER_HEALTH_RESEND_KEY)).toBeUndefined();
+
+    // Back on: the next sync rewinds to where the journal was last held back.
+    useSyncStore.getState().setServerJournal(true);
+    cursors.set('server:push', '2026-09-20T00:00:00.000Z');
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ serverUrl: 'https://sync.example.com' });
+    await useSyncStore.getState().syncNow();
+    expect(cursors.get('server:push')).toBe('2026-09-01T00:00:00.000Z');
+    expect(settings.get('syncServerJournalResendFrom')).toBe(NOTHING_OWED);
   });
 });
 

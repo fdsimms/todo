@@ -54,10 +54,12 @@ export function SyncSettings() {
   const serverUrl = useSyncStore(s => s.serverUrl);
   const hasServerToken = useSyncStore(s => s.hasServerToken);
   const serverHealthLogs = useSyncStore(s => s.serverHealthLogs);
+  const serverJournal = useSyncStore(s => s.serverJournal);
   const setEnabled = useSyncStore(s => s.setEnabled);
   const setServerUrl = useSyncStore(s => s.setServerUrl);
   const setServerToken = useSyncStore(s => s.setServerToken);
   const setServerHealthLogs = useSyncStore(s => s.setServerHealthLogs);
+  const setServerJournal = useSyncStore(s => s.setServerJournal);
   const syncNow = useSyncStore(s => s.syncNow);
 
   const colors = useColors();
@@ -156,11 +158,28 @@ export function SyncSettings() {
         icon="heart-outline"
         iconColor={serverHealthLogs ? colors.accent : undefined}
         label="Include health logs"
-        hint="Also send your mood, medication and food logs, your journal and dreams, and your milestones to the sync server. Turning this off stops new entries going there. Ones already sent stay on the server."
+        hint="Also send your mood, medication and food logs and your milestones to the sync server. Turning this off stops new entries going there. Ones already sent stay on the server."
         toggle={serverHealthLogs}
         value={serverHealthLogs ? 'On' : 'Off'}
         onPress={() => setServerHealthLogs(!serverHealthLogs)}
         accessibilityLabel="Include health logs on the sync server"
+      />
+
+      <View style={styles.sep} />
+
+      {/* Its own switch, not part of health logs: the server is what Claude
+          reads through the MCP server, and a diary is a separate decision
+          (JOURNAL_SYNC_TABLES). */}
+      <SettingsRow
+        entryId="syncServerJournal"
+        icon="book-outline"
+        iconColor={serverJournal ? colors.accent : undefined}
+        label="Include journal and dreams"
+        hint="Also send your journal entries and dreams to the sync server, so Claude can read and write them. Turning this off stops new entries going there. Ones already sent stay on the server."
+        toggle={serverJournal}
+        value={serverJournal ? 'On' : 'Off'}
+        onPress={() => setServerJournal(!serverJournal)}
+        accessibilityLabel="Include journal and dreams on the sync server"
       />
 
       <AgentNotesRows />

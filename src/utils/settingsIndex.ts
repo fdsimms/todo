@@ -889,6 +889,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['self-hosted', 'password', 'secret', 'key', 'auth'] },
   { id: 'syncServerHealthLogs', groupId: 'dataReset', label: 'Include health logs', section: 'Sync',
     keywords: ['mood', 'medication', 'food', 'symptoms', 'privacy', 'server', 'mcp', 'claude'] },
+  { id: 'syncServerJournal', groupId: 'dataReset', label: 'Include journal and dreams', section: 'Sync',
+    keywords: ['diary', 'writing', 'privacy', 'server', 'mcp', 'claude'] },
   { id: 'agentNotes', groupId: 'dataReset', label: 'Notes for Claude', section: 'Sync',
     keywords: ['remember', 'memory', 'preferences', 'instructions', 'assistant', 'ai', 'mcp', 'agent'] },
   { id: 'exportBackup', groupId: 'dataReset', label: 'Export all data', section: 'Backup',

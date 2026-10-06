@@ -40,9 +40,11 @@ it holds nothing, for the reason Mood is).
   "a day without a dream".
 - **Search is `textMatchesQuery`**, the mood note search's own rule: every
   word, plain substring.
-- **They are health data for sync** (`HEALTH_SYNC_TABLES`): never sent to
-  iCloud, and sent to a sync server only with Include health logs on. A diary is
-  at least as personal as the mood note it grew out of.
+- **They have their own sync switch** (`JOURNAL_SYNC_TABLES`): never sent to
+  iCloud, and sent to a sync server only with "Include journal and dreams" on,
+  separate from "Include health logs". The server is what the MCP server reads,
+  so that switch is also the decision to let Claude read and write the journal
+  (`docs/arch/mcp-server.md`).
 
 ## The move off the mood entry
 
