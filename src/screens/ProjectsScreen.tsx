@@ -116,6 +116,7 @@ export function ProjectsScreen() {
   const projectSort = useSettingsStore(s => s.projectSortOption);
   const setProjectSort = useSettingsStore(s => s.setProjectSortOption);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
   // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
   // becomes "Due today" without waiting for some unrelated store write.
   useLogicalDayKey();
@@ -176,12 +177,12 @@ export function ProjectsScreen() {
       // books or gift ideas has none.
       next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
       // A list shows its first lines instead, which is what it's for.
-      preview: projectFilter === 'active' && p.kind === 'list'
+      preview: projectFilter === 'active' && p.kind === 'list' && !hideListPreviews
         ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
         : null,
     }));
     return map;
-  }, [listProjects, allTasks, projectFilter, taskGroups]);
+  }, [listProjects, allTasks, projectFilter, taskGroups, hideListPreviews]);
   const progressByProject = useMemo(
     () => new Map(Array.from(cardFactsByProject, ([id, facts]) => [id, facts.progress])),
     [cardFactsByProject]
@@ -912,8 +913,10 @@ const ProjectRow = React.memo(function ProjectRow({
                   accessibilityLabel={`Edit ${project.title}`}
                 >
                   {/* A pencil, like the project page's own: this opens the
-                      editor straight away rather than a menu. */}
-                  <Ionicons name="create-outline" size={16} color={colors.textTertiary} />
+                      editor straight away rather than a menu. Nudged up a point:
+                      the glyph's square sits low in its box, so its ink reads
+                      lower than the add circle's beside it. */}
+                  <Ionicons name="create-outline" size={16} color={colors.textTertiary} style={{ marginTop: -1 }} />
                 </TouchableOpacity>
                 </>
               )}

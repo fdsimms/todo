@@ -106,6 +106,8 @@ export function TasksProjectsSettings() {
   const setFocusBreaksEnabled = useSettingsStore(s => s.setFocusBreaksEnabled);
   const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes, focusBreaksEnabled });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
+  const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
+  const setHideListPreviews = useSettingsStore(s => s.setHideListPreviews);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
@@ -427,6 +429,18 @@ export function TasksProjectsSettings() {
             : 'A finished project sits at 100% until you mark it complete'}
           toggle={autoCompleteProjectsOnDone}
           onPress={() => setAutoCompleteProjectsOnDone(!autoCompleteProjectsOnDone)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="hideListPreviews"
+          icon="eye-off-outline"
+          iconColor={hideListPreviews ? colors.accent : undefined}
+          label="Hide list items on cards"
+          hint={hideListPreviews
+            ? 'Lists on the Projects screen show only their name and count'
+            : 'Lists on the Projects screen show their first few items'}
+          toggle={hideListPreviews}
+          onPress={() => setHideListPreviews(!hideListPreviews)}
         />
         <View style={styles.sep} />
         <SettingsRow
