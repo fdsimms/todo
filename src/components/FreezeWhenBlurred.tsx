@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { Activity, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useNavigationState, useRoute } from '@react-navigation/native';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
@@ -16,11 +16,16 @@ import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
  * than from the root (docs/arch/app-lock.md, `sheetModal.ts`). This is the
  * JS half of what `freezeOnBlur` does, with no native change.
  *
- * It is `react-freeze`'s mechanism written out (a Suspense boundary whose child
- * throws a thenable that never resolves). React hides a suspended subtree
- * rather than unmounting it, so state and refs survive, store updates are
- * applied when it unfreezes, and nothing renders in between. Layout effects
- * clean up on freeze and run again on unfreeze.
+ * It hides the tab in React's `<Activity mode="hidden">`. A hidden subtree is
+ * not unmounted, so state and refs survive, but its effects are torn down
+ * (which also drops its store subscriptions) and nothing re-renders it until
+ * it is shown again, when it catches up on whatever changed. This replaced a
+ * `react-freeze` style Suspense boundary whose child threw a thenable that
+ * never resolves: that one could fail to reveal when the thaw landed in the
+ * same batch as the navigation that focused the tab (a widget or link tap),
+ * leaving the focused tab blank until another tab switch. A retry nudge after
+ * the thaw did not cure it. Showing an Activity is an ordinary update with no
+ * suspended state to get stuck in.
  *
  * The rule for when to freeze is `shouldFreezeTab`, and how long it waits is
  * `TAB_FREEZE_DELAY_MS`.
@@ -32,13 +37,6 @@ import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
  * `resetTo*`). The one that did not was the focus session's reconcile, now
  * `useFocusPlanReconcile` in App.tsx.
  */
-const never = { then() {} };
-
-function Hold({ frozen, children }: { frozen: boolean; children: React.ReactNode }) {
-  if (frozen) throw never;
-  return <>{children}</>;
-}
-
 // One wrapper per screen for the life of the app. The navigator takes a screen's
 // identity as its component, so a wrapper built on each render would remount it.
 const wrapped = new WeakMap<React.ComponentType<any>, React.ComponentType<any>>();
@@ -71,25 +69,11 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
       const timer = setTimeout(() => setSettled(true), TAB_FREEZE_DELAY_MS);
       return () => clearTimeout(timer);
     }, [wantFrozen]);
-    // A thaw is one render that has to un-suspend a boundary whose child threw a
-    // thenable that never resolves. When that render lands in the same batch as
-    // the navigation that focused the tab (a widget or link tap), the reveal can
-    // be missed and the focused tab stays blank until another tab switch. Once the
-    // thaw has committed, render the boundary once more so React retries it.
-    const [, setThawNonce] = useState(0);
-    const wasFrozen = useRef(false);
-    useEffect(() => {
-      const frozenNow = wantFrozen && settled;
-      if (wasFrozen.current && !frozenNow) setThawNonce(n => n + 1);
-      wasFrozen.current = frozenNow;
-    }, [wantFrozen, settled]);
     // The same element while the props are, so this wrapper re-rendering on a
     // sheet opening somewhere does not re-render the screen inside it.
     const screen = useMemo(() => <Screen {...props} />, [props]);
     return (
-      <Suspense fallback={null}>
-        <Hold frozen={wantFrozen && settled}>{screen}</Hold>
-      </Suspense>
+      <Activity mode={wantFrozen && settled ? 'hidden' : 'visible'}>{screen}</Activity>
     );
   }
   FreezeWhenBlurred.displayName = `FreezeWhenBlurred(${Screen.displayName ?? Screen.name ?? 'Screen'})`;
