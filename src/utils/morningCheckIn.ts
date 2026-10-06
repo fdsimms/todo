@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { getDayStart, getTaskDayStart } from './dateUtils';
+import { getDayStart, getEffectiveTaskDate, getTaskDayStart } from './dateUtils';
 import { isHeldBack, isWithheld } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 
@@ -41,7 +41,12 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   // asking would record a miss.
   if (isWithheld(task)) return false;
   if (!task.dueDate) return false;
-  return getTaskDayStart(new Date(task.dueDate), dayResetTime) < getDayStart(new Date(), dayResetTime);
+  // The date the row reads as, not the raw dueDate: pushing a task writes a
+  // later `deferUntil` and leaves `dueDate` on the day it was pushed from, so
+  // judging by dueDate asked about a task you had chosen to move, every
+  // morning until the day it came back.
+  const readsAs = getEffectiveTaskDate(task, dayResetTime) ?? task.dueDate;
+  return getTaskDayStart(new Date(readsAs), dayResetTime) < getDayStart(new Date(), dayResetTime);
 }
 
 /** The full set across all tasks, in no particular order — callers group it. */

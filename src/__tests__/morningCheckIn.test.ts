@@ -178,6 +178,16 @@ describe('isMorningCheckInCandidate', () => {
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(true);
   });
 
+  it('is false for a task pushed to a later day, though its dueDate is in the past', () => {
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deferUntil: localIso('2025-06-17T00:00') });
+    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+  });
+
+  it('asks again once a pushed task has come back and its new day has passed', () => {
+    const task = makeTask({ dueDate: localIso('2025-06-01T00:00'), deferUntil: localIso('2025-06-09T00:00') });
+    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(true);
+  });
+
   it('is false for a task due today', () => {
     const task = makeTask({ dueDate: localIso('2025-06-10T00:00'), deadline: DEADLINE });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
