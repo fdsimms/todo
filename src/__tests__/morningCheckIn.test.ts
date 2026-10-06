@@ -173,9 +173,9 @@ describe('isMorningCheckInCandidate', () => {
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(true);
   });
 
-  it('is false for a task with no deadline set, even if overdue', () => {
+  it('is true for an overdue task with no deadline set', () => {
     const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: null });
-    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(true);
   });
 
   it('is false for a task due today', () => {
@@ -255,7 +255,8 @@ describe('morningCheckInTasks', () => {
     const doneYesterday = makeTask({ id: 'b', dueDate: localIso('2025-06-09T00:00'), deadline: localIso('2025-06-09T00:00'), completed: true });
     const dueToday = makeTask({ id: 'c', dueDate: localIso('2025-06-10T00:00'), deadline: localIso('2025-06-10T00:00') });
     const noDeadline = makeTask({ id: 'd', dueDate: localIso('2025-06-09T00:00'), deadline: null });
-    expect(morningCheckInTasks([missedYesterday, doneYesterday, dueToday, noDeadline], DAY_RESET)).toEqual([missedYesterday]);
+    const oneOff = makeTask({ id: 'e', dueDate: localIso('2025-06-09T00:00'), recurrenceType: 'none' });
+    expect(morningCheckInTasks([missedYesterday, doneYesterday, dueToday, noDeadline, oneOff], DAY_RESET)).toEqual([missedYesterday, noDeadline]);
   });
 
   it('returns an empty array when nothing qualifies', () => {
