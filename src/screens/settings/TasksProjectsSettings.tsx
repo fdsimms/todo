@@ -24,6 +24,7 @@ import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
 import { categoryLabel } from '../../utils/categoryLabel';
+import { effortTimeLabel } from '../../utils/effort';
 import { EFFORT_LABELS, type Difficulty, type Effort, type TimeOfDay } from '../../types';
 import { PRIORITY_SEGMENTS } from '../../utils/prioritySegments';
 import { DIFFICULTY_SEGMENTS } from '../../utils/rewards';
@@ -51,7 +52,7 @@ const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
 // identically to not configuring a default at all (newTaskFromDraft falls back
 // to 0 either way).
 const NEW_TASK_EFFORT_OPTIONS: SegmentOption<Effort>[] =
-  EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : label }));
+  EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : effortTimeLabel(value as Effort, label) }));
 const NEW_TASK_DIFFICULTY_OPTIONS: SegmentOption<Difficulty | null>[] = [
   { value: null, label: 'None' },
   ...DIFFICULTY_SEGMENTS,

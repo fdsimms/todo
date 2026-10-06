@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Effort, Priority, TitleRule, TitleRuleMatch } from '../types';
 import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
+import { effortTimeLabel } from '../utils/effort';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -35,7 +36,7 @@ const MATCH_OPTIONS: SegmentOption<TitleRuleMatch>[] = [
 ];
 
 const EFFORT_OPTIONS: SegmentOption<Effort>[] =
-  EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : label }));
+  EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : effortTimeLabel(value as Effort, label) }));
 
 interface Props {
   visible: boolean;
@@ -368,7 +369,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
 
         <CollapsibleField
           label="Effort"
-          summary={draft.effort > 0 ? EFFORT_LABELS[draft.effort] : undefined}
+          summary={draft.effort > 0 ? effortTimeLabel(draft.effort, EFFORT_LABELS[draft.effort]) : undefined}
           emptySummary="Not set"
           hint="Roughly how big a matching task is, so the day it lands on can be sized realistically."
           expanded={fieldOpen('effort')}

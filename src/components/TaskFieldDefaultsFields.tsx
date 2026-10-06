@@ -6,7 +6,7 @@ import { font, fontWeight, spacing, type Colors } from '../theme';
 import { EFFORT_LABELS, type Difficulty, type Effort, type Priority, type TaskFieldDefaults } from '../types';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
-import { EFFORT_MINUTES, formatDuration } from '../utils/effort';
+import { effortTimeLabel } from '../utils/effort';
 import { ESTIMATE_EFFORTS } from '../utils/fieldBackfill';
 import { NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 
@@ -35,8 +35,9 @@ const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
   { value: null, label: 'Ask each time' },
   ...ESTIMATE_EFFORTS.map(e => ({
     value: e as Effort | null,
-    label: EFFORT_LABELS[e],
-    accessibilityLabel: EFFORT_MINUTES[e] != null ? `${EFFORT_LABELS[e]}, about ${formatDuration(EFFORT_MINUTES[e]!)}` : EFFORT_LABELS[e],
+    // The time, not the size letter: the letter is only a name for these
+    // minutes, and a picker that shows just "XS" makes you remember what it is.
+    label: effortTimeLabel(e, EFFORT_LABELS[e]),
   })),
 ];
 
@@ -81,7 +82,7 @@ export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Pro
         label="Default time estimate"
         value={current.effort}
         onChange={effort => set({ effort })}
-        columns={4}
+        columns={3}
         options={ESTIMATE_OPTIONS}
       />
     </View>

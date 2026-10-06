@@ -229,6 +229,17 @@ export function formatClockDuration(min: number): string {
 }
 
 /** Compact human label for a duration in minutes, e.g. 15m, 45m, 1h, 1.5h, 8h. */
+/**
+ * What a picker calls an effort bucket: its time (`15m`, `1.5h`) rather than its
+ * size letter. The letters are only names for EFFORT_MINUTES, and a control that
+ * shows just "XS" makes you remember which duration that is. `fallback` is for
+ * bucket 0, which has no time.
+ */
+export function effortTimeLabel(e: Effort, fallback: string): string {
+  const mins = EFFORT_MINUTES[e];
+  return mins != null ? formatDuration(mins) : fallback;
+}
+
 export function formatDuration(min: number): string {
   if (min < 60) return `${min}m`;
   const hours = min / 60;
