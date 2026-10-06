@@ -13,6 +13,7 @@ import { cookTimerElapsed, isCookTimerRunning } from '../utils/recipeTimer';
 import { formatStopwatch } from '../utils/effort';
 import { haptics } from '../utils/haptics';
 import { resetToRecipeDetail } from '../navigation/navigationRef';
+import { GlassLayer, glassSupported } from './GlassLayer';
 
 /**
  * "Cooking Chili · 4:12", floating above the tab bar on every screen while a
@@ -68,12 +69,13 @@ export function CookingBar() {
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
       <TouchableOpacity
-        style={[styles.bar, shadows.fab]}
+        style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}
         activeOpacity={interaction.activeOpacity}
         onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, { openCookMode: true }); }}
         accessibilityRole="button"
         accessibilityLabel={`Cooking ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
       >
+        <GlassLayer interactive style={styles.glassRadius} />
         <Ionicons name="flame" size={iconSize.sm} color={colors.orangeText} />
         <Text style={styles.text} numberOfLines={1}>
           Cooking <Text style={styles.name}>{recipe.name}</Text>
@@ -102,6 +104,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
+  // The glass supplies its own fill, edge and depth, so the solid card's come off together.
+  barGlass: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  glassRadius: { borderRadius: radius.lg },
   text: { flex: 1, color: colors.text, fontSize: font.md },
   name: { fontWeight: fontWeight.bold },
   elapsed: { color: colors.textSecondary, fontSize: font.sm, fontVariant: ['tabular-nums'] },

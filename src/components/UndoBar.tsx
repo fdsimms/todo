@@ -14,6 +14,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { freshest, redoIsCurrent, topOf } from '../utils/undoHistory';
+import { GlassLayer, glassSupported } from './GlassLayer';
 
 /** What the bar is currently offering: the undo of an action, or its redo. */
 type Shown = { mode: 'undo' | 'redo'; label: string; run: () => void };
@@ -155,7 +156,8 @@ export function UndoBar() {
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
-      <View style={[styles.bar, shadows.fab]}>
+      <View style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}>
+        <GlassLayer style={styles.glassRadius} />
         <Text style={styles.label} numberOfLines={1}>
           {shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
         </Text>
@@ -188,6 +190,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,
   },
+  // The glass supplies its own fill, edge and depth, so the solid card's come off together.
+  barGlass: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  glassRadius: { borderRadius: radius.lg },
   label: {
     flex: 1,
     color: colors.text,
