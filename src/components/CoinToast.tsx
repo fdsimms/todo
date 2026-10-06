@@ -7,7 +7,6 @@ import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { useTheme } from '../theme/ThemeContext';
 import { animation, border, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { formatCoins } from '../utils/rewards';
-import { GlassLayer, glassSupported } from './GlassLayer';
 
 // Long enough to read a number, short enough that a run of ticks reads as a
 // running tally rather than a queue of notices.
@@ -68,12 +67,11 @@ export function CoinToast() {
       pointerEvents="none"
     >
       <Animated.View
-        style={[styles.pill, glassSupported() ? styles.pillGlass : shadows.fab, { opacity }]}
+        style={[styles.pill, shadows.fab, { opacity }]}
         accessible
         accessibilityLiveRegion="polite"
         accessibilityLabel={earned ? `Earned ${formatCoins(shown.amount)}` : `Lost ${formatCoins(shown.amount)}`}
       >
-        <GlassLayer style={styles.pillRadius} />
         <CoinIcon size={iconSize.sm} color={tint} />
         <Text style={[styles.label, { color: tint }]}>{text}</Text>
       </Animated.View>
@@ -99,11 +97,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.smd,
   },
-  pillGlass: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  pillRadius: { borderRadius: radius.full },
   label: {
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
