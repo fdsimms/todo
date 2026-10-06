@@ -12,8 +12,9 @@
  * An agent's figures for a burrito are an estimate, and the app does not store
  * an estimate nobody looked at. So `log_food` without `apply: true` shows the
  * figures as the app read them; the person sees them, then it is written. The
- * entry carries `source: 'estimated'` for good, and is never sent to Apple
- * Health, because only the device a meal was logged on writes it there.
+ * entry carries `source: 'estimated'` for good. It is not written to Apple
+ * Health from here, since a Node process has no HealthKit: the entry is flagged
+ * (`healthWritePending`) and the phone writes it on its next foreground.
  */
 import { NUTRIENT_KEYS, type MealSlot, type NutrientKey } from '../../src/types';
 import type { RecipePatch, Replica } from './replica';
@@ -117,7 +118,7 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
     return {
       applied: false,
       ...base,
-      note: 'A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated, and it will not be sent to Apple Health.',
+      note: 'A preview. Show the person these estimated figures; log it with apply: true once they agree. It will be marked as estimated, and the phone will write it to Apple Health the next time the app is opened (if Health writing is on there).',
     };
   }
   const entry = replica.logFood({ label: input.label, quantity: input.quantity, amounts: input.amounts, slot: input.slot ?? null, at });
@@ -126,7 +127,7 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
     ...base,
     id: entry.id,
     day: entry.dayKey,
-    note: 'Logged, marked as estimated. It is in the app\'s food log but not in Apple Health: only the phone a meal is logged on writes it there.',
+    note: 'Logged, marked as estimated. It is in the app\'s food log now. It is not in Apple Health yet: the server has no Health access, so the phone writes it the next time the app is opened, if Health writing is on there. Do not say it is in Health.',
   };
 }
 
@@ -175,7 +176,7 @@ export function logWater(replica: Replica, input: LogWaterInput): LogWaterResult
     added: describeWater(ml, unit),
     dayTotal: describeWater(outcome.dayTotalMl, unit),
     dayTotalMl: outcome.dayTotalMl,
-    note: `${notes[outcome.how]} Not sent to Apple Health: only the phone writes it there.`,
+    note: `${notes[outcome.how]} Not in Apple Health yet: the phone writes it the next time the app is opened, if Health writing is on there.`,
   };
 }
 

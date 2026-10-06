@@ -9,12 +9,18 @@ import {
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
   dbGetFoodLogEntry,
+  dbGetPendingHealthFoodEntries,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
-import { logFoodEntryToHealth, retractFoodEntryFromHealth, type FoodWriteResult } from '../utils/healthFoodSync';
+import {
+  logFoodEntryToHealth,
+  pendingWriteAction,
+  retractFoodEntryFromHealth,
+  type FoodWriteResult,
+} from '../utils/healthFoodSync';
 import { useSettingsStore } from './useSettingsStore';
 import { useHealthStore } from './useHealthStore';
 import { useTaskStore } from './useTaskStore';
@@ -304,6 +310,19 @@ interface FoodLogStore {
    */
   reviseEntry: (id: string, patch: FoodLogPatch) => void;
   /**
+   * Writes to Health the entries an agent logged over MCP, which cannot reach
+   * HealthKit itself (`FoodLogEntry.healthWritePending`). Goes through
+   * `logFoodEntryToHealth`, so every guard a new entry gets applies, and through
+   * `recordHealthWrite`, which stores the sample ids and clears the flag.
+   *
+   * An entry the switch is off for, or this device cannot write, stays pending
+   * for a later pass. One too old (`pendingWriteAction`) or stating nothing
+   * writable is cleared without a write. Concurrent calls collapse into one, so
+   * launch, foreground and a sync landing together cannot write a meal twice.
+   * Callers gate on the app being in front (`runPendingHealthFoodWrites`).
+   */
+  writePendingHealthEntries: () => Promise<void>;
+  /**
    * Forget an entry.
    *
    * Once something writes nutrients to Health this is also where those samples
@@ -481,9 +500,10 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
     void retractFoodEntryFromHealth(result.sampleIds);
     return;
   }
-  dbUpdateFoodLogEntry({ ...fresh, healthSampleIds: result.sampleIds });
-  const stamp = (e: FoodLogEntry) =>
-    (e.id === entry.id ? { ...e, healthSampleIds: result.sampleIds } : e);
+  // Also clears `healthWritePending`: written is written, whichever path asked.
+  const written = { healthSampleIds: result.sampleIds, healthWritePending: false };
+  dbUpdateFoodLogEntry({ ...fresh, ...written });
+  const stamp = (e: FoodLogEntry) => (e.id === entry.id ? { ...e, ...written } : e);
   set(s => ({
     entries: s.entries.map(stamp),
     windowEntries: s.windowEntries.map(stamp),
@@ -503,6 +523,21 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
       useTaskStore.getState().checkHealthTasks();
     });
   }
+}
+
+let pendingWriteRunning = false;
+
+/** Drops the pending flag from a row as it stands now, on disk and in memory. */
+function clearHealthWritePending(id: string, set: FoodLogSet): void {
+  const fresh = dbGetFoodLogEntry(id);
+  if (!fresh || !fresh.healthWritePending) return;
+  dbUpdateFoodLogEntry({ ...fresh, healthWritePending: false });
+  const clear = (e: FoodLogEntry) => (e.id === id ? { ...e, healthWritePending: false } : e);
+  set(s => ({
+    entries: s.entries.map(clear),
+    windowEntries: s.windowEntries.map(clear),
+    insightEntries: s.insightEntries.map(clear),
+  }));
 }
 
 /**
@@ -705,6 +740,26 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       if (stale.length > 0) await retractFoodEntryFromHealth(stale);
       recordHealthWrite(updated, await logFoodEntryToHealth(updated), set);
     })();
+  },
+
+  async writePendingHealthEntries() {
+    if (pendingWriteRunning) return;
+    pendingWriteRunning = true;
+    try {
+      for (const entry of dbGetPendingHealthFoodEntries()) {
+        if (pendingWriteAction(entry) === 'drop') {
+          clearHealthWritePending(entry.id, set);
+          continue;
+        }
+        const result = await logFoodEntryToHealth(entry);
+        // Nothing the entry states can be written, now or later: waiting would
+        // only retry the same answer.
+        if (result.outcome === 'nothingToWrite') clearHealthWritePending(entry.id, set);
+        else recordHealthWrite(entry, result, set);
+      }
+    } finally {
+      pendingWriteRunning = false;
+    }
   },
 
   setPendingMealLog(pending) {

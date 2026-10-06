@@ -328,6 +328,16 @@ describe('the replica', () => {
       expect(() => replica.logWater({ ml: 0 })).toThrow(/positive/);
     });
 
+    it('flags what it logs for the phone to write to Apple Health, since the server cannot', () => {
+      const food = replica.logFood({ label: 'Burrito', amounts: { calorieKcal: 600 } });
+      expect(food.healthWritePending).toBe(true);
+      expect(day(food.dayKey).find(r => r.id === food.id)).toMatchObject({ healthWritePending: true, healthSampleIds: [] });
+
+      const water = replica.logWater({ ml: 250, at: new Date(2026, 8, 7, 9) });
+      expect(water.entry.healthWritePending).toBe(true);
+      expect(replica.logWater({ ml: 250, at: new Date(2026, 8, 7, 12) }).entry.healthWritePending).toBe(true);
+    });
+
     it('leaves a row the phone wrote to Apple Health alone and puts the glass on a second row, summing both', () => {
       const first = replica.logWater({ ml: 250, at: new Date(2026, 8, 6, 9) });
       mockRaw.runSync("UPDATE food_logs SET health_sample_ids = ? WHERE id = ?", [JSON.stringify(['hk-1']), first.entry.id]);

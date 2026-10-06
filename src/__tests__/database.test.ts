@@ -120,6 +120,7 @@ import {
   isSyncableDatabase,
   dbApplySyncChanges,
   dbInsertFoodLogEntry,
+  dbGetPendingHealthFoodEntries,
   dbGetFoodLogEntry,
   dbInsertSavedMeal,
   dbGetSavedMeals,
@@ -5552,6 +5553,18 @@ describe('a food log entry\'s kept panel', () => {
     const read = dbGetFoodLogEntry('f1');
     expect(read).not.toBeNull();
     expect(read?.sourcePanel).toBeNull();
+  });
+
+  it('keeps the pending-Health flag, and lists only flagged entries that hold no samples', () => {
+    dbInsertFoodLogEntry(makeEntry({ id: 'plain' }));
+    dbInsertFoodLogEntry(makeEntry({ id: 'flagged', healthWritePending: true }));
+    dbInsertFoodLogEntry(makeEntry({ id: 'written', healthWritePending: true, healthSampleIds: ['s1'] }));
+    expect(dbGetFoodLogEntry('plain')?.healthWritePending).toBe(false);
+    expect(dbGetFoodLogEntry('flagged')?.healthWritePending).toBe(true);
+    expect(dbGetPendingHealthFoodEntries().map(e => e.id)).toEqual(['flagged']);
+
+    dbUpdateFoodLogEntry(makeEntry({ id: 'flagged', healthWritePending: false }));
+    expect(dbGetPendingHealthFoodEntries()).toEqual([]);
   });
 
   it('travels in a sync payload, since it describes the entry rather than the device', () => {

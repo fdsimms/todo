@@ -864,7 +864,8 @@ export interface Replica {
   /**
    * A food entry with an estimated panel, through `readNutritionEstimate`,
    * `estimateToPanel` and `buildFoodLogEntry`. Marked estimated for good, and
-   * never written to Apple Health: only the device a meal is logged on may.
+   * flagged `healthWritePending`: this process has no HealthKit, so the phone
+   * writes it to Apple Health on its next foreground.
    */
   logFood(input: FoodInput): FoodLogEntry;
   /**
@@ -2710,8 +2711,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         generateId,
       );
       if (!entry) throw new Error('That entry could not be logged.');
-      db.dbInsertFoodLogEntry(entry);
-      return entry;
+      // The server has no HealthKit. Flagged so the phone writes it on its next
+      // foreground (FoodLogEntry.healthWritePending).
+      const flagged = { ...entry, healthWritePending: true };
+      db.dbInsertFoodLogEntry(flagged);
+      return flagged;
     },
 
     logWater(input: WaterInput): WaterLogOutcome {
@@ -2739,7 +2743,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       let entry: FoodLogEntry;
       if (stepping) {
-        entry = { ...existing, ...built };
+        entry = { ...existing, ...built, healthWritePending: true };
         db.dbUpdateFoodLogEntry(entry);
       } else {
         const row = builder.buildFoodLogEntry(
@@ -2748,8 +2752,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           generateId,
         );
         if (!row) throw new Error('That is not an amount of water the log can hold.');
-        db.dbInsertFoodLogEntry(row);
-        entry = row;
+        entry = { ...row, healthWritePending: true };
+        db.dbInsertFoodLogEntry(entry);
       }
       return {
         entry,

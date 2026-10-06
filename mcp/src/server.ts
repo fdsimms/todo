@@ -1195,7 +1195,7 @@ function registerWriteTools(
 
   server.tool(
     'log_food',
-    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${NUTRIENT_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated, and it is not written to Apple Health (only the phone a meal is logged on does that).`,
+    `Log something the person ate, with your estimate of its nutrition for the whole amount eaten. Amounts are keyed ${NUTRIENT_KEY_LIST.join(', ')}; leave out any you cannot estimate (absent is not zero). Without apply: true it only shows the figures as the app read them: show the person, and log it once they agree, since the app never stores an estimate nobody looked at. The entry is marked as estimated. It is not in Apple Health when this returns: the phone writes it there the next time the app is opened, if Health writing is on there, so never say it is already in Health.`,
     {
       label: z.string().min(1),
       quantity: z.string().optional().describe('How much, in words: "1 bowl", "2 slices".'),
@@ -1215,7 +1215,7 @@ function registerWriteTools(
 
   server.tool(
     'log_water',
-    'Log water the person drank. The app keeps one water entry a day and steps it up a glass at a time, so this adds onto today\'s entry (or the day named by at) rather than adding a row per glass; use it instead of log_food for water. Give the amount as ml or flOz. The result gives the day\'s total so far in the unit the person counts water in. Not sent to Apple Health: only the phone writes it there.',
+    'Log water the person drank. The app keeps one water entry a day and steps it up a glass at a time, so this adds onto today\'s entry (or the day named by at) rather than adding a row per glass; use it instead of log_food for water. Give the amount as ml or flOz. The result gives the day\'s total so far in the unit the person counts water in. Not in Apple Health yet: the phone writes it there the next time the app is opened, if Health writing is on there.',
     {
       ml: z.number().positive().optional().describe('Millilitres drunk. Give this or flOz.'),
       flOz: z.number().positive().optional().describe('Fluid ounces drunk. Give this or ml.'),
