@@ -22,6 +22,7 @@ import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
+import { PantryAnswerField } from './PantryAnswerField';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
@@ -435,21 +436,13 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 {/* Said per card, once it is being logged, and only for a food
                     that is a catalog row (a pantry entry to update). */}
                 {!!outcome && !!food.itemId && (
-                  <View style={styles.pantryField}>
-                    <Text style={styles.pantryLabel}>PANTRY</Text>
-                    <SegmentedControl<PantryReviewAnswer | null>
-                      options={[
-                        { value: null, label: 'No change' },
-                        { value: 'have', label: 'Still have it' },
-                        { value: 'low', label: 'Running low' },
-                        { value: 'out', label: 'Out of it' },
-                      ]}
-                      value={pantryAnswers[food.key] ?? null}
-                      onChange={v => setPantryAnswers(a => ({ ...a, [food.key]: v }))}
-                      columns={2}
-                      label={`Pantry stock of ${food.label}`}
-                    />
-                  </View>
+                  <PantryAnswerField
+                    itemId={food.itemId}
+                    value={pantryAnswers[food.key] ?? null}
+                    onChange={v => setPantryAnswers(a => ({ ...a, [food.key]: v }))}
+                    label={`Pantry stock of ${food.label}`}
+                    style={styles.pantryField}
+                  />
                 )}
                 {/* This label states no density of its own, so the weight
                     behind a volume amount is approximated from water's —
@@ -531,8 +524,7 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       gap: spacing.sm,
     },
-    pantryField: { gap: spacing.xsm, marginTop: spacing.smd },
-    pantryLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8 },
+    pantryField: { marginTop: spacing.smd },
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     servingSize: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
     choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

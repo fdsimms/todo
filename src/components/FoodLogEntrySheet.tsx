@@ -70,6 +70,7 @@ import {
 } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
+import { PantryAnswerField } from './PantryAnswerField';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
@@ -1648,23 +1649,13 @@ export function FoodLogEntrySheet({
                 entry that was logged already. */}
             {!!picked.itemId && !editing && (
               <>
-                <Text style={[styles.label, styles.labelSpaced]}>PANTRY</Text>
-                <SegmentedControl<PantryReviewAnswer | null>
-                  options={[
-                    { value: null, label: 'No change' },
-                    { value: 'have', label: 'Still have it' },
-                    { value: 'low', label: 'Running low' },
-                    { value: 'out', label: 'Out of it' },
-                  ]}
+                <PantryAnswerField
+                  itemId={picked.itemId}
                   value={pantryAnswer}
                   onChange={setPantryAnswer}
-                  columns={2}
-                  label="Pantry"
                   surface="page"
+                  style={styles.pantryField}
                 />
-                {pantryAnswer === 'low' && (
-                  <Text style={styles.hint}>Running low also adds it to your grocery list.</Text>
-                )}
               </>
             )}
           </ScrollView>
@@ -1868,6 +1859,7 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
     },
     labelSpaced: { marginTop: spacing.lg },
+    pantryField: { marginTop: spacing.lg },
     // Margin on both sides: the label above has none of its own below it, and
     // the amount field below has only spacing.xs of its own.
     measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },
