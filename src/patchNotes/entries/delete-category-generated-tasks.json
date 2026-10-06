@@ -1,0 +1,1 @@
+{ "message": "Deleting a category now also clears it from every automation that filed tasks under it, so those tasks stop reappearing under the deleted name.", "date": "2026-10-06" }

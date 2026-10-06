@@ -33,7 +33,7 @@ import {
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
-import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
 import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
 import { useTemplateStore } from './useTemplateStore';
@@ -9594,14 +9594,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // below.
     const settings = useSettingsStore.getState();
     const hadEventCategory = settings.calendarEventCategory === name;
-    const hadMealCookCategory = settings.mealCookTaskCategory === name;
-    const hadGroceryUseUpCategory = settings.groceryUseUpTaskCategory === name;
-    const hadLeftoverUseUpCategory = settings.leftoverUseUpTaskCategory === name;
     const hadCollapsed = settings.collapsedCategories.includes(name);
     if (hadEventCategory) settings.setCalendarEventCategory(null);
-    if (hadMealCookCategory) settings.setMealCookTaskCategory(null);
-    if (hadGroceryUseUpCategory) settings.setGroceryUseUpTaskCategory(null);
-    if (hadLeftoverUseUpCategory) settings.setLeftoverUseUpTaskCategory(null);
+    // Every generator's category, not a hand-kept few: a setting left naming
+    // this category files the next generated task under a name nothing has.
+    const clearedKinds = clearGeneratedCategorySettings(name, null);
     if (hadCollapsed) {
       settings.setCollapsedCategories(settings.collapsedCategories.filter(c => c !== name));
     }
@@ -9614,9 +9611,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         useCategoryStore.getState().restoreCategory(category);
         const s2 = useSettingsStore.getState();
         if (hadEventCategory) s2.setCalendarEventCategory(name);
-        if (hadMealCookCategory) s2.setMealCookTaskCategory(name);
-        if (hadGroceryUseUpCategory) s2.setGroceryUseUpTaskCategory(name);
-        if (hadLeftoverUseUpCategory) s2.setLeftoverUseUpTaskCategory(name);
+        clearedKinds.forEach(kind => setGeneratedCategory(kind, name));
         if (hadCollapsed && !s2.collapsedCategories.includes(name)) {
           s2.setCollapsedCategories([...s2.collapsedCategories, name]);
         }
