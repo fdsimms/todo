@@ -2,6 +2,7 @@ import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey,
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
 import { isWaterEntry } from './waterLog';
+import { isNutrientOnlyEntry } from './nutrientLog';
 import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
 import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
@@ -904,11 +905,12 @@ export function describeFoodLogEntry(entry: FoodLogEntry, quantity: string = ent
   const parts: string[] = [];
   if (quantity.trim()) parts.push(quantity.trim());
   if (calories !== undefined) parts.push(`${Math.round(calories)} cal`);
-  // The day's water carries no provenance. Its `manual` source only records
-  // that no label or database was asked, and "typed in" read as a claim about
-  // how this row got here: a glass logged from a task, a stepper press or a
-  // bottle all land in the same row, and the row can't tell them apart.
-  if (!isWaterEntry(entry)) parts.push(SOURCE_WORDS[entry.nutrition.source]);
+  // A nutrient logged on its own (the day's water, a task's sodium) carries no
+  // provenance. Its `manual` source only records that no label or database was
+  // asked, and "typed in" read as a claim about how this row got here: a glass
+  // logged from a task, a stepper press or a bottle all land in the same row,
+  // and the row can't tell them apart.
+  if (!isNutrientOnlyEntry(entry)) parts.push(SOURCE_WORDS[entry.nutrition.source]);
   return parts.join(' · ');
 }
 

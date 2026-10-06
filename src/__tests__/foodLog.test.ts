@@ -656,6 +656,16 @@ describe('describeFoodLogEntry', () => {
     expect(describeFoodLogEntry(water, '64 fl oz')).toBe('64 fl oz');
     expect(describeFoodLogEntry(water)).toBe('1.89 L');
   });
+
+  it('names no provenance for a nutrient logged on its own, such as a task\'s sodium', () => {
+    const sodium = entry({
+      label: 'Sodium',
+      slot: null,
+      quantity: '1200 mg',
+      nutrition: panel({ source: 'manual', amounts: { sodiumMg: 1200 } }),
+    });
+    expect(describeFoodLogEntry(sodium)).toBe('1200 mg');
+  });
 });
 
 describe('nutrientContributions', () => {
