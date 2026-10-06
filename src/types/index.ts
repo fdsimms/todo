@@ -3180,6 +3180,20 @@ export interface Task {
   slipDate: string | null; // logical-day ISO string the slips above belong to
 
   /**
+   * How many slips a day a negative task absorbs before one counts as a failure.
+   * Slips inside it are still recorded in `slipCount`, but they leave the streak
+   * alone and cost nothing (no app block, no coins); the slip after them does
+   * what a first slip always did. Null or 0 is the original rule, where the
+   * first slip fails the day, so every existing row reads exactly as before.
+   *
+   * It is configuration, so it is the person's to set and a draft may carry it
+   * (unlike `slipCount`, which is what happened). Read through
+   * `slipAllowanceOf()`, which clamps it to a whole number. Per day only: a
+   * budget that spans days would need a second ledger beside the daily streak.
+   */
+  slipAllowance?: number | null;
+
+  /**
    * How long the apps picked in Settings are blocked when this task is failed,
    * or null for the tasks — nearly all of them — that cost nothing.
    *

@@ -293,6 +293,7 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 // disable its + key at, and an unbounded stepper is one a long press can run
 // to nonsense.
 const MAX_DEADLINE_OFFSET_DAYS = 365;
+const MAX_SLIP_ALLOWANCE = 20;
 const MAX_STREAK_COUNT = 9999;
 // A completion timer steps in quarter-hours up to 24h — well past a real wait
 // (the iron-pill case this shipped for is 2h), same "past any real value"
@@ -694,6 +695,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [streakDraft, setStreakDraft] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
+  const [slipAllowance, setSlipAllowance] = useState<number | null>(null);
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   // See Task.weatherWait. The row opens its picker in place, like the other
   // rows with controls of their own.
@@ -953,6 +955,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
       setPolarity(task.polarity ?? 'positive');
+      setSlipAllowance(task.slipAllowance ?? null);
       setQuotaPeriod(task.quotaPeriod ?? 'day');
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
@@ -1015,6 +1018,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // A new task starts as "Do this" unless the draft says otherwise: left
       // unset, it kept whatever the last task edited had.
       setPolarity(initialDraft?.polarity ?? 'positive');
+      setSlipAllowance(null);
       // An avoid-task's streak is its only feedback (see the Goal control).
       setShowStreak(initialDraft?.polarity === 'negative');
       setStreakRequiresWindow(false);
@@ -1153,6 +1157,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
+      slipAllowance: task ? (task.slipAllowance ?? null) : null,
       showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
@@ -1628,6 +1633,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       ...(task && bounty && !isBountyLive(task) && canPostBounty(task) ? { bountyPushes: 0 } : {}),
       ...(task && !bounty && isBountyLive(task) ? { bountyPushes: BOUNTY_WITHDRAWN } : {}),
       polarity,
+      // Only an avoid-task has slips to allow; null is the original rule.
+      slipAllowance: polarity === 'negative' ? slipAllowance : null,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
       // recurring, or the chip would be waiting if it ever recurs again. A
@@ -2034,7 +2041,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // reset lives here rather than being tolerated downstream: leaving "Daily
     // target" on a task that can't be logged would be a control that does
     // nothing, which is the thing the copy rules exist to prevent.
-    if (next !== 'task') setPolarity('positive');
+    if (next !== 'task') { setPolarity('positive'); setSlipAllowance(null); }
   };
 
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
@@ -2322,6 +2329,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       difficulty,
       bounty,
       polarity,
+      slipAllowance,
       showStreak,
       streakRequiresWindow,
       linkUrl,
@@ -3287,6 +3295,26 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count.'
                     : 'Completed when you do it, like any other task.'}
                 </Text>
+                {polarity === 'negative' && (
+                  <View style={{ marginTop: spacing.md }}>
+                    <CountStepper
+                      value={slipAllowance}
+                      onChange={setSlipAllowance}
+                      min={1}
+                      max={MAX_SLIP_ALLOWANCE}
+                      allowNull
+                      emptyLabel="None"
+                      format={n => `${n} a day`}
+                      label="Slips allowed per day"
+                      describeValue={n => (n === null ? 'none allowed' : `${n} slip${n === 1 ? '' : 's'} allowed per day`)}
+                    />
+                    <Text style={styles.kindHint}>
+                      {slipAllowance === null
+                        ? 'The first slip of a day resets the count.'
+                        : 'Slips up to this number are recorded but keep the count, and block no apps. The next one resets it.'}
+                    </Text>
+                  </View>
+                )}
               </View>
             ),
           }] : []),

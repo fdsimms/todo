@@ -75,7 +75,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'showStreak', 'streakRequiresWindow', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
-    'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults',
+    'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',
   ],
 };
 

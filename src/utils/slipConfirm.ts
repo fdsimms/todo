@@ -1,6 +1,7 @@
 import { Alert } from 'react-native';
 import type { Task } from '../types';
 import { formatDuration } from './effort';
+import { nextSlipIsFree } from './negativeHabits';
 
 /**
  * Ask before logging a slip that costs something, and go straight through when
@@ -19,8 +20,9 @@ import { formatDuration } from './effort';
  * cheaper half of that trade — one extra tap, and only for the tasks somebody
  * has actually attached a cost to.
  */
-export function confirmSlip(task: Task, penaltyEnabled: boolean, onConfirm: () => void): void {
-  if (!penaltyEnabled || task.penaltyMinutes === null) {
+export function confirmSlip(task: Task, penaltyEnabled: boolean, todayStart: Date, onConfirm: () => void): void {
+  // A slip inside the day's allowance blocks nothing, so there is nothing to confirm.
+  if (!penaltyEnabled || task.penaltyMinutes === null || nextSlipIsFree(task, todayStart)) {
     onConfirm();
     return;
   }

@@ -327,6 +327,8 @@ export function newTaskFromDraft(
     penaltyCreditedAt: null,
     gatesApps: draft.gatesApps ?? false,
     polarity: resolvedPolarity,
+    // Only an avoid-task has slips to allow; anything else would carry a number nothing reads.
+    slipAllowance: resolvedPolarity === 'negative' ? (draft.slipAllowance ?? null) : null,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
     // of clean days is the *only* feedback an avoid-task ever gives: it is never

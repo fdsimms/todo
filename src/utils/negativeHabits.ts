@@ -35,6 +35,7 @@ export type NegativeHabitFields = Pick<
   | 'polarity'
   | 'slipCount'
   | 'slipDate'
+  | 'slipAllowance'
   | 'streakCount'
   | 'streakDate'
   | 'previousStreakCount'
@@ -61,9 +62,47 @@ export function slipsToday(task: NegativeHabitFields, todayStart: Date): number 
   return differenceInCalendarDays(todayStart, new Date(task.slipDate)) === 0 ? task.slipCount : 0;
 }
 
+/**
+ * How many slips a day this habit absorbs before one fails it, as a whole
+ * number. Null, negative or fractional values read as the original rule (none),
+ * so a bad value can only make a habit stricter, never silently forgiving.
+ */
+export function slipAllowanceOf(task: Pick<Task, 'slipAllowance'>): number {
+  const n = task.slipAllowance;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * Whether the *next* slip logged today still falls inside the allowance, and so
+ * costs nothing: no streak break, no app block, no coins. The one place that
+ * rule lives, read by the store, the MCP replica and the row's confirmation.
+ */
+export function nextSlipIsFree(task: NegativeHabitFields, todayStart: Date): boolean {
+  return slipsToday(task, todayStart) < slipAllowanceOf(task);
+}
+
+/**
+ * Whether the slip `undoSlipPatch` would take back was a free one. A free slip
+ * wrote no coin entry, so undoing it must not remove the latest loss entry,
+ * which belongs to an earlier slip (or an earlier day).
+ */
+export function lastSlipWasFree(task: NegativeHabitFields, todayStart: Date): boolean {
+  const n = slipsToday(task, todayStart);
+  return n > 0 && n <= slipAllowanceOf(task);
+}
+
 /** True while today carries no logged slip — the state the row calls "clean". */
 export function isCleanToday(task: NegativeHabitFields, todayStart: Date): boolean {
   return slipsToday(task, todayStart) === 0;
+}
+
+/**
+ * True once today has gone past the allowance, which is what the row draws as a
+ * failed day. With no allowance this is `!isCleanToday`, so a habit without one
+ * looks exactly as it did.
+ */
+export function isFailedToday(task: NegativeHabitFields, todayStart: Date): boolean {
+  return slipsToday(task, todayStart) > slipAllowanceOf(task);
 }
 
 /**
@@ -75,11 +114,18 @@ export function isCleanToday(task: NegativeHabitFields, todayStart: Date): boole
  * on the second tap would overwrite the run undo needs to give back with a 0.
  * That asymmetry is the whole reason this returns one patch rather than the
  * caller doing two writes.
+ *
+ * With an allowance, the count advances the same way but the streak is left
+ * alone until the slip *after* the allowance; that one is what used to be the
+ * first slip. Lowering the allowance mid-day doesn't retroactively break a day
+ * already logged inside the old one.
  */
 export function slipPatch(task: NegativeHabitFields, todayStart: Date): Partial<Task> {
   const already = slipsToday(task, todayStart);
   const count = { slipCount: already + 1, slipDate: todayStart.toISOString() };
-  if (already > 0) return count;
+  const allowance = slipAllowanceOf(task);
+  if (already < allowance) return count;
+  if (already > allowance) return count;
   return {
     ...count,
     streakCount: 0,
@@ -111,7 +157,12 @@ export function undoSlipPatch(task: NegativeHabitFields, todayStart: Date): Part
   const already = slipsToday(task, todayStart);
   if (already === 0) return null;
   const count = { slipCount: already - 1, slipDate: todayStart.toISOString() };
-  if (already > 1) return count;
+  // Only the slip that broke the streak has a run to give back: one inside the
+  // allowance never touched it, and one past it came after the break.
+  // Also required: the break stamped today on `streakDate`. Without it, an
+  // allowance lowered mid-day would "give back" a snapshot from an older break.
+  const brokeToday = !!task.streakDate && differenceInCalendarDays(todayStart, new Date(task.streakDate)) === 0;
+  if (already !== slipAllowanceOf(task) + 1 || !brokeToday) return count;
   return {
     ...count,
     // Back to the run this slip ended. The snapshot is what a completion's undo

@@ -347,6 +347,21 @@ export function seedDemoData(): void {
     previousStreakCount: 4, previousStreakDate: subDays(today, 1).toISOString(),
     priorBestStreak: 4,
   });
+  // A third state: a habit with a slip allowance that has used one of its two,
+  // so the row shows the count against the limit while the streak is intact.
+  const fewerSweets = addTask({
+    title: 'Sweets only twice a day',
+    notes: 'Two slips a day are allowed. They are counted but keep the streak. The third one resets it.',
+    category: 'Health',
+    polarity: 'negative',
+    slipAllowance: 2,
+    effort: 1,
+  });
+  updateTask(fewerSweets.id, {
+    slipCount: 1, slipDate: today.toISOString(),
+    streakCount: 5, streakDate: subDays(today, 1).toISOString(), priorBestStreak: 9,
+  });
+
 
   // Both halves of the apps-blocked penalty, which is otherwise invisible: it
   // is off by default, and even switched on it shows nothing until a task
