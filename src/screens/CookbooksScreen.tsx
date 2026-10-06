@@ -95,6 +95,12 @@ export function CookbooksScreen() {
         subtitle={sorted.length > 0
           ? `${sorted.length} ${sorted.length === 1 ? 'book' : 'books'}`
           : undefined}
+        // The finder searches these books' indexes and the recipe box.
+        actions={[{
+          icon: 'search-outline',
+          onPress: () => { haptics.tap(); setCookWithVisible(true); },
+          accessibilityLabel: 'Find recipes by ingredient',
+        }]}
       />
       {sorted.length === 0 ? (
         <EmptyState
@@ -109,22 +115,6 @@ export function CookbooksScreen() {
           keyExtractor={c => c.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          ListHeaderComponent={
-            // The same quiet link the Recipes screen puts beside "Cookbooks":
-            // the finder searches these books' indexes and the recipe box.
-            <View style={styles.cookWithRow}>
-              <TouchableOpacity
-                style={styles.cookWith}
-                onPress={() => { haptics.tap(); setCookWithVisible(true); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Find recipes by ingredient"
-              >
-                <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
-                <Text style={styles.cookWithText}>Cook with…</Text>
-              </TouchableOpacity>
-            </View>
-          }
           ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
         />
       )}
@@ -151,22 +141,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   list: {
     paddingTop: spacing.sm,
-  },
-  cookWithRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  cookWith: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  cookWithText: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.medium,
   },
   row: {
     flexDirection: 'row',
