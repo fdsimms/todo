@@ -384,6 +384,21 @@ these synced before, so a change on the server would never have reached the phon
 generators still run on the phone, the one place with a forecast, a calendar, Health and Screen
 Time to read, and the list says what each needs there.
 
+`set_automation` also takes a `category`: a generator's "File them under" setting, the same stored
+answer the Settings row writes (`setGeneratedCategory` in `useCategoryStore`), so startup's
+`ensureGeneratedTaskCategory` leaves it alone. The name must already be a category; `null` files
+under none and the result says that puts the tasks in the loose block above every section of Today.
+
+`delete_category` (`mcp/src/categoryTools.ts`) is the app's delete without its shake-to-undo, and it
+asks where the tasks go: `moveTo`, or `uncategorize: true`, and a category holding open work with
+neither is refused. It re-points **every** generator's category setting (`clearGeneratedCategorySettings`,
+the same per-kind walk as the rename), where the app's own delete clears only four of them. A
+setting left naming a deleted category files the next generated task under a name nothing has, and
+`allCategories()` resurrects that as a phantom section. Repointing first is also why deleting a
+generator's default category (Groceries, People, Calendar…) is safe: the setting then holds an
+answer, and `ensureCategoryFor` does not refill an answered one. It is a record in Activity with no
+undo, like `delete_template`.
+
 The rule parsers are tolerant, because their job is reading a stored blob from an older build:
 they drop an unreadable rule and clamp or trim the rest. So a save runs the parser and then
 compares. A rule that did not survive is refused with the reason, and one the parser changed comes

@@ -255,6 +255,8 @@ jest.mock('../store/useCategoryStore', () => ({
   // its category.
   ensureGeneratedTaskCategory: jest.fn(),
   renameGeneratedCategorySettings: jest.fn(),
+  clearGeneratedCategorySettings: jest.fn(() => []),
+  setGeneratedCategory: jest.fn(),
   useCategoryStore: {
     getState: jest.fn(() => ({
       categories: [],
@@ -12493,32 +12495,31 @@ describe('deleteCategory', () => {
     });
 
     const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
-    const setMealCookTaskCategory = jest.fn();
-    const setGroceryUseUpTaskCategory = jest.fn();
-    const setLeftoverUseUpTaskCategory = jest.fn();
     const setCalendarEventCategory = jest.fn();
+    const categoryStore = jest.requireMock('../store/useCategoryStore') as {
+      clearGeneratedCategorySettings: jest.Mock; setGeneratedCategory: jest.Mock;
+    };
+    // The kinds whose setting named the deleted category; the real walk covers every generator.
+    categoryStore.clearGeneratedCategorySettings.mockReturnValueOnce(['mealSlot', 'groceryUseUp', 'pantryCheck']);
     useSettingsStore.getState.mockReturnValue({
       dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
-      mealCookTaskCategory: 'Kitchen', groceryUseUpTaskCategory: 'Kitchen', leftoverUseUpTaskCategory: 'Kitchen',
       calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
-      setMealCookTaskCategory, setGroceryUseUpTaskCategory,
-      setLeftoverUseUpTaskCategory, setCalendarEventCategory,
+      setCalendarEventCategory,
       setCollapsedCategories: jest.fn(),
     });
 
     useTaskStore.getState().deleteCategory('Kitchen');
 
-    expect(setMealCookTaskCategory).toHaveBeenCalledWith(null);
-    expect(setGroceryUseUpTaskCategory).toHaveBeenCalledWith(null);
-    expect(setLeftoverUseUpTaskCategory).toHaveBeenCalledWith(null);
+    expect(categoryStore.clearGeneratedCategorySettings).toHaveBeenCalledWith('Kitchen', null);
     expect(setCalendarEventCategory).toHaveBeenCalledWith(null);
 
     useTaskStore.getState().lastAction?.undo();
 
-    expect(setMealCookTaskCategory).toHaveBeenCalledWith('Kitchen');
-    expect(setGroceryUseUpTaskCategory).toHaveBeenCalledWith('Kitchen');
-    expect(setLeftoverUseUpTaskCategory).toHaveBeenCalledWith('Kitchen');
+    // Each re-pointed generator gets its category back, including ones the delete used to leave behind (pantryCheck).
+    expect(categoryStore.setGeneratedCategory).toHaveBeenCalledWith('mealSlot', 'Kitchen');
+    expect(categoryStore.setGeneratedCategory).toHaveBeenCalledWith('groceryUseUp', 'Kitchen');
+    expect(categoryStore.setGeneratedCategory).toHaveBeenCalledWith('pantryCheck', 'Kitchen');
     expect(setCalendarEventCategory).toHaveBeenCalledWith('Kitchen');
   });
 });

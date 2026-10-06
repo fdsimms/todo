@@ -132,6 +132,7 @@ export function describeEffects(effects: readonly AgentLedgerEntry[], dayOf: (is
       case 'medication': return 'Record a medication dose';
       case 'person': return `Add ${t} to someone's history`;
       case 'automation': return `Change automations: ${e.title}`;
+      case 'category': return `Delete the category ${t}. It cannot be restored from here.`;
       case 'note': return e.action === 'cleared' ? `Forget the note ${t}` : `Remember the note ${t}`;
       case 'meal': return `Plan ${t} on the meal plan`;
       case 'event': return `Ask the phone to add ${t} to the calendar the next time it syncs`;

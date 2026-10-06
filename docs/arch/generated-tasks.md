@@ -1529,3 +1529,15 @@ unchanged. `ruleCategoryFor` is the one place that decides, and it is what each
 generator's draft calls. A rename follows through `renameInRuleCategories`, called from
 `renameCategory`. A rule with neither files loose at the top of Today, which is what the setting's None says. (Events,
 Screen Time and Health used to write nothing in that case; the hint never said so.)
+
+## Every generator has its own category setting, and deleting a category has to follow them
+
+Each kind has a "File them under" setting (`generatedCategorySetting` in `useCategoryStore`, the
+one per-kind switch). Several defaults are categories a person may later delete (Groceries,
+People, Meal Plan, Calendar), so a delete has to re-point *every* setting that names the category:
+`clearGeneratedCategorySettings`, the sibling of `renameGeneratedCategorySettings`. A setting left
+naming a deleted category files the next generated task under a name nothing has, and
+`allCategories()` shows that as a section nobody made. Re-pointing leaves each setting holding an
+answer, which is what `ensureCategoryFor` leaves alone at startup. The in-app delete
+(`useTaskStore.deleteCategory`) and the MCP's `delete_category` both go through it, and a new
+generator needs only its arm in `generatedCategorySetting`.

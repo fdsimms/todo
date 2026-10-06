@@ -709,6 +709,24 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       log({ action: 'edited', subject: 'automation', title: `${spec?.label ?? key} turned ${on ? 'on' : 'off'}`, taskId: null });
     },
 
+    setGeneratorCategory(kind, category) {
+      replica.setGeneratorCategory(kind, category);
+      const spec = replica.lib().generatedTasks.GENERATED_KIND_LIST.find(x => x.kind === kind);
+      log({
+        action: 'edited', subject: 'automation', title: `${spec?.label ?? kind} files under ${category ?? 'no category'}`,
+        taskId: null, recordId: kind,
+      });
+    },
+
+    deleteCategory(name, moveTo) {
+      const result = replica.deleteCategory(name, moveTo);
+      log({
+        action: 'cleared', subject: 'category', title: name, taskId: null,
+        note: `Delete the category "${name}"${result.tasksMoved > 0 ? `, moving ${result.tasksMoved} ${result.tasksMoved === 1 ? 'task' : 'tasks'} to ${moveTo ?? 'no category'}` : ''}. It cannot be restored from here.`,
+      });
+      return result;
+    },
+
     writeAgentNotes(notes) {
       const before = new Set(replica.agentNotes().map(n => n.text));
       replica.writeAgentNotes(notes);

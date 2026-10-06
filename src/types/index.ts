@@ -1017,6 +1017,8 @@ export type UnattendedActor = 'app' | 'agent';
 export type UnattendedSubject =
   | 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person' | 'recipe' | 'food' | 'mood' | 'medication'
   | 'automation' | 'note' | 'stack' | 'reward'
+  // A task category deleted over MCP (`delete_category`); a record only, since the app keeps no undo for it from Activity.
+  | 'category'
   // A change to what is in the kitchen (`pantryWrite.ts`), undoable by snapshot (`agentPantryRevert.ts`).
   | 'pantry'
   // A change to the grocery catalog, a store or a separate list (`groceryItemWrite.ts`): an item's own fields and a deleted item are undoable (`agentCatalogRevert.ts`), the rest is a record.

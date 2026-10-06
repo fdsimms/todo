@@ -295,7 +295,7 @@ export function ensureHealthCategory(opts: { force?: boolean } = {}): void {
 function generatedCategorySetting(kind: GeneratedKind): {
   key: string;
   current: string | null;
-  assign: (category: string) => void;
+  assign: (category: string | null) => void;
 } | null {
   const s = useSettingsStore.getState();
   switch (kind) {
@@ -370,6 +370,43 @@ export function renameGeneratedCategorySettings(from: string, to: string): void 
     const setting = generatedCategorySetting(kind);
     if (setting && setting.current === from) setting.assign(to);
   }
+}
+
+/**
+ * The category a generator files under right now, by name, or null for none.
+ * The read half of `setGeneratedCategory`, for the MCP server's automation list.
+ */
+export function getGeneratedCategory(kind: GeneratedKind): string | null {
+  return generatedCategorySetting(kind)?.current ?? null;
+}
+
+/**
+ * Point one generator's "File them under" setting at a category, or at nothing
+ * (null). Writes the same stored value the Settings row does, so it counts as
+ * an answer: `ensureCategoryFor` leaves an answered setting alone at startup.
+ */
+export function setGeneratedCategory(kind: GeneratedKind, category: string | null): void {
+  generatedCategorySetting(kind)?.assign(category);
+}
+
+/**
+ * Re-point every generator whose category setting names `from` at `to` (null
+ * for none), and report which kinds that was. Called when a category is
+ * deleted, so no setting is left naming a category that no longer exists: the
+ * next generated task would file under that name, and `allCategories()` would
+ * resurrect it as a section nobody made. Walks the same per-kind switch as the
+ * rename above, which is what keeps this from being a second list.
+ */
+export function clearGeneratedCategorySettings(from: string, to: string | null): GeneratedKind[] {
+  const cleared: GeneratedKind[] = [];
+  for (const kind of GENERATED_KINDS) {
+    const setting = generatedCategorySetting(kind);
+    if (setting && setting.current === from) {
+      setting.assign(to);
+      cleared.push(kind);
+    }
+  }
+  return cleared;
 }
 
 /** Whether this generator is currently switched on. */
