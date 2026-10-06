@@ -102,6 +102,7 @@ import { isMissed, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
 import { entriesOfKind, journalStats } from '../utils/journal';
+import { parseJournalMarkdown } from '../utils/journalMarkdown';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -2110,6 +2111,8 @@ describe('demo seed — people', () => {
     const month = dayKeyOf(getCurrentDayStart()).slice(0, 7);
     expect(journalStats(entriesOfKind(entries, 'journal'), month).dayCount).toBeGreaterThanOrEqual(2);
     expect(journalStats(entriesOfKind(entries, 'dream'), month).dayCount).toBeGreaterThanOrEqual(2);
+    // One uses the light formatting, so demo mode shows it drawn.
+    expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.type === 'bullet'))).toBe(true);
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {
