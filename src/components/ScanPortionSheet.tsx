@@ -340,10 +340,14 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => {
                             haptics.tap();
+                            // Picking "serving" with nothing typed means one serving.
+                            const typed = amountNumbers[food.key] ?? '';
+                            const number = option.key === 'serving' && !typed.trim() ? '1' : typed;
                             setAmountUnits(u => ({ ...u, [food.key]: option.key }));
+                            setAmountNumbers(n => ({ ...n, [food.key]: number }));
                             setAnswers(a => ({
                               ...a,
-                              [food.key]: composeFoodAmount(amountNumbers[food.key] ?? '', option),
+                              [food.key]: composeFoodAmount(number, option),
                             }));
                           }}
                           accessibilityRole="button"
