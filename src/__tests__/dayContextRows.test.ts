@@ -3,6 +3,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import type { TodayListItem } from '../utils/taskGrouping';
 import {
   eventContextRows,
+  startsInLabel,
   mealContextRows,
   healthContextRows,
   insertContextRows,
@@ -368,5 +369,46 @@ describe('healthContextRows', () => {
   it('lists steps ahead of active calories when both are present', () => {
     const rows = healthContextRows(reading(4120, 300), opts);
     expect(rows.map(r => r.id)).toEqual(['health-steps', 'health-activeEnergy']);
+  });
+});
+
+describe('startsInLabel', () => {
+  const at = NOW.getTime();
+  const min = (m: number) => at + m * 60000;
+  it('reads minutes, then whole hours, within three hours', () => {
+    expect(startsInLabel(min(45), at)).toBe('in 45 min');
+    expect(startsInLabel(min(1), at)).toBe('in 1 min');
+    expect(startsInLabel(min(120), at)).toBe('in 2 hr');
+  });
+  it('rounds a partial minute up so it never reads zero while ahead', () => {
+    expect(startsInLabel(at + 30000, at)).toBe('in 1 min');
+  });
+  it('gives nothing for a start that has passed or is too far off', () => {
+    expect(startsInLabel(at, at)).toBeNull();
+    expect(startsInLabel(min(-5), at)).toBeNull();
+    expect(startsInLabel(min(181), at)).toBeNull();
+  });
+});
+
+describe('eventContextRows startsIn', () => {
+  it('puts the cue on the next timed event only', () => {
+    const rows = eventContextRows(
+      [
+        ev(new Date(2026, 7, 13, 15, 0).toISOString(), new Date(2026, 7, 13, 16, 0).toISOString()),
+        ev(new Date(2026, 7, 13, 17, 0).toISOString(), new Date(2026, 7, 13, 18, 0).toISOString()),
+      ],
+      { now: NOW, category: 'Calendar', use24Hour: false },
+    );
+    expect(rows.map(r => r.startsIn ?? null)).toEqual(['in 60 min', null]);
+  });
+  it('gives a running event no cue and leaves the next one its own', () => {
+    const rows = eventContextRows(
+      [
+        ev(new Date(2026, 7, 13, 13, 30).toISOString(), new Date(2026, 7, 13, 14, 30).toISOString()),
+        ev(new Date(2026, 7, 13, 15, 0).toISOString(), new Date(2026, 7, 13, 16, 0).toISOString()),
+      ],
+      { now: NOW, category: 'Calendar', use24Hour: false },
+    );
+    expect(rows.map(r => r.startsIn ?? null)).toEqual([null, 'in 60 min']);
   });
 });

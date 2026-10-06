@@ -74,6 +74,7 @@ import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KIND
 import { generateId } from '../utils/id';
 import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
+import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
@@ -1603,6 +1604,9 @@ export function initDatabase(): void {
     // Task.slipCount, and slipsToday() for why the pair travels together.
     'ALTER TABLE tasks ADD COLUMN slip_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN slip_date TEXT',
+    // NULL on every existing row, which is "no allowance": the first slip of a
+    // day fails it, as it always has. See Task.slipAllowance.
+    'ALTER TABLE tasks ADD COLUMN slip_allowance INTEGER',
     // NULL on every existing row, which is exactly "not a health-target task" —
     // the pair travels together and neither means anything alone (see
     // hasHealthTarget). No default, because a target nobody set is not a target
@@ -1914,6 +1918,9 @@ export function initDatabase(): void {
     // Task.deliverableWhy / deliverableRevisitIf.
     'ALTER TABLE tasks ADD COLUMN deliverable_why TEXT',
     'ALTER TABLE tasks ADD COLUMN deliverable_revisit_if TEXT',
+    // NULL on every existing row: no gap between purchases has been measured
+    // yet. See GroceryItem.purchaseIntervalDays.
+    'ALTER TABLE grocery_items ADD COLUMN purchase_interval_days REAL',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3435,6 +3442,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     polarity: row.polarity === 'negative' ? 'negative' : 'positive',
     slipCount: (row.slip_count as number) ?? 0,
     slipDate: (row.slip_date as string) ?? null,
+    slipAllowance: (row.slip_allowance as number | null) ?? null,
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -3503,8 +3511,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3628,6 +3636,7 @@ export function dbInsertTask(task: Task): void {
       task.weatherWait ?? null,
       task.waitForSeriesEnd ? 1 : 0,
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
+      task.slipAllowance ?? null,
     ]
   );
 }
@@ -3664,7 +3673,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3789,6 +3798,7 @@ export function dbUpdateTask(task: Task): void {
       task.weatherWait ?? null,
       task.waitForSeriesEnd ? 1 : 0,
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
+      task.slipAllowance ?? null,
       task.id,
     ]
   );
@@ -4716,6 +4726,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastAddedAt: (row.last_added_at as string) ?? null,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    purchaseIntervalDays: (row.purchase_interval_days as number | null) ?? null,
     createdAt: row.created_at as string,
     onHandUntil: (row.on_hand_until as string) ?? null,
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
@@ -4765,8 +4776,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields, nutrition, name_from_scan)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -4784,6 +4795,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
       item.nameFromScan ? 1 : 0,
+      item.purchaseIntervalDays ?? null,
     ]
   );
 }
@@ -4798,7 +4810,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?, price_history=?
+       name_from_scan=?, price_history=?, purchase_interval_days=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -4821,6 +4833,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       // puts back a "before" row could otherwise restore every column except
       // the history, leaving the undone price in it for good.
       JSON.stringify(item.priceHistory ?? []),
+      item.purchaseIntervalDays ?? null,
       item.id,
     ]
   );
@@ -4908,8 +4921,11 @@ export function dbFinishGroceryShopping(
     preferred_product_id: string | null;
     brand_strict: number | null;
     price_history: string | null;
+    last_purchased_at: string | null;
+    purchase_interval_days: number | null;
   }>(
-    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history
+    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history,
+            i.last_purchased_at, i.purchase_interval_days
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
@@ -4971,6 +4987,14 @@ export function dbFinishGroceryShopping(
       WHERE id IN (${placeholders})`,
     [purchasedAt, ...ids]
   );
+  // The gap since the last purchase feeds the running average, read off the
+  // row as it stood before the UPDATE above restamped last_purchased_at.
+  // Mirrored in useGroceryStore.finishShopping's in-memory patch.
+  for (const row of rows) {
+    const interval = nextPurchaseIntervalDays(row.purchase_interval_days, row.last_purchased_at, purchasedAt);
+    if (interval === row.purchase_interval_days) continue;
+    db.runSync('UPDATE grocery_items SET purchase_interval_days = ? WHERE id = ?', [interval, row.id]);
+  }
   // on_hand_until is *cleared* by a purchase rather than written, and it rides
   // the bulk UPDATE above because null is the same value for every row.
   // frozen_at rides along for the same reason and a related one: the freezer

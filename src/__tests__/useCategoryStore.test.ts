@@ -132,6 +132,22 @@ describe('ensureHealthCategory', () => {
     expect(useCategoryStore.getState().categories.map(c => c.name)).toEqual([HEALTH_CATEGORY]);
   });
 
+  it('starts the new section folded, once', () => {
+    useSettingsStore.setState({ healthReadEnabled: true });
+    ensureHealthCategory({ force: true });
+    expect(useSettingsStore.getState().collapsedCategories).toEqual([HEALTH_CATEGORY]);
+    // Opened since, then the read toggled again: it stays open.
+    useSettingsStore.getState().setCollapsedCategories([]);
+    ensureHealthCategory({ force: true });
+    expect(useSettingsStore.getState().collapsedCategories).toEqual([]);
+  });
+
+  it('does not fold a section the user filed Health under themselves', () => {
+    useSettingsStore.setState({ healthReadEnabled: true, healthCategory: 'Body' });
+    ensureHealthCategory({ force: true });
+    expect(useSettingsStore.getState().collapsedCategories).toEqual([]);
+  });
+
   it('leaves a category the user already picked alone', () => {
     useSettingsStore.setState({ healthReadEnabled: true, healthCategory: 'Body' });
     ensureHealthCategory({ force: true });

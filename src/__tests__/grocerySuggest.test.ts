@@ -77,6 +77,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
+    purchaseIntervalDays: null,
     createdAt: daysAgo(365),
     onHandUntil: null,
     sourceRecipeId: null,
@@ -397,6 +398,13 @@ describe('estimatedPurchaseCadenceDays', () => {
     expect(estimatedPurchaseCadenceDays(item, NOW)).toBe(30);
   });
 
+  it('uses the measured gap between purchases once a trip has recorded one', () => {
+    // A row made a year before anyone bought it: the old age-based figure
+    // would say 365 / 3, about four months.
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(365), purchaseIntervalDays: 7 });
+    expect(estimatedPurchaseCadenceDays(item, NOW)).toBe(7);
+  });
+
   it('is null when it has never been bought', () => {
     expect(estimatedPurchaseCadenceDays(makeItem({ name: 'Saffron', purchaseCount: 0 }), NOW)).toBeNull();
   });
@@ -588,6 +596,16 @@ describe('defaultOnHandUntil', () => {
   it('uses the item\'s own cadence once it has one', () => {
     const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90) }); // 30-day cadence
     expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-30));
+  });
+
+  it('lasts the measured gap between purchases, not the row\'s age over its count', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(365), purchaseIntervalDays: 7 });
+    expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-7));
+  });
+
+  it('still wants three purchases before trusting a measured gap', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 2, purchaseIntervalDays: 3 });
+    expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-14));
   });
 
   it('falls back to a flat two weeks with no cadence to trust', () => {

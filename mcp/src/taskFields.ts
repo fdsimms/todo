@@ -209,6 +209,8 @@ export interface TaskFieldsInput {
   supply?: SupplyInput | null;
   window?: WindowInput | null;
   habit?: 'do' | 'avoid';
+  /** With an "avoid" habit: slips a day that leave the streak alone. null removes it. */
+  slipAllowance?: number | null;
   waitsOn?: string[];
   /** With waitsOn: keep waiting until a repeating blocker's last occurrence is done, not just its next. */
   waitForSeriesEnd?: boolean;
@@ -601,8 +603,13 @@ export function taskFieldsPatch(
       if (context.isSubtask) errors.push('A subtask cannot be a "don\'t do this" habit.');
       Object.assign(patch, { polarity: 'negative', showStreak: true } satisfies Partial<Task>);
     } else {
-      patch.polarity = 'positive';
+      Object.assign(patch, { polarity: 'positive', slipAllowance: null } satisfies Partial<Task>);
     }
+  }
+  if (input.slipAllowance !== undefined) {
+    const avoids = input.habit !== undefined ? input.habit === 'avoid' : current?.polarity === 'negative';
+    if (input.slipAllowance !== null && !avoids) errors.push('A slip allowance belongs to a "don\'t do this" habit.');
+    else if (input.slipAllowance === null || input.habit !== 'do') patch.slipAllowance = input.slipAllowance === null || input.slipAllowance < 1 ? null : input.slipAllowance;
   }
 
   // ---- window ---------------------------------------------------------------

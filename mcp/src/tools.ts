@@ -22,6 +22,7 @@ import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLo
 import type { AnswerEdit, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
+import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
 import {
@@ -198,6 +199,8 @@ export interface GetTaskResult {
   window?: { start?: string; end?: string };
   /** Present only for a "don't do this" habit, which is never completed. */
   habit?: 'avoid';
+  /** Slips a day this habit absorbs before one resets its streak. Absent means none. */
+  slipAllowance?: number;
   /**
    * The tasks still holding this one back: `blockedById` and `blockedByIds`,
    * read through the app's `liveBlockersOf`, so a finished, archived or
@@ -396,6 +399,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
       ? { ...(task.windowStart ? { start: task.windowStart } : {}), ...(task.windowEnd ? { end: task.windowEnd } : {}) }
       : undefined,
     habit: task.polarity === 'negative' ? 'avoid' : undefined,
+    slipAllowance: task.polarity === 'negative' && negativeHabits.slipAllowanceOf(task) > 0 ? negativeHabits.slipAllowanceOf(task) : undefined,
     waitsOn: (() => {
       const live = replica.liveBlockers(task);
       return live.length > 0 ? live.map(b => ({ id: b.id, title: replica.displayTitle(b) })) : undefined;

@@ -13,7 +13,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
-import { isCleanToday } from '../utils/negativeHabits';
+import { isCleanToday, isFailedToday } from '../utils/negativeHabits';
 import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '../utils/rotation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -837,6 +837,13 @@ describe('demo mode', () => {
     expect(broken?.polarity).toBe('negative');
     expect(isCleanToday(broken!, getCurrentDayStart())).toBe(false);
     expect(broken?.streakCount).toBe(0);
+
+    // A slip inside the allowance: counted, not failed, streak intact.
+    const allowed = s.tasks.find(t => t.title === 'Sweets only twice a day');
+    expect(allowed?.slipAllowance).toBe(2);
+    expect(isCleanToday(allowed!, getCurrentDayStart())).toBe(false);
+    expect(isFailedToday(allowed!, getCurrentDayStart())).toBe(false);
+    expect(allowed?.streakCount).toBeGreaterThan(0);
 
     // Neither is ever completed, which is the whole shape of the polarity.
     expect(clean?.completed).toBe(false);

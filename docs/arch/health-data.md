@@ -997,6 +997,20 @@ category: `healthCategory` lives in the database, the demo's copy has never had
 one, so a demo session cannot surface a real reading left in the store by the
 session before it.
 
+**A run of readings draws as one joined card, and only a row with no action may
+join one.** Health readings and calendar events share this: a consecutive run of
+either is a single card with hairlines between rows (`contextCardPositions`,
+drawn by `DayContextRow`'s `cardPosition`), and a folded section says what is in
+it on its own header (`contextSectionSummaries`). The line that keeps this safe
+is `isCardRow` in `src/utils/contextCards.ts`: a meal row has a tick and a
+moved-off-today event carries the "move tasks" offer, so both stay on their own
+cards. Folding a section hides its rows, so anything that asks for an answer
+must never be inside one. A new context kind joins a card only if it is as
+inert as a health reading; tapping through to a read-only sheet (an event) is
+fine, anything that changes data is not. Health's section starts folded the
+first time the app assigns it (`ensureHealthCategory`), because its header
+already states the figures.
+
 ## The Mood screen's health axis
 
 `MoodDay` carries `steps` and `sleepHours`, so every reader already in

@@ -15,7 +15,7 @@ import { animation, border, checkboxRadius, iconSize, interaction, spacing, type
 import { completionTapFor, offersMealLogOnCompletion } from '../utils/completionTap';
 import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
-import { isCleanToday } from '../utils/negativeHabits';
+import { isFailedToday } from '../utils/negativeHabits';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
@@ -148,7 +148,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         // habit stays on the list either way — so the haptic and the box going
         // red are the whole of the feedback here.
         await haptics.warning();
-        confirmSlip(task, penaltyShieldEnabled, () => logSlip(task.id));
+        confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
         return;
       case 'ask':
         // The question comes first and the completion only follows an answer,
@@ -212,7 +212,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   // them is "done" — see Task.polarity. Clean is deliberately quiet rather than
   // green: it is the state the row sits in all day, every day, and a screenful
   // of green shields would outshout the completions that green already means.
-  const slipped = action === 'slip' && !isCleanToday(task, getCurrentDayStart());
+  const slipped = action === 'slip' && isFailedToday(task, getCurrentDayStart());
 
   const a11yLabel =
     action === 'slip'

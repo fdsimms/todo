@@ -83,6 +83,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/confirmDelete.ts` — confirmDelete
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +3 more
+- `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
 - `src/utils/cookbookIndex.ts` — MAX_INDEX_INGREDIENTS, cleanIndexTitle, cleanIndexPage, cleanIndexIngredients, IndexEntryFields, cleanIndexEntryFields, indexEntryInBook, splitIngredientText, mentionsIngredient, FinderRecipeHit, +8 more
@@ -92,7 +93,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
 - `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, getWeekStart, +26 more
-- `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, healthContextRows, insertContextRows, withoutContextRows
+- `src/utils/dayContextRows.ts` — ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
@@ -209,7 +210,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +25 more
-- `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, isCleanToday, slipPatch, undoSlipPatch, cleanDayPatch
+- `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +1 more
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +32 more
@@ -259,6 +260,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, filterTasksByTitle, alphabeticalPageOrder, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
 - `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, templateFromProject
+- `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
 - `src/utils/quickEvent.ts` — QuickEventDraft, EventRecurrence, eventRecurrenceFor, describeEventRepeat, parseAlertClause, alertRelativeOffset, DEFAULT_EVENT_MINUTES, parseLengthClause, parseClockRange, parseQuickEvent, +1 more

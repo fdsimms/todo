@@ -4301,20 +4301,24 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     logSlip(id): Task {
       const task = requireNegativeHabit(id);
-      const updated = { ...task, ...negativeHabits.slipPatch(task, dates.getCurrentDayStart()) };
+      const dayStart = dates.getCurrentDayStart();
+      const free = negativeHabits.nextSlipIsFree(task, dayStart);
+      const updated = { ...task, ...negativeHabits.slipPatch(task, dayStart) };
       db.dbUpdateTask(updated);
-      useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      if (!free) useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
       refresh();
       return updated;
     },
 
     undoSlip(id): Task {
       const task = requireNegativeHabit(id);
-      const patch = negativeHabits.undoSlipPatch(task, dates.getCurrentDayStart());
+      const dayStart = dates.getCurrentDayStart();
+      const patch = negativeHabits.undoSlipPatch(task, dayStart);
       if (!patch) throw new Error('No slip has been logged against that habit today, so there is nothing to undo.');
+      const free = negativeHabits.lastSlipWasFree(task, dayStart);
       const updated = { ...task, ...patch };
       db.dbUpdateTask(updated);
-      useRewardStore.getState().takeBackSlip(id);
+      if (!free) useRewardStore.getState().takeBackSlip(id);
       refresh();
       return updated;
     },

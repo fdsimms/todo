@@ -174,6 +174,7 @@ export function newItemRow(fields: {
     purchaseCount: 0,
     lastAddedAt: fields.onList ? fields.createdAt : null,
     lastPurchasedAt: null,
+    purchaseIntervalDays: null,
     createdAt: fields.createdAt,
     onHandUntil: fields.onHandUntil ?? null,
     // A genuinely new row is attributed here; a row reused via addByName's

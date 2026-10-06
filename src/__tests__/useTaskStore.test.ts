@@ -4489,7 +4489,7 @@ describe('supplies', () => {
         id, name: 'CPAP filters', nameKey: 'cpap filters', preferredProductId: null, productStrict: false,
         aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
         onList: false, checked: false, sortOrder: 1,
-        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: noon(-30),
+        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, purchaseIntervalDays: null, createdAt: noon(-30),
         onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
         isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
         shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
@@ -4735,7 +4735,7 @@ describe('checkPantryCheckTasks', () => {
     id: 'g-1', name: 'Flour', nameKey: 'flour', preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1,
-    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(125), createdAt: daysAgo(366),
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(125), purchaseIntervalDays: null, createdAt: daysAgo(366),
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
@@ -4994,7 +4994,7 @@ describe('checkPantryReviewTasks', () => {
     id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: i,
-    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), createdAt: daysAgo(366),
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), purchaseIntervalDays: null, createdAt: daysAgo(366),
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
@@ -7838,7 +7838,7 @@ describe('checkMealShortfallTasks', () => {
         id: 'g-1', name: 'Onions', nameKey: 'onions', preferredProductId: null, productStrict: false,
         aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
         onList: true, checked: false, sortOrder: 1,
-        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, purchaseIntervalDays: null, createdAt: '2026-01-01T00:00:00.000Z',
         onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
         isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
         shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
@@ -8049,7 +8049,7 @@ describe('checkMealThawTasks', () => {
     id: 'g-chicken', name: 'Chicken', nameKey: 'chicken', preferredProductId: null, productStrict: false,
     aisle: 'Meat', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1,
-    purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, purchaseIntervalDays: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
@@ -15856,7 +15856,7 @@ describe('deleting a use-up task', () => {
     nameFromScan: false,
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
-    lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    lastAddedAt: null, lastPurchasedAt: null, purchaseIntervalDays: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
     pantryCheckDeclinedAt: null,
@@ -15925,7 +15925,7 @@ describe('completing a use-up task', () => {
     nameFromScan: false,
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
-    lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    lastAddedAt: null, lastPurchasedAt: null, purchaseIntervalDays: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
     pantryCheckDeclinedAt: null,
@@ -18191,6 +18191,28 @@ describe('negative habits', () => {
       expect(get().slipCount).toBe(0);
     });
 
+    it('keeps a slip allowance given at creation, on an avoid-task only', () => {
+      const avoiding = useTaskStore.getState().addTask({ title: 'No sweets', polarity: 'negative', slipAllowance: 2 });
+      expect(avoiding.slipAllowance).toBe(2);
+      const ordinary = useTaskStore.getState().addTask({ title: 'Read', slipAllowance: 2 });
+      expect(ordinary.slipAllowance).toBeNull();
+    });
+
+    it('keeps the streak through slips inside the allowance and breaks it on the next', () => {
+      seed(avoid({ slipAllowance: 2, streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().logSlip('smoke');
+      expect(get().slipCount).toBe(2);
+      expect(get().streakCount).toBe(12);
+      expect(useTaskStore.getState().lastAction?.label).toBe('Logged');
+      useTaskStore.getState().logSlip('smoke');
+      expect(get().streakCount).toBe(0);
+      expect(useTaskStore.getState().lastAction?.label).toBe('Streak reset (was 12)');
+      useTaskStore.getState().lastAction!.undo();
+      expect(get().streakCount).toBe(12);
+      expect(get().slipCount).toBe(2);
+    });
+
     it('ignores a positive task', () => {
       seed(makeTask({ id: 'ordinary' }));
       useTaskStore.getState().logSlip('ordinary');
@@ -18232,6 +18254,14 @@ describe('negative habits', () => {
       seed(avoid({ penaltyMinutes: null }));
       useTaskStore.getState().logSlip('smoke');
       expect(setShieldUntil).not.toHaveBeenCalled();
+    });
+
+    it('charges nothing for a slip inside the allowance, then charges the next', () => {
+      seed(avoid({ penaltyMinutes: 120, slipAllowance: 1 }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(setShieldUntil).not.toHaveBeenCalled();
+      useTaskStore.getState().logSlip('smoke');
+      expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 12, 0, 0));
     });
 
     it('charges nothing while the feature is switched off', () => {
