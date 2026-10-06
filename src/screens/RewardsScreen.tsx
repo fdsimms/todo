@@ -649,7 +649,9 @@ export function RewardsScreen() {
 
         <Text style={styles.sectionHeader}>Rewards</Text>
         {openRewards.length === 0 && draft?.mode !== 'new' && (
-          <EmptyNote icon="gift-outline">No rewards yet. Add your own, or start from an idea below.</EmptyNote>
+          <View style={styles.emptyNote}>
+            <EmptyNote icon="gift-outline">No rewards yet. Add your own, or start from an idea below.</EmptyNote>
+          </View>
         )}
         {openRewards.map(renderReward)}
         {draft?.mode === 'new' ? renderDraft() : (
@@ -672,7 +674,9 @@ export function RewardsScreen() {
           Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
         </Text>
         {bounties.length === 0 ? (
-          <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
+          <View style={styles.emptyNote}>
+            <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
+          </View>
         ) : (
           <View style={styles.historyCard}>
             {bounties.map((task, i) => (
@@ -720,7 +724,9 @@ export function RewardsScreen() {
                 {draft?.mode === 'item' && renderDraft()}
                 {pickableItems.length === 0 ? (
                   draft?.mode !== 'item' && (
-                    <EmptyNote icon="list-outline">{`Everything on ${list.title} is already a reward.`}</EmptyNote>
+                    <View style={styles.emptyNote}>
+                      <EmptyNote icon="list-outline">{`Everything on ${list.title} is already a reward.`}</EmptyNote>
+                    </View>
                   )
                 ) : (
                   <View style={styles.historyCard}>
@@ -781,7 +787,9 @@ export function RewardsScreen() {
 
         <Text style={styles.sectionHeader}>History</Text>
         {history.length === 0 ? (
-          <EmptyNote icon="time-outline">Nothing yet. Complete a task to earn your first coins.</EmptyNote>
+          <View style={styles.emptyNote}>
+            <EmptyNote icon="time-outline">Nothing yet. Complete a task to earn your first coins.</EmptyNote>
+          </View>
         ) : (
           <View style={styles.historyCard}>
             {history.map((entry, i) => (
@@ -925,6 +933,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
+  emptyNote: { marginHorizontal: spacing.md },
   bountyLimit: {
     flexDirection: 'row',
     alignItems: 'center',
