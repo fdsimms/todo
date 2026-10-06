@@ -154,6 +154,10 @@ const PAPER = '#F6F3F8';
 const VIOLET_DEEP = '#6A3FDB';
 const VIOLET_TEXT = '#6032D0';
 const VIOLET_PALE = '#B9A0FF';
+// The dark themes' fill and icon accent. More saturated than the pale tint so
+// the current tab and selected controls stand out from the greys; text keeps
+// the pale one for its contrast.
+const VIOLET_MID = '#9B7BFF';
 
 /**
  * Black: true black for OLED, and where anyone who picked the old Dark theme
@@ -170,10 +174,10 @@ export const darkColors: Colors = {
   text: '#FFFFFF',
   textSecondary: '#A6A6AA',
   textTertiary: '#939396',
-  accent: VIOLET_PALE,
-  accentSubtle: 'rgba(185, 160, 255, 0.16)',
+  accent: VIOLET_MID,
+  accentSubtle: 'rgba(155, 123, 255, 0.2)',
   accentText: VIOLET_PALE,
-  accentFill: VIOLET_PALE,
+  accentFill: VIOLET_MID,
   green: '#4C9A76',
   greenText: '#51A47D',
   greenFill: '#418365',
@@ -224,10 +228,10 @@ export const nightColors: Colors = {
   text: PAPER,
   textSecondary: '#B3ADBD',
   textTertiary: '#8F889A',
-  accent: VIOLET_PALE,
-  accentSubtle: 'rgba(185, 160, 255, 0.16)',
+  accent: VIOLET_MID,
+  accentSubtle: 'rgba(155, 123, 255, 0.2)',
   accentText: VIOLET_PALE,
-  accentFill: VIOLET_PALE,
+  accentFill: VIOLET_MID,
   green: '#4C9A76',
   greenText: '#53A680',
   greenFill: '#418365',
