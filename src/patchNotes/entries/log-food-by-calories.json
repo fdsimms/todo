@@ -1,1 +1,1 @@
-{ "message": "When you log a food, you can now enter the amount in calories. The other nutrients are filled in to match.", "date": "2026-10-06" }
+{ "message": "When you log a food, you can now enter the amount in calories, kJ, or grams of protein, carbs or fat, and the other nutrients are filled in to match. Ounces and pounds are offered next to grams, drinks accept a weight (counted as water), and scanned packages have half, third and quarter shortcuts.", "date": "2026-10-06" }

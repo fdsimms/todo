@@ -1,5 +1,5 @@
 import type { FoodNutrition } from '../types';
-import { packageChoices, packageHelping, servingDescription, servingsPerPackage } from '../utils/scanPortion';
+import { packageChoices, packageFractions, packageHelping, servingDescription, servingsPerPackage } from '../utils/scanPortion';
 
 function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
   return {
@@ -174,5 +174,19 @@ describe('servingDescription', () => {
   it('has nothing to say when the panel states no serving', () => {
     expect(servingDescription(panel({ servingText: null, servingGrams: null }))).toBeNull();
     expect(servingDescription(panel({ basis: 'perServing', servingText: '  ', servingGrams: null }))).toBeNull();
+  });
+});
+
+describe('packageFractions', () => {
+  const whole = { key: 'package' as const, label: 'The whole package (12 servings)', servings: 12 };
+
+  it('offers half, a third and a quarter of a package', () => {
+    expect(packageFractions(whole).map(c => [c.key, c.servings])).toEqual([
+      ['half', 6], ['third', 4], ['quarter', 3],
+    ]);
+  });
+
+  it('leaves off a part smaller than one serving', () => {
+    expect(packageFractions({ ...whole, servings: 2 }).map(c => c.key)).toEqual(['half']);
   });
 });
