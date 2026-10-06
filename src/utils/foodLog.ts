@@ -129,6 +129,9 @@ export function scalePanelToAmount(
   now: Date = new Date(),
   foodName: string | null = null,
 ): { nutrition: FoodNutrition; grams: number | null; approximate: boolean } | null {
+  const calories = caloriesAmount(quantity);
+  if (calories !== null) return scaleToCalories(panel, calories, quantity, now);
+
   let factor = panelMultiplier(quantity, prep, panel);
   let approximate = false;
   let fallbackGrams: number | null = null;
@@ -192,6 +195,62 @@ export function scalePanelToAmount(
       // describes one helping of it that has already been measured: carrying
       // the rows forward would invite something to scale an amount that is
       // already scaled.
+      portions: [],
+      recordedAt: now.toISOString(),
+    },
+  };
+}
+
+/** "250 cal", "250 kcal", "250 calories" as 250, or null for any other amount. */
+function caloriesAmount(quantity: string): number | null {
+  const match = /^\s*(\d+(?:[.,]\d+)?)\s*(?:k?cals?|calories)\s*$/i.exec(quantity);
+  if (!match) return null;
+  const value = Number(match[1].replace(',', '.'));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * An amount stated as calories: the helping that holds that many, with every
+ * other nutrient in the panel's own proportion to its calories.
+ *
+ * Refused (null) when the panel states no calorie figure, since nothing then
+ * relates the typed number to the rest of the panel. The panel's amounts are
+ * all per the same basis unit, so the ratio of calories is the multiplier for
+ * every figure, whatever the basis. Grams follow only where the basis gives a
+ * weight to scale (per 100g, or a serving with a stated weight); a per-100ml
+ * panel has none, and a density is not invented for it.
+ */
+function scaleToCalories(
+  panel: FoodNutrition,
+  kcal: number,
+  quantity: string,
+  now: Date,
+): { nutrition: FoodNutrition; grams: number | null; approximate: boolean } | null {
+  const perBasis = panel.amounts.calorieKcal;
+  if (perBasis === undefined || !(perBasis > 0)) return null;
+  const factor = kcal / perBasis;
+
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const amount = panel.amounts[key];
+    if (amount !== undefined) amounts[key] = round(amount * factor);
+  }
+
+  let rawGrams: number | null = null;
+  if (panel.basis === 'per100g') rawGrams = factor * 100;
+  else if (panel.basis === 'perServing' && panel.servingGrams !== null) rawGrams = factor * panel.servingGrams;
+  const grams = rawGrams === null ? null : round(rawGrams);
+
+  return {
+    grams,
+    approximate: false,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: grams,
+      servingText: quantity.trim() || null,
+      amounts,
+      source: panel.source,
+      sourceId: panel.sourceId,
       portions: [],
       recordedAt: now.toISOString(),
     },
@@ -335,6 +394,12 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
       out.push(unit);
     }
   }
+  // Last, so it never displaces the unit a food is usually measured in. Only
+  // where the panel states calories, or `scalePanelToAmount` would refuse it.
+  const kcal = panel.amounts.calorieKcal;
+  if (kcal !== undefined && kcal > 0 && !seen.has('cal')) {
+    out.push({ key: 'cal', label: 'cal', suffix: ' cal' });
+  }
   return out;
 }
 
@@ -362,6 +427,7 @@ export function parseFoodAmount(raw: string, options: FoodUnitOption[]): { numbe
   for (const option of options) {
     if (option.key === 'g' ? (word === 'g' || word === 'gram' || word === 'grams') :
       option.key === 'serving' ? word.startsWith('serving') :
+        option.key === 'cal' ? /^(?:k?cals?|calories)$/.test(word) :
         word === option.label.toLowerCase()) {
       return { number: numberText, unitKey: option.key };
     }

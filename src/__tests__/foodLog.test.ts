@@ -101,6 +101,44 @@ function planEntry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
 
 beforeEach(() => { seq = 0; planSeq = 0; });
 
+describe('scalePanelToAmount by calories', () => {
+  it('scales every nutrient by the ratio of calories on a per-100g panel', () => {
+    const r = scalePanelToAmount(panel(), '122 cal', null);
+    expect(r?.nutrition.amounts).toEqual({ calorieKcal: 122, proteinG: 6.4, fatG: 6.6 });
+    expect(r?.grams).toBe(200);
+    expect(r?.nutrition.servingText).toBe('122 cal');
+  });
+
+  it('accepts kcal and calories as the unit', () => {
+    expect(scalePanelToAmount(panel(), '61 kcal', null)?.nutrition.amounts.proteinG).toBe(3.2);
+    expect(scalePanelToAmount(panel(), '61 calories', null)?.nutrition.amounts.proteinG).toBe(3.2);
+  });
+
+  it('works on a perServing panel and takes grams from the serving weight', () => {
+    const r = scalePanelToAmount(
+      panel({ basis: 'perServing', servingGrams: 30, amounts: { calorieKcal: 100, proteinG: 4 } }),
+      '50 cal',
+      null,
+    );
+    expect(r?.nutrition.amounts).toEqual({ calorieKcal: 50, proteinG: 2 });
+    expect(r?.grams).toBe(15);
+  });
+
+  it('leaves grams unknown on a per-100ml panel', () => {
+    const r = scalePanelToAmount(panel({ basis: 'per100ml', portions: [] }), '122 cal', null);
+    expect(r?.grams).toBeNull();
+    expect(r?.nutrition.amounts.calorieKcal).toBe(122);
+  });
+
+  it('refuses a panel that states no calories', () => {
+    expect(scalePanelToAmount(panel({ amounts: { proteinG: 3 } }), '100 cal', null)).toBeNull();
+  });
+
+  it('refuses zero calories', () => {
+    expect(scalePanelToAmount(panel(), '0 cal', null)).toBeNull();
+  });
+});
+
 describe('scalePanelToAmount', () => {
   it('scales a per-100g panel through the food\'s own portion table', () => {
     // A cup of milk is 244g, so the figures are 2.44 times the per-100g ones.
@@ -1085,6 +1123,7 @@ describe('foodUnitOptionsFor', () => {
     expect(foodUnitOptionsFor(panel())).toEqual([
       { key: 'cup', label: 'cup', suffix: ' cup' },
       { key: 'g', label: 'g', suffix: 'g' },
+      { key: 'cal', label: 'cal', suffix: ' cal' },
     ]);
   });
 
@@ -1092,12 +1131,14 @@ describe('foodUnitOptionsFor', () => {
     expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: 30, portions: [] }))).toEqual([
       { key: 'g', label: 'g', suffix: 'g' },
       { key: 'serving', label: 'serving', suffix: ' serving' },
+      { key: 'cal', label: 'cal', suffix: ' cal' },
     ]);
   });
 
   it('offers only a serving pill for a perServing panel with no stated weight', () => {
     expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: null, portions: [] }))).toEqual([
       { key: 'serving', label: 'serving', suffix: ' serving' },
+      { key: 'cal', label: 'cal', suffix: ' cal' },
     ]);
   });
 
@@ -1106,6 +1147,7 @@ describe('foodUnitOptionsFor', () => {
       { key: 'cup', label: 'cup', suffix: ' cup' },
       { key: 'g', label: 'g', suffix: 'g' },
       { key: 'serving', label: 'serving', suffix: ' serving' },
+      { key: 'cal', label: 'cal', suffix: ' cal' },
     ]);
   });
 
@@ -1116,7 +1158,13 @@ describe('foodUnitOptionsFor', () => {
       { key: 'tsp', label: 'tsp', suffix: ' tsp' },
       { key: 'fl oz', label: 'fl oz', suffix: ' fl oz' },
       { key: 'ml', label: 'ml', suffix: ' ml' },
+      { key: 'cal', label: 'cal', suffix: ' cal' },
     ]);
+  });
+
+  it('leaves the calorie pill off a panel that states no calories', () => {
+    const options = foodUnitOptionsFor(panel({ amounts: { proteinG: 3 } }));
+    expect(options.find(o => o.key === 'cal')).toBeUndefined();
   });
 
   it('does not duplicate a volume unit the panel already states as a portion', () => {
