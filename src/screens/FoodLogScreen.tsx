@@ -76,13 +76,21 @@ import { CsvExportSheet } from '../components/CsvExportSheet';
 import { foodLogExportCsv, foodLogExportFileName, foodLogExportSummary } from '../utils/foodLogExport';
 import { WhenPicker } from '../components/WhenPicker';
 import { ReorderableList } from '../components/ReorderableList';
-import type { DragScroller } from '../utils/fabDrop';
+import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { CountStepper } from '../components/CountStepper';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
 import { useRowSelection } from '../hooks/useRowSelection';
 
 /**
@@ -412,6 +420,50 @@ export function FoodLogScreen() {
     }
     return out;
   }, [sections]);
+
+  // Every row doubles as a target for the add button being dragged in: a
+  // meal's header or any of its entries means "log into that meal". The key is
+  // the list's own, so a zone and its row can't disagree about identity.
+  const dropTargetsByKey = useMemo(() => {
+    const map = new Map<string, { zone: DropZone; slot: MealSlot | null }>();
+    for (const item of listItems) {
+      const key = foodListItemKey(item);
+      const slot = item.type === 'header' ? item.slot : item.entry.slot;
+      map.set(key, {
+        zone: item.type === 'header'
+          ? { kind: 'header', key, category: null }
+          : { kind: 'task', key, category: null },
+        slot,
+      });
+    }
+    return map;
+  }, [listItems]);
+
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  const fabIntentChannel = useFabIntentChannel();
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' as const };
+      if (intent.kind === 'cancel') {
+        haptics.tap();
+        return;
+      }
+      const target = intent.kind === 'insert' ? dropTargetsByKey.get(intent.anchorKey) : undefined;
+      setAddingSlot(target ? target.slot : guessedSlot);
+      setAddOpen(true);
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
 
   // "Breakfast"/"Lunch"/… for the bulk bar's Move panel — its built-in "None"
   // chip (`allowNone`) already covers the unslotted "Other" section, so it's
@@ -1151,16 +1203,20 @@ export function FoodLogScreen() {
         </ScrollView>
       ) : (
         <PaintSelectionProvider {...paintProps}>
+          <FabDropZoneProvider
+            ref={dropZonesRef}
+            onIntentChange={fabIntentChannel.publish}
+            scroller={foodScrollControl}
+          >
           <ReorderableList
             data={listItems}
-            keyExtractor={item =>
-              item.type === 'entry' ? `entry-${item.entry.id}` : `${item.type}-${item.slot ?? 'none'}`
-            }
+            keyExtractor={foodListItemKey}
             scrollToTop={{ bottom: tabBarHeight + spacing.md }}
             scrollControlRef={foodScrollControl}
             // A paint gesture owns the touch for its duration, same reason
-            // every other selectable list turns scrolling off for one.
-            scrollEnabled={!painting}
+            // every other selectable list turns scrolling off for one, and
+            // the add button's drag scrolls the list itself instead.
+            scrollEnabled={!painting && !fabDragging}
             contentContainerStyle={[styles.scrollContent, { paddingTop: spacing.sm }]}
             placeholderStyle={styles.dropSlot}
             onHoverChange={haptics.dragTick}
@@ -1176,10 +1232,12 @@ export function FoodLogScreen() {
               <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
             }
             renderItem={({ item, drag, isActive }) => {
+              const zone = isActive ? null : dropTargetsByKey.get(foodListItemKey(item))?.zone ?? null;
               if (item.type === 'header') {
                 const section = sectionBySlot.get(item.slot);
                 const slotLabel = item.slot ? MEAL_SLOT_LABELS[item.slot] : 'Other';
                 return (
+                  <FabDropZone zone={zone}>
                   <View style={styles.sectionHeader}>
                     <Ionicons
                       name={(item.slot ? MEAL_SLOT_ICONS[item.slot] : 'ellipsis-horizontal') as keyof typeof Ionicons.glyphMap}
@@ -1198,9 +1256,11 @@ export function FoodLogScreen() {
                       accessibilityLabel={`Add to ${slotLabel}`}
                     />
                   </View>
+                  </FabDropZone>
                 );
               }
               return (
+                <FabDropZone zone={zone}>
                 <FoodLogRow
                   entry={item.entry}
                   isActive={isActive}
@@ -1214,19 +1274,25 @@ export function FoodLogScreen() {
                   onSwipeSelect={enterSelectionMode}
                   onOpenMenu={handleOpenMenu}
                 />
+                </FabDropZone>
               );
             }}
           />
+          </FabDropZoneProvider>
         </PaintSelectionProvider>
       )}
 
       {/* The bulk bar sits where the FAB does, and logging a new entry isn't
           something you're doing mid-selection anyway. */}
       {!selectionMode && (
-        <Fab
+        <LogFoodFabWithDropLabel
+          channel={fabIntentChannel}
+          slotByKey={dropTargetsByKey}
           onPress={() => { setAddingSlot(guessedSlot); setAddOpen(true); }}
           accessibilityLabel="Log something you ate"
           bottom={tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag onto a meal to log food there, or back to the button to cancel"
         />
       )}
 
@@ -1623,6 +1689,32 @@ function makeStyles(colors: Colors) {
  * per-100g panel. `onLongPress={drag}` still starts a reorder drag either
  * way, so expanding never fights it.
  */
+/** The list's own row key, which is also the key a drop zone registers under. */
+function foodListItemKey(item: FoodLogListItem): string {
+  return item.type === 'entry' ? `entry-${item.entry.id}` : `${item.type}-${item.slot ?? 'none'}`;
+}
+
+// The add button, naming the meal a release right now would log into. Its own
+// component so the label changing mid-drag re-renders the button and nothing
+// else (see `useFabIntentSelector`).
+function LogFoodFabWithDropLabel({
+  channel,
+  slotByKey,
+  ...props
+}: {
+  channel: FabIntentChannel;
+  slotByKey: Map<string, { slot: MealSlot | null }>;
+} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, (intent: FabDropIntent | null) => {
+    if (intent === null) return null;
+    if (intent.kind === 'cancel') return 'Cancel';
+    const target = intent.kind === 'insert' ? slotByKey.get(intent.anchorKey) : undefined;
+    if (!target) return 'Log food';
+    return target.slot ? `Log to ${MEAL_SLOT_LABELS[target.slot]}` : 'Log with no meal';
+  });
+  return <Fab {...props} dragLabel={label} />;
+}
+
 const FoodLogRow = React.memo(function FoodLogRow({
   entry, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu,
 }: {
