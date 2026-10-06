@@ -6937,6 +6937,12 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     maxWidth: '100%',
+    // Backs the 1px divider between the button and the ✕: the row has no fill
+    // of its own, so the divider's translucent colour otherwise sat over the
+    // screen behind it and read as a gap in the pill (same fix as quick add's
+    // tooltipPillRow).
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.md,
   },
   mentionSuggestionRow: {
     flexDirection: 'row',
@@ -6966,6 +6972,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   scheduleBannerDismiss: {
     flexShrink: 0,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     paddingVertical: 7,
     paddingHorizontal: spacing.xsm,
     borderTopRightRadius: radius.md,

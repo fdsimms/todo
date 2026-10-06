@@ -256,6 +256,13 @@ describe('scheduleMoveUpdates', () => {
     }
   });
 
+  it('holds a don\'t-do habit with a defer and never writes it a dueDate', () => {
+    const avoid = task({ polarity: 'negative' });
+    for (const dest of [at(2026, 6, 14), at(2026, 6, 6)]) {
+      expect(scheduleMoveUpdates(avoid, dest)).toEqual({ deferUntil: dest.toISOString() });
+    }
+  });
+
   it('pushes an anchored task out by deferring, leaving its grid alone', () => {
     const updates = scheduleMoveUpdates(anchored(), at(2026, 6, 14));
     expect(updates).toEqual({ deferUntil: at(2026, 6, 14).toISOString() });

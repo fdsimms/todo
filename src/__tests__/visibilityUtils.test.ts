@@ -1630,10 +1630,23 @@ describe('a negative habit', () => {
     expect(isVisibleApartFromVacation(avoid)).toBe(true);
   });
 
-  it('stays visible past a defer date and outside its own window', () => {
-    const deferUntil = new Date(2025, 5, 20, 12, 0, 0).toISOString();
-    expect(isVisibleApartFromVacation({ ...avoid, deferUntil })).toBe(true);
+  it('stays visible outside its own window and under a defer that has passed', () => {
+    const passed = new Date(2025, 5, 5, 12, 0, 0).toISOString();
+    expect(isVisibleApartFromVacation({ ...avoid, deferUntil: passed })).toBe(true);
     expect(isVisibleApartFromVacation({ ...avoid, windowStart: '23:00' })).toBe(true);
+  });
+
+  // Rescheduling one saved a date that nothing read, so the row stayed on Today.
+  it('leaves Today for Later while rescheduled, and returns on that day', () => {
+    const deferUntil = new Date(2025, 5, 20, 12, 0, 0).toISOString();
+    const held = { ...avoid, deferUntil };
+    expect(isTaskVisible(held)).toBe(false);
+    expect(isTaskDeferred(held)).toBe(true);
+    expect(getVisibleAt(held).getTime()).toBeGreaterThan(NOW.getTime());
+
+    jest.setSystemTime(new Date(2025, 5, 20, 10, 0, 0));
+    expect(isTaskVisible(held)).toBe(true);
+    expect(isTaskDeferred(held)).toBe(false);
   });
 
   it('is hidden once archived', () => {

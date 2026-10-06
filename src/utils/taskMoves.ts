@@ -199,12 +199,15 @@ export function deloadUpdates(
  * prevent.
  */
 export function scheduleMoveUpdates(
-  task: Pick<Task, 'dueDate' | 'recurrenceType' | 'recurrenceAnchorDate' | 'seriesId'>,
+  task: Pick<Task, 'dueDate' | 'recurrenceType' | 'recurrenceAnchorDate' | 'seriesId' | 'polarity'>,
   date: Date | null,
   dayResetTime?: string,
   options?: { restartSchedule?: boolean },
 ): Partial<Task> {
   if (!date) return { dueDate: null, deferUntil: null };
+  // A "don't do" habit has no date of its own, so a move is only ever a hold:
+  // writing a dueDate would leave a stale one behind once the hold ends.
+  if (task.polarity === 'negative') return { deferUntil: date.toISOString() };
   const anchored = isDateAnchored(task as Task) && task.dueDate != null;
   if (!anchored) return { dueDate: date.toISOString(), deferUntil: null };
 

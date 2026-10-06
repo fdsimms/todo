@@ -43,6 +43,17 @@ describe('nextFieldSync', () => {
     expect(nextFieldSync(sync, 'rutabaga', 'b').sync.tree).toBe('');
   });
 
+  it('rewrites the typed words on a style change when the field opened empty, so they take the new attributes', () => {
+    const sync = fieldChanged(initialFieldSync('', 'a'), 'rutabaga');
+    const next = nextFieldSync(sync, 'rutabaga', 'b');
+    expect(next.write).toBe('rutabaga');
+    expect(nextFieldSync(next.sync, 'rutabaga', 'b').write).toBeNull();
+  });
+
+  it('writes nothing on a style change while an empty field is still empty', () => {
+    expect(nextFieldSync(initialFieldSync('', 'a'), '', 'b').write).toBeNull();
+  });
+
   it('leaves the tree alone when only the value changes', () => {
     const sync = fieldChanged(initialFieldSync('Buy milk', 'a'), 'Buy milk!');
     expect(nextFieldSync(sync, 'Something else', 'a').sync.tree).toBe('Buy milk');
