@@ -97,6 +97,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
+import { deleteCategory } from './categoryTools';
 import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
@@ -1297,13 +1298,34 @@ function registerWriteTools(
 
   server.tool(
     'set_automation',
-    'Turn an automation on or off, by its kind from list_automations. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
-    { kind: z.string().min(1), on: z.boolean() },
-    async ({ kind, on }) => {
+    'Turn an automation on or off, and/or choose the category its tasks file under (its "File them under" setting, shown as category in list_automations). Pass on, category or both. category: null files its tasks under none, which puts them in the loose block at the top of Today; prefer a real category. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
+    {
+      kind: z.string().min(1),
+      on: z.boolean().optional(),
+      category: z.string().nullable().optional().describe('A task category by name, from list_categories. It must already exist; null for none.'),
+    },
+    async ({ kind, on, category }) => {
       try {
-        return json(await withWrite(() => setAutomation(replica, kind, on)));
+        return json(await withWrite(() => setAutomation(replica, kind, { on, category })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that automation.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_category',
+    'Delete a task category. Its tasks and stacks move to moveTo (a category from list_categories), or with uncategorize: true they are left with none, which puts them in the loose block at the top of Today. A category holding open tasks is refused until you choose one. Every automation that filed under it, and the calendar-events section if it was filed there, is re-pointed to moveTo (or to none) so nothing keeps naming a deleted category. This cannot be undone from here, and Activity lists it as a record. Prefer moveTo, and preview first: the preview names every automation affected.',
+    {
+      name: z.string().min(1).describe('The category to delete, by name from list_categories.'),
+      moveTo: z.string().nullable().optional().describe('The category its tasks and stacks go to.'),
+      uncategorize: z.boolean().optional().describe('Leave its tasks with no category instead of moving them.'),
+    },
+    async ({ name, moveTo, uncategorize }) => {
+      try {
+        return json(await withWrite(() => deleteCategory(replica, { name, moveTo, uncategorize })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that category.' });
       }
     }
   );

@@ -41,6 +41,7 @@ import type {
   DeliverableKind,
   EventTaskRule,
   FoodLogEntry,
+  GeneratedKind,
   HealthRule,
   Milestone,
   ScreenTimeRule,
@@ -576,6 +577,18 @@ export interface ProjectPatch {
   archived?: boolean;
 }
 
+/** What deleting a category changed, for the tool to report. */
+export interface DeletedCategory {
+  name: string;
+  movedTo: string | null;
+  tasksMoved: number;
+  stacksMoved: number;
+  /** The automations that filed under it and now file under `movedTo` (or nowhere). */
+  automationsRepointed: string[];
+  /** Whether Today's calendar-events section was filed under it. */
+  calendarEventsRepointed: boolean;
+}
+
 export interface Replica {
   /** Where the database being served came from. Reported by `describe`. */
   readonly path: string;
@@ -759,6 +772,21 @@ export interface Replica {
   /** Whether an automation is on, by its settings key (`GeneratedKindSpec.enabledKey`). */
   generatorEnabled(key: string): boolean;
   setGeneratorEnabled(key: string, on: boolean): void;
+  /** The category a generator files its tasks under, by name, or null for none (`GeneratedKindSpec.kind`). */
+  generatorCategory(kind: GeneratedKind): string | null;
+  /**
+   * Point a generator's "File them under" setting at a category, or at none.
+   * The same stored answer the Settings row writes, so startup leaves it alone.
+   * The name is not checked here; the tool refuses one that isn't a category.
+   */
+  setGeneratorCategory(kind: GeneratedKind, category: string | null): void;
+  /**
+   * Delete a category: its tasks and stacks move to `moveTo` (or become
+   * uncategorized), every setting that filed something under it is re-pointed
+   * there too, and the row goes. The app's own delete, minus its shake-to-undo,
+   * and covering every generator's category setting rather than four of them.
+   */
+  deleteCategory(name: string, moveTo: string | null): DeletedCategory;
   /**
    * Run a write, record what it would change, and roll all of it back: the
    * preview behind every write tool (see confirmWrites.ts). The result is what
@@ -1609,6 +1637,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
+  const categoryStore = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
+  const generatedKinds = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
   const { projectProgress, projectDecisions, useProjectStore } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
   const { useTaskGroupStore } = require('../../src/store/useTaskGroupStore') as typeof import('../../src/store/useTaskGroupStore');
   const taskUpdate = require('../../src/utils/taskUpdate') as TaskUpdateModule;
@@ -2622,6 +2652,42 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // on the refresh below, defaults and all.
       db.dbSetSetting(key, on ? 'true' : 'false');
       refresh();
+    },
+
+    generatorCategory: (kind: GeneratedKind) => categoryStore.getGeneratedCategory(kind),
+
+    setGeneratorCategory(kind: GeneratedKind, category: string | null) {
+      categoryStore.setGeneratedCategory(kind, category);
+      refresh();
+    },
+
+    deleteCategory(name: string, moveTo: string | null): DeletedCategory {
+      if (!useCategoryStore.getState().getCategoryByName(name)) throw new Error(`No category called "${name}".`);
+      if (moveTo !== null && moveTo === name) throw new Error('A category cannot be moved into itself.');
+      const taskIds = tasks().filter(t => t.category === name).map(t => t.id);
+      const groups = useTaskGroupStore.getState().groups.filter(g => g.category === name);
+      db.dbBulkSetCategory(taskIds, moveTo);
+      groups.forEach(g => useTaskGroupStore.getState().updateGroup(g.id, { category: moveTo }));
+
+      const settings = useSettingsStore.getState();
+      const calendarEventsRepointed = settings.calendarEventCategory === name;
+      if (calendarEventsRepointed) settings.setCalendarEventCategory(moveTo);
+      if (settings.collapsedCategories.includes(name)) {
+        settings.setCollapsedCategories(settings.collapsedCategories.filter(c => c !== name));
+      }
+      const kinds = categoryStore.clearGeneratedCategorySettings(name, moveTo);
+      useCategoryStore.getState().deleteCategory(name);
+      refresh();
+
+      const labelOf = new Map(generatedKinds.GENERATED_KIND_LIST.map(spec => [spec.kind, spec.label]));
+      return {
+        name,
+        movedTo: moveTo,
+        tasksMoved: taskIds.length,
+        stacksMoved: groups.length,
+        automationsRepointed: kinds.map(k => labelOf.get(k) ?? k),
+        calendarEventsRepointed,
+      };
     },
 
     // Replaced once the replica is wrapped, below: a dry run has to capture

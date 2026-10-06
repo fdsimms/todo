@@ -8,6 +8,7 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { deleteRule, listAutomations, saveRule, setAutomation } from '../automationTools';
+import { deleteCategory } from '../categoryTools';
 
 let mockRaw: ShimDatabase;
 
@@ -33,10 +34,10 @@ describe('automations', () => {
   });
 
   it('turns one on as the stored value the app reads back', () => {
-    expect(setAutomation(replica, 'weather', true).on).toBe(true);
+    expect(setAutomation(replica, 'weather', { on: true }).on).toBe(true);
     replica.refresh();
     expect(listAutomations(replica).automations.find(a => a.kind === 'weather')!.on).toBe(true);
-    expect(() => setAutomation(replica, 'telepathy', true)).toThrow(/No automation/);
+    expect(() => setAutomation(replica, 'telepathy', { on: true })).toThrow(/No automation/);
   });
 
   it('adds a weather rule, and clears its day mark when an edit changes what it asks', () => {
@@ -72,4 +73,63 @@ describe('automations', () => {
     expect(() => deleteRule(replica, 'event', 'nope')).toThrow(/No event rule/);
     expect(() => saveRule(replica, 'event', { id: 'nope', title: 'x' })).toThrow(/No event rule/);
   });
+
+  describe('the category an automation files under', () => {
+    const categoryOf = (kind: string) => listAutomations(replica).automations.find(a => a.kind === kind)!.category;
+
+    it('lists it, and writes the one chosen as a name that exists', () => {
+      replica.createTask({ title: 'seed', category: 'Meals', newCategory: true } as never);
+      replica.createTask({ title: 'seed', category: 'Evening Tasks', newCategory: true } as never);
+      expect(setAutomation(replica, 'calendarReview', { category: ' evening tasks ' }).category).toBe('Evening Tasks');
+      replica.refresh();
+      expect(categoryOf('calendarReview')).toBe('Evening Tasks');
+    });
+
+    it('refuses a category that does not exist, and a call that changes nothing', () => {
+      expect(() => setAutomation(replica, 'calendarReview', { category: 'Nope' })).toThrow(/isn't one of your categories/);
+      expect(() => setAutomation(replica, 'calendarReview', {})).toThrow(/Say what to change/);
+    });
+
+    it('can change the category and the switch together, and warns about none', () => {
+      const result = setAutomation(replica, 'birthday', { on: true, category: null });
+      expect(result).toMatchObject({ on: true, category: null });
+      expect(result.note).toMatch(/loose block/);
+    });
+  });
+
+  describe('deleting a category', () => {
+    it('moves its tasks and re-points every automation that filed under it', () => {
+      replica.createTask({ title: 'Old one', category: 'Calendar', newCategory: true } as never);
+      setAutomation(replica, 'eventTask', { category: 'Calendar' });
+      setAutomation(replica, 'pantryCheck', { category: 'Calendar' });
+      const result = deleteCategory(replica, { name: 'calendar', moveTo: 'Meals' });
+      replica.refresh();
+      expect(result).toMatchObject({ name: 'Calendar', movedTo: 'Meals', tasksMoved: 1 });
+      expect(result.automationsRepointed).toHaveLength(2);
+      expect(replica.categories().some(c => c.name === 'Calendar')).toBe(false);
+      expect(categoryNamed('eventTask')).toBe('Meals');
+      expect(categoryNamed('pantryCheck')).toBe('Meals');
+      expect(replica.tasks().find(t => t.title === 'Old one')!.category).toBe('Meals');
+    });
+
+    it('refuses a category with open tasks unless told where they go', () => {
+      replica.createTask({ title: 'Still open', category: 'Scratch', newCategory: true } as never);
+      expect(() => deleteCategory(replica, { name: 'Scratch' })).toThrow(/still holds 1 open task/);
+      expect(() => deleteCategory(replica, { name: 'Scratch', moveTo: 'Scratch' })).toThrow(/itself/);
+      expect(() => deleteCategory(replica, { name: 'Scratch', moveTo: 'Nowhere' })).toThrow(/nothing can move there/);
+      deleteCategory(replica, { name: 'Scratch', uncategorize: true });
+      replica.refresh();
+      expect(replica.tasks().find(t => t.title === 'Still open')!.category).toBeNull();
+    });
+
+    it('deletes an empty category with no extra argument', () => {
+      replica.createTask({ title: 'tmp', category: 'Empty soon', newCategory: true } as never);
+      deleteCategory(replica, { name: 'Empty soon', uncategorize: true });
+      expect(() => deleteCategory(replica, { name: 'Empty soon' })).toThrow(/isn't one of your categories/);
+    });
+  });
 });
+
+function categoryNamed(kind: string): string | null {
+  return listAutomations(replica).automations.find(a => a.kind === kind)!.category;
+}

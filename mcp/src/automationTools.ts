@@ -59,6 +59,8 @@ export interface AutomationSummary {
   on: boolean;
   /** What it does when on, in the app's own words. */
   does: string;
+  /** The category its tasks file under, or null when it files under none (the "File them under" setting). */
+  category: string | null;
   /** The rule list it runs, and how many rules are in it. */
   rules?: { type: RuleListType; count: number };
   needsOnPhone?: string;
@@ -83,6 +85,7 @@ export function listAutomations(replica: Replica): {
       label: spec.label,
       on: replica.generatorEnabled(spec.enabledKey),
       does: spec.onHint,
+      category: replica.generatorCategory(spec.kind),
       ...(type ? { rules: { type, count: lists[type].length } } : {}),
       ...(NEEDS_ON_PHONE[spec.kind] ? { needsOnPhone: NEEDS_ON_PHONE[spec.kind] } : {}),
       ...(spec.kitchen && !kitchen ? { hiddenWithKitchenOff: true as const } : {}),
@@ -102,11 +105,42 @@ export function listAutomations(replica: Replica): {
   };
 }
 
-export function setAutomation(replica: Replica, kind: string, on: boolean): AutomationSummary {
+/**
+ * Turn an automation on or off, and/or choose the category it files its tasks
+ * under. `category: null` files them under none, which is a deliberate answer
+ * the app keeps rather than refills: an uncategorized task renders in the
+ * loose block above every section of Today, so the result says so.
+ */
+export function setAutomation(
+  replica: Replica,
+  kind: string,
+  change: { on?: boolean; category?: string | null },
+): AutomationSummary & { note?: string } {
   const spec = replica.lib().generatedTasks.GENERATED_KIND_LIST.find(s => s.kind === kind);
   if (!spec) throw new Error(`No automation called "${kind}". list_automations names them.`);
-  replica.setGeneratorEnabled(spec.enabledKey, on);
-  return listAutomations(replica).automations.find(a => a.kind === kind)!;
+  if (change.on === undefined && change.category === undefined) {
+    throw new Error('Say what to change: on, category, or both.');
+  }
+
+  let note: string | undefined;
+  if (change.category !== undefined) {
+    let target: string | null = null;
+    if (change.category !== null) {
+      const wanted = change.category.trim().toLowerCase();
+      const match = replica.categories().find(c => c.name.toLowerCase() === wanted);
+      if (!match) {
+        const names = replica.categories().map(c => c.name).join(', ') || 'none yet';
+        throw new Error(`"${change.category}" isn't one of your categories (${names}). list_categories lists them.`);
+      }
+      target = match.name;
+    } else {
+      note = 'Its tasks will file under no category, which puts them in the loose block at the top of Today, above every section.';
+    }
+    replica.setGeneratorCategory(spec.kind, target);
+  }
+  if (change.on !== undefined) replica.setGeneratorEnabled(spec.enabledKey, change.on);
+  const summary = listAutomations(replica).automations.find(a => a.kind === kind)!;
+  return note ? { ...summary, note } : summary;
 }
 
 /** One list through its own parser, the way the store reads it back at launch. */
