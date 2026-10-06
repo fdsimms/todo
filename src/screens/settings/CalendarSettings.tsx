@@ -471,33 +471,47 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
-            entryId="calendarEventCategory"
-            icon="pricetag-outline"
-            label="Show events under"
+            entryId="calendarEventsOnToday"
+            icon="calendar-outline"
+            iconColor={calendarEventCategory ? colors.accent : undefined}
+            label="Show events on Today"
             hint={calendarEventCategory
-              ? "Today's events show as rows in this category"
+              ? "Today's events show as rows in the list"
               : "Events don't show on Today"}
-            value={calendarEventCategory
-              ? categoryLabel(calendarEventCategory, categories)
-              : 'Nowhere'}
-            tight
+            toggle={!!calendarEventCategory}
+            onPress={() => {
+              // Off is the cleared category (see ensureCalendarEventCategory);
+              // on files them under the default category again.
+              if (calendarEventCategory) setCalendarEventCategory(null);
+              else ensureCalendarEventCategory({ force: true });
+            }}
+            accessibilityLabel="Show events on Today"
           />
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="category"
-              options={[
-                { value: null, label: 'Nowhere' },
-                ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
-              ].map(o => ({
-                key: String(o.value),
-                label: o.label,
-                selected: o.value === calendarEventCategory,
-                pinned: o.value === null,
-                accessibilityLabel: `Show events under: ${o.label}`,
-                onPress: () => { haptics.tap(); setCalendarEventCategory(o.value); },
-              }))}
-            />
-          </View>
+          {calendarEventCategory && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="calendarEventCategory"
+                icon="pricetag-outline"
+                label="Show events under"
+                hint="Today's events show as rows in this category"
+                value={categoryLabel(calendarEventCategory, categories)}
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="category"
+                  options={categories.map(c => ({
+                    key: c.name,
+                    label: categoryLabel(c.name, categories),
+                    selected: c.name === calendarEventCategory,
+                    accessibilityLabel: `Show events under: ${categoryLabel(c.name, categories)}`,
+                    onPress: () => { haptics.tap(); setCalendarEventCategory(c.name); },
+                  }))}
+                />
+              </View>
+            </>
+          )}
         </>
       )}
 
