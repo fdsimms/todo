@@ -4129,12 +4129,18 @@ export function TodayScreen() {
     viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
     && (plannedLabel || completedTodayLabel || eventsLeftLabel)
       ? [
-          completedTodayLabel ? `${completedTodayLabel} done` : undefined,
-          plannedLabel ? `${plannedLabel} planned` : undefined,
+          [
+            completedTodayLabel ? `${completedTodayLabel} done` : undefined,
+            plannedLabel ? `${plannedLabel} planned` : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          // Its own line: with the header buttons beside it the full sentence
+          // wrapped anyway, and it wrapped mid-phrase ("1h of / events left").
           eventsLeftLabel ? `${eventsLeftLabel} of events left` : undefined,
         ]
           .filter(Boolean)
-          .join(' · ')
+          .join('\n')
       : undefined;
 
   // Later, Unscheduled and Inbox share Today's filter icon and sheet (#1798),
