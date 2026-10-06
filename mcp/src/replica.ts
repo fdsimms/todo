@@ -110,6 +110,7 @@ type HttpTransportModule = typeof import('../../src/utils/httpSyncTransport');
 type FoodLogModule = typeof import('../../src/utils/foodLog');
 type ProduceModule = typeof import('../../src/utils/produceServings');
 type RecipeProduceModule = typeof import('../../src/utils/recipeProduce');
+type StandingSwapsModule = typeof import('../../src/utils/standingSwaps');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
 type RewardsModule = typeof import('../../src/utils/rewards');
@@ -744,12 +745,14 @@ export interface Replica {
   /** Summed nutrients over a set of entries. A nutrient nobody stated is absent, never 0. */
   foodTotals(entries: readonly FoodLogEntry[]): FoodLogTotals;
   /**
-   * Vegetable and fruit servings in one day's entries (`dayProduce`). Here
+   * Vegetable and fruit servings per day over a set of entries (`dayProduce`),
+   * oldest day first, one row per day that has an entry. Here
    * rather than in `tools.ts` because weighing a recipe entry walks the recipe
    * and the catalog, which reaches the app's settings store and so the
-   * database. Standing swaps are not applied to a recipe's lines.
+   * database. The person's standing swaps are applied to a recipe's lines, as
+   * the app's own screens do.
    */
-  foodProduce(entries: readonly FoodLogEntry[]): DayProduce;
+  foodProduce(entries: readonly FoodLogEntry[]): ({ dayKey: string } & DayProduce)[];
 
   /** Mood check-ins between two day keys, inclusive. */
   moodLogs(fromDayKey: string, toDayKey: string): MoodLog[];
@@ -1478,6 +1481,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const foodLog = require('../../src/utils/foodLog') as FoodLogModule;
   const produce = require('../../src/utils/produceServings') as ProduceModule;
   const recipeProduce = require('../../src/utils/recipeProduce') as RecipeProduceModule;
+  const standingSwaps = require('../../src/utils/standingSwaps') as StandingSwapsModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
   const rewards = require('../../src/utils/rewards') as RewardsModule;
@@ -2342,15 +2346,26 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // The other two are read whole and filtered, which is what the app does.
     foodLogEntries: (from: string, to: string) => db.dbGetFoodLogEntries(from, to),
     foodTotals: (entries: readonly FoodLogEntry[]) => foodLog.foodLogTotals(entries),
-    foodProduce: (entries: readonly FoodLogEntry[]) =>
-      produce.dayProduce(
-        entries,
-        recipeProduce.recipeProduceResolver(
-          db.dbGetAllRecipes(),
-          db.dbGetAllGroceryItems(),
-          db.dbGetAllItemProducts(),
-        ),
-      ),
+    foodProduce: (entries: readonly FoodLogEntry[]) => {
+      // The catalog and recipes are read once for the whole range, not per day.
+      const items = db.dbGetAllGroceryItems();
+      const resolver = recipeProduce.recipeProduceResolver(
+        db.dbGetAllRecipes(),
+        items,
+        db.dbGetAllItemProducts(),
+        standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items),
+      );
+      const byDay = new Map<string, FoodLogEntry[]>();
+      for (const e of entries) {
+        const day = byDay.get(e.dayKey);
+        if (day) day.push(e);
+        else byDay.set(e.dayKey, [e]);
+      }
+      return [...byDay.keys()].sort().map(dayKey => ({
+        dayKey,
+        ...produce.dayProduce(byDay.get(dayKey) ?? [], resolver),
+      }));
+    },
 
     moodLogs: (from: string, to: string) =>
       moodHistory.logsInDayRange(db.dbGetAllMoodLogs(), from, to),

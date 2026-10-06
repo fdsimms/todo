@@ -24,7 +24,11 @@ import { isNutrientOnlyEntry } from './nutrientLog';
  * a serving rather than a refusal.
  *
  * **A food not named as produce counts as none, and that is the main limit.**
- * "Chicken" is silently zero, though a plate can hold anything. What the reader
+ * "Chicken" is silently zero, though a plate can hold anything. The one thing
+ * that widens what a name can say is the database category an entry kept when
+ * it logged a food from the food database (`FoodNutrition.foodCategory`, read
+ * from `entry.sourcePanel`). It covers only that case: an entry linked to a
+ * catalog row, or typed by hand, has no category and goes by its name. What the reader
  * *can* say is when it knows it is missing something, which is `unmeasured`: a
  * produce food with no weight, a mixed dish ("salad", "stir fry") with no recipe
  * behind it, a recipe whose ingredients could not be weighed. A caller shows that
@@ -134,8 +138,14 @@ const FRUITS = stems(
  * rule: a processed form beats the produce word in it ("tomato sauce"), and a
  * dish word beats the produce word too ("vegetable soup") because the split
  * between its parts is not in the name.
+ *
+ * `category` is the food database's own category, when the entry kept one
+ * (`FoodNutrition.foodCategory`). It is a **fallback for a name the lexicon does
+ * not know** ("Pomelo, raw"), never an override: the exclusions above and the
+ * potato rule below run first, so a "Vegetables and Vegetable Products" potato
+ * or a juice filed under "Fruits and Fruit Juices" is still not counted.
  */
-export function produceKindOf(name: string): ProduceKind | 'mixed' | null {
+export function produceKindOf(name: string, category?: string | null): ProduceKind | 'mixed' | null {
   const tokens = tokensOf(name);
   if (tokens.length === 0) return null;
   const has = (set: Set<string>) => tokens.some(token => set.has(token));
@@ -145,13 +155,18 @@ export function produceKindOf(name: string): ProduceKind | 'mixed' | null {
   if (has(PROCESSED)) return null;
   if (has(MIXED)) return 'mixed';
   if (has(SEASONING)) return null;
+  if (tokens.includes('potato') && !tokens.includes('sweet')) return null;
 
+  return kindFromName(tokens, has) ?? kindFromCategory(tokens, category);
+}
+
+function kindFromName(tokens: string[], has: (set: Set<string>) => boolean): ProduceKind | null {
   const hasFruit = has(FRUITS);
   if (has(DRIED_MARKERS) && (hasFruit || tokens.some(t => t === 'raisin' || t === 'prune' || t === 'sultana' || t === 'date'))) {
     return 'dried';
   }
 
-  if (tokens.includes('potato')) return tokens.includes('sweet') ? 'vegetable' : null;
+  if (tokens.includes('potato')) return 'vegetable';
   if (tokens.includes('bean') && !has(NON_PULSE_BEAN)) return 'legume';
   if (has(LEGUMES)) return 'legume';
   if (tokens.includes('split') && tokens.includes('pea')) return 'legume';
@@ -163,6 +178,19 @@ export function produceKindOf(name: string): ProduceKind | 'mixed' | null {
 
   if (has(VEGETABLES) || tokens.includes('pepper') || tokens.includes('bean')) return 'vegetable';
   if (hasFruit) return 'fruit';
+  return null;
+}
+
+/** FoodData Central's own groupings, matched whole so "Fruit juices" does not read as a fruit. */
+function kindFromCategory(tokens: string[], category: string | null | undefined): ProduceKind | null {
+  if (!category) return null;
+  const text = category.toLowerCase();
+  if (text.includes('legume')) return 'legume';
+  if (text.includes('vegetable')) return 'vegetable';
+  if (text.includes('fruit')) {
+    // A dried fruit's category is the same as the fresh one's, so only its name says.
+    return tokens.some(t => DRIED_MARKERS.has(t)) ? 'dried' : 'fruit';
+  }
   return null;
 }
 
@@ -217,7 +245,7 @@ export function dayProduce(
       continue;
     }
 
-    const kind = produceKindOf(entry.label);
+    const kind = produceKindOf(entry.label, entry.sourcePanel?.foodCategory);
     if (kind === null) continue;
     if (kind === 'mixed') {
       unmeasured += 1;

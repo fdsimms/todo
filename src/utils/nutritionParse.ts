@@ -579,7 +579,24 @@ export function readFdcNutrition(
     source: 'fdc',
     sourceId: readSourceText(food.fdcId) ?? (readSourceNumber(food.fdcId) !== null ? String(food.fdcId) : null),
     recordedAt,
+    ...categoryField(food.foodCategory),
   };
+}
+
+/**
+ * A food's category as FoodData Central states it: a string on a search hit, an
+ * object with a `description` on a detail response. Empty or anything else is
+ * absent, and absent adds no key.
+ */
+function categoryField(raw: unknown): { foodCategory: string } | Record<string, never> {
+  const text =
+    typeof raw === 'string'
+      ? raw
+      : raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).description === 'string'
+        ? ((raw as Record<string, unknown>).description as string)
+        : '';
+  const trimmed = text.trim();
+  return trimmed === '' ? {} : { foodCategory: trimmed };
 }
 
 /**

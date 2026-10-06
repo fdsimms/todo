@@ -4658,6 +4658,14 @@ export interface FoodNutrition {
   portions: FoodPortion[];
   /** ISO instant these figures were recorded. */
   recordedAt: string;
+  /**
+   * The database's own food category ("Vegetables and Vegetable Products"),
+   * kept only so the vegetable and fruit estimate can classify a food its name
+   * lexicon does not know (`produceServings.ts`). A fact about what the food is,
+   * not a figure: nothing scales it and nothing but that estimate reads it.
+   * Absent for every source that states no category, which is the ordinary case.
+   */
+  foodCategory?: string | null;
 }
 
 /**

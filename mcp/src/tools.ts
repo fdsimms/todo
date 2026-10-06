@@ -632,7 +632,7 @@ export interface FoodLogResult {
    * the nearest half. `unmeasured` is how many entries that day could not be
    * weighed and are not counted, so a low figure with entries unmeasured means
    * "could not tell", not "ate little". A food not named as produce counts as
-   * none. Standing swaps are not applied to recipe lines here.
+   * none.
    */
   produce: { dayKey: string; vegetable: number; fruit: number; unmeasured: number }[];
 }
@@ -642,17 +642,12 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
   const entries = replica.foodLogEntries(range.from, range.to);
   const totals = replica.foodTotals(entries);
 
-  const byDay = new Map<string, FoodLogEntry[]>();
-  for (const e of entries) byDay.set(e.dayKey, [...(byDay.get(e.dayKey) ?? []), e]);
-  const produce = [...byDay.keys()].sort().map(dayKey => {
-    const day = replica.foodProduce(byDay.get(dayKey) ?? []);
-    return {
-      dayKey,
-      vegetable: roundToHalf(day.vegetable),
-      fruit: roundToHalf(day.fruit),
-      unmeasured: day.unmeasured,
-    };
-  });
+  const produce = replica.foodProduce(entries).map(day => ({
+    dayKey: day.dayKey,
+    vegetable: roundToHalf(day.vegetable),
+    fruit: roundToHalf(day.fruit),
+    unmeasured: day.unmeasured,
+  }));
 
   return {
     range,

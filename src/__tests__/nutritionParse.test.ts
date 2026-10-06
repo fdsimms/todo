@@ -450,6 +450,16 @@ describe('readFdcNutrition', () => {
     });
   });
 
+  it('keeps the food category, whether a search hit states it as text or a detail response as an object', () => {
+    const base = { fdcId: 1, foodNutrients: [fdcNutrient(1003, 'G', 7)] };
+    expect(readFdcNutrition({ ...base, foodCategory: 'Fruits and Fruit Juices' }, RECORDED_AT)?.foodCategory)
+      .toBe('Fruits and Fruit Juices');
+    expect(readFdcNutrition({ ...base, foodCategory: { description: 'Legumes and Legume Products' } }, RECORDED_AT)?.foodCategory)
+      .toBe('Legumes and Legume Products');
+    const none = readFdcNutrition({ ...base, foodCategory: '  ' }, RECORDED_AT)!;
+    expect('foodCategory' in none).toBe(false);
+  });
+
   it('converts a mineral stated in micrograms rather than passing it through', () => {
     // A unit carried across unconverted is the thousand-fold error with no
     // symptom, which is the whole reason the conversion lives in one place.

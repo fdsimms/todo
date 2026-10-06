@@ -91,6 +91,29 @@ describe('produceKindOf', () => {
   );
 });
 
+describe('produceKindOf with a food database category', () => {
+  it('classifies a name the lexicon does not know', () => {
+    expect(produceKindOf('Pomelo, raw')).toBeNull();
+    expect(produceKindOf('Pomelo, raw', 'Fruits and Fruit Juices')).toBe('fruit');
+    expect(produceKindOf('Kohlrabi greens', 'Vegetables and Vegetable Products')).toBe('vegetable');
+    expect(produceKindOf('Mung bean sprouts', 'Legumes and Legume Products')).toBe('legume');
+  });
+
+  it('never overrides an exclusion, so a category cannot count a potato, a juice or a sauce', () => {
+    expect(produceKindOf('Potatoes, baked', 'Vegetables and Vegetable Products')).toBeNull();
+    expect(produceKindOf('Orange juice', 'Fruits and Fruit Juices')).toBeNull();
+    expect(produceKindOf('Tomato sauce', 'Vegetables and Vegetable Products')).toBeNull();
+  });
+
+  it('keeps a dried fruit dried, since its category is the fresh fruit', () => {
+    expect(produceKindOf('Pomelo, dried', 'Fruits and Fruit Juices')).toBe('dried');
+  });
+
+  it('ignores a category that is not produce', () => {
+    expect(produceKindOf('Cheddar', 'Dairy and Egg Products')).toBeNull();
+  });
+});
+
 describe('servingsFromGrams', () => {
   const none = { vegetable: 0, fruit: 0, dried: 0, legume: 0 };
 
@@ -124,6 +147,22 @@ describe('dayProduce', () => {
       entry('Lentils', { grams: 160 }),
     ]);
     expect(day.vegetable).toBe(1);
+  });
+
+  it('reads the category kept on an entry that logged a database food', () => {
+    const panel = {
+      basis: 'per100g' as const,
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 38 },
+      portions: [],
+      source: 'fdc' as const,
+      sourceId: '1',
+      recordedAt: '2026-09-10T12:00:00.000Z',
+      foodCategory: 'Fruits and Fruit Juices',
+    };
+    const day = dayProduce([entry('Pomelo, raw', { grams: 160, sourcePanel: panel })]);
+    expect(day).toEqual({ vegetable: 0, fruit: 2, unmeasured: 0 });
   });
 
   it('counts a food that is not produce as nothing, without calling it unmeasured', () => {

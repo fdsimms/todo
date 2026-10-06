@@ -150,6 +150,11 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
       source: NUTRITION_SOURCES.find(s => s === parsed.source) ?? 'estimated',
       sourceId: typeof parsed.sourceId === 'string' ? parsed.sourceId : null,
       recordedAt: parsed.recordedAt,
+      // Only when present, so a record without one reads exactly as it did
+      // before the field existed.
+      ...(typeof parsed.foodCategory === 'string' && parsed.foodCategory !== ''
+        ? { foodCategory: parsed.foodCategory }
+        : {}),
     };
   } catch {
     return null;
