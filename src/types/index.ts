@@ -7518,6 +7518,11 @@ export interface ContextRow {
    * there is one. Absent on every other row.
    */
   movedNote?: string | null;
+  /**
+   * "in 45 min" on the one event that starts next, when that is within a few
+   * hours (`startsInLabel`). Absent on every other row.
+   */
+  startsIn?: string | null;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
