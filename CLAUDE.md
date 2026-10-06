@@ -259,9 +259,10 @@ other passing-bug call, ask rather than guess or widen the PR.
 
 Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
 catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
-it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`,
-`useDemoStore.test.ts` again under `--randomize`, and all three doc checks in `--check` mode on
-every PR and every push to `main`** — that whole list, not just the tests. `npx expo export
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test` under
+`--randomize` (the whole suite is order-independent, and randomizing is what keeps it so), and all
+three doc checks in `--check` mode on every PR and every push to `main`** — that whole list, not
+just the tests. `npx expo export
 --platform ios` runs on every push to `main`, and on a PR only when it touches a path that can
 break the bundle (`package*.json`, `app.json`, `eas.json`, `patches/`, `plugins/`, `modules/`,
 `targets/`, `assets/`; the filter is in `.github/workflows/test.yml`).
@@ -681,7 +682,7 @@ The core differentiator: a task has many reasons to be hidden, and `src/utils/vi
 
 All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to define when the logical day starts — e.g. a 2 AM reset means tasks on a "day" don't surface until 2 AM.
 
-**Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` (when the user has turned it on) deletes what has stayed expired past its grace (`isTaskSweepable`), rolling a live recurring task forward rather than deleting it — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
+**Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` (when the user has turned it on) deletes what has stayed expired past its grace (`isTaskSweepable`), rolling a live recurring task forward rather than deleting it — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart` *on the logical day's own timeline* (measured from `dayResetTime`, since `onLogicalDay` rolls a clock time earlier than the reset onto the next date), because both gates anchor to a single logical day and "22:00–02:00" under a midnight reset otherwise compares as past from 02:00 onward: expired before it ever opened. Compared as raw clock minutes instead, "03:00–05:00" under a 4 AM reset kept its end while its start rolled a day forward, and was expired, hidden and swept all day. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
 
 **Any `HH:MM` placed on a logical day goes through `onLogicalDay` (`visibilityUtils.ts`), never a bare `setHours` on the day start.** A clock time earlier than `dayResetTime` belongs to the small hours at the *end* of that day, so it has to roll onto the next calendar date. Set on the day start's own date instead, "before 1am" under a 4 AM reset closed three hours before its day began: expired, hidden and swept all day. The category schedule found this first, and the per-task window gates repeated it.
 

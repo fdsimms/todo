@@ -132,3 +132,46 @@ export function resolveQueuedPantryItem(
   if (!name) return null;
   return catalogItemForKey(groceryNameKey(name), items);
 }
+
+/** One disposal the drain will apply: the row it resolved to, and how it went. */
+export interface PlannedDisposal {
+  itemId: string;
+  outcome: DisposalOutcome;
+}
+
+/**
+ * Which of the queued disposals to apply, in the order they were said.
+ *
+ * The drain (`processPendingDisposals` in `widgetSync.ts`) runs `markOutOfMany`
+ * then `recordDisposal` for each row here, which is the in-app flow composed:
+ * the ✕ on a pantry row, then the banner's answer. This is the half that
+ * decides, read against one snapshot of the catalog:
+ *
+ * - A name with no row is dropped. `resolveQueuedPantryItem` never mints one.
+ * - A row already out of it is dropped rather than recorded again. **The
+ *   filter is `markOutOfMany`'s own** (the sentinel `buildPantryIndex` reads
+ *   for the same reason; that action no-ops on these rows and returns 0): a
+ *   second disposal for one box would be evidence of something that didn't
+ *   happen, and `itemDisposal.ts` is explicit that these counts are the record
+ *   rather than an estimate.
+ * - A row said twice in one queue is applied once, for the same reason: by the
+ *   time the second entry is reached the first has marked it out. Reading the
+ *   catalog once and remembering what the plan already holds gives exactly
+ *   what re-reading the store between passes did, since nothing a pass writes
+ *   changes how a later name resolves (`id` and `nameKey` are untouched).
+ */
+export function planQueuedDisposals(
+  queued: readonly QueuedDisposal[],
+  items: readonly GroceryItem[],
+): PlannedDisposal[] {
+  const plan: PlannedDisposal[] = [];
+  const taken = new Set<string>();
+  for (const entry of queued) {
+    const item = resolveQueuedPantryItem(entry, items);
+    if (!item) continue;
+    if (item.onHandUntil === OUT_OF_IT_UNTIL || taken.has(item.id)) continue;
+    taken.add(item.id);
+    plan.push({ itemId: item.id, outcome: entry.outcome });
+  }
+  return plan;
+}

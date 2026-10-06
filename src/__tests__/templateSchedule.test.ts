@@ -240,3 +240,22 @@ describe('schedulesEqual', () => {
     expect(schedulesEqual(schedule(), null)).toBe(false);
   });
 });
+
+// The trigger time is a time of day on the trigger's *logical* day, so a time
+// earlier than the day reset belongs to the small hours at that day's end. Set
+// on the trigger day's calendar date it was already past when the day began,
+// and the run fired at the day's start, a logical day early by the clock.
+describe('dueTemplateRun under a day start after midnight', () => {
+  it('waits for a trigger time before the reset until the end of the trigger day', () => {
+    const early = template({ schedule: schedule({ time: '02:00' }) });
+    // Sunday 05:00 is logical Sunday; a 02:00 trigger is Monday 02:00 by the clock.
+    expect(dueTemplateRun(early, new Date(2026, 7, 23, 5, 0, 0), 0, '04:00')).toBeNull();
+    const due = dueTemplateRun(early, new Date(2026, 7, 24, 2, 30, 0), 0, '04:00');
+    expect(due?.periodKey).toBe('2026-08-23');
+  });
+
+  it('keeps a daytime trigger on the trigger day itself', () => {
+    expect(dueTemplateRun(template(), new Date(2026, 7, 23, 8, 0, 0), 0, '04:00')).toBeNull();
+    expect(dueTemplateRun(template(), SUNDAY_10AM, 0, '04:00')?.periodKey).toBe('2026-08-23');
+  });
+});

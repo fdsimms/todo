@@ -6,6 +6,7 @@ import {
   resetToProjects,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
+import { isDemoModeActive } from './demoState';
 
 /**
  * The Home Screen actions, and the one place their ids are matched back to a
@@ -87,8 +88,21 @@ export function useHomeScreenQuickActions(kitchenEnabled: boolean): void {
   }, [kitchenEnabled]);
 
   useEffect(() => {
-    // Fire and forget: an unsupported platform (or a device that won't take
-    // the list) leaves whatever app.json declared, which is the old behavior.
-    QuickActions.setItems(quickActionsFor(kitchenEnabled)).catch(() => {});
+    publishQuickActions(kitchenEnabled);
   }, [kitchenEnabled]);
+}
+
+/**
+ * Writes the action list to the Home Screen icon. Fire and forget: an
+ * unsupported platform (or a device that won't take the list) leaves whatever
+ * app.json declared, which is the old behavior.
+ *
+ * Not in demo mode: the icon's menu lives outside the app's database, and
+ * `kitchenEnabled` is then read off the demo's settings, so the real icon
+ * would be rewritten to match a throwaway configuration. The real setting
+ * publishes again when demo mode ends and the stores reload, if it differs.
+ */
+export function publishQuickActions(kitchenEnabled: boolean): void {
+  if (isDemoModeActive()) return;
+  QuickActions.setItems(quickActionsFor(kitchenEnabled)).catch(() => {});
 }

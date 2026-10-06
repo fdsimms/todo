@@ -16,7 +16,7 @@ import { generateId } from '../utils/id';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
-import { isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
+import { blockerIdsOf, isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -79,7 +79,7 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
   // Resolved against every task, since the question may sit outside it.
   let resolve: TaskResolver | null = null;
   const notNeeded = (t: Task): boolean =>
-    (!!t.answerGate || !!t.blockedById) && isNotNeeded(t, (resolve ??= resolverFor(tasks)));
+    (!!t.answerGate || blockerIdsOf(t).length > 0) && isNotNeeded(t, (resolve ??= resolverFor(tasks)));
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived && !notNeeded(t));
   const byId = new Map(members.map(t => [t.id, t]));
 

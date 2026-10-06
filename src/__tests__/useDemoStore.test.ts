@@ -93,8 +93,12 @@ import { frequencyTrend, medicationFor } from '../utils/medicationLog';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
-import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
+import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
+import { isMissed, mostMissed } from '../utils/missed';
+import { goalDirection } from '../utils/weightGoal';
 import { dreamStats, lookBacks } from '../utils/moodHistory';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -106,7 +110,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { initDatabase, isUsingDemoDatabase } from '../db/database';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDeadlineFromOffset, getLogicalToday } from '../utils/dateUtils';
 import { eventTaskRuleIdOf } from '../utils/eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceOf, travelSourceStart } from '../utils/travelTasks';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
@@ -1076,13 +1080,19 @@ describe('demo mode', () => {
     expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
   });
 
-  it('seeds a water target that follows the food log, at the seeded target', () => {
+  it('seeds a water target that follows the food log, finished at the seeded target', () => {
     useDemoStore.getState().enterDemoMode();
-    const followed = useTaskStore.getState().tasks.find(t => t.followWaterTarget);
-    expect(followed).toBeDefined();
-    expect(followed!.logHealthMetric).toBe('waterMl');
-    // 2,000ml seeded as the water target, in 250ml glasses.
-    expect(followed!.targetCount).toBe(8);
+    const followed = useTaskStore.getState().tasks.filter(t => t.followWaterTarget);
+    expect(followed.length).toBeGreaterThan(0);
+    followed.forEach(t => expect(t.logHealthMetric).toBe('waterMl'));
+    // 2,000ml was the water target when today's row was finished, in 250ml
+    // glasses; the target rose afterwards (see seedFoodLog's water), which is
+    // what the shortfall task is for. A finished row keeps the count it was
+    // finished against, and the sync is what finished it.
+    const finished = followed.find(t => t.completed);
+    expect(finished).toBeDefined();
+    expect(finished!.targetCount).toBe(8);
+    expect(finished!.progressCount).toBe(8);
   });
 
   it('seeds a daily target that stays visible on pace, on pace', () => {
@@ -1802,6 +1812,15 @@ describe('demo seed — people', () => {
     expect(usePersonStore.getState().people.some(p => p.location !== null)).toBe(true);
   });
 
+  it('seeds an email address, which is otherwise invisible', () => {
+    // The row's mail button and the editor's Email field only show once
+    // somebody has one. One person rather than everybody, for the birth
+    // year's reason.
+    const withEmail = usePersonStore.getState().people.filter(p => p.email !== null);
+    expect(withEmail).toHaveLength(1);
+    expect(withEmail[0].email).toContain('@');
+  });
+
   // A business with no seeded row reads as a feature the app doesn't have —
   // see docs/arch/people.md, "Businesses don't get check-ins".
   it('seeds a business, with no cadence and a two-word name a first-word mention should not answer to', () => {
@@ -1920,6 +1939,12 @@ describe('demo seed — people', () => {
     // unaccountability the ledger exists to end.
     expect(entries.every(e => e.kind !== null || e.action !== 'created')).toBe(true);
     expect(entries.some(e => e.kind === 'birthday' && e.action === 'created')).toBe(true);
+    // The mood check-in is written straight through addTask and records itself
+    // the way the store's own direct writes do; the water shortfall is a real
+    // pass (syncWaterQuotaTasks) run against the seeded log, so its entry is
+    // the generator's own.
+    expect(entries.some(e => e.kind === 'moodLog' && e.action === 'created')).toBe(true);
+    expect(entries.some(e => e.kind === 'waterShortfall' && e.action === 'created')).toBe(true);
   });
 
   // This generator ships off, so it's written by hand rather than through
@@ -2479,12 +2504,40 @@ describe('demo seed — people', () => {
     const water = useFoodLogStore.getState().windowEntries.filter(isWaterEntry);
     expect(water).toHaveLength(1);
     expect(water[0].dayKey).toBe(todayKey);
-    // Part-way rather than met, so the bar under the stepper says something,
-    // and short of the target the seed sets beside it.
+    // Short of the target that now stands, so the bar under the stepper says
+    // something. It did reach the target the day's water task was finished
+    // against; the shortfall test below is about the rise since.
     expect(water[0].nutrition.amounts.waterMl).toBeGreaterThan(0);
     expect(water[0].nutrition.amounts.waterMl).toBeLessThan(
       useSettingsStore.getState().nutritionTargets.waterMl as number,
     );
+  });
+
+  it('seeds the water still owed once the target rose, through the generator itself', () => {
+    // Not a row written by hand: syncWaterQuotaTasks runs against the seeded
+    // log and writes it, which is why it is the one generated row in the seed
+    // with a ledger entry the generator made.
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const shortfalls = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'waterShortfall');
+    expect(shortfalls).toHaveLength(1);
+    const [owed] = shortfalls;
+    expect(owed.completed).toBe(false);
+    expect(owed.generatedSourceId).toBe(todayKey);
+    expect(owed.notes).toBe(WATER_SHORTFALL_NOTES);
+    expect(owed.logHealthMetric).toBe('waterMl');
+    // The gap between the day's water and the target it now has, in whole
+    // steps of the stepper: 2,500ml set, 2,000ml logged.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const water = useFoodLogStore.getState().windowEntries.filter(isWaterEntry);
+    const settings = useSettingsStore.getState();
+    expect(owed.logHealthAmount).toBe((settings.nutritionTargets.waterMl as number) - water[0].nutrition.amounts.waterMl!);
+    expect(owed.title).toBe(waterShortfallTitle(owed.logHealthAmount!, settings.waterUnit));
+    // The daily task it follows on from was finished today, which is the one
+    // condition the generator has.
+    expect(followedWaterTaskDoneOn(useTaskStore.getState().tasks, todayKey)).toBe(true);
+    expect(settings.waterShortfallTasks).toBe(true);
+    expect(settings.waterShortfallTaskCategory).toBe(owed.category);
   });
 
   it('seeds enough of a log for an average to be worth reading', () => {
@@ -2626,10 +2679,131 @@ describe('demo seed — people', () => {
     expect(useMoodStore.getState().logs.some(l => l.dayKey === todayKey)).toBe(false);
   });
 
-  it('seeds no mood-generated tasks, since both generators ship off', () => {
-    const generated = useTaskStore.getState().tasks
-      .filter(t => t.generatedKind === 'moodLog' || t.generatedKind === 'moodNudge');
-    expect(generated).toHaveLength(0);
+  it('seeds the check-in the mood log asks for today, linked to the sheet that answers it', () => {
+    // checkMoodTasks refuses in demo mode, so the row is laid down by hand as
+    // the row it would have written: today's, open, and pointing at the sheet.
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const checkIns = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'moodLog');
+    expect(checkIns).toHaveLength(1);
+    const [checkIn] = checkIns;
+    expect(checkIn.title).toBe(MOOD_LOG_TITLE);
+    expect(checkIn.completed).toBe(false);
+    expect(checkIn.generatedSourceId).toBe(moodLogSourceId(todayKey, null));
+    expect(checkIn.linkUrl).toBe('dundundun://mood?log=1');
+    expect(isTaskVisible(checkIn)).toBe(true);
+    const settings = useSettingsStore.getState();
+    expect(settings.moodLogTasks).toBe(true);
+    expect(settings.moodLogTaskCategory).toBe(checkIn.category);
+    // Stamped as the pass stamps it, so the slot reads as decided.
+    expect(settings.moodLogLastDayKey).toBe(checkIn.generatedSourceId);
+  });
+
+  it('seeds the nudge on the day its own rule fired, done once the log turned', () => {
+    // Placed by wantsMoodNudge over the seeded log rather than by hand, so the
+    // task, its notes and the history it points at cannot disagree. Not live:
+    // today is unlogged, so no run ends today, and a nudge dated today would
+    // claim a run the log does not show.
+    const nudges = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'moodNudge');
+    expect(nudges).toHaveLength(1);
+    const [nudge] = nudges;
+    expect(nudge.title).toBe(MOOD_NUDGE_TITLE);
+    expect(nudge.completed).toBe(true);
+    expect(isMissed(nudge)).toBe(false);
+    const settings = useSettingsStore.getState();
+    const days = buildMoodDays(useMoodStore.getState().logs, [], settings.dayResetTime);
+    const firedOn = nudge.generatedSourceId!;
+    expect(wantsMoodNudge(days, firedOn, settings.moodNudgeAfterDays, null)).toBe(true);
+    const run = lowMoodRun(days, firedOn);
+    expect(run).toBeGreaterThanOrEqual(settings.moodNudgeAfterDays);
+    expect(nudge.notes).toBe(moodNudgeNotes(run));
+    // The day before, the rule said no: this is the first day it fired, not a
+    // later one in the same run.
+    const dayBefore = dayKeyOf(subDays(dayKeyToDate(firedOn), 1));
+    expect(wantsMoodNudge(days, dayBefore, settings.moodNudgeAfterDays, null)).toBe(false);
+    expect(settings.moodNudgeTasks).toBe(true);
+    expect(settings.moodNudgeLastDayKey).toBe(firedOn);
+    // Completed after it was asked, and before today.
+    expect(Date.parse(nudge.completedAt!)).toBeGreaterThan(Date.parse(nudge.dueDate!));
+    expect(dayKeyOf(new Date(nudge.completedAt!)) < dayKeyOf(getCurrentDayStart())).toBe(true);
+  });
+
+  it('seeds a task given several dates, as a series', () => {
+    // N real rows sharing a seriesId, each a one-off on its own day, and no
+    // recurrence rule on any of them (see the Series note in CLAUDE.md).
+    const rows = useTaskStore.getState().tasks.filter(t => t.seriesId !== null && !t.parentId);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(rows.map(t => t.seriesId)).size).toBe(1);
+    expect(new Set(rows.map(t => t.title)).size).toBe(1);
+    expect(new Set(rows.map(t => dayKeyOf(new Date(t.dueDate!)))).size).toBe(rows.length);
+    rows.forEach(t => expect(t.recurrenceType).toBe('none'));
+    expect(useTaskStore.getState().seriesRowsOf(rows[0].seriesId!)).toHaveLength(rows.length);
+  });
+
+  it('seeds a missed occurrence of a repeating task, and the occurrence after it', () => {
+    // A miss is a completed row with missedAt set, which is what the Logbook's
+    // Missed label and the Stats "most missed" card read; nothing else in the
+    // seed produces one.
+    const { tasks } = useTaskStore.getState();
+    const missed = tasks.filter(isMissed);
+    expect(missed).toHaveLength(1);
+    const [miss] = missed;
+    expect(miss.completed).toBe(true);
+    expect(miss.recurrenceType).not.toBe('none');
+    expect(mostMissed(tasks).map(g => g.title)).toEqual([miss.title]);
+    // The successor markMissed spawned, on the schedule's next day.
+    const next = tasks.find(t => t.previousOccurrenceId === miss.id);
+    expect(next).toBeDefined();
+    expect(next!.completed).toBe(false);
+    expect(Date.parse(next!.dueDate!)).toBeGreaterThan(Date.parse(miss.dueDate!));
+  });
+
+  it('seeds a monthly repeat on the second Tuesday', () => {
+    // recurrenceWeekOrdinal is invisible until a task uses it, and a
+    // day-of-month rule cannot say "second Tuesday".
+    const meeting = useTaskStore.getState().tasks.find(t => t.recurrenceWeekOrdinal !== null);
+    expect(meeting).toBeDefined();
+    expect(meeting!.recurrenceType).toBe('monthly');
+    expect(meeting!.recurrenceWeekOrdinal).toBe(2);
+    expect(meeting!.recurrenceDays).toEqual([2]);
+    expect(meeting!.recurrenceMonthDay).toBeNull();
+    // Sitting on the grid's own cell: a Tuesday in the second week, today or
+    // ahead.
+    const due = new Date(meeting!.dueDate!);
+    expect(due.getDay()).toBe(2);
+    expect(due.getDate()).toBeGreaterThanOrEqual(8);
+    expect(due.getDate()).toBeLessThanOrEqual(14);
+    expect(dayKeyOf(due) >= dayKeyOf(getCurrentDayStart())).toBe(true);
+  });
+
+  it('seeds a deadline measured from the due date rather than fixed', () => {
+    // deadlineOffsetDays, which is what makes the deadline carry onto each
+    // occurrence; the row's own deadline agrees with it.
+    const rent = useTaskStore.getState().tasks.find(t => t.deadlineOffsetDays !== null && !t.completed);
+    expect(rent).toBeDefined();
+    expect(rent!.recurrenceType).not.toBe('none');
+    expect(rent!.deadline).toBe(
+      getDeadlineFromOffset(new Date(rent!.dueDate!), rent!.deadlineOffsetDays!).toISOString(),
+    );
+    // After the due date, which the sign allows ("due the 1st, has to clear by
+    // the 5th").
+    expect(rent!.deadlineOffsetDays).toBeLessThan(0);
+  });
+
+  it('seeds a category with hours, hidden on vacation, and a default time of day', () => {
+    const cat = useCategoryStore.getState().categories.find(c => c.scheduleDays !== null);
+    expect(cat).toBeDefined();
+    expect(cat!.scheduleDays!.length).toBeGreaterThan(0);
+    expect(cat!.scheduleStart).toMatch(/^\d\d:\d\d$/);
+    expect(cat!.scheduleEnd).toMatch(/^\d\d:\d\d$/);
+    expect(cat!.hideOnVacation).toBe(true);
+    expect(cat!.defaultTimeSegments).toEqual(['morning']);
+    // And a task in it, which took its time of day from the category default
+    // rather than naming one, the way a task typed into quick add would.
+    const shift = useTaskStore.getState().tasks.find(t => t.category === cat!.name && !t.completed);
+    expect(shift).toBeDefined();
+    expect(shift!.timeSegments).toEqual(['morning']);
+    // One category with hours, not a demo where every list is gated.
+    expect(useCategoryStore.getState().categories.filter(c => c.scheduleDays !== null)).toHaveLength(1);
   });
 
 });
@@ -4366,6 +4540,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // a seed could put behind this row. Its notes must therefore never claim a
     // reading — inventing one would be a number about a body inside a fiction.
     expect(task!.notes).not.toMatch(/\d+(\.\d+)?\s*(kg|lb)/i);
+  });
+
+  it('seeds a weight goal and a sleep goal, and no reading behind either', () => {
+    // Both typed in and kept in settings, which is what lets a demo carry them:
+    // Health is the record for readings and the demo has none, so each goal is
+    // drawn with nothing against it.
+    const settings = useSettingsStore.getState();
+    const goal = settings.weightGoal;
+    expect(goal).not.toBeNull();
+    expect(goalDirection(goal!)).toBe('lose');
+    expect(goal!.rateKgPerWeek).toBeGreaterThan(0);
+    expect(goal!.startDayKey < dayKeyOf(getCurrentDayStart())).toBe(true);
+    expect(settings.sleepGoalMinutes).toBe(450);
   });
 
   it('seeds a health-target task, the fifth kind', () => {

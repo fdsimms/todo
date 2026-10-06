@@ -16,6 +16,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { GroceryItem } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -57,7 +58,11 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   const mergeItems = useGroceryStore(s => s.mergeItems);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
-  const item = items.find(i => i.id === itemId) ?? null;
+  const liveItem = items.find(i => i.id === itemId) ?? null;
+  // Held through the dismissal (useSheetSubject): the caller clears the id in
+  // the same onClose that drops `visible`, and a sheet torn out of the tree
+  // can't hold its own close back (see noUnmountedSheet.test.ts).
+  const item = useSheetSubject(liveItem);
 
   const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [pickedId, setPickedId] = useState<string | null>(null);

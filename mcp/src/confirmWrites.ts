@@ -89,30 +89,35 @@ const FIELD_NAMES: Record<string, string> = {
   deliverableValue: 'answer', deliverableWhy: 'reason for the answer', deliverableRevisitIf: 'revisit if',
 };
 
-function show(value: unknown): string {
+function show(value: unknown, dayOf: (iso: string) => string): string {
   if (value === null || value === undefined || value === '') return 'nothing';
   if (typeof value === 'string') {
-    // An ISO instant reads as its day: the time part is machinery here.
-    return /^\d{4}-\d{2}-\d{2}T/.test(value) ? value.slice(0, 10) : `"${value}"`;
+    // An ISO instant reads as its day: the time part is machinery here. The
+    // day is the one the replica names for it, never the UTC date in the string.
+    return /^\d{4}-\d{2}-\d{2}T/.test(value) ? dayOf(value) : `"${value}"`;
   }
   if (Array.isArray(value)) return value.length === 0 ? 'none' : value.map(v => (typeof v === 'string' ? v : JSON.stringify(v))).join(', ');
   return String(value);
 }
 
-function fieldChanges(entry: AgentLedgerEntry): string[] {
+function fieldChanges(entry: AgentLedgerEntry, dayOf: (iso: string) => string): string[] {
   const revert = entry.revert;
   if (!revert) return [];
   return Object.keys(revert.after)
     .filter(k => FIELD_NAMES[k])
-    .map(k => `${FIELD_NAMES[k]} from ${show(revert.before[k])} to ${show(revert.after[k])}`);
+    .map(k => `${FIELD_NAMES[k]} from ${show(revert.before[k], dayOf)} to ${show(revert.after[k], dayOf)}`);
 }
 
 const SUBJECT_NOUN: Record<string, string> = {
   task: 'task', project: 'project', template: 'template', recipe: 'recipe', meal: 'meal',
+  milestone: 'milestone', view: 'saved view', setting: 'setting',
 };
 
-/** One line per effect, in the order they would happen. */
-export function describeEffects(effects: readonly AgentLedgerEntry[]): string[] {
+/**
+ * One line per effect, in the order they would happen. `dayOf` is the day a
+ * person would name for an ISO instant (`Replica.dayKeyOf`).
+ */
+export function describeEffects(effects: readonly AgentLedgerEntry[], dayOf: (iso: string) => string): string[] {
   return effects.map(e => {
     if (e.note) return e.note;
     const t = `"${e.title}"`;
@@ -137,7 +142,7 @@ export function describeEffects(effects: readonly AgentLedgerEntry[]): string[] 
       default: break;
     }
     const noun = SUBJECT_NOUN[e.subject] ?? e.subject;
-    const changes = fieldChanges(e);
+    const changes = fieldChanges(e, dayOf);
     switch (e.action) {
       case 'created': {
         const steps = (e.count ?? 1) - 1;

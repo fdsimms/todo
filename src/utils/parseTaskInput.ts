@@ -12,6 +12,7 @@ import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
+import { onLogicalDay, taskDayStart } from './clockTime';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -2468,4 +2469,27 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
   if (s.windowStart) label += ` · After ${formatHhmm(s.windowStart)}`;
   else if (s.timeSegments.length > 0) label += ` · ${s.timeSegments[0]}`;
   return label;
+}
+
+/**
+ * The instant a parsed clock time names on the schedule's day, or null when
+ * the line had none.
+ *
+ * `dueDate` is noon of the logical day, so the clock time is placed on that
+ * day by onLogicalDay: a time earlier than `dayResetTime` is the small
+ * hours at the day's *end*. Set on the due date's calendar date instead,
+ * "remind me at 3am" typed at 1:30 AM under a 4 AM reset (still yesterday by
+ * the person's clock) scheduled a reminder about 22 hours in the past. Under
+ * a midnight reset the two agree, so quick add, the list line parser and the
+ * MCP server all read the moment off this rather than each copying the hours
+ * onto the date.
+ */
+export function scheduleClockInstant(
+  schedule: Pick<ParsedSchedule, 'dueDate' | 'explicitClockTime'>,
+  dayResetTime: string,
+): Date | null {
+  const clock = schedule.explicitClockTime;
+  if (!clock) return null;
+  const hhmm = `${String(clock.h).padStart(2, '0')}:${String(clock.m).padStart(2, '0')}`;
+  return onLogicalDay(taskDayStart(new Date(schedule.dueDate), dayResetTime), hhmm);
 }

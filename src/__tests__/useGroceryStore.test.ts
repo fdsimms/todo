@@ -49,6 +49,7 @@ import {
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
+import { entryFor } from '../utils/groceryLists';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
 import { expiryDaysFromNow, expiryKeyFor, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
@@ -365,6 +366,10 @@ function seed(
     lastShopId: null,
     tripShopId: extra.tripShopId ?? null,
     tripStartedAt: extra.tripStartedAt ?? null,
+    // Reset with the trip's other two halves: setTripBudget refuses with no
+    // trip, so a budget a previous test left here would otherwise read as
+    // the refusal having failed.
+    tripBudgetMinor: null,
     cartHoldIds: [],
     disposalOffer: null,
     initialized: true,
@@ -915,6 +920,25 @@ describe('addManyFromText', () => {
     expect(items.map(i => i.name)).toEqual(['milk']);
     expect(items[0].onList).toBe(true);
     expect(added.map(i => i.name)).toEqual(['eggs', 'bread']);
+  });
+
+  // The undo parks the rows off the list the paste added them to, taken when
+  // the undo was built: judged at shake time against the active list, a
+  // shake after switching to the Airbnb list took nothing off home and left
+  // the paste standing there.
+  it('undoes against the list the paste went to, whichever list is active by then', () => {
+    const milk = makeItem({ name: 'Milk', onList: false });
+    seed([milk]);
+    useGroceryStore.getState().addManyFromText('Milk');
+    expect(entryFor(useGroceryStore.getState().listEntries, milk.id, null)).not.toBeNull();
+    const away = useGroceryStore.getState().addList('Airbnb')!;
+    useGroceryStore.getState().setActiveList(away.id);
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(entryFor(useGroceryStore.getState().listEntries, milk.id, null)).toBeNull();
+    // Parked, not deleted: the row was in the catalog before the paste.
+    expect(useGroceryStore.getState().items.map(i => i.name)).toEqual(['Milk']);
   });
 });
 
@@ -5749,6 +5773,23 @@ describe('answerPantryReview', () => {
     expect(updated.onList).toBe(true);
   });
 
+  // The deck reviews the pantry at home, so the row joins the home list even
+  // while an away list is the active one (checkAwayGroceryList switches to it
+  // for the trip). Flagged onto the away list it was never restocked by that
+  // trip and, already flagged, never reached the home list after it.
+  it('puts a "running low" row on the home list, not the active away list', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+    const away = useGroceryStore.getState().addList('Airbnb')!;
+    useGroceryStore.getState().setActiveList(away.id);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'low');
+
+    const entries = useGroceryStore.getState().listEntries;
+    expect(entryFor(entries, flour.id, null)).not.toBeNull();
+    expect(entryFor(entries, flour.id, away.id)).toBeNull();
+  });
+
   // Asked eleven times in a row this is the "recall five kitchens" a batch
   // already declines to ask. The bit still gets written, so the pantry is
   // correct either way and only the extra record is missed.
@@ -5837,6 +5878,20 @@ describe('revertPantryAnswer', () => {
     const restored = useGroceryStore.getState().items[0];
     expect(restored.runningLowAt).toBeNull();
     expect(restored.onList).toBe(false);
+  });
+
+  it('takes the row back off the home list whichever list is active by then', () => {
+    const flour = makeItem({ name: 'Flour', onList: false, runningLowAt: null });
+    seed([flour]);
+    const before = useGroceryStore.getState().items[0];
+    useGroceryStore.getState().answerPantryReview(flour.id, 'low');
+    const away = useGroceryStore.getState().addList('Airbnb')!;
+    useGroceryStore.getState().setActiveList(away.id);
+
+    useGroceryStore.getState().revertPantryAnswer(before, null);
+
+    expect(entryFor(useGroceryStore.getState().listEntries, flour.id, null)).toBeNull();
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
   });
 
   it('takes the stamp back with the answer', () => {

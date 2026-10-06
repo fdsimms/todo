@@ -26,7 +26,7 @@ import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkb
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, isTaskBlocked } from '../utils/visibilityUtils';
-import { blockerOf, isWaitingOnPerson, liveBlockersOf } from '../utils/blocking';
+import { blockerFields, blockerOf, isWaitingOnPerson, liveBlockersOf } from '../utils/blocking';
 import { resolveBlocker } from '../utils/blockerRegistry';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
@@ -261,7 +261,7 @@ export function StuckScreen() {
     const snapshot = { ...task };
     // The answer gate goes too: released means shown whatever the question
     // is answered, not still waiting on it.
-    updateTask(task.id, { blockedById: null, blockedByIds: [], waitingOnPersonId: null, answerGate: null });
+    updateTask(task.id, { ...blockerFields([]), waitingOnPersonId: null, answerGate: null });
     // What it was waiting on is gone from the row once released, so the
     // only way back from a slip is here.
     setLastAction({ label: 'Released', undo: () => updateTask(snapshot.id, snapshot) });

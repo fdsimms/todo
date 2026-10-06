@@ -2161,7 +2161,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // instant a reminder actually is.
   const applyDefaultReminderLead = (hhmm: string) => {
     if (reminderTouched || reminderTime || defaultReminderLeadMinutes == null || !dueDate) return;
-    const atTime = hhmmToDate(hhmm, dueDate);
+    // onLogicalDay, as windowStartMeeting above: a window start earlier than
+    // dayResetTime is in the small hours at the end of the due day, not the
+    // start of its calendar date.
+    const atTime = onLogicalDay(getTaskDayStart(dueDate, dayResetTime), hhmm);
     setReminderTime(subMinutes(atTime, defaultReminderLeadMinutes));
   };
 
@@ -2565,7 +2568,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return getVisibleAt(previewTask);
   }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
   // Says what happens and when, because the two halves are set separately and
   // a bare "2h" on the collapsed row reads as how long the task takes.

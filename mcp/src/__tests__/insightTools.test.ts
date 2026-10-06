@@ -32,6 +32,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     taskById: (id: string) => tasks.find(t => t.id === id) ?? null,
     projects: () => [],
     projectProgress: () => ({ done: 0, total: 0 }),
+    awaySpan: () => null,
     categories: () => [],
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('someday'),
@@ -194,6 +195,14 @@ describe('completionHistory', () => {
     expect(cut.tasks).toHaveLength(1);
     expect(cut.truncated).toBe(true);
     expect(cut.summary.completed).toBe(3);
+  });
+
+  it("leaves an archived task out of a project's history, as the app's project readers do", () => {
+    const filed = task({ id: 'filed', title: 'Draft', completed: true, completedAt: '2026-10-03T09:00:00', projectId: 'p1', archived: true });
+    const r = stub([...tasks, filed], { projects: () => [project({ id: 'p1', title: 'Q4 report' })] });
+    expect(completionHistory(r, { days: 7, projectId: 'p1' }).tasks.map(t => t.id)).toEqual(['b']);
+    // The whole log keeps it, as the Logbook does.
+    expect(completionHistory(r, { days: 7 }).tasks.map(t => t.id)).toContain('filed');
   });
 
   it('refuses a backwards range', () => {

@@ -596,12 +596,71 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    logWater(input) {
+      const outcome = replica.logWater(input);
+      // Stepping the day's row is an edit of a record the person already has;
+      // the first glass (or a second row beside one Health holds) is a new one.
+      log({ action: outcome.how === 'stepped' ? 'edited' : 'created', subject: 'food', title: outcome.entry.label, taskId: null, recordId: outcome.entry.id });
+      return outcome;
+    },
+
     // Named for what it is and not for what it says: a rating or a symptom in
     // the Activity list would put somebody's health on a screen about the app.
     logMood(input) {
       const entry = replica.logMood(input);
       log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null, recordId: entry.id });
       return entry;
+    },
+
+    // A milestone's label is health content as often as not ("Started
+    // sertraline"), so the recorded title is the kind, as a mood entry's is.
+    // The preview still names it: that is for the person, before the write.
+    addMilestone(label, date) {
+      const milestone = replica.addMilestone(label, date);
+      log({ action: 'created', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: `Add the milestone "${milestone.label}" on ${replica.logicalDayKeyOf(milestone.date)}` });
+      return milestone;
+    },
+
+    updateMilestone(id, patch) {
+      const before = replica.milestones().find(m => m.id === id);
+      const milestone = replica.updateMilestone(id, patch);
+      const changes = [
+        ...(before && before.label !== milestone.label ? [`label from "${before.label}" to "${milestone.label}"`] : []),
+        ...(before && before.date !== milestone.date ? [`date from ${replica.logicalDayKeyOf(before.date)} to ${replica.logicalDayKeyOf(milestone.date)}`] : []),
+      ];
+      log({ action: 'edited', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: changes.length ? `Change the milestone "${before!.label}": ${changes.join('; ')}` : `Leave the milestone "${milestone.label}" as it is` });
+      return milestone;
+    },
+
+    deleteMilestone(id) {
+      const milestone = replica.deleteMilestone(id);
+      log({ action: 'cleared', subject: 'milestone', title: 'Milestone', taskId: null, recordId: milestone.id, note: `Delete the milestone "${milestone.label}" (${replica.logicalDayKeyOf(milestone.date)}). It cannot be restored from here.` });
+      return milestone;
+    },
+
+    createSavedView(name, icon, clauses) {
+      const view = replica.createSavedView(name, icon, clauses);
+      log({ action: 'created', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Create the saved view "${view.name}"` });
+      return view;
+    },
+
+    deleteSavedView(id) {
+      const view = replica.deleteSavedView(id);
+      log({ action: 'cleared', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Delete the saved view "${view.name}". It cannot be restored from here.` });
+      return view;
+    },
+
+    setVacationMode(on, until) {
+      const outcome = replica.setVacationMode(on, until);
+      const day = until ? ` until ${replica.logicalDayKeyOf(until.toISOString())}` : '';
+      const hides = `${outcome.hiddenTasks} ${outcome.hiddenTasks === 1 ? 'task' : 'tasks'}${outcome.hiddenCategories.length ? ` and the ${outcome.hiddenCategories.length === 1 ? 'category' : 'categories'} ${outcome.hiddenCategories.join(', ')}` : ''}`;
+      const note = outcome.endOnly
+        ? `Set vacation mode to turn itself off${day || ' never'}; it stays on, hiding ${hides}`
+        : on
+          ? `Turn vacation mode on${day}, hiding ${hides}`
+          : `Turn vacation mode off, bringing back ${hides}${outcome.forgivenStreaks ? ` and forgiving ${outcome.forgivenStreaks} protected ${outcome.forgivenStreaks === 1 ? 'streak' : 'streaks'}` : ''}`;
+      log({ action: 'edited', subject: 'setting', title: outcome.endOnly ? 'Vacation end date changed' : `Vacation mode turned ${on ? 'on' : 'off'}`, taskId: null, note });
+      return outcome;
     },
 
     logMedication(input) {

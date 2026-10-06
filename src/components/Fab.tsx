@@ -274,7 +274,11 @@ function FabButton({
         <PressableScale
           style={[
             fabCircle(colors, size),
-            glassSupported() ? null : shadows.fab,
+            // A greyed-out circle casts no shadow: the style is left out
+            // rather than its colour overridden, since `shadowColor` is the
+            // accent and a literal here would be the one in the app. The
+            // glass surface draws its own depth, so it takes none either.
+            glassSupported() ? null : !(disabled && dimWhenDisabled) && shadows.fab,
             // Over the well the button becomes the cancel button, so what's
             // under the finger says what the release does — the well itself is
             // hidden beneath it at exactly that moment.
@@ -590,7 +594,6 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
   },
   fabDisabled: {
     backgroundColor: colors.bgQuaternary,
-    shadowColor: 'transparent',
   },
   backdrop: {
     backgroundColor: colors.backdrop,

@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { getDayStart, getTaskDayStart } from './dateUtils';
-import { isHeldBack, isInPausedProject } from './visibilityUtils';
+import { isHeldBack, isWithheld } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 
 /**
@@ -16,8 +16,11 @@ import { isNegativeTask } from './negativeHabits';
  * - anything `isHeldBack` — a task waiting on a person or another task hasn't
  *   been skipped, it's still stuck, and asking "did you do this?" is the
  *   wrong question for it.
- * - a paused vacation task — the whole point of the pause is that its
- *   schedule doesn't count while it's on.
+ * - anything `isWithheld` — a task vacation mode is hiding (its own pause, or
+ *   a category hidden on vacation) or one in a paused project; the whole
+ *   point of either is that its schedule doesn't count while it's on. The
+ *   check used to read the raw `vacationPause` flag, which excluded those
+ *   tasks even with vacation off and missed the category form entirely.
  * - any task with no `deadline` set. Asking about every overdue recurring
  *   task — a daily habit with no deadline included — was heavy-handed: most
  *   of them don't carry enough weight to warrant a daily "did you do this?"
@@ -32,11 +35,11 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   if (task.parentId) return false;
   if (task.completed || task.archived) return false;
   if (task.recurrenceType === 'none') return false;
-  if (task.vacationPause) return false;
   if (isNegativeTask(task)) return false;
   if (isHeldBack(task)) return false;
-  // Paused: nobody could have done it, so asking would record a miss.
-  if (isInPausedProject(task)) return false;
+  // Withheld (vacation or a paused project): nobody could have done it, so
+  // asking would record a miss.
+  if (isWithheld(task)) return false;
   if (!task.deadline) return false;
   if (!task.dueDate) return false;
   return getTaskDayStart(new Date(task.dueDate), dayResetTime) < getDayStart(new Date(), dayResetTime);

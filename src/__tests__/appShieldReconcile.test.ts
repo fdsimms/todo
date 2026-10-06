@@ -12,10 +12,12 @@ jest.mock('../utils/appShield', () => ({ syncAppShield: (...args: unknown[]) => 
 
 const mockVisible = jest.fn();
 const mockVisibleAt = jest.fn();
+const mockHiddenForVacation = jest.fn();
 jest.mock('../utils/visibilityUtils', () => ({
   beginVisibleAtPass: () => ({}),
   isTaskVisible: (...args: unknown[]) => mockVisible(...args),
   getVisibleAt: (...args: unknown[]) => mockVisibleAt(...args),
+  isHiddenForVacation: (...args: unknown[]) => mockHiddenForVacation(...args),
 }));
 
 const mockTasks: unknown[] = [];
@@ -56,6 +58,7 @@ beforeEach(() => {
   mockTasks.length = 0;
   mockVisible.mockReturnValue(true);
   mockVisibleAt.mockImplementation(() => new Date(NOW));
+  mockHiddenForVacation.mockReturnValue(false);
 });
 
 describe('reconcileAppShield', () => {
@@ -76,6 +79,23 @@ describe('reconcileAppShield', () => {
     mockVisible.mockReturnValue(false);
     reconcileAppShield();
     expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ gateTitles: [] }));
+  });
+
+  // getVisibleAt names the next clock moment and knows nothing about vacation,
+  // so without this a gate task vacation mode is hiding got a window armed for
+  // tomorrow morning: blocked by something the app itself is withholding.
+  it('arms no window for a gate task vacation mode is hiding', () => {
+    const sixAm = new Date(NOW + 8 * 60 * 60 * 1000);
+    mockTasks.push(task({ id: 'walk', title: 'Morning walk' }));
+    mockVisible.mockReturnValue(false);
+    mockVisibleAt.mockImplementation(() => sixAm);
+    mockHiddenForVacation.mockReturnValue(true);
+    try {
+      expect(reconcileAppShield()).toBeNull();
+      expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ gateTitles: [] }));
+    } finally {
+      mockHiddenForVacation.mockReturnValue(false);
+    }
   });
 
   it('hands over the next gate still to come, and returns when it lands', () => {

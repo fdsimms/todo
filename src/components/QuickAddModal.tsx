@@ -76,7 +76,7 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -1280,15 +1280,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     //
     // "remind me to … at 4pm" already chose, so that one is set rather than
     // offered (the tooltip says so before it's tapped).
-    if (parsed.schedule.explicitClockTime && remindTitle) {
-      const at = new Date(parsed.schedule.dueDate);
-      at.setHours(parsed.schedule.explicitClockTime.h, parsed.schedule.explicitClockTime.m, 0, 0);
-      setReminderTime(at);
+    // scheduleClockInstant places the hour on the due day's *logical* day, so a
+    // time before dayResetTime is the small hours at that day's end rather
+    // than an instant already past on its calendar date.
+    const clockAt = scheduleClockInstant(parsed.schedule, dayResetTime);
+    if (clockAt && remindTitle) {
+      setReminderTime(clockAt);
       setReminderOffer(null);
-    } else if (parsed.schedule.explicitClockTime && !reminderTime) {
-      const suggested = new Date(parsed.schedule.dueDate);
-      suggested.setHours(parsed.schedule.explicitClockTime.h, parsed.schedule.explicitClockTime.m, 0, 0);
-      setReminderOffer(suggested);
+    } else if (clockAt && !reminderTime) {
+      setReminderOffer(clockAt);
     } else {
       setReminderOffer(null);
     }

@@ -13,9 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
-import { isToday } from 'date-fns/isToday';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import { isSameDay } from 'date-fns/isSameDay';
 import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
@@ -62,7 +60,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
-import { getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 import {
   describeTimeTogether,
   taskYearRange,
@@ -169,6 +167,13 @@ export function StatsScreen() {
 
   const reduceMotion = useReduceMotion();
   const now = useMemo(() => new Date(), []);
+  // The day counts below bucket by the *logical* day, as Today, the widget and
+  // focusMinutesByDay further down do: a completion at 1 AM under a 4 AM reset
+  // belongs to the day before, and bucketing by calendar day counted it as
+  // "today" here and "yesterday" everywhere else.
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const today = useMemo(() => getLogicalToday(dayResetTime), [dayResetTime]);
+  const todayKey = dayKeyOf(today);
 
   // Every count on this screen hangs off `done`, and every one of them is a
   // claim about what the user achieved — so misses are excluded here once
@@ -179,8 +184,8 @@ export function StatsScreen() {
   );
 
   const todayCount = useMemo(
-    () => done.filter(t => isToday(new Date(t.completedAt!))).length,
-    [done],
+    () => done.filter(t => getLogicalDayKey(new Date(t.completedAt!), dayResetTime) === todayKey).length,
+    [done, dayResetTime, todayKey],
   );
 
   // Was hardcoded to Monday while the calendar grid and the Later labels ran
@@ -188,22 +193,25 @@ export function StatsScreen() {
   // on which screen you asked.
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const weekCount = useMemo(() => {
-    const weekStart = startOfWeek(now, { weekStartsOn });
+    // The week's first logical day start, so the small hours before the reset
+    // on the week's first date still count toward the week before.
+    const weekStart = getDayStart(startOfWeek(today, { weekStartsOn }), dayResetTime);
     return done.filter(t => new Date(t.completedAt!) >= weekStart).length;
-  }, [done, now, weekStartsOn]);
+  }, [done, today, weekStartsOn, dayResetTime]);
 
   const chartBars = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => {
-      const day = subDays(now, 6 - i);
-      const count = done.filter(t => isSameDay(new Date(t.completedAt!), day)).length;
+      const day = subDays(today, 6 - i);
+      const dayKey = dayKeyOf(day);
+      const count = done.filter(t => getLogicalDayKey(new Date(t.completedAt!), dayResetTime) === dayKey).length;
       return {
-        key: format(day, 'yyyy-MM-dd'),
+        key: dayKey,
         label: format(day, 'EEE'),
         count,
-        today: isToday(day),
+        today: dayKey === todayKey,
       };
     }),
-    [done, now],
+    [done, today, todayKey, dayResetTime],
   );
 
   const barMax = useMemo(() => Math.max(1, ...chartBars.map(b => b.count)), [chartBars]);
@@ -216,7 +224,6 @@ export function StatsScreen() {
   const afternoonStart = useSettingsStore(s => s.afternoonStart);
   const eveningStart = useSettingsStore(s => s.eveningStart);
   const nightStart = useSettingsStore(s => s.nightStart);
-  const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   // Subscribed to individually above so the memo re-runs when a boundary
   // moves; rhythmOptionsFromSettings reads the same values back off the store.
@@ -604,9 +611,11 @@ export function StatsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>MARKED ONE TIME, DONE ANOTHER</Text>
               <View style={styles.card}>
+                {/* Title over the pill rather than beside it: the pill
+                    claimed its width first and the title got what was left. */}
                 {mismatches.map((m, i) => (
-                  <View key={m.key} style={[styles.row, i < mismatches.length - 1 && styles.rowBorder]}>
-                    <View style={styles.instanceMain}>
+                  <View key={m.key} style={[styles.mismatchRow, i < mismatches.length - 1 && styles.rowBorder]}>
+                    <View style={styles.mismatchMain}>
                       <Text style={styles.instanceTitle} numberOfLines={1}>{m.title}</Text>
                       <Text style={styles.instanceMeta}>{m.reason}</Text>
                     </View>
@@ -1286,6 +1295,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
     // Tinted like a tag chip (colour + '33'), which is the app's established
     // way of tinting a pill to a data-driven colour rather than the accent.
+    mismatchRow: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 2,
+      gap: spacing.xs,
+      alignItems: 'flex-start',
+    },
+    mismatchMain: {
+      alignSelf: 'stretch',
+      gap: spacing.xxs,
+    },
     segmentFix: {
       flexDirection: 'row',
       alignItems: 'center',

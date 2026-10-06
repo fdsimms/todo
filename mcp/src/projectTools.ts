@@ -8,6 +8,7 @@ import type { ProjectPatch, ProjectPlan, ProjectPlanStep, Replica } from './repl
 import { serializeTask, type SerializedTask } from './serialize';
 import { eventNoonIso, type TaskFieldsInput } from './taskFields';
 import { localDateInput } from './timeZone';
+import { awayFields } from './tools';
 
 /** A plan step as the tool takes it: task fields, plus a checklist and the earlier steps it waits on. */
 export interface ProjectPlanStepInput extends TaskFieldsInput {
@@ -37,6 +38,17 @@ export interface SerializedProjectDetail {
   taskDefaults?: { priority: number | null; difficulty: string | null; effort: number | null };
   completed?: boolean;
   archived?: boolean;
+  /**
+   * The away span (docs/arch/away-dates.md): the day you leave, the day you are
+   * back (absent for a departure with no return yet), and where to. What
+   * scheduled vacation mode and the away grocery list run on, where the person
+   * has turned those on for this project.
+   */
+  awayStart?: string;
+  awayEnd?: string;
+  destination?: string;
+  /** The person asked for vacation mode to turn itself on for this trip (`awayPauses`). */
+  pausesTasksWhileAway?: true;
   /** Members finished and in total, by the app's own reckoning (see list_projects). */
   done: number;
   total: number;
@@ -45,7 +57,7 @@ export interface SerializedProjectDetail {
 export interface ProjectTask extends SerializedTask {
   /** The checklist under it, in order. */
   subtasks?: { id: string; title: string; done: boolean }[];
-  /** Ids of the tasks it waits on, when it waits on any. */
+  /** Ids of the tasks still holding it back, when any are. */
   waitsOn?: string[];
 }
 
@@ -94,6 +106,8 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     ...(p.taskDefaults ? { taskDefaults: p.taskDefaults } : {}),
     ...(p.completed ? { completed: true } : {}),
     ...(p.archived ? { archived: true } : {}),
+    ...awayFields(replica, p),
+    ...(p.awayPauses && p.awayStart ? { pausesTasksWhileAway: true as const } : {}),
     done,
     total,
   };
@@ -101,7 +115,7 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
 
 function projectTask(replica: Replica, t: Task, all: Task[]): ProjectTask {
   const subs = all.filter(s => s.parentId === t.id).sort((a, b) => a.sortOrder - b.sortOrder);
-  const waits = [t.blockedById, ...(t.blockedByIds ?? [])].filter((id): id is string => !!id);
+  const waits = replica.liveBlockers(t).map(b => b.id);
   return {
     ...serializeTask(replica, t),
     ...(subs.length > 0 ? { subtasks: subs.map(s => ({ id: s.id, title: s.title, done: s.completed })) } : {}),
@@ -200,7 +214,7 @@ export function updateProject(
   id: string,
   patch: ProjectPatch,
   opts: { moveTasks?: boolean; moveTasksFrom?: string } = {},
-): GetProjectResult & { eventMove?: EventMoveResult } {
+): GetProjectResult & { eventMove?: EventMoveResult; awayNote?: string } {
   const moveLater = opts.moveTasksFrom !== undefined;
   if (Object.keys(patch).length === 0 && !moveLater) throw new Error('Nothing to change: name at least one field.');
   const before = replica.projects().find(p => p.id === id);
@@ -216,7 +230,14 @@ export function updateProject(
   const dated = patch.deadline ? { ...patch, deadline: localDateInput(patch.deadline) } : patch;
   const project = Object.keys(dated).length > 0 ? replica.updateProject(id, dated) : before;
   const next = project.eventDate ?? null;
-  const result = getProject(replica, id)!;
+  const result: GetProjectResult & { awayNote?: string } = getProject(replica, id)!;
+  // The two things the replica does to the span beyond what was asked, said
+  // here so the caller does not have to diff the project to find them.
+  if (patch.awayStart !== undefined && patch.awayEnd === undefined && before.awayEnd && project.awayEnd && project.awayEnd !== before.awayEnd) {
+    result.awayNote = `Coming back moved with the departure, keeping the trip the same length: it is now ${project.awayEnd.slice(0, 10)}.`;
+  } else if (patch.awayStart === null && (before.awayEnd || before.destination || before.awayPauses || before.awayListId)) {
+    result.awayNote = 'Clearing the away dates also cleared the return date, the destination, and the vacation mode and grocery list nominations that hung off them.';
+  }
   if (moveLater && !next) throw new Error('moveTasksFrom counts to the project\'s event date, and it has none.');
   if (!prior || !next || prior === next || (patch.eventDate === undefined && !moveLater)) return result;
   if (moveLater) opts = { ...opts, moveTasks: true };

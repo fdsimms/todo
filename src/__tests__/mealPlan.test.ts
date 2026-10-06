@@ -832,17 +832,17 @@ describe('describeWeekRange', () => {
     Array.from({ length: 7 }, (_, i) => new Date(y, m, d + i));
 
   it('drops the repeated month inside one month', () => {
-    expect(describeWeekRange(week(2026, 7, 3))).toBe('Aug 3 – 9');
+    expect(describeWeekRange(week(2026, 7, 3))).toBe('Aug 3–9');
   });
 
   it('names both months across a month boundary', () => {
-    expect(describeWeekRange(week(2026, 6, 28))).toBe('Jul 28 – Aug 3');
+    expect(describeWeekRange(week(2026, 6, 28))).toBe('Jul 28–Aug 3');
   });
 
   // The year is the one thing you can't read off the rest of the screen when a
   // week straddles New Year.
   it('adds the year only across a year boundary', () => {
-    expect(describeWeekRange(week(2026, 11, 28))).toBe('Dec 28 – Jan 3, 2027');
+    expect(describeWeekRange(week(2026, 11, 28))).toBe('Dec 28–Jan 3, 2027');
   });
 
   it('is empty for no days', () => {
@@ -851,7 +851,7 @@ describe('describeWeekRange', () => {
 
   it('does not depend on the order it is given', () => {
     const days = week(2026, 7, 3);
-    expect(describeWeekRange([...days].reverse())).toBe('Aug 3 – 9');
+    expect(describeWeekRange([...days].reverse())).toBe('Aug 3–9');
   });
 });
 

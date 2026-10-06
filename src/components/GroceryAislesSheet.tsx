@@ -906,7 +906,7 @@ function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
   return (
     <>
       <Text style={styles.intro}>
-        How the shopping list sorts what's still to buy.
+        How the grocery list sorts what's still to buy.
       </Text>
       <View style={styles.groupByCard}>
         <SegmentedControl

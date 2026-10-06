@@ -337,6 +337,17 @@ export function taskFieldsPatch(
     if (v !== null && !isIsoDate(v)) errors.push(`${key} must be an ISO date-time, or null.`);
     else patch[key] = v === null ? null : localDateInput(v);
   }
+  // A deadline worked out from the date (`deadlineOffsetDays`, or
+  // `deadlineMonthDay` on a monthly repeat) is recomputed against every new
+  // occurrence, and the editor never lets a fixed date sit beside it: picking
+  // one is its "Fixed date" pill, which drops the rule, and clearing the
+  // deadline clears all three. `mergeTaskUpdate` leaves the two fields alone,
+  // so without this a date written here would be shown as the recomputed one
+  // on the phone and replaced on the next occurrence, with nothing said.
+  if (input.deadline !== undefined && hasRelativeDeadline(current)) {
+    patch.deadlineOffsetDays = null;
+    patch.deadlineMonthDay = null;
+  }
   if (input.timeSegments !== undefined) {
     if (input.timeSegments.some(s => !TIME_SEGMENTS.includes(s))) errors.push(`timeSegments must be from ${TIME_SEGMENTS.join(', ')}.`);
     else patch.timeSegments = input.timeSegments;
@@ -371,7 +382,19 @@ export function taskFieldsPatch(
   let recurrence: RecurrenceType = patch.recurrenceType ?? current?.recurrenceType ?? 'none';
 
   // ---- target ("8 times a day", "3 times a week") --------------------------
-  if (input.target !== undefined) {
+  // A water task that follows the food log's target (`followWaterTarget`) has
+  // its count written by the app each day, from that target divided by what
+  // one unit logs (`syncWaterQuotaTasks`). A count set here would be overwritten
+  // on the next pass with nothing said, so it is refused instead; dropping the
+  // target altogether is still allowed, and takes the flag with it, since a
+  // task with no target has nothing left to follow.
+  if (input.target !== undefined && current?.followWaterTarget) {
+    if (input.target === null) patch.followWaterTarget = false;
+    else {
+      errors.push('This task\'s target follows the food log\'s water goal, so the app works the count out each day from that goal and a count set here would be overwritten. Change the water target in the app (Food log, Targets), or clear the target with target: null to stop it following.');
+    }
+  }
+  if (input.target !== undefined && !(input.target !== null && current?.followWaterTarget)) {
     if (input.target === null) {
       Object.assign(patch, {
         targetCount: null,
@@ -738,4 +761,49 @@ export function describeSupplyFields(t: Task): SupplyInput | null {
 export function describeHealthTarget(t: Task): HealthTargetInput | null {
   if (!hasHealthTarget(t) || t.healthMetric === null || t.healthTarget === null) return null;
   return { metric: t.healthMetric, target: t.healthTarget, ...(t.healthFollowGoal ? { followGoal: true } : {}) };
+}
+
+/** Whether the deadline is worked out from the date rather than a fixed day (see `describeDeadlineRule`). */
+export function hasRelativeDeadline(t: Pick<Task, 'deadlineOffsetDays' | 'deadlineMonthDay'> | null): boolean {
+  return t != null && (t.deadlineOffsetDays != null || t.deadlineMonthDay != null);
+}
+
+/**
+ * A deadline that is recomputed from the date on every occurrence, as
+ * `get_task` shows it. `deadlineOffsetDays` is signed with positive counting
+ * back from the date, which reads badly as a bare number, so it is split into
+ * the two directions; `deadlineMonthDay` is a day of the date's own month, -1
+ * for the last. Null for a fixed deadline, or none. Read-only: a `deadline`
+ * written by update_task clears the rule, as the editor's "Fixed date" does.
+ */
+export interface DeadlineRule {
+  daysBeforeDate?: number;
+  daysAfterDate?: number;
+  dayOfMonth?: number | 'last';
+}
+
+export function describeDeadlineRule(t: Pick<Task, 'deadlineOffsetDays' | 'deadlineMonthDay'>): DeadlineRule | null {
+  if (t.deadlineOffsetDays != null) {
+    return t.deadlineOffsetDays >= 0 ? { daysBeforeDate: t.deadlineOffsetDays } : { daysAfterDate: -t.deadlineOffsetDays };
+  }
+  if (t.deadlineMonthDay != null) return { dayOfMonth: t.deadlineMonthDay === -1 ? 'last' : t.deadlineMonthDay };
+  return null;
+}
+
+/**
+ * A reminder that is placed by rule rather than at a fixed moment, as
+ * `get_task` shows it: `reminderOffsetDays` before the date (at the reminder's
+ * own time of day), or `reminderTracksVisibility`, which rings the moment the
+ * task surfaces (off a defer, or a time-of-day segment opening). Null for a
+ * reminder at a fixed time, or none. Read-only here.
+ */
+export interface ReminderRule {
+  daysBeforeDate?: number;
+  whenItSurfaces?: true;
+}
+
+export function describeReminderRule(t: Pick<Task, 'reminderOffsetDays' | 'reminderTracksVisibility'>): ReminderRule | null {
+  if (t.reminderTracksVisibility) return { whenItSurfaces: true };
+  if (t.reminderOffsetDays != null) return { daysBeforeDate: t.reminderOffsetDays };
+  return null;
 }

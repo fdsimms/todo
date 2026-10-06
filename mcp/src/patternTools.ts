@@ -19,6 +19,8 @@
 import type { Task, TimeOfDay } from '../../src/types';
 import type { Replica, ReplicaLib } from './replica';
 import { describeRepeat, type RepeatInput } from './taskFields';
+import { resolveRange, type DayRange, type LogRangeInput } from './tools';
+import type { FocusSummary } from '../../src/utils/focusStats';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -152,7 +154,7 @@ export function habitPatterns(replica: Replica, input: { days?: number } = {}): 
       title: replica.displayTitle(t),
       ...(describeRepeat(t) ? { repeat: describeRepeat(t)! } : {}),
       ...(t.polarity === 'negative' ? { avoid: true as const } : {}),
-      ...(t.streakCount > 0 && t.streakDate ? { streak: { count: t.streakCount, asOf: t.streakDate.slice(0, 10) } } : {}),
+      ...(t.streakCount > 0 && t.streakDate ? { streak: { count: t.streakCount, asOf: replica.logicalDayKeyOf(t.streakDate) } } : {}),
       ...(target ? { target } : {}),
       completed: done.length,
       missed: recent.length - done.length,
@@ -301,14 +303,113 @@ export function moodInsights(replica: Replica): MoodInsights {
       averageMood: round(r.mood),
     })),
     milestones: replica.milestones().map(m => {
-      const c = mi.milestoneMoodContrast(days, replica.logicalDayKeyOf(m.date));
+      const date = replica.logicalDayKeyOf(m.date);
+      const c = mi.milestoneMoodContrast(days, date);
       return c
-        ? { label: m.label, date: m.date.slice(0, 10), daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
-        : { label: m.label, date: m.date.slice(0, 10), note: 'Not enough logged days on both sides yet.' };
+        ? { label: m.label, date, daysBefore: c.beforeDays, daysAfter: c.afterDays, moodBefore: round(c.moodBefore), moodAfter: round(c.moodAfter) }
+        : { label: m.label, date, note: 'Not enough logged days on both sides yet.' };
     }),
     ...(knownFrom !== null
       ? { daysOutsideTaskHistory: days.filter(d => d.dayKey < knownFrom && d.mood !== null).length }
       : {}),
     appleHealth: 'Not readable by this server, so the steps and sleep findings the phone shows are not here.',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// focus_history
+// ---------------------------------------------------------------------------
+
+export interface FocusSessionRow {
+  id: string;
+  /** The logical day the session ended on, which is the day it counts for (`focusMinutesByDay`). */
+  day: string;
+  startedAt: string;
+  endedAt: string;
+  workedMinutes: number;
+  restedMinutes: number;
+  plannedWorkMinutes: number;
+  /** Titles of the tasks ticked off from inside the session; a task since deleted is named as such. */
+  completed: string[];
+  /** The steps that ran, oldest first. */
+  steps: { kind: 'work' | 'rest'; task?: string; plannedMinutes: number; actualMinutes: number; part?: string; long?: true }[];
+}
+
+export interface FocusHistory {
+  range: DayRange;
+  summary: FocusSummary;
+  /** Work stretches against their planned length; absent below the Stats screen's own sample floor, with the reason in `note`. */
+  accuracy?: { steps: number; plannedMinutes: number; actualMinutes: number; reading: string };
+  breaks: { offered: number; taken: number };
+  sessions: FocusSessionRow[];
+  /** Why there is no "what am I working through" here, in words the model can repeat. */
+  liveSession: string;
+  note?: string;
+}
+
+/**
+ * Finished focus sessions over a range, as the Stats screen reads them
+ * (`focusStats.ts`): the totals, how stretches ran against their plan (null
+ * below `MIN_ACCURACY_SAMPLES`, said rather than hidden), how many offered
+ * breaks were taken, and each session's steps with the task behind each.
+ *
+ * History only, and that is the sync model working rather than a gap: the
+ * session in flight (`focus_sessions`) is a cursor one device is moving and is
+ * excluded from sync on purpose (docs/arch/focus-sessions.md), so a replica
+ * never holds it. Nothing here can say what is being worked on now, or pause,
+ * advance or start a session, and the result says so.
+ */
+export function focusHistory(replica: Replica, input: LogRangeInput = {}): FocusHistory {
+  const range = resolveRange(replica, input);
+  const stats = replica.lib().focusStats;
+  const dayOf = (iso: string) => replica.logicalDayKeyOf(iso);
+  const records = replica.focusHistory().filter(r => {
+    const day = dayOf(r.endedAt);
+    return day >= range.from && day <= range.to;
+  });
+  const title = (id: string | null): string => {
+    const task = id ? replica.taskById(id) : null;
+    return task ? replica.displayTitle(task) : 'a task since deleted';
+  };
+  const minutes = (seconds: number) => Math.round(seconds / 60);
+
+  const accuracy = stats.focusAccuracy(records);
+  const breaks = stats.breakUse(records);
+  return {
+    range,
+    summary: stats.focusSummary(records),
+    ...(accuracy
+      ? {
+          accuracy: {
+            steps: accuracy.steps,
+            plannedMinutes: accuracy.plannedMinutes,
+            actualMinutes: accuracy.actualMinutes,
+            reading: accuracy.ratio > 1.05 ? 'Stretches tend to run over their planned length.'
+              : accuracy.ratio < 0.95 ? 'Stretches tend to end before their planned length.'
+              : 'Stretches run close to their planned length.',
+          },
+        }
+      : {}),
+    breaks: { offered: breaks.total, taken: breaks.taken },
+    sessions: records.map(r => ({
+      id: r.id,
+      day: dayOf(r.endedAt),
+      startedAt: r.startedAt,
+      endedAt: r.endedAt,
+      workedMinutes: minutes(r.workedSeconds),
+      restedMinutes: minutes(r.restedSeconds),
+      plannedWorkMinutes: r.plannedWorkMinutes,
+      completed: r.completedTaskIds.map(id => title(id)),
+      steps: r.steps.map(s => ({
+        kind: s.kind,
+        ...(s.kind === 'work' ? { task: title(s.taskId) } : {}),
+        plannedMinutes: s.plannedMinutes,
+        actualMinutes: minutes(s.actualSeconds),
+        ...(s.partCount > 1 ? { part: `${s.part} of ${s.partCount}` } : {}),
+        ...(s.long ? { long: true as const } : {}),
+      })),
+    })),
+    liveSession: 'A session in progress lives on the phone only and does not sync, so this server cannot see what the person is working through now, or pause, advance or start a session. Ask them.',
+    ...(accuracy ? {} : { note: `Fewer than ${stats.MIN_ACCURACY_SAMPLES} work stretches in the range, so nothing is said about how stretches run against their plan.` }),
   };
 }

@@ -39,6 +39,7 @@ import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
 import { createSyncGate, READ_WAIT_MS, type SyncGate } from './syncGate';
 import {
+  DEFAULT_LOG_DAYS,
   MAX_LOG_DAYS,
   TASK_VIEWS,
   getTask,
@@ -98,8 +99,11 @@ import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
-import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
+import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
+import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews } from './savedViewTools';
+import { setVacationMode } from './vacationTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -318,7 +322,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_task',
-    'One task in full: its subtasks, its chain steps, its project, and why it is not on Today if it is not.',
+    'One task in full: its subtasks, its chain steps, its project, and why it is not on Today if it is not (hiddenUntil for a moment it will surface at, hiddenReason for a task held while vacation mode is on). Also the rules behind a deadline or reminder that is recomputed each occurrence, and whether a water target follows the food log\'s goal.',
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getTask(replica, id));
@@ -453,6 +457,43 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
+  );
+
+  server.tool(
+    'list_milestones',
+    'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
+    {},
+    async () => json(await withFresh(() => listMilestones(replica)))
+  );
+
+  server.tool(
+    'focus_history',
+    `Finished focus sessions over a range of days (default ${DEFAULT_LOG_DAYS}, up to ${MAX_LOG_DAYS}), as the Stats screen reads them: worked and rested minutes, how work stretches ran against their planned length (only once there are enough), how many offered breaks were taken, and each session's steps with the task behind each. History only: a session in progress lives on the phone and does not sync, so this cannot say what the person is working through right now, or start, pause or advance a session. Ask them.`,
+    logRange,
+    async input => json(await withFresh(() => focusHistory(replica, input)))
+  );
+
+  server.tool(
+    'list_saved_views',
+    'The person\'s saved views: each a named lens over every open task (across Today, Later, Unscheduled and Inbox at once) built from clauses a task has to pass, with the clauses in words and how many tasks it holds right now. Refer to one by its name.',
+    {},
+    async () => json(await withFresh(() => listSavedViews(replica)))
+  );
+
+  server.tool(
+    'get_saved_view',
+    `One saved view, by name or id, and the tasks it holds right now, in the app's own order (up to ${SAVED_VIEW_TASK_LIMIT}; the result says when there were more).`,
+    {
+      view: z.string().min(1).describe('The view\'s name (case does not matter) or its id from list_saved_views.'),
+      limit: z.number().int().min(1).max(SAVED_VIEW_TASK_LIMIT).optional(),
+    },
+    async ({ view, limit }) => {
+      try {
+        return json(await withFresh(() => getSavedView(replica, view, limit)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that view.' });
+      }
+    }
   );
 
   server.tool(
@@ -704,7 +745,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
           }
           const details = parseToolText(out);
           if (details && typeof details === 'object' && 'error' in details) return out;
-          const willDo = describeEffects(effects);
+          const willDo = describeEffects(effects, replica.dayKeyOf);
           return json({
             preview: true,
             willDo: willDo.length > 0 ? willDo : ['Nothing in the app would change.'],
@@ -1018,7 +1059,7 @@ function registerWriteTools(
 
   server.tool(
     'update_task',
-    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, timed, rotation, healthTarget, supply, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
+    'Edit a task. Only the fields you name change; null clears one that can be empty, and repeat, chain, target, timed, rotation, healthTarget, supply, window and followUp each replace that whole part. Uses the same rules as editing in the app: changing the repeat re-anchors the schedule, and on a task with several dates the content edit also applies to its later dates (the result says how many). A deadline written to a task whose deadline is worked out from its date (deadlineRule on get_task) replaces that rule with the fixed date, and the result says so. A target on a task that follows the food log\'s water goal (followsWaterTarget) is refused, since the app sets that count each day. Completed and archived tasks are refused. To move one occurrence of a repeating task, use defer_task instead of dueDate.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -1116,6 +1157,23 @@ function registerWriteTools(
     async input => {
       try {
         return json(await withWrite(() => logFood(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_water',
+    'Log water the person drank. The app keeps one water entry a day and steps it up a glass at a time, so this adds onto today\'s entry (or the day named by at) rather than adding a row per glass; use it instead of log_food for water. Give the amount as ml or flOz. The result gives the day\'s total so far in the unit the person counts water in. Not sent to Apple Health: only the phone writes it there.',
+    {
+      ml: z.number().positive().optional().describe('Millilitres drunk. Give this or flOz.'),
+      flOz: z.number().positive().optional().describe('Fluid ounces drunk. Give this or ml.'),
+      at: z.string().optional().describe('When: an ISO date-time, or YYYY-MM-DD. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logWater(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
       }
@@ -1291,6 +1349,106 @@ function registerWriteTools(
         return json(await withWrite(() => deleteMedicationLog(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_milestone',
+    'Mark the day something changed in the person\'s life ("Started sertraline", "New job", "Moved house"), for the mood log to read mood before and after it. Only what they tell you, in their words; the date defaults to today. Record a start and a later stop as two milestones.',
+    {
+      label: z.string().min(1).max(200).describe('What changed, in a few words.'),
+      date: dayKey.optional().describe('The day it happened, YYYY-MM-DD. Default today.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => addMilestone(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_milestone',
+    'Change a milestone\'s label or date, by its id from list_milestones. Only what you name changes.',
+    {
+      id: z.string().min(1),
+      label: z.string().min(1).max(200).optional(),
+      date: dayKey.optional().describe('YYYY-MM-DD.'),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateMilestone(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_milestone',
+    'Delete a milestone by its id from list_milestones. A milestone is a fact about one day, so a wrong one is corrected or deleted; there is no archive, and it cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteMilestone(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_saved_view',
+    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. Views are edited and reordered in the app.',
+    {
+      name: z.string().min(1).max(80),
+      icon: z.string().optional().describe('One of the app\'s view icons (the refusal lists them). Default bookmark-outline.'),
+      clauses: z.array(z.object({
+        kind: z.string(),
+        values: z.array(z.union([z.string(), z.number()])).optional(),
+        minutes: z.number().optional(),
+        overdue: z.boolean().optional(),
+        hasReminder: z.boolean().optional(),
+        heldBack: z.boolean().optional(),
+        undated: z.boolean().optional(),
+      })).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createSavedView(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the view.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_saved_view',
+    'Delete a saved view by name or id. The tasks it showed are untouched; only the lens goes, and it cannot be restored from here.',
+    { view: z.string().min(1).describe('The view\'s name (case does not matter) or its id from list_saved_views.') },
+    async ({ view }) => {
+      try {
+        return json(await withWrite(() => deleteSavedView(replica, view)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the view.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_vacation_mode',
+    'Turn vacation mode on or off, as the switch in Settings does. On, it hides every task marked for vacation pause and every category set to hide on vacation, everywhere, and protects their streaks; nothing else moves. Off, it brings them back and forgives the protected streaks, as the app does. With on: true, until (YYYY-MM-DD, after today) is the day it turns itself off; with the mode already on, until only moves that day, and null clears it. The result says what it hides. get_overview reports the mode and, when a trip switched it on, which one: turning it off during that trip counts as declining it for the trip.',
+    {
+      on: z.boolean(),
+      until: dayKey.nullable().optional().describe('With on: true. The day it turns itself off, YYYY-MM-DD, after today. null clears an end date already set. Leave out to keep it on until it is turned off.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setVacationMode(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change vacation mode.' });
       }
     }
   );
@@ -1996,13 +2154,16 @@ function registerWriteTools(
 
   server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes, deadline or event date, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task.',
+    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
       notes: z.string().optional(),
       deadline: z.string().nullable().optional(),
       eventDate: z.string().nullable().optional().describe('The day the project is for. Changing it leaves the tasks where they are unless moveTasks is set.'),
+      awayStart: z.string().nullable().optional().describe('YYYY-MM-DD: the day the person leaves, for a project that is a trip. Moving it moves an existing awayEnd by the same number of days. null clears the whole span, the destination, and the vacation mode and grocery list nominations that hang off it.'),
+      awayEnd: z.string().nullable().optional().describe('YYYY-MM-DD: the day they are back. Needs awayStart (given now or already set) and has to fall after it; null leaves a departure with no return yet.'),
+      destination: z.string().nullable().optional().describe('Where the trip is going, free text. Needs away dates; null clears it.'),
       moveTasks: z.boolean().optional().describe('With a new eventDate: move the project\'s dated tasks by the same number of days, as the app offers when the date is changed there. Ask the user first. Pinned, urgent and some other tasks are left in place and listed under notMoved.'),
       moveTasksFrom: z.string().optional().describe('Move the dated tasks after the event date has already been changed: the old event date. They move by the days from it to the event date now.'),
       category: z.string().nullable().optional(),

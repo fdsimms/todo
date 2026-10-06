@@ -8,6 +8,7 @@
  */
 import { serializeTask } from '../serialize';
 import {
+  addGroceryItem,
   getTask,
   listFoodLog,
   listGroceryItems,
@@ -70,8 +71,9 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     categories: () => [],
     groceryItems: () => [],
     groceryListEntries: () => [],
-    itemProducts: () => [],
     groceryLists: () => [],
+    awaySpan: () => null,
+    itemProducts: () => [],
     shops: () => [],
     itemShopLinks: () => [],
     itemSubLinks: () => [],
@@ -95,9 +97,11 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     updateLeftover: () => { throw new Error('not stubbed'); },
     createLeftover: () => { throw new Error('not stubbed'); },
     isVisible: (t: Task) => t.id.startsWith('today'),
+    isHiddenForVacation: (t: Task) => t.id.startsWith('vacation'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
     isBlocked: (t: Task) => t.id.startsWith('blocked'),
+    liveBlockers: () => [],
     isNotNeeded: () => false,
     visibleAt: () => new Date('2099-01-01T00:00:00.000Z'),
     search: () => [],
@@ -187,13 +191,14 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     nextBirthday: () => null,
     addPersonHistory: () => { throw new Error('not stubbed'); },
     settings: () => ({
-      dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationEnd: null,
+      dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationStart: null, vacationEnd: null, vacationDrivenBy: null, waterUnit: 'ml',
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
       kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, rewardGoalId: null, bountyLimit: 1, completedRetentionDays: null,
       calendarRequestsOn: false,
     }),
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
+    dayKeyOf: (iso: string) => iso.slice(0, 10),
     isRealCompletion: (t: Task) => t.completed && !t.missedAt,
     describeBounty: () => null,
     onTimeSummary: () => ({ onTime: 0, total: 0, rate: 0 }),
@@ -203,9 +208,19 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     lib: () => { throw new Error('not stubbed'); },
     allMoodLogs: () => [],
     milestones: () => [],
+    addMilestone: () => { throw new Error('not stubbed'); },
+    updateMilestone: () => { throw new Error('not stubbed'); },
+    deleteMilestone: () => { throw new Error('not stubbed'); },
+    focusHistory: () => [],
+    savedViews: () => [],
+    savedViewTasks: () => [],
+    createSavedView: () => { throw new Error('not stubbed'); },
+    deleteSavedView: () => { throw new Error('not stubbed'); },
+    setVacationMode: () => { throw new Error('not stubbed'); },
     tagRegistry: () => [],
     createRecipe: () => { throw new Error('not stubbed'); },
     logFood: () => { throw new Error('not stubbed'); },
+    logWater: () => { throw new Error('not stubbed'); },
     logMood: () => { throw new Error('not stubbed'); },
     logMedication: () => { throw new Error('not stubbed'); },
     ruleLists: () => ({ title: [], weather: [], event: [], health: [], screenTime: [] }),
@@ -258,6 +273,14 @@ describe('listTasks', () => {
     const tasks = [task({ id: 'today-1', title: 'Open' }), task({ id: 'today-2', title: 'Done', completed: true })];
     expect(listTasks(withTasks(tasks), { view: 'all' }).tasks).toHaveLength(1);
     expect(listTasks(withTasks(tasks), { view: 'all', includeCompleted: true }).tasks).toHaveLength(2);
+  });
+
+  it('leaves archived tasks out of every lens', () => {
+    // Archived is "out of every list" in the app, and an open archived row
+    // would otherwise fall through the other three lenses into later.
+    const tasks = [task({ id: 'later-1', title: 'Deferred' }), task({ id: 'later-2', title: 'Filed away', archived: true })];
+    expect(listTasks(withTasks(tasks), { view: 'later' }).tasks.map(t => t.id)).toEqual(['later-1']);
+    expect(listTasks(withTasks(tasks), { view: 'all' }).tasks.map(t => t.id)).toEqual(['later-1']);
   });
 
   it('filters by category, tag and project', () => {
@@ -368,6 +391,54 @@ describe('getTask', () => {
     expect(result.bounty).toEqual({ summary: '+5 extra when done.', pushes: 1 });
     expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
   });
+
+  it('explains a task held by vacation mode, which has no moment to surface at', () => {
+    const paused = task({ id: 'vacation-1', title: 'Water the plants', vacationPause: true });
+    const result = getTask(withTasks([paused], { visibleAt: () => new Date() }), 'vacation-1')!;
+    expect(result.hiddenReason).toBe('hidden while vacation mode is on');
+    expect(result.hiddenUntil).toBeUndefined();
+    // Visible tasks say nothing, whatever their flag.
+    expect(getTask(withTasks([task({ id: 'today-1', title: 'x', vacationPause: true })]), 'today-1')!.hiddenReason).toBeUndefined();
+  });
+
+  it('shows the rules behind a recomputed deadline or reminder, a followed water target, a linked supply, and the two per-task flags', () => {
+    const rich = task({
+      id: 'rich-2', title: 'Pay rent', deadlineOffsetDays: 3, reminderOffsetDays: 2,
+      targetCount: 8, quotaPeriod: 'day', progressCount: 2, followWaterTarget: true,
+      supplyCount: 4, supplyReorderAt: 1, supplyGroceryItemId: 'g1',
+      excludeFromSuggestions: true, streakRequiresWindow: true,
+    });
+    const result = getTask(withTasks([rich], { groceryItems: () => [{ id: 'g1', name: 'Filters' } as GroceryItem] }), 'rich-2')!;
+    expect(result.deadlineRule).toEqual({ daysBeforeDate: 3 });
+    expect(result.reminderRule).toEqual({ daysBeforeDate: 2 });
+    expect(result.target).toMatchObject({ count: 8, followsWaterTarget: true });
+    expect(result.supply).toEqual({ count: 4, reorderAt: 1, groceryItem: { id: 'g1', name: 'Filters' } });
+    expect(result.excludeFromSuggestions).toBe(true);
+    expect(result.streakRequiresWindow).toBe(true);
+
+    const monthly = task({ id: 'm', title: 'Invoice', deadlineMonthDay: -1, reminderTracksVisibility: true, supplyCount: 1, supplyReorderAt: 1, supplyGroceryItemId: 'gone' });
+    const r2 = getTask(withTasks([monthly]), 'm')!;
+    expect(r2.deadlineRule).toEqual({ dayOfMonth: 'last' });
+    expect(r2.reminderRule).toEqual({ whenItSurfaces: true });
+    // A deleted catalog row is left out rather than named by id.
+    expect(r2.supply).toEqual({ count: 1, reorderAt: 1 });
+
+    const plain = getTask(withTasks([task({ id: 'p', title: 'Plain', deadline: '2026-10-10T12:00:00.000Z' })]), 'p')!;
+    expect(plain.deadlineRule).toBeUndefined();
+    expect(plain.reminderRule).toBeUndefined();
+    expect(plain.excludeFromSuggestions).toBeUndefined();
+    expect(plain.streakRequiresWindow).toBeUndefined();
+  });
+  it('names as waitsOn only what the replica says still holds the task back', () => {
+    const blocker = task({ id: 'today-1', title: 'Pick colour' });
+    const waiting = task({ id: 'blocked-1', title: 'Buy paint', blockedById: 'today-1' });
+    const live = withTasks([blocker, waiting], { liveBlockers: t => (t.id === 'blocked-1' ? [blocker] : []) });
+    expect(getTask(live, 'blocked-1')!.waitsOn).toEqual([{ id: 'today-1', title: 'Pick colour' }]);
+    // A finished blocker holds nothing (replica.test.ts has the real rule), so
+    // the field is absent rather than listing it as done.
+    expect(getTask(withTasks([blocker, waiting]), 'blocked-1')!.waitsOn).toBeUndefined();
+  });
+
 });
 
 describe('listCategories', () => {
@@ -406,6 +477,21 @@ describe('listProjects', () => {
       projectProgress: () => ({ done: 3, total: 8 }),
     }))[0];
     expect(result).toMatchObject({ done: 3, total: 8, outstanding: 5 });
+  });
+
+  it('reports the away span through the app\'s own reader, so a half-set end is left out', () => {
+    const trip = { id: 'p2', title: 'Lisbon', notes: '', deadline: null, archived: false, awayStart: '2026-11-03T12:00:00.000Z', awayEnd: '2026-11-10T12:00:00.000Z', destination: 'Lisbon' } as Project;
+    const halfSet = { ...trip, id: 'p3', awayEnd: '2026-11-01T12:00:00.000Z', destination: null } as Project;
+    const replica = stubReplica({
+      projects: () => [trip, halfSet],
+      // The real awaySpanOf keeps an end only when it falls after the start.
+      awaySpan: (p: Project) => (p.awayStart ? { start: new Date(p.awayStart), end: p.awayEnd && p.awayEnd > p.awayStart ? new Date(p.awayEnd) : null } : null),
+    });
+    const [lisbon, half] = listProjects(replica);
+    expect(lisbon).toMatchObject({ awayStart: trip.awayStart, awayEnd: trip.awayEnd, destination: 'Lisbon' });
+    expect(half).toMatchObject({ awayStart: trip.awayStart });
+    expect(half).not.toHaveProperty('awayEnd');
+    expect(half).not.toHaveProperty('destination');
   });
 
   it('reports a finished project as nothing outstanding', () => {
@@ -653,6 +739,22 @@ describe('serializeTask', () => {
     expect(serializeTask(stubReplica(), one).chainStep).toBeUndefined();
   });
 
+  it('names the people a task is about, keeps a series id, and says when a task hides on vacation', () => {
+    const people = [{ id: 'per1', name: 'Gideon Reyes', nickname: 'Gid' }, { id: 'per2', name: 'Mom', nickname: '' }] as never[];
+    const r = stubReplica({ people: () => people });
+    const t = serializeTask(r, task({ id: 'a', title: 'Call', personIds: ['per1', 'per2', 'gone'], seriesId: 's1', vacationPause: true }));
+    // The nickname where there is one, the name otherwise, and an id with no
+    // person behind it dropped rather than reported nameless.
+    expect(t.people).toEqual([{ id: 'per1', name: 'Gid' }, { id: 'per2', name: 'Mom' }]);
+    expect(t.seriesId).toBe('s1');
+    expect(t.vacationPause).toBe(true);
+
+    const plain = serializeTask(r, task({ id: 'b', title: 'Plain', personIds: [], seriesId: null, vacationPause: false }));
+    expect(plain).not.toHaveProperty('people');
+    expect(plain).not.toHaveProperty('seriesId');
+    expect(plain).not.toHaveProperty('vacationPause');
+  });
+
   it('reports blocked separately from merely not being due', () => {
     expect(serializeTask(stubReplica(), task({ id: 'blocked-1', title: 'Waiting' })).blocked).toBe(true);
     expect(serializeTask(stubReplica(), task({ id: 'today-1', title: 'Free' })).blocked).toBeUndefined();
@@ -690,5 +792,24 @@ describe('createTask and updateTask', () => {
       updateTask: () => ({ task: existing, alsoUpdated: 2 }),
     });
     expect(updateTask(r, 'today-1', { notes: 'x' }).alsoUpdatedLaterDates).toBe(2);
+  });
+
+  it('says when a fixed deadline replaced the rule that recomputed it, and only then', () => {
+    const relative = task({ id: 'today-1', title: 'Rent', deadlineOffsetDays: 3 });
+    const cleared = { deadline: '2026-10-10T12:00:00.000Z', deadlineOffsetDays: null, deadlineMonthDay: null } as Partial<Task>;
+    const r = withTasks([relative], {
+      taskPatch: () => cleared,
+      updateTask: () => ({ task: { ...relative, ...cleared } as Task, alsoUpdated: 0 }),
+    });
+    expect(updateTask(r, 'today-1', { deadline: '2026-10-10' }).deadlineRuleCleared).toMatch(/fixed date given/);
+
+    const dropped = { deadline: null, deadlineOffsetDays: null, deadlineMonthDay: null } as Partial<Task>;
+    const r2 = withTasks([relative], { taskPatch: () => dropped, updateTask: () => ({ task: { ...relative, ...dropped } as Task, alsoUpdated: 0 }) });
+    expect(updateTask(r2, 'today-1', { deadline: null }).deadlineRuleCleared).toMatch(/no deadline either/);
+
+    // A fixed deadline that was already fixed says nothing.
+    const fixed = task({ id: 'today-2', title: 'Taxes', deadline: '2026-04-15T12:00:00.000Z' });
+    const r3 = withTasks([fixed], { taskPatch: () => ({ deadline: '2026-04-20T12:00:00.000Z' }), updateTask: () => ({ task: fixed, alsoUpdated: 0 }) });
+    expect(updateTask(r3, 'today-2', { deadline: '2026-04-20' })).not.toHaveProperty('deadlineRuleCleared');
   });
 });

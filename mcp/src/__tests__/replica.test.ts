@@ -87,8 +87,19 @@ describe('the replica', () => {
     replica.refresh();
   });
 
+  // Every table but the two this file seeds once (settings holds the device id
+  // and the switches, categories the 'Home' every task needs) is cleared per
+  // test, read off sqlite_master rather than listed as database.test.ts does:
+  // a recipe, meal or person one test names could otherwise collide with
+  // another's, which passed in declaration order and in no other.
   beforeEach(() => {
-    mockRaw.runSync('DELETE FROM tasks');
+    const keep = new Set(['settings', 'categories']);
+    const tables = mockRaw.getAllSync<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+    );
+    for (const { name } of tables) {
+      if (!keep.has(name)) mockRaw.runSync(`DELETE FROM "${name}"`);
+    }
     replica.refresh();
   });
 
@@ -295,6 +306,38 @@ describe('the replica', () => {
       expect(replica.updateMedicationLog(dose.id, { name: 'ibuprofen', note: 'with food' })).toMatchObject({ name: 'Ibuprofen', note: 'with food' });
       expect(replica.deleteMedicationLog(dose.id).id).toBe(dose.id);
       expect(() => replica.deleteMedicationLog(dose.id)).toThrow(/No dose/);
+    });
+  });
+
+  describe('logging water', () => {
+    beforeEach(() => {
+      mockRaw.runSync('DELETE FROM food_logs');
+      replica.refresh();
+    });
+    const day = (key: string) => replica.foodLogEntries(key, key);
+
+    it('steps the day\'s water entry rather than adding a row, and never writes a Health sample', () => {
+      const at = new Date(2026, 8, 5, 9);
+      const first = replica.logWater({ ml: 250, at });
+      expect(first.how).toBe('created');
+      const second = replica.logWater({ ml: 250, at: new Date(2026, 8, 5, 14) });
+      expect(second).toMatchObject({ how: 'stepped', dayTotalMl: 500 });
+      expect(second.entry.id).toBe(first.entry.id);
+      expect(day(first.entry.dayKey)).toHaveLength(1);
+      expect(day(first.entry.dayKey)[0]).toMatchObject({ quantity: '500 ml', healthSampleIds: [] });
+      expect(() => replica.logWater({ ml: 0 })).toThrow(/positive/);
+    });
+
+    it('leaves a row the phone wrote to Apple Health alone and puts the glass on a second row, summing both', () => {
+      const first = replica.logWater({ ml: 250, at: new Date(2026, 8, 6, 9) });
+      mockRaw.runSync("UPDATE food_logs SET health_sample_ids = ? WHERE id = ?", [JSON.stringify(['hk-1']), first.entry.id]);
+      replica.refresh();
+      const next = replica.logWater({ ml: 250, at: new Date(2026, 8, 6, 12) });
+      expect(next).toMatchObject({ how: 'added', dayTotalMl: 500 });
+      expect(next.entry.id).not.toBe(first.entry.id);
+      const rows = day(first.entry.dayKey);
+      expect(rows).toHaveLength(2);
+      expect(rows.find(r => r.id === first.entry.id)!.nutrition.amounts.waterMl).toBe(250);
     });
   });
 
@@ -1076,6 +1119,28 @@ describe('the replica', () => {
       expect(replica.groceryListEntries()).toHaveLength(1);
     });
 
+    // CLAUDE.md: a caller that is not a person looking at the grocery screen
+    // names the list. The writes take one, and act on that trolley alone.
+    it('checks off and removes on the list named, leaving the same row\'s home entry alone', () => {
+      mockRaw.runSync("INSERT INTO grocery_lists (id, name, sort_order, created_at) VALUES ('cabin', 'Cabin', 1, '2026-01-01T00:00:00.000Z')");
+      replica.refresh();
+      expect(replica.groceryLists().map(l => l.name)).toEqual(['Cabin']);
+
+      const milk = replica.addGroceryItem('milk').item;
+      replica.addGroceryItem('milk', { listId: 'cabin' });
+      replica.refresh();
+      replica.setGroceryChecked(milk.id, true, 'cabin');
+      replica.refresh();
+      const ticks = Object.fromEntries(replica.groceryListEntries().map(e => [e.listId ?? 'home', e.checked]));
+      expect(ticks).toEqual({ home: false, cabin: true });
+
+      replica.removeFromGroceryList(milk.id, 'cabin');
+      replica.refresh();
+      expect(replica.groceryListEntries().map(e => e.listId)).toEqual([null]);
+      expect(() => replica.setGroceryChecked(milk.id, true, 'cabin')).toThrow(/not on that list/);
+      mockRaw.runSync('DELETE FROM grocery_lists');
+    });
+
     it('does not call an add to the home list a no-op when only a trip\'s list held the row', () => {
       replica.addGroceryItem('sunscreen', { listId: 'airbnb' });
       replica.refresh();
@@ -1297,6 +1362,11 @@ describe('the replica', () => {
     const coins = () => mockRaw.getAllSync<{ task_id: string; amount: number }>(
       "SELECT task_id, amount FROM coin_entries WHERE kind = 'earn'"
     );
+    // Start from rewards off and an empty ledger: the rewards block below turns
+    // the switch on and earns, and in random order it may already have run.
+    mockRaw.runSync("DELETE FROM settings WHERE key = 'rewardsEnabled'");
+    mockRaw.runSync('DELETE FROM coin_entries');
+    replica.refresh();
     const off = replica.createTask({ title: 'Before switching on' });
     replica.completeTask(off.id, {});
     expect(coins()).toEqual([]);
@@ -1828,6 +1898,22 @@ describe('the replica', () => {
       expect(() => replica.taskPatch({ category: 'Home', waitsOn: ['nope'] }, null, false)).toThrow(/no task with id nope/);
     });
 
+    it('names only the blockers still holding a task, and keys a date by its local day', () => {
+      const a = replica.createTask({ title: 'Buy paint' });
+      const b = replica.createTask({ title: 'Paint the hall' });
+      replica.updateTask(b.id, replica.taskPatch({ category: 'Home', waitsOn: [a.id] }, b, false));
+      replica.refresh();
+      expect(replica.liveBlockers(replica.taskById(b.id)!).map(t => t.id)).toEqual([a.id]);
+      expect(getTaskTool(replica, b.id)!.waitsOn).toEqual([{ id: a.id, title: 'Buy paint' }]);
+      replica.completeTask(a.id, {});
+      replica.refresh();
+      // A finished blocker holds nothing (`canBlock`), so it is not something the task waits on.
+      expect(replica.liveBlockers(replica.taskById(b.id)!)).toEqual([]);
+      expect(getTaskTool(replica, b.id)!.waitsOn).toBeUndefined();
+      // Local midnight is that day whatever the UTC date of the instant is.
+      expect(replica.dayKeyOf(new Date(2026, 9, 5, 0, 0).toISOString())).toBe('2026-10-05');
+    });
+
     it('refuses a completed task', () => {
       const t = replica.createTask({ title: 'Done' });
       replica.completeTask(t.id, {});
@@ -1898,6 +1984,52 @@ describe('the replica', () => {
       expect(done).toMatchObject({ title: 'Garden 2026', completed: true, archived: true });
       expect(replica.taskById(made[0].id)!.completed).toBe(false);
       expect(() => replica.updateProject('nope', { title: 'x' })).toThrow(/No project/);
+    });
+
+    // The away span, checked as ProjectEditor checks it (docs/arch/away-dates.md).
+    describe('the away span', () => {
+      const trip = () => replica.createProjectPlan({ defaultTaskCategory: 'Home', title: 'Lisbon', steps: [] }).project;
+
+      it('stores both days at noon, reads them back through awaySpanOf, and keeps a destination', () => {
+        const p = replica.updateProject(trip().id, { awayStart: '2026-11-03', awayEnd: '2026-11-10', destination: '  Lisbon ' });
+        expect(dayOf(p.awayStart)).toBe('2026-11-3');
+        expect(dayOf(p.awayEnd)).toBe('2026-11-10');
+        expect(new Date(p.awayStart!).getHours()).toBe(12);
+        expect(p.destination).toBe('Lisbon');
+        const span = replica.awaySpan(p)!;
+        expect([dayOf(span.start.toISOString()), dayOf(span.end!.toISOString())]).toEqual(['2026-11-3', '2026-11-10']);
+        expect(replica.awaySpan({ ...p, awayStart: null })).toBeNull();
+      });
+
+      it('refuses a return on or before the departure, and a return or destination with no departure', () => {
+        const p = trip();
+        expect(() => replica.updateProject(p.id, { awayStart: '2026-11-03', awayEnd: '2026-11-03' })).toThrow(/Coming back is before leaving/);
+        expect(() => replica.updateProject(p.id, { awayEnd: '2026-11-10' })).toThrow(/awayEnd needs awayStart/);
+        expect(() => replica.updateProject(p.id, { destination: 'Lisbon' })).toThrow(/destination needs awayStart/);
+        expect(() => replica.updateProject(p.id, { awayStart: 'someday' })).toThrow(/awayStart: "someday" is not a date/);
+        expect(replica.projects().find(x => x.id === p.id)!.awayStart).toBeNull();
+      });
+
+      it('moves the return with the departure, keeping the trip the same length, unless a return is given too', () => {
+        const p = replica.updateProject(trip().id, { awayStart: '2026-11-03', awayEnd: '2026-11-10' });
+        const moved = replica.updateProject(p.id, { awayStart: '2026-11-06' });
+        expect([dayOf(moved.awayStart), dayOf(moved.awayEnd)]).toEqual(['2026-11-6', '2026-11-13']);
+        const both = replica.updateProject(p.id, { awayStart: '2026-11-01', awayEnd: '2026-11-04' });
+        expect([dayOf(both.awayStart), dayOf(both.awayEnd)]).toEqual(['2026-11-1', '2026-11-4']);
+        // An end on its own moves on its own, and a null end leaves a departure with no return.
+        expect(dayOf(replica.updateProject(p.id, { awayEnd: '2026-11-20' }).awayEnd)).toBe('2026-11-20');
+        expect(replica.updateProject(p.id, { awayEnd: null }).awayEnd).toBeNull();
+      });
+
+      it('clears the return, the destination and both nominations with the departure', () => {
+        const p = replica.updateProject(trip().id, { awayStart: '2026-11-03', awayEnd: '2026-11-10', destination: 'Lisbon' });
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { useProjectStore } = require('../../../src/store/useProjectStore') as typeof import('../../../src/store/useProjectStore');
+        useProjectStore.getState().updateProject(p.id, { awayPauses: true, awayListId: 'cabin' });
+        replica.refresh();
+        const cleared = replica.updateProject(p.id, { awayStart: null });
+        expect(cleared).toMatchObject({ awayStart: null, awayEnd: null, destination: null, awayPauses: false, awayListId: null });
+      });
     });
   });
 

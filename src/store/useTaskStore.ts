@@ -6,6 +6,7 @@ import {
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
+  dbUpdateTaskCalendarLinks,
   dbFillTaskCalendarExternalIds,
   dbDeleteTask,
   dbDeleteSubtasks,
@@ -108,6 +109,7 @@ import {
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { reopenedTask } from '../utils/taskReopen';
+import { forgiveVacationStreaks } from '../utils/vacationStreaks';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
@@ -368,7 +370,7 @@ import {
   describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
-import { dateToHHMM } from '../utils/clockTime';
+import { carryClockTime, dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
 import { currentTravelOrigin, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
@@ -452,10 +454,11 @@ function reminderOnto(effective: Task, due: Date, overrides: Partial<Task> = {})
     return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
   }
   const original = new Date(effective.reminderTime);
-  const next = new Date(
-    effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due
-  );
-  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  const onto = effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due;
+  // The clock time on the new day's *logical* day (carryClockTime), not copied
+  // onto its calendar date: a 1 AM reminder sits at the end of its day under a
+  // 4 AM reset, and copied it landed a whole day early on every successor.
+  const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
   return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
 }
 
@@ -542,6 +545,23 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
 }
 
 /**
+ * How a reconcile writes the calendar link it ends with.
+ *
+ * The link columns are device-local and never leave this device, so writing
+ * them changes nothing about the row a peer could want. Written through the
+ * ordinary row update they still restamp the row as edited here just now,
+ * which is right after a local edit (the row did change) and wrong for a pass
+ * that runs unattended over rows another device changed: there, every row it
+ * touched would read as this device's latest edit, at the one moment a peer's
+ * own edits are least likely to have all arrived, and the next sync would put
+ * this device's stale copy over each of them. `keepStamp` routes the write
+ * through `dbUpdateTaskCalendarLinks`, which puts the row's stamp back.
+ */
+interface ReconcileWrite {
+  keepStamp?: boolean;
+}
+
+/**
  * Brings a task's device deadline event in line with the task, fire-and-
  * forget — same shape as every `scheduleTaskReminder(...)` call in this
  * file: the write is async and best-effort, so nothing here awaits it.
@@ -553,8 +573,14 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
  * owns the decision of what the device event should look like; this is only
  * the plumbing back into SQLite and the store, which is why it lives here
  * rather than there — that file has no business reaching into this store.
+ *
+ * `keepStamp` (see `ReconcileWrite`) is passed by the one caller that runs
+ * unattended over rows this device didn't edit, `reconcileSyncedEvents`. Every
+ * other call follows a real local edit — a save, an insert, a completion, an
+ * undo — on a row that genuinely changed here and was stamped for it, so the
+ * link it writes back rides the ordinary whole-row write.
  */
-function reconcileDeadlineEvent(task: Task): void {
+function reconcileDeadlineEvent(task: Task, write?: ReconcileWrite): void {
   syncDeadlineEvent(task)
     .then(link => {
       if (
@@ -564,7 +590,11 @@ function reconcileDeadlineEvent(task: Task): void {
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
       const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
-      dbUpdateTask(updated);
+      if (write?.keepStamp) {
+        dbUpdateTaskCalendarLinks(task.id, { calendarEventId: link.eventId, calendarEventExternalId: link.externalId });
+      } else {
+        dbUpdateTask(updated);
+      }
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
     .catch(() => {});
@@ -1001,7 +1031,12 @@ export type TimeBlockPlan =
   | { mode: 'edit'; eventId: string }
   | { mode: 'create'; fields: TimeBlockFields };
 
-function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string | null): boolean {
+function setTimeBlockLink(
+  taskId: string,
+  link: CalendarEventLink,
+  from?: string | null,
+  write?: ReconcileWrite
+): boolean {
   const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
   if (!current) return false;
   if (from !== undefined && current.timeBlockEventId !== from) return false;
@@ -1009,7 +1044,14 @@ function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string
     return true;
   }
   const updated = { ...current, timeBlockEventId: link.eventId, timeBlockExternalId: link.externalId };
-  dbUpdateTask(updated);
+  // `keepStamp` reaches here only from `reconcileTimeBlockEvent` run after a
+  // sync (see ReconcileWrite); a tap in the editor, and the reconcile that
+  // follows a save, write the row as they always have.
+  if (write?.keepStamp) {
+    dbUpdateTaskCalendarLinks(taskId, { timeBlockEventId: link.eventId, timeBlockExternalId: link.externalId });
+  } else {
+    dbUpdateTask(updated);
+  }
   useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === taskId ? updated : t)) }));
   return true;
 }
@@ -1028,7 +1070,10 @@ function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string
  * decides when one event is safely the block, and it answers only for exactly
  * one.
  */
-async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: TimeBlockEvent } | null> {
+async function adoptTimeBlock(
+  task: Task,
+  write?: ReconcileWrite
+): Promise<{ eventId: string; event: TimeBlockEvent } | null> {
   const from = task.timeBlockEventId;
   const externalId = task.timeBlockExternalId ?? null;
   if (!from || !externalId) return null;
@@ -1036,7 +1081,7 @@ async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: Tim
   if (!adopted || adopted === from) return null;
   const event = await readTimeBlockEvent(adopted);
   if (!event) return null;
-  if (!setTimeBlockLink(task.id, { eventId: adopted, externalId }, from)) return null;
+  if (!setTimeBlockLink(task.id, { eventId: adopted, externalId }, from, write)) return null;
   return { eventId: adopted, event };
 }
 
@@ -1045,10 +1090,10 @@ async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: Tim
  * one made before the id was kept, or whose id the read straight after the
  * sheet didn't get. Written only while the task still points at that block.
  */
-function recordTimeBlockExternalId(taskId: string, eventId: string): void {
+function recordTimeBlockExternalId(taskId: string, eventId: string, write?: ReconcileWrite): void {
   readExternalEventId(eventId)
     .then(externalId => {
-      if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId);
+      if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId, write);
     })
     .catch(() => {});
 }
@@ -1072,18 +1117,25 @@ function recordTimeBlockExternalId(taskId: string, eventId: string): void {
  * the calendar server's id (`adoptTimeBlock`, #2950): an id that stopped
  * resolving because a backup was restored on a new phone is not a block the
  * user deleted.
+ *
+ * `write` is handed to every pointer write below it, for `reconcileDeadlineEvent`'s
+ * reason: after a sync they land on rows this device didn't edit.
  */
-function reconcileTimeBlockEvent(task: Task): void {
+function reconcileTimeBlockEvent(task: Task, write?: ReconcileWrite): void {
   const eventId = task.timeBlockEventId;
   if (!eventId) return;
+  // Demo mode: the row is seeded fiction, and this would retitle and resize a
+  // real event in the user's calendar to match it (or drop the pointer on the
+  // strength of a real read). Same gate the deadline mirror has.
+  if (isDemoModeActive()) return;
   readTimeBlockEvent(eventId)
     .then(async event => {
-      const block = event ? { eventId, event } : await adoptTimeBlock(task);
+      const block = event ? { eventId, event } : await adoptTimeBlock(task, write);
       if (!block) {
-        setTimeBlockLink(task.id, NO_EVENT_LINK, eventId);
+        setTimeBlockLink(task.id, NO_EVENT_LINK, eventId, write);
         return;
       }
-      if (event && !task.timeBlockExternalId) recordTimeBlockExternalId(task.id, eventId);
+      if (event && !task.timeBlockExternalId) recordTimeBlockExternalId(task.id, eventId, write);
       const update = timeBlockUpdateFor(task, block.event);
       if (update) await updateTimeBlockEvent(block.eventId, update);
     })
@@ -2669,13 +2721,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Re-read after the await: the row may have moved on, or gone. A link
         // cleared meanwhile is not recreated here, for the reason the rule
         // gives for a task that never had one.
+        //
+        // Every write below lands on a row another device edited and this one
+        // didn't, and changes only the device-local link columns, so each
+        // keeps the row's sync stamp (`keepStamp`, `dbUpdateTaskCalendarLinks`):
+        // restamped, the row would read as this device's edit of a moment ago
+        // and win the next merge over the peer's edit that put it here.
+        const unattended: ReconcileWrite = { keepStamp: true };
         for (const task of plan.deadlines) {
           const current = find(task.id);
-          if (current?.calendarEventId) reconcileDeadlineEvent(current);
+          if (current?.calendarEventId) reconcileDeadlineEvent(current, unattended);
         }
         for (const task of plan.timeBlocks) {
           const current = find(task.id);
-          if (current) reconcileTimeBlockEvent(current);
+          if (current) reconcileTimeBlockEvent(current, unattended);
         }
         // Reopened on another device, so the completion this device's event
         // recorded didn't happen: the same delete and unlink `uncompleteTask`
@@ -2686,7 +2745,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           if (!current || current.completed || !current.completionCalendarEventId) continue;
           void deleteCompletionEvent(completionEventLink(current));
           const updated = { ...current, completionCalendarEventId: null, completionCalendarEventExternalId: null };
-          dbUpdateTask(updated);
+          dbUpdateTaskCalendarLinks(current.id, { completionCalendarEventId: null, completionCalendarEventExternalId: null });
           set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
         }
         for (const link of plan.remove) void deleteDeadlineEvent(link);
@@ -3119,10 +3178,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
-    const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+    const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
     const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
       now: new Date(),
+      dayResetTime,
       activeHoursStart,
       activeHoursEnd,
       events: loaded ? events : null,
@@ -4538,9 +4598,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // is a record of *that* day (or week), and the Logbook groups by
       // completedAt.
       const ownPeriodStart = periodStartOf(new Date(task.dueDate!), task.quotaPeriod);
-      const ownDayEnd = new Date(
-        +ownPeriodStart + (task.quotaPeriod === 'week' ? 7 : 1) * 24 * 60 * 60 * 1000 - 1,
-      );
+      // addDays rather than a fixed 24h: the DST spring-forward day is 23
+      // hours long, and a fixed stride landed the stamp at 00:59 the next
+      // morning, which getLogicalDayKey filed under the wrong day.
+      const ownDayEnd = new Date(+addDays(ownPeriodStart, task.quotaPeriod === 'week' ? 7 : 1) - 1);
       // A day the task's own category schedule doesn't cover (see #2201,
       // isCategoryScheduledDay) wasn't a work day, so it closes as a no-op
       // rather than a shortfall — neither advancing nor breaking the streak.
@@ -4904,6 +4965,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const t = byId.get(m.id)!;
       return {
         id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil,
+        // Restored beside dueDate, as shiftAwayTasks does: a patch naming
+        // dueDate without the anchor clears it (mergeTaskUpdate), which would
+        // turn undoing a deload on a pulled-forward recurring task into a
+        // rebase of its grid.
+        recurrenceAnchorDate: t.recurrenceAnchorDate,
         postponeCount: t.postponeCount, bountyPushes: t.bountyPushes ?? null,
       };
     });
@@ -4923,7 +4989,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().deloadTasks(moves),
       undo: () => snapshots.forEach(s =>
         get().updateTask(s.id, {
-          dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount, bountyPushes: s.bountyPushes,
+          dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate,
+          postponeCount: s.postponeCount, bountyPushes: s.bountyPushes,
         })
       ),
     });
@@ -8877,23 +8944,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  // The rule is `forgiveVacationStreaks` (vacationStreaks.ts), shared with the
+  // MCP server's own vacation switch, which cannot load this store.
   forgivVacationStreaks() {
-    const today = getCurrentDayStart().toISOString();
-    const toUpdate = get().tasks.filter(
-      t => t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
-    );
-    if (toUpdate.length === 0) return;
-    toUpdate.forEach(t => {
-      const updated = { ...t, streakDate: today };
-      dbUpdateTask(updated);
-    });
-    set(s => ({
-      tasks: s.tasks.map(t =>
-        t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
-          ? { ...t, streakDate: today }
-          : t
-      ),
-    }));
+    // isHiddenForVacation, not the per-task flag alone: a task hidden through
+    // its category's hide-on-vacation was withheld exactly the same way and
+    // lost its streak at the end of every vacation. Both callers run this
+    // before switching vacation mode off, which is what the check reads.
+    const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString(), isHiddenForVacation);
+    if (forgiven.length === 0) return;
+    forgiven.forEach(t => dbUpdateTask(t));
+    const byId = new Map(forgiven.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
 
   // Auto-turns-off vacation mode once its optional end date has passed —
@@ -9152,7 +9214,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const historyBefore = get().undoStack;
     const ids = get().completedTasks().map(t => t.id);
     if (ids.length === 0) return;
-    get().bulkDeleteTasks(ids);
+    // skipGeneratedOptOut: clearing history is not declining a generator. A
+    // completed "Use up spinach" in the logbook is a task that was done, and
+    // its row going wrote the item's "never again" exactly as swiping the live
+    // task away would have, so clearing the Logbook turned off every use-up
+    // reminder whose task had ever been finished.
+    get().bulkDeleteTasks(ids, { skipGeneratedOptOut: true });
     const undo = get().lastAction?.undo;
     if (undo) {
       get().setLastAction({
@@ -9162,7 +9229,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // The ids it actually cleared, not a second call to this action: a
         // redo re-runs against the logbook as it stands now, and anything
         // completed since the undo is not part of the clear being replayed.
-        redo: () => get().bulkDeleteTasks(ids),
+        redo: () => get().bulkDeleteTasks(ids, { skipGeneratedOptOut: true }),
       }, { replacing: historyBefore });
     }
   },
@@ -9407,7 +9474,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the screen only has to break the runs apart. The blocker task wins when
     // both are set, matching how the screen files it.
     // With several blockers, the first one still open is the one it's filed under.
-    const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? t.blockedById ?? t.waitingOnPersonId ?? '';
+    const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? blockerIdsOf(t)[0] ?? t.waitingOnPersonId ?? '';
     return get().tasks
       .filter(isWaitingTask)
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);
@@ -9455,7 +9522,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   pinnedTasks() {
-    const { vacationMode } = useSettingsStore.getState();
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
       // Pinning overrides the *clock* — a pinned task shows here whether or not
@@ -9471,7 +9537,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // A paused project's task is the other non-clock hide: the pause is the
       // person saying "not until then", which pinning doesn't answer.
       .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !(vacationMode && t.vacationPause) && !isInPausedProject(t))
+        && !isHeldBack(t) && !isWithheld(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

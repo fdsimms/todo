@@ -37,10 +37,12 @@ import {
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
 } from './dateUtils';
+import { carryClockTime } from './clockTime';
 import { getVisibleAt } from './visibilityUtils';
 import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
 import { canHoldSupply, clampSupplyReorderAt, DEFAULT_SUPPLY_REORDER_AT } from './supply';
+import { blockerFields, blockerIdsOf } from './blocking';
 
 // The time-of-day a brand-new task starts with: its own if the draft named
 // one, else its category's default (Category.defaultTimeSegments), else
@@ -412,8 +414,9 @@ export function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     location: draft.location ?? null,
-    blockedById: draft.blockedById ?? draft.blockedByIds?.[0] ?? null,
-    blockedByIds: draft.blockedById ? (draft.blockedByIds ?? []) : (draft.blockedByIds ?? []).slice(1),
+    // Through the one writer, so a draft naming the same task in both fields
+    // (or twice in the list) lands as one blocker rather than two.
+    ...blockerFields(blockerIdsOf({ blockedById: draft.blockedById ?? null, blockedByIds: draft.blockedByIds })),
     waitForSeriesEnd: draft.waitForSeriesEnd ?? false,
     answerGate: draft.answerGate ?? null,
     waitingOnPersonId: null,
@@ -481,8 +484,11 @@ export function reanchorReminder(
     const next = getVisibleAt(visibilityContext);
     return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
   }
-  const next = new Date(offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date);
-  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  // carryClockTime: the hour lands on the target's logical day, so a small-hours
+  // reminder under a late day start stays at the end of its day rather than
+  // moving a day early (see the helper).
+  const onto = offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date;
+  const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
   return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
 }
 

@@ -35,6 +35,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
@@ -59,7 +60,12 @@ interface Props {
  * shape as the task/project editors keeps the list row down to identity plus
  * a summary, and gives every option a hint explaining what it does.
  */
-export function CategoryEditor({ visible, category, onClose }: Props) {
+export function CategoryEditor({ visible, category: liveCategory, onClose }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the name in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const category = useSheetSubject(liveCategory);
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -95,9 +101,10 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   // Reload from the store each time the sheet opens on a category, so a
-  // half-finished edit from last time never leaks into the next one.
+  // half-finished edit from last time never leaks into the next one. Keyed on
+  // `visible` as well as the name, since the held name survives a close.
   useEffect(() => {
-    if (!category) return;
+    if (!visible || !category) return;
     const hasSchedule = !!(cat?.scheduleDays && cat.scheduleStart && cat.scheduleEnd);
     setName(category);
     setEmoji(cat?.emoji ?? '');
@@ -116,7 +123,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     // Intentionally keyed on the category name only — `cat` changes on every
     // store write, and re-syncing on those would stomp in-progress edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
+  }, [visible, category]);
 
   const scheduleSummary = scheduleOn && days.length > 0
     ? `${formatScheduleDays(days)}, ${formatScheduleTime(start)}–${formatScheduleTime(end)}`
@@ -171,8 +178,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     Alert.alert(
       defaultSegments.length > 0 ? `Move to ${segmentsSummary}?` : 'Clear time of day?',
       defaultSegments.length > 0
-        ? `${pendingCount} ${noun} in "${category}" will be held back until ${defaultSegments.join(' or ')} each day. This can be undone with shake-to-undo.`
-        : `${pendingCount} ${noun} in "${category}" will lose their time of day and show from the start of the day. This can be undone with shake-to-undo.`,
+        ? `${pendingCount} ${noun} in "${category}" will be held back until ${defaultSegments.join(' or ')} each day. You can shake to undo this right after.`
+        : `${pendingCount} ${noun} in "${category}" will lose their time of day and show from the start of the day. You can shake to undo this right after.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -253,8 +260,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     confirmDelete({
       title: 'Delete category',
       message: taskCount > 0
-        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. This can be undone with shake-to-undo.`
-        : `Delete "${category}"? This can be undone with shake-to-undo.`,
+        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. You can shake to undo this right after.`
+        : `Delete "${category}"? You can shake to undo this right after.`,
       onConfirm: () => { Keyboard.dismiss(); animateLayout(); deleteCategory(category); onClose(); },
     });
   };

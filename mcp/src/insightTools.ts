@@ -26,6 +26,7 @@ import type { Replica } from './replica';
 import { serializeTask, serializeTasks, type SerializedTask } from './serialize';
 import { listProjects, resolveRange, type DayRange, type LogRangeInput } from './tools';
 import { activeTimeZone } from './timeZone';
+import { vacationState, type VacationState } from './vacationTools';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -75,7 +76,8 @@ export interface Overview {
   timeZone: string;
   /** The logical today: before `dayResetTime` it is still yesterday by the person's reckoning. */
   today: { date: string; weekday: string; dayStartsAt: string; weekStartsOn: string };
-  vacation?: { on: true; until?: string };
+  /** Present while vacation mode is on: since when, until when, the trip that switched it on if one did, and what it hides (`vacationTools.ts`). */
+  vacation?: VacationState & { on: true };
   /** Open top-level tasks in each of the app's lenses. The four lenses are disjoint. */
   counts: {
     today: number;
@@ -152,9 +154,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       dayStartsAt: settings.dayResetTime,
       weekStartsOn: WEEKDAYS[settings.weekStartsOn] ?? 'Sunday',
     },
-    vacation: settings.vacationMode
-      ? { on: true, ...(settings.vacationEnd ? { until: settings.vacationEnd } : {}) }
-      : undefined,
+    vacation: settings.vacationMode ? (vacationState(replica) as VacationState & { on: true }) : undefined,
     counts: {
       today: visible,
       later,
@@ -336,7 +336,10 @@ export function completionHistory(replica: Replica, input: CompletionHistoryInpu
     !t.parentId
     && t.completed
     && (input.category ? t.category === input.category : true)
-    && (input.projectId ? t.projectId === input.projectId : true)
+    // A project's history leaves archived rows out, as every reader of a
+    // project's members does (CLAUDE.md, "Projects"); the whole log keeps
+    // them, as the Logbook does.
+    && (input.projectId ? t.projectId === input.projectId && !t.archived : true)
     && (input.tag ? t.tags.includes(input.tag) : true)
     && inRange(t);
 

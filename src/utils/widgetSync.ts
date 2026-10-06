@@ -19,7 +19,7 @@ import { hiddenEventKey } from './hiddenEvents';
 import type { BusyEvent } from './calendarBusy';
 import { kitchenInventory } from './kitchenInventory';
 import { listedAnywhere } from './groceryLists';
-import { buildPantryIndex, parseQueuedDisposals, resolveQueuedPantryItem } from './pantryIndex';
+import { buildPantryIndex, parseQueuedDisposals, planQueuedDisposals } from './pantryIndex';
 import { widgetBridge } from './widgetBridge';
 import { haptics } from './haptics';
 
@@ -116,29 +116,21 @@ async function processPendingAddTasks(): Promise<void> {
 // and the shelf-life offer from the second — with `markOutOfMany`'s undo
 // snapshot taken ahead of both, so one undo still restores the row whole.
 //
-// A count of 0 back from the mark means the row was already out of it, and
-// the answer is to record nothing: a second disposal for one box would be
-// evidence of something that didn't happen, and `itemDisposal.ts` is explicit
-// that these counts are the record rather than an estimate.
+// Which rows get the pair, and which are skipped (a name with no row, a row
+// already out of it, a row said twice), is `planQueuedDisposals`' decision,
+// read against the catalog once before anything is written.
 async function processPendingDisposals(): Promise<void> {
   const bridge = widgetBridge();
   if (!bridge) return;
   try {
     const queued = parseQueuedDisposals(await bridge.drainPendingDisposals());
-    if (queued.length === 0) return;
-    let applied = 0;
-    for (const entry of queued) {
-      // Re-read rather than destructuring once: each pass writes `items`, and
-      // a stale array would resolve the next name against the catalog as it
-      // stood before.
-      const { items, markOutOfMany, recordDisposal } = useGroceryStore.getState();
-      const item = resolveQueuedPantryItem(entry, items);
-      if (!item) continue;
-      if (markOutOfMany([item.id], undefined) === 0) continue;
-      recordDisposal(item.id, entry.outcome);
-      applied += 1;
+    const { items, markOutOfMany, recordDisposal } = useGroceryStore.getState();
+    const plan = planQueuedDisposals(queued, items);
+    if (plan.length === 0) return;
+    for (const { itemId, outcome } of plan) {
+      markOutOfMany([itemId], undefined);
+      recordDisposal(itemId, outcome);
     }
-    if (applied === 0) return;
     haptics.success();
     // Silent otherwise, mirroring processPendingAddTasks: the row is already
     // correct and there is nothing to look at. The exception is the shelf-life

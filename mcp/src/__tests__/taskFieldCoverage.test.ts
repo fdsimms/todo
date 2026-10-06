@@ -52,19 +52,13 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'reminderUtcOffsetMinutes', 'createdAt', 'archivedAt', 'previousOccurrenceId',
   ],
 
-  // Read by an aggregate tool or the replica (review_tasks, completion_history,
-  // a project or person page), where the grouping is the answer, not a field on
-  // one task.
-  'grouping the aggregate tools already answer': [
-    'seriesId', 'personIds',
-  ],
-
   // Settings Claude has no reason to read or set per task, or that are only
-  // reachable through a template or a rule the editor derives.
+  // reachable through a template or a rule the editor derives. A series' repeat
+  // (`seriesMonthDays`, `seriesRepeatMonths`) has no editor of its own yet; a
+  // date answer filling a trip's departure (`deliverableSetsAway`) is a
+  // template nomination, and complete_task's answer already lands it.
   'per-task settings with no MCP use yet': [
-    'deadlineOffsetDays', 'deadlineMonthDay', 'reminderOffsetDays', 'reminderTracksVisibility',
-    'followWaterTarget', 'supplyGroceryItemId', 'deliverableSetsAway', 'streakRequiresWindow',
-    'seriesMonthDays', 'seriesRepeatMonths', 'vacationPause', 'excludeFromSuggestions',
+    'deliverableSetsAway', 'seriesMonthDays', 'seriesRepeatMonths',
   ],
 };
 

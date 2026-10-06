@@ -203,6 +203,14 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     setSuggestLoading(false);
     setSuggestAsked(false);
   }, [visible, itemId]);
+  // The same, for a proposal still on its way when that reset ran: it landed
+  // after the clear, so butter's substitutes were offered under margarine, or
+  // under a sheet that had been closed. Read after the await and compared
+  // with the item the request was for.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  const itemIdRef = useRef(itemId);
+  useEffect(() => { itemIdRef.current = itemId; }, [itemId]);
 
   // Asked for, never fired on open. This sheet is now the grocery row's swap
   // glyph as well as the authoring funnel, so opening it stopped meaning "I
@@ -217,10 +225,12 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     setSuggestAsked(true);
     setSuggestLoading(true);
     const excluded = [item.name, ...existing.map(s => s.item.name)];
+    const askedFor = item.id;
+    const stillHere = () => visibleRef.current && itemIdRef.current === askedFor;
     suggestSubstitutes(item.name, excluded)
-      .then(setSuggested)
-      .catch(e => setSuggestError(describeAIError(e)))
-      .finally(() => setSuggestLoading(false));
+      .then(result => { if (stillHere()) setSuggested(result); })
+      .catch(e => { if (stillHere()) setSuggestError(describeAIError(e)); })
+      .finally(() => { if (stillHere()) setSuggestLoading(false); });
   };
 
   const picked = items.find(i => i.id === pickedId) ?? null;
@@ -695,15 +705,19 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                       </TouchableOpacity>
                       {/* Only where the item is on a list to be swapped — see
                           the `onSwap` prop. The tap target for reviewing the
-                          link is the row body beside it, so the two readings
-                          of "tap a substitute" don't share one target. */}
+                          link is the row body above it, so the two readings
+                          of "tap a substitute" don't share one target. Under
+                          the name rather than beside it: the pill claimed its
+                          width first and the name got what was left. */}
                       {!!onSwap && (
-                        <InlineAction
-                          label="Use instead"
-                          icon="swap-horizontal"
-                          onPress={() => handleSwap(sub.item.id)}
-                          accessibilityLabel={`Put ${sub.item.name} on the list instead of ${item.name}`}
-                        />
+                        <View style={styles.recordedActions}>
+                          <InlineAction
+                            label="Use instead"
+                            icon="swap-horizontal"
+                            onPress={() => handleSwap(sub.item.id)}
+                            accessibilityLabel={`Put ${sub.item.name} on the list instead of ${item.name}`}
+                          />
+                        </View>
                       )}
                     </View>
                   );
@@ -871,16 +885,15 @@ function makeStyles(colors: Colors) {
     rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
     recordedSection: { paddingHorizontal: spacing.md },
     recordedRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.sm,
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 2,
       marginBottom: spacing.sm,
     },
-    recordedBody: { flex: 1 },
+    recordedBody: {},
+    recordedActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     suggestedSection: { paddingHorizontal: spacing.md },
     // The label carries the top margin when there are results; without one
     // this block is the first thing under the section above and needs its own.

@@ -46,6 +46,7 @@ import {
   getDeadlineFromMonthDay,
   getReminderOffsetDate,
 } from './dateUtils';
+import { carryClockTime } from './clockTime';
 import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 import { nextStreakRecord } from './streakRecord';
@@ -522,12 +523,12 @@ export function buildCompletion(
         nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
       } else if (effectiveDue && effective.reminderTime) {
         const original = new Date(effective.reminderTime);
-        const next = new Date(
-          effective.reminderOffsetDays !== null
-            ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
-            : effectiveDue
-        );
-        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+        const onto = effective.reminderOffsetDays !== null
+          ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
+          : effectiveDue;
+        // carryClockTime places the hour on the successor's logical day, so a
+        // small-hours reminder under a late day start doesn't move a day early.
+        const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
         nextReminderTime = next.toISOString();
         nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
       } else if (nextDeferUntil && effective.reminderTime) {

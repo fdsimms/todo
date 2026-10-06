@@ -436,10 +436,13 @@ export function CalendarScreen() {
   const stepMonth = (delta: number) => {
     haptics.tap();
     const next = addMonths(displayMonth, delta);
-    const now = new Date();
+    // The logical today, as goToToday and the initial state use: in the grace
+    // window before dayResetTime the calendar date is already tomorrow, and
+    // quick-add dates its task from whichever day is selected here.
+    const today = getLogicalToday();
     setExpandedTaskId(null);
     setDisplayMonth(next);
-    setSelectedKey(dayKeyOf(isSameMonth(next, now) ? now : startOfMonth(next)));
+    setSelectedKey(dayKeyOf(isSameMonth(next, today) ? today : startOfMonth(next)));
   };
 
   const goToToday = () => {

@@ -35,6 +35,7 @@ import {
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useFocusSession } from '../hooks/useFocusSession';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { asksOnCompletion } from '../utils/deliverables';
 import { DeliverablePromptQueue } from './DeliverablePromptQueue';
@@ -80,7 +81,11 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
 
-  const { session, now } = useFocusSession();
+  const { session: liveSession, now } = useFocusSession();
+  // Held through the dismissal (useSheetSubject): the session ends in the same
+  // commit `visible` drops, and a sheet torn out of the tree can't hold its own
+  // close back (see noUnmountedSheet.test.ts).
+  const session = useSheetSubject(liveSession);
   const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);

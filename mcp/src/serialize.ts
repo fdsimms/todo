@@ -90,6 +90,21 @@ export interface SerializedTask {
   missed?: boolean;
   /** Which of the app's generators wrote this task unasked (weather, birthday, meal...). Absent on anything a person typed. */
   generatedBy?: string;
+  /**
+   * Shared by every date of one task given several dates ("the 10th and the
+   * 15th"): each date is its own row, and this is what says they are one
+   * commitment rather than a duplicate. Absent on an ordinary task.
+   */
+  seriesId?: string;
+  /** The people this task is about (`personIds`), named through list_people's own records. */
+  people?: { id: string; name: string }[];
+  /**
+   * Hidden, and its streak protected, while vacation mode is on
+   * (`vacationPause`). Worth a place on the row because a task hidden this way
+   * has no moment it will surface at, so a list it is missing from can only be
+   * explained by the flag.
+   */
+  vacationPause?: true;
 }
 
 /** Drops keys whose value is null, undefined, or an empty array. */
@@ -99,11 +114,30 @@ function compact<T extends object>(o: T): T {
   ) as T;
 }
 
-export function serializeTask(replica: Replica, task: Task): SerializedTask {
+/**
+ * Person id to display name, built once per list rather than once per task.
+ * Only read when a task names somebody, so a list with no people on it costs
+ * nothing.
+ */
+function personNames(replica: Replica): Map<string, string> {
+  return new Map(replica.people().map(p => [p.id, p.nickname?.trim() || p.name]));
+}
+
+export function serializeTask(replica: Replica, task: Task, names?: Map<string, string>): SerializedTask {
   const steps = task.chainItems ?? [];
   // A single-item chain is not a chain (see `activeChainStep`), so it gets no
   // step line — the title already is the step.
   const step = steps.length > 1 ? steps[task.chainIndex ?? 0] : undefined;
+  const personIds = task.personIds ?? [];
+  // An id with no person behind it (deleted, or not synced yet) is dropped
+  // rather than reported as a nameless entry, the resolve-or-shrug every
+  // cross-row pointer in the app takes.
+  const people = personIds.length > 0
+    ? (() => {
+        const lookup = names ?? personNames(replica);
+        return personIds.flatMap(id => (lookup.has(id) ? [{ id, name: lookup.get(id)! }] : []));
+      })()
+    : [];
 
   return compact({
     id: task.id,
@@ -141,6 +175,9 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     notNeeded: replica.isNotNeeded(task) ? true : undefined,
     missed: task.missedAt ? true : undefined,
     generatedBy: task.generatedKind ?? undefined,
+    seriesId: task.seriesId ?? undefined,
+    people,
+    vacationPause: task.vacationPause ? true : undefined,
   });
 }
 
@@ -150,5 +187,6 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
  * not get quietly re-ordered on the way out.
  */
 export function serializeTasks(replica: Replica, tasks: Task[]): SerializedTask[] {
-  return tasks.map(t => serializeTask(replica, t));
+  const names = tasks.some(t => (t.personIds?.length ?? 0) > 0) ? personNames(replica) : undefined;
+  return tasks.map(t => serializeTask(replica, t, names));
 }

@@ -20,7 +20,10 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     deliverableKind: () => null,
     deliverableOptions: () => [],
     isBlocked: (t: Task) => !!t.blockedById,
+    liveBlockers: (t: Task) => tasks.filter(b => b.id === t.blockedById && !b.completed && !b.archived),
     isNotNeeded: () => false,
+    // The real awaySpanOf keeps an end only when it falls after the start.
+    awaySpan: (p: Project) => (p.awayStart ? { start: new Date(p.awayStart), end: p.awayEnd && p.awayEnd > p.awayStart ? new Date(p.awayEnd) : null } : null),
     ...over,
   } as unknown as Replica;
 }
@@ -43,6 +46,14 @@ describe('getProject', () => {
     expect(result.recentlyDone).toEqual([{ id: 'd', title: 'Measure', completedAt: '2026-10-01T10:00:00.000Z' }]);
   });
 
+  it('does not name a finished blocker as waitsOn', () => {
+    const done = task({ id: 'a', title: 'Pick colour', completed: true, completedAt: '2026-10-01T10:00:00' });
+    const after = task({ id: 'b', title: 'Buy paint', blockedById: 'a' });
+    const result = getProject(stub([done, after], { isBlocked: () => false }), 'p1')!;
+    expect(result.open.map(t => t.id)).toEqual(['b']);
+    expect(result.open[0].waitsOn).toBeUndefined();
+  });
+
   it('lists decisions from the replica, and carries an answer onto a recently done row', () => {
     const answered = task({ id: 'q', title: 'Ceremony format?', completed: true, completedAt: '2026-10-02T09:00:00.000Z', deliverableValue: 'City Hall', deliverableWhy: 'Under 20 guests' } as Partial<Task> & { id: string; title: string });
     const result = getProject(stub([...tasks, answered], {
@@ -57,6 +68,19 @@ describe('getProject', () => {
 
   it('is null for an unknown project', () => {
     expect(getProject(stub([]), 'nope')).toBeNull();
+  });
+
+  it('shows the away span, the destination and the vacation nomination, and leaves a half-set end out', () => {
+    const trip = { ...project, awayStart: '2026-11-03T12:00:00.000Z', awayEnd: '2026-11-10T12:00:00.000Z', destination: 'Lisbon', awayPauses: true } as unknown as Project;
+    expect(getProject(stub([], { projects: () => [trip] }), 'p1')!.project).toMatchObject({
+      awayStart: trip.awayStart, awayEnd: trip.awayEnd, destination: 'Lisbon', pausesTasksWhileAway: true,
+    });
+    const halfSet = { ...trip, awayEnd: '2026-11-01T12:00:00.000Z', awayPauses: false } as unknown as Project;
+    const detail = getProject(stub([], { projects: () => [halfSet] }), 'p1')!.project;
+    expect(detail).toMatchObject({ awayStart: trip.awayStart, destination: 'Lisbon' });
+    expect(detail).not.toHaveProperty('awayEnd');
+    expect(detail).not.toHaveProperty('pausesTasksWhileAway');
+    expect(getProject(stub([]), 'p1')!.project).not.toHaveProperty('awayStart');
   });
 });
 
@@ -80,6 +104,29 @@ describe('createProject', () => {
 describe('updateProject', () => {
   it('refuses an empty change', () => {
     expect(() => updateProject(stub([]), 'p1', {})).toThrow(/Nothing to change/);
+  });
+
+  describe('the away span', () => {
+    const trip = { ...project, awayStart: '2026-11-03T12:00:00.000Z', awayEnd: '2026-11-10T12:00:00.000Z', destination: 'Lisbon', awayPauses: true, awayListId: null } as unknown as Project;
+    const replicaWith = (after: Partial<Project>) => stub([], {
+      projects: () => [trip],
+      updateProject: jest.fn(() => ({ ...trip, ...after })),
+    });
+
+    it('says when the return moved with the departure, which the replica does as the editor does', () => {
+      const moved = updateProject(replicaWith({ awayStart: '2026-11-06T12:00:00.000Z', awayEnd: '2026-11-13T12:00:00.000Z' }), 'p1', { awayStart: '2026-11-06' });
+      expect(moved.awayNote).toMatch(/moved with the departure.*2026-11-13/);
+      // An end given alongside was asked for, so there is nothing to point out.
+      const both = updateProject(replicaWith({ awayStart: '2026-11-06T12:00:00.000Z', awayEnd: '2026-11-13T12:00:00.000Z' }), 'p1', { awayStart: '2026-11-06', awayEnd: '2026-11-13' });
+      expect(both).not.toHaveProperty('awayNote');
+    });
+
+    it('says what clearing the departure took with it', () => {
+      const cleared = updateProject(replicaWith({ awayStart: null, awayEnd: null, destination: null, awayPauses: false }), 'p1', { awayStart: null });
+      expect(cleared.awayNote).toMatch(/also cleared the return date, the destination/);
+      const bare = stub([], { projects: () => [project], updateProject: jest.fn(() => project) });
+      expect(updateProject(bare, 'p1', { awayStart: null })).not.toHaveProperty('awayNote');
+    });
   });
 
   describe('moving the event', () => {

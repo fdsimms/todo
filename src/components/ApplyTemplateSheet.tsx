@@ -62,6 +62,7 @@ import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuest
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { TextField } from './TextField';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
   visible: boolean;
@@ -129,7 +130,12 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * unchecked, including whole nested-template blocks; a conditioned one starts
  * on what the answers say), then create them all as real tasks.
  */
-export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
+export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
+  // Held past the host clearing it, so the `return null` below can't tear the
+  // presented sheet out of the tree while it is still closing: every host
+  // clears the template in the same commit that lowers `visible`, and that
+  // unmount is the freeze CLAUDE.md's SheetModal notes describe.
+  const template = useSheetSubject(liveTemplate);
   const colors = useColors();
   const { isDark } = useTheme();
   const textScaleFactor = useTextScale();

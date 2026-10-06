@@ -136,7 +136,7 @@ export function DayTimeSettings() {
             at midnight, and stayed wrong until the row was touched once. A
             restore or a sync merge can part them the same way. */}
         {segment('dayReset', 'Morning', 'sunny', formatHHMM(dayResetTime!),
-          { first: true, hint: '"Today" flips and streaks reset at this time' })}
+          { first: true, hint: 'The new day starts and streaks reset at this time' })}
         {segment('afternoon', 'Afternoon starts', 'partly-sunny', formatHHMM(afternoonStart))}
         {segment('evening', 'Evening starts', 'moon-outline', formatHHMM(eveningStart))}
         {segment('night', 'Night starts', 'moon', formatHHMM(nightStart))}

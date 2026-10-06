@@ -611,29 +611,12 @@ describe('linkIconFor', () => {
 
 describe('openInAppUrl', () => {
   beforeEach(() => {
-    mockResetToToday.mockClear();
-    mockResetToGroceries.mockClear();
-    mockResetToRecipes.mockClear();
-    mockResetToRecipeDetail.mockClear();
-    mockResetToMealPlan.mockClear();
-    mockResetToKitchen.mockClear();
-    mockResetToPeople.mockClear();
-    mockResetToFoodLog.mockClear();
-    mockResetToProjectPull.mockClear();
-    mockResetToDeload.mockClear();
-    mockOpenQuickAdd.mockClear();
-    mockOpenQuickAddEvent.mockClear();
-    mockAddTask.mockClear();
+    // Every mock, not a list of them: the list had drifted behind the mocks
+    // above (mockEntryById was missing), so a `not.toHaveBeenCalled()` below
+    // read the previous test's call. Calls only; no mock here carries a
+    // return value a test would want kept.
+    jest.clearAllMocks();
     mockDemoActive = false;
-    mockEnqueueWidgetCompletion.mockClear();
-    mockStopCookTimer.mockClear();
-    mockStopPrepTimer.mockClear();
-    mockFinishCookForRecipe.mockClear();
-    mockRemoveStepTimer.mockClear();
-    mockResetToFocusSession.mockClear();
-    mockFocusAdvance.mockClear();
-    mockFocusPause.mockClear();
-    mockFocusResume.mockClear();
   });
 
   // The Today widget's "Add event" shortcut — see WidgetShared.swift's

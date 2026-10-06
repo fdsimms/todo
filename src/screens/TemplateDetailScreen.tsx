@@ -221,9 +221,9 @@ export function TemplateDetailScreen() {
   const handleUngroup = (groupId: string, title: string) => {
     haptics.warning();
     confirmDelete({
-      title: 'Unstack',
-      message: `Remove the "${title}" stack? Its items stay in the template.`,
-      confirmLabel: 'Unstack',
+      title: 'Ungroup',
+      message: `Remove the "${title}" group? Its items stay in the template.`,
+      confirmLabel: 'Ungroup',
       onConfirm: () => {
         if (!templateId) return;
         animateLayout();
@@ -610,22 +610,28 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             ) : null}
           </>
         )}
+        {/* The answers this item rides on, named the way `Optional` is: both
+            say whether the row arrives ticked, and a conditioned item is
+            otherwise indistinguishable from an unconditional one while
+            scanning the template. Accent-tinted rather than grey, because
+            this one is a rule the author wrote and not a state of the row.
+            Under the title rather than beside it: an answer is the author's
+            own words, and beside them the title got what was left. */}
+        {!broken && (conditionLabels.length > 0 || item.optional) && (
+          <View style={styles.badgeRow}>
+            {conditionLabels.map((label, i) => (
+              <View key={i} style={[styles.optionalBadge, styles.conditionBadge]}>
+                <Text style={[styles.optionalBadgeText, styles.conditionBadgeText]} numberOfLines={1}>{label}</Text>
+              </View>
+            ))}
+            {item.optional && (
+              <View style={styles.optionalBadge}>
+                <Text style={styles.optionalBadgeText}>Optional</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
-      {/* The answers this item rides on, named the way `Optional` is: both say
-          whether the row arrives ticked, and a conditioned item is otherwise
-          indistinguishable from an unconditional one while scanning the
-          template. Accent-tinted rather than grey, because this one is a rule
-          the author wrote and not a state of the row. */}
-      {conditionLabels.length > 0 && !broken && conditionLabels.map((label, i) => (
-        <View key={i} style={[styles.optionalBadge, styles.conditionBadge]}>
-          <Text style={[styles.optionalBadgeText, styles.conditionBadgeText]} numberOfLines={1}>{label}</Text>
-        </View>
-      ))}
-      {item.optional && !broken && (
-        <View style={styles.optionalBadge}>
-          <Text style={styles.optionalBadgeText}>Optional</Text>
-        </View>
-      )}
       {!selectionMode && broken && (
         <View style={styles.brokenActions}>
           <TouchableOpacity
@@ -718,7 +724,7 @@ function TemplateGroupHeader({
       <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.groupHeaderText}>{title}</Text>
       <Text style={styles.groupHeaderCount}>{count}</Text>
-      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Unstack ${title}`}>
+      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
         <Ionicons name="close-circle-outline" size={16} color={colors.textTertiary} />
       </TouchableOpacity>
     </TouchableOpacity>
@@ -838,9 +844,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xxs,
+  },
   conditionBadge: {
     backgroundColor: colors.accentSubtle,
-    maxWidth: 110,
   },
   conditionBadgeText: {
     color: colors.accent,

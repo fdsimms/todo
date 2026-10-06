@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Recipe } from '../types';
-import { extractRecipe, type ExtractedRecipe } from '../services/aiSuggestions';
+import { extractRecipe } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { cleanRecipeName, normalizeIngredient, recipeInBook } from '../utils/recipeUtils';
+import { normalizeIngredient, recipeInBook } from '../utils/recipeUtils';
 import { describeImportError } from '../services/recipePage';
-import { pickRecipePhoto, MAX_RECIPE_PHOTOS, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
-import type { ReferenceCandidate } from '../utils/recipeImportComponents';
+import { pickRecipePhoto, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
+import {
+  componentCommitFor,
+  coveringComponentKeys,
+  nextComponentPhotos,
+  seededComponentKeys,
+  type ComponentImportState,
+  type ReferenceCandidate,
+} from '../utils/recipeImportComponents';
 import { alertPhotoAccessDenied } from './useRecipeImportSource';
 import { haptics } from '../utils/haptics';
 
-/**
- * Where one referenced recipe has got to. Keyed by the candidate's `key`, so a
- * re-extraction that returns the same references lands on the same rows.
- */
-export type ComponentImportState =
-  | { status: 'idle' }
-  /** The picker is open, or its downscale is still running. */
-  | { status: 'picking' }
-  | { status: 'reading' }
-  /** `photoCount` is how many photos the read combined — see `importFrom`. */
-  | { status: 'read'; extracted: ExtractedRecipe; photoCount: number }
-  /** Picked by hand from the recipe box — see `linkTo`. */
-  | { status: 'linked'; recipe: Recipe }
-  | { status: 'failed'; message: string };
+// The state lives beside the candidates it is keyed by, with the rules that
+// read it; re-exported so the row component keeps importing it from here.
+export type { ComponentImportState } from '../utils/recipeImportComponents';
 
 const IDLE: ComponentImportState = { status: 'idle' };
 
@@ -87,7 +83,7 @@ export function useRecipeComponentImports(
     statesRef.current = {};
     photosRef.current = {};
     setStates({});
-    setAccepted(new Set(candidates.filter(c => c.match).map(c => c.key)));
+    setAccepted(seededComponentKeys(candidates));
     setDismissed(new Set());
     // `seed` stands in for the candidate list: a new array identity every
     // render would otherwise re-seed the ticks out from under the user.
@@ -133,15 +129,13 @@ export function useRecipeComponentImports(
    * the answer they just gave is a second ask for the same thing. Untick is
    * still right there if the read came back wrong.
    *
-   * A photo taken while the row already shows a read result is *added* to it
-   * rather than replacing it — the page-turn case `MAX_RECIPE_PHOTOS` caps —
-   * and the combined set is re-read as one recipe. Any other prior status
-   * (idle, or a failed read) starts a fresh one-photo set instead: a failure
-   * has nothing worth combining with, and "try again" should mean exactly
-   * that rather than "add to whatever didn't work".
+   * Whether a photo adds a page to a read result or starts a fresh set is
+   * `nextComponentPhotos`' rule; the combined set is re-read as one recipe.
    */
   const importFrom = useCallback(async (key: string, source: RecipePhotoSource) => {
-    const appending = statesRef.current[key]?.status === 'read';
+    // What the row showed when the photo was taken is what decides that, so
+    // it's read before the row goes to 'picking'.
+    const prior = statesRef.current[key];
     setState(key, { status: 'picking' });
     let photo;
     try {
@@ -162,7 +156,7 @@ export function useRecipeComponentImports(
       return;
     }
 
-    const photos = (appending ? [...(photosRef.current[key] ?? []), photo] : [photo]).slice(0, MAX_RECIPE_PHOTOS);
+    const photos = nextComponentPhotos(prior, photosRef.current[key], photo);
     photosRef.current = { ...photosRef.current, [key]: photos };
 
     setState(key, { status: 'reading' });
@@ -209,15 +203,10 @@ export function useRecipeComponentImports(
    * recipe, or one that's been read and is about to be created. An unread
    * reference covers nothing, however it's ticked.
    */
-  const acceptedKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const candidate of candidates) {
-      if (!accepted.has(candidate.key)) continue;
-      const state = states[candidate.key];
-      if (candidate.match || state?.status === 'read' || state?.status === 'linked') keys.add(candidate.key);
-    }
-    return keys;
-  }, [candidates, accepted, states]);
+  const acceptedKeys = useMemo(
+    () => coveringComponentKeys(candidates, accepted, states),
+    [candidates, accepted, states],
+  );
 
   /**
    * Writes the accepted references onto a parent recipe that now exists.
@@ -253,22 +242,13 @@ export function useRecipeComponentImports(
   const commitTo = useCallback((parentRecipeId: string) => {
     const store = useRecipeStore.getState();
     for (const candidate of candidates) {
-      if (!accepted.has(candidate.key)) continue;
-
-      if (candidate.match) {
-        store.addComponent(parentRecipeId, candidate.match.id);
+      const commit = componentCommitFor(candidate, accepted, states[candidate.key]);
+      if (commit.kind === 'skip') continue;
+      if (commit.kind === 'link') {
+        store.addComponent(parentRecipeId, commit.recipeId);
         continue;
       }
-
-      const state = states[candidate.key];
-      if (state?.status === 'linked') {
-        store.addComponent(parentRecipeId, state.recipe.id);
-        continue;
-      }
-      if (state?.status !== 'read') continue;
-      const extracted = state.extracted;
-      const name = cleanRecipeName(extracted.name || candidate.reference.name);
-      if (!name) continue;
+      const { name, extracted } = commit;
 
       // The book first, since the name is only refused within it. The parent's
       // own book first: the reference said "page 45", which is page 45 *of

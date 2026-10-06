@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, logFood, logMedication, logMood, saveRecipe, updateMoodLog } from '../logTools';
+import { atFrom, logFood, logMedication, logMood, logWater, saveRecipe, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -21,6 +21,14 @@ let replica: ReturnType<typeof openReplica>;
 
 beforeAll(() => {
   replica = openReplica(':memory:');
+});
+
+// The food log is read across every day by the logFood tests, so a glass of
+// water the logWater tests left on another day would read as an entry the
+// write under test had made.
+beforeEach(() => {
+  mockRaw.runSync('DELETE FROM food_logs');
+  replica.refresh();
 });
 
 describe('saveRecipe', () => {
@@ -62,6 +70,47 @@ describe('logFood', () => {
 
   it('refuses an entry with no figures', () => {
     expect(() => logFood(replica, { label: 'Tea', amounts: {} })).toThrow(/at least one amount/);
+  });
+
+  it('sends water to log_water rather than adding a row beside the day\'s water entry', () => {
+    expect(() => logFood(replica, { label: 'Water', amounts: { waterMl: 250 }, apply: true })).toThrow(/log_water/);
+    // A drink stating anything else is a food, not the day's water.
+    expect(logFood(replica, { label: 'Juice', amounts: { waterMl: 200, calorieKcal: 90 } }).applied).toBe(false);
+  });
+});
+
+describe('logWater', () => {
+  const dayEntries = (day: string) => replica.foodLogEntries(day, day);
+
+  it('starts the day\'s water entry on the first glass and steps it on the next, reporting the day\'s total', () => {
+    const first = logWater(replica, { ml: 250, at: '2026-09-02' });
+    expect(first).toMatchObject({ day: '2026-09-02', added: '250 ml', dayTotal: '250 ml', dayTotalMl: 250 });
+    expect(first.note).toMatch(/first water/);
+
+    const second = logWater(replica, { ml: 500, at: '2026-09-02' });
+    expect(second).toMatchObject({ id: first.id, dayTotal: '750 ml', dayTotalMl: 750 });
+    expect(second.note).toMatch(/stepper/);
+    // One row for the day, stating the whole volume, the way the stepper leaves it.
+    const rows = dayEntries('2026-09-02');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ label: 'Water', quantity: '750 ml', healthSampleIds: [] });
+    expect(rows[0].nutrition.amounts).toEqual({ waterMl: 750 });
+  });
+
+  it('takes fluid ounces, and answers in the unit the person counts water in', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useSettingsStore } = require('../../../src/store/useSettingsStore') as typeof import('../../../src/store/useSettingsStore');
+    useSettingsStore.getState().setWaterUnit('flOz');
+    try {
+      const glass = logWater(replica, { flOz: 8, at: '2026-09-03' });
+      expect(glass).toMatchObject({ added: '8 fl oz', dayTotal: '8 fl oz' });
+      expect(dayEntries('2026-09-03')[0].nutrition.amounts.waterMl).toBe(237);
+    } finally {
+      useSettingsStore.getState().setWaterUnit('ml');
+    }
+    expect(() => logWater(replica, { ml: 100, flOz: 4 })).toThrow(/one of the two/);
+    expect(() => logWater(replica, {})).toThrow(/one of the two/);
+    expect(() => logWater(replica, { ml: 0 })).toThrow(/positive/);
   });
 });
 

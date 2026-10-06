@@ -640,7 +640,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
 
   // ==== render. Everything below is JSX ====

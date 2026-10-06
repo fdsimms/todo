@@ -49,18 +49,18 @@ jobs:
       # this moves the one CI run somewhere a date bug shows instead of adding a
       # second run. Kiritimati is the zone #2848 surfaced in. `npm run test:tz`
       # still covers the other two zones on demand.
-      - run: npm test -- --maxWorkers=2
+      #
+      # In random order, because a test that leans on the one before it (a
+      # store left set, a mock whose return value was changed and never put
+      # back, a table not cleared) passes in declaration order and in no other,
+      # so a run in declaration order cannot catch it. The whole suite is
+      # order-independent, and running it randomised is what keeps it so: this
+      # is what caught a real ordering bug in the change that first shared a
+      # seeded database across a block of tests. Jest prints the seed on a
+      # failure; `npx jest --randomize --seed=<n> <file>` replays it.
+      - run: npm test -- --maxWorkers=2 --randomize
         env:
           TZ: Pacific/Kiritimati
-      # The demo-seed blocks in this file share one seeded database across all
-      # the tests in each block, which is only correct while none of them
-      # writes — and a test that starts writing still passes in declaration
-      # order, so the ordinary run above cannot catch it. Randomised order can,
-      # and did: it is what caught a real ordering bug in the change that
-      # introduced the sharing. Scoped to this one file on purpose, because the
-      # rest of the suite is not order-independent yet and would fail here for
-      # reasons no pull request caused.
-      - run: npx jest src/__tests__/useDemoStore.test.ts --randomize
       # The two docs that are generated from the tree rather than written by
       # hand. Both are committed so an agent can read them without running a
       # build; these checks are what stops them going stale the way the

@@ -1,4 +1,4 @@
-import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken } from '../utils/clockTime';
+import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken, effectiveWindowEndTime, onLogicalDay, carryClockTime } from '../utils/clockTime';
 
 const NOW = new Date(2025, 5, 10, 14, 30, 0); // Tue Jun 10 2025, 2:30 PM
 
@@ -120,5 +120,73 @@ describe('dateToHHMM', () => {
     for (const hhmm of ['00:30', '01:30', '03:00']) {
       expect(dateToHHMM(hhmmToDate(hhmm, fallBack))).toBe(hhmm);
     }
+  });
+});
+
+describe('effectiveWindowEndTime', () => {
+  it('returns the end when it is after the start', () => {
+    expect(effectiveWindowEndTime('09:00', '17:00')).toBe('17:00');
+  });
+
+  it('passes an end with no start through', () => {
+    expect(effectiveWindowEndTime(null, '17:00')).toBe('17:00');
+    expect(effectiveWindowEndTime('09:00', null)).toBeNull();
+  });
+
+  // Under a midnight reset "22:00–02:00" runs into the small hours, which the
+  // single logical day both gates anchor to can't hold: open-ended.
+  it('is open-ended when the end is not after the start', () => {
+    expect(effectiveWindowEndTime('22:00', '02:00')).toBeNull();
+    expect(effectiveWindowEndTime('09:00', '09:00')).toBeNull();
+  });
+
+  // "After" is measured from dayResetTime, because onLogicalDay rolls a clock
+  // time earlier than the reset onto the next date. Under a 4 AM reset the
+  // overnight window closes six hours after it opens, and it is "03:00–05:00"
+  // that inverts: its start rolls to tomorrow while its end stays on today.
+  // Compared as raw minutes the second kept its end and was expired all day.
+  it('measures "after the start" from dayResetTime', () => {
+    expect(effectiveWindowEndTime('22:00', '02:00', '04:00')).toBe('02:00');
+    expect(effectiveWindowEndTime('03:00', '05:00', '04:00')).toBeNull();
+    expect(effectiveWindowEndTime('09:00', '17:00', '04:00')).toBe('17:00');
+  });
+});
+
+describe('onLogicalDay (clock time on a logical day)', () => {
+  const dayStart = new Date(2026, 7, 26, 4, 0); // a day that starts at 04:00
+
+  it('places a time after the reset on the day start\'s own date', () => {
+    expect(onLogicalDay(dayStart, '09:30')).toEqual(new Date(2026, 7, 26, 9, 30));
+    expect(onLogicalDay(dayStart, '04:00')).toEqual(dayStart);
+  });
+
+  // The small hours belong to the end of the logical day, not the morning
+  // before it began.
+  it('rolls a time earlier than the reset onto the next date', () => {
+    expect(onLogicalDay(dayStart, '01:00')).toEqual(new Date(2026, 7, 27, 1, 0));
+    expect(onLogicalDay(dayStart, '03:59')).toEqual(new Date(2026, 7, 27, 3, 59));
+  });
+
+  it('is the plain clock time under a midnight reset', () => {
+    const midnight = new Date(2026, 7, 26, 0, 0);
+    expect(onLogicalDay(midnight, '01:00')).toEqual(new Date(2026, 7, 26, 1, 0));
+  });
+});
+
+describe('carryClockTime', () => {
+  // A 1 AM reminder on a task due logical Aug 20 (under a 4 AM reset) fires at
+  // Aug 21 01:00; carried onto a due date of Aug 27 it is Aug 28 01:00, not
+  // Aug 27 01:00, which is still logical Aug 26.
+  it('keeps a small-hours reminder at the end of its new day', () => {
+    const original = new Date(2026, 7, 21, 1, 0);
+    const due = new Date(2026, 7, 27, 12, 0);
+    expect(carryClockTime(due, original, '04:00')).toEqual(new Date(2026, 7, 28, 1, 0));
+  });
+
+  it('copies a daytime reminder onto the new date', () => {
+    const original = new Date(2026, 7, 20, 17, 30);
+    const due = new Date(2026, 7, 27, 12, 0);
+    expect(carryClockTime(due, original, '04:00')).toEqual(new Date(2026, 7, 27, 17, 30));
+    expect(carryClockTime(due, original, '00:00')).toEqual(new Date(2026, 7, 27, 17, 30));
   });
 });

@@ -39,6 +39,7 @@ import {
   dbGetTagRegistry,
   dbInsertTask,
   dbUpdateTask,
+  dbUpdateTaskCalendarLinks,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -168,6 +169,8 @@ jest.mock('../db/database', () => ({
   dbInsertTemplateCategory: jest.fn(),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
+  // The post-sync reconcile's write: the link columns only, stamp kept.
+  dbUpdateTaskCalendarLinks: jest.fn(),
   dbDeleteTask: jest.fn(),
   dbDeleteSubtasks: jest.fn(),
   dbClearAllPins: jest.fn(),
@@ -582,10 +585,27 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks clears calls, not return values, so every shared mock a test
+  // below overrides with mockReturnValue/mockResolvedValue is put back to its
+  // factory default here; otherwise the override outlives its test and the
+  // suite only passes in declaration order.
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
+  (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+  (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+  (dbGetMealPlanEntry as jest.Mock).mockReturnValue(null);
+  (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: null, externalId: null });
+  (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue(null);
+  const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as { useCalendarStore: { getState: jest.Mock } };
+  useCalendarStore.getState.mockReturnValue({ events: [], pastEvents: [], loaded: false });
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as { useWeatherStore: { getState: jest.Mock } };
+  useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  const { useTransitStore } = jest.requireMock('../store/useTransitStore') as { useTransitStore: { getState: jest.Mock } };
+  useTransitStore.getState.mockReturnValue({ snapshot: null });
+  const { useTravelTimeStore } = jest.requireMock('../store/useTravelTimeStore') as { useTravelTimeStore: { getState: jest.Mock } };
+  useTravelTimeStore.getState.mockReturnValue({ estimates: {} });
   useTaskStore.setState({
-    tasks: [], initialized: false, lastAction: null, undoStack: [], redoStack: [],
-    completionHoldIds: [], completionCollapseIds: [], quotaHoldIds: [],
+    tasks: [], tagRegistry: [], initialized: false, lastAction: null, undoStack: [], redoStack: [],
+    readyOffer: null, completionHoldIds: [], completionCollapseIds: [], quotaHoldIds: [],
   });
   useTaskGroupStore.setState({ groups: [], initialized: false });
   useProjectStore.setState({ projects: [], initialized: false });
@@ -1172,6 +1192,10 @@ describe('addTask', () => {
     expect(dbUpdateTask).toHaveBeenLastCalledWith(expect.objectContaining({
       id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
     }));
+    // A save is a real local edit: the row changed here, so the link rides the
+    // whole-row write and the row is restamped. The stamp-keeping write is for
+    // the reconcile after a sync (see reconcileSyncedEvents below).
+    expect(dbUpdateTaskCalendarLinks).not.toHaveBeenCalled();
   });
 
   it('writes nothing when the reconcile hands back the link the task already has', async () => {
@@ -15795,6 +15819,21 @@ describe('deleting a use-up task', () => {
     expect(useTaskStore.getState().tasks.find(t => t.id === task.id)).toBeDefined();
   });
 
+  // Deleting history is not declining the generator: a completed use-up task
+  // is one that was done, and clearing the Logbook used to write the item's
+  // "never again" for every one of them.
+  it('clearing the Logbook with a completed use-up row writes no opt-out', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
+    useTaskStore.getState().completeTask(task.id);
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)?.completed).toBe(true);
+
+    useTaskStore.getState().clearLogbook();
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)).toBeUndefined();
+    expect(useGroceryStore.getState().items[0].useUpTask).toBeNull();
+  });
+
   it('leaves an ordinary task\'s delete alone', () => {
     seedItem();
     const task = useTaskStore.getState().addTask({ title: 'Buy stamps' });
@@ -15906,8 +15945,11 @@ describe('completing a leftover-backed meal task', () => {
     frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = (overrides: Partial<typeof leftover> = {}) => {
+    // pendingUseUpLeftoverId reset too: the finish prompt is skipped while a
+    // use-up sheet is open on the same container, and another test leaving
+    // one pending would turn that guard into an order dependency.
     useLeftoverStore.setState({
-      leftovers: [{ ...leftover, ...overrides }], pendingFinishLeftoverId: null, initialized: true,
+      leftovers: [{ ...leftover, ...overrides }], pendingFinishLeftoverId: null, pendingUseUpLeftoverId: null, initialized: true,
     });
   };
 
@@ -17259,9 +17301,11 @@ describe('reconcileSyncedEvents', () => {
     await settle();
 
     expect(rowOf('rent')).toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'rent', calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2',
-    }));
+    // The row is another device's edit, not this one's: the link columns are
+    // written on their own and the row keeps its stamp, so the next merge
+    // can't put this device's copy over the peer's.
+    expect(dbUpdateTaskCalendarLinks).toHaveBeenCalledWith('rent', { calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
+    expect(dbUpdateTask).not.toHaveBeenCalled();
   });
 
   it('drops the link once the reconcile deleted the event of a task completed elsewhere', async () => {
@@ -17305,6 +17349,37 @@ describe('reconcileSyncedEvents', () => {
     expect(syncDeadlineEvent).not.toHaveBeenCalled();
   });
 
+  it('drops the pointer to a time block that has gone without restamping the row', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'report', title: 'Write the Q3 report', timeBlockEventId: 'block-gone' })],
+    });
+    sync.readTimeBlockEvent.mockResolvedValue(null);
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['report'] }));
+    await settle();
+
+    expect(rowOf('report')).toMatchObject({ timeBlockEventId: null, timeBlockExternalId: null });
+    expect(dbUpdateTaskCalendarLinks).toHaveBeenCalledWith('report', { timeBlockEventId: null, timeBlockExternalId: null });
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+  });
+
+  it('keeps a server id read for a synced task\'s block without restamping the row', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'report', title: 'Write the Q3 report', estimatedMinutes: 90, timeBlockEventId: 'block-1' })],
+    });
+    sync.readTimeBlockEvent.mockResolvedValue({
+      title: 'Write the Q3 report', start: new Date(2026, 7, 13, 14, 0), end: new Date(2026, 7, 13, 15, 30), allDay: false,
+    });
+    mockExternalIds.mockResolvedValueOnce({ 'block-1': 'ext-block-1' });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['report'] }));
+    await settle();
+
+    expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'block-1', timeBlockExternalId: 'ext-block-1' });
+    expect(dbUpdateTaskCalendarLinks).toHaveBeenCalledWith('report', { timeBlockEventId: 'block-1', timeBlockExternalId: 'ext-block-1' });
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+  });
+
   // A local uncomplete deletes this device's completion event and clears the
   // id; one made on another device used to leave both here.
   it('deletes and unlinks this device\'s completion event when another device reopened the task', async () => {
@@ -17317,7 +17392,10 @@ describe('reconcileSyncedEvents', () => {
 
     expect(sync.deleteCalendarEvent).toHaveBeenCalledWith('done-1');
     expect(rowOf('rent').completionCalendarEventId).toBeNull();
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', completionCalendarEventId: null }));
+    expect(dbUpdateTaskCalendarLinks).toHaveBeenCalledWith('rent', {
+      completionCalendarEventId: null, completionCalendarEventExternalId: null,
+    });
+    expect(dbUpdateTask).not.toHaveBeenCalled();
   });
 
   it('keeps the completion event of a task still completed after a sync', async () => {

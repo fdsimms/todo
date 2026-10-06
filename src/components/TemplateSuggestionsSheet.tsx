@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Alert,
   View,
@@ -51,19 +51,33 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
   // on a row you didn't write is worse than an empty one, since it reads as
   // something the app knows.
 
+  // Bumped by every request and by closing the sheet, so only the newest
+  // request's answer is kept — the same guard ProjectTaskSuggestionsSheet
+  // keeps. Regenerate tapped twice, or the sheet closed and reopened on
+  // another template mid-request, otherwise let an older batch land over a
+  // newer one, or fill a sheet that had already been closed.
+  const requestIdRef = useRef(0);
+  const templateIdRef = useRef(templateId);
+  useEffect(() => { templateIdRef.current = templateId; }, [templateId]);
+
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const askedFor = templateIdRef.current;
+    const stillHere = () => requestId === requestIdRef.current && templateIdRef.current === askedFor;
     setLoading(true);
     setError(null);
     try {
       const result = await suggestTemplateItems(templateName, existingTitles);
+      if (!stillHere()) return;
       setSuggestions(result);
       setAccepted(new Set(result.map((_, i) => i)));
     } catch (e) {
+      if (!stillHere()) return;
       setSuggestions([]);
       setAccepted(new Set());
       setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      if (stillHere()) setLoading(false);
     }
     // existingTitles/templateName are read at call time; the sheet only fires
     // this when it opens or on an explicit regenerate, so they need not be deps.
@@ -73,6 +87,8 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
   // Generate fresh suggestions each time the sheet opens; clear on close.
   useEffect(() => {
     if (!visible) {
+      requestIdRef.current++;
+      setLoading(false);
       setSuggestions([]);
       setAccepted(new Set());
       setError(null);

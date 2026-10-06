@@ -3949,6 +3949,109 @@ export function dbFillMealCalendarExternalIds(found: Readonly<Record<string, str
 }
 
 /**
+ * A task's calendar link fields, as `Task` names them, against the columns
+ * holding them. Every column `dbUpdateTaskCalendarLinks` may write, and all of
+ * them device-local (`SYNC_DEVICE_LOCAL_COLUMNS.tasks`): the three events this
+ * device wrote for the task, each with its calendar server id beside it.
+ */
+const TASK_CALENDAR_LINK_COLUMNS = {
+  calendarEventId: 'calendar_event_id',
+  calendarEventExternalId: 'calendar_event_external_id',
+  completionCalendarEventId: 'completion_calendar_event_id',
+  completionCalendarEventExternalId: 'completion_calendar_event_external_id',
+  timeBlockEventId: 'time_block_event_id',
+  timeBlockExternalId: 'time_block_external_id',
+} as const;
+
+/** The same for a planned meal's one event (`SYNC_DEVICE_LOCAL_COLUMNS.meal_plan_entries`). */
+const MEAL_CALENDAR_LINK_COLUMNS = {
+  calendarEventId: 'calendar_event_id',
+  calendarEventExternalId: 'calendar_event_external_id',
+} as const;
+
+/** The calendar link fields of a task a reconcile may write on their own. */
+export type TaskCalendarLinks = Partial<Pick<Task, keyof typeof TASK_CALENDAR_LINK_COLUMNS>>;
+/** The calendar link fields of a planned meal a reconcile may write on their own. */
+export type MealCalendarLink = Partial<Pick<MealPlanEntry, keyof typeof MEAL_CALENDAR_LINK_COLUMNS>>;
+
+/**
+ * Writes only the device-local columns named onto one row of `table`, and puts
+ * the row's sync stamp back afterwards. `fillCalendarExternalIds`' write, for a
+ * reconcile over a row this device didn't edit.
+ *
+ * **The row keeps the sync stamp it had.** Any UPDATE restamps a row as a local
+ * change (the stamp trigger), and the stamp is what decides which copy wins
+ * against a peer's. A pass that runs unattended after a sync, bringing this
+ * device's calendar events in line with rows another device changed, writes
+ * nothing but the event ids back, and those columns never leave this device.
+ * Restamped, every row it touched would read as edited here just now, at the
+ * one moment a peer's edits are least likely to have all arrived, and the next
+ * sync would put this device's stale copy over each of them. Putting the old
+ * stamp back, which the trigger lets through as the sync apply's own writes are
+ * let through, says nothing about the row changed that a peer could want.
+ *
+ * Which is why only a device-local column may come through here: a synced
+ * column written without a restamp would never reach a peer at all. The check
+ * is against `SYNC_DEVICE_LOCAL_COLUMNS`, so a column added to one of the maps
+ * above has to be on that list too, and `database.test.ts` exercises every
+ * column in both maps.
+ *
+ * A row that is gone by the time the reconcile's device write resolves is left
+ * alone, as the callers already leave it: nothing to patch.
+ */
+function updateDeviceLocalColumns(
+  table: 'tasks' | 'meal_plan_entries',
+  id: string,
+  sets: Readonly<Record<string, string | null>>
+): void {
+  const columns = Object.keys(sets);
+  if (columns.length === 0) return;
+  for (const column of columns) {
+    if (!isDeviceLocalColumn(table, column)) {
+      throw new Error(`${table}.${column} syncs, so it goes through the row's ordinary update`);
+    }
+  }
+  db.withTransactionSync(() => {
+    const row = db.getFirstSync<{ updated_at: string | null }>(
+      `SELECT updated_at FROM ${table} WHERE id = ?`, [id]
+    );
+    if (!row) return;
+    db.runSync(
+      `UPDATE ${table} SET ${columns.map(c => `${c} = ?`).join(', ')} WHERE id = ?`,
+      [...columns.map(c => sets[c]), id]
+    );
+    db.runSync(`UPDATE ${table} SET updated_at = ? WHERE id = ?`, [row.updated_at ?? null, id]);
+  });
+}
+
+/** The columns `links` names, mapped by `map`; a field present as `undefined` writes null. */
+function linkColumns(
+  map: Readonly<Record<string, string>>,
+  links: Readonly<Record<string, string | null | undefined>>
+): Record<string, string | null> {
+  const sets: Record<string, string | null> = {};
+  for (const [field, column] of Object.entries(map)) {
+    if (field in links) sets[column] = links[field] ?? null;
+  }
+  return sets;
+}
+
+/**
+ * Writes the calendar link fields `links` names onto a task, and nothing else,
+ * keeping the row's sync stamp (`updateDeviceLocalColumns`). For a reconcile
+ * that runs over a row this device didn't edit; one that follows a local edit
+ * writes the whole row through `dbUpdateTask`, since that row did change here.
+ */
+export function dbUpdateTaskCalendarLinks(id: string, links: TaskCalendarLinks): void {
+  updateDeviceLocalColumns('tasks', id, linkColumns(TASK_CALENDAR_LINK_COLUMNS, links));
+}
+
+/** `dbUpdateTaskCalendarLinks` for a planned meal's event. */
+export function dbUpdateMealCalendarLink(id: string, link: MealCalendarLink): void {
+  updateDeviceLocalColumns('meal_plan_entries', id, linkColumns(MEAL_CALENDAR_LINK_COLUMNS, link));
+}
+
+/**
  * Every device event id on a task or a planned meal with no calendar server
  * id beside it yet, which is what the launch backfill reads server ids for.
  * Read from the tables rather than the stores, because the meal plan store

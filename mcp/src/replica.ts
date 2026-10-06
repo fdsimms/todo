@@ -29,6 +29,7 @@
 // own modules import it exactly this way.
 import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 
 import { shimModule } from './expoSqliteShim';
@@ -43,12 +44,15 @@ import type {
   FoodLogEntry,
   HealthRule,
   Milestone,
+  FocusSessionRecord,
+  SavedView,
+  SavedViewClause,
   ScreenTimeRule,
   TitleRule,
   WeatherRule,
   GroceryItem,
-  GroceryListEntry,
   GroceryList,
+  GroceryListEntry,
   ItemProduct,
   ItemShopLink,
   ItemSubLink,
@@ -76,6 +80,8 @@ import type {
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
+import type { AwaySpan } from '../../src/utils/awayDates';
+import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
@@ -141,7 +147,13 @@ export interface ReplicaSettings {
   activeHoursStart: string;
   activeHoursEnd: string;
   vacationMode: boolean;
+  /** Stamped when the mode was switched on, so it records when they went and never when they are going. */
+  vacationStart: string | null;
   vacationEnd: string | null;
+  /** The project whose away dates switched vacation mode on, or null when a person did (docs/arch/away-dates.md). */
+  vacationDrivenBy: string | null;
+  /** The unit the person counts water in. Display only: `waterMl` is stored in millilitres whichever is picked. */
+  waterUnit: WaterUnit;
   /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
   kitchenEnabled: boolean;
   /** Simplified mode: the advanced half of the app is hidden. */
@@ -218,6 +230,20 @@ export interface ReplicaLib {
   receiptMatch: typeof import('../../src/utils/receiptMatch');
   storeAliases: typeof import('../../src/utils/storeAliases');
   groceryPlural: typeof import('../../src/utils/groceryPlural');
+  focusStats: typeof import('../../src/utils/focusStats');
+}
+
+/** What switching vacation mode did, read at the moment the hide applied (see `Replica.setVacationMode`). */
+export interface VacationSwitchOutcome {
+  on: boolean;
+  /** Open top-level tasks the mode hides: their own `vacationPause`, or a category set to hide on vacation. */
+  hiddenTasks: number;
+  /** The categories set to hide on vacation, by name. */
+  hiddenCategories: string[];
+  /** Streaks re-dated on the way off (`forgiveVacationStreaks`); 0 on the way on. */
+  forgivenStreaks: number;
+  /** True when the call only moved the end date of a mode already on. */
+  endOnly: boolean;
 }
 
 /** The rule lists an agent may edit, by the name the tools use. */
@@ -574,6 +600,33 @@ export interface ProjectPatch {
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
+  /**
+   * The away span (docs/arch/away-dates.md): the day you leave and the day you
+   * are back, stored at noon like `eventDate`. Checked the way the project
+   * editor checks them: an end needs a start and has to fall after it; moving
+   * the start moves an existing end with it, keeping the trip the same length;
+   * clearing the start clears the end, the destination and both nominations
+   * (`awayPauses`, `awayListId`) that hang off the span.
+   */
+  awayStart?: string | null;
+  awayEnd?: string | null;
+  /** Free text, where the trip is going. Needs a span to belong to. */
+  destination?: string | null;
+}
+
+/** A glass (or a bottle) of water, added onto the day's single water entry. */
+export interface WaterInput {
+  /** Millilitres added. */
+  ml: number;
+  at?: Date;
+}
+
+export interface WaterLogOutcome {
+  entry: FoodLogEntry;
+  /** Every entry on the day that states water, summed (`waterTotalMl`). */
+  dayTotalMl: number;
+  /** 'stepped' when the day's row was raised; 'created' for the first glass; 'added' when the day's row was already written to Apple Health and a second row had to carry this one. */
+  how: 'created' | 'stepped' | 'added';
 }
 
 export interface Replica {
@@ -621,13 +674,28 @@ export interface Replica {
    * one at home.
    */
   groceryListEntries(): GroceryListEntry[];
+  /**
+   * A project's away span through the app's own reader (`awaySpanOf`), which
+   * drops an end with no start or on or before it, so every project read here
+   * reports the span the phone would. Null when the project has none.
+   */
+  awaySpan(project: Project): AwaySpan | null;
 
   isVisible(task: Task): boolean;
+  /** Hidden because vacation mode is on: its own `vacationPause`, or a category set to hide on vacation. */
+  isHiddenForVacation(task: Task): boolean;
   /** Ids of a rotation's members already logged in the period it is in now. */
   rotationDoneIds(task: Task): string[];
   isUnscheduled(task: Task): boolean;
   isInbox(task: Task): boolean;
   isBlocked(task: Task): boolean;
+  /**
+   * The tasks this one still waits on: the blockers that can still hold it
+   * (`liveBlockersOf`), so a finished, archived or deleted one is not named.
+   * The answer-gate question that read also lists is left out, since the
+   * tools report it on its own (`onlyIfAnswer`).
+   */
+  liveBlockers(task: Task): Task[];
   /** On a branch that wasn't taken: its answer gate's question got another answer (`isTaskNotNeeded`). */
   isNotNeeded(task: Task): boolean;
   visibleAt(task: Task): Date;
@@ -681,6 +749,13 @@ export interface Replica {
   lookAhead(days: number): LookAhead;
   /** The logical day an instant falls on, under the user's `dayResetTime`. */
   logicalDayKeyOf(iso: string): string;
+  /**
+   * The calendar day an instant falls on, for a date the app anchors to a
+   * day's own start (`dueDate`, `deadline`, `deferUntil`): the app's own
+   * `dayKeyOf`, so a date at local midnight is neither the day before under a
+   * late `dayResetTime` nor the UTC date cut off the string.
+   */
+  dayKeyOf(iso: string): string;
   /** Completed by a person, as opposed to swept as missed. Every statistic counts only these. */
   isRealCompletion(task: Task): boolean;
   /** The app's own line on a live bounty (what it is worth, what the next push costs), or null when there is none. */
@@ -699,6 +774,49 @@ export interface Replica {
   /** Every mood check-in, unfiltered: the insights need the whole log. */
   allMoodLogs(): MoodLog[];
   milestones(): Milestone[];
+  /**
+   * Milestones through `useMilestoneStore`'s own actions: a blank label is
+   * refused as the sheet refuses it, and a date is stored as given (the tool
+   * anchors it at noon, as `MilestoneSheet` does). The store is loadable here
+   * (it imports only the db layer and `generateId`), so nothing is lifted.
+   */
+  addMilestone(label: string, date: Date): Milestone;
+  updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
+  deleteMilestone(id: string): Milestone;
+  /**
+   * Finished focus sessions, newest first: `focus_session_log`, what Stats
+   * reads. The session in flight is `focus_sessions`, which is in
+   * `SYNC_EXCLUDED_TABLES` (docs/arch/focus-sessions.md: a cursor two devices
+   * could fight over), so it never reaches a replica and there is nothing live
+   * to read or drive from here.
+   */
+  focusHistory(): FocusSessionRecord[];
+  /** The person's saved views, in their own order. */
+  savedViews(): SavedView[];
+  /**
+   * The tasks one view holds now, through the app's own matcher
+   * (`filterTasksForView`) with the app's own held-back rule and logical day,
+   * the way `SavedViewsScreen` counts them.
+   */
+  savedViewTasks(clauses: readonly SavedViewClause[]): Task[];
+  /** A view through `useSavedViewStore.createView`, which takes the next slot at the bottom of the list. The clauses are already checked. */
+  createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView;
+  deleteSavedView(id: string): SavedView;
+  /**
+   * Vacation mode through the settings store's own setter, the way the
+   * Settings toggle does it. On the way off the protected streaks are forgiven
+   * first (`forgiveVacationStreaks`, the rule every off-path shares), or a
+   * paused daily habit reads as broken the moment the pause lifts. `until` is
+   * the day it turns itself off, stored as that day's start as the Settings
+   * picker stores it; with the mode already on, a call with `until` moves only
+   * the end date. Already on without `until`, or already off, is refused.
+   *
+   * `vacationDrivenBy` is deliberately left alone on the way off: the phone's
+   * `checkAwayVacation` reads "mode off while a trip still names it" as the
+   * person declining that trip, and clearing it here would make the trip arm
+   * the mode again tomorrow.
+   */
+  setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome;
   /** Every tag the person has, used or not. */
   tagRegistry(): string[];
   /**
@@ -726,6 +844,15 @@ export interface Replica {
    * never written to Apple Health: only the device a meal is logged on may.
    */
   logFood(input: FoodInput): FoodLogEntry;
+  /**
+   * Water, onto the day's single water entry (`waterLog.ts`): the first glass
+   * creates the row through `buildFoodLogEntry`, every later one raises it, as
+   * the food log screen's stepper does. A row the phone has already written to
+   * Apple Health is not rewritten, since only that phone can correct the
+   * sample; the glass goes on a second row instead, which the app's totals sum
+   * exactly as they sum two rows left by a sync. Never a Health write itself.
+   */
+  logWater(input: WaterInput): WaterLogOutcome;
   /** A mood check-in through the mood store, symptoms and tags in the spellings already in the log. */
   logMood(input: MoodInput): MoodLog;
   /** A dose through the medication store, the name in the spelling already in the log. */
@@ -2126,8 +2253,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
     groceryListEntries: () => db.dbGetAllGroceryListEntries(),
+    groceryLists: () => db.dbGetAllGroceryLists(),
+    awaySpan(project: Project): AwaySpan | null {
+      const awayDates = require('../../src/utils/awayDates') as typeof import('../../src/utils/awayDates'); // eslint-disable-line @typescript-eslint/no-require-imports
+      return awayDates.awaySpanOf(project, useSettingsStore.getState().dayResetTime);
+    },
 
     isVisible: (task: Task) => visibility.isTaskVisible(task),
+    isHiddenForVacation: (task: Task) => visibility.isHiddenForVacation(task),
     rotationDoneIds: (task: Task) =>
       rotationMembers(task, dates.getCurrentDayStart(), useSettingsStore.getState().weekStartsOn)
         .filter(m => m.doneAt !== null)
@@ -2135,6 +2268,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),
+    liveBlockers: (task: Task) => {
+      const own = new Set(blocking.blockerIdsOf(task));
+      return blocking.liveBlockersOf(task, blocking.resolverFor(tasks())).filter(b => own.has(b.id));
+    },
     isNotNeeded: (task: Task) => visibility.isTaskNotNeeded(task),
     visibleAt: (task: Task) => visibility.getVisibleAt(task),
 
@@ -2184,7 +2321,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         activeHoursStart: s.activeHoursStart,
         activeHoursEnd: s.activeHoursEnd,
         vacationMode: s.vacationMode,
+        vacationStart: s.vacationStart,
         vacationEnd: s.vacationEnd,
+        vacationDrivenBy: s.vacationDrivenBy,
+        waterUnit: s.waterUnit,
         kitchenEnabled: s.kitchenEnabled,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
@@ -2209,6 +2349,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     logicalDayKeyOf: (iso: string) =>
       dates.getLogicalDayKey(new Date(iso), useSettingsStore.getState().dayResetTime),
+    dayKeyOf: (iso: string) => dates.dayKeyOf(new Date(iso)),
     isRealCompletion: (task: Task) => missed.isRealCompletion(task),
     describeBounty: (task: Task) => rewards.describeBounty(task),
     onTimeSummary: (list: readonly Task[]) => stats.onTimeSummary(list),
@@ -2272,11 +2413,105 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         receiptMatch: require('../../src/utils/receiptMatch'),
         storeAliases: require('../../src/utils/storeAliases'),
         groceryPlural: require('../../src/utils/groceryPlural'),
+        focusStats: require('../../src/utils/focusStats'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
     milestones: () => db.dbGetAllMilestones(),
+    // The store, loaded per write and hydrated before acting: a handful of
+    // rows, and a dry run's rollback must not leave it holding a milestone the
+    // database no longer has.
+    addMilestone(label: string, date: Date): Milestone {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMilestoneStore } = require('../../src/store/useMilestoneStore') as typeof import('../../src/store/useMilestoneStore');
+      const store = useMilestoneStore.getState();
+      store.initialize();
+      const milestone = store.addMilestone(label, date);
+      if (!milestone) throw new Error('A milestone needs a label: what changed, in a few words.');
+      return milestone;
+    },
+    updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMilestoneStore } = require('../../src/store/useMilestoneStore') as typeof import('../../src/store/useMilestoneStore');
+      const store = useMilestoneStore.getState();
+      store.initialize();
+      if (!store.milestones.some(m => m.id === id)) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
+      if (patch.label !== undefined && !patch.label.trim()) throw new Error('A milestone needs a label: what changed, in a few words.');
+      store.updateMilestone(id, {
+        ...(patch.label !== undefined ? { label: patch.label } : {}),
+        ...(patch.date !== undefined ? { date: patch.date.toISOString() } : {}),
+      });
+      return useMilestoneStore.getState().milestones.find(m => m.id === id)!;
+    },
+    deleteMilestone(id: string): Milestone {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMilestoneStore } = require('../../src/store/useMilestoneStore') as typeof import('../../src/store/useMilestoneStore');
+      const store = useMilestoneStore.getState();
+      store.initialize();
+      const milestone = store.milestones.find(m => m.id === id);
+      if (!milestone) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
+      store.removeMilestone(id);
+      return milestone;
+    },
+    focusHistory: () => db.dbGetFocusSessionLog(),
+    savedViews: () => db.dbGetAllSavedViews(),
+    savedViewTasks(clauses: readonly SavedViewClause[]): Task[] {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const savedViews = require('../../src/utils/savedViews') as typeof import('../../src/utils/savedViews');
+      return savedViews.filterTasksForView(tasks(), clauses, {
+        todayStart: dates.getCurrentDayStart(),
+        heldBack: visibility.isHeldBack,
+      });
+    },
+    createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
+      const store = useSavedViewStore.getState();
+      store.initialize();
+      return store.createView(name, icon, clauses);
+    },
+    deleteSavedView(id: string): SavedView {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
+      const store = useSavedViewStore.getState();
+      store.initialize();
+      const view = store.views.find(v => v.id === id);
+      if (!view) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
+      store.removeView(id);
+      return view;
+    },
+    setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const streaks = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks');
+      const settings = useSettingsStore.getState();
+      const hiddenCategories = () => useCategoryStore.getState().categories.filter(c => c.hideOnVacation).map(c => c.name);
+      // Only while the mode is on does isHiddenForVacation answer, so the count
+      // is taken after switching on and before switching off.
+      const hiddenTasks = () => tasks().filter(t => !t.parentId && !t.completed && !t.archived && visibility.isHiddenForVacation(t)).length;
+      // Stored as the day's start, as the Settings picker stores it, which is
+      // what checkVacationExpiry compares against.
+      const end = until === undefined ? undefined : until === null ? null : dates.getTaskDayStart(until).toISOString();
+
+      if (on) {
+        if (settings.vacationMode) {
+          if (end === undefined) throw new Error('Vacation mode is already on.');
+          settings.setVacationEnd(end);
+          return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, endOnly: true };
+        }
+        settings.setVacationMode(true, end ?? null);
+        return { on: true, hiddenTasks: hiddenTasks(), hiddenCategories: hiddenCategories(), forgivenStreaks: 0, endOnly: false };
+      }
+
+      if (!settings.vacationMode) throw new Error('Vacation mode is already off.');
+      const wasHiding = hiddenTasks();
+      const categories = hiddenCategories();
+      const forgiven = streaks.forgiveVacationStreaks(tasks(), dates.getCurrentDayStart().toISOString(), visibility.isHiddenForVacation);
+      forgiven.forEach(t => db.dbUpdateTask(t));
+      taskCache = null;
+      settings.setVacationMode(false);
+      return { on: false, hiddenTasks: wasHiding, hiddenCategories: categories, forgivenStreaks: forgiven.length, endOnly: false };
+    },
     tagRegistry: () => db.dbGetTagRegistry(),
     createRecipe(input: RecipeInput): Recipe {
       /* eslint-disable @typescript-eslint/no-require-imports */
@@ -2404,6 +2639,50 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!entry) throw new Error('That entry could not be logged.');
       db.dbInsertFoodLogEntry(entry);
       return entry;
+    },
+
+    logWater(input: WaterInput): WaterLogOutcome {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const water = require('../../src/utils/waterLog') as typeof import('../../src/utils/waterLog');
+      const builder = require('../../src/utils/foodLogEntry') as typeof import('../../src/utils/foodLogEntry');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      if (!Number.isFinite(input.ml) || input.ml <= 0) throw new Error('Water is logged as a positive number of millilitres.');
+      const at = input.at ?? new Date();
+      const dayKey = dates.getLogicalDayKey(at);
+      const dayEntries = () => db.dbGetFoodLogEntries(dayKey, dayKey);
+      const existing = water.waterEntryOf(dayEntries());
+
+      // The day's row is stepped unless the phone has written it to Apple
+      // Health: that sample names the volume the row held, and only the device
+      // that wrote it can retract and rewrite it (reviseEntry). Rewriting the
+      // row here would leave the medical record saying less than the diary.
+      // A second row is what two devices leave after a sync, and every reader
+      // sums the day (waterTotalMl), so the figure against the target is right
+      // either way.
+      const stepping = existing !== null && existing.healthSampleIds.length === 0;
+      const total = (stepping ? existing.nutrition.amounts.waterMl ?? 0 : 0) + input.ml;
+      const built = water.waterHelping(total, at);
+      if (!built) throw new Error('That is not an amount of water the log can hold.');
+
+      let entry: FoodLogEntry;
+      if (stepping) {
+        entry = { ...existing, ...built };
+        db.dbUpdateFoodLogEntry(entry);
+      } else {
+        const row = builder.buildFoodLogEntry(
+          { ...built, grams: null, slot: null, recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, at },
+          key => db.dbGetFoodLogEntries(key, key),
+          generateId,
+        );
+        if (!row) throw new Error('That is not an amount of water the log can hold.');
+        db.dbInsertFoodLogEntry(row);
+        entry = row;
+      }
+      return {
+        entry,
+        dayTotalMl: water.waterTotalMl(dayEntries()),
+        how: stepping ? 'stepped' : existing ? 'added' : 'created',
+      };
     },
 
     logMood(input: MoodInput): MoodLog {
@@ -3105,7 +3384,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
     },
 
-    groceryLists: () => db.dbGetAllGroceryLists(),
     shops: () => db.dbGetAllGroceryShops(),
     itemShopLinks: () => db.dbGetAllItemShopLinks(),
     itemSubLinks: () => db.dbGetAllItemSubLinks(),
@@ -3719,10 +3997,56 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!noon) throw new Error(`eventDate: "${content.eventDate}" is not a date I can read. Use an ISO date like 2027-06-14.`);
         content.eventDate = noon;
       }
+      // The away span, checked as ProjectEditor checks it (see ProjectPatch).
+      // Everything that hangs off the span is settled here and written in the
+      // same patch, so a half-written trip cannot land.
+      const before = store.projects.find(p => p.id === id)!;
+      const { awayStart, awayEnd, destination, ...contentRest } = content;
+      const away: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'destination' | 'awayPauses' | 'awayListId'>> = {};
+      if (awayStart !== undefined || awayEnd !== undefined || destination !== undefined) {
+        const noonOf = (value: string, field: string): string => {
+          const noon = eventNoonIso(value);
+          if (!noon) throw new Error(`${field}: "${value}" is not a date I can read. Use an ISO date like 2027-06-14.`);
+          return noon;
+        };
+        const start = awayStart === undefined ? before.awayStart : awayStart === null ? null : noonOf(awayStart, 'awayStart');
+        if (start === null) {
+          // Clearing the departure clears the return with it, and the
+          // destination and both nominations: each is about a trip that is no
+          // longer there (ProjectEditor's save does the same).
+          if (awayEnd) throw new Error('awayEnd needs awayStart: a return with no departure is not a trip.');
+          if (destination) throw new Error('destination needs awayStart: a place belongs to a trip, and this project has no away dates.');
+          Object.assign(away, { awayStart: null, awayEnd: null, destination: null, awayPauses: false, awayListId: null });
+        } else {
+          let end: string | null;
+          if (awayEnd !== undefined) {
+            end = awayEnd === null ? null : noonOf(awayEnd, 'awayEnd');
+          } else if (awayStart !== undefined && before.awayStart && before.awayEnd) {
+            // Moving the departure moves the return with it, keeping the trip
+            // the same length, as the editor does: a flight moved three days
+            // later is the same ten-day trip.
+            // Counted in calendar days and re-anchored at noon rather than
+            // shifted by milliseconds: across a clock change the latter lands
+            // an hour off noon, which `awaySpanOf` would then read as a day out.
+            const awayDates = require('../../src/utils/awayDates') as typeof import('../../src/utils/awayDates'); // eslint-disable-line @typescript-eslint/no-require-imports
+            const shiftDays = differenceInCalendarDays(new Date(start), new Date(before.awayStart));
+            end = awayDates.awayNoonIso(addDays(new Date(before.awayEnd), shiftDays));
+          } else {
+            end = before.awayEnd;
+          }
+          if (end !== null && new Date(end).getTime() <= new Date(start).getTime()) {
+            throw new Error('Coming back is before leaving. Pick a day after you leave.');
+          }
+          away.awayStart = start;
+          away.awayEnd = end;
+          if (destination !== undefined) away.destination = destination === null || !destination.trim() ? null : destination.trim();
+        }
+      }
+      const fields = { ...contentRest, ...away };
       db.dbTransaction(() => {
-        ensureCategory(content.defaultTaskCategory);
-        if (Object.keys(content).length > 0) {
-          store.updateProject(id, { ...content, ...(content.title ? { title: content.title.trim() } : {}) });
+        ensureCategory(fields.defaultTaskCategory);
+        if (Object.keys(fields).length > 0) {
+          store.updateProject(id, { ...fields, ...(fields.title ? { title: fields.title.trim() } : {}) });
         }
         if (completed !== undefined) useProjectStore.getState().applyProjectCompleted(id, completed);
         if (archived !== undefined) useProjectStore.getState().applyProjectArchived(id, archived);

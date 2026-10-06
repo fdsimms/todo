@@ -3,6 +3,7 @@ import {
   dbGetMealPlanEntries,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
+  dbUpdateMealCalendarLink,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
   dbGetMealPlanAddedToList,
@@ -25,6 +26,8 @@ jest.mock('../db/database', () => ({
   dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
   dbInsertMealPlanEntry: jest.fn(),
   dbUpdateMealPlanEntry: jest.fn(),
+  // The post-sync reconcile's write: the link columns only, stamp kept.
+  dbUpdateMealCalendarLink: jest.fn(),
   dbDeleteMealPlanEntry: jest.fn(),
   dbPurgeOldMealPlanEntries: jest.fn().mockReturnValue(0),
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
@@ -242,7 +245,7 @@ beforeEach(() => {
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
     lastAction: null, undoStack: [], redoStack: [],
-    cookRecap: null, plannedSlotCounts: {}, cookingCounts: null,
+    cookRecap: null, plannedSlotCounts: {}, cookingCounts: null, cookHistory: null,
   });
 });
 
@@ -2976,9 +2979,13 @@ describe('calendar events (#1494)', () => {
       await settle();
 
       expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Ragu' }));
-      expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'm-a', calendarEventId: 'evt-new' })
-      );
+      expect(getEntries()[0].calendarEventId).toBe('evt-new');
+      // The row is another device's edit, not this one's: the link is written
+      // on its own and the row keeps its sync stamp, so the next merge can't
+      // put this device's copy over the peer's. A local edit's reconcile
+      // (retitleRecipeEntries above) still writes the whole row.
+      expect(dbUpdateMealCalendarLink).toHaveBeenCalledWith('m-a', expect.objectContaining({ calendarEventId: 'evt-new' }));
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
     });
 
     it('deletes this device\'s event when no calendar is picked any more, same as a local edit', async () => {
@@ -2989,6 +2996,8 @@ describe('calendar events (#1494)', () => {
 
       expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
       expect(getEntries()[0].calendarEventId).toBeNull();
+      expect(dbUpdateMealCalendarLink).toHaveBeenCalledWith('m-a', { calendarEventId: null, calendarEventExternalId: null });
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
     });
 
     it('deletes the event of a meal another device removed', async () => {

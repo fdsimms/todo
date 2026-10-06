@@ -167,6 +167,39 @@ Tasks are serialized by `mcp/src/serialize.ts` rather than handed over as raw `T
 budget on `supplyDeclinedAtCount` is a tool result with no room left for the task list. What the
 model gets is what a row shows, plus the state a question could be about.
 
+`mcp/src/__tests__/taskFieldCoverage.test.ts` is what keeps that projection honest: every `Task`
+field is either read or written somewhere in the surface, or named in its `NOT_EXPOSED` list with
+the reason. The list is short now. The settings that used to sit in it as "no MCP use yet" turned
+out to have one each, and the shape of each answer follows from what the field does:
+
+- **A hide with no moment** (`vacationPause`). `hiddenUntil` can only name a date, and a task held
+  while vacation mode is on has none, so the row carries the flag and `get_task` says
+  `hiddenReason: "hidden while vacation mode is on"` through `isHiddenForVacation`, the app's own
+  reader, which also covers a category set to hide on vacation.
+- **A count the app writes** (`followWaterTarget`). `syncWaterQuotaTasks` rewrites `targetCount`
+  every day from the food log's water goal, so a count written by `update_task` would be
+  overwritten with nothing said. `get_task` shows `followsWaterTarget` on the target and
+  `taskFields.ts` refuses a `target` on such a task; `target: null` is still allowed and takes the
+  flag with it, since a task with no target has nothing to follow.
+- **A date recomputed by rule** (`deadlineOffsetDays` / `deadlineMonthDay`, and
+  `reminderOffsetDays` / `reminderTracksVisibility`). Shown as `deadlineRule` and `reminderRule`,
+  read-only. A `deadline` written by `update_task` to a task with a rule clears the rule, which is
+  what the editor's "Fixed date" pill does; `mergeTaskUpdate` leaves the two fields alone, so the
+  clear is `taskFields.ts`'s job, and the result says `deadlineRuleCleared` rather than leaving the
+  phone to show a recomputed date over the one that was written.
+- **Pointers worth naming** (`personIds`, `seriesId`, `supplyGroceryItemId`). People come back as
+  `people: [{ id, name }]` on every row, resolved once per list; a `seriesId` is on the row so two
+  dates of one task read as one commitment rather than a duplicate; a supply's linked catalog row
+  is named inside `supply.groceryItem`. A pointer to a row that is gone is dropped, as everywhere a
+  cross-row pointer dangles in the app.
+- **Two flags with no write** (`excludeFromSuggestions`, `streakRequiresWindow`): on `get_task`,
+  read-only, because the question they answer ("why did the app not suggest this", "why did the
+  streak not move") comes up and the answer is not visible anywhere else.
+
+What stays in `NOT_EXPOSED` is a series' own repeat (`seriesMonthDays`, `seriesRepeatMonths`), which
+the app's editor does not offer either, and `deliverableSetsAway`, a template nomination that
+`complete_task`'s date answer already lands without the model needing to know the flag.
+
 ## Working as an agent's surface, not only a data API
 
 The tools above answer "show me X". Once the server was reachable from the Claude apps it became a
@@ -327,6 +360,20 @@ Health rows written here reach the phone whatever its "Include health logs" swit
 governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not what it accepts.
 The Activity entry for a mood check-in or a dose names the kind of record and not its content,
 since the Activity list is about the app and should not show somebody's health.
+
+**Water is its own tool, `log_water`, because the food log keeps one water entry a day.**
+`waterLog.ts`'s rule is that eight glasses are one row stepped up eight times, not eight rows in
+the meal sections, and an entry stating only `waterMl` *is* that row (`isWaterEntry` is derived,
+not stored). So `log_food` given water alone would have minted a second water row beside the
+day's, and it refuses and points at `log_water` instead. The replica's `logWater` steps the day's
+row through `waterHelping` and `dbUpdateFoodLogEntry`, or starts it with `buildFoodLogEntry`, the
+two writes the screen's own stepper makes. The one case it will not do is rewrite a row the phone
+has written to Apple Health: that sample names the volume the row held, and only `reviseEntry` on
+that phone can retract and rewrite it, so the glass goes on a second row and the result says so.
+Two rows is what a sync between two phones already leaves, and every reader sums the day
+(`waterTotalMl`), so the figure against the target is right either way. The result reports the
+day's total in the person's `waterUnit`, which is display only (`waterMl` is stored in
+millilitres whichever is picked), and takes the amount in either unit for the same reason.
 
 ### Automations, now that they sync
 
@@ -754,6 +801,15 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   Moving the event is `update_project` with `moveTasks`, the app's own shift offer
   (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since
   nobody is there to tick it. Without `moveTasks` it moves nothing and says so.
+- **The away span** (`docs/arch/away-dates.md`) is on every project read as `awayStart`, `awayEnd`
+  and `destination`, through the replica's `awaySpan` (the app's `awaySpanOf`, so an end with no
+  start or on or before it is left out the way the phone leaves it out), and `update_project` sets
+  or clears it by the editor's rules: an end needs a start and falls after it, moving the start
+  moves an existing end by the same number of days, and clearing the start clears the end, the
+  destination and both nominations hanging off the span (`awayPauses`, `awayListId`). The
+  nominations themselves are not writable here. Whether vacation mode turns itself on for a trip
+  or the shopping list switches is the person's choice in the editor, and `get_project` shows the
+  first as `pausesTasksWhileAway` so the model can say what moving the dates will do.
 
 ### Stacks: a label, with one side effect the tools have to say out loud
 
@@ -1024,6 +1080,44 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
   became of it. Answered requests are purged after 30 days by the writing device.
 - **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
   the row. The phone re-reads each row just before writing, which makes the window one sync wide.
+
+### Focus sessions, milestones, saved views and the vacation switch
+
+Four areas had no MCP read or write, and the shape of each answer follows from what syncs:
+
+- **Focus sessions are history only, and that is the sync model working.** `focus_history` reads
+  `focus_session_log`, the finished sessions Stats reads (`focusStats.ts`: the summary, how
+  stretches ran against their plan, which is null below `MIN_ACCURACY_SAMPLES` and said rather than
+  hidden, and how many offered breaks were taken), with each step's task named through the replica.
+  The session in flight is `focus_sessions`, which `docs/arch/focus-sessions.md` keeps out of sync on
+  purpose (a cursor two devices could fight over), so no replica ever holds it: nothing here can say
+  what the person is working through now, or start, pause or advance a session, and the result's
+  `liveSession` says so in words the model can repeat.
+- **Milestones go through `useMilestoneStore`'s own actions** (`milestoneTools.ts`), which is
+  loadable here because it imports only the db layer. A blank label is refused as the sheet refuses
+  it, and a date is anchored at noon as `MilestoneSheet` anchors a picked day, because the row's
+  date is the split point every before/after read is built on. The Activity entry is titled by kind
+  ("Milestone"), never by its label, for the reason a mood entry is: "Started sertraline" is health
+  content, and the Activity list is about the app. Each milestone is its own split and the tools
+  never pair a start with a later stop; the contrast itself is `mood_insights`' to report.
+- **Saved views are read through the app's own matcher** (`filterTasksForView`, with the app's
+  held-back rule and logical day), so a view's count here is the count the Saved Views screen shows.
+  `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app
+  uses, and then compares what survived with what was asked: a clause the parser would drop, a
+  second clause of one kind, a category nobody has or a project id that is not theirs is refused
+  by name rather than stored as a view that means less than it was told to. There is deliberately
+  no update: a view owns no rows, so a wrong one is deleted and remade, and its name, icon and
+  clauses are edited in the app.
+- **The vacation switch is the settings store's own setter**, so what `set_vacation_mode` does is
+  what the Settings toggle does. The rule every off-path shares, that the protected streaks are
+  forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out
+  of `useTaskStore.forgivVacationStreaks` into `vacationStreaks.ts`, because the store imports
+  `useFocusStore` and so `expo-notifications`, which the server cannot load; the store and the
+  server now call one function. What the mode hides is counted by `isHiddenForVacation`, never
+  re-derived. `vacationDrivenBy` is left alone on the way off: `checkAwayVacation` reads "mode off
+  while a trip still names it" as the person declining that trip, and clearing it from here would
+  make the trip arm the mode again tomorrow. `get_overview`'s `vacation` carries the same state
+  (since, until, the driving trip, what it hides).
 
 ### The health logs have their own switch, and iCloud never gets them
 

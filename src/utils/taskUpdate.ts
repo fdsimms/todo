@@ -164,6 +164,22 @@ function movesToAnotherDay(t: Task, updates: Partial<Task>, dayResetTime: string
     !== getTaskDayStart(new Date(t.dueDate), dayResetTime).getTime();
 }
 
+/**
+ * Whether the patch changes the schedule, as opposed to naming it: a schedule
+ * field with a new value, or a due date on a different logical day (set or
+ * cleared counts; the same day re-stated does not).
+ */
+function scheduleChanged(t: Task, updates: Partial<Task>, dayResetTime: string): boolean {
+  return SCHEDULE_FIELDS.some(f => {
+    if (!(f in updates)) return false;
+    if (f === 'dueDate') {
+      if (!updates.dueDate || !t.dueDate) return (updates.dueDate ?? null) !== (t.dueDate ?? null);
+      return movesToAnotherDay(t, updates, dayResetTime);
+    }
+    return (updates[f] ?? null) !== (t[f] ?? null);
+  });
+}
+
 /** What the caller knows that the merge can't work out from the two rows. */
 export interface TaskUpdateContext {
   /** 'occurrence' keeps the row's old content as the series' defaults; 'series' drops them. */
@@ -362,7 +378,7 @@ export function mergeTaskUpdate(t: Task, updates: Partial<Task>, ctx: TaskUpdate
           }),
         }
       : {}),
-    // A schedule field written without the anchor beside it is "this is the
+    // A schedule field *changed* without the anchor beside it is "this is the
     // schedule now", so the grid's separate anchor goes with it (#1953) —
     // the same trigger the anchor *day* above uses, so removing a
     // recurrence outright leaves no stale anchor behind either. One rule
@@ -374,7 +390,13 @@ export function mergeTaskUpdate(t: Task, updates: Partial<Task>, ctx: TaskUpdate
     // A patch that names the field itself wins outright, which is both the
     // pull-forward writing the two together and a whole-snapshot undo
     // restoring what was there.
-    ...(!('recurrenceAnchorDate' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
+    //
+    // Changed, not merely named: the editor writes every schedule field on
+    // every save, so judged on presence alone a retitled pulled-forward task
+    // lost its grid and stepped on from the day it was pulled to. The
+    // same-day re-save the anchor-day rule above already protects stays a
+    // re-save here too.
+    ...(!('recurrenceAnchorDate' in updates) && scheduleChanged(t, updates, ctx.dayResetTime)
       ? { recurrenceAnchorDate: null }
       : {}),
     // Two rules that ride onto the successor a completion spawns, and so

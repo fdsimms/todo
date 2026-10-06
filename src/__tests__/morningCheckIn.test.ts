@@ -209,9 +209,18 @@ describe('isMorningCheckInCandidate', () => {
     expect(isMorningCheckInCandidate(makeTask({ dueDate: null, deadline: DEADLINE }), DAY_RESET)).toBe(false);
   });
 
-  it('is false for a paused vacation task', () => {
+  // The pause only withholds the task while vacation mode is on; with it off
+  // the schedule counts and a missed day is still worth asking about. It used
+  // to read the raw flag and skip the task in both states.
+  it('is false for a paused vacation task only while vacation mode is on', () => {
     const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, vacationPause: true });
-    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(true);
+    mockSettingsState.vacationMode = true;
+    try {
+      expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+    } finally {
+      mockSettingsState.vacationMode = false;
+    }
   });
 
   it('is false for a negative habit', () => {

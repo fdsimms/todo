@@ -50,6 +50,31 @@ const BARE_INLINE = /<[A-Z][\w.]*[^>\n]*\svisible(?=[\s/>])(?!=)/;
 /** `visible={true}` — a constant by another spelling, same missing close path. */
 const LITERAL_TRUE = /\bvisible=\{\s*true\s*\}/;
 
+/**
+ * The other way a sheet leaves the tree while on screen: the component returns
+ * `null` the moment its subject prop goes away, and its caller clears that
+ * subject in the same `onClose` that drops `visible`. `visible` is a real
+ * expression, so the three checks above pass, and the `SheetModal` is still
+ * torn out mid-dismissal (the LogMealPrompt freeze, by another route). A
+ * component-level guard is the tell: `if (!item) return null;` at the two-space
+ * indent of the component body, in a file that renders a `SheetModal` and never
+ * holds its subject with `useSheetSubject`. The fix is that hook: `visible`
+ * keeps reading the live prop and the contents read the held value, so the
+ * null return is only ever the never-opened state.
+ */
+const SUBJECT_GUARD = /^  if \(!\w+\) return null;/m;
+const RENDERS_SHEET = /<SheetModal\b/;
+const HOLDS_SUBJECT = /\buseSheetSubject\(/;
+
+/** Sheets whose component-level null return is not a subject going away. */
+const SUBJECT_GUARD_ALLOWED: Record<string, string> = {
+  'components/LogMealPrompt.tsx': 'shown is the held subject by hand (pending ?? lastPending.current), the fix useSheetSubject was later extracted from',
+  'components/SideMenuDrawer.tsx': 'isRendered is its own lazy-mount flag, lowered only once the close animation has finished',
+  'components/DeloadSheet.tsx': 'plan is a snapshot set at open and never cleared, so the null return is only the never-opened state',
+  'components/ProjectPullSheet.tsx': 'plan is a snapshot set at open and never cleared, so the null return is only the never-opened state',
+  'components/AwayShiftSheet.tsx': 'plan is a snapshot set at open and never cleared, so the null return is only the never-opened state',
+};
+
 const files = sourceFiles(SRC).map(f => ({
   rel: f.slice(SRC.length + 1),
   src: readFileSync(f, 'utf8'),
@@ -94,5 +119,34 @@ describe('sheets mounted only while open', () => {
 
   it('passes no visible={true}', () => {
     expect(offenders(LITERAL_TRUE)).toEqual([]);
+  });
+
+  it('recognises a component-level subject guard, and only that', () => {
+    expect(SUBJECT_GUARD.test('  if (!category) return null;\n\n  return (')).toBe(true);
+    // A guard inside a nested render helper is indented further and is not a
+    // sheet unmounting itself.
+    expect(SUBJECT_GUARD.test('      if (!item) return null;')).toBe(false);
+    expect(SUBJECT_GUARD.test('  if (!plan) return;')).toBe(false);
+  });
+
+  // Fails with the file names. Each one either holds its subject through the
+  // dismissal with useSheetSubject (see that hook's doc comment for the two
+  // lines) or, when the guard is genuinely a never-opened state, goes in
+  // SUBJECT_GUARD_ALLOWED with the reason.
+  it('passes no sheet that unmounts itself when its subject goes away', () => {
+    const found = files
+      .filter(f => RENDERS_SHEET.test(f.src) && SUBJECT_GUARD.test(f.src) && !HOLDS_SUBJECT.test(f.src))
+      .map(f => f.rel)
+      .filter(rel => !(rel in SUBJECT_GUARD_ALLOWED));
+    expect(found).toEqual([]);
+  });
+
+  it('keeps the allowlist honest', () => {
+    // An entry whose file stopped matching (converted, or deleted) is stale and
+    // should go, so the list never grows past what it explains.
+    for (const rel of Object.keys(SUBJECT_GUARD_ALLOWED)) {
+      const f = files.find(x => x.rel === rel);
+      expect(f && RENDERS_SHEET.test(f.src) && SUBJECT_GUARD.test(f.src) && !HOLDS_SUBJECT.test(f.src)).toBe(true);
+    }
   });
 });

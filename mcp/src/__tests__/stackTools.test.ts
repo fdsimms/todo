@@ -58,6 +58,18 @@ describe('create_stack', () => {
     expect(serializeTask(replica, replica.taskById(a.id)!).stackId).toBe(result.stack!.id);
   });
 
+  it('counts a dated series once among the members', () => {
+    // A task given two dates is two open rows sharing a seriesId (CLAUDE.md,
+    // "Series"); the roster names the member once, as the app's editor does.
+    const a = make('Water the plants');
+    const b = make('Water the plants');
+    mockRaw.runSync("UPDATE tasks SET series_id = 'plants' WHERE id IN (?, ?)", [a.id, b.id]);
+    replica.refresh();
+    const stack = createStack(replica, { title: 'Garden', taskIds: [a.id, b.id] }).stack!;
+    expect(stack.members.map(m => m.title)).toEqual(['Water the plants']);
+    expect(listStacks(replica)[0].members).toHaveLength(1);
+  });
+
   it('will not guess a category when its tasks are in different ones', () => {
     const a = make('Brush teeth', 'Routine');
     const b = make('Floss', 'Evening Tasks');

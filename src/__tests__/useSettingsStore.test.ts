@@ -21,6 +21,11 @@ jest.mock('../utils/secureApiKey', () => ({
   GO_UPC_KEY_SECURE_KEY: 'goUpcApiKey',
 }));
 
+// The store as it is before any test touches it, put back whole below. A list
+// of fields to reset drifts behind the store, and every "defaults to …" test
+// then reads whatever the previous test set.
+const initialSettingsState = useSettingsStore.getState();
+
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
@@ -33,7 +38,7 @@ beforeEach(() => {
     get: (key: string) => (dbGetSetting as jest.Mock)(key) ?? undefined,
   }));
   (loadAnthropicApiKey as jest.Mock).mockResolvedValue('');
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, nutritionTargets: {}, initialized: false });
+  useSettingsStore.setState(initialSettingsState, true);
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────

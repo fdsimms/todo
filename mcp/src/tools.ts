@@ -25,11 +25,16 @@ import { isRotationTask } from '../../src/utils/rotation';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
 import {
+  describeDeadlineRule,
   describeHealthTarget,
+  describeReminderRule,
   describeRepeat,
   describeRotation,
   describeSupplyFields,
+  hasRelativeDeadline,
+  type DeadlineRule,
   type HealthTargetInput,
+  type ReminderRule,
   type RepeatInput,
   type SupplyInput,
   type TaskFieldsInput,
@@ -37,6 +42,8 @@ import {
 } from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
+// Pure over the rows it is handed (types only), so safe to import for its
+// value where awayDates, which reaches the settings store, is not.
 
 /** The four sub-views of TodayScreen, plus the everything case. */
 export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all'] as const;
@@ -81,6 +88,9 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
   const matched = replica
     .tasks()
     .filter(isTopLevel)
+    // Archived is "out of every list" in the app (CLAUDE.md, "Projects"); an
+    // open archived row would otherwise fall through the other lenses into later.
+    .filter(t => !t.archived)
     .filter(t => (input.includeCompleted ? true : !t.completed))
     .filter(t => (input.category ? t.category === input.category : true))
     .filter(t => (input.tag ? t.tags.includes(input.tag) : true))
@@ -152,16 +162,29 @@ export interface GetTaskResult {
   chain?: { index: number; steps: ChainStepDetail[]; stepsFollowSchedule?: boolean };
   /** The repeat rule, in the shape `create_task` and `update_task` take it. */
   repeat?: RepeatInput;
-  /** A count to reach per day or week, and how far today's (or this week's) has got. */
-  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean };
+  /**
+   * A count to reach per day or week, and how far today's (or this week's) has
+   * got. `followsWaterTarget` (`Task.followWaterTarget`) means the count is the
+   * food log's water goal divided by what one unit logs, worked out by the app
+   * each day: update_task refuses to set it.
+   */
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; followsWaterTarget?: true };
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
   rotation?: { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string }[] };
   /** Configuration only: the server cannot read Apple Health, so it never says whether the target is reached. */
   healthTarget?: HealthTargetInput;
-  /** A stock that counts down as the repeating task is completed. */
-  supply?: SupplyInput;
+  /** A stock that counts down as the repeating task is completed; `groceryItem` is the catalog row it reorders (`supplyGroceryItemId`), where it is linked to one. */
+  supply?: SupplyInput & { groceryItem?: { id: string; name: string } };
+  /** The deadline is recomputed from the date on every occurrence by this rule (read-only; a `deadline` written by update_task replaces it with a fixed date). */
+  deadlineRule?: DeadlineRule;
+  /** The reminder is placed by this rule rather than at a fixed time (read-only). */
+  reminderRule?: ReminderRule;
+  /** Left out of the app's suggested pins and focus queues (`excludeFromSuggestions`); still visible and still pinnable by hand. */
+  excludeFromSuggestions?: true;
+  /** A completion outside the task's own time window counts as done but does not extend the streak (`streakRequiresWindow`). */
+  streakRequiresWindow?: true;
   /**
    * Read-only, deliberately. Each of these changes something outside the task:
    * a gate or penalty blocks apps on the phone, and a medication makes
@@ -175,8 +198,12 @@ export interface GetTaskResult {
   window?: { start?: string; end?: string };
   /** Present only for a "don't do this" habit, which is never completed. */
   habit?: 'avoid';
-  /** The tasks this one is waiting on. */
-  waitsOn?: { id: string; title: string; done: boolean }[];
+  /**
+   * The tasks still holding this one back: `blockedById` and `blockedByIds`,
+   * read through the app's `liveBlockersOf`, so a finished, archived or
+   * deleted blocker is not listed (it holds nothing).
+   */
+  waitsOn?: { id: string; title: string }[];
   /** Shown only for these answers to that task's question; `answered` is what it got, once it has. */
   onlyIfAnswer?: { taskId: string; question: string; answers: string[]; answered?: string };
   /** "Every Nth completion, add this task." */
@@ -216,6 +243,13 @@ export interface GetTaskResult {
    * segment or a category schedule is what is holding it.
    */
   hiddenUntil?: string;
+  /**
+   * Why a task that is not on Today is hidden, when the reason is not a moment
+   * `hiddenUntil` can name: a task held while vacation mode is on (its own
+   * `vacationPause`, or a category set to hide on vacation) has no date it
+   * surfaces at, and reads as lost without this.
+   */
+  hiddenReason?: string;
 }
 
 /**
@@ -323,12 +357,25 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           done: task.progressCount ?? 0,
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
+          ...(task.followWaterTarget ? { followsWaterTarget: true as const } : {}),
         }
       : undefined,
     timed: task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,
     rotation: describeRotation(task, new Set(isRotationTask(task) ? replica.rotationDoneIds(task) : [])) ?? undefined,
     healthTarget: describeHealthTarget(task) ?? undefined,
-    supply: describeSupplyFields(task) ?? undefined,
+    supply: (() => {
+      const supply = describeSupplyFields(task);
+      if (!supply) return undefined;
+      // Named rather than left as an id, since the id means nothing without
+      // list_grocery_items; a row since deleted is left out, as everywhere a
+      // cross-row pointer dangles.
+      const item = task.supplyGroceryItemId ? replica.groceryItems().find(i => i.id === task.supplyGroceryItemId) : undefined;
+      return { ...supply, ...(item ? { groceryItem: { id: item.id, name: item.name } } : {}) };
+    })(),
+    deadlineRule: describeDeadlineRule(task) ?? undefined,
+    reminderRule: describeReminderRule(task) ?? undefined,
+    excludeFromSuggestions: task.excludeFromSuggestions ? true : undefined,
+    streakRequiresWindow: task.streakRequiresWindow ? true : undefined,
     gatesApps: task.gatesApps ? true : undefined,
     penalty: task.penaltyMinutes != null
       ? {
@@ -350,12 +397,8 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
       : undefined,
     habit: task.polarity === 'negative' ? 'avoid' : undefined,
     waitsOn: (() => {
-      const ids = [task.blockedById, ...(task.blockedByIds ?? [])].filter((id): id is string => !!id);
-      if (ids.length === 0) return undefined;
-      return ids.map(id => {
-        const b = replica.taskById(id);
-        return { id, title: b ? replica.displayTitle(b) : '(deleted task)', done: b ? b.completed : true };
-      });
+      const live = replica.liveBlockers(task);
+      return live.length > 0 ? live.map(b => ({ id: b.id, title: replica.displayTitle(b) })) : undefined;
     })(),
     onlyIfAnswer: task.answerGate
       ? (() => {
@@ -381,6 +424,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     project: project ? { id: project.id, title: project.title } : undefined,
     ...taskExtras(replica, task),
     hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
+    hiddenReason: !visible && replica.isHiddenForVacation(task) ? 'hidden while vacation mode is on' : undefined,
   };
 }
 
@@ -434,6 +478,7 @@ export function listProjects(replica: Replica): SerializedProject[] {
       title: p.title,
       notes: p.notes || undefined,
       deadline: p.deadline ?? undefined,
+      ...awayFields(replica, p),
       done,
       total,
       outstanding: total - done,
@@ -441,14 +486,30 @@ export function listProjects(replica: Replica): SerializedProject[] {
   });
 }
 
+/**
+ * A project's away span and destination as every project read shows them
+ * (docs/arch/away-dates.md). `awayEnd` comes through the app's own reader,
+ * which drops an end with no start or on or before it, so a half-set span is
+ * reported the way the phone reads it rather than as the two raw columns.
+ */
+export function awayFields(replica: Replica, p: Project): { awayStart?: string; awayEnd?: string; destination?: string } {
+  const span = replica.awaySpan(p);
+  if (!span) return {};
+  return {
+    awayStart: p.awayStart!,
+    ...(span.end && p.awayEnd ? { awayEnd: p.awayEnd } : {}),
+    ...(p.destination ? { destination: p.destination } : {}),
+  };
+}
+
 export interface SerializedGroceryItem {
   id: string;
   name: string;
   quantity?: string;
   aisle?: string;
-  /** On the home list right now, as opposed to sitting in the catalog. */
+  /** In the trolley of the list asked about (the home list unless a listId was given), as opposed to sitting in the catalog. */
   onList: boolean;
-  /** Checked off on the home list. */
+  /** Checked off on that list. */
   checked?: boolean;
 }
 
@@ -457,11 +518,12 @@ export interface SerializedGroceryItem {
  * it did. Separate so a write cannot describe an item differently from the way
  * a read does a moment later.
  *
- * **Membership and the tick are the home list's, read off its entry.** Every
- * grocery write here acts on the list at home, so that is the list a read has
- * to describe. `GroceryItem.onList` is the broader "in any trolley" flag, so a
- * row only on a trip's list read as on the list and then couldn't be checked
- * off; `GroceryItem.checked` is only a mirror of the home entry.
+ * **Membership and the tick are one list's, read off its entry.** Every grocery
+ * tool acts on one list (the one at home unless a `listId` names another), so
+ * that is the list a read has to describe. `GroceryItem.onList` is the broader
+ * "in any trolley" flag, so a row only on a trip's list read as on the list and
+ * then couldn't be checked off; `GroceryItem.checked` is only a mirror of the
+ * home entry.
  */
 export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | undefined): SerializedGroceryItem {
   return {
@@ -743,6 +805,14 @@ export interface UpdateTaskResult extends GetTaskResult {
    * this does the same, so a caller should say so rather than report one task.
    */
   alsoUpdatedLaterDates?: number;
+  /**
+   * Set when the task's deadline was worked out from its date by a rule
+   * (`deadlineRule` on get_task) and this edit wrote a fixed deadline, which
+   * drops the rule the way the editor's "Fixed date" does. Said rather than
+   * left to be noticed, since the rule would otherwise have kept recomputing
+   * the deadline on every occurrence.
+   */
+  deadlineRuleCleared?: string;
 }
 
 /**
@@ -755,8 +825,19 @@ export function updateTask(replica: Replica, id: string, input: TaskFieldsInput)
   if (!current) throw new Error(`No task with id ${id}.`);
   const patch = replica.taskPatch(input, current, !!current.parentId);
   if (Object.keys(patch).length === 0) throw new Error('Nothing to change: name at least one field.');
+  const ruleCleared = hasRelativeDeadline(current) && 'deadline' in patch && patch.deadlineOffsetDays === null && patch.deadlineMonthDay === null;
   const { alsoUpdated } = replica.updateTask(id, patch);
-  return { ...getTask(replica, id)!, ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}) };
+  return {
+    ...getTask(replica, id)!,
+    ...(alsoUpdated > 0 ? { alsoUpdatedLaterDates: alsoUpdated } : {}),
+    ...(ruleCleared
+      ? {
+          deadlineRuleCleared: patch.deadline
+            ? 'The deadline used to be worked out from the date on every occurrence; it is now the fixed date given, and later occurrences will not get one unless the rule is set again in the app.'
+            : 'The deadline used to be worked out from the date on every occurrence; clearing it also dropped that rule, so later occurrences get no deadline either.',
+        }
+      : {}),
+  };
 }
 
 export interface CompleteTaskResult {
@@ -803,7 +884,7 @@ export function completeTask(
   const spawned: string[] = [];
   if (result.nextTask) {
     const when = result.nextTask.dueDate
-      ? `due ${result.nextTask.dueDate.slice(0, 10)}`
+      ? `due ${replica.dayKeyOf(result.nextTask.dueDate)}`
       : 'with no date';
     spawned.push(`The next occurrence was created, ${when}.`);
   }

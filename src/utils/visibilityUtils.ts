@@ -8,7 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
-import { isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
+import { blockerIdsOf, isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
@@ -59,7 +59,7 @@ export function isWithheld(task: Task): boolean {
  */
 export function isTaskNotNeeded(task: Task): boolean {
   if (task.completed || task.archived) return false;
-  if (!task.answerGate && !task.blockedById) return false;
+  if (!task.answerGate && blockerIdsOf(task).length === 0) return false;
   return isNotNeeded(task, resolveBlocker);
 }
 
@@ -246,18 +246,20 @@ export function isCategoryScheduledDay(category: string | null, day: Date): bool
   return cat.scheduleDays.includes(day.getDay());
 }
 
-function getNextCategoryWindowStart(cat: Category): Date | null {
+function getNextCategoryWindowStart(
+  cat: Category,
+  dayStart: Date = getCurrentDayStart(),
+  now: Date = new Date(),
+): Date | null {
   if (!cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return null;
 
   // Walks logical days rather than calendar ones, so each candidate start is
   // placed by the same rule isCategoryScheduleActive opens the window with —
   // otherwise Later could name a moment at which the task still wouldn't show.
-  // Starts at i = 0 because the current logical day's window may not have
-  // opened yet (before its start, or in the small hours ahead of a start that
-  // wraps past midnight).
-  const now = new Date();
-  const dayStart = getCurrentDayStart();
-
+  // Starts at i = 0 because `dayStart`'s own window may not have opened yet
+  // (before its start, or in the small hours ahead of a start that wraps past
+  // midnight). `dayStart` is today's by default; getVisibleAt hands it the
+  // task's own day instead, since a window before that day is no use to it.
   for (let i = 0; i <= 7; i++) {
     const candidateDay = new Date(dayStart);
     candidateDay.setDate(candidateDay.getDate() + i);
@@ -367,17 +369,24 @@ export function hasDayArrived(task: Task): boolean {
 
 // The task's closing time, or null when its window doesn't close on the task's
 // own day. Both window gates anchor to one logical day (see
-// getWindowThreshold), so an end that isn't after the start — "22:00–02:00",
-// meaning a window that runs into the small hours — compares as *already
-// past* from 02:00 onward: the task read as expired all day, including inside
-// the hours the user picked, and never became visible once.
+// getWindowThreshold), so an end that isn't after the start on that day's
+// timeline — "22:00–02:00" under a midnight reset, meaning a window that runs
+// into the small hours — compares as *already past* from 02:00 onward: the
+// task read as expired all day, including inside the hours the user picked,
+// and never became visible once.
 //
 // Treated as open-ended instead, which is what "from 10pm" means in practice,
 // so the task surfaces at windowStart and simply doesn't expire on its own.
 // Same shape as the end <= start guard in getQuotaSpan, and for the same
 // reason — a span that doesn't resolve on one day can't be divided by.
+//
+// The timeline starts at dayResetTime, which is what effectiveWindowEndTime
+// needs it for: onLogicalDay rolls a start earlier than the reset onto the
+// next date, so "03:00–05:00" under a 4 AM reset is the inverted one, and
+// "22:00–02:00" is a window that closes. Compared as raw minutes the first
+// kept its end and was expired, hidden and swept all day.
 export function effectiveWindowEnd(task: Task): string | null {
-  return effectiveWindowEndTime(task.windowStart, task.windowEnd);
+  return effectiveWindowEndTime(task.windowStart, task.windowEnd, useSettingsStore.getState().dayResetTime);
 }
 
 // Order used only to find the boundary *after* the latest segment a task is
@@ -1024,14 +1033,20 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
   // Both timeSegments and windowStart refine a day to a specific clock time;
   // a task normally uses one or the other, so timeSegments takes precedence
   // when both happen to be set.
+  //
+  // Placed on `base`'s day by the same rules isTaskVisible opens the gates
+  // with (getTimeOfDayThreshold, with its morning exception, and
+  // getWindowThreshold's onLogicalDay), not by copying the clock time onto
+  // base's own date: a window start earlier than dayResetTime belongs to the
+  // small hours at the *end* of that day, and copied it named an instant a
+  // whole day before the task could show, which Later sorted under the wrong
+  // day and a visibility-tracking reminder fired a day early for.
   const applyTimeThreshold = (base: Date): Date => {
-    const threshold = task.timeSegments.length > 0
-      ? earliestSegmentThreshold(task.timeSegments, pass)
-      : task.windowStart ? hhmmToDate(task.windowStart) : null;
-    if (!threshold) return base;
-    const result = new Date(base);
-    result.setHours(threshold.getHours(), threshold.getMinutes(), 0, 0);
-    return result;
+    if (task.timeSegments.length > 0) {
+      return earliestSegmentThreshold(task.timeSegments, { ...pass, todayStart: base })!;
+    }
+    if (task.windowStart) return onLogicalDay(base, task.windowStart);
+    return base;
   };
 
   if (task.deferUntil) {
@@ -1067,7 +1082,14 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
   if (task.category) {
     const cat = useCategoryStore.getState().getCategoryByName(task.category);
     if (cat) {
-      const nextWindow = getNextCategoryWindowStart(cat);
+      // Walked from the task's own day, not from today: the candidates
+      // combine as the latest, so a task due Saturday under a Mon–Fri
+      // category used to come out as Saturday's day start (its due date)
+      // against Friday's window (the next one from now), and Later filed it
+      // under a day it could not appear on. The first instant it can show is
+      // the first scheduled day on or after its own, at that day's start.
+      const latestSoFar = candidates.reduce((latest, d) => (d > latest ? d : latest), todayStart);
+      const nextWindow = getNextCategoryWindowStart(cat, getDayStart(latestSoFar, dayResetTime), now);
       if (nextWindow && nextWindow > now) candidates.push(nextWindow);
     }
   }

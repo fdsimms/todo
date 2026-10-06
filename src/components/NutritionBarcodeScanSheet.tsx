@@ -66,12 +66,23 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
     setError(null);
     lockedRef.current = false;
   }, [visible]);
+  // Which opening a lookup belongs to. The lookup is a network round trip, and
+  // a person can cancel the sheet while it's out; the result then called
+  // `onFound` on a sheet that had been closed, filling the form behind it with
+  // a product nobody had agreed to (and, reopened on another food, with the
+  // previous food's barcode). Bumped on every open and close and read back
+  // after the await.
+  const openingRef = useRef(0);
+  useEffect(() => { openingRef.current += 1; }, [visible]);
 
   const resolveGtin = useCallback(async (gtin: string) => {
     setLooking(true);
     setError(null);
+    const opening = openingRef.current;
+    const stillHere = () => openingRef.current === opening;
     try {
       const record = await lookupGtin(gtin);
+      if (!stillHere()) return;
       if (record?.nutrition) {
         haptics.success();
         onFound(record.nutrition, record.name);
@@ -84,6 +95,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
         : "That barcode isn't in either database. Try a photo, or type the figures in below.");
       setLooking(false);
     } catch (e) {
+      if (!stillHere()) return;
       haptics.warning();
       setError(describeLookupError(e));
       setLooking(false);

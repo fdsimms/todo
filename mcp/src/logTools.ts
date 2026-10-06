@@ -18,6 +18,10 @@
 import { NUTRIENT_KEYS, type MealSlot, type NutrientKey } from '../../src/types';
 import type { RecipePatch, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
+// Pure over its arguments (types, the target ranges and the unit maths), so
+// safe to import for its value here; the replica loads the same module for the
+// write.
+import { describeWater, waterToMl, type WaterUnit } from '../../src/utils/waterLog';
 
 /** A bare date as noon that day (the app's anchor for a backdated entry), else the instant given; now when absent. */
 export function atFrom(value: string | undefined): Date | undefined {
@@ -92,6 +96,15 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
     label: input.label, quantity: input.quantity ?? '', amounts: input.amounts, basis: 'typical', confidence: 'medium',
   });
   if (!read) throw new Error(`A food entry needs a name and at least one amount, keyed by ${NUTRIENT_KEY_LIST.join(', ')}.`);
+  // Water is one entry a day, stepped (waterLog.ts), and an entry stating only
+  // waterMl is what the app reads as that entry (isWaterEntry). Logged here it
+  // would be a second water row beside the day's, so it is sent to the tool
+  // that steps the right one rather than written and left for the diary to
+  // show twice.
+  const stated = Object.keys(read.amounts) as NutrientKey[];
+  if (stated.length === 1 && stated[0] === 'waterMl') {
+    throw new Error('Water is one entry a day, stepped up a glass at a time: use log_water for it rather than log_food.');
+  }
   const ignored = Object.keys(input.amounts ?? {}).filter(k => !(NUTRIENT_KEY_LIST as readonly string[]).includes(k));
   const base = {
     label: read.label,
@@ -114,6 +127,55 @@ export function logFood(replica: Replica, input: LogFoodInput): LogFoodResult {
     id: entry.id,
     day: entry.dayKey,
     note: 'Logged, marked as estimated. It is in the app\'s food log but not in Apple Health: only the phone a meal is logged on writes it there.',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// log_water
+// ---------------------------------------------------------------------------
+
+export interface LogWaterInput {
+  /** Millilitres drunk. Give this or flOz. */
+  ml?: number;
+  /** Fluid ounces drunk, converted the way the app's own stepper converts. */
+  flOz?: number;
+  at?: string;
+}
+
+export interface LogWaterResult {
+  id: string;
+  day: string;
+  /** What this call added, in the person's own unit. */
+  added: string;
+  /** The day's water so far, every entry that states any, in the person's own unit (`waterUnit`). */
+  dayTotal: string;
+  dayTotalMl: number;
+  note: string;
+}
+
+/**
+ * A glass of water onto the day's water entry. The person's `waterUnit` is
+ * display only (the row stores millilitres), so the figures come back in it
+ * and the input may be given in either.
+ */
+export function logWater(replica: Replica, input: LogWaterInput): LogWaterResult {
+  if ((input.ml === undefined) === (input.flOz === undefined)) throw new Error('Give the amount as ml or as flOz, one of the two.');
+  const ml = input.ml !== undefined ? Math.round(input.ml) : waterToMl(input.flOz!, 'flOz');
+  if (!Number.isFinite(ml) || ml <= 0) throw new Error('Water is logged as a positive amount.');
+  const unit: WaterUnit = replica.settings().waterUnit;
+  const outcome = replica.logWater({ ml, at: atFrom(input.at) });
+  const notes: Record<typeof outcome.how, string> = {
+    created: 'The day\'s first water, so a water entry was started for it; later glasses step the same entry up.',
+    stepped: 'Added onto the day\'s water entry, as the app\'s own stepper does, rather than logged as a separate row.',
+    added: 'The day\'s water entry was already written to Apple Health from the phone, which only the phone can correct, so this glass is a second entry beside it. The app sums both.',
+  };
+  return {
+    id: outcome.entry.id,
+    day: outcome.entry.dayKey,
+    added: describeWater(ml, unit),
+    dayTotal: describeWater(outcome.dayTotalMl, unit),
+    dayTotalMl: outcome.dayTotalMl,
+    note: `${notes[outcome.how]} Not sent to Apple Health: only the phone writes it there.`,
   };
 }
 
