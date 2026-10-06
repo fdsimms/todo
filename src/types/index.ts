@@ -1028,6 +1028,8 @@ export type UnattendedSubject =
   // A milestone on the mood log (`Milestone`). Titled by kind, never by its label, for the
   // reason a mood entry is: the Activity list is about the app, not somebody's health.
   | 'milestone'
+  // A journal or dream entry (`JournalEntry`). Titled by kind, never by its text, for the same reason.
+  | 'journal'
   // A saved view (`SavedView`), created or deleted by an agent. Record only.
   | 'view'
   // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
@@ -1834,17 +1836,40 @@ export interface MoodLog {
    * severity }` pairs.
    */
   contextTags: string[];
-  /** Whatever you wanted to say about it. Null rather than empty string. */
-  note: string | null;
   /**
-   * A dream you woke up with. Null rather than empty string.
+   * A short line on why, if you want one. Null rather than empty string.
    *
-   * A field on the entry rather than its own entity: a dream is written down in
-   * the morning, so it files under the day you woke (this entry's `dayKey`) and
-   * rides the same sync, export and day page as the note. Free text only. The
-   * app derives nothing from it (see `docs/arch/mood-log.md`).
+   * Longer writing, and dreams, are `JournalEntry` rows of their own (see
+   * `docs/arch/journal.md`); this is the note that explains this mood.
    */
-  dream: string | null;
+  note: string | null;
+}
+
+/** Which of the two writing logs an entry belongs to. */
+export type JournalKind = 'journal' | 'dream';
+
+/**
+ * Something written down: a journal entry, or a dream you woke up with. See
+ * `docs/arch/journal.md`.
+ *
+ * Both kinds are one shape (a day, a moment and the words), so they share a
+ * table and a store, and the screens split them by `kind`. Several a day is
+ * normal, which is why `dayKey` is stamped beside the instant rather than
+ * being the key, the same call `MoodLog` makes.
+ */
+export interface JournalEntry {
+  id: string;
+  kind: JournalKind;
+  /** The instant it was written, or noon of a backdated day. ISO. */
+  loggedAt: string;
+  /**
+   * The logical day it files under, stamped at write time from
+   * `dayResetTime` and never derived on read (`MoodLog.dayKey`'s reasoning).
+   * A dream files under the day you woke.
+   */
+  dayKey: string;
+  /** What was written. Never empty: the store refuses a blank entry. */
+  text: string;
 }
 
 /**
@@ -2152,6 +2177,13 @@ export type GeneratedKind =
   // the app whose trigger is a *trend* in the user's own data rather than a
   // date, a row or a threshold crossed once.
   | 'moodNudge'
+  // A task to write in the journal, one per configured part of the day, and
+  // one a day to write down a dream — see src/utils/journalTasks.ts. Same
+  // day-keyed, no-source-row position as moodLog (journalLog's source id
+  // carries the segment the same way), so neither has a row to stamp a decline
+  // on and a settings mark keeps a swiped-away one away.
+  | 'journalLog'
+  | 'dreamLog'
   // A weekend with nothing on it becomes a task to make plans for it — see
   // src/utils/weekendTasks.ts. Its source id is the weekend's *Saturday* day
   // key, which is the same "square on the calendar, not a row" position

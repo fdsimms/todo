@@ -38,6 +38,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   log_water: ['delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],
+  log_journal_entry: ['update_journal_entry', 'delete_journal_entry'],
   // A view's name, icon and clauses are edited in the app; a wrong one is
   // deleted and made again, which costs nothing since a view owns no rows.
   create_saved_view: ['delete_saved_view'],

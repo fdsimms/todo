@@ -86,7 +86,6 @@ export function MoodDayScreen() {
                 format(new Date(log.loggedAt), 'h:mm a'),
                 log.mood === null ? null : moodLabel(log.mood),
                 log.note || null,
-                log.dream ? `Dream: ${log.dream}` : null,
                 log.symptoms.length > 0
                   ? log.symptoms.map(s => `${s.name}, ${severityLabel(s.severity)}`).join(', ')
                   : null,
@@ -99,12 +98,6 @@ export function MoodDayScreen() {
                 {log.mood === null ? '' : `  ${moodEmoji(log.mood)}`}
               </Text>
               {!!log.note && <Text style={styles.note}>{log.note}</Text>}
-              {!!log.dream && (
-                <View style={styles.dream}>
-                  <Text style={styles.dreamLabel}>DREAM</Text>
-                  <Text style={styles.note}>{log.dream}</Text>
-                </View>
-              )}
               {log.symptoms.length > 0 && (
                 <Text style={styles.foot}>
                   {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}
@@ -192,15 +185,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   time: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs },
   note: { fontSize: font.lg, lineHeight: lineHeight.lg, color: colors.text },
   foot: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
-  // Margin on both sides: the note above it and the footnotes below it have none.
-  dream: { marginTop: spacing.smd, marginBottom: spacing.xs },
-  dreamLabel: {
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    color: colors.textSecondary,
-    letterSpacing: 0.8,
-    marginBottom: spacing.xs,
-  },
   pager: {
     flexDirection: 'row',
     justifyContent: 'space-between',

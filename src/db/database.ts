@@ -14,6 +14,7 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
+  JournalEntry,
   EventPeopleLink,
   CalendarRequest,
   CalendarRequestStatus,
@@ -406,6 +407,18 @@ export function initDatabase(): void {
       mood INTEGER,
       symptoms TEXT NOT NULL DEFAULT '[]',
       note TEXT
+    );
+
+    -- Something written down: a journal entry or a dream — see JournalEntry in
+    -- types/index.ts and docs/arch/journal.md. One table for both kinds since
+    -- they are one shape; day_key is indexed below for the same reason
+    -- mood_logs' is.
+    CREATE TABLE IF NOT EXISTS journal_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      kind TEXT NOT NULL,
+      logged_at TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      text TEXT NOT NULL
     );
 
     -- A dated marker for something that changed — see Milestone in
@@ -948,6 +961,9 @@ export function initDatabase(): void {
     // Every insight read groups by day (see src/utils/moodInsights.ts), and the
     // logging sheet asks for one day's entries on open.
     'CREATE INDEX IF NOT EXISTS idx_mood_logs_day ON mood_logs(day_key)',
+    // Same read as mood_logs: the screens group by day, and a check-in asks
+    // whether today already has one.
+    'CREATE INDEX IF NOT EXISTS idx_journal_entries_day ON journal_entries(day_key)',
     // Every read this table has is one day's entries or a run of days: the day
     // view opens on one, and a total is defined over a range of them.
     'CREATE INDEX IF NOT EXISTS idx_food_logs_day ON food_logs(day_key)',
@@ -1963,6 +1979,9 @@ export function initDatabase(): void {
   }
   try { dbPruneSyncDeletions(); } catch (_) { /* nothing to prune */ }
 
+  // After the triggers, so the moved dreams are stamped and travel to peers.
+  migrateMoodDreams();
+
   // The five task backfills below are behind one flag, the same shape every
   // other one-time migration in this function uses. They are a no-op in rows
   // written from the second launch on, but not in cost: none of the columns
@@ -2304,6 +2323,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // Journal and dream entries: standalone, beside the mood log they grew out of.
+  'journal_entries',
   // After people: a link names people by id, so they are restored first.
   'event_people_links',
   // Points at nothing. A pending request restored onto a phone that writes
@@ -6498,7 +6519,6 @@ function rowToMoodLog(row: Record<string, unknown>): MoodLog {
     symptoms,
     contextTags,
     note: (row.note as string) || null,
-    dream: (row.dream as string | null) || null,
   };
 }
 
@@ -6521,27 +6541,95 @@ export function dbGetAllMoodLogs(): MoodLog[] {
 
 export function dbInsertMoodLog(log: MoodLog): void {
   db.runSync(
-    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note, dream)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       log.id, log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.dream,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note,
     ]
   );
 }
 
 export function dbUpdateMoodLog(log: MoodLog): void {
   db.runSync(
-    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=?, dream=? WHERE id=?`,
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=? WHERE id=?`,
     [
       log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.dream, log.id,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.id,
     ]
   );
 }
 
 export function dbDeleteMoodLog(id: string): void {
   db.runSync('DELETE FROM mood_logs WHERE id = ?', [id]);
+}
+
+function rowToJournalEntry(row: Record<string, unknown>): JournalEntry {
+  return {
+    id: row.id as string,
+    kind: row.kind === 'dream' ? 'dream' : 'journal',
+    loggedAt: row.logged_at as string,
+    dayKey: row.day_key as string,
+    text: row.text as string,
+  };
+}
+
+/**
+ * Every journal and dream entry, most recent first. Read wholesale for the
+ * reason `dbGetAllMoodLogs` is: a few short rows a day at most.
+ */
+export function dbGetAllJournalEntries(): JournalEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM journal_entries ORDER BY logged_at DESC'
+  );
+  return rows.map(rowToJournalEntry);
+}
+
+export function dbInsertJournalEntry(entry: JournalEntry): void {
+  db.runSync(
+    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text) VALUES (?, ?, ?, ?, ?)',
+    [entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text]
+  );
+}
+
+/** Only the words change: an entry's day is fixed once written, as a mood entry's is. */
+export function dbUpdateJournalEntry(entry: JournalEntry): void {
+  db.runSync('UPDATE journal_entries SET text=? WHERE id=?', [entry.text, entry.id]);
+}
+
+export function dbDeleteJournalEntry(id: string): void {
+  db.runSync('DELETE FROM journal_entries WHERE id = ?', [id]);
+}
+
+/**
+ * Moves the dreams written on mood entries into `journal_entries`, once.
+ *
+ * Each dream's new id is derived from its mood entry's (`dream-<id>`), so two
+ * devices that each run this before they next sync write the same row rather
+ * than one each. A mood entry that held nothing but a dream would be left
+ * recording nothing, so it is deleted; the rest keep their mood, symptoms and
+ * note. The old `dream` column is left in place and unread: clearing it would
+ * restamp every one of those rows as edited now, which is the stale-copy
+ * hazard `fillCalendarExternalIds` describes.
+ */
+function migrateMoodDreams(): void {
+  if (dbGetSetting('journal_dream_migration_done') === '1') return;
+  try {
+    db.runSync(
+      `INSERT OR IGNORE INTO journal_entries (id, kind, logged_at, day_key, text)
+       SELECT 'dream-' || id, 'dream', logged_at, day_key, TRIM(dream)
+       FROM mood_logs WHERE dream IS NOT NULL AND TRIM(dream) <> ''`
+    );
+    db.runSync(
+      `DELETE FROM mood_logs
+       WHERE dream IS NOT NULL AND TRIM(dream) <> ''
+         AND mood IS NULL
+         AND (symptoms IS NULL OR symptoms = '[]')
+         AND (context_tags IS NULL OR context_tags = '[]')
+         AND (note IS NULL OR TRIM(note) = '')`
+    );
+  } catch (_) { /* no dream column on this install: nothing to move */ }
+  dbSetSetting('journal_dream_migration_done', '1');
 }
 
 /** One milestone, mapped off its row. Every column is NOT NULL, so nothing here can drift. */

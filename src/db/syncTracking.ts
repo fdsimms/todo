@@ -75,6 +75,10 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Journal and dream entries (JournalEntry). Same reasoning as mood_logs: a
+  // diary that reads differently on each phone is half a diary on each, and an
+  // entry is written once and rarely edited.
+  { name: 'journal_entries', key: ['id'] },
   // Who a calendar event is with (eventPeople.ts). The event itself syncs
   // through its own calendar; this is the app's note about it, and it syncs
   // because it names the event by the calendar server's id wherever the
@@ -386,6 +390,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'healthTasks',
   'moodLogTasks',
   'moodNudgeTasks',
+  'journalLogTasks',
+  'dreamLogTasks',
   'weekendNudgeTasks',
   'weighInTasks',
   'waterShortfallTasks',
@@ -570,6 +576,8 @@ export function isSyncedSettingKey(key: string): boolean {
  *
  * `milestones` are here because they exist to be read against the mood log,
  * and "started sertraline" is as common a one as "new job".
+ * `journal_entries` are here because a diary is the most personal thing the
+ * app holds, and it grew out of the mood entry's own note (which already is).
  * `medication_archived` is here because it is a list of medicine names, which
  * says what somebody takes as plainly as the dose log does. What is not here,
  * and why: a task's `medication_name` rides on a task, and a task titled "Take
@@ -579,7 +587,7 @@ export function isSyncedSettingKey(key: string): boolean {
  * Pushes only. A row of these arriving from a transport is still applied, so
  * a peer on an older build that still sends them does no harm.
  */
-export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
+export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'journal_entries', 'medication_logs', 'food_logs'];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived'];
 
 /** Where deletions go. A row here is the only evidence a row ever existed. */

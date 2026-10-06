@@ -77,6 +77,8 @@ export type SimpleFeatureId =
   | 'medicationScreen'
   | 'weightScreen'
   | 'sleepScreen'
+  | 'journalScreen'
+  | 'dreamScreen'
   | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'
@@ -185,6 +187,10 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // Not a content screen, for Weight's reason: every night it draws lives in
   // Apple Health, and the goal it reads against is a setting, not an entry.
   { id: 'sleepScreen', label: 'Sleep', area: 'screens', screen: 'Sleep' },
+  // Content screens for Mood's reason: what is written there lives nowhere
+  // else, so hiding either while it holds any would strand it.
+  { id: 'journalScreen', label: 'Journal', area: 'screens', screen: 'Journal', contentScreen: true },
+  { id: 'dreamScreen', label: 'Dreams', area: 'screens', screen: 'Dreams', contentScreen: true },
   // A content screen for the same reason Mood is one: a food log's entries live
   // nowhere else in the app, so hiding the screen while it holds any would
   // strand them with no way back.
@@ -283,7 +289,7 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
@@ -296,6 +302,8 @@ export function screenShown(
   // it says. Every caller passes the count now.
   if (routeName === 'Mood') return (contentCounts.mood ?? 0) > 0;
   if (routeName === 'Medications') return (contentCounts.medications ?? 0) > 0;
+  if (routeName === 'Journal') return (contentCounts.journal ?? 0) > 0;
+  if (routeName === 'Dreams') return (contentCounts.dreams ?? 0) > 0;
   // Counted across every day rather than off the loaded window, which is one
   // day: see `useFoodLogStore.totalCount`. Answering this from today's rows
   // would take the screen away, and months of entries with it, on any day

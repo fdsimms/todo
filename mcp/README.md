@@ -86,6 +86,8 @@ only the fallback until the first sync.
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `focus_history` | Finished focus sessions over a range, as the Stats screen reads them: minutes worked and rested, how stretches ran against their plan (once there are enough), breaks taken, and each session's steps. History only: a session in progress stays on the phone. |
 | `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |
+| `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind. Empty unless health logs reach the server. |
+| `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words. An entry's day is fixed once written. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
 | `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |

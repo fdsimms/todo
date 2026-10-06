@@ -8,6 +8,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
@@ -112,6 +113,10 @@ jest.mock('../db/database', () => ({
   dbDeleteMoodLog: jest.fn(),
   // Milestones ride the same fan-out immediately after the mood log.
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbGetAllJournalEntries: jest.fn().mockReturnValue([]),
+  dbInsertJournalEntry: jest.fn(),
+  dbUpdateJournalEntry: jest.fn(),
+  dbDeleteJournalEntry: jest.fn(),
   dbInsertMilestone: jest.fn(),
   dbUpdateMilestone: jest.fn(),
   dbDeleteMilestone: jest.fn(),
@@ -6696,6 +6701,135 @@ describe('checkMoodTasks', () => {
   });
 });
 
+
+describe('checkJournalTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const NOW = new Date(2026, 7, 25, 9, 0, 0);
+  const TODAY = '2026-08-25';
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    morningStart: '06:00',
+    afternoonStart: '12:00',
+    eveningStart: '18:00',
+    nightStart: '21:00',
+    journalLogTasks: true,
+    journalLogTaskCategory: 'Personal',
+    journalLogLastDayKey: null as string | null,
+    setJournalLogLastDayKey: jest.fn(),
+    journalLogTimeSegments: [] as string[],
+    dreamLogTasks: false,
+    dreamLogTaskCategory: 'Personal',
+    dreamLogLastDayKey: null as string | null,
+    setDreamLogLastDayKey: jest.fn(),
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const written = (kind: 'journal' | 'dream', dayKey: string, hour = 9) => ({
+    id: `j-${kind}-${dayKey}-${hour}`,
+    kind,
+    loggedAt: new Date(`${dayKey}T${String(hour).padStart(2, '0')}:00`).toISOString(),
+    dayKey,
+    text: 'Something',
+  });
+
+  const setEntries = (entries: unknown[]) => {
+    useJournalStore.setState({ entries: entries as never, initialized: true });
+  };
+
+  const tasksOfKind = (kind: string) =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === kind && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    setEntries([]);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    setEntries([]);
+  });
+
+  it('writes one journal reminder for today, filed and linked to the sheet that answers it', () => {
+    useTaskStore.getState().checkJournalTasks();
+
+    const [task] = tasksOfKind('journalLog');
+    expect(task.title).toBe('Write in your journal');
+    expect(task.generatedSourceId).toBe(TODAY);
+    expect(task.category).toBe('Personal');
+    expect(task.linkUrl).toBe('dundundun://journal?log=1');
+    expect(task.timeSegments).toEqual([]);
+  });
+
+  it('writes nothing when today already has a journal entry, and a dream does not count', () => {
+    setEntries([written('journal', TODAY)]);
+    useTaskStore.getState().checkJournalTasks();
+    expect(tasksOfKind('journalLog')).toHaveLength(0);
+
+    setEntries([written('dream', TODAY)]);
+    useTaskStore.getState().checkJournalTasks();
+    expect(tasksOfKind('journalLog')).toHaveLength(1);
+  });
+
+  it('stamps the slot before deciding, so a swiped-away reminder stays away', () => {
+    const s = settings({ journalLogLastDayKey: TODAY });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.getState().checkJournalTasks();
+    expect(tasksOfKind('journalLog')).toHaveLength(0);
+
+    const fresh = settings();
+    useSettingsStore.getState.mockReturnValue(fresh);
+    useTaskStore.getState().checkJournalTasks();
+    expect(fresh.setJournalLogLastDayKey).toHaveBeenCalledWith(TODAY);
+  });
+
+  it('holds one back per chosen part of the day, and an entry since that part began answers it', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ journalLogTimeSegments: ['morning', 'evening'] }));
+    useTaskStore.getState().checkJournalTasks();
+    const [morning] = tasksOfKind('journalLog');
+    expect(morning.generatedSourceId).toBe(`${TODAY}:morning`);
+    expect(morning.timeSegments).toEqual(['morning']);
+
+    // Evening arrives: the unanswered morning reminder is cleared, the evening one written,
+    // and a morning entry does not silence it.
+    setEntries([written('journal', TODAY, 8)]);
+    jest.setSystemTime(new Date(2026, 7, 25, 19, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({
+      journalLogTimeSegments: ['morning', 'evening'],
+      journalLogLastDayKey: `${TODAY}:morning`,
+    }));
+    useTaskStore.getState().checkJournalTasks();
+    const live = tasksOfKind('journalLog');
+    expect(live.map(t => t.generatedSourceId)).toEqual([`${TODAY}:evening`]);
+  });
+
+  it('writes the daily dream reminder with no part of the day', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ journalLogTasks: false, dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    const [task] = tasksOfKind('dreamLog');
+    expect(task.title).toBe('Write down your dream');
+    expect(task.generatedSourceId).toBe(TODAY);
+    expect(task.linkUrl).toBe('dundundun://dreams?log=1');
+    expect(tasksOfKind('journalLog')).toHaveLength(0);
+  });
+
+  it('completes today\'s reminder of the kind just written, and only that kind', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ dreamLogTasks: true }));
+    useTaskStore.getState().checkJournalTasks();
+    useTaskStore.getState().completeJournalTaskForToday('dream');
+    expect(tasksOfKind('dreamLog')).toHaveLength(0);
+    expect(tasksOfKind('journalLog')).toHaveLength(1);
+  });
+});
 
 describe('checkWeighInTasks', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {

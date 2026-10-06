@@ -52,6 +52,7 @@ const mockTaskState = {
   checkScreenTimeTasks: mockRecord('checkScreenTimeTasks'),
   checkHealthTasks: mockRecord('checkHealthTasks'),
   checkMoodTasks: mockRecord('checkMoodTasks'),
+  checkJournalTasks: mockRecord('checkJournalTasks'),
   checkWeekendNudgeTasks: mockRecord('checkWeekendNudgeTasks'),
   // Sync-shaped like every other mock here even though the real pass is
   // async (`checkWeighInTasks(): Promise<void>`) — the caller wraps it as
@@ -195,7 +196,7 @@ describe('runBackgroundRefresh', () => {
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'checkEventTasks',
       'checkTravelTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
-      'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
+      'checkMoodTasks', 'checkJournalTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
       'reconcileAllUseUpTasks', 'checkScheduledTemplates',

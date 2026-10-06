@@ -661,7 +661,6 @@ export interface SerializedMoodLog {
   symptoms?: { name: string; severity: string }[];
   contextTags?: string[];
   note?: string;
-  dream?: string;
 }
 
 export function listMoodLogs(
@@ -682,7 +681,6 @@ export function listMoodLogs(
         : undefined,
       contextTags: log.contextTags.length ? log.contextTags : undefined,
       note: log.note ?? undefined,
-      dream: log.dream ?? undefined,
     })),
   };
 }

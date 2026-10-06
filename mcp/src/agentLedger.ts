@@ -612,6 +612,29 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    // A journal entry or dream is the most personal thing the app holds, so,
+    // as for a mood entry, the record names the kind and the day, never the words.
+    addJournalEntry(kind, text, at) {
+      const entry = replica.addJournalEntry(kind, text, at);
+      const noun = entry.kind === 'dream' ? 'dream' : 'journal entry';
+      log({ action: 'created', subject: 'journal', title: entry.kind === 'dream' ? 'Dream' : 'Journal entry', taskId: null, recordId: entry.id, note: `Write a ${noun} for ${entry.dayKey}` });
+      return entry;
+    },
+
+    updateJournalEntry(id, text) {
+      const entry = replica.updateJournalEntry(id, text);
+      const noun = entry.kind === 'dream' ? 'dream' : 'journal entry';
+      log({ action: 'edited', subject: 'journal', title: entry.kind === 'dream' ? 'Dream' : 'Journal entry', taskId: null, recordId: entry.id, note: `Change the ${noun} from ${entry.dayKey}` });
+      return entry;
+    },
+
+    deleteJournalEntry(id) {
+      const entry = replica.deleteJournalEntry(id);
+      const noun = entry.kind === 'dream' ? 'dream' : 'journal entry';
+      log({ action: 'cleared', subject: 'journal', title: entry.kind === 'dream' ? 'Dream' : 'Journal entry', taskId: null, recordId: entry.id, note: `Delete the ${noun} from ${entry.dayKey}. It cannot be restored from here.` });
+      return entry;
+    },
+
     // A milestone's label is health content as often as not ("Started
     // sertraline"), so the recorded title is the kind, as a mood entry's is.
     // The preview still names it: that is for the person, before the write.

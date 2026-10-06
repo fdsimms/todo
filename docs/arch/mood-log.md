@@ -658,26 +658,11 @@ deliberately not all four. A clean sweep ("4 of 4 against 0 of 11") would read a
 a proof, and a demo of an association has no business looking like one, least of
 all for the read somebody might act on medically.
 
-## Dreams are a field on the entry, and nothing reads them
+## Dreams and longer writing live in the journal
 
-`MoodLog.dream` is free text beside `note`, not its own entity. A dream is
-written down in the morning, so it files under the day you wake (the entry's own
-`dayKey`, backdating included) and rides the same sync, export and day page as
-the note. A separate table would have bought dream-only fields nobody asked for
-at the price of a medication-log-sized change.
-
-- **Nothing is derived from it, and `moodInsights.ts` never reads it.** There
-  is no dream-against-mood contrast, no recurring-theme detection and no
-  classification of what a dream "means". The only numbers are `dreamStats`
-  tallies (days with one, this month, last on), which count one thing and so
-  have no minimum, like the symptom page.
-- **A day with no dream is not "a day without a dream".** Nothing here can tell
-  not dreaming from not writing it down, so an empty day is absent from every
-  read, never a zero (rule 3 above).
-- **Search reads the note and the dream as one text** (`searchMoodLogs`), so
-  every word has to be in the same entry but may be split between the two. "Has
-  a dream" is a switch in the history filter that ANDs with the rest.
-- **It leaves the device as typed**: the last CSV column, no summary of it.
+They used to be fields on the entry (a large note the sheet opened on, and a
+dream beside it). Both moved out to their own log, and the entry keeps a short
+note; see `docs/arch/journal.md` for why and for how existing dreams moved.
 
 ## Getting it off the device
 
@@ -704,11 +689,13 @@ everybody's birthday too.
   exactly as the backup export does. A health record accumulating silently in
   the app's own storage would be a second copy of the most sensitive thing here.
 
-## Looking back, and why the note leads
+## Looking back, and the note
 
-The log sheet opens on the note, with mood, symptoms and tags below it as
-optional extras, and an entry's row prints the note at body size in the primary
-text color. The note is what a person wrote; the faces are a summary of it.
+The log sheet opens on the mood, with symptoms and tags below it and the note
+folded behind "Add a note" at the bottom: longer writing has its own place in
+the journal (`docs/arch/journal.md`). An entry's row still prints the note at
+body size in the primary text color, since what a person wrote is the part of
+an entry worth reading back.
 
 `lookBacks` (`moodHistory.ts`) powers the Mood screen's LOOKING BACK card: days
 you wrote on, a month, three, six and then each year back. Three rules hold it:
@@ -734,11 +721,9 @@ The rest of the diary reading is the same posture, not new features:
   would make "head" answer with every headache whether or not the word was
   written, and fuzzier matching is the `symptomKey` refusal again. "Has a note"
   is a switch in the filter that ANDs with the rest.
-- **Writing prompts are questions, offered on request** (`MOOD_PROMPTS`). A
-  "Suggest a prompt" pill shows one as a hint under an empty note on a new
-  entry. It is never written into the note, never shown unasked and gone once
-  there are words. None names a feeling or assumes how the day went (the
-  `moodNudge` rule), and `moodLog.test.ts` pins that.
+- **Writing prompts belong to the journal now** (`JOURNAL_PROMPTS` in
+  `journal.ts`), offered on request over an empty page under the same rules:
+  questions only, never written into the entry, none naming a feeling.
 
 ## Backdating, and the picker's new ceiling
 

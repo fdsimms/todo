@@ -25,8 +25,10 @@ import { FoodLogScreen } from '../screens/FoodLogScreen';
 import { MoodScreen } from '../screens/MoodScreen';
 import { MedicationScreen } from '../screens/MedicationScreen';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { WeightScreen } from '../screens/WeightScreen';
 import { SleepScreen } from '../screens/SleepScreen';
+import { JournalScreen, DreamsScreen } from '../screens/JournalScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { MoodDayScreen } from '../screens/MoodDayScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
@@ -141,6 +143,8 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Medications: freezeWhenBlurred(MedicationScreen),
   Weight: freezeWhenBlurred(WeightScreen),
   Sleep: freezeWhenBlurred(SleepScreen),
+  Journal: freezeWhenBlurred(JournalScreen),
+  Dreams: freezeWhenBlurred(DreamsScreen),
   FoodLog: freezeWhenBlurred(FoodLogScreen),
   Stuck: freezeWhenBlurred(StuckScreen),
   Backfill: freezeWhenBlurred(BackfillScreen),
@@ -384,6 +388,8 @@ function initialScreenFromSettings(): string {
     people: usePersonStore.getState().people.length,
     mood: useMoodStore.getState().logs.length,
     medications: useMedicationStore.getState().logs.length,
+    journal: useJournalStore.getState().entries.filter(e => e.kind === 'journal').length,
+    dreams: useJournalStore.getState().entries.filter(e => e.kind === 'dream').length,
     foodLog: useFoodLogStore.getState().totalCount,
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).

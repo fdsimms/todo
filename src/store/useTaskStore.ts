@@ -116,6 +116,7 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedFo
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { DREAM_LOG_TITLE, JOURNAL_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
@@ -145,6 +146,7 @@ import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useSavedMealsStore } from './useSavedMealsStore';
 import { useMoodStore } from './useMoodStore';
+import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
@@ -160,7 +162,7 @@ import {
 import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
+import type { JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
 import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -1968,6 +1970,11 @@ interface TaskStore extends UndoHistoryActions {
    * days, one to plan something you enjoy. See src/utils/moodTasks.ts.
    */
   checkMoodTasks: () => void;
+  /**
+   * The journal reminder (once a day, or one per configured part of the day)
+   * and the daily dream reminder. See src/utils/journalTasks.ts.
+   */
+  checkJournalTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
   /**
@@ -1988,6 +1995,8 @@ interface TaskStore extends UndoHistoryActions {
    * other completion, and the tick is the feedback that the entry landed.
    */
   completeMoodLogTaskForToday: () => void;
+  /** The same for the journal or dream reminder, once an entry of that kind is saved for today. */
+  completeJournalTaskForToday: (kind: JournalKind) => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -2575,6 +2584,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
     useMilestoneStore.getState().initialize();
+    // The journal grew out of the mood entry's note, so it sits beside it on
+    // the fan-out for the same swap-the-database reason.
+    useJournalStore.getState().initialize();
     // Beside the mood log, same fan-out, and the sharpest version of the same
     // stakes: a medication history left pointed at the previous database would
     // report a demo session's invented doses as a real person's record of what
@@ -7314,6 +7326,73 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
+   * `checkMoodTasks`' check-in, twice over: the journal reminder with the same
+   * per-segment slots (`journalLogTimeSegments`), and the dream reminder with
+   * none. Clear anything not for the current slot, stamp the slot decided, and
+   * write a task only if that slot has nothing written yet.
+   */
+  checkJournalTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.journalLogTasks && !settings.dreamLogTasks) return;
+    // A demo session's entries are fiction, the refusal checkMoodTasks makes.
+    if (isDemoModeActive()) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const entries = useJournalStore.getState().entries;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    const run = (
+      kind: JournalKind,
+      category: string | null,
+      segments: readonly TimeOfDay[],
+      lastKey: string | null,
+      setLastKey: (key: string | null) => void,
+      title: string,
+    ) => {
+      const generatedKind = JOURNAL_TASK_KIND[kind];
+      const segment = segments.length > 0 ? currentTimeSegment(segments) : null;
+      const noSlotYet = segments.length > 0 && segment === null;
+      const sourceId = noSlotYet ? null : journalTaskSourceId(todayKey, segment);
+      liveGeneratedTasksOfKind(get().tasks, generatedKind)
+        .filter(task => journalTaskDayKey(task, kind) !== todayKey || task.generatedSourceId !== sourceId)
+        .forEach(task => deleteGeneratedTaskQuietly(task.id));
+      if (sourceId === null || lastKey === sourceId) return;
+      // Stamped before deciding, so a swiped-away reminder stays away for its slot.
+      setLastKey(sourceId);
+      const written = entries.filter(e => e.kind === kind);
+      const answered = segment
+        ? hasLoggedSince(written, timeSegmentThreshold(segment).toISOString())
+        : hasLogOnDay(written, todayKey);
+      if (answered) return;
+      reconcileGeneratedTask({
+        kind: generatedKind,
+        sourceId,
+        wanted: true,
+        drift: () => null,
+        draft: () => ({
+          title,
+          dueDate: dueDate.toISOString(),
+          timeSegments: segment ? [segment] : [],
+          category,
+          // Opens the sheet that answers it, so ticking isn't the only option.
+          linkUrl: journalLogUrl(kind),
+          ...generatedBy(generatedKind, sourceId),
+        }),
+      });
+    };
+
+    if (settings.journalLogTasks && settings.journalLogTaskCategory) {
+      run('journal', settings.journalLogTaskCategory, settings.journalLogTimeSegments,
+        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey, JOURNAL_LOG_TITLE);
+    }
+    if (settings.dreamLogTasks && settings.dreamLogTaskCategory) {
+      run('dream', settings.dreamLogTaskCategory, [],
+        settings.dreamLogLastDayKey, settings.setDreamLogLastDayKey, DREAM_LOG_TITLE);
+    }
+  },
+
+  /**
    * The weekend nudge — see `src/utils/weekendTasks.ts` for the five rules the
    * pure half holds, which is where anything about *what* a bare weekend is
    * belongs. This is only the plumbing: read the state, clear what has gone
@@ -7546,6 +7625,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const todayKey = dayKeyOf(getCurrentDayStart());
     const task = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .find(t => weighInDayKey(t) === todayKey);
+    if (!task) return;
+    get().completeTask(task.id);
+  },
+
+  completeJournalTaskForToday(kind) {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const task = liveGeneratedTasksOfKind(get().tasks, JOURNAL_TASK_KIND[kind])
+      .find(t => journalTaskDayKey(t, kind) === todayKey);
     if (!task) return;
     get().completeTask(task.id);
   },

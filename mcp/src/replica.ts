@@ -45,6 +45,8 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
+  JournalEntry,
+  JournalKind,
   FocusSessionRecord,
   SavedView,
   SavedViewClause,
@@ -290,8 +292,6 @@ export interface MoodInput {
   symptoms?: { name: string; severity?: number }[];
   contextTags?: string[];
   note?: string | null;
-  /** A dream the person woke up with. Filed under the day of the check-in. */
-  dream?: string | null;
   at?: Date;
 }
 
@@ -350,7 +350,7 @@ export interface FoodPatch {
   slot?: MealSlot | null;
 }
 
-export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note' | 'dream'>>;
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
 
 export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
@@ -796,6 +796,16 @@ export interface Replica {
   addMilestone(label: string, date: Date): Milestone;
   updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
   deleteMilestone(id: string): Milestone;
+  /** Journal and dream entries between two day keys, inclusive, newest first. */
+  journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[];
+  /**
+   * Journal and dream entries through `useJournalStore`'s own actions: blank
+   * text is refused as the sheet refuses it, and an entry's day is fixed once
+   * written, as in the app.
+   */
+  addJournalEntry(kind: JournalKind, text: string, at?: Date): JournalEntry;
+  updateJournalEntry(id: string, text: string): JournalEntry;
+  deleteJournalEntry(id: string): JournalEntry;
   /**
    * Finished focus sessions, newest first: `focus_session_log`, what Stats
    * reads. The session in flight is `focus_sessions`, which is in
@@ -2484,6 +2494,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.removeMilestone(id);
       return milestone;
     },
+    journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[] {
+      return db.dbGetAllJournalEntries()
+        .filter(e => e.dayKey >= fromDayKey && e.dayKey <= toDayKey && (!kind || e.kind === kind));
+    },
+    addJournalEntry(kind: JournalKind, text: string, at?: Date): JournalEntry {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
+      const store = useJournalStore.getState();
+      store.initialize();
+      const entry = store.addEntry(kind, text, at);
+      if (!entry) throw new Error('An entry needs some text.');
+      return entry;
+    },
+    updateJournalEntry(id: string, text: string): JournalEntry {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
+      const store = useJournalStore.getState();
+      store.initialize();
+      if (!store.entries.some(e => e.id === id)) throw new Error(`No journal or dream entry with id ${id}. list_journal_entries names them.`);
+      if (!text.trim()) throw new Error('An entry needs some text. To remove it, delete it instead.');
+      store.updateEntry(id, text);
+      return useJournalStore.getState().entries.find(e => e.id === id)!;
+    },
+    deleteJournalEntry(id: string): JournalEntry {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useJournalStore } = require('../../src/store/useJournalStore') as typeof import('../../src/store/useJournalStore');
+      const store = useJournalStore.getState();
+      store.initialize();
+      const entry = store.entries.find(e => e.id === id);
+      if (!entry) throw new Error(`No journal or dream entry with id ${id}. list_journal_entries names them.`);
+      store.removeEntry(id);
+      return entry;
+    },
     focusHistory: () => db.dbGetFocusSessionLog(),
     savedViews: () => db.dbGetAllSavedViews(),
     savedViewTasks(clauses: readonly SavedViewClause[]): Task[] {
@@ -2733,9 +2776,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         input.note ?? null,
         input.at,
         (input.contextTags ?? []).map(tag),
-        input.dream ?? null,
       );
-      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag, a note or a dream.');
+      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
       return log;
     },
 
@@ -2815,11 +2857,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
       if (patch.note !== undefined) next.note = patch.note;
-      if (patch.dream !== undefined) next.dream = patch.dream;
       // An edit may not empty the entry: a check-in recording nothing is a day
       // marked as logged with nothing on it. Delete it instead.
       const after = { ...existing, ...next };
-      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim() && !after.dream?.trim()) {
+      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
         throw new Error('That would leave the check-in empty. Delete it instead.');
       }
       useMoodStore.getState().updateLog(id, next);

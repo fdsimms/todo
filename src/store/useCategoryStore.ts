@@ -356,6 +356,10 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'healthTaskCategory', current: s.healthTaskCategory, assign: s.setHealthTaskCategory };
     case 'moodLog':
       return { key: 'moodLogTaskCategory', current: s.moodLogTaskCategory, assign: s.setMoodLogTaskCategory };
+    case 'journalLog':
+      return { key: 'journalLogTaskCategory', current: s.journalLogTaskCategory, assign: s.setJournalLogTaskCategory };
+    case 'dreamLog':
+      return { key: 'dreamLogTaskCategory', current: s.dreamLogTaskCategory, assign: s.setDreamLogTaskCategory };
     case 'moodNudge':
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
     case 'weekendNudge':

@@ -371,6 +371,12 @@ governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not w
 The Activity entry for a mood check-in or a dose names the kind of record and not its content,
 since the Activity list is about the app and should not show somebody's health.
 
+**Journal entries and dreams have their own tools** (`mcp/src/journalTools.ts`:
+`list_journal_entries`, `log_journal_entry`, `update_journal_entry`, `delete_journal_entry`), through
+`useJournalStore` like the mood log goes through its store. They are health rows for the same
+switch, and the Activity entry names the kind and the day, never the words. `log_mood` no longer
+takes a dream (`docs/arch/journal.md`).
+
 **Water is its own tool, `log_water`, because the food log keeps one water entry a day.**
 `waterLog.ts`'s rule is that eight glasses are one row stepped up eight times, not eight rows in
 the meal sections, and an entry stating only `waterMl` *is* that row (`isWaterEntry` is derived,

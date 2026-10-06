@@ -262,6 +262,7 @@ const SUMMARY_LABELS: { table: string; one: string; many: string }[] = [
   // that was about to replace a year of food log.
   { table: 'food_logs', one: 'food log entry', many: 'food log entries' },
   { table: 'mood_logs', one: 'mood log entry', many: 'mood log entries' },
+  { table: 'journal_entries', one: 'journal entry', many: 'journal entries' },
   { table: 'people', one: 'person', many: 'people' },
   { table: 'templates', one: 'template', many: 'templates' },
   { table: 'categories', one: 'category', many: 'categories' },

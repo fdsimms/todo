@@ -123,10 +123,9 @@ describe('logMood', () => {
     expect(second.contextTags).toEqual(['Poor sleep']);
   });
 
-  it('records a dream on a check-in and lets it be cleared again', () => {
-    const made = logMood(replica, { dream: 'Flying over a city' });
-    expect(made.dream).toBe('Flying over a city');
-    expect(() => updateMoodLog(replica, made.id, { dream: null })).toThrow(/empty/);
+  it('refuses to clear the only thing on a check-in', () => {
+    const made = logMood(replica, { note: 'Long day' });
+    expect(() => updateMoodLog(replica, made.id, { note: null })).toThrow(/empty/);
   });
 
   it('refuses a rating off the scale and an empty check-in', () => {

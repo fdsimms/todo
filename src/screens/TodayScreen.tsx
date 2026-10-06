@@ -1499,6 +1499,7 @@ export function TodayScreen() {
           // Beside them, same trigger: which day is "today" rolls over purely
           // by time passing, and so does the length of a low run.
           useTaskStore.getState().checkMoodTasks();
+          useTaskStore.getState().checkJournalTasks();
           // And the weigh-in, which shares the mood check-in's shape: a day
           // rolling over is its whole trigger, so a phone that stays open for
           // days would otherwise never be asked. Async (it takes its own

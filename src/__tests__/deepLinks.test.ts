@@ -11,6 +11,7 @@ const mockResetToRecipeDetail = jest.fn();
 const mockResetToMealPlan = jest.fn();
 const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
+const mockResetToJournal = jest.fn();
 const mockResetToFoodLog = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
@@ -71,6 +72,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
   resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
   resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
+  resetToJournal: (...args: unknown[]) => mockResetToJournal(...args),
   resetToFoodLog: (...args: unknown[]) => mockResetToFoodLog(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
@@ -106,6 +108,8 @@ import {
   isPeopleUrl,
   peopleUrlPersonId,
   isFoodLogUrl,
+  journalUrlKind,
+  journalUrlWantsLog,
   isProjectsUrl,
   projectsUrlPullId,
   projectsUrlPullDay,
@@ -1007,5 +1011,27 @@ describe('universal links', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const domains: string[] = require('../../app.json').expo.ios.associatedDomains;
     expect(domains.map(d => d.replace(/^applinks:/, '')).sort()).toEqual([...UNIVERSAL_LINK_HOSTS].sort());
+  });
+});
+
+describe('journal and dreams links', () => {
+  it('names the kind, and nothing for another link', () => {
+    expect(journalUrlKind('dundundun://journal')).toBe('journal');
+    expect(journalUrlKind('dundundun://dreams?log=1')).toBe('dream');
+    expect(journalUrlKind('dundundun://mood?log=1')).toBeNull();
+  });
+
+  it('asks for the sheet only with log=1 or log=true', () => {
+    expect(journalUrlWantsLog('dundundun://journal?log=1')).toBe(true);
+    expect(journalUrlWantsLog('dundundun://dreams?log=true')).toBe(true);
+    expect(journalUrlWantsLog('dundundun://journal')).toBe(false);
+  });
+
+  it('lands on the matching screen, opening the sheet when asked', () => {
+    mockResetToJournal.mockClear();
+    expect(openInAppUrl('dundundun://dreams?log=1')).toBe(true);
+    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true);
+    expect(openInAppUrl('dundundun://journal')).toBe(true);
+    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false);
   });
 });

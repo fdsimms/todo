@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
+import type { JournalKind } from '../types';
 import { runOrHoldForDemo } from './demoHold';
 import { isDemoModeActive } from './demoState';
 import { useTaskStore } from '../store/useTaskStore';
@@ -19,6 +20,7 @@ import {
   resetToKitchen,
   resetToPeople,
   resetToMood,
+  resetToJournal,
   resetToFoodLog,
   resetToWeight,
   resetToProjectPull,
@@ -490,6 +492,27 @@ export function moodUrlWantsLog(url: string): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
+// `dundundun://journal[?log=1]` and `dundundun://dreams[?log=1]` — what the
+// journal and dream reminders carry, the mood link's shape for each kind.
+const JOURNAL_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?(journal|dreams)\\/?(?:\\?(.*))?$`, 'i');
+
+/** Which journal kind a link opens, or null for any other link. */
+export function journalUrlKind(url: string): JournalKind | null {
+  if (typeof url !== 'string') return null;
+  const match = JOURNAL_RE.exec(url.trim());
+  if (!match) return null;
+  return match[1].toLowerCase() === 'dreams' ? 'dream' : 'journal';
+}
+
+/** Does a journal or dreams link ask for the writing sheet on arrival? */
+export function journalUrlWantsLog(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = JOURNAL_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[2] ?? '').log ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
 // `dundundun://foodlog` — the Today widget's food log shortcut, the peer of
 // `groceries`/`mealplan`/`kitchen`: a plain "open this screen" link with no
 // query params, since nothing writes this one asking for a specific entry or
@@ -742,6 +765,11 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isMoodUrl(url)) {
     resetToMood(moodUrlWantsLog(url));
+    return true;
+  }
+  const journalKind = journalUrlKind(url);
+  if (journalKind) {
+    resetToJournal(journalKind, journalUrlWantsLog(url));
     return true;
   }
   if (isFoodLogUrl(url)) {

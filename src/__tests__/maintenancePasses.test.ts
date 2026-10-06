@@ -55,6 +55,7 @@ describe('the three maintenance groups', () => {
       'check screen time tasks',
       'check health tasks',
       'check mood tasks',
+      'check journal tasks',
       'check weekend nudge tasks',
       'check weigh-in tasks',
       'check birthday tasks',

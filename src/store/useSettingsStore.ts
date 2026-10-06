@@ -1551,6 +1551,19 @@ interface SettingsStore {
   // than the day and fires at most once a week, so holding it until a part of
   // the day buys nothing.
   moodLogTimeSegments: TimeOfDay[];
+  // The journal and dream reminders (src/utils/journalTasks.ts), the mood
+  // check-in's four fields over the journal and three over the dream log.
+  // Off by default for moodLogTasks' reason. journalLogTimeSegments is
+  // moodLogTimeSegments' shape (empty = one any-time task a day; one or more =
+  // a task per part of the day), and the dream reminder has none: it is once a
+  // day by design.
+  journalLogTasks: boolean;
+  journalLogTaskCategory: string | null;
+  journalLogLastDayKey: string | null;
+  journalLogTimeSegments: TimeOfDay[];
+  dreamLogTasks: boolean;
+  dreamLogTaskCategory: string | null;
+  dreamLogLastDayKey: string | null;
   // Whether a run of low-mood days adds a task to plan something you enjoy.
   // Off by default and deliberately harder to reach than the rest: it is the
   // only generator that fires on a trend in the user's own answers, so opting
@@ -1985,6 +1998,13 @@ interface SettingsStore {
   setMorningCheckInLastDayKey: (dayKey: string | null) => void;
   setBeatLastDayKey: (dayKey: string | null) => void;
   setMoodLogTimeSegments: (segments: TimeOfDay[]) => void;
+  setJournalLogTasks: (on: boolean) => void;
+  setJournalLogTaskCategory: (category: string | null) => void;
+  setJournalLogLastDayKey: (key: string | null) => void;
+  setJournalLogTimeSegments: (segments: TimeOfDay[]) => void;
+  setDreamLogTasks: (on: boolean) => void;
+  setDreamLogTaskCategory: (category: string | null) => void;
+  setDreamLogLastDayKey: (key: string | null) => void;
   setMoodNudgeTasks: (on: boolean) => void;
   setMoodNudgeTaskCategory: (category: string | null) => void;
   setMoodNudgeAfterDays: (days: number) => void;
@@ -2670,6 +2690,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   morningCheckInLastDayKey: null,
   beatLastDayKey: null,
   moodLogTimeSegments: [],
+  journalLogTasks: false,
+  journalLogTaskCategory: null,
+  journalLogLastDayKey: null,
+  journalLogTimeSegments: [],
+  dreamLogTasks: false,
+  dreamLogTaskCategory: null,
+  dreamLogLastDayKey: null,
   moodNudgeTasks: false,
   moodNudgeTaskCategory: null,
   moodNudgeAfterDays: DEFAULT_MOOD_NUDGE_AFTER_DAYS,
@@ -3123,6 +3150,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dbGetSetting('moodLogTimeSegments'),
       dbGetSetting('moodLogTimeSegment'),
     );
+    const journalLogTasks = dbGetSetting('journalLogTasks') === 'true';
+    const journalLogTaskCategory = dbGetSetting('journalLogTaskCategory') || null;
+    const journalLogLastDayKey = dbGetSetting('journalLogLastDayKey') || null;
+    const journalLogTimeSegments = parseMoodLogTimeSegments(dbGetSetting('journalLogTimeSegments'), null);
+    const dreamLogTasks = dbGetSetting('dreamLogTasks') === 'true';
+    const dreamLogTaskCategory = dbGetSetting('dreamLogTaskCategory') || null;
+    const dreamLogLastDayKey = dbGetSetting('dreamLogLastDayKey') || null;
     const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
     const moodNudgeTaskCategory = dbGetSetting('moodNudgeTaskCategory') || null;
     const storedMoodNudgeAfterDays = parseInt(dbGetSetting('moodNudgeAfterDays') ?? '', 10);
@@ -3327,6 +3361,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       defaultProjectNudgeCadenceDays,
       defaultReminderLeadMinutes,
       destinationForecastEnabled,
+      dreamLogLastDayKey,
+      dreamLogTaskCategory,
+      dreamLogTasks,
       eveningStart,
       eventRules,
       eventTaskCategory,
@@ -3372,6 +3409,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       hideHelpText,
       hideListPreviews,
       householdServings,
+      journalLogLastDayKey,
+      journalLogTaskCategory,
+      journalLogTasks,
+      journalLogTimeSegments,
       keepOpenAfterFoodLog,
       kitchenEnabled,
       lastDeloadAppliedDayKey,
@@ -4179,6 +4220,42 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMoodLogTimeSegments(segments: TimeOfDay[]) {
     dbSetSetting('moodLogTimeSegments', JSON.stringify(segments));
     set({ moodLogTimeSegments: segments });
+  },
+
+  setJournalLogTasks(on: boolean) {
+    dbSetSetting('journalLogTasks', on ? 'true' : 'false');
+    set({ journalLogTasks: on });
+  },
+
+  setJournalLogTaskCategory(category: string | null) {
+    dbSetSetting('journalLogTaskCategory', category ?? '');
+    set({ journalLogTaskCategory: category });
+  },
+
+  setJournalLogLastDayKey(key: string | null) {
+    dbSetSetting('journalLogLastDayKey', key ?? '');
+    set({ journalLogLastDayKey: key });
+  },
+
+  // Written whole, as setMoodLogTimeSegments is.
+  setJournalLogTimeSegments(segments: TimeOfDay[]) {
+    dbSetSetting('journalLogTimeSegments', JSON.stringify(segments));
+    set({ journalLogTimeSegments: segments });
+  },
+
+  setDreamLogTasks(on: boolean) {
+    dbSetSetting('dreamLogTasks', on ? 'true' : 'false');
+    set({ dreamLogTasks: on });
+  },
+
+  setDreamLogTaskCategory(category: string | null) {
+    dbSetSetting('dreamLogTaskCategory', category ?? '');
+    set({ dreamLogTaskCategory: category });
+  },
+
+  setDreamLogLastDayKey(key: string | null) {
+    dbSetSetting('dreamLogLastDayKey', key ?? '');
+    set({ dreamLogLastDayKey: key });
   },
 
   setMoodNudgeTasks(on: boolean) {

@@ -57,32 +57,6 @@ export const DEFAULT_CONTEXT_TAGS: readonly string[] = [
   'Vacation', 'Travel', 'Sick', 'Poor sleep', 'Big deadline', 'Social event',
 ];
 
-/**
- * Questions the log sheet can offer above an empty note, for a blank page.
- *
- * Questions only: none names a feeling, assumes how the day went or diagnoses
- * anything, the same line `moodNudge` holds. They are shown as a hint, never
- * written into the note, and only when the person asks for one.
- */
-export const MOOD_PROMPTS: readonly string[] = [
-  'What went well today?',
-  'What took up the most space in your head?',
-  'What are you looking forward to?',
-  'What do you want to remember about today?',
-  'What did you get done that you\'re glad about?',
-  'What was hard today, and what helped?',
-  'Who did you talk to today?',
-  'What would make tomorrow a bit easier?',
-  'What did you notice about your body today?',
-  'What are you grateful for right now?',
-];
-
-/** The prompt at `index`, wrapping, so a caller can step through them with a counter. */
-export function moodPromptAt(index: number): string {
-  const n = MOOD_PROMPTS.length;
-  return MOOD_PROMPTS[((index % n) + n) % n];
-}
-
 export const SYMPTOM_SEVERITIES: readonly { value: SymptomSeverity; label: string }[] = [
   { value: 1, label: 'Mild' },
   { value: 2, label: 'Moderate' },
@@ -314,7 +288,7 @@ export function seededContextTags(
 }
 
 /** Whether anything at all was recorded on a day — the "did you log" read. */
-export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
+export function hasLogOnDay(logs: readonly Pick<MoodLog, 'dayKey'>[], dayKey: string): boolean {
   return logs.some(l => l.dayKey === dayKey);
 }
 
@@ -326,7 +300,7 @@ export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
  * ever compared: both are `toISOString()` output, so string order is time
  * order.
  */
-export function hasLoggedSince(logs: readonly MoodLog[], since: string): boolean {
+export function hasLoggedSince(logs: readonly Pick<MoodLog, 'loggedAt'>[], since: string): boolean {
   return logs.some(l => l.loggedAt >= since);
 }
 
@@ -343,6 +317,5 @@ export function moodLogSummary(log: MoodLog): string {
   if (log.symptoms.length > 0) parts.push(log.symptoms.map(s => s.name).join(', '));
   if (log.contextTags.length > 0) parts.push(log.contextTags.join(', '));
   if (parts.length === 0 && log.note) return log.note;
-  if (parts.length === 0 && log.dream) return log.dream;
   return parts.join(' · ');
 }
