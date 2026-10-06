@@ -377,7 +377,7 @@ struct WidgetPalette {
     let text: Color
     let textSecondary: Color
     let textTertiary: Color
-    // Ink: near-black in light, near-white in dark. Glyphs and the add button.
+    // Violet, colors.accent in the app. Glyphs and the add button.
     let accent: Color
     // The over-run tint, matching colors.orange in src/theme/index.ts — what
     // FocusLiveActivity draws a focus step that has run past its target in,
@@ -400,7 +400,7 @@ struct WidgetPalette {
         text: Color(hex: "F6F3F8"),
         textSecondary: Color(hex: "B3ADBD"),
         textTertiary: Color(hex: "8F889A"),
-        accent: Color(hex: "F6F3F8"),
+        accent: Color(hex: "B9A0FF"),
         orange: Color(hex: "FF9F0A"),
         green: Color(hex: "30D158"),
         red: Color(hex: "FF453A"),
@@ -417,7 +417,7 @@ struct WidgetPalette {
         text: Color(hex: "17131C"),
         textSecondary: Color(hex: "4F4A57"),
         textTertiary: Color(hex: "6B6574"),
-        accent: Color(hex: "17131C"),
+        accent: Color(hex: "6A3FDB"),
         orange: Color(hex: "FF9500"),
         green: Color(hex: "34C759"),
         red: Color(hex: "FF3B30"),

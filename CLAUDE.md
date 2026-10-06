@@ -912,7 +912,7 @@ sized as an icon, a large hero number (a focus countdown, an estimate's total), 
 
 - `colors.backdrop` — every modal/sheet dim layer
 - `colors.blurFallback` — tint overlay behind `SafeBlurView` content
-- `colors.onAccent` — text/icons on an `accent`/`accentFill` surface. The accent is ink (near-black in Light, near-white in Dark and Black), so this follows it: white in Light, ink in the dark themes
+- `colors.onAccent` — text/icons on an `accent`/`accentFill` surface. The accent is violet (deep in Light, pale lavender in Dark and Black), so this follows it: white in Light, ink in the dark themes
 - `colors.onFill` — text/icons on every other coloured fill: a status `…Fill`, a tag, category or priority colour, a photo, the camera, a `backdrop` scrim (always white). A fill picked at runtime that may be either goes through `textOnFill(fill, colors)`
 - `colors.done`/`colors.onDone` — the gold of finishing: a checked completion checkbox anywhere (task, subtask, chain step, met target, checked grocery row), coins and streaks, with an ink check on it. Green is not "done"; it is a status hue
 - `colors.redText`/`orangeText`/`greenText`/`purpleText`/`warningText` for a status colour as **text** (and an orange or warning icon), `colors.redFill`/`orangeFill`/`greenFill`/`purpleFill` for a status colour **under `onFill`**; the plain hue is for dots, bars, borders, tints and red/green/purple icons. Same split as `accent`/`accentText`/`accentFill`, and `themeContrast.test.ts` holds each role to its floor

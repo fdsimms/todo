@@ -25,10 +25,11 @@ export type Colors = {
   textSecondary: string;
   textTertiary: string;
   /**
-   * The interactive colour: ink. Near-black in Light, near-white in Dark and
+   * The interactive colour: violet. Deep in Light, a pale lavender in Dark and
    * Black. It is the selected state of every chip, pill and segment, the
    * filled "Add"/"Save" buttons, the tab bar's current tab and every glyph,
-   * border and bar that marks a control. It carries no hue on purpose, so the
+   * border and bar that marks a control. It is the only hue the app owns for
+   * interaction, so the
    * colours left on screen (`done` gold, red, the time-of-day and tag hues)
    * each mean something.
    */
@@ -37,8 +38,8 @@ export type Colors = {
   /**
    * Accent as *text*, for the three places bare accent text is sanctioned:
    * a sheet header button, a disclosure value, and an `InlineAction`'s accent
-   * label. With an ink accent this is the same value as `accent`; it stays a
-   * separate token so the text role keeps its own contrast floor in
+   * label. In Dark and Black this is the same value as `accent`; in Light it is
+   * a touch deeper. It stays a separate token so the text role keeps its own contrast floor in
    * `themeContrast.test.ts`. Never use it as a background: a fill stays
    * `accent`/`accentFill`, or the two stop matching each other.
    */
@@ -46,7 +47,7 @@ export type Colors = {
   /**
    * Accent as a *fill carrying `onAccent`*: the selected state of every chip,
    * pill and segment plus the "Add"/"Save" filled buttons. The same value as
-   * `accent` with an ink accent, kept separate for the same reason as
+   * `accent`, kept separate for the same reason as
    * `accentText`. Wherever `onAccent` sits on a filled surface, the surface is
    * this; use `accent` everywhere else a fill is called for.
    */
@@ -145,9 +146,14 @@ export type Colors = {
  */
 export type ThemeMode = 'dark' | 'light' | 'system' | 'darkPurple';
 
-// Ink and paper: the accent in every palette, and the check on a `done` fill.
+// Ink and paper: the text colours, and what sits on an accent or `done` fill.
 const INK = '#17131C';
 const PAPER = '#F6F3F8';
+// The accent: violet, deep enough for white on it in Light and pale enough for
+// ink on it in Dark and Black.
+const VIOLET_DEEP = '#6A3FDB';
+const VIOLET_TEXT = '#6032D0';
+const VIOLET_PALE = '#B9A0FF';
 
 /**
  * Black: true black for OLED, and where anyone who picked the old Dark theme
@@ -164,10 +170,10 @@ export const darkColors: Colors = {
   text: '#FFFFFF',
   textSecondary: '#A6A6AA',
   textTertiary: '#939396',
-  accent: PAPER,
-  accentSubtle: 'rgba(246, 243, 248, 0.12)',
-  accentText: PAPER,
-  accentFill: PAPER,
+  accent: VIOLET_PALE,
+  accentSubtle: 'rgba(185, 160, 255, 0.16)',
+  accentText: VIOLET_PALE,
+  accentFill: VIOLET_PALE,
   green: '#4C9A76',
   greenText: '#51A47D',
   greenFill: '#418365',
@@ -218,10 +224,10 @@ export const nightColors: Colors = {
   text: PAPER,
   textSecondary: '#B3ADBD',
   textTertiary: '#8F889A',
-  accent: PAPER,
-  accentSubtle: 'rgba(246, 243, 248, 0.12)',
-  accentText: PAPER,
-  accentFill: PAPER,
+  accent: VIOLET_PALE,
+  accentSubtle: 'rgba(185, 160, 255, 0.16)',
+  accentText: VIOLET_PALE,
+  accentFill: VIOLET_PALE,
   green: '#4C9A76',
   greenText: '#53A680',
   greenFill: '#418365',
@@ -257,7 +263,7 @@ export const nightColors: Colors = {
   ],
 };
 
-/** Light: ink on a cool, faintly plum page. */
+/** Light: ink text on a cool, faintly plum page, with a violet accent. */
 export const lightColors: Colors = {
   bg: '#F3F2F5',
   bgSecondary: '#FFFFFF',
@@ -268,10 +274,10 @@ export const lightColors: Colors = {
   text: INK,
   textSecondary: '#4F4A57',
   textTertiary: '#6B6574',
-  accent: INK,
-  accentSubtle: 'rgba(23, 19, 28, 0.08)',
-  accentText: INK,
-  accentFill: INK,
+  accent: VIOLET_DEEP,
+  accentSubtle: 'rgba(106, 63, 219, 0.1)',
+  accentText: VIOLET_TEXT,
+  accentFill: VIOLET_DEEP,
   green: '#3D8563',
   greenText: '#377759',
   greenFill: '#3C8362',
