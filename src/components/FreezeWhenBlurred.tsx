@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigationState, useRoute } from '@react-navigation/native';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
@@ -71,6 +71,18 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
       const timer = setTimeout(() => setSettled(true), TAB_FREEZE_DELAY_MS);
       return () => clearTimeout(timer);
     }, [wantFrozen]);
+    // A thaw is one render that has to un-suspend a boundary whose child threw a
+    // thenable that never resolves. When that render lands in the same batch as
+    // the navigation that focused the tab (a widget or link tap), the reveal can
+    // be missed and the focused tab stays blank until another tab switch. Once the
+    // thaw has committed, render the boundary once more so React retries it.
+    const [, setThawNonce] = useState(0);
+    const wasFrozen = useRef(false);
+    useEffect(() => {
+      const frozenNow = wantFrozen && settled;
+      if (wasFrozen.current && !frozenNow) setThawNonce(n => n + 1);
+      wasFrozen.current = frozenNow;
+    }, [wantFrozen, settled]);
     // The same element while the props are, so this wrapper re-rendering on a
     // sheet opening somewhere does not re-render the screen inside it.
     const screen = useMemo(() => <Screen {...props} />, [props]);
