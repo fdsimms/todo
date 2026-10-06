@@ -21,6 +21,7 @@ import { amountExample, amountHint, composeFoodAmount, foodUnitOptionsFor, scale
 import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { haptics } from '../utils/haptics';
+import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
@@ -105,6 +106,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const addEntry = useFoodLogStore(s => s.addEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
+  const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
   // Lifts the focused amount field clear of the keyboard instead of leaving
   // it to a plain ScrollView, which only scrolls when the person does it
   // manually — same mechanism as every other keyboard-heavy sheet (see the
@@ -115,6 +117,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // is the untouched state.
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  // What was said about each card's pantry stock. Missing is "No change". Only
+  // applied to a card that is actually logged, the same as its amount.
+  const [pantryAnswers, setPantryAnswers] = useState<Record<string, PantryReviewAnswer | null>>({});
   // Which unit's pill is selected per card, and the bare number typed against
   // it — split the same way `FoodLogEntrySheet`'s amount field is, and reset
   // together with the answers below. 'other' means the free-text field, same
@@ -133,6 +138,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     setAmountNumbers({});
     setWeighedPanels({});
     setWeighGrams({});
+    setPantryAnswers({});
     setChosenSlot(slot);
   }, [visible, slot]);
 
@@ -216,6 +222,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
         mealPlanEntryId: mealPlanEntryId ?? null,
         at,
       });
+      const pantry = pantryAnswers[food.key];
+      if (pantry && food.itemId) answerPantryReview(food.itemId, pantry);
     }
     haptics.success();
     Keyboard.dismiss();
@@ -416,6 +424,25 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       : 'That amount can’t be measured against this label. See the note above.'}
                   </Text>
                 )}
+                {/* Said per card, once it is being logged, and only for a food
+                    that is a catalog row (a pantry entry to update). */}
+                {!!outcome && !!food.itemId && (
+                  <View style={styles.pantryField}>
+                    <Text style={styles.pantryLabel}>PANTRY</Text>
+                    <SegmentedControl<PantryReviewAnswer | null>
+                      options={[
+                        { value: null, label: 'No change' },
+                        { value: 'have', label: 'Still have it' },
+                        { value: 'low', label: 'Running low' },
+                        { value: 'out', label: 'Out of it' },
+                      ]}
+                      value={pantryAnswers[food.key] ?? null}
+                      onChange={v => setPantryAnswers(a => ({ ...a, [food.key]: v }))}
+                      columns={2}
+                      label={`Pantry stock of ${food.label}`}
+                    />
+                  </View>
+                )}
                 {/* This label states no density of its own, so the weight
                     behind a volume amount is approximated from water's —
                     right for most drinks, off for anything syrupy or
@@ -496,6 +523,8 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       gap: spacing.sm,
     },
+    pantryField: { gap: spacing.xsm },
+    pantryLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8 },
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     servingSize: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
     choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
