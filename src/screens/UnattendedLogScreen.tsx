@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, SectionList, StyleSheet, Alert } from 'react-native';
+import { View, Text, SectionList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -24,9 +24,9 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
-import { PillGroup, type PillGroupOption } from '../components/PillGroup';
+import { ActivitySourceSheet } from '../components/ActivitySourceSheet';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, lineHeight, fontWeight, iconSize, radius, type Colors } from '../theme';
+import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
@@ -73,6 +73,7 @@ export function UnattendedLogScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [kind, setKind] = useState<GeneratedKind | null>(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   // What an agent's entry is about is read back from the store that owns it, so
   // the undo is offered only while that record is still how the agent left it
@@ -180,25 +181,12 @@ export function UnattendedLogScreen() {
     [filtered, dayResetTime],
   );
 
-  // "All" is pinned so the option meaning *no filter* is never buried behind
-  // the cap, and the chosen one is exempt for PillGroup's own reason. Only the
-  // generators actually present are offered: a filter listing all twenty would
-  // mostly be rows that select nothing.
-  const pills = useMemo<PillGroupOption[]>(() => [
-    {
-      key: 'all',
-      label: 'All',
-      pinned: true,
-      selected: kind === null,
-      onPress: () => { haptics.tap(); setKind(null); },
-    },
-    ...kinds.map(k => ({
-      key: k,
-      label: GENERATED_KIND_SPECS[k].label,
-      selected: kind === k,
-      onPress: () => { haptics.tap(); setKind(kind === k ? null : k); },
-    })),
-  ], [kinds, kind]);
+  // Only the generators actually present are offered: a filter listing all
+  // twenty would mostly be rows that select nothing.
+  const sourceOptions = useMemo(
+    () => kinds.map(k => ({ key: k, label: GENERATED_KIND_SPECS[k].label })),
+    [kinds],
+  );
 
   const navigation = useNavigation();
   const openAutomations = useCallback(() => {
@@ -231,9 +219,28 @@ export function UnattendedLogScreen() {
 
       {kinds.length > 1 && (
         <View style={styles.filter}>
-          <PillGroup options={pills} noun="source" surface="page" />
+          <TouchableOpacity
+            style={[styles.sourceButton, kind !== null && styles.sourceButtonActive]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setSourceOpen(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Source: ${kind === null ? 'All sources' : GENERATED_KIND_SPECS[kind].label}`}
+          >
+            <Ionicons name="funnel-outline" size={iconSize.sm} color={kind === null ? colors.textSecondary : colors.accent} />
+            <Text style={[styles.sourceText, kind !== null && styles.sourceTextActive]} numberOfLines={1}>
+              {kind === null ? 'All sources' : GENERATED_KIND_SPECS[kind].label}
+            </Text>
+            <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       )}
+      <ActivitySourceSheet
+        visible={sourceOpen && kinds.length > 1}
+        onClose={() => setSourceOpen(false)}
+        options={sourceOptions}
+        selected={kind}
+        onSelect={key => setKind(key as GeneratedKind | null)}
+      />
 
       <SectionList
         sections={sections}
@@ -392,7 +399,21 @@ const ActivityRow = React.memo(function ActivityRow({
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
-    filter: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+    filter: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, flexDirection: 'row' },
+    // One trigger in place of a pill per source; the set runs to a dozen or more.
+    sourceButton: {
+      flexShrink: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xsm,
+      minHeight: 36,
+      paddingHorizontal: spacing.smd,
+      borderRadius: radius.full,
+      backgroundColor: colors.bgSecondary,
+    },
+    sourceButtonActive: { backgroundColor: colors.accentSubtle },
+    sourceText: { flexShrink: 1, color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+    sourceTextActive: { color: colors.accentText },
     listContent: { paddingHorizontal: spacing.md },
     emptyContainer: { flexGrow: 1 },
     sectionHeader: {
