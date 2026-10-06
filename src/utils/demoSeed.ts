@@ -4371,16 +4371,16 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // All three are back-dated through finishShopping's own `purchasedAt`
   // argument rather than a raw row write, like everything else here. A trip
   // finished this second is the one shape that can never lapse, so without the
-  // back-date this is the feature the demo couldn't show at all. Twenty days
-  // for the last one, against the flat fortnight a demo row falls back to (its
-  // createdAt is seconds old, so there is no cadence to divide out) — which
-  // leaves it six days lapsed and comfortably inside PANTRY_CHECK_GRACE_DAYS.
+  // back-date this is the feature the demo couldn't show at all. A week apart,
+  // so the measured gap between purchases (GroceryItem.purchaseIntervalDays)
+  // is seven days, and sixteen days since the last one — which leaves it nine
+  // days lapsed and comfortably inside PANTRY_CHECK_GRACE_DAYS.
   //
   // Rolled oats because the shelf-life lexicon doesn't recognise it: a use-by
   // date on the same row would spawn a "Use up" task beside the check, and one
   // item carrying two of the app's own tasks demonstrates them fighting rather
   // than either of them working.
-  [70, 45, 20].forEach(daysBack => {
+  [30, 23, 16].forEach(daysBack => {
     addExistingMany(idsNamed(['Rolled oats']));
     setCheckedMany(idsNamed(['Rolled oats']), true);
     finishShopping(traderJoes.id, {}, subDays(new Date(), daysBack).toISOString());

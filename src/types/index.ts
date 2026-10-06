@@ -4940,6 +4940,13 @@ export interface GroceryItem {
   purchaseCount: number;
   lastAddedAt: string | null;
   lastPurchasedAt: string | null;
+  // How many days usually pass between buying this, as a running average of
+  // the gaps between purchases (`nextPurchaseIntervalDays`), updated by each
+  // home trip. Null until a second purchase gives it a gap to measure, which
+  // includes every row bought before this column existed. It replaced a
+  // cadence read off the row's age (`now - createdAt` over the count), which a
+  // catalog row made long before its first purchase stretched to months.
+  purchaseIntervalDays: number | null;
   createdAt: string;
   // The pantry override — an explicit "Got it"/"Out of it" assertion, and
   // *only* that. A future value reads as "on hand" regardless of what

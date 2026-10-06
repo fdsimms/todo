@@ -2564,6 +2564,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
+    purchaseIntervalDays: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
     sourceRecipeId: null,
@@ -3447,6 +3448,24 @@ describe('grocery items', () => {
       expect(byId.get('g1')!.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
       // Not bought, so still on the list for next time.
       expect(byId.get('g2')!.onList).toBe(true);
+    });
+
+    it('measures the gap since the last purchase into the running average', () => {
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3,
+        lastPurchasedAt: '2026-08-01T12:00:00.000Z', purchaseIntervalDays: 10,
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
+
+      // Halfway from 10 towards the 6-day gap this trip measured.
+      expect(dbGetAllGroceryItems()[0].purchaseIntervalDays).toBeCloseTo(8);
+    });
+
+    it('leaves the average alone on a first purchase, with no gap to measure', () => {
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true }));
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
+      expect(dbGetAllGroceryItems()[0].purchaseIntervalDays).toBeNull();
     });
 
     // Same lifetime as quantity_from_recipe: the recipe credit says why this

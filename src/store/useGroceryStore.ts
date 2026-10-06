@@ -97,6 +97,7 @@ import { catalogItemForKey } from '../utils/groceryPlural';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { describeQuantities, mergeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
 import {
   acquiredRow,
   runningLowEntries,
@@ -2732,6 +2733,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
       lastAddedAt: laterOf(intoItem.lastAddedAt, fromItem.lastAddedAt),
       lastPurchasedAt: laterOf(intoItem.lastPurchasedAt, fromItem.lastPurchasedAt),
+      // Not averaged: the two rows' gaps were measured against different
+      // purchase stamps. The surviving row's own figure, else the other's.
+      purchaseIntervalDays: intoItem.purchaseIntervalDays ?? fromItem.purchaseIntervalDays,
       onHandUntil: laterOf(intoItem.onHandUntil, fromItem.onHandUntil),
       isStaple: intoItem.isStaple || fromItem.isStaple,
       onList,
@@ -4416,6 +4420,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 ...(away ? null : {
                 purchaseCount: i.purchaseCount + 1,
                 lastPurchasedAt: purchasedAt,
+                purchaseIntervalDays: nextPurchaseIntervalDays(i.purchaseIntervalDays, i.lastPurchasedAt, purchasedAt),
                 // Cleared, not written: probablyHaveReason reads the purchase
                 // itself (#1770), and the one thing a trip has to say about
                 // this column is that coming home with something refutes an
