@@ -743,8 +743,12 @@ describe('pantryEntries with boxes', () => {
     // The whole point: two brands that are interchangeable at the stove are
     // still two separate packets in the kitchen.
     const item = makeItem({ name: 'Vegan ground beef', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(4) });
-    const beyond = makeProduct({ itemId: item.id, brand: 'Beyond', frozenAt: daysAgo(20) });
-    const impossible = makeProduct({ itemId: item.id, brand: 'Impossible', onHandUntil: daysAgo(-5) });
+    // Explicit keys: the rows sort by `productKey`, and the fixture's own
+    // `k-<n>` keys compare as text, so 'k-10' sorts before 'k-9' and the order
+    // here depended on how many fixtures earlier tests (run in any order under
+    // --randomize) had already made.
+    const beyond = makeProduct({ itemId: item.id, brand: 'Beyond', productKey: 'a-beyond', frozenAt: daysAgo(20) });
+    const impossible = makeProduct({ itemId: item.id, brand: 'Impossible', productKey: 'b-impossible', onHandUntil: daysAgo(-5) });
 
     const entries = pantryEntries([item], NOW, [beyond, impossible]);
     expect(entries.map(e => [e.product?.brand ?? null, e.reason])).toEqual([
