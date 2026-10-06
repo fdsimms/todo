@@ -243,14 +243,18 @@ function NewLineField({
   styles,
   placeholderColor,
   placeholder = 'New line',
+  inTray = false,
 }: {
   onAdd: (text: string, pending: LinePending) => void;
   onAddMany: (lines: string[]) => void;
   onDone: () => void;
-  styles: { newLineRow: object; newLineInput: object; newLinePending: object; newLinePendingText: object };
+  styles: { newLineRow: object; newLineInTray: object; newLineInputRow: object; newLineInput: object; newLineConfirm: object; newLinePending: object; newLinePendingText: object };
   placeholderColor: string;
   placeholder?: string;
+  /** Inside a stack's tray, which already insets its rows: the field drops its own side margins to match them. */
+  inTray?: boolean;
 }) {
+  const colors = useColors();
   const [text, setText] = useState('');
   // What's typed, read by onBlur. A ref rather than the state, and emptied on
   // every add, so the blur a re-keyed field may send on its way out can't add
@@ -288,6 +292,14 @@ function NewLineField({
     textRef.current = next;
     setText(next);
   };
+  // Return and the check button do the same thing: add what's typed and open
+  // the next field, or close on an empty one.
+  const submit = () => {
+    const typed = textRef.current.trim();
+    textRef.current = '';
+    if (typed) { handedOffRef.current = true; onAdd(typed, takePending()); }
+    else onDone();
+  };
   const confirm = () => {
     if (!suggestion) return;
     haptics.success();
@@ -301,7 +313,8 @@ function NewLineField({
     pending.priority !== null ? PRIORITY_LABELS[pending.priority] : null,
   ].filter((label): label is string => label !== null);
   return (
-    <View style={styles.newLineRow}>
+    <View style={[styles.newLineRow, inTray && styles.newLineInTray]}>
+      <View style={styles.newLineInputRow}>
       <TextField
         style={styles.newLineInput}
         value={text}
@@ -315,12 +328,7 @@ function NewLineField({
         maxLength={TITLE_MAX_LENGTH}
         returnKeyType="next"
         blurOnSubmit={false}
-        onSubmitEditing={() => {
-          const typed = textRef.current.trim();
-          textRef.current = '';
-          if (typed) { handedOffRef.current = true; onAdd(typed, takePending()); }
-          else onDone();
-        }}
+        onSubmitEditing={submit}
         // Tapping away keeps what was typed: a line written and then left is
         // one the person meant to add.
         onBlur={() => {
@@ -332,6 +340,22 @@ function NewLineField({
         }}
         accessibilityLabel={placeholder}
       />
+      {text.trim().length > 0 && (
+        // onPressIn rather than onPress: tapping away blurs the field, which
+        // adds the line and closes it, and a press that waits for the finger
+        // to lift would find the button already gone.
+        <TouchableOpacity
+          style={styles.newLineConfirm}
+          onPressIn={() => { haptics.tap(); submit(); }}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${placeholder === 'New item' ? 'item' : 'line'}`}
+        >
+          <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+      </View>
       {pendingLabels.length > 0 && (
         <View style={styles.newLinePending}>
           <Text style={styles.newLinePendingText} numberOfLines={1}>{pendingLabels.join(' · ')}</Text>
@@ -1413,6 +1437,7 @@ export function ProjectDetailScreen() {
           styles={styles}
           placeholderColor={colors.textTertiary}
           placeholder={isList ? 'New item' : 'New line'}
+          inTray={!!opts.indented}
         />
       </>
     );
@@ -2145,6 +2170,7 @@ export function ProjectDetailScreen() {
                           styles={styles}
                           placeholderColor={colors.textTertiary}
                           placeholder={isList ? 'New item' : 'New line'}
+                          inTray
                         />
                       ) : empty ? (
                         <View style={styles.emptyStackRow}>
@@ -2199,6 +2225,7 @@ export function ProjectDetailScreen() {
                             styles={styles}
                             placeholderColor={colors.textTertiary}
                             placeholder={isList ? 'New item' : 'New line'}
+                            inTray
                           />
                         )}
                         {!selectionMode && sectionLine?.groupId !== group.id && (
@@ -2682,7 +2709,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingRight: spacing.md,
   },
   // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
-  newLineInput: { color: colors.text, fontSize: font.md, minHeight: 44 },
+  // In a stack's tray the tray's own padding is the gutter, same as its task rows.
+  newLineInTray: { marginHorizontal: 0 },
+  newLineInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  newLineInput: { flex: 1, color: colors.text, fontSize: font.md, minHeight: 44 },
+  newLineConfirm: { justifyContent: 'center', alignItems: 'center' },
   // What Confirm set on the line being typed, under it until the line is added.
   newLinePending: {
     flexDirection: 'row',
