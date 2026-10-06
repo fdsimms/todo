@@ -419,12 +419,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                   <Text style={[styles.outcome, !outcome && styles.outcomeRefused]}>
                     {outcome
                       ? outcome.nutrition.amounts.calorieKcal !== undefined
-                        ? [
-                            `${Math.round(outcome.nutrition.amounts.calorieKcal)} cal`,
+                        ? `${Math.round(outcome.nutrition.amounts.calorieKcal)} cal${
                             outcome.nutrition.amounts.proteinG !== undefined
-                              ? `${Math.round(outcome.nutrition.amounts.proteinG * 10) / 10} g protein`
-                              : null,
-                          ].filter(Boolean).join(' · ')
+                              ? `, ${Math.round(outcome.nutrition.amounts.proteinG)} g protein`
+                              : ''
+                          }`
                         : 'Measured'
                       : 'That amount can’t be measured against this label. See the note above.'}
                   </Text>
