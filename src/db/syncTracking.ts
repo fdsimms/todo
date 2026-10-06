@@ -549,8 +549,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   `mealPlanNudgeLastFiredWeekKey` has never synced either.
  * - `syncDeviceId`, `syncCursor:*` — the sync machinery itself. Two devices
  *   sharing a device id would each ignore the other's payloads as their own.
- * - `syncServerHealthLogs`, `syncServerHealthResendFrom` — per device, like the
- *   server address they qualify. Synced, one phone could start sending another
+ * - `syncServerHealthLogs`, `syncServerHealthResendFrom`, `syncServerJournal`,
+ *   `syncServerJournalResendFrom` — per device, like the server address they
+ *   qualify. Synced, one phone could start sending another
  *   one's health logs to a server, which is the decision the switch exists to
  *   leave with the person holding the phone; and the resend mark is a position
  *   in this device's own push cursor, meaningless anywhere else.
@@ -576,8 +577,8 @@ export function isSyncedSettingKey(key: string): boolean {
  *
  * `milestones` are here because they exist to be read against the mood log,
  * and "started sertraline" is as common a one as "new job".
- * `journal_entries` are here because a diary is the most personal thing the
- * app holds, and it grew out of the mood entry's own note (which already is).
+ * `journal_entries` are not here but in `JOURNAL_SYNC_TABLES` below, with a
+ * switch of their own.
  * `medication_archived` is here because it is a list of medicine names, which
  * says what somebody takes as plainly as the dose log does. What is not here,
  * and why: a task's `medication_name` rides on a task, and a task titled "Take
@@ -587,8 +588,21 @@ export function isSyncedSettingKey(key: string): boolean {
  * Pushes only. A row of these arriving from a transport is still applied, so
  * a peer on an older build that still sends them does no harm.
  */
-export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'journal_entries', 'medication_logs', 'food_logs'];
+export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived'];
+
+/**
+ * The journal and the dream log: withheld from iCloud with the health record,
+ * and sent to a sync server only once the person has turned on their own
+ * switch (`syncServerJournal`), separate from the health logs' one.
+ *
+ * A diary is the most personal thing the app holds, and the server is what the
+ * MCP server reads, so sending it is the decision to let an agent read it.
+ * Somebody happy for Claude to see their food log is not thereby happy for it
+ * to read what they wrote last night, so one switch was the wrong shape.
+ * Pushes only, like the health tables.
+ */
+export const JOURNAL_SYNC_TABLES: readonly string[] = ['journal_entries'];
 
 /** Where deletions go. A row here is the only evidence a row ever existed. */
 export const SYNC_DELETIONS_TABLE = 'sync_deletions';

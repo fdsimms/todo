@@ -1171,6 +1171,11 @@ transport can withhold tables (`SyncTransport.withhold`, applied by `withholdCha
   device, like the server address. So the replica, and so Claude, has no health logs until somebody
   has said yes to that specifically, separately from saying yes to a hosted copy of their tasks. The
   three log tools say so in their descriptions, so an empty result is not read as "nothing logged".
+- **Journal entries and dreams have a switch of their own, "Include journal and
+  dreams"** (`JOURNAL_SYNC_TABLES`, `syncServerJournal`), off by default and
+  per device, with its own resend mark. The server is what an agent reads, and
+  being happy for Claude to see a food log is not being happy for it to read a
+  diary, so the journal is not part of the health switch.
 - **iCloud always withholds them.** App Review guideline 5.1.3(ii) says an app "may not store
   personal health information in iCloud". It sits among the HealthKit rules and may not reach a mood
   log somebody typed, but the strict reading costs only cross-device sync of these three logs for
