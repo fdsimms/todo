@@ -2506,7 +2506,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  headerSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  headerSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs },
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 120 },

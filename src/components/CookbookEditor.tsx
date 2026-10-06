@@ -211,7 +211,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
 const makeStyles = (colors: Colors) => StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.smd,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   body: { padding: spacing.md },

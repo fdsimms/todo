@@ -154,6 +154,7 @@ function makeStyles(colors: Colors) {
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
     },
     eyebrow: {
       color: colors.accentText,
@@ -164,7 +165,7 @@ function makeStyles(colors: Colors) {
     },
     titleBlock: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
     title: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold },
-    subtitle: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs },
+    subtitle: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm },
     list: { padding: spacing.md, paddingBottom: spacing.xl },
     listEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
     groupBlock: { marginBottom: spacing.md },

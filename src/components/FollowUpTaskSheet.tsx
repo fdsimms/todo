@@ -570,7 +570,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  headerSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  headerSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs },
   headerSpacer: { minWidth: 56 },
   scroll: { flex: 1 },
   scrollContent: { paddingTop: spacing.md, paddingBottom: 120 },
