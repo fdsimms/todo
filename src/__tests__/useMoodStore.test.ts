@@ -133,16 +133,6 @@ describe('addLog', () => {
     expect(state().addLog(null, [], null, undefined, ['Vacation'])).not.toBeNull();
   });
 
-  it('accepts an entry with only a dream, trimmed, and refuses a blank one', () => {
-    const log = state().addLog(null, [], null, undefined, [], '  Flying over a city  ');
-    expect(log).toMatchObject({ dream: 'Flying over a city', mood: null });
-    expect(dbInsertMoodLog).toHaveBeenCalledWith(expect.objectContaining({ dream: 'Flying over a city' }));
-    expect(state().addLog(null, [], null, undefined, [], '   ')).toBeNull();
-  });
-
-  it('stores no dream as null', () => {
-    expect(state().addLog(3, [])!.dream).toBeNull();
-  });
 });
 
 describe('updateLog', () => {
@@ -151,14 +141,6 @@ describe('updateLog', () => {
     state().updateLog(log.id, { mood: 5, note: '  better now  ' });
     expect(state().logs[0]).toMatchObject({ mood: 5, note: 'better now' });
     expect(dbUpdateMoodLog).toHaveBeenCalled();
-  });
-
-  it('sets, trims and clears a dream', () => {
-    const log = state().addLog(2, [])!;
-    state().updateLog(log.id, { dream: '  a long corridor  ' });
-    expect(state().logs[0].dream).toBe('a long corridor');
-    state().updateLog(log.id, { dream: '  ' });
-    expect(state().logs[0].dream).toBeNull();
   });
 
   it('never moves which day an entry counts toward', () => {

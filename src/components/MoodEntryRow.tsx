@@ -56,7 +56,6 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
     log.symptoms.length > 0 ? log.symptoms.map(s => s.name).join(', ') : null,
     log.contextTags.length > 0 ? log.contextTags.join(', ') : null,
     log.note || null,
-    log.dream ? `Dream: ${log.dream}` : null,
   ].filter(Boolean).join('. ');
 
   return (
@@ -82,11 +81,6 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
         </Text>
         <Text style={styles.meta} numberOfLines={1}>{when}</Text>
         {!!log.note && <Text style={styles.note} numberOfLines={NOTE_LINES}>{log.note}</Text>}
-        {!!log.dream && (
-          <Text style={styles.note} numberOfLines={NOTE_LINES}>
-            <Text style={styles.dreamLabel}>Dream: </Text>{log.dream}
-          </Text>
-        )}
         {highlighted && (
           <Text style={styles.highlight} numberOfLines={1}>
             {highlighted.name}: {severityLabel(highlighted.severity).toLowerCase()}
@@ -127,5 +121,4 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   // What was written is the entry, so it reads in the primary text colour at body
   // size, not as a dim footnote under the faces.
   note: { fontSize: font.md, color: colors.text, marginTop: spacing.xs },
-  dreamLabel: { color: colors.textSecondary, fontWeight: fontWeight.medium },
 });

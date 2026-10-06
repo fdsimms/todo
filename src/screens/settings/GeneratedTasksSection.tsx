@@ -343,6 +343,8 @@ export function GeneratedTasksSection() {
       case 'health': s.setHealthTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
+      case 'journalLog': s.setJournalLogTasks(next); break;
+      case 'dreamLog': s.setDreamLogTasks(next); break;
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
       case 'waterShortfall': s.setWaterShortfallTasks(next); break;
@@ -389,6 +391,8 @@ export function GeneratedTasksSection() {
       case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
+      case 'journalLog': return s.journalLogTaskCategory;
+      case 'dreamLog': return s.dreamLogTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
@@ -424,6 +428,8 @@ export function GeneratedTasksSection() {
       case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
+      case 'journalLog': s.setJournalLogTaskCategory(category); break;
+      case 'dreamLog': s.setDreamLogTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
@@ -474,6 +480,14 @@ export function GeneratedTasksSection() {
         ? `Adds one task a day, held back until ${segmentNames[0]}, to log how you're feeling`
         : `Adds a task each of these times a day, to log how you're feeling: ${segmentNames.join(', ')}`;
     }
+    if (spec.kind === 'journalLog' && s.journalLogTimeSegments.length > 0) {
+      const segmentNames = s.journalLogTimeSegments.map(seg =>
+        timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
+      );
+      return s.journalLogTimeSegments.length === 1
+        ? `Adds one task a day, held back until ${segmentNames[0]}, to write in your journal`
+        : `Adds a task each of these times a day, to write in your journal: ${segmentNames.join(', ')}`;
+    }
     return spec.onHint;
   };
 
@@ -520,14 +534,18 @@ export function GeneratedTasksSection() {
   );
 
   /**
-   * The mood log's own "Show the task" row — the one generator whose check-in
-   * can fire more than once a day. Multi-select, unlike `timeSegmentExtra`
+   * The "Show the task" row for a check-in that can fire more than once a day
+   * (the mood log and the journal). Multi-select, unlike `timeSegmentExtra`
    * above: a segment toggles independently rather than replacing whichever
    * was picked, and "Any time" clears the set back to the single any-time
    * task rather than being one more mutually-exclusive option.
    */
-  const moodLogTimeSegmentsExtra = (): React.ReactNode => {
-    const selected = s.moodLogTimeSegments;
+  const multiSegmentExtra = (
+    entryId: string,
+    selected: TimeOfDay[],
+    onChange: (segments: TimeOfDay[]) => void,
+    hint: string,
+  ): React.ReactNode => {
     const summary = selected.length === 0
       ? 'Any time'
       : timeSegmentChoices
@@ -538,10 +556,10 @@ export function GeneratedTasksSection() {
       <>
         <View style={styles.sep} />
         <SettingsRow
-          entryId="moodLogTimeSegments"
+          entryId={entryId}
           icon="time-outline"
           label="Show the task"
-          hint="Held back until each part of the day arrives. Pick more than one for several check-ins a day. An earlier one still unanswered is cleared once the next arrives."
+          hint={hint}
           value={summary}
           tight
         />
@@ -558,9 +576,9 @@ export function GeneratedTasksSection() {
                 : `Show the task in the ${o.label.toLowerCase()}`,
               onPress: () => {
                 haptics.tap();
-                if (o.value === null) { s.setMoodLogTimeSegments([]); return; }
+                if (o.value === null) { onChange([]); return; }
                 const value = o.value;
-                s.setMoodLogTimeSegments(
+                onChange(
                   selected.includes(value) ? selected.filter(seg => seg !== value) : [...selected, value]
                 );
               },
@@ -967,7 +985,15 @@ export function GeneratedTasksSection() {
     }
 
     if (kind === 'moodLog') {
-      return moodLogTimeSegmentsExtra();
+      return multiSegmentExtra('moodLogTimeSegments', s.moodLogTimeSegments, s.setMoodLogTimeSegments,
+        'Held back until each part of the day arrives. Pick more than one for several check-ins a day. An earlier one still unanswered is cleared once the next arrives.',
+      );
+    }
+
+    if (kind === 'journalLog') {
+      return multiSegmentExtra('journalLogTimeSegments', s.journalLogTimeSegments, s.setJournalLogTimeSegments,
+        'Any time means one task a day. Pick parts of the day to get a task in each. An earlier one still unanswered is cleared once the next arrives.',
+      );
     }
 
     if (kind === 'weather') {

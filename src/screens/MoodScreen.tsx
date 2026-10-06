@@ -10,6 +10,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Milestone, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -26,7 +27,7 @@ import {
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
-import { symptomStats, logsInDayRange, lookBacks, dreamStats } from '../utils/moodHistory';
+import { symptomStats, logsInDayRange, lookBacks } from '../utils/moodHistory';
 import { moodExportCsv, moodExportFileName, moodExportSummary } from '../utils/moodExport';
 import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -170,7 +171,8 @@ export function MoodScreen() {
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const lookedBack = useMemo(() => lookBacks(logs, todayKey), [logs, todayKey]);
+  const journal = useJournalStore(s => s.entries);
+  const lookedBack = useMemo(() => lookBacks(logs, todayKey, journal), [logs, todayKey, journal]);
 
   // The first day the task record is complete for. `completedRetentionDays`
   // deletes completed rows on a schedule while the mood log keeps every entry
@@ -313,7 +315,6 @@ export function MoodScreen() {
   // gap size, so without this a symptom logged three times has no page reachable
   // from anywhere.
   const symptomList = useMemo(() => symptomStats(logs), [logs]);
-  const dreams = useMemo(() => dreamStats(logs, todayKey.slice(0, 7)), [logs, todayKey]);
 
   // Mood on the days one repeating task got done, against the days it didn't.
   // The app's answer to medication tracking: a tablet, a supplement or a walk
@@ -489,18 +490,18 @@ export function MoodScreen() {
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); navigation.navigate('MoodDay', { dayKey: back.dayKey }); }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${back.logs.map(l => [l.note, l.dream ? `Dream: ${l.dream}` : null].filter(Boolean).join('. ')).join('. ')}`}
+                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${[...back.logs.map(l => l.note), ...back.journal.map(e => (e.kind === 'dream' ? `Dream: ${e.text}` : e.text))].filter(Boolean).join('. ')}`}
                   >
                     <Text style={styles.lookBackWhen}>
                       {back.label} · {format(dayKeyToDate(back.dayKey), 'EEE, MMM d, yyyy')}
                     </Text>
                     {back.logs.map(l => (
-                      <React.Fragment key={l.id}>
-                        {!!l.note && <Text style={styles.lookBackNote} numberOfLines={6}>{l.note}</Text>}
-                        {!!l.dream && (
-                          <Text style={styles.lookBackNote} numberOfLines={6}>Dream: {l.dream}</Text>
-                        )}
-                      </React.Fragment>
+                      !!l.note && <Text key={l.id} style={styles.lookBackNote} numberOfLines={6}>{l.note}</Text>
+                    ))}
+                    {back.journal.map(e => (
+                      <Text key={e.id} style={styles.lookBackNote} numberOfLines={6}>
+                        {e.kind === 'dream' ? `Dream: ${e.text}` : e.text}
+                      </Text>
                     ))}
                   </TouchableOpacity>
                 ))}
@@ -855,32 +856,6 @@ export function MoodScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          )}
-
-          {/* Plain counts, shown only once a dream has been written: there is no
-              empty state to explain, and a day without one is not a finding. */}
-          {dreams.lastDayKey !== null && (
-            <>
-              <Text style={styles.sectionTitle}>DREAMS</Text>
-              <TouchableOpacity
-                style={[styles.card, styles.linkRow]}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => { haptics.tap(); navigation.navigate('MoodHistory', { dreamsOnly: true }); }}
-                accessibilityRole="button"
-                accessibilityHint="Opens your history, showing only entries with a dream"
-                accessibilityLabel={`${dreams.dayCount} ${dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down, ${dreams.dayCountInMonth} this month, last on ${format(dayKeyToDate(dreams.lastDayKey), 'MMMM d')}`}
-              >
-                <View style={styles.linkBody}>
-                  <Text style={styles.linkLabel}>
-                    {dreams.dayCount} {dreams.dayCount === 1 ? 'day' : 'days'} with a dream written down
-                  </Text>
-                  <Text style={styles.linkMeta}>
-                    {dreams.dayCountInMonth} this month · last on {format(dayKeyToDate(dreams.lastDayKey), 'MMM d')}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </>
           )}
 
           <Text style={styles.sectionTitle}>MILESTONES</Text>

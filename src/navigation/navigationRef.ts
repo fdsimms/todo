@@ -1,5 +1,5 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
-import type { MealSlot } from '../types';
+import type { JournalKind, MealSlot } from '../types';
 
 // Shared with AppNavigator's <NavigationContainer ref={navigationRef}>, so
 // code outside the component tree (deep link handling) can navigate without
@@ -298,6 +298,23 @@ export function resetToFocusSession(): void {
  * Today leaves the checking-off flow stranded on the Mood tab, since a bare
  * `navigate` between tabs has no back stack the way a pushed screen does.
  */
+/**
+ * Where `dundundun://journal` and `dundundun://dreams` land, with `log=1`
+ * opening the writing sheet. `resetToMood`'s shape, `returnTo` included.
+ */
+export function resetToJournal(kind: JournalKind, openLog = false): void {
+  const route = kind === 'dream' ? 'Dreams' : 'Journal';
+  runWhenReady(() => {
+    const returnTo = openLog ? currentTabName() : undefined;
+    navigateToTab(
+      route,
+      openLog
+        ? { openLog: Date.now(), returnTo: returnTo !== route ? returnTo : undefined }
+        : undefined
+    );
+  });
+}
+
 export function resetToMood(openLog = false): void {
   runWhenReady(() => {
     const returnTo = openLog ? currentTabName() : undefined;

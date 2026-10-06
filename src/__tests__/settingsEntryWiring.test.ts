@@ -55,6 +55,8 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
   // than the interpolated blocks above rather than another blanket exemption:
   // a second caller that forgot to pass its own id still fails.
   { test: id => id.endsWith('TimeSegment'), template: id => `timeSegmentExtra('${id}'` },
+  // The same for the two multi-select ones (the mood check-in and the journal).
+  { test: id => id.endsWith('TimeSegments'), template: id => `multiSegmentExtra('${id}'` },
   // PermissionsSettings maps over one `PERMISSIONS` array rather than writing
   // each row out, so the literal id never appears — only the loop variable
   // does. `permHealth` is the one row in that screen that isn't part of the

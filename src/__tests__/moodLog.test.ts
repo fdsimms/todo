@@ -33,7 +33,6 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
-    dream: over.dream ?? null,
   };
 }
 
@@ -263,22 +262,5 @@ describe('an entry summary', () => {
 
   it('falls back to the note for an entry that is only a note', () => {
     expect(moodLogSummary(log({ mood: null, note: 'Slept badly' }))).toBe('Slept badly');
-    expect(moodLogSummary(log({ mood: null, dream: 'Flying' }))).toBe('Flying');
-  });
-});
-
-describe('writing prompts', () => {
-  it('wraps in both directions so a counter can step through them', () => {
-    const { MOOD_PROMPTS, moodPromptAt } = require('../utils/moodLog');
-    expect(moodPromptAt(MOOD_PROMPTS.length)).toBe(MOOD_PROMPTS[0]);
-    expect(moodPromptAt(-1)).toBe(MOOD_PROMPTS[MOOD_PROMPTS.length - 1]);
-  });
-
-  it('are all questions, with no em dashes and no feeling named back', () => {
-    const { MOOD_PROMPTS } = require('../utils/moodLog');
-    for (const p of MOOD_PROMPTS) {
-      expect(p.endsWith('?')).toBe(true);
-      expect(p).not.toMatch(/—|depress|anxi|sad|unwell/i);
-    }
   });
 });

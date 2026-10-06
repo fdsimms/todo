@@ -6,6 +6,7 @@ import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useJournalStore } from '../store/useJournalStore';
 import type { NavMenuOptions } from '../utils/navHubs';
 
 /**
@@ -29,12 +30,14 @@ export function useNavMenuOptions(): NavMenuOptions {
   const peopleCount = usePersonStore(s => s.people.length);
   const moodCount = useMoodStore(s => s.logs.length);
   const medicationCount = useMedicationStore(s => s.logs.length);
+  const journalCount = useJournalStore(s => s.entries.filter(e => e.kind === 'journal').length);
+  const dreamCount = useJournalStore(s => s.entries.filter(e => e.kind === 'dream').length);
   // The whole history, not today's rows — see useFoodLogStore.totalCount.
   const foodLogCount = useFoodLogStore(s => s.totalCount);
 
   return useMemo(() => ({
     kitchenEnabled,
     simpleMode,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount },
-  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount },
+  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount]);
 }

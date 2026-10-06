@@ -12,6 +12,9 @@ import {
   dbGetAllSettings,
   dbSetSetting,
   dbGetAllTasks,
+  dbGetAllJournalEntries,
+  dbGetAllMoodLogs,
+  dbDeleteJournalEntry,
   dbInsertTask,
   dbUpdateTask,
   dbDeleteTask,
@@ -429,6 +432,40 @@ describe('initDatabase', () => {
     initDatabase();
     const row = mockRawDb.prepare('SELECT seen_at FROM tasks WHERE id = ?').get('legacy-row') as { seen_at: string };
     expect(row.seen_at).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  // Dreams were a column on the mood entry before they were their own log.
+  describe('moving dreams off mood entries', () => {
+    const insertMood = (id: string, cols: { mood?: number | null; note?: string | null; dream?: string | null }) => {
+      mockRawDb
+        .prepare(
+          'INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note, dream)' +
+            " VALUES (?, '2026-08-17T07:00:00.000Z', '2026-08-17', ?, '[]', '[]', ?, ?)"
+        )
+        .run(id, cols.mood ?? null, cols.note ?? null, cols.dream ?? null);
+    };
+
+    it('copies each dream to a journal entry with an id derived from its mood entry, once', () => {
+      insertMood('rated', { mood: 4, dream: '  Flying  ' });
+      insertMood('only-dream', { dream: 'A long corridor' });
+      insertMood('plain', { mood: 2 });
+      dbSetSetting('journal_dream_migration_done', '');
+
+      initDatabase();
+
+      const dreams = dbGetAllJournalEntries().filter(e => e.kind === 'dream');
+      expect(dreams.map(e => [e.id, e.text, e.dayKey]).sort()).toEqual([
+        ['dream-only-dream', 'A long corridor', '2026-08-17'],
+        ['dream-rated', 'Flying', '2026-08-17'],
+      ]);
+      // A mood entry that held only the dream is gone; the rest keep their mood.
+      expect(dbGetAllMoodLogs().map(l => l.id).sort()).toEqual(['plain', 'rated']);
+
+      // Flagged: a dream deleted from the journal afterwards does not come back.
+      dbDeleteJournalEntry('dream-rated');
+      initDatabase();
+      expect(dbGetAllJournalEntries().map(e => e.id)).toEqual(['dream-only-dream']);
+    });
   });
 
   // 'opaque' is retired from ReceiptStyle. Without this pass a store marked it

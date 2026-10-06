@@ -154,7 +154,7 @@ describe('the subtitle under a hub row', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
     expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Stacks, Templates');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep');
+    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep, Journal, Dreams');
   });
 
   // The whole point of building it from the members rather than writing it

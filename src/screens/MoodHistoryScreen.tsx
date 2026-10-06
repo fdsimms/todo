@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { MoodLevel, MoodLog } from '../types';
@@ -51,12 +51,7 @@ export function MoodHistoryScreen() {
 
   const logs = useMoodStore(s => s.logs);
 
-  // The Mood screen's DREAMS card opens this already narrowed to dreams. Read
-  // once as the initial state, so clearing the pill afterwards stays cleared.
-  const route = useRoute<RouteProp<{ MoodHistory: { dreamsOnly?: boolean } | undefined }, 'MoodHistory'>>();
-  const [filter, setFilter] = useState<MoodFilter>(
-    () => (route.params?.dreamsOnly ? { ...EMPTY_MOOD_FILTER, withDream: true } : EMPTY_MOOD_FILTER),
-  );
+  const [filter, setFilter] = useState<MoodFilter>(EMPTY_MOOD_FILTER);
   // Words in the notes. Its own field rather than a chip: it is open text, not a
   // set to pick from, and it ANDs with the filter the same way the filter's
   // dimensions AND with each other.
@@ -102,12 +97,9 @@ export function MoodHistoryScreen() {
       label: 'Writing',
       options: [
         { key: 'note', label: 'Has a note' },
-        { key: 'dream', label: 'Has a dream' },
       ],
-      selected: [...(filter.withNote ? ['note'] : []), ...(filter.withDream ? ['dream'] : [])],
-      onToggle: key => setFilter(f => (
-        key === 'dream' ? { ...f, withDream: !f.withDream } : { ...f, withNote: !f.withNote }
-      )),
+      selected: filter.withNote ? ['note'] : [],
+      onToggle: () => setFilter(f => ({ ...f, withNote: !f.withNote })),
     },
     {
       label: 'Mood',
@@ -146,11 +138,6 @@ export function MoodHistoryScreen() {
       key: 'with-note',
       label: 'Has a note',
       remove: () => setFilter(f => ({ ...f, withNote: false })),
-    }] : []),
-    ...(filter.withDream ? [{
-      key: 'with-dream',
-      label: 'Has a dream',
-      remove: () => setFilter(f => ({ ...f, withDream: false })),
     }] : []),
     ...filter.moods.map(mood => ({
       key: `mood-${mood}`,

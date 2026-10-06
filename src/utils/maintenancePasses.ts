@@ -200,6 +200,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // a background run: the daily check-in is on the list before the phone is
     // unlocked, which is the whole point of a daily check-in.
     ['check mood tasks', () => tasks().checkMoodTasks()],
+    // The journal and dream reminders, the check-in's shape over the journal
+    // store, so the same trigger and the same real work at launch.
+    ['check journal tasks', () => tasks().checkJournalTasks()],
     // Beside it, same trigger: which weekend is next rolls over purely by time
     // passing. After useSettingsStore.initialize for the reason the meal pass is — which day
     // is Friday is a question about the logical day. It reads the calendar

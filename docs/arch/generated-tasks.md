@@ -48,6 +48,12 @@ creation predicate against a row the user edits freely; `weighIn` fires on the *
 to a reading and the other asks for one); `moodNudge` fires on a trend in the user's own answers;
 and `weekendNudge` asks about a span of days rather than one. See each one's section.
 
+`journalLog` and `dreamLog` (`src/utils/journalTasks.ts`, fired by
+`checkJournalTasks`) are `moodLog`'s shape over the journal: day-keyed, no
+source row, a settings mark each. The journal one takes the same per-segment
+setting (`journalLogTimeSegments`, empty for one a day); the dream one is once a
+day. See `docs/arch/journal.md`.
+
 `moodLog` and `moodNudge` share a
 file (`src/utils/moodTasks.ts`) and a firing pass the way `birthday` and
 `birthdayGift` share theirs — one subject, two lead-ins, read together in

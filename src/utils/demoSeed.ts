@@ -14,6 +14,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -2105,6 +2106,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedJournal(today);
   seedAsNeededDoses(today);
   seedRewards(today);
   // Through the same write the Settings rows use. Claude's own writes are not
@@ -2756,18 +2758,16 @@ function seedMoodLog(today: Date): void {
     symptoms?: [string, SymptomSeverity][];
     contextTags?: string[];
     note?: string;
-    // Free text only and read by no insight, so these leave every number below as is.
-    dream?: string;
   }[] = [
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5, contextTags: ['Vacation'], dream: 'Walking along a beach I did not recognize, looking for a train station.' },
+    { back: 15, mood: 5, contextTags: ['Vacation'] },
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
     { back: 13, mood: 4 },
     { back: 12, mood: 3 },
     { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
     { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'], dream: 'Missing a meeting I could not find the room for. Woke up twice.' },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
     { back: 8, mood: 2, symptoms: [['Headache', 1]] },
     { back: 7, mood: 3 },
     { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
@@ -2789,7 +2789,6 @@ function seedMoodLog(today: Date): void {
       day.note ?? null,
       at,
       day.contextTags ?? [],
-      day.dream ?? null,
     );
   }
 
@@ -2892,6 +2891,25 @@ function seedMilestone(today: Date): void {
   const date = subDays(today, 9);
   date.setHours(12, 0, 0, 0);
   addMilestone('Started a magnesium supplement', date);
+}
+
+/**
+ * A few journal entries and two dreams, so the Journal and Dreams screens (and
+ * their pills in the Health hub, which simplified mode hides while empty) have
+ * something to show. Through `addEntry`, so a seeded row can't drift from the type.
+ */
+function seedJournal(today: Date): void {
+  const { addEntry } = useJournalStore.getState();
+  const at = (back: number, hour: number) => {
+    const d = subDays(today, back);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
+  addEntry('journal', 'Deadline is close. Made a list of what is actually left and it is shorter than it felt.', at(10, 21));
+  addEntry('journal', 'Slept in, then a long walk by the river. First day in a while that felt unhurried.', at(4, 18));
+  addEntry('journal', 'Good meeting this morning. Want to remember to thank Sam for covering on Friday.', at(1, 9));
+  addEntry('dream', 'Walking along a beach I did not recognize, looking for a train station.', at(15, 7));
+  addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7));
 }
 
 /**

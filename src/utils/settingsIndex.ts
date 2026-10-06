@@ -315,7 +315,7 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   screenTime: ['phone', 'usage', 'distraction', 'social media', 'doomscroll', 'limit', 'apps'],
   health: ['apple health', 'steps', 'sleep', 'walk', 'fitness', 'activity', 'rest'],
   moodLog: ['symptom', 'symptoms', 'feeling', 'feelings', 'wellbeing', 'well-being',
-    'health', 'journal', 'diary', 'track', 'log', 'generated', 'automatic'],
+    'health', 'track', 'log', 'generated', 'automatic'],
   moodNudge: ['mood', 'down', 'wellbeing', 'well-being', 'health', 'fun', 'enjoy', 'cheer',
     'generated', 'automatic'],
   // No 'weekend' or 'empty': both are already in this generator's label, which
@@ -341,6 +341,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   bookEvent: ['appointment', 'checkup', 'doctor', 'dentist', 'optometrist', 'remind', 'yearly',
     'generated', 'automatic'],
+  journalLog: ['diary', 'write', 'writing', 'reflect', 'entry', 'track', 'generated', 'automatic'],
+  dreamLog: ['dream journal', 'dreams', 'nightmare', 'sleep', 'woke', 'write', 'generated', 'automatic'],
 };
 
 /**
@@ -791,6 +793,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'moodLogTimeSegments', requires: 'gen:moodLog', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
       'mood', 'feeling', 'multiple', 'several', 'twice'] },
+  { id: 'journalLogTimeSegments', requires: 'gen:journalLog', groupId: 'generated', label: 'Show the task', section: 'Journal reminder',
+    keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
+      'diary', 'write', 'multiple', 'several', 'twice', 'once a day'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',

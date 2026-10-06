@@ -87,7 +87,7 @@ export function SyncSettings() {
   return (
     <SettingsSection
       label="Sync"
-      footer="Changes are exchanged when you open the app on each device. iCloud keeps them in your private iCloud database, on the Apple ID this device is signed in to, and never receives your mood, medication or food logs or your milestones. A sync server is not the same: it holds a complete copy of everything else in this app except recipe photos, on whatever machine you point it at, and your health logs too if you include them. Set one up only if you want that copy to exist."
+      footer="Changes are exchanged when you open the app on each device. iCloud keeps them in your private iCloud database, on the Apple ID this device is signed in to, and never receives your mood, medication or food logs, your journal and dreams, or your milestones. A sync server is not the same: it holds a complete copy of everything else in this app except recipe photos, on whatever machine you point it at, and your health logs too if you include them. Set one up only if you want that copy to exist."
     >
       {supported && (
         <SettingsRow
@@ -95,7 +95,7 @@ export function SyncSettings() {
           icon="cloud-outline"
           iconColor={enabled ? colors.accent : undefined}
           label="Sync with iCloud"
-          hint="Keeps this app's data the same on every device signed in to this Apple ID. Your mood, medication and food logs and your milestones aren't sent to iCloud, so they stay on the device you added them on."
+          hint="Keeps this app's data the same on every device signed in to this Apple ID. Your mood, medication and food logs, your journal and dreams, and your milestones aren't sent to iCloud, so they stay on the device you added them on."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
           onPress={onToggle}
@@ -156,7 +156,7 @@ export function SyncSettings() {
         icon="heart-outline"
         iconColor={serverHealthLogs ? colors.accent : undefined}
         label="Include health logs"
-        hint="Also send your mood, medication and food logs and your milestones to the sync server. Turning this off stops new entries going there. Ones already sent stay on the server."
+        hint="Also send your mood, medication and food logs, your journal and dreams, and your milestones to the sync server. Turning this off stops new entries going there. Ones already sent stay on the server."
         toggle={serverHealthLogs}
         value={serverHealthLogs ? 'On' : 'Off'}
         onPress={() => setServerHealthLogs(!serverHealthLogs)}

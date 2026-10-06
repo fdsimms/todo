@@ -389,6 +389,7 @@ file: the two maps are indexes, not write-ups.
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
+| a journal entry or a dream, and the reminders to write one | `src/utils/journal.ts` + `src/store/useJournalStore.ts` + `src/utils/journalTasks.ts` — see `docs/arch/journal.md`. One table for both kinds; the mood entry keeps only a short note |
 | marking the day something changed (started a medicine, a new job) and comparing mood before/after it | `src/store/useMilestoneStore.ts` + `milestoneMoodContrast` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md` |
 | a dose taken, and how often you reach for something | `src/utils/medicationLog.ts` + `Task.medicationName` — see `docs/arch/mood-log.md`, including why there is deliberately no medication↔symptom contrast |
 | how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`, whose two rules about a too-thinly-logged day come first |
@@ -640,6 +641,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/lists.md` | Lists: a project drawn as a running list, and what the kind does and doesn't change |
 | `docs/arch/people.md` | The people layer: why it never scores or ranks anybody, and how birthdays work |
 | `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
+| `docs/arch/journal.md` | The journal and dream log: why they left the mood entry, the dream migration, and their reminders |
 | `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/arch/away-dates.md` | A project's away span: scheduled vacation mode, the trip move, the destination forecast, the away grocery list |

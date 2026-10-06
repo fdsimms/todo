@@ -88,6 +88,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { frequencyTrend, medicationFor } from '../utils/medicationLog';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
@@ -99,7 +100,8 @@ import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, want
 import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
 import { isMissed, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
-import { dreamStats, lookBacks } from '../utils/moodHistory';
+import { lookBacks } from '../utils/moodHistory';
+import { entriesOfKind, journalStats } from '../utils/journal';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -2103,10 +2105,11 @@ describe('demo seed — people', () => {
     expect(lookBacks(logs, dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
   });
 
-  it('seeds a couple of dreams, so the dream field and the DREAMS card have something to show', () => {
-    const stats = dreamStats(useMoodStore.getState().logs, dayKeyOf(getCurrentDayStart()).slice(0, 7));
-    expect(stats.dayCount).toBeGreaterThanOrEqual(2);
-    expect(stats.lastDayKey).not.toBeNull();
+  it('seeds journal entries and a couple of dreams, so both screens have something to show', () => {
+    const entries = useJournalStore.getState().entries;
+    const month = dayKeyOf(getCurrentDayStart()).slice(0, 7);
+    expect(journalStats(entriesOfKind(entries, 'journal'), month).dayCount).toBeGreaterThanOrEqual(2);
+    expect(journalStats(entriesOfKind(entries, 'dream'), month).dayCount).toBeGreaterThanOrEqual(2);
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {

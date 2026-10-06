@@ -48,6 +48,8 @@ export interface NavContentCounts {
   mood?: number;
   medications?: number;
   foodLog?: number;
+  journal?: number;
+  dreams?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -173,6 +175,8 @@ const HEALTH_HUB: NavHub = {
     { route: 'Medications', label: 'Medications', icon: 'medkit-outline', keywords: ['medicine', 'pills', 'tablets', 'dose', 'supplement', 'inhaler', 'painkiller'] },
     { route: 'Weight', label: 'Weight', icon: 'scale-outline', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass'] },
     { route: 'Sleep', label: 'Sleep', icon: 'moon-outline', keywords: ['bedtime', 'asleep', 'night', 'rest', 'tired', 'woke'] },
+    { route: 'Journal', label: 'Journal', icon: 'book-outline', keywords: ['diary', 'write', 'writing', 'notes', 'reflect'] },
+    { route: 'Dreams', label: 'Dreams', icon: 'cloudy-night-outline', keywords: ['dream journal', 'nightmare', 'asleep', 'woke'] },
   ],
 };
 

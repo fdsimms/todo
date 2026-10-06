@@ -23,7 +23,6 @@ import {
   withSymptom,
   withoutContextTag,
   withoutSymptom,
-  moodPromptAt,
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
@@ -40,7 +39,6 @@ import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 
 const NOTE_MAX_LENGTH = 500;
-const DREAM_MAX_LENGTH = 1000;
 
 /** Noon on a picked day — see the note at the call site. */
 function noonOn(day: Date): Date {
@@ -100,10 +98,10 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
   const [contextTags, setContextTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
-  const [dream, setDream] = useState('');
-  // Which writing prompt is showing, or null for none. Only ever set by a tap:
-  // a prompt is offered, never put in front of you or written into the note.
-  const [promptIndex, setPromptIndex] = useState<number | null>(null);
+  // Whether the note field is showing. Folded away behind "Add a note" on a new
+  // entry so the sheet leads with the mood; open from the start when the entry
+  // being edited already has one.
+  const [noteOpen, setNoteOpen] = useState(false);
   // Names typed into the pill grid this session. Held apart from the derived
   // vocabulary so a symptom you have just invented shows in the grid before it
   // has ever been saved — the vocabulary is read off saved entries, and
@@ -143,8 +141,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     seedRef.current = seed;
     setContextTags(editing?.contextTags ?? seed ?? []);
     setNote(editing?.note ?? '');
-    setDream(editing?.dream ?? '');
-    setPromptIndex(null);
+    setNoteOpen(!!editing?.note);
     setDrafted([]);
     setDraftedContext([]);
     setDay(getLogicalToday());
@@ -292,13 +289,13 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   };
 
   const canSave = mood !== null || symptoms.length > 0 || contextTags.length > 0
-    || note.trim().length > 0 || dream.trim().length > 0;
+    || note.trim().length > 0;
 
   const save = () => {
     if (!canSave) return;
     haptics.success();
     if (editing) {
-      updateLog(editing.id, { mood, symptoms, contextTags, note, dream });
+      updateLog(editing.id, { mood, symptoms, contextTags, note });
     } else {
       // Today records the actual moment; a backdated day records noon on it.
       // Noon rather than midnight for the reason StuckScreen parks its dates
@@ -307,7 +304,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
       // day it belongs to.
       const isToday = isSameDay(day, getLogicalToday());
       const at = isToday ? undefined : noonOn(day);
-      addLog(mood, symptoms, note, at, contextTags, dream);
+      addLog(mood, symptoms, note, at, contextTags);
       // Logging is what the daily task asks for, so answering it ticks it off.
       // Only on a new entry for today: editing last Tuesday's note is not
       // today's check-in, and neither is filling in the day you missed —
@@ -376,56 +373,8 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
         </View>
       )}
 
-      {/* The writing comes first: this is a diary page before it is a form, and
-          every other card below is optional. canSave already accepts a bare
-          note, so nothing here is required. */}
-      <View style={styles.card}>
-        <Text style={styles.groupLabel}>WHAT'S ON YOUR MIND</Text>
-        <TextField
-          style={styles.noteInput}
-          value={note}
-          onChangeText={setNote}
-          placeholder="e.g. How the day went, or anything you want to remember"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={NOTE_MAX_LENGTH}
-          multiline
-          accessibilityLabel="Notes about how you're doing"
-        />
-        {promptIndex !== null && (
-          <Text style={styles.prompt}>{moodPromptAt(promptIndex)}</Text>
-        )}
-        {/* Only on a blank page: once there are words, a prompt is in the way. */}
-        {!editing && note.trim().length === 0 && (
-          <InlineAction
-            label={promptIndex === null ? 'Suggest a prompt' : 'Another prompt'}
-            icon="bulb-outline"
-            variant="neutral"
-            surface="card"
-            style={{ alignSelf: 'flex-start', marginTop: promptIndex === null ? spacing.sm : 0 }}
-            // Seeded from the day so the first prompt differs from one day to the
-            // next; tapping again steps through the rest in order.
-            onPress={() => setPromptIndex(i => (i === null ? Math.floor(day.getTime() / 86400000) : i + 1))}
-          />
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.groupLabel}>DREAM</Text>
-        <Text style={styles.hint}>
-          Optional. A dream you woke up with is filed under the day you wake.
-        </Text>
-        <TextField
-          style={styles.dreamInput}
-          value={dream}
-          onChangeText={setDream}
-          placeholder="e.g. Anything you remember from last night"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={DREAM_MAX_LENGTH}
-          multiline
-          accessibilityLabel="A dream you remember"
-        />
-      </View>
-
+      {/* Mood first: this sheet is the mood log, and longer writing has its own
+          place in the Journal (docs/arch/journal.md). */}
       <View style={styles.card}>
         <Text style={styles.groupLabel}>MOOD</Text>
         <SegmentedControl
@@ -492,6 +441,34 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
             accessibilityHint: 'Double tap to toggle. Long press to rename.',
           }))}
         />
+      </View>
+
+      {/* A short line on why, folded away until asked for. canSave accepts a
+          bare note, so it is never required. */}
+      <View style={styles.card}>
+        {noteOpen ? (
+          <>
+            <Text style={styles.groupLabel}>NOTE</Text>
+            <TextField
+              style={styles.noteInput}
+              value={note}
+              onChangeText={setNote}
+              placeholder="e.g. What's behind how you feel"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={NOTE_MAX_LENGTH}
+              multiline
+              autoFocus={!editing?.note}
+              accessibilityLabel="Note about how you're doing"
+            />
+          </>
+        ) : (
+          <InlineAction
+            label="Add a note"
+            icon="create-outline"
+            style={{ alignSelf: 'flex-start' }}
+            onPress={() => { haptics.tap(); animateLayout(); setNoteOpen(true); }}
+          />
+        )}
       </View>
 
       {/* Where an entry is deleted: a row you can see, in the sheet that's
@@ -582,22 +559,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
   },
-  prompt: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
   noteInput: {
     fontSize: font.md,
     color: colors.text,
-    minHeight: 140,
-    textAlignVertical: 'top',
-  },
-  dreamInput: {
-    fontSize: font.md,
-    color: colors.text,
-    minHeight: 96,
+    minHeight: 72,
     textAlignVertical: 'top',
   },
 });

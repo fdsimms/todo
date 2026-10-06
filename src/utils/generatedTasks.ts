@@ -181,6 +181,11 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // Appended: the one generator whose source is a calendar event the person
   // keeps for re-adding (savedEvents.ts).
   'bookEvent',
+  // Appended as a pair, the way the mood pair was: one subject (writing it
+  // down) with two lead-ins. The journal one copies moodLog's per-segment
+  // shape; the dream one is once a day. See src/utils/journalTasks.ts.
+  'journalLog',
+  'dreamLog',
 ];
 
 /**
@@ -244,7 +249,9 @@ export type GeneratedEnabledKey =
   | 'weighInTasks'
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
-  | 'bookEventTasks';
+  | 'bookEventTasks'
+  | 'journalLogTasks'
+  | 'dreamLogTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -1005,6 +1012,42 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // A saved event lives in a setting, not a row, like eventTask's rules.
     sourced: false,
     // Something to do (make the call), not something to acknowledge.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Personal',
+  },
+  // Ships off, like moodLog: it adds a surface nobody had. Day-keyed with no
+  // source row (the sourceId carries the segment, as moodLog's does), so a
+  // swiped-away one is kept away by journalLogLastDayKey.
+  journalLog: {
+    kind: 'journalLog',
+    pausedOnVacation: false,
+    enabledKey: 'journalLogTasks',
+    label: 'Journal reminder',
+    onHint: 'Adds a task to write in your journal',
+    offHint: 'No task to write in your journal',
+    icon: 'book-outline',
+    sourced: false,
+    // Writing is the work, and moving it to the evening is the obvious edit,
+    // so not a notice (moodLog's reasoning).
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Personal',
+  },
+  // Off, once a day, and not held to a part of the day: whenever you first
+  // look at your list is close enough to waking. dreamLogLastDayKey keeps a
+  // swiped-away one away.
+  dreamLog: {
+    kind: 'dreamLog',
+    pausedOnVacation: false,
+    enabledKey: 'dreamLogTasks',
+    label: 'Dream reminder',
+    onHint: 'Adds a task each day to write down a dream',
+    offHint: 'No task to write down a dream',
+    icon: 'cloudy-night-outline',
+    sourced: false,
     notice: false,
     kitchen: false,
     categorized: true,

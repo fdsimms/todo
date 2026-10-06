@@ -103,6 +103,7 @@ import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } fro
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
@@ -444,6 +445,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'Events you asked the phone to add with request_calendar_event, newest first, and what happened to each: pending (waiting for the phone to sync), written (on the calendar), failed (with the reason), or cancelled. Also whether any device is set to add them. Answered requests are kept for 30 days. This is not their calendar: the server still cannot see it.',
     { status: z.enum(['pending', 'written', 'failed', 'cancelled']).optional() },
     async input => json(await withFresh(() => listCalendarRequests(replica, input)))
+  );
+
+  server.tool(
+    'list_journal_entries',
+    'Journal entries and dreams the person wrote, over a range of days, newest first. kind narrows to one ("journal" or "dream"). Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was written. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
+    { ...logRange, kind: z.enum(['journal', 'dream']).optional() },
+    async input => json(await withFresh(() => listJournalEntries(replica, input)))
   );
 
   server.tool(
@@ -1224,13 +1232,12 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), a note and a dream they remember. Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
-      dream: z.string().nullable().optional().describe('A dream the person woke up with, in their words. Filed under the day of the check-in.'),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
     },
     async input => {
@@ -1331,14 +1338,13 @@ function registerWriteTools(
 
   server.tool(
     'update_mood_log',
-    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating, the note or the dream. A check-in cannot be left empty: delete it instead.' + dayNote,
+    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
     {
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
-      dream: z.string().nullable().optional(),
     },
     async ({ id, ...patch }) => {
       try {
@@ -1391,6 +1397,49 @@ function registerWriteTools(
         return json(await withWrite(() => deleteMedicationLog(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_journal_entry',
+    'Write down a journal entry or a dream for the person, in their words. A dream files under the day they woke. Write only what they gave you to write; never compose an entry for them.',
+    {
+      kind: z.enum(['journal', 'dream']),
+      text: z.string().min(1).max(5000),
+      at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logJournalEntry(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not write that down.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_journal_entry',
+    'Replace the text of a journal or dream entry, by its id from list_journal_entries. It cannot move an entry to another day; for a wrong date, delete it and write it again.',
+    { id: z.string().min(1), text: z.string().min(1).max(5000) },
+    async ({ id, text }) => {
+      try {
+        return json(await withWrite(() => updateJournalEntry(replica, id, text)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the entry.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_journal_entry',
+    'Delete a journal or dream entry by its id from list_journal_entries. It cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteJournalEntry(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the entry.' });
       }
     }
   );
