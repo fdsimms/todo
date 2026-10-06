@@ -22,6 +22,7 @@ import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLo
 import type { AnswerEdit, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
+import { roundToHalf } from '../../src/utils/produceServings';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
@@ -625,12 +626,33 @@ export interface FoodLogResult {
    * point: a day logged thinly is a hole, not a small number.
    */
   totals: { total: Record<string, number>; reported: Record<string, number>; entries: number };
+  /**
+   * Servings of vegetables and fruit per logged day, an estimate from food
+   * names and weights: servings are 80 g, and beans count once a day. Rounded to
+   * the nearest half. `unmeasured` is how many entries that day could not be
+   * weighed and are not counted, so a low figure with entries unmeasured means
+   * "could not tell", not "ate little". A food not named as produce counts as
+   * none. Standing swaps are not applied to recipe lines here.
+   */
+  produce: { dayKey: string; vegetable: number; fruit: number; unmeasured: number }[];
 }
 
 export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLogResult {
   const range = resolveRange(replica, input);
   const entries = replica.foodLogEntries(range.from, range.to);
   const totals = replica.foodTotals(entries);
+
+  const byDay = new Map<string, FoodLogEntry[]>();
+  for (const e of entries) byDay.set(e.dayKey, [...(byDay.get(e.dayKey) ?? []), e]);
+  const produce = [...byDay.keys()].sort().map(dayKey => {
+    const day = replica.foodProduce(byDay.get(dayKey) ?? []);
+    return {
+      dayKey,
+      vegetable: roundToHalf(day.vegetable),
+      fruit: roundToHalf(day.fruit),
+      unmeasured: day.unmeasured,
+    };
+  });
 
   return {
     range,
@@ -649,6 +671,7 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       reported: totals.reported as Record<string, number>,
       entries: totals.entries,
     },
+    produce,
   };
 }
 

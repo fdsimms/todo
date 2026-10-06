@@ -45,7 +45,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
-import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
+import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, produceAverage, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
@@ -2508,6 +2508,16 @@ describe('demo seed — people', () => {
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const todayKey = dayKeyOf(getCurrentDayStart());
     expect(seededFood().some(e => e.dayKey === todayKey)).toBe(false);
+  });
+
+  it('seeds vegetables and fruit, so the servings rows have something to count', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const average = produceAverage(useFoodLogStore.getState().windowEntries, window);
+    expect(average).not.toBeNull();
+    // 85 g of spinach on every seeded lunch, a banana on alternate ones.
+    expect(average!.vegetable).toBeGreaterThan(0.5);
+    expect(average!.fruit).toBeGreaterThan(0);
   });
 
   it('seeds today\'s water, since the stepper is what the day view opens onto', () => {

@@ -224,7 +224,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionEstimate.ts` — ESTIMATE_DESCRIPTION_MAX_LENGTH, ESTIMATE_AMOUNT_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, ESTIMATE_REQUEST_MAX_LENGTH, EstimateBasis, EstimateContextFood, MAX_CONTEXT_FOODS, EstimateConfidence, EstimateQuestion, EstimateIngredient, +6 more
 - `src/utils/nutritionPanelForm.ts` — PanelForm, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, ServingWeightUnit, servingWeightToGrams, gramsToServingWeight, panelFormDirty, +7 more
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
-- `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, nutrientAverages, FoodNameLookup, foodKeyResolver, +5 more
+- `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, ProduceAverage, produceAverage, nutrientAverages, +7 more
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, targetProgress, TargetStatus, TARGET_MET_TOLERANCE, targetStatus, +6 more
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
@@ -252,6 +252,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, isDriftingTask, +3 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
+- `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, produceKindOf, addProduceGrams, +5 more
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
@@ -293,6 +294,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +13 more
 - `src/utils/recipePlanned.ts` — PLANNED_MEAL_LIMIT, upcomingRecipeMeals, plannedMealLabel
+- `src/utils/recipeProduce.ts` — recipeProduceGrams, helpingsOf, dishShare, recipeProduceResolver
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf, FlatSectionRow, IngredientHeading, ingredientHeadings
