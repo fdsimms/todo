@@ -376,7 +376,7 @@ jest.mock('../store/useTransitStore', () => ({
 }));
 jest.mock('../store/useTravelTimeStore', () => ({
   useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
-  currentTravelOrigin: jest.fn(() => null),
+  travelOriginOfEvent: jest.fn(() => null),
 }));
 
 jest.mock('react-native', () => ({

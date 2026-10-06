@@ -30,6 +30,8 @@ import {
   TRAVEL_LEAD_MINUTES_MIN,
   originCandidates,
   travelOriginFor,
+  travelOriginForEvent,
+  TRAVEL_ORIGIN_PHONE,
   travelOriginKey,
   TRAVEL_ORIGIN_CURRENT,
 } from '../utils/travelTasks';
@@ -324,7 +326,7 @@ describe('travel estimates', () => {
   it('sets the reminder from the estimate when one is held, and from the typed lead otherwise', () => {
     const other = event({ id: 'evt-2', start: '2026-10-05T16:00:00.000Z', end: '2026-10-05T17:00:00.000Z' });
     const [first, second] = matchedTravelTasks(LEADS, [event(), other], NOW, HORIZON, {},
-      { estimates: held(), mode: 'transit', origin: 'current' });
+      { estimates: held(), mode: 'transit', originKeyFor: () => 'current' });
     expect(first.estimate?.minutes).toBe(22);
     expect(first.leaveAt).toBe('2026-10-05T13:30:00.000Z');
     expect(second.estimate).toBeNull();
@@ -376,6 +378,47 @@ describe('travel origin', () => {
   });
 });
 
+describe('travelOriginForEvent', () => {
+  const home: SavedPlace = { id: 'home', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006 };
+  const work: SavedPlace = { id: 'work', name: 'Work', text: '2 Work Ave', latitude: 40.75, longitude: -73.99 };
+  const places = [home, work];
+  const pick = (originPlaceId: string | null) =>
+    parseTravelEventPrefs({ 'evt-1': { mode: null, arriveEarlyMinutes: 5, originPlaceId } });
+
+  it('follows the Settings starting point when the event picks none', () => {
+    expect(travelOriginForEvent('evt-1', {}, 'home', places)?.name).toBe('Home');
+    expect(travelOriginForEvent('evt-1', pick(null), 'home', places)?.name).toBe('Home');
+    expect(travelOriginForEvent('evt-1', {}, null, places)).toBeNull();
+  });
+
+  it('uses the place the event picked over the Settings one', () => {
+    expect(travelOriginForEvent('evt-1', pick('work'), 'home', places)?.name).toBe('Work');
+    expect(travelOriginForEvent('evt-2', pick('work'), 'home', places)?.name).toBe('Home');
+  });
+
+  it('lets an event start from the phone when Settings names a place', () => {
+    expect(travelOriginForEvent('evt-1', pick(TRAVEL_ORIGIN_PHONE), 'home', places)).toBeNull();
+  });
+
+  it('follows Settings for a picked place that was removed or has no pin', () => {
+    expect(travelOriginForEvent('evt-1', pick('gone'), 'home', places)?.name).toBe('Home');
+    const unpinned = { ...work, latitude: null, longitude: null };
+    expect(travelOriginForEvent('evt-1', pick('work'), 'home', [home, unpinned])?.name).toBe('Home');
+  });
+
+  it('files an estimate under the event\'s own starting point', () => {
+    const sourceId = travelSourceId(event());
+    const fromWork = { [sourceId]: { minutes: 12, location: '123 Main St', mode: 'driving' as const, origin: travelOriginKey(travelOriginFor('work', places)), at: NOW.getTime() } };
+    const originKeyFor = (id: string) => travelOriginKey(travelOriginForEvent(id, pick('work'), 'home', places));
+    const [match] = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {},
+      { estimates: fromWork, mode: 'driving', originKeyFor }, pick('work'));
+    expect(match.estimate?.minutes).toBe(12);
+    const [fromHome] = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {},
+      { estimates: fromWork, mode: 'driving', originKeyFor: id => travelOriginKey(travelOriginForEvent(id, {}, 'home', places)) });
+    expect(fromHome.estimate).toBeNull();
+  });
+});
+
 describe('travelSourceEventId', () => {
   it('takes the event id off the front of the occurrence key', () => {
     expect(travelSourceEventId(travelSourceId(event()))).toBe('evt-1');
@@ -395,8 +438,15 @@ describe('per-event travel overrides', () => {
     expect(parseTravelEventPrefs('not json')).toEqual({});
     expect(parseTravelEventPrefs({ a: { mode: 'rocket', arriveEarlyMinutes: 0 } })).toEqual({});
     expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 999 } })).toEqual({
-      a: { mode: null, arriveEarlyMinutes: 60 },
+      a: { mode: null, arriveEarlyMinutes: 60, originPlaceId: null },
     });
+  });
+
+  it('keeps an entry that overrides only the starting point', () => {
+    expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: 'p1' } })).toEqual({
+      a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: 'p1' },
+    });
+    expect(parseTravelEventPrefs({ a: { originPlaceId: '' } })).toEqual({});
   });
 
   it('falls back to the Settings mode and an on-time arrival', () => {
@@ -423,7 +473,7 @@ describe('per-event travel overrides', () => {
     const sourceId = travelSourceId(event());
     const estimates = { [sourceId]: { minutes: 12, location: '123 Main St', mode: 'walking' as const, origin: 'current', at: NOW.getTime() } };
     const [match] = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {},
-      { estimates, mode: 'driving', origin: 'current' }, prefs);
+      { estimates, mode: 'driving', originKeyFor: () => 'current' }, prefs);
     expect(match.estimate?.minutes).toBe(12);
   });
 

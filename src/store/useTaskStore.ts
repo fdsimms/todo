@@ -372,7 +372,7 @@ import {
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
-import { currentTravelOrigin, useTravelTimeStore } from './useTravelTimeStore';
+import { travelOriginOfEvent, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
@@ -6841,7 +6841,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? {
           estimates: useTravelTimeStore.getState().estimates,
           mode: settings.travelMode,
-          origin: travelOriginKey(currentTravelOrigin()),
+          originKeyFor: (eventId: string) => travelOriginKey(travelOriginOfEvent(eventId)),
         }
       : undefined;
     const matches = matchedTravelTasks(
