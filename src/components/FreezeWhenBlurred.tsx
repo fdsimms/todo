@@ -3,6 +3,7 @@ import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useNavigationState, useRoute } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing } from '../theme';
+import { dbGetSetting, dbSetSetting } from '../db/database';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
 
@@ -153,6 +154,35 @@ const tabDiag = new Map<string, TabDiagEntry>();
 const tabDiagMounts = new Map<string, number>();
 const tabDiagListeners = new Set<() => void>();
 
+// Off unless switched on in Settings › About. Device-local: the key is not on
+// the sync allowlist, so turning it on for one phone doesn't turn it on for both.
+const TAB_DIAG_KEY = 'tabDiagEnabled';
+let tabDiagEnabled: boolean | null = null;
+
+export function isTabDiagEnabled(): boolean {
+  if (tabDiagEnabled === null) tabDiagEnabled = dbGetSetting(TAB_DIAG_KEY) === 'true';
+  return tabDiagEnabled;
+}
+
+export function setTabDiagEnabled(on: boolean) {
+  dbSetSetting(TAB_DIAG_KEY, on ? 'true' : 'false');
+  tabDiagEnabled = on;
+  notifyTabDiag();
+}
+
+/** Re-renders the caller whenever the record or the switch changes. */
+export function useTabDiagEnabled(): boolean {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const listener = () => tick(n => n + 1);
+    tabDiagListeners.add(listener);
+    return () => {
+      tabDiagListeners.delete(listener);
+    };
+  }, []);
+  return isTabDiagEnabled();
+}
+
 function notifyTabDiag() {
   tabDiagListeners.forEach(l => l());
 }
@@ -177,16 +207,17 @@ const ago = (at: number) => `${Math.round((Date.now() - at) / 1000)}s`;
  * what the wrapper thinks.
  */
 export function BlankTabDiagnostic({ currentTab }: { currentTab: () => string | undefined }) {
+  const enabled = useTabDiagEnabled();
+  if (!enabled) return null;
+  return <BlankTabReadout currentTab={currentTab} />;
+}
+
+function BlankTabReadout({ currentTab }: { currentTab: () => string | undefined }) {
   const colors = useColors();
   const [, tick] = useState(0);
   useEffect(() => {
-    const listener = () => tick(n => n + 1);
-    tabDiagListeners.add(listener);
-    const timer = setInterval(listener, 1000);
-    return () => {
-      tabDiagListeners.delete(listener);
-      clearInterval(timer);
-    };
+    const timer = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(timer);
   }, []);
   const tab = currentTab();
   const entry = tab ? tabDiag.get(tab) : undefined;

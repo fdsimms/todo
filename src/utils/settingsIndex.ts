@@ -897,6 +897,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'version', groupId: 'about', label: 'Version', section: 'About', keywords: ['build'] },
   { id: 'patchNotes', groupId: 'about', label: "What's New", section: 'About',
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
+  { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
+    keywords: ['debug', 'blank screen'] },
 ];
 
 /**
