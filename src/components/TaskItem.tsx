@@ -2618,6 +2618,19 @@ export const TaskItem = React.memo(function TaskItem({
                 />
               </Animated.View>
             )}
+            {/* Notes only render once a row is expanded, so the collapsed row
+                otherwise gives no hint they exist. Icon-only, no text: this is
+                the quiet option (vs. a truncated preview line), matching how
+                little it needs to say — "there's something here" — against
+                the row-height cost a preview would add to every task with a
+                note. It rides the title rather than the meta line: a note is
+                part of what the task is, and a trailing icon after the stats
+                read as one more stat. */}
+            {task.notes.length > 0 && (
+              <View style={styles.notesMark} accessibilityLabel="Has notes">
+                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
+              </View>
+            )}
             {deadlineDays !== null && (
               <View
                 style={styles.deadlineBadge}
@@ -2635,7 +2648,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
             {showCategory && task.category && (
               onOpenCategory ? (
@@ -3159,17 +3172,6 @@ export const TaskItem = React.memo(function TaskItem({
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   +{bountyCoins} bounty
                 </Text>
-              </View>
-            )}
-            {/* Notes only render once a row is expanded, so the collapsed row
-                otherwise gives no hint they exist. Icon-only, no text: this is
-                the quiet option (vs. a truncated preview line), matching how
-                little it needs to say — "there's something here" — against
-                the row-height cost a preview would add to every task with a
-                note. */}
-            {task.notes.length > 0 && (
-              <View style={styles.metaChip} accessibilityLabel="Has notes">
-                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
               </View>
             )}
           </View>
@@ -4638,6 +4640,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   titleFlex: {
     flexShrink: 1,
+  },
+  notesMark: {
+    flexShrink: 0,
   },
   newDot: {
     width: 6,
