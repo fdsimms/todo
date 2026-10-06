@@ -1,5 +1,8 @@
-import React, { Activity, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { useNavigationState, useRoute } from '@react-navigation/native';
+import React, { Activity, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { useNavigation, useNavigationState, useRoute } from '@react-navigation/native';
+import { useColors } from '../theme/ThemeContext';
+import { font, radius, spacing } from '../theme';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
 
@@ -72,8 +75,49 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
     // The same element while the props are, so this wrapper re-rendering on a
     // sheet opening somewhere does not re-render the screen inside it.
     const screen = useMemo(() => <Screen {...props} />, [props]);
+    const mode = wantFrozen && settled ? 'hidden' : 'visible';
+
+    // ==== TEMPORARY blank-tab diagnostic ====
+    // A focused tab sometimes comes up blank (only the tab bar drawn) until
+    // another tab switch, under both the Suspense freeze and this Activity one.
+    // This readout sits outside the Activity, so it still draws when the screen
+    // inside doesn't, and a screenshot of a blank tab says which half failed:
+    // the freeze's own inputs (focused/mode) or the native reveal (the box
+    // inside the Activity still measuring 0x0 while mode is visible). Remove it,
+    // and the box, once the cause is known.
+    const navigation = useNavigation();
+    const [box, setBox] = useState({ w: -1, h: -1, n: 0 });
+    const onBoxLayout = useCallback((e: LayoutChangeEvent) => {
+      const { width, height } = e.nativeEvent.layout;
+      setBox(b => ({ w: Math.round(width), h: Math.round(height), n: b.n + 1 }));
+    }, []);
+    const modeSince = useRef({ mode, at: Date.now() });
+    if (modeSince.current.mode !== mode) modeSince.current = { mode, at: Date.now() };
+    const [, tick] = useState(0);
+    useEffect(() => {
+      if (!focused) return;
+      const timer = setInterval(() => tick(n => n + 1), 1000);
+      return () => clearInterval(timer);
+    }, [focused]);
+
     return (
-      <Activity mode={wantFrozen && settled ? 'hidden' : 'visible'}>{screen}</Activity>
+      <>
+        <Activity mode={mode}>
+          <View style={diagStyles.box} collapsable={false} onLayout={onBoxLayout}>
+            {screen}
+          </View>
+        </Activity>
+        {focused && (
+          <BlankTabReadout
+            text={
+              `${route.name} focused=${focused ? 1 : 0} navFocused=${navigation.isFocused() ? 1 : 0} ` +
+              `sheet=${sheetPresented ? 1 : 0} want=${wantFrozen ? 1 : 0} settled=${settled ? 1 : 0} ` +
+              `mode=${mode} ${Math.round((Date.now() - modeSince.current.at) / 1000)}s ` +
+              `box=${box.w}x${box.h} #${box.n}`
+            }
+          />
+        )}
+      </>
     );
   }
   FreezeWhenBlurred.displayName = `FreezeWhenBlurred(${Screen.displayName ?? Screen.name ?? 'Screen'})`;
@@ -81,3 +125,28 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
   wrapped.set(Screen, FreezeWhenBlurred);
   return FreezeWhenBlurred;
 }
+
+// TEMPORARY: part of the blank-tab diagnostic above.
+function BlankTabReadout({ text }: { text: string }) {
+  const colors = useColors();
+  return (
+    <View pointerEvents="none" style={diagStyles.readoutWrap}>
+      <Text style={[diagStyles.readout, { color: colors.textSecondary, backgroundColor: colors.bgSecondary }]}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const diagStyles = StyleSheet.create({
+  box: { flex: 1 },
+  readoutWrap: { position: 'absolute', top: '45%', left: spacing.md, right: spacing.md, alignItems: 'center' },
+  readout: {
+    fontSize: font.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    opacity: 0.85,
+  },
+});
