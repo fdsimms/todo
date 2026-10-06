@@ -55,7 +55,7 @@ import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
-import { DemoBanner } from '../components/DemoBanner';
+import { DemoBanner, TAB_BAR_HEIGHT } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { CoinToast } from '../components/CoinToast';
 import { EventCreatedToast } from '../components/EventCreatedToast';
@@ -71,7 +71,7 @@ import { CookingBar } from '../components/CookingBar';
 import { FocusFloatingBar } from '../components/FocusBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { border, spacing } from '../theme';
+import { border, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -201,10 +201,16 @@ function MorePlaceholder() {
 }
 
 const styles = StyleSheet.create({
-  glassTabBar: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+  // The buttons sit in the top 49pt of the bar (the rest is the home
+  // indicator's inset), so the capsule wraps that band with 4pt around it.
+  glassTabBarSlot: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    top: -4,
+    height: TAB_BAR_HEIGHT + 8,
   },
+  glassTabBar: { borderRadius: radius.full },
   edgeZone: {
     position: 'absolute',
     left: 0,
@@ -436,14 +442,17 @@ export default function AppNavigator() {
       backgroundColor: 'transparent',
       borderTopWidth: 0,
       elevation: 0,
-      ...(glassSupported() ? { left: spacing.smd, right: spacing.smd } : null),
     },
-    // On iOS 26 the bar is a glass slab inset from the screen edges with
-    // rounded top corners. Its height and bottom edge are unchanged, so no
-    // screen's bottom padding moves. Older iOS keeps the blur.
+    // On iOS 26 the bar floats: a glass capsule inset from both side edges and
+    // lifted off the bottom, around the buttons. The bar itself keeps its
+    // height and flush bottom edge (transparent), because many screens and the
+    // bars above it measure from that footprint, so none of them move. Older
+    // iOS keeps the full-width blur.
     tabBarBackground: () => (
       glassSupported() ? (
-        <GlassLayer style={styles.glassTabBar} />
+        <View style={styles.glassTabBarSlot} pointerEvents="none">
+          <GlassLayer style={styles.glassTabBar} />
+        </View>
       ) : (
         <SafeBlurView
           intensity={isDark ? 60 : 80}
