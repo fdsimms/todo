@@ -60,7 +60,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
-import { dayKeyOf, getDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getDayStart, getLogicalDayKey, getLogicalToday, liveStreakCount } from '../utils/dateUtils';
 import {
   describeTimeTogether,
   taskYearRange,
@@ -298,8 +298,8 @@ export function StatsScreen() {
   const streaks = useMemo(
     () =>
       tasks
-        .filter(t => !t.parentId && !t.completed && t.recurrenceType !== 'none' && t.streakCount > 0)
-        .sort((a, b) => b.streakCount - a.streakCount)
+        .filter(t => !t.parentId && !t.completed && t.recurrenceType !== 'none' && liveStreakCount(t) > 0)
+        .sort((a, b) => liveStreakCount(b) - liveStreakCount(a))
         .slice(0, 10),
     [tasks],
   );
@@ -687,17 +687,17 @@ export function StatsScreen() {
                         A task whose current streak is its best says nothing
                         extra, since "best 12" beside "12" is the same fact
                         twice — the flame's own state already carries that. */}
-                    {bestStreakOf(t) > t.streakCount && (
+                    {bestStreakOf(t) > liveStreakCount(t) && (
                       <Text style={styles.streakBest}>best {bestStreakOf(t)}</Text>
                     )}
                     <View style={styles.badge}>
                       <Ionicons
                         name="flame"
                         size={13}
-                        color={isStreakAtRecord(t) ? colors.red : colors.orangeText}
+                        color={isStreakAtRecord({ ...t, streakCount: liveStreakCount(t) }) ? colors.red : colors.orangeText}
                       />
-                      <Text style={[styles.badgeText, { color: isStreakAtRecord(t) ? colors.redText : colors.orangeText }]}>
-                        {t.streakCount}
+                      <Text style={[styles.badgeText, { color: isStreakAtRecord({ ...t, streakCount: liveStreakCount(t) }) ? colors.redText : colors.orangeText }]}>
+                        {liveStreakCount(t)}
                       </Text>
                     </View>
                   </View>

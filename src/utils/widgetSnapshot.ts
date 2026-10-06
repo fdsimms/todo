@@ -11,6 +11,7 @@ import type {
   Task,
 } from '../types';
 import { displayTitleFor, isHeldBack, isWithheld } from './visibilityUtils';
+import { liveStreakCount } from './dateUtils';
 import {
   itemsOnList,
   listCount,
@@ -187,7 +188,7 @@ export function toWidgetTask(task: Task, events: readonly BusyEvent[] | null = n
     pinned: task.pinned,
     dueDate: task.dueDate,
     category: task.category,
-    streakCount: task.streakCount,
+    streakCount: liveStreakCount(task),
     recurrenceType: task.recurrenceType,
     targetCount: task.targetCount,
     progressCount: task.progressCount,
