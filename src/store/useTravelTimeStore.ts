@@ -7,7 +7,7 @@ import { createRefreshGuard } from '../utils/refreshGuard';
 import {
   eventIsTravelEligible,
   needsTravelEstimate,
-  travelOriginFor,
+  travelOriginForEvent,
   travelOriginKey,
   travelLeadFor,
   travelModeFor,
@@ -53,9 +53,10 @@ export function travelEstimatesWanted(s: {
   return s.travelTasks && s.travelEstimates && s.calendarReadEnabled;
 }
 
-/** The starting place the settings name, resolved against the saved places; null is where the phone is. */
-export function currentTravelOrigin(): TravelOrigin | null {
-  return travelOriginFor(useSettingsStore.getState().travelOriginPlaceId, readSavedPlaces());
+/** Where this event's trip starts: its own pick, else the Settings place; null is where the phone is. */
+export function travelOriginOfEvent(eventId: string): TravelOrigin | null {
+  const s = useSettingsStore.getState();
+  return travelOriginForEvent(eventId, s.travelEventPrefs, s.travelOriginPlaceId, readSavedPlaces());
 }
 
 export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
@@ -76,11 +77,12 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
     const upcoming = calendar.events
       .filter(event => eventIsTravelEligible(event, now) && Date.parse(event.start) < horizonEnd)
       .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
-    const origin = currentTravelOrigin();
-    const originKey = travelOriginKey(origin);
+    const places = readSavedPlaces();
+    const originOf = (eventId: string) =>
+      travelOriginForEvent(eventId, settings.travelEventPrefs, settings.travelOriginPlaceId, places);
     const held = get().estimates;
     const wanted = upcoming
-      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), originKey, now))
+      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), travelOriginKey(originOf(event.id)), now))
       .slice(0, TRAVEL_ESTIMATES_PER_REFRESH);
 
     // Estimates for occurrences no longer coming up are dropped either way.
@@ -104,6 +106,7 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
           defaultMinutes: settings.travelLeadMinutes,
           byCalendar: settings.travelLeadByCalendar,
         }), arriveEarlyFor(event.id, settings.travelEventPrefs))) ?? now;
+        const origin = originOf(event.id);
         const minutes = await estimateTravelMinutes(event, departAt, mode, origin);
         if (!estimateGuard.isCurrent(token)) return;
         if (minutes === null) continue;
@@ -111,7 +114,7 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
           minutes,
           location: (event.location ?? '').trim(),
           mode,
-          origin: originKey,
+          origin: travelOriginKey(origin),
           at: Date.now(),
         };
       }

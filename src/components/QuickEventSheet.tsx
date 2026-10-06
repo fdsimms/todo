@@ -34,7 +34,15 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, animation, ty
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { TRAVEL_ARRIVE_CHOICES, TRAVEL_MODES, describeArrival, type TravelMode } from '../utils/travelTasks';
+import {
+  TRAVEL_ARRIVE_CHOICES,
+  TRAVEL_MODES,
+  TRAVEL_ORIGIN_PHONE,
+  describeArrival,
+  originCandidates,
+  travelOriginFor,
+  type TravelMode,
+} from '../utils/travelTasks';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
@@ -317,13 +325,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [typedBeforePick, setTypedBeforePick] = useState('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
-  // How this event is travelled to and how early to arrive: app-only, written
-  // to travelEventPrefs once the event saves. Null mode follows Settings.
+  // How this event is travelled to, how early to arrive and where the trip
+  // starts: app-only, written to travelEventPrefs once the event saves. A null
+  // mode or origin follows Settings.
   const travelTasksOn = useSettingsStore(s => s.travelTasks);
+  const travelEstimatesOn = useSettingsStore(s => s.travelEstimates);
   const defaultTravelMode = useSettingsStore(s => s.travelMode);
+  const defaultOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
   const setTravelEventPref = useSettingsStore(s => s.setTravelEventPref);
   const [travelModePick, setTravelModePick] = useState<TravelMode | null>(null);
   const [arriveEarlyPick, setArriveEarlyPick] = useState(0);
+  const [travelOriginPick, setTravelOriginPick] = useState<string | null>(null);
+  const [originPickerVisible, setOriginPickerVisible] = useState(false);
   const [travelModePickerVisible, setTravelModePickerVisible] = useState(false);
   const [arrivePickerVisible, setArrivePickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
@@ -391,6 +404,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const travelPref = useSettingsStore.getState().travelEventPrefs[target.eventId];
     setTravelModePick(travelPref?.mode ?? null);
     setArriveEarlyPick(travelPref?.arriveEarlyMinutes ?? 0);
+    setTravelOriginPick(travelPref?.originPlaceId ?? null);
     setAvailabilityPick(event.availability);
     const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
     setOriginalPeople(people);
@@ -424,6 +438,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setAlertPickerVisible(false);
     setTravelModePick(null);
     setArriveEarlyPick(0);
+    setTravelOriginPick(null);
+    setOriginPickerVisible(false);
     setTravelModePickerVisible(false);
     setArrivePickerVisible(false);
     void loadCalendars(defaults.calendarId, false);
@@ -873,7 +889,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       // A new appointment starts a new booking cycle, so the old "Book …" goes now.
       useTaskStore.getState().checkBookEventTasks();
     }
-    setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
+    setTravelEventPref(saved.id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick, originPlaceId: travelOriginPick });
     useEventCreatedToastStore.getState().announce(
       saved.id,
       effectiveStart,
@@ -923,7 +939,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       );
       return;
     }
-    setTravelEventPref(id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick });
+    setTravelEventPref(id, { mode: travelModePick, arriveEarlyMinutes: arriveEarlyPick, originPlaceId: travelOriginPick });
     onSaved?.(id);
     dismiss();
   };
@@ -980,6 +996,21 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const arriveOptions: EventOption[] = TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) }));
   // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
   const showTravelChips = travelTasksOn && !allDay && !!effectiveLocation;
+  // Where the trip starts only matters to an Apple Maps estimate, so the chip
+  // appears with that switch. A pick of a place since removed reads as the
+  // Settings default, the same fallback `travelOriginForEvent` applies.
+  const originPlaces = originCandidates(savedPlaces);
+  const settingsOriginName = travelOriginFor(defaultOriginPlaceId, savedPlaces)?.name ?? 'Where I am';
+  const pickedOriginName =
+    travelOriginPick === TRAVEL_ORIGIN_PHONE ? 'Where I am'
+    : originPlaces.find(p => p.id === travelOriginPick)?.name ?? null;
+  const originChipLabel = pickedOriginName ?? settingsOriginName;
+  const originOptions: EventOption[] = [
+    { key: 'default', label: `Settings default (${settingsOriginName})` },
+    { key: TRAVEL_ORIGIN_PHONE, label: 'Where I am' },
+    ...originPlaces.map(p => ({ key: p.id, label: p.name })),
+  ];
+  const showOriginChip = showTravelChips && travelEstimatesOn;
 
   // ==== render. Everything below is JSX ====
   return (
@@ -1374,6 +1405,24 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                     {describeArrival(arriveEarlyPick)}
                   </Text>
                 </TouchableOpacity>
+                {showOriginChip && (
+                  <TouchableOpacity
+                    style={[styles.toolChip, styles.toolChipWide, pickedOriginName !== null && styles.toolChipSet]}
+                    onPress={() => { haptics.tap(); Keyboard.dismiss(); setOriginPickerVisible(true); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Start from: ${originChipLabel}`}
+                  >
+                    <Ionicons
+                      name={originChipLabel === 'Where I am' ? 'locate-outline' : 'home-outline'}
+                      size={iconSize.sm}
+                      color={pickedOriginName !== null ? colors.accent : colors.textSecondary}
+                    />
+                    <Text style={[styles.toolChipText, pickedOriginName !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                      {originChipLabel}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -1527,6 +1576,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         selectedKey={String(arriveEarlyPick)}
         onSelect={key => setArriveEarlyPick(Number(key))}
         onClose={() => setArrivePickerVisible(false)}
+      />
+      <EventOptionSheet
+        visible={originPickerVisible}
+        title="Start from"
+        options={originOptions}
+        selectedKey={pickedOriginName !== null ? travelOriginPick ?? 'default' : 'default'}
+        onSelect={key => setTravelOriginPick(key === 'default' ? null : key)}
+        onClose={() => setOriginPickerVisible(false)}
       />
     </SheetModal>
   );

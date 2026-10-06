@@ -48,15 +48,25 @@ export const TRAVEL_MODES: readonly TravelMode[] = ['driving', 'transit', 'walki
 
 /**
  * What one event overrides about its own trip: how it is travelled (null keeps
- * the Settings mode) and how early to arrive (negative is late). App-only
- * metadata like `eventPeople.ts`: EventKit has no public field for either, so
- * nothing is written to the calendar event.
+ * the Settings mode), how early to arrive (negative is late) and where the
+ * trip starts (null keeps the Settings starting point). App-only metadata like
+ * `eventPeople.ts`: EventKit has no public field for any of them, so nothing is
+ * written to the calendar event.
  */
 export interface TravelEventPref {
   mode: TravelMode | null;
   /** Minutes to arrive before the start; negative arrives after it. 0 is on time. */
   arriveEarlyMinutes: number;
+  /**
+   * A saved place id, `TRAVEL_ORIGIN_PHONE` for "where I am", or null to follow
+   * the Settings starting point. Its own value for the phone, since null is
+   * "no override" and a Settings default of a saved place has to be overridable.
+   */
+  originPlaceId: string | null;
 }
+
+/** `TravelEventPref.originPlaceId` for an event whose trip starts from the phone's position. */
+export const TRAVEL_ORIGIN_PHONE = 'phone';
 
 /** Overrides by calendar event id, so a repeating event keeps its choice every week. */
 export type TravelEventPrefs = Readonly<Record<string, TravelEventPref>>;
@@ -80,12 +90,13 @@ export function parseTravelEventPrefs(raw: unknown): TravelEventPrefs {
   const out: Record<string, TravelEventPref> = {};
   for (const [eventId, entry] of Object.entries(value as Record<string, unknown>)) {
     if (!eventId || !entry || typeof entry !== 'object') continue;
-    const { mode, arriveEarlyMinutes } = entry as Record<string, unknown>;
+    const { mode, arriveEarlyMinutes, originPlaceId } = entry as Record<string, unknown>;
     const pref: TravelEventPref = {
       mode: TRAVEL_MODES.find(m => m === mode) ?? null,
       arriveEarlyMinutes: clampArriveEarlyMinutes(arriveEarlyMinutes),
+      originPlaceId: typeof originPlaceId === 'string' && originPlaceId ? originPlaceId : null,
     };
-    if (pref.mode !== null || pref.arriveEarlyMinutes !== 0) out[eventId] = pref;
+    if (pref.mode !== null || pref.arriveEarlyMinutes !== 0 || pref.originPlaceId !== null) out[eventId] = pref;
   }
   return out;
 }
@@ -169,6 +180,23 @@ export function travelOriginFor(placeId: string | null, places: readonly SavedPl
   const place = originCandidates(places).find(p => p.id === placeId);
   if (!place || place.latitude === null || place.longitude === null) return null;
   return { name: place.name, latitude: place.latitude, longitude: place.longitude };
+}
+
+/**
+ * Where this event's trip starts: its own pick, else the Settings starting
+ * point. A pick of a place that was removed, or has no pin, follows Settings
+ * rather than silently becoming the phone's position, the same fallback the
+ * Settings row has. Null is where the phone is.
+ */
+export function travelOriginForEvent(
+  eventId: string,
+  prefs: TravelEventPrefs,
+  defaultPlaceId: string | null,
+  places: readonly SavedPlace[],
+): TravelOrigin | null {
+  const pick = prefs[eventId]?.originPlaceId ?? null;
+  if (pick === TRAVEL_ORIGIN_PHONE) return null;
+  return travelOriginFor(pick, places) ?? travelOriginFor(defaultPlaceId, places);
 }
 
 /** What an estimate is filed under: moving the starting point (or the pin) changes it, a rename doesn't. */
@@ -393,7 +421,7 @@ export function matchedTravelTasks(
   horizonEnd: Date,
   handled: Readonly<HandledEventTasks>,
   /** Apple Maps estimates, passed only while `travelEstimates` is on. */
-  estimated?: { estimates: TravelEstimates; mode: TravelMode; origin: string },
+  estimated?: { estimates: TravelEstimates; mode: TravelMode; originKeyFor: (eventId: string) => string },
   /** Per-event mode and arrival overrides. */
   prefs: TravelEventPrefs = {},
 ): TravelMatch[] {
@@ -404,7 +432,7 @@ export function matchedTravelTasks(
   for (const event of eligible) {
     const sourceId = travelSourceId(event);
     const estimate = estimated
-      ? estimateFor(event, estimated.estimates, travelModeFor(event.id, prefs, estimated.mode), estimated.origin)
+      ? estimateFor(event, estimated.estimates, travelModeFor(event.id, prefs, estimated.mode), estimated.originKeyFor(event.id))
       : null;
     const lead = estimate ? estimatedLeadMinutes(estimate.minutes) : travelLeadFor(event, leads);
     const leaveAt = travelLeaveAt(event, leadWithArrival(lead, arriveEarlyFor(event.id, prefs)));

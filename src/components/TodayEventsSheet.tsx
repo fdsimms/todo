@@ -7,8 +7,9 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { describeTravelEstimate, estimateFor, travelModeFor, travelOriginKey } from '../utils/travelTasks';
-import { currentTravelOrigin, useTravelTimeStore } from '../store/useTravelTimeStore';
+import { describeTravelEstimate, estimateFor, travelModeFor, travelOriginForEvent, travelOriginKey } from '../utils/travelTasks';
+import { useTravelTimeStore } from '../store/useTravelTimeStore';
+import { readSavedPlaces } from '../utils/savedPlaces';
 import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -151,7 +152,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const travelMode = useSettingsStore(s => s.travelMode);
   const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
   const travelOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
-  const originKey = useMemo(() => travelOriginKey(currentTravelOrigin()), [travelOriginPlaceId]);
+  const savedPlaces = useMemo(() => readSavedPlaces(), [travelOriginPlaceId, travelEventPrefs]);
   const estimates = useTravelTimeStore(s => s.estimates);
   const allPeople = usePersonStore(useShallow(s => s.people));
   const people = useMemo(() => allPeople.filter(p => !p.archived), [allPeople]);
@@ -397,7 +398,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       </View>
                     )}
                     {(() => {
-                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelModeFor(event.id, travelEventPrefs, travelMode), originKey) : null;
+                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelModeFor(event.id, travelEventPrefs, travelMode), travelOriginKey(travelOriginForEvent(event.id, travelEventPrefs, travelOriginPlaceId, savedPlaces))) : null;
                       return estimate ? (
                         <Text style={styles.rowEstimate} numberOfLines={1}>
                           {describeTravelEstimate(estimate.minutes, estimate.mode)}
