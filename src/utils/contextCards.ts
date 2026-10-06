@@ -56,7 +56,7 @@ export function contextCardPositions(items: readonly TodayListItem[]): Map<strin
  * holding nothing but card rows of one kind gets one: a category that also has
  * tasks in it would be summarised by a line that left them out.
  *
- * Health reads out its own figures. Events read as a count plus the one that
+ * Health reads out its own figures. Events read as the one that
  * matters now: the running event, else the next timed one.
  */
 export function contextSectionSummaries(items: readonly TodayListItem[]): Map<string, string> {
@@ -69,7 +69,8 @@ export function contextSectionSummaries(items: readonly TodayListItem[]): Map<st
     if (label === null || !pure || rows.length === 0) return;
     const kind = rows[0].kind;
     if (!rows.every(r => r.kind === kind)) return;
-    out.set(label, kind === 'health' ? rows.map(r => r.title).join(' · ') : eventSummary(rows));
+    const text = kind === 'health' ? rows.map(r => r.title).join(' · ') : eventSummary(rows);
+    if (text) out.set(label, text);
   };
 
   for (const item of items) {
@@ -89,9 +90,10 @@ export function contextSectionSummaries(items: readonly TodayListItem[]): Map<st
 }
 
 function eventSummary(rows: readonly ContextRow[]): string {
-  const count = `${rows.length} ${rows.length === 1 ? 'event' : 'events'}`;
+  // The header already shows the count, so this says only what's next. The time
+  // leads so a long title is the part that truncates.
   const running = rows.find(r => r.now);
-  if (running) return `${count} · ${running.title} now`;
+  if (running) return `Now: ${running.title}`;
   const next = rows.find(r => r.caption !== ALL_DAY_CAPTION);
-  return next ? `${count} · next ${next.title} ${next.caption}` : count;
+  return next ? `${next.caption} ${next.title}` : '';
 }
