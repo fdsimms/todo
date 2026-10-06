@@ -206,7 +206,7 @@ import {
 } from '../utils/supply';
 import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
@@ -1884,6 +1884,8 @@ interface TaskStore extends UndoHistoryActions {
    * for why the day is both the unit and the whole opt-out.
    */
   checkMealSlotTasks: () => void;
+  /** Drop the meal tasks whose (day, slot) already has food logged in it. */
+  syncLoggedMealSlotTasks: () => void;
   /**
    * Fill the already-written days with meals just switched on in Settings —
    * see the implementation for why the mark is never rewound instead.
@@ -5721,6 +5723,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     staleMealSlotTasks(get().tasks, today).forEach(task =>
       dropGeneratedTask('mealSlot', task.generatedSourceId)
     );
+    // And the rows for a meal that is already in the food log, which food
+    // logged straight into the day would otherwise leave sitting on Today.
+    get().syncLoggedMealSlotTasks();
 
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
@@ -5760,6 +5765,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * past the mark, which with a week's window is a week of silence after
    * answering a question in Settings.
    */
+  syncLoggedMealSlotTasks() {
+    const tasks = get().tasks;
+    if (liveGeneratedTasksOfKind(tasks, 'mealSlot').length === 0) return;
+    // The window the pass writes, read from SQLite: the food log store holds
+    // only the range a screen has open. A past day's rows are the stale
+    // sweep's, so the read starts at the logical today.
+    const today = dayKeyOf(getLogicalToday());
+    const logged = loggedMealSlotKeys(
+      dbGetFoodLogEntries(today, shiftDayKey(today, MEAL_SLOT_TASK_DAYS - 1))
+    );
+    // dropGeneratedTask writes no opt-out and the mark keeps the day from
+    // being written again, so a row dropped here stays dropped even if the
+    // entry is deleted later.
+    loggedMealSlotTasks(tasks, logged).forEach(task =>
+      dropGeneratedTask('mealSlot', task.generatedSourceId)
+    );
+  },
+
   backfillMealSlotTasks(slots) {
     const settings = useSettingsStore.getState();
     // The same gate the pass above takes. Unreachable today — the only caller

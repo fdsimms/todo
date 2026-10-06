@@ -430,6 +430,8 @@ function syncWaterQuotaTasksIfToday(dayKey: string): void {
   // The snack suggestion reads the same log, so a write that lands is also the
   // moment it should come on or go away.
   useTaskStore.getState().syncSnackNudgeTasks();
+  // And the meal's own task: food logged into lunch answers "Choose lunch".
+  useTaskStore.getState().syncLoggedMealSlotTasks();
 }
 
 /**
@@ -660,6 +662,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       windowEntries: s.windowEntries.map(e => (e.id === id ? updated : e)),
       insightEntries: s.insightEntries.map(e => (e.id === id ? updated : e)),
     }));
+    // Moving a row into a meal is the other way food lands in a slot.
+    if (patch.slot !== undefined) useTaskStore.getState().syncLoggedMealSlotTasks();
   },
 
   reviseEntry(id, patch) {
