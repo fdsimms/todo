@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Share,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -22,7 +23,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
-import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { useScreenSettings } from '../hooks/useScreenSettings';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
@@ -1355,12 +1356,6 @@ export function GroceryScreen() {
       accessibilityLabel: 'Browse your grocery catalog',
     });
     list.push({
-      icon: 'options-outline',
-      onPress: () => setAislesOpen(true),
-      disabled: selectionMode,
-      accessibilityLabel: 'List settings: aisles, stores, and how the list is sorted',
-    });
-    list.push({
       icon: copied ? 'checkmark' : 'copy-outline',
       onPress: () => copy(copyText),
       disabled: selectionMode || !copyText,
@@ -1605,7 +1600,14 @@ export function GroceryScreen() {
                 .join(' · ')
             : undefined
         }
-        actions={withScreenSettings(actions, screenSettings.action)}
+        actions={[...actions, {
+          icon: 'settings-outline',
+          onPress: (e: GestureResponderEvent) =>
+            screenSettings.open({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }),
+          active: screenSettings.sheet.visible,
+          disabled: selectionMode,
+          accessibilityLabel: 'Grocery settings',
+        }]}
       />
       <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
@@ -1806,7 +1808,15 @@ export function GroceryScreen() {
       />
       <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
-      <ScreenSettingsSheet {...screenSettings.sheet} />
+      <ScreenSettingsSheet
+        {...screenSettings.sheet}
+        extraRows={[{
+          id: 'aisles',
+          label: 'Aisles, stores and sorting',
+          hint: 'How the list is grouped and ordered',
+          onPress: () => setAislesOpen(true),
+        }]}
+      />
       <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />
 
       <FinishShoppingSheet
