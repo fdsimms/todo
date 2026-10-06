@@ -114,3 +114,9 @@ quote on every line the selection touches, or takes it off when they all have
 it. Both are pure and return the new text with the selection to place, which
 the sheet hands to `useTitleSelection.selectRange`, the same one-shot the title
 fields use so ordinary typing never has a selection pushed back at it.
+
+The bar covers the bottom of the sheet above the keyboard, so the sheet passes
+its height to `EditorSheet` (`keyboardAccessoryHeight`, then `accessoryHeight`
+on `useKeyboardInsetScroll`). That takes the hook's JS-owned inset path and
+adds the bar to the keyboard's inset, which keeps a caret typing near the
+bottom of a long entry above the bar rather than behind it.

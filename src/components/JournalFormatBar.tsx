@@ -7,6 +7,14 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 import type { LineFormat } from '../utils/journalMarkdown';
 
+/**
+ * The bar's height at the default text size: its padding, a 40pt button row
+ * and the hairline. `EditorSheet` adds it to the keyboard inset so a caret
+ * near the bottom stays above the bar. A larger text size makes the bar a
+ * little taller than this, which costs a few points of overlap, not a hidden line.
+ */
+export const JOURNAL_FORMAT_BAR_HEIGHT = 57;
+
 export type FormatAction = { wrap: '**' | '*' } | { line: LineFormat };
 
 interface Props {

@@ -19,7 +19,7 @@ import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
-import { JournalFormatBar, type FormatAction } from './JournalFormatBar';
+import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 
 const TEXT_MAX_LENGTH = 5000;
@@ -154,6 +154,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       footer={<JournalFormatBar focused={visible && focused} onFormat={applyFormat} />}
+      keyboardAccessoryHeight={JOURNAL_FORMAT_BAR_HEIGHT}
       header={
         <SheetHeader
           bare
