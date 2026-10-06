@@ -669,6 +669,33 @@ export function RewardsScreen() {
           </View>
         )}
 
+        {showIdeas && (
+          <>
+            <Text style={styles.sectionHeader}>Ideas</Text>
+            {rate === null && (
+              <Text style={styles.sectionHint}>
+                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until there's a week of completed tasks to go on.`}
+              </Text>
+            )}
+            <View style={styles.historyCard}>
+              {ideas.map((idea, i) => (
+                <View key={idea.title} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                  <View style={styles.historyText}>
+                    <Text style={styles.historyLabel}>{idea.title}</Text>
+                    <Text style={styles.historyMeta}>{`${idea.frequencyLabel} · ${formatCoins(idea.cost)}`}</Text>
+                  </View>
+                  <InlineAction
+                    label="Add"
+                    icon="add"
+                    onPress={() => addIdea(idea)}
+                    accessibilityLabel={`Add ${idea.title} for ${formatCoins(idea.cost)}`}
+                  />
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
         <Text style={styles.sectionHeader}>Bounties</Text>
         <Text style={styles.sectionHint}>
           Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
@@ -755,33 +782,6 @@ export function RewardsScreen() {
                 </View>
               </>
             )}
-          </>
-        )}
-
-        {showIdeas && (
-          <>
-            <Text style={styles.sectionHeader}>Ideas</Text>
-            {rate === null && (
-              <Text style={styles.sectionHint}>
-                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until there's a week of completed tasks to go on.`}
-              </Text>
-            )}
-            <View style={styles.historyCard}>
-              {ideas.map((idea, i) => (
-                <View key={idea.title} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
-                  <View style={styles.historyText}>
-                    <Text style={styles.historyLabel}>{idea.title}</Text>
-                    <Text style={styles.historyMeta}>{`${idea.frequencyLabel} · ${formatCoins(idea.cost)}`}</Text>
-                  </View>
-                  <InlineAction
-                    label="Add"
-                    icon="add"
-                    onPress={() => addIdea(idea)}
-                    accessibilityLabel={`Add ${idea.title} for ${formatCoins(idea.cost)}`}
-                  />
-                </View>
-              ))}
-            </View>
           </>
         )}
 
