@@ -36,6 +36,7 @@ export function FeatureAreasSettings() {
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const tabRoutes = useSettingsStore(s => s.tabRoutes);
   const setTabSlot = useSettingsStore(s => s.setTabSlot);
+  const clearTabSlot = useSettingsStore(s => s.clearTabSlot);
   const resetTabRoutes = useSettingsStore(s => s.resetTabRoutes);
   const [pickingSlot, setPickingSlot] = useState<number | null>(null);
   const isDefaultTabs = tabRoutes.length === DEFAULT_TAB_ROUTES.length
@@ -102,13 +103,15 @@ export function FeatureAreasSettings() {
         the menu reaches can be one; see normalizeTabRoutes for the rules. */}
     <SettingsSection
       label="Tab bar"
-      footer="The three screens beside More in the bar along the bottom. More always opens the menu, and every screen stays in the menu whether or not it has a tab."
+      footer="Three screens, plus an optional fourth, beside More in the bar along the bottom. More always opens the menu, and every screen stays in the menu whether or not it has a tab."
     >
       <SettingsRow entryId="tabRoutes" {...slotRow(0)} />
       <View style={styles.sep} />
       <SettingsRow {...slotRow(1)} />
       <View style={styles.sep} />
       <SettingsRow {...slotRow(2)} />
+      <View style={styles.sep} />
+      <SettingsRow {...slotRow(3)} />
       {!isDefaultTabs && (
         <>
           <View style={styles.sep} />
@@ -128,6 +131,7 @@ export function FeatureAreasSettings() {
       slot={pickingSlot ?? 0}
       tabRoutes={tabRoutes}
       onSelect={route => { if (pickingSlot !== null) setTabSlot(pickingSlot, route); }}
+      onClear={() => { if (pickingSlot !== null) clearTabSlot(pickingSlot); }}
     />
     </>
   );

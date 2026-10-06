@@ -78,7 +78,7 @@ import {
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
-import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, DEFAULT_TAB_ROUTES } from '../utils/navHubs';
+import { addRecentScreen, parseRecentScreens, parseTabRoutes, setTabSlot, clearTabSlot, DEFAULT_TAB_ROUTES } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
@@ -2022,6 +2022,7 @@ interface SettingsStore {
   pushRecentScreen: (screen: string) => void;
   /** Puts `route` in tab slot `slot` (0-based), swapping if it was already a tab. */
   setTabSlot: (slot: number, route: string) => void;
+  clearTabSlot: (slot: number) => void;
   resetTabRoutes: () => void;
   resetToDefaults: () => void;
 }
@@ -5033,6 +5034,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLastVisitedScreen(screen: string | null) {
     dbSetSetting('lastVisitedScreen', screen ?? '');
     set({ lastVisitedScreen: screen });
+  },
+
+  clearTabSlot(slot: number) {
+    const next = clearTabSlot(get().tabRoutes, slot);
+    dbSetSetting('tabRoutes', JSON.stringify(next));
+    set({ tabRoutes: next });
   },
 
   setTabSlot(slot: number, route: string) {
