@@ -5,9 +5,11 @@
  * write inside a transaction that is rolled back (`replica.dryRun`), collects
  * the Activity entries the write would have made, and answers with those in
  * plain words and a one-time `confirmToken`. Only a second call with that token
- * writes, and where the client can show a dialog the server then asks the
- * person directly (elicitation, server.ts), so the description comes from the
- * server rather than from the model's summary of it.
+ * writes. The description comes from the server rather than from the model's
+ * summary of it, and the confirming call has to repeat it (`willDo`), because
+ * a client's approval prompt shows a call's arguments and nothing else. The
+ * preview itself is the read-only `preview_change` tool, so only the write
+ * asks for approval.
  *
  * Why a dry run rather than a description each tool writes for itself: the
  * effect of a write is not predictable from its request (a reschedule may move
@@ -40,8 +42,13 @@ export function requestHash(tool: string, args: Record<string, unknown>): string
 
 export interface ConfirmTokens {
   issue(tool: string, args: Record<string, unknown>, summary: string[]): string;
-  /** The summary the token was issued with, or the reason it cannot be used. Spends the token. */
-  redeem(token: string, tool: string, args: Record<string, unknown>): { ok: true; summary: string[] } | { ok: false; reason: string };
+  /**
+   * The summary the token was issued with, or the reason it cannot be used.
+   * Spends the token, except when `echoed` is given and differs from the
+   * summary: that is refused without spending it, so the caller can repeat the
+   * call with the right lines.
+   */
+  redeem(token: string, tool: string, args: Record<string, unknown>, echoed?: readonly string[]): { ok: true; summary: string[] } | { ok: false; reason: string };
 }
 
 export function createConfirmTokens(now: () => number = Date.now): ConfirmTokens {
@@ -57,12 +64,15 @@ export function createConfirmTokens(now: () => number = Date.now): ConfirmTokens
       issued.set(token, { hash: requestHash(tool, args), tool, expires: now() + CONFIRM_TTL_MS, summary });
       return token;
     },
-    redeem(token, tool, args) {
+    redeem(token, tool, args, echoed) {
       sweep();
       const entry = issued.get(token);
-      if (!entry) return { ok: false, reason: 'That confirmToken has expired or was already used. Call without apply to preview again.' };
+      if (!entry) return { ok: false, reason: 'That confirmToken has expired or was already used. Preview again with preview_change.' };
       if (entry.tool !== tool || entry.hash !== requestHash(tool, args)) {
         return { ok: false, reason: 'That confirmToken was issued for a different request. Preview this exact request first, show it, then confirm it unchanged.' };
+      }
+      if (echoed !== undefined && JSON.stringify(echoed) !== JSON.stringify(entry.summary)) {
+        return { ok: false, reason: `willDo must repeat the preview's lines exactly, so the approval prompt shows what will happen. Nothing was changed and the confirmToken still works. The lines are: ${JSON.stringify(entry.summary)}` };
       }
       issued.delete(token);
       return { ok: true, summary: entry.summary };

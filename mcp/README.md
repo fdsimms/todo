@@ -62,9 +62,11 @@ without one.
 Seven prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
 `inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project`, `unstick_tasks` and `how_do_i`.
 
-Every write previews first: without `apply` it changes nothing and returns `willDo` and a
-`confirmToken`, and the write happens only when called again with `apply: true` and that token
-for the identical request (`src/confirmWrites.ts`).
+Every write previews first. `preview_change` (read-only, so it needs no approval) takes a write
+tool's name and arguments, changes nothing and returns `willDo` and a `confirmToken`. The write
+happens only when the tool is called with `apply: true`, that token for the identical request, and
+`willDo` repeated exactly, so the approval prompt shows what will happen (`src/confirmWrites.ts`).
+Calling a write tool without `apply` previews too, but asks for approval like a write.
 
 Every write shows in the app's Activity screen under "Claude", and a task write can be undone
 there while the task is still how Claude left it (`src/agentLedger.ts`).
@@ -106,6 +108,7 @@ only the fallback until the first sync.
 | `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today (`hiddenUntil`, or `hiddenReason` for a task held while vacation mode is on). Also, where the task has them: who it waits on, contact details, streak, what completing it also logs (medication, Health, a meal), timer and Health target, postponement history, supply (with the catalog row it reorders) and rotation, the rule behind a recomputed deadline or reminder, whether a water target follows the food log's goal, and the people it is about. |
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion, with each trip's away dates and destination. |
 | `get_project` | One project: its open tasks in order (each with its checklist and blockers), the most recently finished, its decisions, and its away dates, destination and whether it pauses tasks while away. |
+| `next_in_project` | The next unchecked checklist item in one project step (the first open step not waiting on anything, unless one is named), with how many items are checked. |
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |

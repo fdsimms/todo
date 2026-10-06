@@ -160,6 +160,52 @@ export function getProject(replica: Replica, id: string): GetProjectResult | nul
   };
 }
 
+export interface NextInProjectResult {
+  project: { id: string; title: string };
+  /** The step the checklist item belongs to: the one asked for, else the first open step that is not held back. */
+  step: { id: string; title: string; waitsOn?: string[] } | null;
+  /** The first unchecked checklist item under that step, or null when it has none left (or no checklist). */
+  next: { id: string; title: string } | null;
+  checklist: { done: number; total: number };
+  /** Why `next` is null, when it is. */
+  note?: string;
+}
+
+/**
+ * The next unchecked checklist item in a project step, without the rest of the
+ * project. With no step given it is the first open step, in the project's own
+ * order, that nothing is holding back; a step that is waiting is only returned
+ * when it is named. Read-only, over the same rows `getProject` reads.
+ */
+export function nextInProject(replica: Replica, projectId: string, stepId?: string): NextInProjectResult | null {
+  const detail = getProject(replica, projectId);
+  if (!detail) return null;
+  const project = { id: detail.project.id, title: detail.project.title };
+  const step = stepId
+    ? detail.open.find(t => t.id === stepId)
+    : detail.open.find(t => !t.waitsOn);
+  if (!step) {
+    return {
+      project,
+      step: null,
+      next: null,
+      checklist: { done: 0, total: 0 },
+      note: stepId
+        ? 'That is not an open step of this project.'
+        : detail.open.length > 0 ? 'Every open step is waiting on something else.' : 'Nothing is open in this project.',
+    };
+  }
+  const list = step.subtasks ?? [];
+  const next = list.find(s => !s.done);
+  return {
+    project,
+    step: { id: step.id, title: step.title, ...(step.waitsOn ? { waitsOn: step.waitsOn } : {}) },
+    next: next ? { id: next.id, title: next.title } : null,
+    checklist: { done: list.filter(s => s.done).length, total: list.length },
+    ...(next ? {} : { note: list.length > 0 ? 'Every checklist item is checked; the step itself is what is left.' : 'This step has no checklist; the step itself is the next thing.' }),
+  };
+}
+
 /**
  * Create a project and its whole plan. Validated in full before anything is
  * written, and written in one transaction (see `replica.createProjectPlan`).

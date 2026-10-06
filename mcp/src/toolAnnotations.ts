@@ -43,6 +43,8 @@ export const READ_TOOLS: Record<string, string> = {
   get_task: 'Task details',
   list_projects: 'List projects',
   get_project: 'Project details',
+  next_in_project: 'Next step in a project',
+  preview_change: 'Preview a change',
   list_stacks: 'List stacks',
   get_rewards: 'Coins and rewards',
   list_grocery_items: 'Grocery list',

@@ -81,7 +81,7 @@ import {
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
-import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { addProjectSteps, createProject, getProject, nextInProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
@@ -159,7 +159,7 @@ function confirmTokensFor(replica: Replica): ConfirmTokens {
 }
 
 /** Said once on every write tool, after its own description. */
-const CONFIRM_NOTE = 'Every write previews first: called without apply it changes nothing and returns willDo (what would change, in plain words) and a confirmToken. Show the person willDo and wait for their yes before calling again with apply: true and the confirmToken.';
+const CONFIRM_NOTE = 'Every write previews first. Call preview_change with this tool\'s name and arguments (it is read-only and needs no approval): it changes nothing and returns willDo (what would change, in plain words) and a confirmToken. Show the person willDo and wait for their yes, then call this tool with the same arguments plus apply: true, the confirmToken and willDo repeated exactly. Calling this tool without apply also previews, but asks for approval like a write.';
 
 /** A tool result's JSON back as a value, or undefined when it is not JSON. */
 function parseToolText(out: { content: { type: string; text?: string }[] }): unknown {
@@ -532,6 +532,19 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'next_in_project',
+    "The next unchecked checklist item in one project step, without the rest of the project. With no step given, the step is the first open one, in the project's own order, that is not waiting on anything. Returns the step, the item (null when its checklist is finished or it has none) and how many items are checked. Use get_project when you need more than that.",
+    {
+      project: z.string().min(1).describe('A project id (list_projects).'),
+      step: z.string().optional().describe('A step of that project by task id, from get_project. Leave out for the current step.'),
+    },
+    async ({ project, step }) => {
+      const result = await withFresh(() => nextInProject(replica, project, step));
+      return result ? json(withLink(result, LINKS?.project(project))) : json({ error: `No project with id ${project}.` });
+    }
+  );
+
+  server.tool(
     'list_stacks',
     'Stacks: named groups of tasks that sit together on Today, each with its category and its open tasks in order. A stack is only a label, so every task in it keeps its own schedule, streak and logging. A task shows which stack it is in as stackId.',
     {},
@@ -719,53 +732,79 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     const tokens = confirmTokensFor(replica);
     const plain = server.tool.bind(server) as (...args: unknown[]) => RegisteredTool;
     type WriteCallback = (args: Record<string, unknown>, extra: unknown) => Promise<{ content: { type: 'text'; text: string }[] }>;
+    const writes = new Map<string, { shape: Record<string, z.ZodTypeAny>; cb: WriteCallback }>();
+    /** The dry run, shared by a write called without apply and by preview_change. */
+    const preview = async (name: string, request: Record<string, unknown>, cb: WriteCallback, extra: unknown) => {
+      previewing = [];
+      let out: Awaited<ReturnType<typeof cb>>;
+      let effects: AgentLedgerEntry[];
+      try {
+        out = await cb({ ...request, apply: true }, extra);
+      } finally {
+        effects = previewing ?? [];
+        previewing = null;
+      }
+      const details = parseToolText(out);
+      if (details && typeof details === 'object' && 'error' in details) return out;
+      const described = describeEffects(effects, replica.dayKeyOf);
+      const willDo = described.length > 0 ? described : ['Nothing in the app would change.'];
+      return json({
+        preview: true,
+        willDo,
+        ...(details !== undefined ? { details: withoutIds(details) } : {}),
+        confirmToken: tokens.issue(name, request, willDo),
+        next: `Nothing has changed yet. Tell the person, in plain words, what willDo says, and wait for a yes. Then call ${name} with exactly the same arguments, apply: true, this confirmToken and willDo repeated exactly.`,
+      });
+    };
     const guarded = (
       name: string,
       description: string,
       shape: Record<string, z.ZodTypeAny>,
       cb: WriteCallback,
-    ) => plain(
-      name,
-      `${description} ${CONFIRM_NOTE}`,
-      {
-        ...shape,
-        apply: z.boolean().optional().describe('Leave out to preview. true, with confirmToken, to make the change.'),
-        confirmToken: z.string().optional().describe('From the preview of this exact request.'),
-      },
-      async (args: Record<string, unknown>, extra: unknown) => {
-        const { apply, confirmToken, ...request } = args;
-        if (!apply) {
-          previewing = [];
-          let out: Awaited<ReturnType<typeof cb>>;
-          let effects: AgentLedgerEntry[];
-          try {
-            out = await cb({ ...request, apply: true }, extra);
-          } finally {
-            effects = previewing ?? [];
-            previewing = null;
+    ) => {
+      writes.set(name, { shape, cb });
+      return plain(
+        name,
+        `${description} ${CONFIRM_NOTE}`,
+        {
+          ...shape,
+          apply: z.boolean().optional().describe('Leave out to preview. true, with confirmToken and willDo, to make the change.'),
+          confirmToken: z.string().optional().describe('From the preview of this exact request.'),
+          willDo: z.array(z.string()).optional().describe("The preview's willDo lines, repeated exactly. They are what the approval prompt shows the person."),
+        },
+        async (args: Record<string, unknown>, extra: unknown) => {
+          const { apply, confirmToken, willDo, ...request } = args;
+          if (!apply) return preview(name, request, cb, extra);
+          if (typeof confirmToken !== 'string') {
+            return json({ error: 'Preview first: call preview_change with this tool and its arguments, show the person what willDo says, then confirm with the confirmToken it returns.' });
           }
-          const details = parseToolText(out);
-          if (details && typeof details === 'object' && 'error' in details) return out;
-          const willDo = describeEffects(effects, replica.dayKeyOf);
-          return json({
-            preview: true,
-            willDo: willDo.length > 0 ? willDo : ['Nothing in the app would change.'],
-            ...(details !== undefined ? { details: withoutIds(details) } : {}),
-            confirmToken: tokens.issue(name, request, willDo),
-            next: 'Nothing has changed yet. Tell the person, in plain words, what willDo says, and wait for a yes. Then call this tool again with exactly the same arguments, apply: true and this confirmToken.',
-          });
-        }
-        if (typeof confirmToken !== 'string') {
-          return json({ error: 'Preview first: call this tool without apply, show the person what willDo says, then confirm with the confirmToken it returns.' });
-        }
-        const redeemed = tokens.redeem(confirmToken, name, request);
-        if (!redeemed.ok) return json({ error: redeemed.reason });
-        return cb({ ...request, apply: true }, extra);
-      },
-    );
+          const redeemed = tokens.redeem(confirmToken, name, request, Array.isArray(willDo) ? willDo as string[] : []);
+          if (!redeemed.ok) return json({ error: redeemed.reason });
+          return cb({ ...request, apply: true }, extra);
+        },
+      );
+    };
     (server as unknown as { tool: unknown }).tool = guarded;
     registerWriteTools(server, replica, withWrite);
     (server as unknown as { tool: typeof plain }).tool = plain;
+    // The preview as its own read-only tool (annotations: toolAnnotations.ts),
+    // so looking at a change does not ask for the approval the change does.
+    server.tool(
+      'preview_change',
+      'Shows what a write tool would change, in plain words, without changing anything. Pass the write tool\'s name and the arguments you would give it (no apply). Returns willDo and a confirmToken. Show the person willDo and wait for their yes, then call the write tool itself with the same arguments plus apply: true, the confirmToken and willDo repeated exactly.',
+      {
+        tool: z.string().describe('The name of a write tool, such as update_task or complete_task.'),
+        arguments: z.record(z.unknown()).optional().describe('The arguments you would pass that tool, without apply, confirmToken or willDo.'),
+      },
+      async ({ tool, arguments: raw }, extra: unknown) => {
+        const target = writes.get(tool);
+        if (!target) return json({ error: `${tool} is not a write tool here. Preview one of: ${[...writes.keys()].sort().join(', ')}.` });
+        const { apply: _a, confirmToken: _c, willDo: _w, ...given } = (raw ?? {}) as Record<string, unknown>;
+        const parsed = z.object(target.shape).safeParse(given);
+        if (!parsed.success) return json({ error: `Those are not valid arguments for ${tool}: ${parsed.error.issues.map(i => `${i.path.join('.') || 'arguments'}: ${i.message}`).join('; ')}` });
+        return preview(tool, parsed.data as Record<string, unknown>, target.cb, extra);
+      },
+    );
   }
 
   // Prompts are scripts over the tools (prompts.ts). Registered for every

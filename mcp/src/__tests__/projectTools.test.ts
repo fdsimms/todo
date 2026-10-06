@@ -1,4 +1,4 @@
-import { createProject, getProject, updateProject } from '../projectTools';
+import { createProject, getProject, nextInProject, updateProject } from '../projectTools';
 import type { Replica } from '../replica';
 import type { Project, Task } from '../../../src/types';
 
@@ -81,6 +81,37 @@ describe('getProject', () => {
     expect(detail).not.toHaveProperty('awayEnd');
     expect(detail).not.toHaveProperty('pausesTasksWhileAway');
     expect(getProject(stub([]), 'p1')!.project).not.toHaveProperty('awayStart');
+  });
+});
+
+describe('nextInProject', () => {
+  const tasks = [
+    task({ id: 'a', title: 'Pick colour', sortOrder: 1 }),
+    task({ id: 'b', title: 'Buy paint', sortOrder: 2, blockedById: 'a' }),
+    task({ id: 'c1', title: 'Roller', parentId: 'a', sortOrder: 1, completed: true }),
+    task({ id: 'c2', title: 'Tape', parentId: 'a', sortOrder: 2 }),
+    task({ id: 'c3', title: 'Brush', parentId: 'a', sortOrder: 3 }),
+  ];
+
+  it('names the first unchecked item of the first open step that is not waiting', () => {
+    expect(nextInProject(stub(tasks), 'p1')).toMatchObject({
+      step: { id: 'a', title: 'Pick colour' },
+      next: { id: 'c2', title: 'Tape' },
+      checklist: { done: 1, total: 3 },
+    });
+  });
+
+  it('answers for a named step, including one that is waiting, and says when there is no item', () => {
+    const waiting = nextInProject(stub(tasks), 'p1', 'b')!;
+    expect(waiting.step).toMatchObject({ id: 'b', waitsOn: ['a'] });
+    expect(waiting.next).toBeNull();
+    expect(waiting.note).toMatch(/no checklist/);
+  });
+
+  it('says why there is nothing to name, and is null for an unknown project', () => {
+    expect(nextInProject(stub(tasks), 'p1', 'zzz')).toMatchObject({ step: null, note: expect.stringMatching(/not an open step/) });
+    expect(nextInProject(stub([task({ id: 'b', title: 'Buy', blockedById: 'a' }), task({ id: 'a', title: 'x', completed: true, completedAt: 'y' })], { isBlocked: () => false }), 'p1')!.step).toMatchObject({ id: 'b' });
+    expect(nextInProject(stub([]), 'nope')).toBeNull();
   });
 });
 

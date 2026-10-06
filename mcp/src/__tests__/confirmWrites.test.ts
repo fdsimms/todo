@@ -21,6 +21,13 @@ describe('confirm tokens', () => {
     expect(tokens.redeem(c, 'complete_task', { id: 't1' })).toMatchObject({ ok: false, reason: expect.stringMatching(/expired/) });
   });
 
+  it('refuse a confirm that does not repeat the previewed lines, without spending the token', () => {
+    const tokens = createConfirmTokens();
+    const token = tokens.issue('complete_task', { id: 't1' }, ['Complete the task "A"']);
+    expect(tokens.redeem(token, 'complete_task', { id: 't1' }, [])).toMatchObject({ ok: false, reason: expect.stringContaining('Complete the task \\"A\\"') });
+    expect(tokens.redeem(token, 'complete_task', { id: 't1' }, ['Complete the task "A"'])).toEqual({ ok: true, summary: ['Complete the task "A"'] });
+  });
+
   it('hash nested arguments independent of key order', () => {
     expect(requestHash('x', { a: { b: 1, c: 2 } })).toBe(requestHash('x', { a: { c: 2, b: 1 } }));
     expect(requestHash('x', { a: [1, 2] })).not.toBe(requestHash('x', { a: [2, 1] }));
