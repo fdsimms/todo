@@ -278,13 +278,24 @@ export function ensureCalendarEventCategory(opts: { force?: boolean } = {}): voi
 export function ensureHealthCategory(opts: { force?: boolean } = {}): void {
   const settings = useSettingsStore.getState();
   if (!settings.healthReadEnabled) return;
+  const before = settings.healthCategory;
   ensureCategoryFor(
     'healthCategory',
     HEALTH_CATEGORY,
-    settings.healthCategory,
+    before,
     settings.setHealthCategory,
     !!opts.force,
   );
+  // A fresh section starts folded: it is a readout, and a folded one still says
+  // its figures in its header (`contextSectionSummaries`). Only on the call that
+  // assigns it, so an install that already had the section, or somebody who has
+  // since opened it, is never folded again, and expanding it afterwards is
+  // remembered like any other category's collapse.
+  const after = useSettingsStore.getState();
+  if (before === null && after.healthCategory === HEALTH_CATEGORY
+    && !after.collapsedCategories.includes(HEALTH_CATEGORY)) {
+    after.setCollapsedCategories([...after.collapsedCategories, HEALTH_CATEGORY]);
+  }
 }
 
 /**

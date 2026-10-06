@@ -152,6 +152,7 @@ import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { DayContextRow } from '../components/DayContextRow';
+import { contextCardPositions, contextSectionSummaries } from '../utils/contextCards';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -308,6 +309,7 @@ function SectionHeader({
   onPin,
   allPinned,
   count,
+  summary,
 }: {
   label: string;
   styles: ReturnType<typeof makeStyles>;
@@ -318,6 +320,8 @@ function SectionHeader({
   onPin?: () => void;
   allPinned?: boolean;
   count?: number;
+  /** One line shown beside the label while the section is folded away. */
+  summary?: string;
 }) {
   const scrim = <SpotlightScrim />;
 
@@ -349,6 +353,9 @@ function SectionHeader({
             {collapsed && count !== undefined ? ` (${count})` : ''}
           </Text>
           <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+          {collapsed && summary ? (
+            <Text style={styles.sectionHeaderSummary} numberOfLines={1}>{summary}</Text>
+          ) : null}
         </View>
       </TouchableOpacity>
       {/* Pinning a whole category was a long press on this header and
@@ -2541,6 +2548,10 @@ export function TodayScreen() {
   // still pins the section it has folded away.
   const sectionTasksByCategory = useMemo(() => sectionTasksByLabel(listItems), [listItems]);
 
+  // What a folded Health or Calendar section says about itself, read off
+  // `listItems` (headers present, nothing collapsed away yet).
+  const contextSummaries = useMemo(() => contextSectionSummaries(listItems), [listItems]);
+
   // Whether anything other than the pinned block is on screen.
   const restVisible = !othersHidden;
 
@@ -2696,6 +2707,11 @@ export function TodayScreen() {
   const mountedData = useMemo(() => limitTodayItems(data, todayTaskLimit), [data, todayTaskLimit]);
 
   const [draggableData, setDraggableData] = useState<ListItem[]>(mountedData);
+  // Where each readout falls in its run, so a run draws as one joined card.
+  // Read off what the list is actually showing, so a collapsed section (whose
+  // rows are gone from it) can't leave a row rounded for neighbours it no
+  // longer has.
+  const contextPositions = useMemo(() => contextCardPositions(draggableData), [draggableData]);
   const syncedDataRef = useRef(mountedData);
   if (syncedDataRef.current !== mountedData) {
     syncedDataRef.current = mountedData;
@@ -3334,6 +3350,7 @@ export function TodayScreen() {
             onPin={isCategory ? () => handlePinCategory(item.label) : undefined}
             allPinned={isCategory ? allPinned : undefined}
             count={isCategory ? sectionDisplayCounts.get(item.label) ?? 0 : undefined}
+            summary={isCategory ? contextSummaries.get(item.label) : undefined}
           />
         </CompletionCollapse>
       );
@@ -3425,6 +3442,7 @@ export function TodayScreen() {
         <DayContextRow
           row={item.row}
           onPress={onContextPress}
+          cardPosition={contextPositions.get(item.row.id)}
           onMarkCooked={
             item.row.kind === 'meal'
               ? () => handleMarkMealCooked(item.row.sourceId, item.row.title)
@@ -5244,6 +5262,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   categorySectionToggle: { flex: 1 },
   categorySectionHeaderLeft: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xsm,
+  },
+  // The line a folded Health or Calendar section leaves in place of its rows.
+  // Sentence case and regular weight, so it reads as the section's content
+  // rather than as a second label.
+  sectionHeaderSummary: {
+    flexShrink: 1, color: colors.textTertiary, fontSize: font.xs,
+    fontWeight: fontWeight.regular,
   },
   focusSectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

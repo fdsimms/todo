@@ -6,6 +6,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SpotlightScrim } from './SpotlightOverlay';
+import type { CardPosition } from '../utils/contextCards';
 
 interface Props {
   row: ContextRow;
@@ -20,6 +21,13 @@ interface Props {
    * back to being a plain glyph.
    */
   onMarkCooked?: () => void;
+  /**
+   * Set on a readout (a health reading or a calendar event) that sits in a run
+   * of them: the run is drawn as one card, with this row's corners and hairline
+   * taken from where it falls in it. Omit for a meal or a moved event, which
+   * stay their own cards (see `contextCards.ts`).
+   */
+  cardPosition?: CardPosition;
 }
 
 /**
@@ -68,6 +76,12 @@ interface Props {
  *   change that: ticking one meal is not being selected for a bulk edit, and
  *   Today's bulk bar acts on tasks.
  *
+ * **A run of readouts is one card, though** (`cardPosition`): events and health
+ * readings are drawn as a single card with hairlines between them, the same
+ * width as a task card, so a day's calendar reads as one block rather than as N
+ * things to do. Only rows with no action join (`contextCards.ts` holds that
+ * line); a meal's tick and a moved event's offer stay on their own cards.
+ *
  * The card is a plain `View` with **two touchables side by side** rather than
  * one wrapping the other, copied from `TaskItem` for its reason as much as its
  * look: a `TouchableOpacity` is `accessible` by default, so a nested button is
@@ -81,7 +95,7 @@ interface Props {
  * already-completed task, which is a worse thing to be mistaken for than a
  * plain one. If these need to recede again, it isn't by half-drawing the card.
  */
-export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
+export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -176,12 +190,33 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
     </>
   );
 
+  // Corners and margins for a row inside a joined card. The ends keep the
+  // single row's rounding and the half-step margin; everything between is
+  // square and butted against its neighbours.
+  const roundTop = cardPosition === undefined || cardPosition === 'single' || cardPosition === 'first';
+  const roundBottom = cardPosition === undefined || cardPosition === 'single' || cardPosition === 'last';
+  const joinedShape = cardPosition === undefined || cardPosition === 'single' ? null : {
+    marginTop: roundTop ? spacing.xxs : 0,
+    marginBottom: roundBottom ? spacing.xxs : 0,
+    borderTopLeftRadius: roundTop ? radius.md : 0,
+    borderTopRightRadius: roundTop ? radius.md : 0,
+    borderBottomLeftRadius: roundBottom ? radius.md : 0,
+    borderBottomRightRadius: roundBottom ? radius.md : 0,
+  };
+  const clipShape = joinedShape && {
+    borderTopLeftRadius: joinedShape.borderTopLeftRadius,
+    borderTopRightRadius: joinedShape.borderTopRightRadius,
+    borderBottomLeftRadius: joinedShape.borderBottomLeftRadius,
+    borderBottomRightRadius: joinedShape.borderBottomRightRadius,
+  };
+  const separated = cardPosition === 'middle' || cardPosition === 'last';
+
   return (
-    <View style={[styles.card, shadows.card]}>
+    <View style={[styles.card, joinedShape, shadows.card]}>
       {/* Separate from `card`: overflow hidden there would clip the card
           shadow on iOS (same split TaskItem's itemWrapper/cardClip make). */}
-      <View style={styles.clip}>
-        <View style={styles.row}>
+      <View style={[styles.clip, clipShape]}>
+        <View style={[styles.row, separated && styles.rowSeparated]}>
           {leading}
           {onPress ? (
             <TouchableOpacity
@@ -204,6 +239,10 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
               {body}
             </View>
           )}
+          {/* The next event's countdown, on that one row only. */}
+          {row.startsIn ? (
+            <Text style={styles.startsIn} numberOfLines={1}>{row.startsIn}</Text>
+          ) : null}
         </View>
         {/* Same scrim TaskItem draws over itself while another row is
             spotlighted (focus session, expanded row). This row never
@@ -257,6 +296,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: 10,
     paddingRight: spacing.md,
+  },
+  // The hairline between two rows of a joined card.
+  rowSeparated: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+  },
+  startsIn: {
+    color: colors.accentText,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    fontWeight: fontWeight.semibold,
   },
   // Matches a task row's checkbox column exactly — spacing.md of card padding
   // plus the 24pt box — so every title on the list starts at the same x. This
