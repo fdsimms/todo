@@ -57,6 +57,13 @@ export type TitleSelection = {
   /** Put the caret at `position` (or at the end of `text`, given a string). */
   moveCaret: (position: number | string) => void;
   /**
+   * Place a whole selection, for an edit that rewrites the text and keeps a
+   * run selected (the journal's formatting bar). Same one-shot as `moveCaret`.
+   * The caller sets the text in the same commit; pass it so a second edit
+   * before the next selection event reads the new string.
+   */
+  selectRange: (selection: TextSelection, text: string) => void;
+  /**
    * Splice `token` in over the current selection, as a keypress would, and
    * leave the caret after it. Returns the new text for the caller to store.
    */
@@ -100,6 +107,12 @@ export function useTitleSelection(text: string): TitleSelection {
     setForced(next);
   }, []);
 
+  const selectRange = useCallback((selection: TextSelection, text: string) => {
+    textRef.current = text;
+    selectionRef.current = selection;
+    setForced(selection);
+  }, []);
+
   const insertToken = useCallback((token: string) => {
     // A tap right after a word (no space typed yet) would otherwise splice the
     // token straight onto it — "milk" + "#" -> "milk#home" as the next letters
@@ -119,5 +132,5 @@ export function useTitleSelection(text: string): TitleSelection {
     return spliced.text;
   }, []);
 
-  return { selection: forced, onSelectionChange, getSelection, resetCaret, moveCaret, insertToken };
+  return { selection: forced, onSelectionChange, getSelection, resetCaret, moveCaret, selectRange, insertToken };
 }

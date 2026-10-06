@@ -102,3 +102,15 @@ typed rather than vanishing into a style. Where styles are wrong (a screen
 reader's label, a clipped preview like Looking back) `journalPlainText` strips
 the markers. A formatting toolbar or styles shown while typing was the other
 option and was left out: it needs a native editor and a stored document format.
+
+## The formatting bar
+
+`JournalFormatBar` floats above the keyboard while the field has focus (a
+real `InputAccessoryView` never attaches to a multiline field, the reason
+`TitleTokenAccessory` has a floating mode; both read `useKeyboardHeight`).
+Its buttons only type the markers: `toggleWrap` wraps or unwraps the selection
+in `**`/`*`, and `toggleLinePrefix` puts a heading, bullet, numbered item or
+quote on every line the selection touches, or takes it off when they all have
+it. Both are pure and return the new text with the selection to place, which
+the sheet hands to `useTitleSelection.selectRange`, the same one-shot the title
+fields use so ordinary typing never has a selection pushed back at it.

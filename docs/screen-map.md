@@ -174,6 +174,7 @@ Where each component can appear.
 - `src/components/InventRecipeSheet.tsx` — on RecipesScreen
 - `src/components/ItemDisposalOffer.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen
 - `src/components/JournalEntrySheet.tsx` — on JournalScreen, MoodDayScreen
+- `src/components/JournalFormatBar.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/JournalText.tsx` — on JournalScreen, MoodDayScreen
 - `src/components/LeftoverSheet.tsx` — on KitchenScreen, MealPlanScreen, app shell
 - `src/components/LeftoversCard.tsx` — on MealPlanScreen
