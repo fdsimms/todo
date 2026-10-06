@@ -419,7 +419,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                   <Text style={[styles.outcome, !outcome && styles.outcomeRefused]}>
                     {outcome
                       ? outcome.nutrition.amounts.calorieKcal !== undefined
-                        ? `${Math.round(outcome.nutrition.amounts.calorieKcal)} cal`
+                        ? `${Math.round(outcome.nutrition.amounts.calorieKcal)} cal${
+                            outcome.nutrition.amounts.proteinG !== undefined
+                              ? `, ${Math.round(outcome.nutrition.amounts.proteinG)} g protein`
+                              : ''
+                          }`
                         : 'Measured'
                       : 'That amount can’t be measured against this label. See the note above.'}
                   </Text>
@@ -523,7 +527,7 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       gap: spacing.sm,
     },
-    pantryField: { gap: spacing.xsm },
+    pantryField: { gap: spacing.xsm, marginTop: spacing.smd },
     pantryLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8 },
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     servingSize: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
