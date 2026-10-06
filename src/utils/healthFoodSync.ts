@@ -42,14 +42,44 @@ import { healthBridge } from './healthBridge';
  * *present* and zero is written, because a label stating no fat is a real
  * statement.
  *
- * **Nothing backfills.** There is no sweep, no reconciler and no migration that
- * writes entries logged before this shipped. The doc's "one trigger" rule is
- * why: a pass that wrote history would put samples in a medical record for
- * meals nobody asked to share, and would duplicate whatever the person had
- * already logged in another app. An entry with an empty `healthSampleIds`
- * either predates this or was logged with the switch off, and both stay that
- * way.
+ * **Nothing backfills history.** There is no sweep, no reconciler and no
+ * migration that writes entries logged before this shipped. The doc's "one
+ * trigger" rule is why: a pass that wrote history would put samples in a
+ * medical record for meals nobody asked to share, and would duplicate whatever
+ * the person had already logged in another app. An entry with an empty
+ * `healthSampleIds` either predates this or was logged with the switch off, and
+ * both stay that way.
+ *
+ * **The one exception is an entry an agent logged over MCP**
+ * (`FoodLogEntry.healthWritePending`). The server has no HealthKit, so the
+ * person's request to log a meal is on the row and the write is deferred to the
+ * phone rather than refused. That is still one trigger, a person asking for a
+ * meal to be logged, with the write delayed; the flag is what separates it from
+ * history, and `pendingWriteAction` is what keeps it from becoming history
+ * itself (a flag older than `PENDING_WRITE_MAX_AGE_DAYS` is dropped unwritten).
  */
+
+/**
+ * How long an agent-logged entry may wait for the phone before it is dropped
+ * unwritten. A phone left off, or a switch turned on a month later, must not
+ * dump a backlog into Health as though it were eaten that day.
+ */
+export const PENDING_WRITE_MAX_AGE_DAYS = 7;
+
+/**
+ * What the pending-write pass does with one flagged entry. Pure, and exported
+ * for its tests, because this is where "an agent-logged meal is written, and
+ * history is not" is decided.
+ *
+ * - `write`: try it now.
+ * - `drop`: too old, or already holding samples; clear the flag, write nothing.
+ */
+export function pendingWriteAction(entry: FoodLogEntry, now: Date = new Date()): 'write' | 'drop' {
+  if (entry.healthSampleIds.length > 0) return 'drop';
+  const age = now.getTime() - new Date(entry.createdAt).getTime();
+  if (!Number.isFinite(age) || age > PENDING_WRITE_MAX_AGE_DAYS * 86_400_000) return 'drop';
+  return 'write';
+}
 
 /**
  * What came of trying to write a meal.

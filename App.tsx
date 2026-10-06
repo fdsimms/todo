@@ -42,7 +42,8 @@ import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/mainte
 import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
+import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
 
 // Held open until `AppGate` below knows which font to render in and has it
 // loaded, so the first frame the user ever sees is already in the right
@@ -166,6 +167,10 @@ function AppRoot() {
       // device chosen to write them. Async and not awaited, and idempotent: a
       // request is answered once, and a later pass skips it.
       ['write calendar requests', () => { void drainCalendarRequests(); }],
+      // Meals an agent logged over MCP, which only the phone can write to
+      // Health. Async and not awaited, idempotent, and a no-op with the switch
+      // off. See pendingHealthFoodWrites.ts.
+      ['write pending Health meals', runPendingHealthFoodWrites],
       // Read back any cooking step timer that was still counting down when the
       // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
       // which opens the database this reads from; before the permission
@@ -181,6 +186,15 @@ function AppRoot() {
       }],
     ]);
   }, [initSecrets]);
+
+  // The launch step above covers a cold start; this covers the app coming back
+  // to the front, where a meal an agent logged in the meantime has since synced.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') runPendingHealthFoodWrites();
+    });
+    return () => sub.remove();
+  }, []);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

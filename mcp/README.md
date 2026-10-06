@@ -96,8 +96,8 @@ only the fallback until the first sync.
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
-| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; not sent to Apple Health. Refuses water, which is `log_water`'s. |
-| `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Not sent to Apple Health. |
+| `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
+| `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
 | `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
 | `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off and choose the category its tasks file under; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |

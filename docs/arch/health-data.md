@@ -613,9 +613,22 @@ documentation JSON first, then the headers.
   `useFoodLogStore` writes a new entry, and `reviseEntry` (see "Correcting an
   entry" below) rewrites one whose label or figures a person just corrected.
   Those are the only callers of `logFoodEntryToHealth`, and nothing else may
-  become one. No reconciler, no sweep, no sync pass, and **no backfill pass**:
-  entries logged before this shipped keep their empty `healthSampleIds` unless
-  somebody corrects one of them.
+  become one, with one more caller for a meal an agent logged (below). No
+  reconciler, no sweep, and **no backfill pass over history**: entries logged
+  before this shipped keep their empty `healthSampleIds` unless somebody corrects
+  one of them.
+
+  **The exception is a meal logged over MCP** (`FoodLogEntry.healthWritePending`).
+  The MCP server has no HealthKit, so a meal the person asked an agent to log
+  would otherwise never reach Health. The server flags the row and the phone
+  writes it (`writePendingHealthEntries`, run at launch, on foreground and after
+  a sync that applied rows, never while backgrounded). It is the same trigger as
+  a typed meal, a person asking for it to be logged, with the write delayed, and
+  the flag is what keeps it from being the history pass: only flagged rows are
+  read, a flag older than `PENDING_WRITE_MAX_AGE_DAYS` is cleared without a
+  write, and the flag is cleared on a write (`recordHealthWrite`). With the
+  switch off the entry stays flagged until the age limit, so turning writing on
+  the same week sends it and turning it on next month does not.
 
   That exception is what `reviseEntry` does today, and it is worth stating
   rather than leaving to be rediscovered. When a correction changes the label

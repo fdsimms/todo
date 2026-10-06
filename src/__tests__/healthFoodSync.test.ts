@@ -28,6 +28,8 @@ jest.mock('../utils/demoState', () => ({
 
 import {
   logFoodEntryToHealth,
+  PENDING_WRITE_MAX_AGE_DAYS,
+  pendingWriteAction,
   retractFoodEntryFromHealth,
   writableFoodAmounts,
 } from '../utils/healthFoodSync';
@@ -225,5 +227,31 @@ describe('retractFoodEntryFromHealth', () => {
   it('reports a failed delete', async () => {
     mockDeleteHealthSamples.mockResolvedValue(false);
     expect(await retractFoodEntryFromHealth(['corr-1'])).toBe(false);
+  });
+});
+
+describe('pendingWriteAction', () => {
+  const now = new Date('2026-09-12T12:00:00.000Z');
+  const logged = (daysAgo: number, ids: string[] = []) => ({
+    ...entry({ calorieKcal: 600 }),
+    createdAt: new Date(now.getTime() - daysAgo * 86_400_000).toISOString(),
+    healthSampleIds: ids,
+  });
+
+  it('writes an entry logged recently', () => {
+    expect(pendingWriteAction(logged(0), now)).toBe('write');
+    expect(pendingWriteAction(logged(PENDING_WRITE_MAX_AGE_DAYS), now)).toBe('write');
+  });
+
+  it('drops one older than the limit, so a backlog never lands in Health as history', () => {
+    expect(pendingWriteAction(logged(PENDING_WRITE_MAX_AGE_DAYS + 1), now)).toBe('drop');
+  });
+
+  it('drops one that already holds samples rather than writing it twice', () => {
+    expect(pendingWriteAction(logged(0, ['s1']), now)).toBe('drop');
+  });
+
+  it('drops one whose date cannot be read', () => {
+    expect(pendingWriteAction({ ...logged(0), createdAt: 'not a date' }, now)).toBe('drop');
   });
 });

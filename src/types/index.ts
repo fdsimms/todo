@@ -4792,6 +4792,17 @@ export interface FoodLogEntry {
    */
   healthSampleIds: string[];
   /**
+   * Set on an entry the MCP server logged: the server has no HealthKit, so it
+   * leaves the entry for the phone to write on its next foreground
+   * (`writePendingHealthEntries` in `useFoodLogStore`), which stores the sample
+   * ids and clears this. Never set by the app's own logging, which writes at the
+   * moment of logging, so an entry without it that has no ids stays unwritten
+   * exactly as `docs/arch/health-data.md` says. An entry still pending after
+   * `PENDING_WRITE_MAX_AGE_DAYS` is cleared without a write.
+   * Optional because absent and false read the same everywhere.
+   */
+  healthWritePending?: boolean;
+  /**
    * Hand-set position within the day, in the same running-number-space `Task.sortOrder`
    * uses across a whole category list rather than one per section — a drag that
    * re-slots an entry needs one number space it can carry across the boundary.

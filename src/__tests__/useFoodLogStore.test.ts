@@ -7,10 +7,11 @@ import {
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
   dbGetFoodLogEntry,
+  dbGetPendingHealthFoodEntries,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
-import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
+import { logFoodEntryToHealth, pendingWriteAction, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
 import { estimateAmountPatch } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
@@ -40,6 +41,7 @@ jest.mock('../db/database', () => ({
   // null, never undefined) — see database.ts.
   dbGetFoodLogEntry: jest.fn((id: string) => mockGetRow(id)),
   dbCountFoodLogEntries: jest.fn(() => 0),
+  dbGetPendingHealthFoodEntries: jest.fn(() => []),
   dbInsertFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => { mockRows.push(entry); }),
   dbUpdateFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => {
     const i = mockRows.findIndex(r => r.id === entry.id);
@@ -58,6 +60,7 @@ jest.mock('../db/database', () => ({
 jest.mock('../utils/healthFoodSync', () => ({
   logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
   retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
+  pendingWriteAction: jest.fn(() => 'write'),
 }));
 
 // The real settings store reaches dbGetSetting/dbSetSetting, which the db mock
@@ -320,6 +323,83 @@ describe('addEntry, when the write lands', () => {
     resolveRefresh();
     await flush();
     expect(mockCheckHealthTasks).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The meals an agent logged over MCP, which only the phone can write to Health
+ * (`FoodLogEntry.healthWritePending`). The rules about which are written are
+ * `pendingWriteAction`'s own tests; this is the store's handling of each outcome.
+ */
+describe('writePendingHealthEntries', () => {
+  function pending(id: string): FoodLogEntry {
+    const entry = {
+      id, dayKey: '2026-04-02', atISO: '2026-04-02T09:00:00.000Z', slot: null, label: 'Burrito',
+      recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, quantity: '1', grams: null,
+      nutrition: panel(), healthSampleIds: [], healthWritePending: true, sortOrder: 0,
+      createdAt: '2026-04-02T09:00:00.000Z',
+    } as FoodLogEntry;
+    mockRows.push(entry);
+    return entry;
+  }
+  const row = (id: string) => mockGetRow(id) as unknown as FoodLogEntry;
+
+  beforeEach(() => {
+    (pendingWriteAction as jest.Mock).mockReturnValue('write');
+  });
+
+  it('writes a flagged entry, stores its sample ids and clears the flag', async () => {
+    const e = pending('p1');
+    (dbGetPendingHealthFoodEntries as jest.Mock).mockReturnValue([e]);
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s1'] });
+
+    await state().writePendingHealthEntries();
+
+    expect(logFoodEntryToHealth).toHaveBeenCalledTimes(1);
+    expect(row('p1').healthSampleIds).toEqual(['s1']);
+    expect(row('p1').healthWritePending).toBe(false);
+  });
+
+  it('leaves the flag when writing is off or unavailable, so a later pass can write it', async () => {
+    for (const outcome of ['off', 'unavailable', 'refused']) {
+      const e = pending(`p-${outcome}`);
+      (dbGetPendingHealthFoodEntries as jest.Mock).mockReturnValue([e]);
+      (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome, sampleIds: [] });
+      await state().writePendingHealthEntries();
+      expect(row(`p-${outcome}`).healthWritePending).toBe(true);
+      expect(row(`p-${outcome}`).healthSampleIds).toEqual([]);
+    }
+  });
+
+  it('clears the flag without writing when the entry is too old', async () => {
+    const e = pending('old');
+    (dbGetPendingHealthFoodEntries as jest.Mock).mockReturnValue([e]);
+    (pendingWriteAction as jest.Mock).mockReturnValue('drop');
+
+    await state().writePendingHealthEntries();
+
+    expect(logFoodEntryToHealth).not.toHaveBeenCalled();
+    expect(row('old').healthWritePending).toBe(false);
+  });
+
+  it('clears the flag when nothing the entry states can be written', async () => {
+    const e = pending('none');
+    (dbGetPendingHealthFoodEntries as jest.Mock).mockReturnValue([e]);
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'nothingToWrite', sampleIds: [] });
+
+    await state().writePendingHealthEntries();
+
+    expect(row('none').healthWritePending).toBe(false);
+  });
+
+  it('does not write a meal twice when two passes overlap', async () => {
+    const e = pending('dup');
+    (dbGetPendingHealthFoodEntries as jest.Mock).mockReturnValue([e]);
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s1'] });
+
+    await Promise.all([state().writePendingHealthEntries(), state().writePendingHealthEntries()]);
+
+    expect(logFoodEntryToHealth).toHaveBeenCalledTimes(1);
   });
 });
 

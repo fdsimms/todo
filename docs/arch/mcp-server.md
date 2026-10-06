@@ -362,9 +362,18 @@ the store, because the store reaches Apple Health and cannot load here.
 
 Two rules from the food log shape `log_food`. **The model proposes and a person confirms**
 (`nutritionEstimate.ts`), so it previews until `apply: true`, and the entry is
-`source: 'estimated'` for good. And **only the device a meal is logged on writes it to Apple
-Health** (`logFoodEntryToHealth`'s single-writer rule), so an agent's entry stays out of Health,
-and the tool says so rather than leaving the person to wonder why it is missing there.
+`source: 'estimated'` for good. And **only the phone writes a meal to Apple
+Health**, because a Node process has no HealthKit. The server sets `FoodLogEntry.healthWritePending`
+on what it logs (`log_food`, and a `log_water` row it creates or steps) and the phone writes the
+entry on its next foreground, through `logFoodEntryToHealth` and every guard a typed meal gets
+(`writePendingHealthEntries`, run by `runPendingHealthFoodWrites`). The tool says "not in Health
+yet" rather than "not in Health", since the write follows a sync and needs the phone's Health
+writing switch on. It is never written while the app is in the background (a locked phone refuses
+the write, which would raise a false refusal notice), a flag older than
+`PENDING_WRITE_MAX_AGE_DAYS` is dropped unwritten so a backlog never lands in Health as history, and
+a nutrient the person's `healthWriteNutrients` excludes is still left out. Two phones that both see
+a flagged entry before either's write has synced back can each write it; the same window exists
+for any two-device edit.
 
 Health rows written here reach the phone whatever its "Include health logs" switch says: the switch
 governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not what it accepts.

@@ -1882,6 +1882,11 @@ export function initDatabase(): void {
     // an unfiled database food was measured against before this, so those
     // entries stay rename-only. See FoodLogEntry.sourcePanel.
     'ALTER TABLE food_logs ADD COLUMN source_panel TEXT',
+    // Set on an entry the MCP server logged, which cannot reach Health itself:
+    // the phone writes it on its next foreground and clears the flag. Off on
+    // every existing row, so nothing already in the log is ever written. See
+    // FoodLogEntry.healthWritePending.
+    'ALTER TABLE food_logs ADD COLUMN health_write_pending INTEGER NOT NULL DEFAULT 0',
     // Off on every existing box: each one was named as a brand, and "Freeze
     // some" is what makes the first unnamed one. See ItemProduct.isPortion.
     'ALTER TABLE grocery_item_products ADD COLUMN is_portion INTEGER NOT NULL DEFAULT 0',
@@ -6954,6 +6959,7 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     // costs is the correction, which is where every entry stood before it.
     sourcePanel: parseFoodNutrition(row.source_panel as string | null),
     healthSampleIds,
+    healthWritePending: row.health_write_pending === 1,
     sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
     createdAt: row.created_at as string,
   };
@@ -6995,17 +7001,33 @@ export function dbGetFoodLogEntry(id: string): FoodLogEntry | null {
   return row ? rowToFoodLogEntry(row) : null;
 }
 
+/**
+ * Entries waiting for the phone to write them to Health (`healthWritePending`),
+ * oldest logged first. Read across the whole table rather than a day range,
+ * since an agent can log onto any day and the pass has no window to scope to.
+ * An entry that already holds sample ids is excluded even if the flag is set:
+ * samples are the stronger fact, and writing again would double them.
+ */
+export function dbGetPendingHealthFoodEntries(): FoodLogEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM food_logs WHERE health_write_pending = 1 AND health_sample_ids = '[]' ORDER BY created_at ASC`
+  );
+  return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
+}
+
 export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
-       meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids,
+       health_write_pending, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
       serializeFoodNutrition(entry.sourcePanel ?? null),
-      JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.createdAt,
+      JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
+      entry.sortOrder, entry.createdAt,
     ]
   );
 }
@@ -7014,14 +7036,15 @@ export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
        product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, source_panel=?,
-       health_sample_ids=?, sort_order=?
+       health_sample_ids=?, health_write_pending=?, sort_order=?
      WHERE id=?`,
     [
       entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
       serializeFoodNutrition(entry.sourcePanel ?? null),
-      JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.id,
+      JSON.stringify(entry.healthSampleIds), entry.healthWritePending ? 1 : 0,
+      entry.sortOrder, entry.id,
     ]
   );
 }
