@@ -9,6 +9,7 @@ import { spacing, radius, font, iconSize, interaction, type Colors } from '../th
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { JOURNAL_KIND_COPY, journalPromptAt } from '../utils/journal';
+import { toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { EditorSheet } from './EditorSheet';
@@ -18,6 +19,8 @@ import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
+import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
+import { useTitleSelection } from '../hooks/useTitleSelection';
 
 const TEXT_MAX_LENGTH = 5000;
 
@@ -63,15 +66,35 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   // Which writing prompt is showing, or null for none. Only ever set by a tap:
   // a prompt is offered, never put in front of you or written into the entry.
   const [promptIndex, setPromptIndex] = useState<number | null>(null);
+  // The selection is tracked for the formatting bar (see useTitleSelection for
+  // why it is never fed back except on the one render an edit places it), and
+  // focus is tracked because a floating bar has no native tie to the field.
+  const caret = useTitleSelection(text);
+  const [focused, setFocused] = useState(false);
 
   // Reseeds on every open, so a reopened sheet never hands back a half-written page.
   useEffect(() => {
     if (!visible) return;
     setText(editing?.text ?? '');
+    caret.resetCaret(editing?.text ?? '');
     setDay(getLogicalToday());
     setPickerOpen(false);
     setPromptIndex(null);
+    // caret's functions are stable (useCallback with no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editing]);
+
+  // A formatting button: rewrite the text round the selection, then put the
+  // selection back over the same words (or the caret between an empty pair).
+  const applyFormat = (action: FormatAction) => {
+    const selection = caret.getSelection();
+    const edit = 'wrap' in action
+      ? toggleWrap(text, selection, action.wrap)
+      : toggleLinePrefix(text, selection, action.line);
+    if (edit.text.length > TEXT_MAX_LENGTH) return;
+    setText(edit.text);
+    caret.selectRange(edit.selection, edit.text);
+  };
 
   const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text);
 
@@ -130,6 +153,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
+      footer={<JournalFormatBar focused={visible && focused} onFormat={applyFormat} />}
+      keyboardAccessoryHeight={JOURNAL_FORMAT_BAR_HEIGHT}
       header={
         <SheetHeader
           bare
@@ -156,6 +181,10 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           style={styles.input}
           value={text}
           onChangeText={setText}
+          selection={caret.selection}
+          onSelectionChange={caret.onSelectionChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder={copy.placeholder}
           placeholderTextColor={colors.textTertiary}
           maxLength={TEXT_MAX_LENGTH}
@@ -183,7 +212,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
 
       {/* What the light formatting is, said once where it's typed. */}
       <Text style={styles.formatHint}>
-        Use **bold**, *italics*, # for a heading, - for a list item and &gt; for a quote.
+        Use the buttons above the keyboard, or type **bold**, *italics*, # for a heading, - for a list item and &gt; for a quote.
       </Text>
 
       {editing && (

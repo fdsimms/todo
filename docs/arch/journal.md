@@ -102,3 +102,21 @@ typed rather than vanishing into a style. Where styles are wrong (a screen
 reader's label, a clipped preview like Looking back) `journalPlainText` strips
 the markers. A formatting toolbar or styles shown while typing was the other
 option and was left out: it needs a native editor and a stored document format.
+
+## The formatting bar
+
+`JournalFormatBar` floats above the keyboard while the field has focus (a
+real `InputAccessoryView` never attaches to a multiline field, the reason
+`TitleTokenAccessory` has a floating mode; both read `useKeyboardHeight`).
+Its buttons only type the markers: `toggleWrap` wraps or unwraps the selection
+in `**`/`*`, and `toggleLinePrefix` puts a heading, bullet, numbered item or
+quote on every line the selection touches, or takes it off when they all have
+it. Both are pure and return the new text with the selection to place, which
+the sheet hands to `useTitleSelection.selectRange`, the same one-shot the title
+fields use so ordinary typing never has a selection pushed back at it.
+
+The bar covers the bottom of the sheet above the keyboard, so the sheet passes
+its height to `EditorSheet` (`keyboardAccessoryHeight`, then `accessoryHeight`
+on `useKeyboardInsetScroll`). That takes the hook's JS-owned inset path and
+adds the bar to the keyboard's inset, which keeps a caret typing near the
+bottom of a long entry above the bar rather than behind it.

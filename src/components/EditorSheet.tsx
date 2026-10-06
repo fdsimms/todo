@@ -35,6 +35,13 @@ interface Props {
   // stop it from claiming the touch, so the scroll has to disable itself.
   // Defaults to true; only the editors with a draggable row list pass this.
   scrollEnabled?: boolean;
+  /**
+   * The height of a bar the `footer` floats above the keyboard while a field
+   * is focused (`JournalFormatBar`), so the scroll view keeps the caret clear
+   * of it as well as of the keyboard. See `accessoryHeight` on
+   * `useKeyboardInsetScroll`.
+   */
+  keyboardAccessoryHeight?: number;
 }
 
 /**
@@ -85,6 +92,7 @@ export function EditorSheet({
   children,
   footer,
   scrollEnabled = true,
+  keyboardAccessoryHeight = 0,
 }: Props) {
   const insets = useSafeAreaInsets();
   // Gives the ScrollView itself a correct bottom inset for the focused field
@@ -97,7 +105,7 @@ export function EditorSheet({
   // combination could over-scroll the sheet — a small field near the top
   // scrolling far past where it needed to, occasionally all the way to the
   // bottom of the content. One mechanism owning the adjustment fixes that.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true, accessoryHeight: keyboardAccessoryHeight });
 
   return (
     <SheetModal

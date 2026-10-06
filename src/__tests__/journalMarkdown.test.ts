@@ -1,4 +1,4 @@
-import { journalPlainText, parseInline, parseJournalMarkdown } from '../utils/journalMarkdown';
+import { journalPlainText, parseInline, parseJournalMarkdown, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 
 describe('parseInline', () => {
   it('reads bold and both italic markers', () => {
@@ -61,5 +61,61 @@ describe('parseJournalMarkdown', () => {
 describe('journalPlainText', () => {
   it('drops the markers and keeps list bullets readable', () => {
     expect(journalPlainText('# Today\nA **good** day\n- walk\n1. rest')).toBe('Today\nA good day\n• walk\n1. rest');
+  });
+});
+
+describe('toggleWrap', () => {
+  const sel = (start: number, end = start) => ({ start, end });
+
+  it('wraps a selection and keeps the words selected', () => {
+    expect(toggleWrap('a good day', sel(2, 6), '**')).toEqual({ text: 'a **good** day', selection: sel(4, 8) });
+    expect(toggleWrap('a good day', sel(2, 6), '*')).toEqual({ text: 'a *good* day', selection: sel(3, 7) });
+  });
+
+  it('unwraps when tapped again, with the markers outside or inside the selection', () => {
+    expect(toggleWrap('a **good** day', sel(4, 8), '**')).toEqual({ text: 'a good day', selection: sel(2, 6) });
+    expect(toggleWrap('a **good** day', sel(2, 10), '**')).toEqual({ text: 'a good day', selection: sel(2, 6) });
+  });
+
+  it('keeps edge spaces outside the markers, so the result still parses', () => {
+    const edit = toggleWrap('a good day', sel(2, 7), '**');
+    expect(edit.text).toBe('a **good** day');
+    expect(parseInline(edit.text).some(s => s.bold)).toBe(true);
+  });
+
+  it('inserts an empty pair at a caret, and a second tap takes it back out', () => {
+    const first = toggleWrap('day ', sel(4), '*');
+    expect(first).toEqual({ text: 'day **', selection: sel(5) });
+    expect(toggleWrap(first.text, first.selection, '*')).toEqual({ text: 'day ', selection: sel(4) });
+  });
+
+  it('does not read half of a bold pair as an italic marker', () => {
+    expect(toggleWrap('a **good** day', sel(4, 8), '*').text).toBe('a ***good*** day');
+  });
+});
+
+describe('toggleLinePrefix', () => {
+  const sel = (start: number, end = start) => ({ start, end });
+
+  it('adds a bullet to the line the caret is on, and takes it off again', () => {
+    const on = toggleLinePrefix('one\nwalk\nthree', sel(6), 'bullet');
+    expect(on.text).toBe('one\n- walk\nthree');
+    expect(on.selection).toEqual(sel(8));
+    expect(toggleLinePrefix(on.text, on.selection, 'bullet').text).toBe('one\nwalk\nthree');
+  });
+
+  it('numbers every selected line in order and skips blank ones', () => {
+    const text = 'rent\n\ndentist';
+    expect(toggleLinePrefix(text, sel(0, text.length), 'numbered').text).toBe('1. rent\n\n2. dentist');
+  });
+
+  it('replaces another line format rather than stacking on it', () => {
+    expect(toggleLinePrefix('- walk', sel(3), 'heading').text).toBe('# walk');
+    expect(toggleLinePrefix('# walk', sel(3), 'quote').text).toBe('> walk');
+  });
+
+  it('only removes the format when every touched line has it', () => {
+    const text = '- a\nb';
+    expect(toggleLinePrefix(text, sel(0, text.length), 'bullet').text).toBe('- a\n- b');
   });
 });

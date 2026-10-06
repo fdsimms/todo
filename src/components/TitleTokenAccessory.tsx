@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { InputAccessoryView, Keyboard, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { InputAccessoryView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useColors } from '../theme/ThemeContext';
 import type { TokenChip } from '../utils/titleTokenChips';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
@@ -124,7 +125,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   // Only the floating variant needs its own idea of "how tall is the
   // keyboard right now" — a real InputAccessoryView is laid out by iOS
   // itself and never needs this.
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeight = useKeyboardHeight(!!floating);
 
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
@@ -149,27 +150,6 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
     };
   }, []);
 
-  useEffect(() => {
-    if (Platform.OS !== 'ios' || !floating) return;
-    // `keyboardWillShow` alone reports the height at the moment the keyboard
-    // first appears, which goes stale the instant it changes shape without a
-    // full show/hide — switching to the "123" page to type "#" by hand, or
-    // the predictive-text row toggling on or off as the user types. Real
-    // `InputAccessoryView`s never need this: iOS keeps them glued to the
-    // keyboard's actual frame itself. `keyboardWillChangeFrame` is the same
-    // event UIKit fires for that, so it keeps this floating stand-in from
-    // drifting out of sync with a keyboard that's already up.
-    const updateHeight = (e: { endCoordinates?: { height: number } }) =>
-      setKeyboardHeight(e.endCoordinates?.height ?? 0);
-    const showSub = Keyboard.addListener('keyboardWillShow', updateHeight);
-    const changeSub = Keyboard.addListener('keyboardWillChangeFrame', updateHeight);
-    const hideSub = Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0));
-    return () => {
-      showSub.remove();
-      changeSub.remove();
-      hideSub.remove();
-    };
-  }, [floating]);
 
   if (Platform.OS !== 'ios') return null;
   // Nothing to gate visibility on without a native accessory view of our
