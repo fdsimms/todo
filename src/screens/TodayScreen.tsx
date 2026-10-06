@@ -4204,27 +4204,25 @@ export function TodayScreen() {
           subtitle={workloadSubtitle}
           actions={headerActions}
           titleAdornment={
-            viewMode === 'today' && (headerWeather || showCoinPill) ? (
+            viewMode === 'today' && headerWeather ? (
               <View style={styles.headerWeather}>
-                {headerWeather && (
-                  <>
-                    <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
-                    <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
-                  </>
-                )}
-                {showCoinPill && (
-                  <TouchableOpacity
-                    style={styles.coinPill}
-                    onPress={() => navigateToTab('Rewards')}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${coinTotal} coins. Open Rewards`}
-                  >
-                    <CoinIcon size={iconSize.sm} color={colors.done} filled />
-                    <Text style={styles.coinPillText}>{coinTotal}</Text>
-                  </TouchableOpacity>
-                )}
+                <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
+                <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
               </View>
+            ) : undefined
+          }
+          topRight={
+            viewMode === 'today' && showCoinPill ? (
+              <TouchableOpacity
+                style={styles.coinPill}
+                onPress={() => navigateToTab('Rewards')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${coinTotal} coins. Open Rewards`}
+              >
+                <CoinIcon size={iconSize.sm} color={colors.done} filled />
+                <Text style={styles.coinPillText}>{coinTotal}</Text>
+              </TouchableOpacity>
             ) : undefined
           }
         />

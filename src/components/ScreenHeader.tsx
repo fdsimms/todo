@@ -64,13 +64,19 @@ interface Props {
    * alongside `onTitlePress`; nothing needs both today.
    */
   titleAdornment?: React.ReactNode;
+  /**
+   * Small content pinned to the screen's right edge on the overline's line,
+   * above the action buttons — e.g. Today's coin balance. It sits outside the
+   * title row so it can't take width from the title or its adornment.
+   */
+  topRight?: React.ReactNode;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, titleAdornment }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, titleAdornment, topRight }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
@@ -158,6 +164,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
         })}
         {right}
       </View>
+      {topRight != null && <View style={styles.topRight}>{topRight}</View>}
     </View>
   );
 }
@@ -171,6 +178,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // from running up against the action buttons: the block shrinks to the
   // space left, so without it the text ends flush with the first button.
   titleBlock: { flexShrink: 1, marginRight: spacing.md },
+  topRight: { position: 'absolute', top: spacing.xs, right: spacing.md },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
     letterSpacing: 0.3, marginBottom: spacing.xxs,
