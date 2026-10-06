@@ -2183,7 +2183,11 @@ export type GeneratedKind =
   // with no source row, waterShortfall's position: what stops a deleted one
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
-  | 'snackNudge';
+  | 'snackNudge'
+  // "Book Optometrist" once a saved event's own interval has nearly passed
+  // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved
+  // event and the cycle (`key|day`), and declined on the saved event itself.
+  | 'bookEvent';
 
 /** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */
 export interface AnswerGate {

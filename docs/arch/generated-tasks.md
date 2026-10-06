@@ -1527,6 +1527,32 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
 
+## `bookEvent`: booking a saved event again
+
+A saved event (`src/utils/savedEvents.ts`, an event kept for re-adding from the
+quick event card) can carry an interval, `bookEveryMonths`, set in Settings ›
+Calendar › Saved events. `reconcileBookEvents` writes "Book Optometrist"
+`BOOK_LEAD_DAYS` (30) before that interval is up, counted from `lastStart`, the
+start of the last event added from it. Rules are in `src/utils/savedEventTasks.ts`.
+
+- **The interval is the opt-in.** The generator's switch ships off, and giving
+  an event an interval turns it on (with its category), since a stepper that
+  silently did nothing would be the worse answer. Turning the switch off in
+  Automations still stops it.
+- **The source id is the event and the cycle** (`key|YYYY-MM-DD`). Adding the
+  next appointment, from the card or quick add, moves `lastStart` and so the
+  id: the old cycle's live task is dropped (no opt-out), and both callers run
+  the pass right after so it goes at once. A completed task blocks a second for
+  its cycle through `blocksOnFinished`.
+- **A delete stamps `bookDeclinedFor`** with the cycle's `lastStart` on the
+  saved event itself, so the "no" syncs with the event, lasts exactly one
+  cycle, and goes when the event is removed. Undo clears it.
+- **The source is a synced setting**, so two devices reconcile the same cycle to
+  the same derived id. Nothing is drifted: the due day changes only with a new
+  cycle, which is a new source.
+- Pauses on vacation, refuses in demo mode, files under its own category
+  setting (default Personal).
+
 ## A rule's own category
 
 The four rule kinds (weather, Screen Time, Health, calendar events) each have one

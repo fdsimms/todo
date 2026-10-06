@@ -339,6 +339,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
     'generated', 'automatic'],
+  bookEvent: ['appointment', 'checkup', 'doctor', 'dentist', 'optometrist', 'remind', 'yearly',
+    'generated', 'automatic'],
 };
 
 /**
@@ -532,6 +534,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
   { id: 'savedPlaces', groupId: 'capture', label: 'Saved places', section: 'Calendar',
     keywords: ['home', 'work', 'location', 'address', 'event', 'name', 'bookmark', 'favorite'] },
+  { id: 'savedEvents', groupId: 'capture', label: 'Saved events', section: 'Calendar',
+    keywords: ['appointment', 'regular', 'repeat', 'bookmark', 'favorite', 'book', 'checkup', 'reminder'] },
   { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',

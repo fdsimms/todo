@@ -347,6 +347,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': s.setWeighInTasks(next); break;
       case 'waterShortfall': s.setWaterShortfallTasks(next); break;
       case 'snackNudge': s.setSnackNudgeTasks(next); break;
+      case 'bookEvent': s.setBookEventTasks(next); break;
       // Exhaustive for setCategory's reason below: this returns void, so a
       // missing arm would be a switch that silently does nothing.
       default: {
@@ -392,6 +393,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
+      case 'bookEvent': return s.bookEventTaskCategory;
     }
   };
 
@@ -426,6 +428,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
+      case 'bookEvent': s.setBookEventTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
       // because they return a value. This one returns void, so a missing arm is
