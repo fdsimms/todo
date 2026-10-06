@@ -519,6 +519,29 @@ export function staleMealSlotTasks<
 }
 
 /**
+ * The live meal tasks whose (day, slot) already has food logged in it.
+ *
+ * Logging a lunch by hand answers every step the row still has (choose,
+ * prepare, eat), so leaving it on Today meant ticking through a chain for a meal
+ * already in the log. The join is the slot, the same one `loggedMealSlotKeys`
+ * builds and the nudge task asks, because most routes into the log never stamp
+ * `mealPlanEntryId`. A started chain goes too, unlike `staleMealSlotTasks`: a
+ * logged meal is an eaten one, whichever step the row was on.
+ *
+ * `loggedKeys` is `loggedMealSlotKeys`' output, so water and nutrient-only rows
+ * have already been left out. Names the rows only; the caller drops them with no
+ * opt-out, since nobody declined anything.
+ */
+export function loggedMealSlotTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(tasks: readonly T[], loggedKeys: ReadonlySet<string>): T[] {
+  return liveGeneratedTasksOfKind(tasks, 'mealSlot').filter(task => {
+    const source = parseMealSlotSource(task.generatedSourceId);
+    return source !== null && loggedKeys.has(mealSlotKey(source.dayKey, source.slot));
+  });
+}
+
+/**
  * Whether completing this task means the meal happened.
  *
  * The question a cook task answered by existing at all — one task, one tick,
