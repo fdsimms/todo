@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
+import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation, currentTabName } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -52,7 +52,7 @@ import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
-import { freezeWhenBlurred } from '../components/FreezeWhenBlurred';
+import { BlankTabDiagnostic, freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner, TAB_BAR_HEIGHT } from '../components/DemoBanner';
@@ -580,6 +580,8 @@ export default function AppNavigator() {
             mounted across every screen exactly as before. */}
         <LogMealEntrySheet />
       </NavigationContainer>
+      {/* TEMPORARY: the blank-tab diagnostic, drawn outside every tab. */}
+      <BlankTabDiagnostic currentTab={currentTabName} />
 
       <SideMenuDrawer
         visible={menuOpen}
