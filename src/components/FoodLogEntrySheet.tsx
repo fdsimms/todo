@@ -1788,7 +1788,8 @@ function makeStyles(colors: Colors) {
     root: { flex: 1, backgroundColor: colors.bg },
     header: {
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.lg,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
@@ -1805,7 +1806,7 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
     },
     headerFoodName: {
-      marginTop: spacing.xs,
+      marginTop: spacing.smd,
       textAlign: 'center',
       color: colors.text,
       fontSize: font.md,
