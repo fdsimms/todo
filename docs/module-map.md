@@ -105,7 +105,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
-- `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +6 more
+- `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +7 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
 - `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji

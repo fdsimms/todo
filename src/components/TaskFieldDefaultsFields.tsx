@@ -6,7 +6,7 @@ import { font, fontWeight, spacing, type Colors } from '../theme';
 import { EFFORT_LABELS, type Difficulty, type Effort, type Priority, type TaskFieldDefaults } from '../types';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
-import { EFFORT_MINUTES, formatDuration } from '../utils/effort';
+import { effortTimeLabel } from '../utils/effort';
 import { ESTIMATE_EFFORTS } from '../utils/fieldBackfill';
 import { NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 
@@ -37,7 +37,7 @@ const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
     value: e as Effort | null,
     // The time, not the size letter: the letter is only a name for these
     // minutes, and a picker that shows just "XS" makes you remember what it is.
-    label: EFFORT_MINUTES[e] != null ? formatDuration(EFFORT_MINUTES[e]!) : EFFORT_LABELS[e],
+    label: effortTimeLabel(e, EFFORT_LABELS[e]),
   })),
 ];
 

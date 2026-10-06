@@ -1,4 +1,4 @@
 {
-  "message": "The default time estimate for a project or kind of generated task now shows times (15m, 1.5h) instead of size letters",
+  "message": "Default time estimates in Settings, projects and title rules now show times (15m, 1.5h) instead of size letters",
   "date": "2026-10-06"
 }
