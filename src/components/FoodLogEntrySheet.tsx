@@ -1442,8 +1442,11 @@ export function FoodLogEntrySheet({
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => {
                         haptics.tap();
+                        // Picking "serving" with nothing typed means one serving.
+                        const number = option.key === 'serving' && !amountNumber.trim() ? '1' : amountNumber;
                         setAmountUnit(option.key);
-                        setAmount(composeFoodAmount(amountNumber, option));
+                        setAmountNumber(number);
+                        setAmount(composeFoodAmount(number, option));
                       }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: on }}
