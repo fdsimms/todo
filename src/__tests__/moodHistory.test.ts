@@ -236,6 +236,19 @@ describe('looking back', () => {
     expect(lookBacks([written('2026-02-28', 'x')], '2026-03-31')[0].dayKey).toBe('2026-02-28');
   });
 
+  it('resurfaces a day with only a journal entry or a dream, oldest first', () => {
+    const page = (id: string, kind: 'journal' | 'dream', loggedAt: string) =>
+      ({ id, kind, dayKey: '2026-07-17', loggedAt, text: id });
+    const backs = lookBacks([], '2026-08-17', [
+      page('evening page', 'journal', '2026-07-17T21:00:00'),
+      page('dream', 'dream', '2026-07-17T07:00:00'),
+      { ...page('elsewhere', 'journal', '2026-07-10T09:00:00'), dayKey: '2026-07-10' },
+    ]);
+    expect(backs.map(b => b.dayKey)).toEqual(['2026-07-17']);
+    expect(backs[0].journal.map(e => e.id)).toEqual(['dream', 'evening page']);
+    expect(backs[0].logs).toEqual([]);
+  });
+
   it('caps the card at three look-backs, most recent first', () => {
     const logs = [
       written('2026-07-17', 'a'), written('2026-05-17', 'b'),
@@ -285,6 +298,8 @@ describe('paging between written days', () => {
 
   it('skips days with nothing logged', () => {
     expect(adjacentLogDays(logs, '2026-08-05')).toEqual({ previous: '2026-08-01', next: '2026-08-09' });
+    // Anything with a day key pages, so the day page can walk days that hold only writing.
+    expect(adjacentLogDays([...logs, { dayKey: '2026-08-07' }], '2026-08-05').next).toBe('2026-08-07');
   });
 
   it('is null at either end', () => {

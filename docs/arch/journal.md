@@ -75,3 +75,18 @@ away, off by default, and each opens its sheet through
 - **Saving a new entry for today completes that kind's reminder**
   (`completeJournalTaskForToday`); a backdated or edited one does not, for the
   mood sheet's reason.
+
+## Read back beside the mood log
+
+The mood day page shows that day's journal entries and dreams under its mood
+entries, and pages through every day that has either (`adjacentLogDays` takes
+anything with a day key). The Looking back card counts a day with only writing
+on it, since a journal page from a year ago is exactly what that card is for
+(`lookBacks`' `journal` argument). Both read and never interpret, as before.
+
+## Getting it off the device
+
+Each screen's Share action writes that kind as CSV (`journalExport.ts`), the
+medication export's flow: the summary is confirmed first, every entry is a row
+oldest first with its day and instant, nothing is derived, and the file is
+deleted the moment the share sheet closes.

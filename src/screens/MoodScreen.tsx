@@ -10,6 +10,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Milestone, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -170,7 +171,8 @@ export function MoodScreen() {
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const lookedBack = useMemo(() => lookBacks(logs, todayKey), [logs, todayKey]);
+  const journal = useJournalStore(s => s.entries);
+  const lookedBack = useMemo(() => lookBacks(logs, todayKey, journal), [logs, todayKey, journal]);
 
   // The first day the task record is complete for. `completedRetentionDays`
   // deletes completed rows on a schedule while the mood log keeps every entry
@@ -488,13 +490,18 @@ export function MoodScreen() {
                     activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); navigation.navigate('MoodDay', { dayKey: back.dayKey }); }}
                     accessibilityRole="button"
-                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${back.logs.map(l => l.note).filter(Boolean).join('. ')}`}
+                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${[...back.logs.map(l => l.note), ...back.journal.map(e => (e.kind === 'dream' ? `Dream: ${e.text}` : e.text))].filter(Boolean).join('. ')}`}
                   >
                     <Text style={styles.lookBackWhen}>
                       {back.label} · {format(dayKeyToDate(back.dayKey), 'EEE, MMM d, yyyy')}
                     </Text>
                     {back.logs.map(l => (
                       !!l.note && <Text key={l.id} style={styles.lookBackNote} numberOfLines={6}>{l.note}</Text>
+                    ))}
+                    {back.journal.map(e => (
+                      <Text key={e.id} style={styles.lookBackNote} numberOfLines={6}>
+                        {e.kind === 'dream' ? `Dream: ${e.text}` : e.text}
+                      </Text>
                     ))}
                   </TouchableOpacity>
                 ))}

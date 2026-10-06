@@ -20,7 +20,7 @@
 
 import { addMonths } from 'date-fns/addMonths';
 import { format } from 'date-fns/format';
-import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
+import type { JournalEntry, LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 import { contextTagKey, symptomKey } from './moodLog';
 
 /**
@@ -131,7 +131,7 @@ export function textMatchesQuery(text: string, query: string): boolean {
  * rule again.
  */
 export function adjacentLogDays(
-  logs: readonly MoodLog[],
+  logs: readonly Pick<MoodLog, 'dayKey'>[],
   dayKey: string,
 ): { previous: string | null; next: string | null } {
   let previous: string | null = null;
@@ -315,6 +315,8 @@ export interface LookBack {
   dayKey: string;
   /** That day's entries that have words in them, oldest first. */
   logs: MoodLog[];
+  /** That day's journal entries and dreams, oldest first (`docs/arch/journal.md`). */
+  journal: JournalEntry[];
 }
 
 function lookBackLabel(months: number): string {
@@ -328,7 +330,8 @@ function lookBackLabel(months: number): string {
  * Days you wrote something on, one month, three, six and then each year back
  * from `todayDayKey`, the diary's "on this day".
  *
- * **Only entries with a note count.** A mood with no words is a number, and a
+ * **Only entries with words count**: a mood entry's note, or a journal entry or
+ * dream from that day. A mood with no words is a number, and a
  * number from a year ago with nothing to say about it is not something to
  * resurface. **A day with nothing to show is absent, never filled in** (rule 3
  * of `moodInsights.ts`, here as a layout rule): no placeholder for the month
@@ -338,7 +341,11 @@ function lookBackLabel(months: number): string {
  * happier then". That would be a claim, and this is the log itself, narrowed.
  * Most recent first, capped at `MAX_LOOK_BACKS`.
  */
-export function lookBacks(logs: readonly MoodLog[], todayDayKey: string): LookBack[] {
+export function lookBacks(
+  logs: readonly MoodLog[],
+  todayDayKey: string,
+  journal: readonly JournalEntry[] = [],
+): LookBack[] {
   // Not `dateUtils`: that module pulls in the database, and this one stays pure.
   const today = new Date(`${todayDayKey}T00:00:00`);
   const found: LookBack[] = [];
@@ -347,7 +354,12 @@ export function lookBacks(logs: readonly MoodLog[], todayDayKey: string): LookBa
     const written = logs
       .filter(l => l.dayKey === dayKey && hasWrittenNote(l))
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
-    if (written.length > 0) found.push({ label: lookBackLabel(months), dayKey, logs: written });
+    const pages = journal
+      .filter(e => e.dayKey === dayKey)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+    if (written.length > 0 || pages.length > 0) {
+      found.push({ label: lookBackLabel(months), dayKey, logs: written, journal: pages });
+    }
     if (found.length === MAX_LOOK_BACKS) break;
   }
   return found;

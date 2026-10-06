@@ -4,8 +4,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { MoodLog } from '../types';
+import type { JournalEntry, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
+import { useJournalStore } from '../store/useJournalStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -15,6 +16,7 @@ import { adjacentLogDays } from '../utils/moodHistory';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { MoodLogSheet } from '../components/MoodLogSheet';
+import { JournalEntrySheet } from '../components/JournalEntrySheet';
 
 type RootStackParamList = {
   MoodDay: { dayKey: string };
@@ -35,6 +37,9 @@ type RootStackParamList = {
  * days with nothing logged rather than drawing blank pages
  * (`adjacentLogDays`). Tapping an entry opens the same sheet every other list
  * does, so editing and deleting live in one place.
+ *
+ * The day's journal entries and dreams follow the mood entries
+ * (`docs/arch/journal.md`), and paging walks the days that have either.
  */
 export function MoodDayScreen() {
   const navigation = useNavigation<{ goBack: () => void }>();
@@ -47,9 +52,22 @@ export function MoodDayScreen() {
   const [dayKey, setDayKey] = useState(route.params.dayKey);
   const [editing, setEditing] = useState<MoodLog | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const journal = useJournalStore(s => s.entries);
+  const [editingPage, setEditingPage] = useState<JournalEntry | null>(null);
+  // Its own flag so the entry stays put while the sheet fades out.
+  const [pageOpen, setPageOpen] = useState(false);
 
   const entries = useMemo(() => logsOnDay(logs, dayKey), [logs, dayKey]);
-  const { previous, next } = useMemo(() => adjacentLogDays(logs, dayKey), [logs, dayKey]);
+  const pages = useMemo(
+    () => journal.filter(e => e.dayKey === dayKey).sort((a, b) => a.loggedAt.localeCompare(b.loggedAt)),
+    [journal, dayKey],
+  );
+  const journalPages = pages.filter(e => e.kind === 'journal');
+  const dreamPages = pages.filter(e => e.kind === 'dream');
+  const { previous, next } = useMemo(
+    () => adjacentLogDays([...logs, ...journal], dayKey),
+    [logs, journal, dayKey],
+  );
   const date = dayKeyToDate(dayKey);
 
   const go = (target: string | null) => {
@@ -62,7 +80,7 @@ export function MoodDayScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader title="Diary" onBack={() => navigation.goBack()} />
 
-      {entries.length === 0 ? (
+      {entries.length === 0 && pages.length === 0 ? (
         <EmptyState
           icon="book-outline"
           title="Nothing on this day"
@@ -109,6 +127,26 @@ export function MoodDayScreen() {
             </TouchableOpacity>
           ))}
 
+          {([['JOURNAL', journalPages], ['DREAMS', dreamPages]] as const).map(([heading, list]) => list.length > 0 && (
+            <View key={heading}>
+              <Text style={styles.section}>{heading}</Text>
+              {list.map(entry => (
+                <TouchableOpacity
+                  key={entry.id}
+                  style={styles.entry}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setEditingPage(entry); setPageOpen(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${format(new Date(entry.loggedAt), 'h:mm a')}. ${entry.text}`}
+                  accessibilityHint="Opens this entry to edit"
+                >
+                  <Text style={styles.time}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
+                  <Text style={styles.note}>{entry.text}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+
           <View style={styles.pager}>
             <PagerButton
               styles={styles}
@@ -132,6 +170,13 @@ export function MoodDayScreen() {
         visible={sheetOpen}
         editing={editing}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
+      />
+      {/* Never visible at once with the mood sheet: each opens only from a tap on this page. */}
+      <JournalEntrySheet
+        visible={pageOpen && editingPage !== null}
+        kind={editingPage?.kind ?? 'journal'}
+        editing={editingPage}
+        onClose={() => setPageOpen(false)}
       />
     </View>
   );
@@ -182,6 +227,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.lg,
   },
   entry: { marginBottom: spacing.lg },
+  section: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    marginBottom: spacing.sm,
+  },
   time: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs },
   note: { fontSize: font.lg, lineHeight: lineHeight.lg, color: colors.text },
   foot: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },

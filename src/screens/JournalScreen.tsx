@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRoute } from '@react-navigation/native';
@@ -18,6 +18,8 @@ import {
   searchJournal,
   type JournalDay,
 } from '../utils/journal';
+import { journalExportCsv, journalExportFileName, journalExportSummary } from '../utils/journalExport';
+import { writeExportFile, shareCsvFile, discardBackupFile, canShare } from '../utils/backupFile';
 import { navigateToTab } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -82,6 +84,42 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
     }
   };
 
+  const [sharing, setSharing] = useState(false);
+  const shareTitle = kind === 'dream' ? 'Share your dreams' : 'Share your journal';
+
+  /**
+   * Hand this kind's entries to the share sheet as CSV, the medication
+   * screen's flow: the summary is confirmed before anything is written, and
+   * the file is deleted the moment the share sheet closes.
+   */
+  const share = async () => {
+    if (entries.length === 0 || sharing) return;
+    haptics.tap();
+    const confirmed = await new Promise<boolean>(resolve => {
+      Alert.alert(shareTitle, journalExportSummary(entries, kind), [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Share', onPress: () => resolve(true) },
+      ]);
+    });
+    if (!confirmed) return;
+
+    setSharing(true);
+    let uri: string | null = null;
+    try {
+      if (!(await canShare())) {
+        Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
+        return;
+      }
+      uri = writeExportFile(journalExportCsv(entries, kind), journalExportFileName(kind, new Date()));
+      await shareCsvFile(uri, shareTitle);
+    } catch {
+      Alert.alert('Export failed', 'The file could not be written. Try again.');
+    } finally {
+      if (uri) discardBackupFile(uri);
+      setSharing(false);
+    }
+  };
+
   const subtitle = stats.dayCount === 0 ? undefined
     : `${stats.dayCount} ${stats.dayCount === 1 ? 'day' : 'days'} · ${stats.dayCountInMonth} this month`;
 
@@ -90,11 +128,20 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
       <ScreenHeader
         title={copy.title}
         subtitle={subtitle}
-        actions={[{
-          icon: 'add-circle-outline' as const,
-          onPress: openNew,
-          accessibilityLabel: kind === 'dream' ? 'Write down a dream' : 'Write in your journal',
-        }]}
+        actions={[
+          // Only once there is something to share, as on the medication screen.
+          ...(entries.length > 0 ? [{
+            icon: 'share-outline' as const,
+            onPress: share,
+            loading: sharing,
+            accessibilityLabel: shareTitle,
+          }] : []),
+          {
+            icon: 'add-circle-outline' as const,
+            onPress: openNew,
+            accessibilityLabel: kind === 'dream' ? 'Write down a dream' : 'Write in your journal',
+          },
+        ]}
       />
       <HubPills hub="health" active={route} />
     </>
