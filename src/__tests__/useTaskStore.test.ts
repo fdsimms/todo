@@ -2798,6 +2798,20 @@ describe('completeTask', () => {
       expect(completed?.streakCount).toBe(1);
     });
 
+    it('undoing the completion of a broken streak puts the row back as it was', () => {
+      const twoDaysAgoStart = new Date(2025, 5, 8, 0, 0, 0).toISOString();
+      const task = makeTask({ recurrenceType: 'daily', streakCount: 3, streakDate: twoDaysAgoStart });
+      useTaskStore.setState({ tasks: [task] });
+      useTaskStore.getState().completeTask(task.id);
+      useTaskStore.getState().uncompleteTask(task.id);
+      const rows = useTaskStore.getState().tasks;
+      const reopened = rows.find(t => t.id === task.id);
+      expect(rows).toHaveLength(1);
+      expect(reopened?.completed).toBe(false);
+      expect(reopened?.streakCount).toBe(3);
+      expect(reopened?.streakDate).toBe(twoDaysAgoStart);
+    });
+
     it('does not modify streakCount for non-recurring tasks', () => {
       const task = makeTask({ recurrenceType: 'none', streakCount: 7 });
       useTaskStore.setState({ tasks: [task] });
