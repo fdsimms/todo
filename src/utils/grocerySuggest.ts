@@ -413,7 +413,7 @@ export function estimatedPurchaseCadenceDays(item: GroceryItem, now: Date): numb
  * and the pantry list below can't drift on what a past or unparseable
  * timestamp means.
  */
-function onHandAssertion(item: Pick<GroceryItem, 'onHandUntil'>, now: Date): boolean | null {
+export function onHandAssertion(item: Pick<GroceryItem, 'onHandUntil'>, now: Date): boolean | null {
   if (!item.onHandUntil) return null;
   const until = new Date(item.onHandUntil).getTime();
   if (Number.isNaN(until)) return null;

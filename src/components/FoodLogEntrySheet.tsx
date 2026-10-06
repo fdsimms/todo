@@ -70,6 +70,7 @@ import {
 } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
+import { PantryAnswerField } from './PantryAnswerField';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
@@ -1281,6 +1282,47 @@ export function FoodLogEntrySheet({
     </TouchableOpacity>
   );
 
+  // While searching, what matches the catalog comes first and the earlier
+  // helpings follow it: someone typing "oat milk" wants the food, not the
+  // three most recent estimates that happen to mention it. With nothing typed
+  // they stay on top as quick recents.
+  const helpingsAfterResults = query.trim().length > 0 && results.length > 0;
+  const helpingsBlock = helpings.length > 0 ? (
+    <View>
+      <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
+      {helpings.map(entry => (
+        <View key={entry.id} style={[styles.row, styles.helpingRow]}>
+          {/* The body opens the amount first, like a row below. */}
+          <TouchableOpacity
+            style={styles.helpingBody}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => openHelping(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={`Change amount of ${entry.label}, ${describeFoodLogEntry(entry)}`}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>{entry.label}</Text>
+              <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
+            </View>
+          </TouchableOpacity>
+          {/* The plus logs it as it was, at once. */}
+          <TouchableOpacity
+            style={styles.helpingAdd}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => logHelpingAgain(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
+          >
+            <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+          </TouchableOpacity>
+        </View>
+      ))}
+      {!helpingsAfterResults && results.length > 0 && (
+        <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
   return (
     <SheetModal name="What did you eat?" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
@@ -1401,8 +1443,11 @@ export function FoodLogEntrySheet({
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => {
                         haptics.tap();
+                        // Picking "serving" with nothing typed means one serving.
+                        const number = option.key === 'serving' && !amountNumber.trim() ? '1' : amountNumber;
                         setAmountUnit(option.key);
-                        setAmount(composeFoodAmount(amountNumber, option));
+                        setAmountNumber(number);
+                        setAmount(composeFoodAmount(number, option));
                       }}
                       accessibilityRole="button"
                       accessibilityState={{ selected: on }}
@@ -1604,23 +1649,13 @@ export function FoodLogEntrySheet({
                 entry that was logged already. */}
             {!!picked.itemId && !editing && (
               <>
-                <Text style={[styles.label, styles.labelSpaced]}>PANTRY</Text>
-                <SegmentedControl<PantryReviewAnswer | null>
-                  options={[
-                    { value: null, label: 'No change' },
-                    { value: 'have', label: 'Still have it' },
-                    { value: 'low', label: 'Running low' },
-                    { value: 'out', label: 'Out of it' },
-                  ]}
+                <PantryAnswerField
+                  itemId={picked.itemId}
                   value={pantryAnswer}
                   onChange={setPantryAnswer}
-                  columns={2}
-                  label="Pantry"
                   surface="page"
+                  style={styles.pantryField}
                 />
-                {pantryAnswer === 'low' && (
-                  <Text style={styles.hint}>Running low also adds it to your grocery list.</Text>
-                )}
               </>
             )}
           </ScrollView>
@@ -1729,41 +1764,8 @@ export function FoodLogEntrySheet({
               // outside to tap.
               keyboardDismissMode="on-drag"
               {...listScroll.props}
-              ListHeaderComponent={helpings.length > 0 ? (
-                <View>
-                  <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
-                  {helpings.map(entry => (
-                    <View key={entry.id} style={[styles.row, styles.helpingRow]}>
-                      {/* The body opens the amount first, like a row below. */}
-                      <TouchableOpacity
-                        style={styles.helpingBody}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => openHelping(entry)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Change amount of ${entry.label}, ${describeFoodLogEntry(entry)}`}
-                      >
-                        <View style={styles.rowText}>
-                          <Text style={styles.rowTitle}>{entry.label}</Text>
-                          <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
-                        </View>
-                      </TouchableOpacity>
-                      {/* The plus logs it as it was, at once. */}
-                      <TouchableOpacity
-                        style={styles.helpingAdd}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => logHelpingAgain(entry)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
-                      >
-                        <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {results.length > 0 && (
-                    <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
-                  )}
-                </View>
-              ) : null}
+              ListHeaderComponent={helpingsAfterResults ? null : helpingsBlock}
+              ListFooterComponent={helpingsAfterResults ? helpingsBlock : null}
               ListEmptyComponent={
                 <EmptyState
                   icon="nutrition-outline"
@@ -1857,6 +1859,7 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
     },
     labelSpaced: { marginTop: spacing.lg },
+    pantryField: { marginTop: spacing.lg },
     // Margin on both sides: the label above has none of its own below it, and
     // the amount field below has only spacing.xs of its own.
     measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },
