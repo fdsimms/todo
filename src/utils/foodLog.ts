@@ -129,6 +129,9 @@ export function scalePanelToAmount(
   now: Date = new Date(),
   foodName: string | null = null,
 ): { nutrition: FoodNutrition; grams: number | null; approximate: boolean } | null {
+  const target = nutrientTarget(quantity);
+  if (target !== null) return scaleToNutrient(panel, target, quantity, now);
+
   let factor = panelMultiplier(quantity, prep, panel);
   let approximate = false;
   let fallbackGrams: number | null = null;
@@ -144,6 +147,20 @@ export function scalePanelToAmount(
         approximate = true;
         fallbackGrams = millilitres;
       }
+    }
+  }
+
+  // A weight against a per-100ml panel that has no density of its own: water's
+  // (1 g is about 1 ml), flagged approximate for the same reason as the volume
+  // fallback above. A per-100ml panel is a liquid by construction, so no name
+  // check is needed, and a weighed portion (which `panelMultiplier` reads
+  // first) always outranks this.
+  if (factor === null && panel.basis === 'per100ml') {
+    const measured = measureParsedQuantity(parseQuantity(quantity));
+    if (measured && measured.dimension === 'mass' && measured.base > 0) {
+      factor = measured.base / 100;
+      approximate = true;
+      fallbackGrams = measured.base;
     }
   }
 
@@ -198,6 +215,87 @@ export function scalePanelToAmount(
   };
 }
 
+const KJ_PER_KCAL = 4.184;
+
+/** An amount stated as a quantity of one nutrient rather than of the food. */
+interface NutrientTarget {
+  nutrient: 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG';
+  /** In the nutrient's own stored unit (kcal, or grams). */
+  value: number;
+}
+
+/**
+ * "250 cal", "250 kcal", "1000 kJ", "30 g protein" and the like, or null for an
+ * amount of the food itself. kJ is converted to kcal here, so everything
+ * downstream works in the one stored unit.
+ */
+function nutrientTarget(quantity: string): NutrientTarget | null {
+  const number = '(\\d+(?:[.,]\\d+)?)';
+  const text = quantity.trim();
+  const energy = new RegExp(`^${number}\\s*(k?cals?|calories|kj)$`, 'i').exec(text);
+  if (energy) {
+    const raw = Number(energy[1].replace(',', '.'));
+    const value = energy[2].toLowerCase() === 'kj' ? raw / KJ_PER_KCAL : raw;
+    return Number.isFinite(value) && value > 0 ? { nutrient: 'calorieKcal', value } : null;
+  }
+  const macro = new RegExp(`^${number}\\s*(?:g|grams?)\\s+(?:of\\s+)?(protein|carbs?|carbohydrates?|fat)$`, 'i').exec(text);
+  if (macro) {
+    const value = Number(macro[1].replace(',', '.'));
+    const word = macro[2].toLowerCase();
+    const nutrient = word === 'protein' ? 'proteinG' : word === 'fat' ? 'fatG' : 'carbsG';
+    return Number.isFinite(value) && value > 0 ? { nutrient, value } : null;
+  }
+  return null;
+}
+
+/**
+ * An amount stated as a quantity of one nutrient: the helping that holds that
+ * much, with every other nutrient in the panel's own proportion to it.
+ *
+ * Refused (null) when the panel states no figure for that nutrient, since
+ * nothing then relates the typed number to the rest of the panel. The panel's
+ * amounts are all per the same basis unit, so the ratio of the stated nutrient
+ * is the multiplier for every figure, whatever the basis. Grams follow only
+ * where the basis gives a weight to scale (per 100g, or a serving with a stated
+ * weight); a per-100ml panel has none, and a density is not invented for it.
+ */
+function scaleToNutrient(
+  panel: FoodNutrition,
+  target: NutrientTarget,
+  quantity: string,
+  now: Date,
+): { nutrition: FoodNutrition; grams: number | null; approximate: boolean } | null {
+  const perBasis = panel.amounts[target.nutrient];
+  if (perBasis === undefined || !(perBasis > 0)) return null;
+  const factor = target.value / perBasis;
+
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const amount = panel.amounts[key];
+    if (amount !== undefined) amounts[key] = round(amount * factor);
+  }
+
+  let rawGrams: number | null = null;
+  if (panel.basis === 'per100g') rawGrams = factor * 100;
+  else if (panel.basis === 'perServing' && panel.servingGrams !== null) rawGrams = factor * panel.servingGrams;
+  const grams = rawGrams === null ? null : round(rawGrams);
+
+  return {
+    grams,
+    approximate: false,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: grams,
+      servingText: quantity.trim() || null,
+      amounts,
+      source: panel.source,
+      sourceId: panel.sourceId,
+      portions: [],
+      recordedAt: now.toISOString(),
+    },
+  };
+}
+
 /**
  * Amounts this food's own portion table can measure — "1 cup", "2 tbsp" — for
  * a hint that says what will actually resolve before someone types something
@@ -233,7 +331,7 @@ export function portionExamples(panel: FoodNutrition, limit = 3): string[] {
  * says so and the hint adds grams back in — `panelMultiplier` can answer
  * one from here on, off that same density.
  */
-export function amountHint(panel: FoodNutrition): string {
+function baseAmountHint(panel: FoodNutrition): string {
   if (panel.basis === 'per100ml') {
     const grams = hasKnownDensity(panel.portions);
     const weight = grams ? ', or a weight now that one has been weighed' : '';
@@ -252,6 +350,29 @@ export function amountHint(panel: FoodNutrition): string {
   return servings
     ? 'A weight, like 100g, or a number of servings.'
     : 'A weight, like 100g. This food has no stated portions.';
+}
+
+/**
+ * What a typed amount can be for this food: `baseAmountHint`'s sentence about
+ * the food itself, then a second naming the nutrient amounts the panel's own
+ * figures allow (the same list `foodUnitOptionsFor` offers as pills, so the two
+ * cannot disagree), and one on weights against a liquid.
+ */
+export function amountHint(panel: FoodNutrition): string {
+  const parts = [baseAmountHint(panel)];
+  if (panel.basis === 'per100ml' && !hasKnownDensity(panel.portions)) {
+    parts.push('A weight also works, counted as water, so it is approximate.');
+  }
+  const names: string[] = [];
+  for (const unit of NUTRIENT_UNIT_OPTIONS) {
+    const stated = panel.amounts[unit.nutrient];
+    if (stated !== undefined && stated > 0) names.push(unit.hint);
+  }
+  if (names.length > 0) {
+    const last = names.pop() as string;
+    parts.push(`You can also enter ${names.length > 0 ? `${names.join(', ')}, or ${last}` : last}.`);
+  }
+  return parts.join(' ');
 }
 
 /**
@@ -297,6 +418,24 @@ export const VOLUME_UNIT_OPTIONS: FoodUnitOption[] = [
   { key: 'ml', label: 'ml', suffix: ' ml' },
 ];
 
+/** US weights, offered beside grams. `unitConvert` carries both. */
+const WEIGHT_UNIT_OPTIONS: FoodUnitOption[] = [
+  { key: 'oz', label: 'oz', suffix: ' oz' },
+  { key: 'lb', label: 'lb', suffix: ' lb' },
+];
+
+/**
+ * Amounts stated as a quantity of one nutrient, which `nutrientTarget` reads.
+ * `hint` is how the free-text hint names each.
+ */
+const NUTRIENT_UNIT_OPTIONS: Array<FoodUnitOption & { nutrient: NutrientTarget['nutrient']; hint: string }> = [
+  { key: 'cal', label: 'cal', suffix: ' cal', nutrient: 'calorieKcal', hint: 'calories (like 250 cal)' },
+  { key: 'kj', label: 'kJ', suffix: ' kJ', nutrient: 'calorieKcal', hint: 'kJ' },
+  { key: 'protein', label: 'g protein', suffix: ' g protein', nutrient: 'proteinG', hint: 'grams of protein' },
+  { key: 'carbs', label: 'g carbs', suffix: ' g carbs', nutrient: 'carbsG', hint: 'grams of carbs' },
+  { key: 'fat', label: 'g fat', suffix: ' g fat', nutrient: 'fatG', hint: 'grams of fat' },
+];
+
 /**
  * Every unit this food's own panel can measure — its stated portions, plus
  * grams and/or servings wherever `panelMultiplier` would actually resolve
@@ -321,10 +460,19 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
     seen.add(key);
     out.push({ key, label: p.label, suffix: ` ${p.label}` });
   }
+  // A per-100ml panel always takes a weight: its own density when one has been
+  // weighed, otherwise water's, which `scalePanelToAmount` flags approximate.
   const gramsResolve = panel.basis === 'per100g'
     || (panel.basis === 'perServing' && panel.servingGrams !== null)
-    || (panel.basis === 'per100ml' && hasKnownDensity(panel.portions));
-  if (gramsResolve && !seen.has('g')) out.push({ key: 'g', label: 'g', suffix: 'g' });
+    || panel.basis === 'per100ml';
+  if (gramsResolve) {
+    if (!seen.has('g')) out.push({ key: 'g', label: 'g', suffix: 'g' });
+    for (const unit of WEIGHT_UNIT_OPTIONS) {
+      if (seen.has(unit.key)) continue;
+      seen.add(unit.key);
+      out.push(unit);
+    }
+  }
   if (panel.basis === 'perServing' || panel.servingGrams !== null) {
     out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
   }
@@ -333,6 +481,15 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
       if (seen.has(unit.key)) continue;
       seen.add(unit.key);
       out.push(unit);
+    }
+  }
+  // Last, so they never displace the unit a food is usually measured in. Each
+  // only where the panel states that nutrient, or `scalePanelToAmount` would
+  // refuse it.
+  for (const unit of NUTRIENT_UNIT_OPTIONS) {
+    const stated = panel.amounts[unit.nutrient];
+    if (stated !== undefined && stated > 0 && !seen.has(unit.key)) {
+      out.push({ key: unit.key, label: unit.label, suffix: unit.suffix });
     }
   }
   return out;
@@ -362,6 +519,7 @@ export function parseFoodAmount(raw: string, options: FoodUnitOption[]): { numbe
   for (const option of options) {
     if (option.key === 'g' ? (word === 'g' || word === 'gram' || word === 'grams') :
       option.key === 'serving' ? word.startsWith('serving') :
+        option.key === 'cal' ? /^(?:k?cals?|calories)$/.test(word) :
         word === option.label.toLowerCase()) {
       return { number: numberText, unitKey: option.key };
     }

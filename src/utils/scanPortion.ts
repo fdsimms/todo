@@ -25,7 +25,7 @@ import { measureParsedQuantity } from './unitConvert';
 
 /** One offered amount, and what it multiplies the panel's own serving by. */
 export interface PackageChoice {
-  key: 'serving' | 'package';
+  key: 'serving' | 'package' | 'half' | 'third' | 'quarter';
   /** What the button says — "1 serving (45g)", "The whole package (11 servings)". */
   label: string;
   /** How many of the panel's servings this is. */
@@ -106,6 +106,27 @@ export function packageChoices(
       label: `The whole package (${trim(perPack)} servings)`,
       servings: perPack,
     });
+  }
+  return out;
+}
+
+/**
+ * Shortcuts for part of a whole package: half, a third, a quarter. Derived from
+ * the whole-package choice, so they exist exactly when it does (the pack size
+ * and a serving weight are both stated). A part under one serving is left off,
+ * since typing "0.5 serving" is as quick and the shortcut would be noise.
+ */
+export function packageFractions(whole: PackageChoice): PackageChoice[] {
+  const parts: Array<{ key: PackageChoice['key']; word: string; of: number }> = [
+    { key: 'half', word: 'Half', of: 2 },
+    { key: 'third', word: 'A third', of: 3 },
+    { key: 'quarter', word: 'A quarter', of: 4 },
+  ];
+  const out: PackageChoice[] = [];
+  for (const part of parts) {
+    const servings = Math.round((whole.servings / part.of) * 10) / 10;
+    if (servings < 1) continue;
+    out.push({ key: part.key, label: `${part.word} (${trim(servings)} servings)`, servings });
   }
   return out;
 }

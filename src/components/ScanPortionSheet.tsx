@@ -16,7 +16,7 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from 
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
-import { packageChoices, servingDescription } from '../utils/scanPortion';
+import { packageChoices, packageFractions, servingDescription } from '../utils/scanPortion';
 import { amountExample, amountHint, composeFoodAmount, foodUnitOptionsFor, scalePanelToAmount } from '../utils/foodLog';
 import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
@@ -275,9 +275,6 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             const usingPills = unitOptions.length > 0 && selectedUnitKey !== 'other';
             const selectedUnit = unitOptions.find(o => o.key === selectedUnitKey);
             const servingSize = hasServingUnit ? servingDescription(panel) : null;
-            const wholePackageOn = !!wholePackage
-              && selectedUnitKey === 'serving'
-              && (amountNumbers[food.key] ?? '') === formatServings(wholePackage.servings);
             // Offered once a typed amount resolves for nutrients but still has
             // no weight — a per-100ml panel's own volume math can do the
             // first without ever answering the second (see `weighableLine`).
@@ -382,23 +379,29 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     is why it's worth a tap where one serving isn't. */}
                 {wholePackage && (
                   <View style={styles.choices}>
-                    <TouchableOpacity
-                      style={[styles.choice, wholePackageOn && styles.choiceOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => {
-                        haptics.tap();
-                        const serving = unitOptions.find(o => o.key === 'serving');
-                        const count = formatServings(wholePackage.servings);
-                        setAmountUnits(u => ({ ...u, [food.key]: 'serving' }));
-                        setAmountNumbers(n => ({ ...n, [food.key]: count }));
-                        setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(count, serving) }));
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: wholePackageOn }}
-                      accessibilityLabel={wholePackage.label}
-                    >
-                      <Text style={[styles.choiceText, wholePackageOn && styles.choiceTextOn]}>{wholePackage.label}</Text>
-                    </TouchableOpacity>
+                    {[wholePackage, ...packageFractions(wholePackage)].map(shortcut => {
+                      const count = formatServings(shortcut.servings);
+                      const on = selectedUnitKey === 'serving' && (amountNumbers[food.key] ?? '') === count;
+                      return (
+                        <TouchableOpacity
+                          key={shortcut.key}
+                          style={[styles.choice, on && styles.choiceOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            const serving = unitOptions.find(o => o.key === 'serving');
+                            setAmountUnits(u => ({ ...u, [food.key]: 'serving' }));
+                            setAmountNumbers(n => ({ ...n, [food.key]: count }));
+                            setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(count, serving) }));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: on }}
+                          accessibilityLabel={shortcut.label}
+                        >
+                          <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{shortcut.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 )}
                 {/* What the answer works out to, or why it doesn't. An amount

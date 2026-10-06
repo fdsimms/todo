@@ -292,7 +292,10 @@ export function recallMeasuringPanel(food: RecalledFood): FoodNutrition {
  * helping without a word.
  */
 export function measuresByWeight(panel: FoodNutrition): boolean {
-  return scalePanelToAmount(panel, '100g', null) !== null;
+  // An approximate answer (a weight counted as water on a per-100 ml panel)
+  // is not a measurement; this step offers a weight only where one is exact.
+  const scaled = scalePanelToAmount(panel, '100g', null);
+  return scaled !== null && !scaled.approximate;
 }
 
 /**
@@ -396,7 +399,8 @@ export function recalledHelping(food: RecalledFood, change: RecallChange | null,
   if (!('grams' in change)) return null;
   const base = recallMeasuringPanel(food);
   const scaled = scalePanelToAmount(base, `${change.grams}g`, null, now);
-  if (!scaled) return null;
+  // Same rule as `measuresByWeight`: a weight counted as water is not exact.
+  if (!scaled || scaled.approximate) return null;
   return {
     quantity: scaled.grams != null ? `${scaled.grams}g` : food.quantity,
     grams: scaled.grams,

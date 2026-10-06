@@ -101,6 +101,92 @@ function planEntry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
 
 beforeEach(() => { seq = 0; planSeq = 0; });
 
+describe('scalePanelToAmount by other nutrient amounts and weights', () => {
+  it('reads kJ as energy', () => {
+    const r = scalePanelToAmount(panel({ amounts: { calorieKcal: 100, proteinG: 4 } }), '418.4 kJ', null);
+    expect(r?.nutrition.amounts).toEqual({ calorieKcal: 100, proteinG: 4 });
+  });
+
+  it('scales by grams of protein, carbs or fat', () => {
+    const p = panel({ amounts: { calorieKcal: 200, proteinG: 10, carbsG: 20, fatG: 5 } });
+    expect(scalePanelToAmount(p, '20 g protein', null)?.nutrition.amounts)
+      .toEqual({ calorieKcal: 400, proteinG: 20, carbsG: 40, fatG: 10 });
+    expect(scalePanelToAmount(p, '10 g of carbs', null)?.nutrition.amounts.calorieKcal).toBe(100);
+    expect(scalePanelToAmount(p, '5 g fat', null)?.nutrition.amounts.calorieKcal).toBe(200);
+  });
+
+  it('refuses a macro amount the panel does not state', () => {
+    expect(scalePanelToAmount(panel({ amounts: { calorieKcal: 100 } }), '5 g protein', null)).toBeNull();
+  });
+
+  it('measures ounces and pounds on a per-100g panel', () => {
+    expect(scalePanelToAmount(panel(), '4 oz', null)?.grams).toBe(113.4);
+    expect(scalePanelToAmount(panel(), '1 lb', null)?.grams).toBe(453.6);
+  });
+
+  it('counts a weight of a per-100ml drink as water, flagged approximate', () => {
+    const r = scalePanelToAmount(panel({ basis: 'per100ml', portions: [], amounts: { calorieKcal: 42 } }), '250 g', null);
+    expect(r?.approximate).toBe(true);
+    expect(r?.grams).toBe(250);
+    expect(r?.nutrition.amounts.calorieKcal).toBe(105);
+  });
+
+  it('prefers a weighed density over water for a per-100ml drink', () => {
+    const weighed = panel({ basis: 'per100ml', amounts: { calorieKcal: 100 }, portions: [{ amount: 1, label: 'cup', grams: 300 }] });
+    const r = scalePanelToAmount(weighed, '300 g', null);
+    expect(r?.approximate).toBe(false);
+  });
+});
+
+describe('amountHint nutrient amounts', () => {
+  it('names the nutrient amounts the panel states', () => {
+    const hint = amountHint(panel({ amounts: { calorieKcal: 61, proteinG: 3.2, fatG: 3.3 } }));
+    expect(hint).toContain('You can also enter calories (like 250 cal), kJ, grams of protein, or grams of fat.');
+  });
+
+  it('says nothing about them when the panel states none', () => {
+    expect(amountHint(panel({ amounts: {} }))).not.toContain('You can also enter');
+  });
+});
+
+describe('scalePanelToAmount by calories', () => {
+  it('scales every nutrient by the ratio of calories on a per-100g panel', () => {
+    const r = scalePanelToAmount(panel(), '122 cal', null);
+    expect(r?.nutrition.amounts).toEqual({ calorieKcal: 122, proteinG: 6.4, fatG: 6.6 });
+    expect(r?.grams).toBe(200);
+    expect(r?.nutrition.servingText).toBe('122 cal');
+  });
+
+  it('accepts kcal and calories as the unit', () => {
+    expect(scalePanelToAmount(panel(), '61 kcal', null)?.nutrition.amounts.proteinG).toBe(3.2);
+    expect(scalePanelToAmount(panel(), '61 calories', null)?.nutrition.amounts.proteinG).toBe(3.2);
+  });
+
+  it('works on a perServing panel and takes grams from the serving weight', () => {
+    const r = scalePanelToAmount(
+      panel({ basis: 'perServing', servingGrams: 30, amounts: { calorieKcal: 100, proteinG: 4 } }),
+      '50 cal',
+      null,
+    );
+    expect(r?.nutrition.amounts).toEqual({ calorieKcal: 50, proteinG: 2 });
+    expect(r?.grams).toBe(15);
+  });
+
+  it('leaves grams unknown on a per-100ml panel', () => {
+    const r = scalePanelToAmount(panel({ basis: 'per100ml', portions: [] }), '122 cal', null);
+    expect(r?.grams).toBeNull();
+    expect(r?.nutrition.amounts.calorieKcal).toBe(122);
+  });
+
+  it('refuses a panel that states no calories', () => {
+    expect(scalePanelToAmount(panel({ amounts: { proteinG: 3 } }), '100 cal', null)).toBeNull();
+  });
+
+  it('refuses zero calories', () => {
+    expect(scalePanelToAmount(panel(), '0 cal', null)).toBeNull();
+  });
+});
+
 describe('scalePanelToAmount', () => {
   it('scales a per-100g panel through the food\'s own portion table', () => {
     // A cup of milk is 244g, so the figures are 2.44 times the per-100g ones.
@@ -1027,54 +1113,57 @@ describe('portionExamples', () => {
   });
 });
 
+/** A panel that states no nutrient figures, so only the unit rules are in play. */
+const bare = (o: Partial<FoodNutrition> = {}) => panel({ amounts: {}, ...o });
+
 describe('amountHint / amountExample', () => {
   it('says a weight and the food\'s own portions, for a per-100g panel', () => {
-    expect(amountHint(panel())).toBe(
+    expect(amountHint(bare())).toBe(
       'A weight (like 100g), or one of this food\'s stated portions: 1 cup.',
     );
-    expect(amountExample(panel())).toBe('1 cup');
+    expect(amountExample(bare())).toBe('1 cup');
   });
 
   it('falls back to a plain weight when there are no stated portions', () => {
-    expect(amountHint(panel({ portions: [] }))).toBe(
+    expect(amountHint(bare({ portions: [] }))).toBe(
       'A weight, like 100g. This food has no stated portions.',
     );
-    expect(amountExample(panel({ portions: [] }))).toBe('100g');
+    expect(amountExample(bare({ portions: [] }))).toBe('100g');
   });
 
-  it('never suggests a weight for a per-100ml drink, which panelMultiplier refuses', () => {
-    expect(amountHint(panel({ basis: 'per100ml', portions: [] })))
-      .toBe('A volume, like 250 ml or 1 cup.');
-    expect(amountExample(panel({ basis: 'per100ml', portions: [] }))).toBe('250ml');
+  it('says a weight is approximate for a per-100ml drink with no density', () => {
+    expect(amountHint(bare({ basis: 'per100ml', portions: [] })))
+      .toBe('A volume, like 250 ml or 1 cup. A weight also works, counted as water, so it is approximate.');
+    expect(amountExample(bare({ basis: 'per100ml', portions: [] }))).toBe('250ml');
   });
 
   it('mentions servings too, once a per-100ml panel states a serving weight', () => {
-    expect(amountHint(panel({ basis: 'per100ml', servingGrams: 240, portions: [] })))
-      .toBe('A volume, like 250 ml or 1 cup, or a number of servings.');
+    expect(amountHint(bare({ basis: 'per100ml', servingGrams: 240, portions: [] })))
+      .toBe('A volume, like 250 ml or 1 cup, or a number of servings. A weight also works, counted as water, so it is approximate.');
   });
 
   it('mentions a weight too, once a per-100ml panel has had a volume weighed onto it', () => {
-    const weighed = panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }] });
+    const weighed = bare({ basis: 'per100ml', portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }] });
     expect(amountHint(weighed)).toBe('A volume, like 250 ml or 1 cup, or a weight now that one has been weighed.');
   });
 
   it('asks for a serving count from a perServing panel with no serving weight', () => {
-    expect(amountHint(panel({ basis: 'perServing', servingGrams: null, portions: [] })))
+    expect(amountHint(bare({ basis: 'perServing', servingGrams: null, portions: [] })))
       .toBe('A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.');
-    expect(amountExample(panel({ basis: 'perServing', servingGrams: null, portions: [] })))
+    expect(amountExample(bare({ basis: 'perServing', servingGrams: null, portions: [] })))
       .toBe('1 serving');
   });
 
   it('falls back to a weight for a perServing panel that does state its serving weight', () => {
-    expect(amountHint(panel({ basis: 'perServing', servingGrams: 30, portions: [] })))
+    expect(amountHint(bare({ basis: 'perServing', servingGrams: 30, portions: [] })))
       .toBe('A weight, like 100g. This food has no stated portions.');
   });
 
   it('mentions servings too, once a per-100g panel states a serving weight', () => {
-    expect(amountHint(panel({ servingGrams: 25 }))).toBe(
+    expect(amountHint(bare({ servingGrams: 25 }))).toBe(
       'A weight (like 100g), or one of this food\'s stated portions: 1 cup, or a number of servings.',
     );
-    expect(amountHint(panel({ servingGrams: 25, portions: [] }))).toBe(
+    expect(amountHint(bare({ servingGrams: 25, portions: [] }))).toBe(
       'A weight, like 100g, or a number of servings.',
     );
   });
@@ -1082,41 +1171,58 @@ describe('amountHint / amountExample', () => {
 
 describe('foodUnitOptionsFor', () => {
   it('offers the food\'s own portions, plus grams, for a per-100g panel', () => {
-    expect(foodUnitOptionsFor(panel())).toEqual([
+    expect(foodUnitOptionsFor(bare())).toEqual([
       { key: 'cup', label: 'cup', suffix: ' cup' },
       { key: 'g', label: 'g', suffix: 'g' },
+      { key: 'oz', label: 'oz', suffix: ' oz' },
+      { key: 'lb', label: 'lb', suffix: ' lb' },
     ]);
   });
 
   it('offers grams and a serving pill for a perServing panel with a known weight', () => {
-    expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: 30, portions: [] }))).toEqual([
+    expect(foodUnitOptionsFor(bare({ basis: 'perServing', servingGrams: 30, portions: [] }))).toEqual([
       { key: 'g', label: 'g', suffix: 'g' },
+      { key: 'oz', label: 'oz', suffix: ' oz' },
+      { key: 'lb', label: 'lb', suffix: ' lb' },
       { key: 'serving', label: 'serving', suffix: ' serving' },
     ]);
   });
 
   it('offers only a serving pill for a perServing panel with no stated weight', () => {
-    expect(foodUnitOptionsFor(panel({ basis: 'perServing', servingGrams: null, portions: [] }))).toEqual([
+    expect(foodUnitOptionsFor(bare({ basis: 'perServing', servingGrams: null, portions: [] }))).toEqual([
       { key: 'serving', label: 'serving', suffix: ' serving' },
     ]);
   });
 
   it('offers a serving pill for a per-100g panel that also states a serving weight', () => {
-    expect(foodUnitOptionsFor(panel({ servingGrams: 25 }))).toEqual([
+    expect(foodUnitOptionsFor(bare({ servingGrams: 25 }))).toEqual([
       { key: 'cup', label: 'cup', suffix: ' cup' },
       { key: 'g', label: 'g', suffix: 'g' },
+      { key: 'oz', label: 'oz', suffix: ' oz' },
+      { key: 'lb', label: 'lb', suffix: ' lb' },
       { key: 'serving', label: 'serving', suffix: ' serving' },
     ]);
   });
 
   it('offers the fixed volume units for a per-100ml panel, since unitConvert resolves any of them', () => {
-    expect(foodUnitOptionsFor(panel({ basis: 'per100ml', portions: [] }))).toEqual([
+    expect(foodUnitOptionsFor(bare({ basis: 'per100ml', portions: [] }))).toEqual([
+      { key: 'g', label: 'g', suffix: 'g' },
+      { key: 'oz', label: 'oz', suffix: ' oz' },
+      { key: 'lb', label: 'lb', suffix: ' lb' },
       { key: 'cup', label: 'cup', suffix: ' cup' },
       { key: 'tbsp', label: 'tbsp', suffix: ' tbsp' },
       { key: 'tsp', label: 'tsp', suffix: ' tsp' },
       { key: 'fl oz', label: 'fl oz', suffix: ' fl oz' },
       { key: 'ml', label: 'ml', suffix: ' ml' },
     ]);
+  });
+
+  it('leaves the calorie pill off a panel that states no calories', () => {
+    const options = foodUnitOptionsFor(panel({ amounts: { proteinG: 3 } }));
+    expect(options.find(o => o.key === 'cal')).toBeUndefined();
+    expect(options.find(o => o.key === 'kj')).toBeUndefined();
+    expect(options.find(o => o.key === 'protein')).toBeDefined();
+    expect(options.find(o => o.key === 'fat')).toBeUndefined();
   });
 
   it('does not duplicate a volume unit the panel already states as a portion', () => {
