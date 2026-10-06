@@ -17,6 +17,12 @@ export interface ScreenSettingsSheetProps {
   title: string;
   /** From `screenSettingsEntries`, in the order they're listed. */
   entries: SettingsEntry[];
+  /**
+   * Rows that open one of the screen's own sheets rather than a Settings row,
+   * listed above `entries`. For a screen whose list settings live in a sheet
+   * (Groceries: aisles, stores, sorting) so the gear is the one way in.
+   */
+  extraRows?: { id: string; label: string; hint: string; onPress: () => void }[];
 }
 
 /**
@@ -28,7 +34,7 @@ export interface ScreenSettingsSheetProps {
  * subtitle is the group the row lives in, which is also where it can be found
  * again without this.
  */
-export function ScreenSettingsSheet({ visible, onClose, anchor, title, entries }: ScreenSettingsSheetProps) {
+export function ScreenSettingsSheet({ visible, onClose, anchor, title, entries, extraRows }: ScreenSettingsSheetProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -54,6 +60,24 @@ export function ScreenSettingsSheet({ visible, onClose, anchor, title, entries }
     >
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>{title}</Text>
+        {(extraRows ?? []).map(row => (
+          <React.Fragment key={row.id}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => { haptics.tap(); card.close(row.onPress); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`${row.label}, ${row.hint}`}
+            >
+              <View style={styles.rowBody}>
+                <Text style={styles.rowLabel}>{row.label}</Text>
+                <Text style={styles.rowHint}>{row.hint}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+            <View style={styles.sep} />
+          </React.Fragment>
+        ))}
         {entries.map(entry => {
           const group = settingsGroup(entry.groupId)?.title ?? 'Settings';
           return (
