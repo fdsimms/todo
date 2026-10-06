@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Keyboard,
   View,
   Text,
@@ -56,6 +57,8 @@ import {
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
 import { PillGroup } from './PillGroup';
+import { InlineAction } from './InlineAction';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
@@ -136,6 +139,8 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // clears the template in the same commit that lowers `visible`, and that
   // unmount is the freeze CLAUDE.md's SheetModal notes describe.
   const template = useSheetSubject(liveTemplate);
+  const navigation = useNavigation<any>();
+  const route = useRoute();
   const colors = useColors();
   const { isDark } = useTheme();
   const textScaleFactor = useTextScale();
@@ -251,6 +256,29 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       onClose();
       onDismissed?.();
     });
+  };
+
+  // The template's own screen already has this sheet's host behind it, so the
+  // link only appears everywhere else.
+  const onTemplateScreen = route.name === 'TemplateDetail';
+  const answeredAnything =
+    runName !== (initialRunName ?? '')
+    || Object.keys(typedAnswers).length > 0
+    || Object.values(placeholderValues).some(v => v !== '');
+
+  const openTemplate = () => {
+    if (!template) return;
+    const go = () => dismiss(() => navigation.navigate('TemplateDetail', { templateId: template.id }));
+    if (!answeredAnything) { go(); return; }
+    // Leaving drops the run name, answers and blanks typed so far.
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: go },
+      ],
+    );
   };
 
   // Slide the sheet away before showing the calendar — rendering both at once
@@ -494,7 +522,19 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>{template.name}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.sheetTitle} numberOfLines={2}>{template.name}</Text>
+            {!onTemplateScreen && (
+              <InlineAction
+                label="Edit template"
+                icon="create-outline"
+                variant="neutral"
+                surface="card"
+                onPress={openTemplate}
+                accessibilityLabel={`Edit template ${template.name}`}
+              />
+            )}
+          </View>
 
           {/* Title and the Add button stay put; everything between scrolls, so
               a template with many questions can still reach its checklist. */}
@@ -793,13 +833,21 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     marginBottom: spacing.sm,
     flexShrink: 1,
   },
-  sheetTitle: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: fontWeight.semibold,
+  // The title takes the row and the action keeps its own width, so a long
+  // template name wraps rather than pushing the button off the card.
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  sheetTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: fontWeight.semibold,
   },
   runBlock: {
     paddingHorizontal: spacing.md,
