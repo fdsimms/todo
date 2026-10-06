@@ -299,6 +299,16 @@ whether the model showed the description to the person. The Claude apps' per-too
 the person itself, needs session-based transport and is supported by Claude Code but not
 documented for the Claude apps, so it is not used yet.
 
+**The preview is its own read-only tool, and the confirming call carries its text.** A write tool
+called without `apply` is still a write tool to the client (`readOnlyHint: false`), so a preview
+through it asked for the same approval the change does. `preview_change` (in `READ_TOOLS`, registered
+beside the write tools from the same table the guard fills) takes a write tool's name and arguments,
+validates them against that tool's own schema and runs the same dry run, so only the write asks. A
+client's approval prompt shows a call's arguments and nothing else, so the write has to repeat the
+preview's `willDo` lines (`redeem`'s `echoed`): a call that does not is refused without spending the
+token, with the lines to copy. Calling a write tool without `apply` still previews, for a client that
+does not know `preview_change`.
+
 ### Every agent write is in Activity, and a task write can be undone there
 
 An agent's writes land on the phone by sync with nobody looking at the app, which is the
