@@ -793,8 +793,15 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // while you were doing well would be missing at exactly the moment it earns
   // its place. Archiving is how you stop tracking one, and vacation mode (the
   // caller's own check, above this) or pausing its project is how you pause it.
+  //
+  // The one gate it does honor is a defer, because rescheduling is an answer
+  // the person gives on purpose ("not this week"). Ignoring it made the row's
+  // Reschedule save a date and change nothing: the habit stayed on Today, and
+  // the date it was pushed to was never read.
   if (isInPausedProject(task)) return false;
-  if (isNegativeTask(task)) return true;
+  if (isNegativeTask(task)) {
+    return !deferBlocksNow(task, new Date(), useSettingsStore.getState().dayResetTime);
+  }
 
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
   // a clock resolves, so it shouldn't rank below one.
