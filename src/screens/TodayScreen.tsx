@@ -3786,6 +3786,9 @@ export function TodayScreen() {
           {!selectionMode && (
             <TouchableOpacity
               onPress={() => {
+                // One pinned task is a single unpin, which is cheap to redo,
+                // so there is nothing "all" about it worth stopping to confirm.
+                if (pinnedTasks.length === 1) { clearAllPins(); return; }
                 Alert.alert(
                   'Unpin all tasks?',
                   'This removes every task from the Pinned Tasks block. Their own rows are unaffected.',
