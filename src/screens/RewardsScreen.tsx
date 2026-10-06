@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, type GestureResponderEvent, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Reanimated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -8,6 +8,7 @@ import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { CardSheet, type CardAnchor } from '../components/CardSheet';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
 import { CoinIcon } from '../components/CoinIcon';
@@ -176,6 +177,7 @@ export function RewardsScreen() {
   // How coins are earned and lost is reference text, not something to read on
   // every visit, so it stays folded behind the header's help button.
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [rulesAnchor, setRulesAnchor] = useState<CardAnchor | null>(null);
   const showIdeas = ideas.length > 0 && (openRewards.length === 0 || ideasOpen);
 
   // The list whose items can be priced as rewards. Only offered at all while
@@ -341,12 +343,14 @@ export function RewardsScreen() {
     ? [
         {
           icon: 'help-circle-outline',
-          onPress: () => setRulesOpen(open => !open),
-          active: rulesOpen,
-          accessibilityLabel: rulesOpen ? 'Hide how coins work' : 'Show how coins work',
+          onPress: (e: GestureResponderEvent) => {
+            setRulesAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            setRulesOpen(true);
+          },
+          accessibilityLabel: 'How coins work',
         },
       ]
-    : []), [enabled, rulesOpen]);
+    : []), [enabled]);
   if (!enabled) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -640,12 +644,22 @@ export function RewardsScreen() {
               </Text>
             </View>
           )}
-          {rulesOpen && (
-          <Text style={styles.rule}>
-            {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
-          </Text>
-          )}
         </View>
+
+        <CardSheet
+          visible={rulesOpen}
+          onClose={() => setRulesOpen(false)}
+          anchor={rulesAnchor}
+          popoverWidth={320}
+          name="CoinRules"
+        >
+          <View style={styles.rulesCard}>
+            <Text style={styles.rulesTitle}>How coins work</Text>
+            <Text style={styles.rulesBody}>
+              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, but never more than the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
+            </Text>
+          </View>
+        </CardSheet>
 
         <Text style={styles.sectionHeader}>Rewards</Text>
         {openRewards.length === 0 && draft?.mode !== 'new' && (
@@ -869,7 +883,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   goalTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
   goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
-  rule: { color: colors.textSecondary, fontSize: font.sm, textAlign: 'center' },
+  rulesCard: { padding: spacing.md },
+  rulesTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, marginBottom: spacing.sm },
+  rulesBody: { color: colors.textSecondary, fontSize: font.sm },
   // textSecondary, not textTertiary — the app-wide section-header rule.
   sectionHeader: {
     color: colors.textSecondary,
