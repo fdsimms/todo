@@ -17,6 +17,8 @@ import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { JournalText } from '../components/JournalText';
+import { journalPlainText } from '../utils/journalMarkdown';
 
 type RootStackParamList = {
   MoodDay: { dayKey: string };
@@ -137,11 +139,11 @@ export function MoodDayScreen() {
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setEditingPage(entry); setPageOpen(true); }}
                   accessibilityRole="button"
-                  accessibilityLabel={`${format(new Date(entry.loggedAt), 'h:mm a')}. ${entry.text}`}
+                  accessibilityLabel={`${format(new Date(entry.loggedAt), 'h:mm a')}. ${journalPlainText(entry.text)}`}
                   accessibilityHint="Opens this entry to edit"
                 >
                   <Text style={styles.time}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
-                  <Text style={styles.note}>{entry.text}</Text>
+                  <JournalText text={entry.text} textStyle={styles.note} />
                 </TouchableOpacity>
               ))}
             </View>
