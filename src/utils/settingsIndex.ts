@@ -522,8 +522,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['refresh', 'force', 'manual', 'reload', 'events', 'stale'] },
   { id: 'calendarVacationHidden', groupId: 'capture', label: 'Hide during vacation', section: 'Calendar',
     keywords: ['away', 'exclude', 'work calendar', 'trip'] },
+  { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'capture', label: 'Show events on Today', section: 'Calendar',
+    keywords: ['hide events', 'rows', 'list', 'feed', 'off', 'agenda'] },
   { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'capture', label: 'Show events under', section: 'Calendar',
-    keywords: ['category', 'section', 'today', 'events on today', 'hide events', 'file', 'where'] },
+    keywords: ['category', 'section', 'file', 'where'] },
   { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
   { id: 'mapsApp', groupId: 'capture', label: 'Directions', section: 'Calendar',
@@ -901,6 +903,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'version', groupId: 'about', label: 'Version', section: 'About', keywords: ['build'] },
   { id: 'patchNotes', groupId: 'about', label: "What's New", section: 'About',
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
+  { id: 'tabDiagnostics', groupId: 'about', label: 'Show tab diagnostics', section: 'About',
+    keywords: ['debug', 'blank screen'] },
 ];
 
 /**

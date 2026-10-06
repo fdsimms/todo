@@ -3,6 +3,7 @@ import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useNavigationState, useRoute } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing } from '../theme';
+import { dbGetSetting, dbSetSetting } from '../db/database';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
 
@@ -79,45 +80,52 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
 
     // ==== TEMPORARY blank-tab diagnostic ====
     // A focused tab sometimes comes up blank (only the tab bar drawn) until
-    // another tab switch, under both the Suspense freeze and this Activity one.
-    // This readout sits outside the Activity, so it still draws when the screen
-    // inside doesn't, and a screenshot of a blank tab says which half failed:
-    // the freeze's own inputs (focused/mode) or the native reveal (the box
-    // inside the Activity still measuring 0x0 while mode is visible). Remove it,
-    // and the box, once the cause is known.
+    // another tab switch, under both the Suspense freeze and this Activity one,
+    // and a readout drawn inside the tab didn't show either. So each wrapper
+    // reports what it last rendered to `tabDiag`, and `BlankTabDiagnostic`
+    // draws it from the app root, outside every tab. Two boxes are measured:
+    // `outer` is the wrapper's own container (outside the Activity), `inner`
+    // the screen inside it. Remove all of it once the cause is known.
     const navigation = useNavigation();
-    const [box, setBox] = useState({ w: -1, h: -1, n: 0 });
-    const onBoxLayout = useCallback((e: LayoutChangeEvent) => {
-      const { width, height } = e.nativeEvent.layout;
-      setBox(b => ({ w: Math.round(width), h: Math.round(height), n: b.n + 1 }));
-    }, []);
+    const [outer, setOuter] = useState('?');
+    const [inner, setInner] = useState('?');
+    const onOuterLayout = useCallback((e: LayoutChangeEvent) => setOuter(sizeOf(e)), []);
+    const onInnerLayout = useCallback((e: LayoutChangeEvent) => setInner(sizeOf(e)), []);
     const modeSince = useRef({ mode, at: Date.now() });
     if (modeSince.current.mode !== mode) modeSince.current = { mode, at: Date.now() };
-    const [, tick] = useState(0);
+    const renders = useRef(0);
+    renders.current += 1;
     useEffect(() => {
-      if (!focused) return;
-      const timer = setInterval(() => tick(n => n + 1), 1000);
-      return () => clearInterval(timer);
-    }, [focused]);
+      reportTabDiag(route.name, {
+        focused,
+        navFocused: navigation.isFocused(),
+        sheet: sheetPresented,
+        want: wantFrozen,
+        settled,
+        mode,
+        modeAt: modeSince.current.at,
+        outer,
+        inner,
+        renders: renders.current,
+        committedAt: Date.now(),
+      });
+    });
+    useEffect(() => {
+      tabDiagMounts.set(route.name, (tabDiagMounts.get(route.name) ?? 0) + 1);
+      return () => {
+        tabDiag.delete(route.name);
+        notifyTabDiag();
+      };
+    }, [route.name]);
 
     return (
-      <>
+      <View style={diagStyles.box} collapsable={false} onLayout={onOuterLayout}>
         <Activity mode={mode}>
-          <View style={diagStyles.box} collapsable={false} onLayout={onBoxLayout}>
+          <View style={diagStyles.box} collapsable={false} onLayout={onInnerLayout}>
             {screen}
           </View>
         </Activity>
-        {focused && (
-          <BlankTabReadout
-            text={
-              `${route.name} focused=${focused ? 1 : 0} navFocused=${navigation.isFocused() ? 1 : 0} ` +
-              `sheet=${sheetPresented ? 1 : 0} want=${wantFrozen ? 1 : 0} settled=${settled ? 1 : 0} ` +
-              `mode=${mode} ${Math.round((Date.now() - modeSince.current.at) / 1000)}s ` +
-              `box=${box.w}x${box.h} #${box.n}`
-            }
-          />
-        )}
-      </>
+      </View>
     );
   }
   FreezeWhenBlurred.displayName = `FreezeWhenBlurred(${Screen.displayName ?? Screen.name ?? 'Screen'})`;
@@ -126,9 +134,106 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
   return FreezeWhenBlurred;
 }
 
-// TEMPORARY: part of the blank-tab diagnostic above.
-function BlankTabReadout({ text }: { text: string }) {
+// ==== TEMPORARY blank-tab diagnostic: the shared record and its readout ====
+
+type TabDiagEntry = {
+  focused: boolean;
+  navFocused: boolean;
+  sheet: boolean;
+  want: boolean;
+  settled: boolean;
+  mode: string;
+  modeAt: number;
+  outer: string;
+  inner: string;
+  renders: number;
+  committedAt: number;
+};
+
+const tabDiag = new Map<string, TabDiagEntry>();
+const tabDiagMounts = new Map<string, number>();
+const tabDiagListeners = new Set<() => void>();
+
+// Off unless switched on in Settings › About. Device-local: the key is not on
+// the sync allowlist, so turning it on for one phone doesn't turn it on for both.
+const TAB_DIAG_KEY = 'tabDiagEnabled';
+let tabDiagEnabled: boolean | null = null;
+
+export function isTabDiagEnabled(): boolean {
+  if (tabDiagEnabled === null) tabDiagEnabled = dbGetSetting(TAB_DIAG_KEY) === 'true';
+  return tabDiagEnabled;
+}
+
+export function setTabDiagEnabled(on: boolean) {
+  dbSetSetting(TAB_DIAG_KEY, on ? 'true' : 'false');
+  tabDiagEnabled = on;
+  notifyTabDiag();
+}
+
+/** Re-renders the caller whenever the record or the switch changes. */
+export function useTabDiagEnabled(): boolean {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const listener = () => tick(n => n + 1);
+    tabDiagListeners.add(listener);
+    return () => {
+      tabDiagListeners.delete(listener);
+    };
+  }, []);
+  return isTabDiagEnabled();
+}
+
+function notifyTabDiag() {
+  tabDiagListeners.forEach(l => l());
+}
+
+function reportTabDiag(name: string, entry: TabDiagEntry) {
+  tabDiag.set(name, entry);
+  notifyTabDiag();
+}
+
+function sizeOf(e: LayoutChangeEvent): string {
+  const { width, height } = e.nativeEvent.layout;
+  return `${Math.round(width)}x${Math.round(height)}`;
+}
+
+const flag = (b: boolean) => (b ? 1 : 0);
+const ago = (at: number) => `${Math.round((Date.now() - at) / 1000)}s`;
+
+/**
+ * TEMPORARY. Draws the focused tab's last report from the app root, outside
+ * every tab, so it shows even when the tab itself draws nothing. `tab` is the
+ * tab navigator's focused route read off the navigation ref, independent of
+ * what the wrapper thinks.
+ */
+export function BlankTabDiagnostic({ currentTab }: { currentTab: () => string | undefined }) {
+  const enabled = useTabDiagEnabled();
+  if (!enabled) return null;
+  return <BlankTabReadout currentTab={currentTab} />;
+}
+
+function BlankTabReadout({ currentTab }: { currentTab: () => string | undefined }) {
   const colors = useColors();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const tab = currentTab();
+  const entry = tab ? tabDiag.get(tab) : undefined;
+  const others = [...tabDiag.entries()]
+    .filter(([name, e]) => name !== tab && (e.focused || e.mode === 'visible'))
+    .map(([name, e]) => `${name}(f=${flag(e.focused)} ${e.mode})`)
+    .join(' ');
+  const text = !tab
+    ? 'tab=?'
+    : !entry
+      ? `tab=${tab} NO REPORT mounts=${tabDiagMounts.get(tab) ?? 0}`
+      : `tab=${tab} focused=${flag(entry.focused)} nav=${flag(entry.navFocused)} sheet=${flag(entry.sheet)} ` +
+        `want=${flag(entry.want)} settled=${flag(entry.settled)} mode=${entry.mode} ${ago(entry.modeAt)} ` +
+        `outer=${entry.outer} inner=${entry.inner} renders=${entry.renders} ` +
+        `mounts=${tabDiagMounts.get(tab) ?? 0} commit=${ago(entry.committedAt)}` +
+        (others ? ` | also ${others}` : '');
   return (
     <View pointerEvents="none" style={diagStyles.readoutWrap}>
       <Text style={[diagStyles.readout, { color: colors.textSecondary, backgroundColor: colors.bgSecondary }]}>

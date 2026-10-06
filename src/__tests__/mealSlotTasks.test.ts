@@ -8,6 +8,7 @@ import {
   mealSlotDrift,
   mealSlotLinkUrl,
   slotEntryForTask,
+  loggedMealSlotTasks,
   mealSlotOf,
   mealSlotSourceId,
   mealSlotStepTimeSegments,
@@ -478,6 +479,40 @@ describe('staleMealSlotTasks', () => {
     const archived = row('2026-08-21', 'dinner', { archived: true });
     const legacy = row('2026-08-21', 'breakfast', { generatedKind: 'mealCook', generatedSourceId: 'm-1' });
     expect(staleMealSlotTasks([done, archived, legacy], '2026-08-22')).toEqual([]);
+  });
+});
+
+describe('loggedMealSlotTasks', () => {
+  const row = (dayKey: string, slot: MealSlot, over: Partial<Task> = {}): Task => ({
+    ...taskFor(dayKey, slot, null),
+    ...mealSlotTaskDraft(dayKey, slot, null),
+    id: `${dayKey}#${slot}`,
+    completed: false,
+    archived: false,
+    ...over,
+  } as Task);
+
+  it('names the row for a slot with food logged in it, and no other', () => {
+    const rows = [row('2026-08-22', 'lunch'), row('2026-08-22', 'dinner'), row('2026-08-23', 'lunch')];
+    const named = loggedMealSlotTasks(rows, new Set(['2026-08-22#lunch']));
+    expect(named.map(t => t.id)).toEqual(['2026-08-22#lunch']);
+  });
+
+  it('names a started chain too, since a logged meal is an eaten one', () => {
+    const started = row('2026-08-22', 'dinner', { chainIndex: 1 });
+    expect(loggedMealSlotTasks([started], new Set(['2026-08-22#dinner']))).toHaveLength(1);
+  });
+
+  it('never names a finished row, an archived one, or another generator\'s', () => {
+    const keys = new Set(['2026-08-22#lunch', '2026-08-22#dinner', '2026-08-22#breakfast']);
+    const done = row('2026-08-22', 'lunch', { completed: true });
+    const archived = row('2026-08-22', 'dinner', { archived: true });
+    const legacy = row('2026-08-22', 'breakfast', { generatedKind: 'mealCook', generatedSourceId: 'm-1' });
+    expect(loggedMealSlotTasks([done, archived, legacy], keys)).toEqual([]);
+  });
+
+  it('names nothing when nothing is logged', () => {
+    expect(loggedMealSlotTasks([row('2026-08-22', 'lunch')], new Set())).toEqual([]);
   });
 });
 

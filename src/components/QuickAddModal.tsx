@@ -3867,8 +3867,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     zIndex: 2,
     overflow: 'visible',
   },
+  // Absolute so the bubble sizes itself rather than being laid out inside the
+  // row's zero height, which squashed its content to a sliver.
   tooltipAnchor: {
-    alignSelf: 'flex-start',
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   tooltipCaret: {
     width: 0,

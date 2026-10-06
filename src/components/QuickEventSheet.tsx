@@ -1568,7 +1568,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   // Zero height with the bubble overflowing it: a popover over the fields, not a
   // row that pushes them down and clips the card's last row off its capped height.
   tooltipRow: { height: 0, marginTop: -4, zIndex: 2, overflow: 'visible' },
-  tooltipAnchor: { alignSelf: 'flex-start' },
+  // Absolute so the bubble sizes itself rather than being laid out inside the
+  // row's zero height, which squashed its content to a sliver.
+  tooltipAnchor: { position: 'absolute', top: 0, left: 0 },
   tooltipCaret: {
     width: 0,
     height: 0,

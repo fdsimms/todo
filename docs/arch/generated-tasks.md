@@ -826,6 +826,13 @@ re-deriving:
   onto today or later by its date or a defer. A started chain is the user's, the same line the
   drift draws, and a moved row was a decision about when to deal with it. The mark is untouched, so
   a dropped day is never written again, and the log nudge is what asks about a past meal.
+- **A slot with food logged in it loses its row** (`loggedMealSlotTasks`, run by
+  `syncLoggedMealSlotTasks`). Logging lunch by hand answers Choose, Prepare and Eat at once, and the
+  row used to stay on Today for a meal already in the log. The join is the (day, slot) pair, the
+  same one `mealLogCoverage.ts` makes, and it drops the row even mid-chain. It is a drop with no
+  opt-out and never a completion: nothing here may assert a particular planned dish was eaten (see
+  `mealLogCoverage.ts`), and `cookedAt` stays unstamped. Triggered by food log writes and by
+  `checkMealSlotTasks`; deleting the entry later does not bring the row back.
 - **A week at a time** (`MEAL_SLOT_TASK_DAYS`), matching the meal plan's own `upcomingDays` and the
   horizon the weekly nudge asks about. This shipped as today-only, on the grounds that a week of
   rows saying "Choose lunch" would be noise; it isn't, because those meals genuinely are undecided
