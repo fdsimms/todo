@@ -119,7 +119,7 @@ const ITEM_PRICE_KEY = 'item';
 
 /**
  * The Pantry field's collapsed summary with a frozen portion said after the
- * item's own state ("Got it until Oct 12, some frozen"), or alone when the item
+ * item's own state ("Marked on hand, some frozen"), or alone when the item
  * has nothing of its own to say. Undefined in, undefined out, so an item with
  * neither still reads "Automatic".
  */
@@ -1310,8 +1310,12 @@ export function GroceryItemSheet({
                       ? 'In the freezer'
                       : item.isStaple
                         ? 'Always have it'
+                        // Not "Got it until <date>": the date is when the app
+                        // stops taking your word for it, not when you'll run
+                        // out, and in the summary it read as the second. The
+                        // hint says what the date is.
                         : onHandFuture
-                          ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
+                          ? 'Marked on hand'
                           : undefined,
                 portionFrozen
               )
@@ -1328,7 +1332,9 @@ export function GroceryItemSheet({
                       ? portionFrozen
                         ? 'Marked out of it, apart from the portion in the freezer.'
                         : 'Marked out of it. Won’t show as probably-have until you buy it again.'
-                      : 'Decided automatically from purchase history when this comes up in a week plan.'
+                      : onHandFuture
+                        ? `You said you have this. It counts as on hand until ${format(new Date(item.onHandUntil!), 'MMM d')}, based on how often you buy it (two weeks if there isn’t enough history yet). After that, purchase history decides again.`
+                        : 'Decided automatically from purchase history when this comes up in a week plan.'
             }
             expanded={openField === 'pantry'}
             onToggle={() => toggleField('pantry')}

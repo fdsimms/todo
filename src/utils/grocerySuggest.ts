@@ -389,14 +389,18 @@ export const OUT_OF_IT_UNTIL = new Date(0).toISOString();
 
 /**
  * How many days apart this item's purchases have averaged, or null when
- * there isn't enough to go on. Deliberately crude — `(now - createdAt) /
- * purchaseCount` rather than a real inter-purchase average — because the
- * catalog doesn't keep a purchase log to average over; the row's age and its
- * running count are all there is, and that's already enough to tell milk
- * from soy sauce.
+ * there isn't enough to go on.
+ *
+ * The measured gap between purchases (`purchaseIntervalDays`, see
+ * purchaseInterval.ts) whenever a trip has recorded one. Rows bought only
+ * before that column existed fall back to `(now - createdAt) / purchaseCount`,
+ * the old estimate, which overstates the gap for a row made long before its
+ * first purchase and grows while nothing is bought. The next home trip that
+ * buys the item replaces it with a measured gap.
  */
 export function estimatedPurchaseCadenceDays(item: GroceryItem, now: Date): number | null {
   if (item.purchaseCount < 1) return null;
+  if (item.purchaseIntervalDays != null && item.purchaseIntervalDays > 0) return item.purchaseIntervalDays;
   const ageDays = daysBetween(now, item.createdAt);
   if (ageDays <= 0) return null;
   return ageDays / item.purchaseCount;

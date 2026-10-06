@@ -33,6 +33,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     purchaseCount: 3,
     lastAddedAt: null,
     lastPurchasedAt: '2026-08-12T09:00:00.000Z',
+    purchaseIntervalDays: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
     sourceRecipeId: null,

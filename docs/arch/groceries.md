@@ -955,6 +955,16 @@ gesture onto it — that's the inventory again.
     twice, the two disagreed — the reading wanted three purchases before trusting a cadence and
     the assertion was happy with one, so a single purchase on a year-old row asserted on-hand for
     a year.
+  - **The cadence is a measured gap, not the row's age.** `purchaseIntervalDays` is a running
+    average of the gaps between purchases (`nextPurchaseIntervalDays`), updated by each home trip:
+    halfway towards each new gap, a gap under a day ignored, one gap capped at three times the
+    average so a month away doesn't double the window. It replaced `(now - createdAt) /
+    purchaseCount`, which read a catalog row made long before its first purchase as bought every
+    few months, and grew on every day nothing was bought. That formula survives only as the
+    fallback for a row whose purchases all predate the column.
+  - **The sheet says "Marked on hand", not "Got it until <date>".** The date is when the app stops
+    taking your word for it, not when you'll run out; it belongs in the hint, with where it came
+    from.
 - **`GroceryItemSheet` and `LeftoverSheet` render as plain sibling `Modal`s under the screen**,
   the same way `GroceryScreen` renders its own item sheet — there's no outer `Modal` to nest inside
   of any more now that the kitchen is a screen rather than a sheet, so the nesting `KitchenSheet`
@@ -1312,8 +1322,8 @@ up leftover chili" open two sheets through one mechanism and only one of them as
   matters), and it biases both readings *later* — which is the direction that gets a use-up task
   arriving after the food is already slime. `groceryShelfLife.ts` keeps its numbers at the cautious
   end on purpose, and a learner fed only late observations would walk them the other way. There is
-  also nothing to fit against: the catalog keeps `purchaseCount` and `lastPurchasedAt`, not a
-  per-purchase log (see `estimatedPurchaseCadenceDays`, which makes the same admission).
+  also nothing to fit against: the catalog keeps `purchaseCount`, `lastPurchasedAt` and an average
+  gap between purchases (`purchaseIntervalDays`), not a per-purchase log.
 - **So the payoff is a hand-off, not an adjustment.** `shelfLifeDays` stays the correction, made by
   a person holding the thing; the counts say when it's worth making one. Twice
   (`REPEAT_WASTE_THRESHOLD`) turns the offer into "change how long the app thinks it keeps", which

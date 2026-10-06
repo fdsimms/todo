@@ -74,6 +74,7 @@ import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KIND
 import { generateId } from '../utils/id';
 import { parseTaskFieldDefaults, serializeTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
+import { nextPurchaseIntervalDays } from '../utils/purchaseInterval';
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
@@ -1914,6 +1915,9 @@ export function initDatabase(): void {
     // Task.deliverableWhy / deliverableRevisitIf.
     'ALTER TABLE tasks ADD COLUMN deliverable_why TEXT',
     'ALTER TABLE tasks ADD COLUMN deliverable_revisit_if TEXT',
+    // NULL on every existing row: no gap between purchases has been measured
+    // yet. See GroceryItem.purchaseIntervalDays.
+    'ALTER TABLE grocery_items ADD COLUMN purchase_interval_days REAL',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -4716,6 +4720,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastAddedAt: (row.last_added_at as string) ?? null,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    purchaseIntervalDays: (row.purchase_interval_days as number | null) ?? null,
     createdAt: row.created_at as string,
     onHandUntil: (row.on_hand_until as string) ?? null,
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
@@ -4765,8 +4770,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields, nutrition, name_from_scan)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition, name_from_scan, purchase_interval_days)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -4784,6 +4789,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
       item.nameFromScan ? 1 : 0,
+      item.purchaseIntervalDays ?? null,
     ]
   );
 }
@@ -4798,7 +4804,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?, price_history=?
+       name_from_scan=?, price_history=?, purchase_interval_days=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -4821,6 +4827,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       // puts back a "before" row could otherwise restore every column except
       // the history, leaving the undone price in it for good.
       JSON.stringify(item.priceHistory ?? []),
+      item.purchaseIntervalDays ?? null,
       item.id,
     ]
   );
@@ -4908,8 +4915,11 @@ export function dbFinishGroceryShopping(
     preferred_product_id: string | null;
     brand_strict: number | null;
     price_history: string | null;
+    last_purchased_at: string | null;
+    purchase_interval_days: number | null;
   }>(
-    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history
+    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history,
+            i.last_purchased_at, i.purchase_interval_days
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
@@ -4971,6 +4981,14 @@ export function dbFinishGroceryShopping(
       WHERE id IN (${placeholders})`,
     [purchasedAt, ...ids]
   );
+  // The gap since the last purchase feeds the running average, read off the
+  // row as it stood before the UPDATE above restamped last_purchased_at.
+  // Mirrored in useGroceryStore.finishShopping's in-memory patch.
+  for (const row of rows) {
+    const interval = nextPurchaseIntervalDays(row.purchase_interval_days, row.last_purchased_at, purchasedAt);
+    if (interval === row.purchase_interval_days) continue;
+    db.runSync('UPDATE grocery_items SET purchase_interval_days = ? WHERE id = ?', [interval, row.id]);
+  }
   // on_hand_until is *cleared* by a purchase rather than written, and it rides
   // the bulk UPDATE above because null is the same value for every row.
   // frozen_at rides along for the same reason and a related one: the freezer

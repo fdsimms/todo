@@ -276,6 +276,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
+    purchaseIntervalDays: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
     sourceRecipeId: null,
@@ -1095,6 +1096,19 @@ describe('finishShopping', () => {
 
     // The unchecked one stays on the list for next time.
     expect(after.find(i => i.id === eggs.id)!.onList).toBe(true);
+  });
+
+  it('updates the purchase interval in memory the way the db does', () => {
+    const milk = makeItem({
+      name: 'Milk', onList: true, checked: true, purchaseCount: 3,
+      lastPurchasedAt: '2026-08-01T12:00:00.000Z', purchaseIntervalDays: 10,
+    });
+    seed([milk]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(null, {}, '2026-08-07T12:00:00.000Z');
+
+    expect(useGroceryStore.getState().items[0].purchaseIntervalDays).toBeCloseTo(8);
   });
 
   it('records the purchase on a name bought for the first time', () => {
