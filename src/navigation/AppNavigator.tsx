@@ -211,6 +211,17 @@ const styles = StyleSheet.create({
     height: TAB_BAR_HEIGHT + 8,
   },
   glassTabBar: { borderRadius: radius.full },
+  // The current tab's plate. Drawn here because the library paints
+  // `tabBarActiveBackgroundColor` on the button with its radius fixed at 0,
+  // and `tabBarItemStyle` reaches only the wrapper around it. Every icon gets
+  // the same box (transparent when not current) so the glyphs don't shift.
+  tabIconPlate: {
+    width: 56,
+    height: 34,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   edgeZone: {
     position: 'absolute',
     left: 0,
@@ -227,6 +238,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 });
+
+function TabIconPlate({ focused, children }: { focused: boolean; children: React.ReactNode }) {
+  const colors = useColors();
+  return (
+    <View style={[styles.tabIconPlate, focused && { backgroundColor: colors.accentSubtle }]}>
+      {children}
+    </View>
+  );
+}
 
 interface MainTabsProps {
   initialRouteName: string;
@@ -283,10 +303,12 @@ const MainTabs = React.memo(function MainTabs({
             listeners={tabPressHaptic}
             options={{
               tabBarAccessibilityLabel: destination?.label ?? route,
-              tabBarIcon: ({ color, size }) => (
-                destination?.icon === COIN_ICON
-                  ? <CoinIcon size={size} color={color} />
-                  : <Ionicons name={tabIconFor(destination?.icon ?? 'ellipse-outline')} size={size} color={color} />
+              tabBarIcon: ({ color, size, focused }) => (
+                <TabIconPlate focused={focused}>
+                  {destination?.icon === COIN_ICON
+                    ? <CoinIcon size={size} color={color} />
+                    : <Ionicons name={tabIconFor(destination?.icon ?? 'ellipse-outline')} size={size} color={color} />}
+                </TabIconPlate>
               ),
             }}
           />
@@ -312,11 +334,13 @@ const MainTabs = React.memo(function MainTabs({
             : timerRunning
               ? 'More, opens menu, a prep timer is running'
               : 'More, opens menu',
-          tabBarIcon: ({ color }) => (
-            <View>
-              <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
-              {timerRunning && <View style={[styles.timerDot, { backgroundColor: colors.orange }]} />}
-            </View>
+          tabBarIcon: ({ color, focused }) => (
+            <TabIconPlate focused={focused}>
+              <View>
+                <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
+                {timerRunning && <View style={[styles.timerDot, { backgroundColor: colors.orange }]} />}
+              </View>
+            </TabIconPlate>
           ),
         }}
       />
@@ -471,8 +495,8 @@ export default function AppNavigator() {
     ),
     tabBarActiveTintColor: colors.accent,
     // Over the glass the pale accent and the grey inactive icons read as
-    // near-equal brightness, so the current tab also gets a tinted plate.
-    tabBarActiveBackgroundColor: colors.accentSubtle,
+    // near-equal brightness, so the current tab also gets a tinted plate,
+    // drawn by `TabIconPlate` (see its style for why not the library's prop).
     tabBarInactiveTintColor: colors.textTertiary,
     tabBarShowLabel: false,
     // react-navigation's icon-only item is `justifyContent: 'flex-start'`, so
