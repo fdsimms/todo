@@ -4129,12 +4129,18 @@ export function TodayScreen() {
     viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
     && (plannedLabel || completedTodayLabel || eventsLeftLabel)
       ? [
-          completedTodayLabel ? `${completedTodayLabel} done` : undefined,
-          plannedLabel ? `${plannedLabel} planned` : undefined,
+          [
+            completedTodayLabel ? `${completedTodayLabel} done` : undefined,
+            plannedLabel ? `${plannedLabel} planned` : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          // Its own line: with the header buttons beside it the full sentence
+          // wrapped anyway, and it wrapped mid-phrase ("1h of / events left").
           eventsLeftLabel ? `${eventsLeftLabel} of events left` : undefined,
         ]
           .filter(Boolean)
-          .join(' · ')
+          .join('\n')
       : undefined;
 
   // Later, Unscheduled and Inbox share Today's filter icon and sheet (#1798),
@@ -4204,27 +4210,25 @@ export function TodayScreen() {
           subtitle={workloadSubtitle}
           actions={headerActions}
           titleAdornment={
-            viewMode === 'today' && (headerWeather || showCoinPill) ? (
+            viewMode === 'today' && headerWeather ? (
               <View style={styles.headerWeather}>
-                {headerWeather && (
-                  <>
-                    <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
-                    <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
-                  </>
-                )}
-                {showCoinPill && (
-                  <TouchableOpacity
-                    style={styles.coinPill}
-                    onPress={() => navigateToTab('Rewards')}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${coinTotal} coins. Open Rewards`}
-                  >
-                    <CoinIcon size={iconSize.sm} color={colors.done} filled />
-                    <Text style={styles.coinPillText}>{coinTotal}</Text>
-                  </TouchableOpacity>
-                )}
+                <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
+                <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
               </View>
+            ) : undefined
+          }
+          topRight={
+            viewMode === 'today' && showCoinPill ? (
+              <TouchableOpacity
+                style={styles.coinPill}
+                onPress={() => navigateToTab('Rewards')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${coinTotal} coins. Open Rewards`}
+              >
+                <CoinIcon size={iconSize.sm} color={colors.done} filled />
+                <Text style={styles.coinPillText}>{coinTotal}</Text>
+              </TouchableOpacity>
             ) : undefined
           }
         />
