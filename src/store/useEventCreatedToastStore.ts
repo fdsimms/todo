@@ -4,13 +4,15 @@ import { create } from 'zustand';
 export interface CreatedEvent {
   id: string;
   start: Date;
+  /** Set when the toast should offer to save this title as a saved event (it isn't one yet). */
+  saveTitle?: string;
   /** Distinguishes two saves in a row, so the toast restarts its timer. */
   key: number;
 }
 
 interface EventCreatedToastState {
   created: CreatedEvent | null;
-  announce: (id: string, start: Date) => void;
+  announce: (id: string, start: Date, saveTitle?: string) => void;
   clear: () => void;
 }
 
@@ -23,6 +25,6 @@ let counter = 0;
  */
 export const useEventCreatedToastStore = create<EventCreatedToastState>(set => ({
   created: null,
-  announce: (id, start) => set({ created: { id, start, key: ++counter } }),
+  announce: (id, start, saveTitle) => set({ created: { id, start, saveTitle, key: ++counter } }),
   clear: () => set({ created: null }),
 }));

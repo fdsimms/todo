@@ -112,7 +112,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +27 more
 - `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
 - `src/utils/eventConflicts.ts` — FREE_SLOT_DAY_START_HOUR, FREE_SLOT_DAY_END_HOUR, overlappingEvents, firstFreeSlot, calendarCovers
-- `src/utils/eventMemory.ts` — EVENT_MEMORY_KEY, EVENT_MEMORY_LIMIT, RememberedEvent, EventMemory, eventMemoryKey, parseEventMemory, rememberEvent, recallEvent, readEventMemory, writeEventMemory
+- `src/utils/eventMemory.ts` — EVENT_MEMORY_KEY, EVENT_MEMORY_LIMIT, RememberedEvent, EventMemory, eventMemoryKey, parseEventMemory, rememberEvent, setEventSaved, SavedEvent, savedEvents, +5 more
 - `src/utils/eventPeople.ts` — EventPeopleIndex, EMPTY_EVENT_PEOPLE, eventPeopleKeys, indexEventPeople, peopleForEvent, EventPeopleWrite, planEventPeopleWrite, isEventPeopleLinkStale, staleEventPeopleIds, legacyEventPeopleRows, +3 more
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/eventTaskLinks.ts` — EventTaskLink, EventTaskLinks, eventTaskKey, tasksForEvent, withEventTasks, rekeyEventTasks, EVENT_TASK_LINK_GRACE_DAYS, pruneStaleEventTaskLinks, parseEventTaskLinks, MovedEvent, +4 more
