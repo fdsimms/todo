@@ -1281,6 +1281,47 @@ export function FoodLogEntrySheet({
     </TouchableOpacity>
   );
 
+  // While searching, what matches the catalog comes first and the earlier
+  // helpings follow it: someone typing "oat milk" wants the food, not the
+  // three most recent estimates that happen to mention it. With nothing typed
+  // they stay on top as quick recents.
+  const helpingsAfterResults = query.trim().length > 0 && results.length > 0;
+  const helpingsBlock = helpings.length > 0 ? (
+    <View>
+      <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
+      {helpings.map(entry => (
+        <View key={entry.id} style={[styles.row, styles.helpingRow]}>
+          {/* The body opens the amount first, like a row below. */}
+          <TouchableOpacity
+            style={styles.helpingBody}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => openHelping(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={`Change amount of ${entry.label}, ${describeFoodLogEntry(entry)}`}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>{entry.label}</Text>
+              <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
+            </View>
+          </TouchableOpacity>
+          {/* The plus logs it as it was, at once. */}
+          <TouchableOpacity
+            style={styles.helpingAdd}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => logHelpingAgain(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
+          >
+            <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+          </TouchableOpacity>
+        </View>
+      ))}
+      {!helpingsAfterResults && results.length > 0 && (
+        <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
   return (
     <SheetModal name="What did you eat?" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
@@ -1729,41 +1770,8 @@ export function FoodLogEntrySheet({
               // outside to tap.
               keyboardDismissMode="on-drag"
               {...listScroll.props}
-              ListHeaderComponent={helpings.length > 0 ? (
-                <View>
-                  <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
-                  {helpings.map(entry => (
-                    <View key={entry.id} style={[styles.row, styles.helpingRow]}>
-                      {/* The body opens the amount first, like a row below. */}
-                      <TouchableOpacity
-                        style={styles.helpingBody}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => openHelping(entry)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Change amount of ${entry.label}, ${describeFoodLogEntry(entry)}`}
-                      >
-                        <View style={styles.rowText}>
-                          <Text style={styles.rowTitle}>{entry.label}</Text>
-                          <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
-                        </View>
-                      </TouchableOpacity>
-                      {/* The plus logs it as it was, at once. */}
-                      <TouchableOpacity
-                        style={styles.helpingAdd}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => logHelpingAgain(entry)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
-                      >
-                        <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  {results.length > 0 && (
-                    <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
-                  )}
-                </View>
-              ) : null}
+              ListHeaderComponent={helpingsAfterResults ? null : helpingsBlock}
+              ListFooterComponent={helpingsAfterResults ? helpingsBlock : null}
               ListEmptyComponent={
                 <EmptyState
                   icon="nutrition-outline"
