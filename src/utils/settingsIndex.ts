@@ -654,6 +654,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',
     keywords: ['flat', 'one list', 'headers', 'sections', 'group', 'ungrouped', 'today'] },
+  { id: 'hideListPreviews', groupId: 'tasksProjects', label: 'Hide list items on cards', section: 'Projects',
+    keywords: ['preview', 'spoiler', 'wish list', 'gift', 'surprise', 'private', 'cover'] },
   { id: 'autoCompleteProjects', groupId: 'tasksProjects', label: 'Auto-complete projects', section: 'Projects',
     // 'archive' and 'auto-archive' stay indexed: this row archived a finished
     // project until it started completing one, and someone who set it up under
