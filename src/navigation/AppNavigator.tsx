@@ -442,6 +442,11 @@ export default function AppNavigator() {
       backgroundColor: 'transparent',
       borderTopWidth: 0,
       elevation: 0,
+      // The capsule sits `spacing.md` in from each screen edge, and the
+      // buttons divide the bar's full width, so the end icons landed almost
+      // on the capsule's rim. This insets them from it (the glass slot is
+      // absolutely positioned, so padding moves only the buttons).
+      paddingHorizontal: spacing.md + spacing.lg,
     },
     // On iOS 26 the bar floats: a glass capsule inset from both side edges and
     // lifted off the bottom, around the buttons. The bar itself keeps its
@@ -467,7 +472,11 @@ export default function AppNavigator() {
     tabBarActiveTintColor: colors.accent,
     tabBarInactiveTintColor: colors.textTertiary,
     tabBarShowLabel: false,
-    tabBarItemStyle: { paddingVertical: 3 },
+    // react-navigation's icon-only item is `justifyContent: 'flex-start'`, so
+    // the icon hangs from the top of the band instead of sitting in the
+    // middle of the capsule that wraps it. Centering the button in its slot
+    // puts every glyph on the capsule's midline.
+    tabBarItemStyle: { paddingVertical: 3, justifyContent: 'center' as const },
   }), [colors, isDark]);
 
   return (
