@@ -69,6 +69,7 @@ import {
   recentUnlinkedHelpings,
 } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
+import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
@@ -412,6 +413,7 @@ export function FoodLogEntrySheet({
   const addEntry = useFoodLogStore(s => s.addEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
@@ -451,6 +453,10 @@ export function FoodLogEntrySheet({
   // dish rather than remembered across picks — see `choose`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  // What the person says about the picked item's pantry stock while logging it.
+  // Null leaves the pantry alone. Staged until Add, like the meal, so Cancel
+  // discards it; reset whenever the picked food changes (effect below).
+  const [pantryAnswer, setPantryAnswer] = useState<PantryReviewAnswer | null>(null);
   const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
   // The earlier estimated helping whose amount is being changed before it is
@@ -475,6 +481,7 @@ export function FoodLogEntrySheet({
     setAmountNumber('');
     setRecalledAmount(null);
     setChosenSlot(slot);
+    setPantryAnswer(null);
     setDbSearchOpen(false);
     setCatalogPickOpen(false);
     setBurstAdded([]);
@@ -495,6 +502,7 @@ export function FoodLogEntrySheet({
   useEffect(() => {
     setWeighGrams('');
     setCatalogPickOpen(false);
+    setPantryAnswer(null);
   }, [picked]);
 
   // A fresh dish starts with none of its varying lines answered, same as a
@@ -1134,6 +1142,9 @@ export function FoodLogEntrySheet({
     } else if (!logNew(measurement)) {
       return;
     }
+    // Written only once the entry is, so a refused log leaves the pantry as it
+    // was. The same write the pantry review's three answers make.
+    if (pantryAnswer && picked.itemId && !editing) answerPantryReview(picked.itemId, pantryAnswer);
     afterSave(picked.label);
   };
 
@@ -1587,6 +1598,31 @@ export function FoodLogEntrySheet({
               label="Which meal"
               surface="page"
             />
+
+            {/* Only for a food that is a catalog row (a dish or a bare database
+                food has no pantry entry to update), and not when correcting an
+                entry that was logged already. */}
+            {!!picked.itemId && !editing && (
+              <>
+                <Text style={[styles.label, styles.labelSpaced]}>PANTRY</Text>
+                <SegmentedControl<PantryReviewAnswer | null>
+                  options={[
+                    { value: null, label: 'No change' },
+                    { value: 'have', label: 'Still have it' },
+                    { value: 'low', label: 'Running low' },
+                    { value: 'out', label: 'Out of it' },
+                  ]}
+                  value={pantryAnswer}
+                  onChange={setPantryAnswer}
+                  columns={2}
+                  label="Pantry"
+                  surface="page"
+                />
+                {pantryAnswer === 'low' && (
+                  <Text style={styles.hint}>Running low also adds it to your grocery list.</Text>
+                )}
+              </>
+            )}
           </ScrollView>
         ) : (
           <>
