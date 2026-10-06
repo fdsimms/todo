@@ -400,7 +400,7 @@ struct WidgetPalette {
         text: Color(hex: "F6F3F8"),
         textSecondary: Color(hex: "B3ADBD"),
         textTertiary: Color(hex: "8F889A"),
-        accent: Color(hex: "B9A0FF"),
+        accent: Color(hex: "9B7BFF"),
         orange: Color(hex: "FF9F0A"),
         green: Color(hex: "30D158"),
         red: Color(hex: "FF453A"),
