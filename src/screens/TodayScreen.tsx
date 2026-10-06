@@ -157,7 +157,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { getDayStart, getLogicalDayKey, liveStreakCount } from '../utils/dateUtils';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
@@ -2068,7 +2068,7 @@ export function TodayScreen() {
         if (!b.dueDate) return -1;
         return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
       });
-      case 'streak': return [...result].sort((a, b) => b.streakCount - a.streakCount);
+      case 'streak': return [...result].sort((a, b) => liveStreakCount(b) - liveStreakCount(a));
       default: return result;
     }
   }, [visibleTasks, sort, filterPriorities, filterEfforts, filterHasReminder]);

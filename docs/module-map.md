@@ -92,7 +92,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
 - `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
-- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, getWeekStart, +26 more
+- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, getWeekStart, +27 more
 - `src/utils/dayContextRows.ts` — ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder

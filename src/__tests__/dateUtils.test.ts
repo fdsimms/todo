@@ -5,6 +5,7 @@ import {
   formatGroupHeader,
   getNextDueDate,
   getStreakOutcome,
+  liveStreakCount,
   getDeadlineCountdown,
   getDeadlineFromMonthDay,
   getDeadlineFromOffset,
@@ -1708,5 +1709,37 @@ describe('dayKeyToDate', () => {
     expect(d.getMonth()).toBe(7);
     expect(d.getDate()).toBe(5);
     expect(d.getHours()).toBe(0);
+  });
+});
+
+// ─── liveStreakCount ────────────────────────────────────────────────────────
+
+describe('liveStreakCount', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // Tue June 10 2025, 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const daily = (streakDate: Date): Task => ({
+    ...baseTask, recurrenceType: 'daily', recurrenceInterval: 1, streakCount: 3, streakDate: streakDate.toISOString(),
+  });
+
+  it('keeps the count while the streak is still alive', () => {
+    expect(liveStreakCount(daily(new Date(2025, 5, 9)))).toBe(3);
+    expect(liveStreakCount(daily(new Date(2025, 5, 10)))).toBe(3);
+  });
+
+  it('reads 0 once a day has been missed, without waiting for the next completion', () => {
+    expect(liveStreakCount(daily(new Date(2025, 5, 8)))).toBe(0);
+  });
+
+  it('leaves negative habits and immediate-step chains to their own bookkeeping', () => {
+    const old = new Date(2025, 5, 1);
+    expect(liveStreakCount({ ...daily(old), polarity: 'negative' })).toBe(3);
+    expect(liveStreakCount({ ...daily(old), chainItems: [{ title: 'a' }, { title: 'b' }] as Task['chainItems'], chainStepOnSchedule: false })).toBe(3);
   });
 });

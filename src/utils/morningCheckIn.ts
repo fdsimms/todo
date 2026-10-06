@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { getDayStart, getTaskDayStart } from './dateUtils';
+import { getDayStart, getEffectiveTaskDate, getTaskDayStart } from './dateUtils';
 import { isHeldBack, isWithheld } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 
@@ -21,11 +21,11 @@ import { isNegativeTask } from './negativeHabits';
  *   point of either is that its schedule doesn't count while it's on. The
  *   check used to read the raw `vacationPause` flag, which excluded those
  *   tasks even with vacation off and missed the category form entirely.
- * - any task with no `deadline` set. Asking about every overdue recurring
- *   task — a daily habit with no deadline included — was heavy-handed: most
- *   of them don't carry enough weight to warrant a daily "did you do this?"
- *   prompt. `deadline` is the signal the user themselves chose to mark a
- *   task as one worth chasing, so the check-in only asks about those.
+ *
+ * A deadline is not required. It used to be, on the reasoning that asking
+ * about every overdue habit was heavy-handed, but a daily habit with no
+ * deadline then sat open and overdue with no miss on record, and finishing it
+ * late spawned a second row for today. Every recurring task is asked about.
  *
  * One live row per recurring task (see the Recurrence note in CLAUDE.md), so
  * "yesterday's task, unresolved" is just this row's own `dueDate` sitting in
@@ -40,9 +40,13 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   // Withheld (vacation or a paused project): nobody could have done it, so
   // asking would record a miss.
   if (isWithheld(task)) return false;
-  if (!task.deadline) return false;
   if (!task.dueDate) return false;
-  return getTaskDayStart(new Date(task.dueDate), dayResetTime) < getDayStart(new Date(), dayResetTime);
+  // The date the row reads as, not the raw dueDate: pushing a task writes a
+  // later `deferUntil` and leaves `dueDate` on the day it was pushed from, so
+  // judging by dueDate asked about a task you had chosen to move, every
+  // morning until the day it came back.
+  const readsAs = getEffectiveTaskDate(task, dayResetTime) ?? task.dueDate;
+  return getTaskDayStart(new Date(readsAs), dayResetTime) < getDayStart(new Date(), dayResetTime);
 }
 
 /** The full set across all tasks, in no particular order — callers group it. */
