@@ -4366,6 +4366,9 @@ export const TaskItem = React.memo(function TaskItem({
             updateTask(task.id, {
               dueDate: null,
               timeSegments: [],
+              // A don't-do habit's only date is its hold, so clearing means
+              // releasing it back onto Today.
+              ...(isNegative ? { deferUntil: null } : {}),
               ...(task.pinned ? { pinned: false } : {}),
             });
             setLastAction({
