@@ -444,6 +444,9 @@ export function FoodLogEntrySheet({
   // rather than cleared on edit, so the hint that says where the number came
   // from goes the moment it stops being that number.
   const [recalledAmount, setRecalledAmount] = useState<string | null>(null);
+  // The amount picking a food left in the field (recalled or the default), so
+  // Cancel can tell a number somebody typed from one nobody touched.
+  const pickedAmountRef = useRef('');
   // Which question the amount field is asking of a dish. Set from the picked
   // dish rather than remembered across picks — see `choose`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
@@ -627,6 +630,7 @@ export function FoodLogEntrySheet({
         : { kind: 'dish', weighed: weigh, served: !!candidate.servingPanel },
     );
     setRecalledAmount(recalled?.amount ?? null);
+    pickedAmountRef.current = recalled ? recalled.amount : (candidate.kind === 'dish' && !weigh ? '1' : '');
     if (recalled) {
       setDishMeasure(recalled.dishMeasure ?? (weigh ? 'weight' : 'servings'));
       setAmount(recalled.amount);
@@ -1197,6 +1201,7 @@ export function FoodLogEntrySheet({
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
     setPicked(databaseCandidate(`db:${description}`, description, nutrition));
+    pickedAmountRef.current = '';
     setAmount('');
     setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
@@ -1220,7 +1225,9 @@ export function FoodLogEntrySheet({
         || amount.trim() !== seeded.amount
         || chosenSlot !== seeded.slot
         || answeredExtra
-      : !!picked || !!amount.trim();
+      : picked
+        ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra
+        : !!amount.trim();
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
     Alert.alert(
       'Discard changes?',
