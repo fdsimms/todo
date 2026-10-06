@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { format } from 'date-fns/format';
 import type { MoodLog } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { moodEmoji, moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
@@ -66,7 +67,15 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
       disabled={!onPress}
       accessibilityLabel={spoken}
     >
-      <Text style={styles.emoji}>{log.mood === null ? '·' : moodEmoji(log.mood)}</Text>
+      {log.mood === null ? (
+        // An entry with no rating gets a neutral glyph, never a face: any face
+        // would claim a mood nobody recorded.
+        <View style={styles.noMood} accessible={false}>
+          <Ionicons name="document-text-outline" size={iconSize.lg} color={colors.textTertiary} />
+        </View>
+      ) : (
+        <Text style={styles.emoji}>{moodEmoji(log.mood)}</Text>
+      )}
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
           {log.mood === null ? 'Logged' : moodLabel(log.mood)}
@@ -107,6 +116,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     gap: spacing.sm,
   },
   emoji: { fontSize: font.lg, width: Math.round(28 * textScaleFactor), textAlign: 'center' },
+  // Same column as the emoji, so a rated and an unrated entry line up.
+  noMood: { width: Math.round(28 * textScaleFactor), alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1 },
   title: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
