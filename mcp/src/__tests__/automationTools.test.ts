@@ -100,6 +100,7 @@ describe('automations', () => {
   describe('deleting a category', () => {
     it('moves its tasks and re-points every automation that filed under it', () => {
       replica.createTask({ title: 'Old one', category: 'Calendar', newCategory: true } as never);
+      replica.createTask({ title: 'Seed', category: 'Meals', newCategory: true } as never);
       setAutomation(replica, 'eventTask', { category: 'Calendar' });
       setAutomation(replica, 'pantryCheck', { category: 'Calendar' });
       const result = deleteCategory(replica, { name: 'calendar', moveTo: 'Meals' });
