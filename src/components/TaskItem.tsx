@@ -41,7 +41,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
@@ -1479,7 +1479,8 @@ export const TaskItem = React.memo(function TaskItem({
   // Deliberately not gated on showStreakChip: the expanded panel's own streak
   // badge shows whether or not the collapsed row opted into the chip, and it
   // takes the same colour.
-  const atRecord = isStreakAtRecord(task);
+  const shownStreak = liveStreakCount(task);
+  const atRecord = isStreakAtRecord({ streakCount: shownStreak, priorBestStreak: task.priorBestStreak });
   // Orange for a run, red once it is the longest this task has had. Red is the
   // app's destructive colour elsewhere (out of stock, an expired window), so
   // it is only ever reached here alongside a flame and a rising count, where
@@ -3112,30 +3113,30 @@ export const TaskItem = React.memo(function TaskItem({
                   // Same number, different thing counted: a negative habit's run
                   // is days it survived, not times it was done.
                   isNegative
-                    ? task.streakCount > 0
-                      ? `${task.streakCount} clean ${task.streakCount === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
+                    ? shownStreak > 0
+                      ? `${shownStreak} clean ${shownStreak === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
                       : 'No clean days yet'
                   : atRecord
-                    ? `${task.streakCount} day streak, the longest this task has had`
-                    : task.streakCount > 0
-                      ? `${task.streakCount} day streak`
+                    ? `${shownStreak} day streak, the longest this task has had`
+                    : shownStreak > 0
+                      ? `${shownStreak} day streak`
                       : 'No streak yet'
                 }
               >
                 <Ionicons
-                  name={task.streakCount > 0 ? 'flame' : 'flame-outline'}
+                  name={shownStreak > 0 ? 'flame' : 'flame-outline'}
                   size={iconSize.xs}
-                  color={task.streakCount > 0 ? streakColor : colors.textSecondary}
+                  color={shownStreak > 0 ? streakColor : colors.textSecondary}
                 />
                 <Text
                   style={[
                     styles.streakChipText,
-                    task.streakCount > 0 && styles.streakChipTextActive,
+                    shownStreak > 0 && styles.streakChipTextActive,
                     atRecord && { color: streakColor },
                   ]}
                   numberOfLines={1}
                 >
-                  {task.streakCount}
+                  {shownStreak}
                 </Text>
               </View>
             )}
@@ -3589,12 +3590,12 @@ export const TaskItem = React.memo(function TaskItem({
                       <Text style={styles.expandMeta}>Unlocks {hoursUnlockTime}</Text>
                     </>
                   )}
-                  {task.streakCount > 0 && (
+                  {shownStreak > 0 && (
                     <>
                       <Text style={styles.expandMeta}> · </Text>
                       <View style={styles.streakBadge}>
                         <Ionicons name="flame" size={12} color={streakColor} />
-                        <Text style={styles.expandMeta}>{task.streakCount}</Text>
+                        <Text style={styles.expandMeta}>{shownStreak}</Text>
                       </View>
                     </>
                   )}

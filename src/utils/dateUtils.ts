@@ -787,3 +787,23 @@ export function getStreakOutcome(
   const tolerance = task.recurrenceType === 'weekly' ? STREAK_LATE_TOLERANCE_DAYS : 0;
   return daysBetween <= expectedGapDays + tolerance ? 'continued' : 'reset';
 }
+
+/**
+ * The streak to *show*: `streakCount`, except 0 once the run is already broken.
+ *
+ * A completion resets a streak lazily (`getStreakOutcome` measures the gap when
+ * the task is next done), so the stored count keeps reading "3" for as long as
+ * the task sits untouched after a missed day. Display reads this instead, and
+ * the stored count is left alone: it is what the next completion's outcome, the
+ * record fold and an undo all work from.
+ *
+ * Only a plain recurring task is judged. A negative habit's run is advanced by
+ * the rollover pass, and a chain whose steps spawn immediately only moves its
+ * streak at the end of a cycle, so a mid-cycle row's `streakDate` is not a gap.
+ */
+export function liveStreakCount(task: Task, dayResetTime?: string): number {
+  if (task.streakCount <= 0 || task.polarity === 'negative') return task.streakCount;
+  if (task.chainItems.length > 0 && !task.chainStepOnSchedule) return task.streakCount;
+  if (task.recurrenceType === 'none' || !task.streakDate) return task.streakCount;
+  return getStreakOutcome(task, dayResetTime) === 'reset' ? 0 : task.streakCount;
+}
