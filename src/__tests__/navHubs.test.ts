@@ -2,7 +2,7 @@ import {
   NAV_HUBS, NAV_MENU_ROWS, hubForRoute, hubSubtitle,
   menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleHubMembers,
   visibleMenuRows, addRecentScreen, parseRecentScreens, recentMenuDestinations, hubEntryRoute,
-  RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot,
+  RECENT_SCREEN_LIMIT, DEFAULT_TAB_ROUTES, MENU_ROUTES, normalizeTabRoutes, parseTabRoutes, setTabSlot, clearTabSlot,
   visibleTabRoutes, tabPickerGroups,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
@@ -270,7 +270,7 @@ describe('tab slots', () => {
     expect(normalizeTabRoutes(['Weight'])).toEqual(['Weight', 'Today', 'Groceries']);
     expect(normalizeTabRoutes(['Weight', 'Weight', 'Nowhere', 3, 'Mood'])).toEqual(['Weight', 'Mood', 'Today']);
     expect(normalizeTabRoutes(['A', 'B', 'C', 'D'].map(() => 'Stats').concat(['Mood', 'Tags', 'Logbook'])))
-      .toEqual(['Stats', 'Mood', 'Tags']);
+      .toEqual(['Stats', 'Mood', 'Tags', 'Logbook']);
     expect(normalizeTabRoutes('junk')).toEqual([...DEFAULT_TAB_ROUTES]);
   });
 
@@ -285,6 +285,23 @@ describe('tab slots', () => {
     for (const route of DEFAULT_TAB_ROUTES) expect(MENU_ROUTES).toContain(route);
   });
 
+  it('keeps an optional fourth tab, and never fills one in', () => {
+    expect(normalizeTabRoutes(['Weight', 'Mood', 'Stats', 'Tags', 'Logbook'])).toEqual(['Weight', 'Mood', 'Stats', 'Tags']);
+    expect(normalizeTabRoutes(['Today', 'Groceries', 'Projects'])).toHaveLength(3);
+  });
+
+  it('adds a fourth tab only from a screen that is not already one', () => {
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 3, 'Weight')).toEqual(['Today', 'Groceries', 'Projects', 'Weight']);
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 3, 'Today')).toEqual(['Today', 'Groceries', 'Projects']);
+    expect(setTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 3, 'Today'))
+      .toEqual(['Weight', 'Groceries', 'Projects', 'Today']);
+  });
+
+  it('removes the fourth tab but never one of the first three', () => {
+    expect(clearTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 3)).toEqual(['Today', 'Groceries', 'Projects']);
+    expect(clearTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 1)).toEqual(['Today', 'Groceries', 'Projects', 'Weight']);
+  });
+
   it('puts a screen in a slot', () => {
     expect(setTabSlot(['Today', 'Groceries', 'Projects'], 1, 'Weight')).toEqual(['Today', 'Weight', 'Projects']);
   });
@@ -294,7 +311,7 @@ describe('tab slots', () => {
   });
 
   it('ignores a slot out of range or a route the menu does not reach', () => {
-    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 5, 'Weight')).toEqual(['Today', 'Groceries', 'Projects']);
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 6, 'Weight')).toEqual(['Today', 'Groceries', 'Projects']);
     expect(setTabSlot(['Today', 'Groceries', 'Projects'], 1, 'RecipeDetail')).toEqual(['Today', 'Groceries', 'Projects']);
   });
 

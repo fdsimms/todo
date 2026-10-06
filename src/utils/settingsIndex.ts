@@ -730,7 +730,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // chains or the focus timer gone will search for those, not for "simplified".
   { id: 'tabRoutes', groupId: 'featureAreas', label: 'Tab bar', section: 'Tab bar',
     keywords: ['tabs', 'bottom bar', 'customize', 'shortcut', 'quick access', 'first tab',
-      'second tab', 'third tab', 'pin a screen', 'navigation', 'buttons along the bottom'] },
+      'second tab', 'third tab', 'fourth tab', 'pin a screen', 'navigation', 'buttons along the bottom'] },
   { id: 'simpleMode', groupId: 'featureAreas', label: 'Simplified mode', section: 'Feature areas',
     keywords: ['simple', 'simplify', 'basic', 'minimal', 'declutter', 'overwhelming', 'advanced',
       'hide', 'remove', 'disable', 'turn off', 'chains', 'timed', 'daily target', 'quota',
