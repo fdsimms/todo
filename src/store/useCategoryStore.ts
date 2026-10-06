@@ -366,6 +366,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'waterShortfallTaskCategory', current: s.waterShortfallTaskCategory, assign: s.setWaterShortfallTaskCategory };
     case 'snackNudge':
       return { key: 'snackNudgeTaskCategory', current: s.snackNudgeTaskCategory, assign: s.setSnackNudgeTaskCategory };
+    case 'bookEvent':
+      return { key: 'bookEventTaskCategory', current: s.bookEventTaskCategory, assign: s.setBookEventTaskCategory };
   }
 }
 

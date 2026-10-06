@@ -390,6 +390,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'weighInTasks',
   'waterShortfallTasks',
   'snackNudgeTasks',
+  'bookEventTasks',
 
   // Behaviour.
   'newTaskDefaults',
@@ -466,6 +467,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Named places ("Home") and the address behind each. A name, text and an
   // optional map pin, so they mean the same on every device.
   'savedPlaces',
+  // Events kept for re-adding ("Optometrist"). The calendar is held by name,
+  // not id, so an entry means the same on every device (`savedEvents.ts`).
+  'savedEvents',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',
