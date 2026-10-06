@@ -470,6 +470,9 @@ export default function AppNavigator() {
       )
     ),
     tabBarActiveTintColor: colors.accent,
+    // Over the glass the pale accent and the grey inactive icons read as
+    // near-equal brightness, so the current tab also gets a tinted plate.
+    tabBarActiveBackgroundColor: colors.accentSubtle,
     tabBarInactiveTintColor: colors.textTertiary,
     tabBarShowLabel: false,
     // react-navigation's icon-only item is `justifyContent: 'flex-start'`, so
