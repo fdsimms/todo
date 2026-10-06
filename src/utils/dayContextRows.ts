@@ -53,6 +53,25 @@ const SLOT_RANK = new Map(MEAL_SLOTS.map((slot, i) => [slot, i]));
 
 const UNCATEGORIZED = '';
 
+/** The caption an all-day event carries, named so a reader can tell it from a clock time. */
+export const ALL_DAY_CAPTION = 'All day';
+
+/** How far ahead the next event gets an "in 45 min" cue, in minutes. */
+const STARTS_IN_HORIZON_MIN = 180;
+
+/**
+ * "in 45 min" / "in 2 hr" for an event that starts within the horizon, else
+ * null. Rounds up to the minute so a cue never reads "in 0 min" while the event
+ * is still ahead, and to a whole hour past 90 minutes because "in 2 hr" is what
+ * somebody glancing at a list wants, not "in 1 hr 52 min".
+ */
+export function startsInLabel(start: number, now: number): string | null {
+  const minutes = Math.ceil((start - now) / 60000);
+  if (minutes <= 0 || minutes > STARTS_IN_HORIZON_MIN) return null;
+  if (minutes < 90) return `in ${minutes} min`;
+  return `in ${Math.round(minutes / 60)} hr`;
+}
+
 /**
  * Today's events as rows, in the order they'll be read.
  *
@@ -117,7 +136,7 @@ export function eventContextRows(
         sourceId: event.id,
         kind: 'event',
         title: event.title || 'Event',
-        caption: event.allDay ? 'All day'
+        caption: event.allDay ? ALL_DAY_CAPTION
           : running ? 'Now'
           : formatTimeOfDay(new Date(start), use24Hour),
         category,
@@ -130,9 +149,16 @@ export function eventContextRows(
     });
   }
 
-  return rows
-    .sort((a, b) => (a.allDay === b.allDay ? a.start - b.start : a.allDay ? -1 : 1))
-    .map(r => r.row);
+  const sorted = rows.sort((a, b) =>
+    (a.allDay === b.allDay ? a.start - b.start : a.allDay ? -1 : 1));
+
+  // Only the next timed event that hasn't started gets a cue. One row carrying
+  // it is the point: a cue on every row would be a column of countdowns, and
+  // the one that matters is the one coming up.
+  const next = sorted.find(r => !r.allDay && !r.row.now && r.start > at);
+  if (next) next.row.startsIn = startsInLabel(next.start, at);
+
+  return sorted.map(r => r.row);
 }
 
 /**
