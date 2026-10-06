@@ -2,6 +2,10 @@ import {
   isNegativeTask,
   slipsToday,
   isCleanToday,
+  isFailedToday,
+  slipAllowanceOf,
+  nextSlipIsFree,
+  lastSlipWasFree,
   slipPatch,
   undoSlipPatch,
   cleanDayPatch,
@@ -19,6 +23,7 @@ function habit(over: Partial<NegativeHabitFields> = {}): NegativeHabitFields {
     polarity: 'negative',
     slipCount: 0,
     slipDate: null,
+    slipAllowance: null,
     streakCount: 0,
     streakDate: null,
     previousStreakCount: 0,
@@ -181,5 +186,72 @@ describe('cleanDayPatch', () => {
     const slipped = { ...habit({ streakCount: 12, streakDate: iso(1) }), ...slipPatch(habit({ streakCount: 12, streakDate: iso(1) }), day(10)) } as NegativeHabitFields;
     expect(cleanDayPatch(slipped, day(11))).toBeNull();
     expect(cleanDayPatch(slipped, day(13))).toMatchObject({ streakCount: 2, streakDate: iso(12) });
+  });
+});
+
+describe('slip allowance', () => {
+  const allowing = (n: number, over: Partial<NegativeHabitFields> = {}) =>
+    habit({ slipAllowance: n, streakCount: 12, streakDate: iso(9), ...over });
+
+  it('reads null, zero, negative and fractional values safely', () => {
+    expect(slipAllowanceOf({ slipAllowance: null })).toBe(0);
+    expect(slipAllowanceOf({})).toBe(0);
+    expect(slipAllowanceOf({ slipAllowance: 0 })).toBe(0);
+    expect(slipAllowanceOf({ slipAllowance: -2 })).toBe(0);
+    expect(slipAllowanceOf({ slipAllowance: 2.9 })).toBe(2);
+  });
+
+  it('records a slip inside the allowance without touching the streak', () => {
+    expect(slipPatch(allowing(2), day(10))).toEqual({ slipCount: 1, slipDate: iso(10) });
+    const second = allowing(2, { slipCount: 1, slipDate: iso(10) });
+    expect(slipPatch(second, day(10))).toEqual({ slipCount: 2, slipDate: iso(10) });
+  });
+
+  it('breaks the streak on the slip after the allowance, once', () => {
+    const spent = allowing(2, { slipCount: 2, slipDate: iso(10) });
+    const patch = slipPatch(spent, day(10));
+    expect(patch).toMatchObject({ slipCount: 3, streakCount: 0, streakDate: iso(10), previousStreakCount: 12 });
+    const after = allowing(2, { slipCount: 3, slipDate: iso(10), streakCount: 0, streakDate: iso(10), previousStreakCount: 12 });
+    expect(slipPatch(after, day(10))).toEqual({ slipCount: 4, slipDate: iso(10) });
+  });
+
+  it('resets the allowance each day', () => {
+    const yesterday = allowing(2, { slipCount: 2, slipDate: iso(9) });
+    expect(nextSlipIsFree(yesterday, day(10))).toBe(true);
+    expect(slipPatch(yesterday, day(10))).toEqual({ slipCount: 1, slipDate: iso(10) });
+  });
+
+  it('says whether the next slip is free and whether the last one was', () => {
+    expect(nextSlipIsFree(habit(), day(10))).toBe(false);
+    expect(nextSlipIsFree(allowing(1), day(10))).toBe(true);
+    expect(nextSlipIsFree(allowing(1, { slipCount: 1, slipDate: iso(10) }), day(10))).toBe(false);
+    expect(lastSlipWasFree(allowing(2, { slipCount: 2, slipDate: iso(10) }), day(10))).toBe(true);
+    expect(lastSlipWasFree(allowing(2, { slipCount: 3, slipDate: iso(10) }), day(10))).toBe(false);
+    expect(lastSlipWasFree(allowing(2), day(10))).toBe(false);
+  });
+
+  it('draws the day as failed only once it is past the allowance', () => {
+    expect(isFailedToday(allowing(2, { slipCount: 2, slipDate: iso(10) }), day(10))).toBe(false);
+    expect(isFailedToday(allowing(2, { slipCount: 3, slipDate: iso(10) }), day(10))).toBe(true);
+    // No allowance reads exactly as isCleanToday did.
+    expect(isFailedToday(habit({ slipCount: 1, slipDate: iso(10) }), day(10))).toBe(true);
+    expect(isFailedToday(habit(), day(10))).toBe(false);
+  });
+
+  it('undoes a free slip as a count only, and the breaking slip as a restore', () => {
+    const free = allowing(2, { slipCount: 1, slipDate: iso(10) });
+    expect(undoSlipPatch(free, day(10))).toEqual({ slipCount: 0, slipDate: iso(10) });
+
+    const broke = slipPatch(allowing(1, { slipCount: 1, slipDate: iso(10) }), day(10));
+    const broken = { ...allowing(1, { slipCount: 1, slipDate: iso(10) }), ...broke } as NegativeHabitFields;
+    expect(undoSlipPatch(broken, day(10))).toMatchObject({ slipCount: 1, streakCount: 12, streakDate: iso(9) });
+
+    const past = { ...broken, slipCount: 3 } as NegativeHabitFields;
+    expect(undoSlipPatch(past, day(10))).toEqual({ slipCount: 2, slipDate: iso(10) });
+  });
+
+  it('does not give back an older break when the allowance is lowered mid-day', () => {
+    const lowered = allowing(1, { slipCount: 2, slipDate: iso(10), streakCount: 3, streakDate: iso(9), previousStreakCount: 40 });
+    expect(undoSlipPatch(lowered, day(10))).toEqual({ slipCount: 1, slipDate: iso(10) });
   });
 });

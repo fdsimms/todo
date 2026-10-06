@@ -1046,6 +1046,8 @@ const taskFieldsShape = {
   }).nullable().optional().describe('A time of day to do it in. null removes it.'),
   habit: z.enum(['do', 'avoid']).optional()
     .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),
+  slipAllowance: z.number().int().min(1).max(20).nullable().optional()
+    .describe('For an "avoid" habit: how many slips a day it absorbs. Those slips are counted but leave the streak alone and cost nothing; the next one resets it. null removes the allowance, and the first slip of a day then resets it.'),
   dueDaysFromEvent: z.number().int().optional()
     .describe('Instead of dueDate: days from the project\'s event date, negative for before ("get the license 60 days before" is -60, "thank-you notes a week after" is 7). Becomes an ordinary date; it does not follow the event later, but moving the event with moveTasks moves it.'),
   deadlineDaysFromEvent: z.number().int().optional()
@@ -2414,7 +2416,7 @@ function registerWriteTools(
 
   server.tool(
     'log_slip',
-    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
+    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on, unless the habit has a slip allowance and today is still inside it: then the slip is counted and nothing else changes. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

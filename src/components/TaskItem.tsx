@@ -42,7 +42,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
-import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
+import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -1357,7 +1357,7 @@ export const TaskItem = React.memo(function TaskItem({
   const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
   const offersMealLog = offersMealLogOnCompletion(task, mealLogPromptEnabled);
 
-  const slipped = isNegative && !isCleanToday(task, getCurrentDayStart());
+  const slipped = isNegative && isFailedToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
 
   // A quota task is logged a unit at a time rather than ticked off once, so
@@ -1848,7 +1848,7 @@ export const TaskItem = React.memo(function TaskItem({
   // (handleSlipUndo), the same affordance a logged quota unit has.
   const handleSlip = async () => {
     await haptics.warning();
-    confirmSlip(task, penaltyShieldEnabled, () => logSlip(task.id));
+    confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
   };
 
   const handleSlipUndo = async () => {
@@ -3146,7 +3146,9 @@ export const TaskItem = React.memo(function TaskItem({
               // at exactly the point it starts being the thing being recorded.
               <View style={styles.metaChip}>
                 <Text style={styles.slipLabel} numberOfLines={1}>
-                  {slipsLoggedToday} slip{slipsLoggedToday === 1 ? '' : 's'} today
+                  {slipAllowanceOf(task) > 0
+                    ? `${slipsLoggedToday} of ${slipAllowanceOf(task)} allowed slip${slipAllowanceOf(task) === 1 ? '' : 's'} today`
+                    : `${slipsLoggedToday} slip${slipsLoggedToday === 1 ? '' : 's'} today`}
                 </Text>
               </View>
             )}

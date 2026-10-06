@@ -212,7 +212,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
-import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
+import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -4181,9 +4181,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   logSlip(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isNegativeTask(task) || task.archived) return;
-    const updated = { ...task, ...slipPatch(task, getCurrentDayStart()) };
+    const dayStart = getCurrentDayStart();
+    // A slip inside the day's allowance is recorded and nothing else: no block,
+    // no coins, and slipPatch leaves the streak alone.
+    const free = nextSlipIsFree(task, dayStart);
+    const updated = { ...task, ...slipPatch(task, dayStart) };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    if (free) {
+      get().setLastAction({
+        label: 'Logged',
+        undo: () => get().undoSlip(id),
+      });
+      return;
+    }
     // The tap is the failure, so the cost lands with it rather than waiting for
     // a sweep to notice. Deliberately not undone by `undoSlip` below — see
     // slipPenaltyUntil for why taking the block back would be a way out of
@@ -4198,7 +4209,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
     get().setLastAction({
-      label: task.streakCount > 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
+      label: task.streakCount > 0 && updated.streakCount === 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
       undo: () => get().undoSlip(id),
     });
   },
@@ -4206,12 +4217,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   undoSlip(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isNegativeTask(task)) return;
-    const patch = undoSlipPatch(task, getCurrentDayStart());
+    const dayStart = getCurrentDayStart();
+    const patch = undoSlipPatch(task, dayStart);
     if (!patch) return;
+    // A free slip wrote no coin entry, so there is nothing of its own to take
+    // back, and the latest loss entry belongs to some other slip.
+    const free = lastSlipWasFree(task, dayStart);
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    useRewardStore.getState().takeBackSlip(id);
+    if (!free) useRewardStore.getState().takeBackSlip(id);
   },
 
   sweepTaskPenalties() {
