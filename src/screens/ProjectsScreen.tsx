@@ -933,7 +933,7 @@ const ProjectRow = React.memo(function ProjectRow({
             )}
             {nextStep && (
               <Text style={styles.nextText} numberOfLines={1}>
-                <Text style={styles.nextLabel}>Next </Text>
+                <Text style={styles.nextLabel}>Next: </Text>
                 {nextStep}
               </Text>
             )}
