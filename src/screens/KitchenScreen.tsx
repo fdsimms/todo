@@ -61,7 +61,6 @@ import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/Grocer
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
-import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { PantryReviewSheet } from '../components/PantryReviewSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
@@ -216,15 +215,7 @@ export function KitchenScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
-  // What happened to past containers, the same sheet the meal plan's fridge
-  // card opens. Offered on the same condition that card offers it: something
-  // has been closed out, since an empty history is a sheet with nothing in it.
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [cookWithOpen, setCookWithOpen] = useState(false);
-  const hasFridgeHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
-  // Lazily, then kept: most pantries never open it, and a sheet that has been
-  // opened has to stay mounted for its ordered close (see useSheetMount).
-  const mountHistory = useSheetMount(historyOpen);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
@@ -785,7 +776,9 @@ export function KitchenScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Pantry"
-        subtitle={entries.length > 0 ? describeKitchen(entries) : undefined}
+        // "40 things in the pantry · 2 to use up" wrapped mid-phrase beside the
+        // action buttons, so each part gets its own line.
+        subtitle={entries.length > 0 ? describeKitchen(entries).split(' · ').join('\n') : undefined}
         actions={withScreenSettings([
           // Gated on a key for the reason the shopping list's own receipt
           // button is: the reading is the whole feature, and without one this
@@ -822,32 +815,17 @@ export function KitchenScreen() {
             onPress: () => setReviewOpen(true),
             accessibilityLabel: 'Go through the pantry one thing at a time',
           },
-          ...(hasFridgeHistory
-            ? [{
-                icon: 'time-outline' as const,
-                onPress: () => { haptics.tap(); setHistoryOpen(true); },
-                accessibilityLabel: 'What happened to past leftovers',
-              }]
-            : []),
+          // The recipe finder, opened on "What I have": the pantry is the
+          // other half of that question, so this is where it's asked from.
+          {
+            icon: 'search-outline' as const,
+            onPress: () => { haptics.tap(); setCookWithOpen(true); },
+            accessibilityLabel: 'Find recipes that use what you have',
+          },
         ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="Kitchen" />
-      {/* The recipe finder, opened on "What I have": the pantry is the other
-          half of that question, so this is where it's asked from. The same
-          quiet link the Recipes and Cookbooks screens carry. */}
-      <View style={styles.cookWithRow}>
-        <TouchableOpacity
-          style={styles.cookWith}
-          onPress={() => { haptics.tap(); setCookWithOpen(true); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Find recipes that use what you have"
-        >
-          <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
-          <Text style={styles.cookWithText}>Cook with…</Text>
-        </TouchableOpacity>
-      </View>
       <TipHost screen="kitchen" />
       {!!activeTripShop && (
         <ActiveTripBanner
@@ -984,18 +962,6 @@ export function KitchenScreen() {
       />
 
       <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
-
-      {mountHistory && (
-        <FridgeHistorySheet
-          visible={historyOpen}
-          leftovers={leftovers}
-          weekStartsOn={weekStartsOn}
-          // The history closes itself before this runs, so the container's
-          // sheet below opens in its place rather than on top of it.
-          onOpen={l => setOpenLeftoverId(l.id)}
-          onClose={() => setHistoryOpen(false)}
-        />
-      )}
 
       <LeftoverSheet
         visible={openLeftover !== null}
@@ -1137,21 +1103,5 @@ function makeStyles(colors: Colors) {
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
     outButton: { padding: spacing.xxs },
-    cookWithRow: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      marginHorizontal: spacing.md,
-      marginTop: spacing.xs,
-    },
-    cookWith: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-    },
-    cookWithText: {
-      color: colors.textTertiary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.medium,
-    },
   });
 }

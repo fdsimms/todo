@@ -733,55 +733,40 @@ export function RecipesScreen() {
           : filtering
             ? `${visible.length} of ${recipes.length} recipes`
             : `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`}
-        actions={withScreenSettings(recipes.length > 0 ? [
+        actions={withScreenSettings([
+          // The ingredient finder, beside the shelf it searches: it reads the
+          // recipes here and the cookbooks' indexes, which show nowhere else
+          // (see CookbookIndexEntry).
           {
-            icon: 'funnel',
+            icon: 'search-outline',
+            onPress: () => { haptics.tap(); setCookWithVisible(true); },
+            accessibilityLabel: 'Find recipes by ingredient',
+          },
+          // A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't
+          // a working surface the way Groceries/Recipes/Meal plan/Pantry are.
+          {
+            icon: 'book-outline',
+            onPress: () => { haptics.tap(); navigation.navigate('Cookbooks'); },
+            accessibilityLabel: 'Open cookbooks',
+          },
+          ...(recipes.length > 0 ? [{
+            icon: 'funnel' as const,
             onPress: () => { haptics.tap(); setSortFilterVisible(true); },
             active: activeFilterCount > 0,
             badge: activeFilterCount,
             accessibilityLabel: 'Sort and filter recipes',
           },
           {
-            icon: 'grid-outline',
+            icon: 'grid-outline' as const,
             onPress: () => { haptics.tap(); setGroupByMealType(g => !g); },
             active: groupByMealType,
             accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
-          },
-        ] : undefined, screenSettings.action)}
+          }] : []),
+        ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
-      <View style={styles.cookbookLinksRow}>
-        {/* The ingredient finder, beside the shelf it searches: it reads the
-            recipes here and the cookbooks' indexes, which show nowhere else
-            (see CookbookIndexEntry). */}
-        <TouchableOpacity
-          style={styles.cookbooksLink}
-          onPress={() => { haptics.tap(); setCookWithVisible(true); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Find recipes by ingredient"
-        >
-          <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
-          <Text style={styles.cookbooksLinkText}>Cook with…</Text>
-        </TouchableOpacity>
-        {/* A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't a
-            working surface the way Groceries/Recipes/Meal plan/Pantry are, so
-            it doesn't need equal billing in the pill row — just a way in from
-            the recipe box it organizes. */}
-        <TouchableOpacity
-          style={styles.cookbooksLink}
-          onPress={() => { haptics.tap(); navigation.navigate('Cookbooks'); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Open cookbooks"
-        >
-          <Ionicons name="albums-outline" size={13} color={colors.textTertiary} />
-          <Text style={styles.cookbooksLinkText}>Cookbooks</Text>
-          <Ionicons name="chevron-forward" size={13} color={colors.textTertiary} />
-        </TouchableOpacity>
-      </View>
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
