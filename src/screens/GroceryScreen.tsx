@@ -22,7 +22,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
-import { useScreenSettings } from '../hooks/useScreenSettings';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
@@ -1605,7 +1605,7 @@ export function GroceryScreen() {
                 .join(' · ')
             : undefined
         }
-        actions={actions}
+        actions={withScreenSettings(actions, screenSettings.action)}
       />
       <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
@@ -1719,19 +1719,6 @@ export function GroceryScreen() {
                   label="Scan a receipt"
                   icon="receipt-outline"
                   onPress={() => openReceipt('list')}
-                />
-              </View>
-            )}
-            {/* The list's own settings (`SCREEN_SETTINGS`), down here rather
-                than as a fifth header icon, for the reason the header comment
-                above gives for Clear. */}
-            {screenSettings.hasSettings && (
-              <View style={styles.clearWrap}>
-                <InlineAction
-                  label="Grocery settings"
-                  icon="settings-outline"
-                  variant="neutral"
-                  onPress={() => screenSettings.open(null)}
                 />
               </View>
             )}
