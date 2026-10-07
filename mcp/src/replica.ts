@@ -2698,6 +2698,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const dry = new Proxy(state, { get: (target, prop) => (typeof prop === 'string' && prop.startsWith('set') ? () => {} : Reflect.get(target, prop)) });
       for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(dry, value);
       db.dbTransaction(() => {
+        // A readings category the person names that doesn't exist yet is made, as the app's own
+        // "Show Health readings under" does; the dry run above must not, so it lives here.
+        if (typeof changes.healthCategory === 'string') ensureCategory(changes.healthCategory.trim());
         for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(useSettingsStore.getState(), value);
       });
       refresh();

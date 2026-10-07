@@ -43,4 +43,14 @@ describe('settings', () => {
     const result = updateSettings(replica, { weekendNudgeLeadDays: 14 });
     expect(result.changed[0].to).toBeLessThanOrEqual(14);
   });
+
+  it('files Health readings under a category, creating it, or hides them', () => {
+    const result = updateSettings(replica, { healthCategory: 'Activity' });
+    expect(result.changed[0]).toMatchObject({ setting: 'healthCategory', to: 'Activity' });
+    expect(replica.categories().map(c => c.name)).toContain('Activity');
+    expect(mockRaw.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'healthCategory'")?.value).toBe('Activity');
+    expect(() => updateSettings(replica, { healthCategory: '  ' })).toThrow(/category name/);
+    updateSettings(replica, { healthCategory: null });
+    expect(getSettings(replica).settings.features.healthCategory.value).toBeNull();
+  });
 });
