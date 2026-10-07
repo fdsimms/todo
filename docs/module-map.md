@@ -146,6 +146,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature, describeForgetLoss
 - `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameRows, shopLinkRow, newShopRow, renamedShopRow, SubLinkOptions, clearOtherStandingLinks, +8 more
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
+- `src/utils/groceryMerge.ts` — laterOf, pickPriceFields, MergeRows, MergePlan, planMergeItems
 - `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, looksLikeAlternativeList, resolveGroceryTokens, +1 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
 - `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +19 more

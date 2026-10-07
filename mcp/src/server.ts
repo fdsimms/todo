@@ -82,7 +82,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, reorderProjects, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, mergeGroceryItems, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, reorderPeople, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
@@ -2242,7 +2242,7 @@ function registerWriteTools(
 
   server.tool(
     'save_store',
-    "Add a store, or rename one or set how its receipts read. store is an existing store's name or id to change; omit it (and pass name) to add a new one. receiptStyle itemized is an ordinary receipt, none is a store whose receipts are not worth reading. Deleting a store is done in the app.",
+    "Add a store, or rename one or set how its receipts read. store is an existing store's name or id to change; omit it (and pass name) to add a new one. receiptStyle itemized is an ordinary receipt, none is a store whose receipts are not worth reading. update_store deletes one or sets its aisles.",
     {
       store: z.string().optional(),
       name: z.string().optional(),
@@ -2253,6 +2253,230 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => saveStore(replica, input)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not save that store.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_ingredients_to_list',
+    "Put a recipe's ingredients (recipeId, optionally scaled), or every planned meal's between from and to (default the coming week), on a grocery list, as the app's Add to list sheets do. Ingredients the app thinks are needed go on; ones it thinks are on hand, staples you keep, and optional ones are left off and listed in leftOff, so ask the person and pass include with the names they want. exclude drops ones the default would add. What is already in the cart is skipped, and a recipe amount tops up one already on the list. Preview first: it shows every row.",
+    {
+      recipeId: z.string().optional(),
+      scale: z.number().optional().describe('With recipeId: 0.5 halves it, 2 doubles it.'),
+      from: z.string().optional().describe('YYYY-MM-DD. Without recipeId: the first day of planned meals. Default today.'),
+      to: z.string().optional().describe('YYYY-MM-DD. Default six days after from.'),
+      include: z.array(z.string()).optional(),
+      exclude: z.array(z.string()).optional(),
+      list: z.string().optional().describe('A separate list by name or id. The list at home when omitted.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => addIngredientsToList(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the ingredients.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_choice_to_list',
+    'Put an either/or on a grocery list ("butter or margarine", "apples or pears"): each option is its own row, and checking one off in the app takes the rest off. settle_choice decides it from here.',
+    {
+      options: z.array(z.object({ name: z.string().min(1), quantity: z.string().nullable().optional() })).min(2),
+      list: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => addChoiceToList(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the choice.' });
+      }
+    }
+  );
+
+  server.tool(
+    'settle_choice',
+    'Decide an either/or on a list: keep the option named and take the others off, as checking one off does. keepAll: true ends the choice and keeps every option as an ordinary row.',
+    {
+      item: z.string().min(1).describe('One option, by name or id.'),
+      keepAll: z.boolean().optional(),
+      list: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => settleChoice(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not settle the choice.' });
+      }
+    }
+  );
+
+  server.tool(
+    'swap_for_substitute',
+    "Swap an item on a list for one of its substitutes (get_grocery_item lists them), as the app's swap does: the substitute takes its place, with the amount converted where the link has a ratio, and the item comes off the list but stays in the catalog.",
+    {
+      item: z.string().min(1),
+      substitute: z.string().min(1),
+      list: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => swapForSubstitute(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not swap.' });
+      }
+    }
+  );
+
+  server.tool(
+    'clear_grocery_list',
+    "Empty a grocery list, as the app's Clear list does: everything comes off it, items with history stay in the catalog, and ones with nothing recorded about them are deleted. Ends a shopping trip. To record a shop, use finish_grocery_trip instead. Only on the person's word.",
+    { list: z.string().optional() },
+    async input => {
+      try {
+        return json(await withWrite(() => clearGroceryList(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not clear the list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_shopping_trip',
+    'Start a shopping trip at a store (store, optionally budget), change the budget of the trip in progress (budget alone, null for none), or end it (end: true) without recording anything. grocery_setup shows the trip. finish_grocery_trip records what was bought.',
+    {
+      store: z.string().optional(),
+      budget: z.number().nullable().optional().describe('In the person\'s currency, e.g. 80 or 79.50.'),
+      end: z.literal(true).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setShoppingTrip(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the trip.' });
+      }
+    }
+  );
+
+  server.tool(
+    'mark_unavailable',
+    "Note that a store doesn't carry an item, or (brandOnly) the item's preferred brand, as the app's \"not at this store\" does. unavailable: false takes the claim back.",
+    {
+      item: z.string().min(1),
+      store: z.string().min(1),
+      unavailable: z.boolean().optional().describe('Default true.'),
+      brandOnly: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => markUnavailable(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not mark it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_nutrition_panel',
+    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. Recipes and the food log read it.`,
+    {
+      item: z.string().min(1),
+      boxId: z.string().optional(),
+      panel: z.object({
+        basis: z.enum(['per100g', 'per100ml', 'perServing']),
+        amounts: z.record(z.number()),
+        servingGrams: z.number().nullable().optional(),
+        servingText: z.string().nullable().optional().describe('As the label prints it: "1 cup (240ml)".'),
+        estimated: z.boolean().optional(),
+      }).nullable(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setNutritionPanel(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the panel.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_aisle',
+    'Add an aisle to the walk order, rename one (newName: every item, remembered filing and store order follows), delete one (its items move to Other), or mark one non-food (cleaning, toiletries: left out of the pantry and nutrition). Other cannot be renamed or deleted. Only on the person\'s word: the aisles are their walk round the shop.',
+    {
+      name: z.string().min(1),
+      newName: z.string().optional(),
+      delete: z.literal(true).optional(),
+      nonFood: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveAisle(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the aisle.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_aisles',
+    'Put the aisles in walk order: the ones named first, the rest after in their order, Other last.',
+    { names: z.array(z.string().min(1)).min(1) },
+    async ({ names }) => {
+      try {
+        return json(await withWrite(() => reorderAisles(replica, names)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder the aisles.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_store',
+    "Change a store's own settings: leave it out of the app's store suggestions, say which aisles it has, set its own walk order (aisleOrder; null follows the usual one), or delete it (delete: true), which takes its item links, the prices recorded there and its receipt names with it. Add or rename a store with save_store.",
+    {
+      store: z.string().min(1),
+      delete: z.literal(true).optional(),
+      excludeFromSuggestions: z.boolean().optional(),
+      aisles: z.array(z.string()).nullable().optional().describe('The aisles this store has; null for all of them.'),
+      aisleOrder: z.array(z.string()).nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => updateStore(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the store.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_stores_and_lists',
+    'Put the stores (stores) and or the separate grocery lists (lists) in an order: the ones named first, the rest after.',
+    {
+      stores: z.array(z.string().min(1)).optional(),
+      lists: z.array(z.string().min(1)).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => reorderGroceryPlaces(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'merge_grocery_items',
+    "Merge one grocery item into another when they are the same thing under two names (\"cilantro\" into \"coriander\"), as the app's merge does: purchase history, brands, store links and prices, substitutes, receipt names, list entries, recipe lines and supply tasks move to the one kept, and the other is gone. Cannot be undone from Activity, so only on the person's word, and preview first.",
+    {
+      from: z.string().min(1).describe('The item that goes, by name or id.'),
+      into: z.string().min(1).describe('The item kept.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => mergeGroceryItems(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not merge.' });
       }
     }
   );

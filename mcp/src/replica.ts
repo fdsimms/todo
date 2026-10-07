@@ -42,6 +42,7 @@ import type {
   DeliverableKind,
   EventTaskRule,
   FoodLogEntry,
+  FoodNutrition,
   GeneratedKind,
   HealthRule,
   Milestone,
@@ -123,6 +124,36 @@ export interface CategorySettingsPatch {
   defaultTimeSegments?: TimeOfDay[];
   /** Days (0 = Sunday) and "HH:MM" bounds the category is active; null removes the schedule. */
   schedule?: { days: number[]; start: string; end: string } | null;
+}
+
+export interface PlannedRow {
+  name: string;
+  quantity: string | null;
+  aisle: string | null;
+  sourceRecipeId?: string | null;
+  sourceRecipeTitle?: string | null;
+  choiceGroup?: string | null;
+}
+
+export interface PlannedIngredientRow {
+  name: string;
+  nameKey: string;
+  quantity: string;
+  aisle: string | null;
+  category: 'needToBuy' | 'alreadyOnList' | 'inCart' | 'probablyHave' | 'staple';
+  reason: string | null;
+  sources: string[];
+  optional: boolean;
+  choiceGroup: string | null;
+  sourceRecipeId: string | null;
+  sourceRecipeTitle: string | null;
+}
+
+export interface PlannedAddResult {
+  added: GroceryItem[];
+  alreadyOnList: GroceryItem[];
+  toppedUp: GroceryItem[];
+  skippedInCart: GroceryItem[];
 }
 
 type DbModule = typeof import('../../src/db/database');
@@ -1207,6 +1238,42 @@ export interface Replica {
   tagList(): string[];
 
   /**
+   * A recipe's ingredients (scaled), or every planned meal's in a day range,
+   * classified against a list the way the app's two add-to-list sheets
+   * classify them (`classifyPlanned`): need to buy, already on the list, in
+   * the cart, probably have, staple.
+   */
+  plannedIngredients(source: { recipeId: string; scale?: number } | { from: string; to: string }, listId: string | null): PlannedIngredientRow[];
+  /** Put planned rows on a list, as the app's `addFromPlan`: in the cart is skipped, on the list is topped up. */
+  addPlannedToList(rows: PlannedRow[], listId: string | null): PlannedAddResult;
+  /** Put an either/or on a list: each option is a row, and ticking one takes the rest off. */
+  addChoiceToList(options: { name: string; quantity?: string | null }[], listId: string | null): GroceryItem[];
+  /** Decide an either/or for the option given (`resolveChoice`), or end the choice and keep every option (`clearChoice`). */
+  settleChoice(itemId: string, listId: string | null, keepAll: boolean): { kept: GroceryItem[]; removed: GroceryItem[] };
+  /** Swap a row on a list for one of its substitutes, as the app's swap does. */
+  swapForSubstitute(itemId: string, subItemId: string, listId: string | null): { removed: GroceryItem; added: GroceryItem };
+  /** Empty a list, as the app's Clear list: rows with nothing worth keeping are deleted, the rest stay in the catalog. Ends the trip. */
+  clearGroceryList(listId: string | null): { cleared: number; deleted: string[] };
+  /** Start a shopping trip at a store (optionally with a budget in minor units), change its budget, or end it. */
+  setTrip(change: { shopId: string; budgetMinor?: number | null } | { budgetMinor: number | null } | { end: true }): { shop: Shop | null; startedAt: string | null; budgetMinor: number | null };
+  /** Mark an item (or just its preferred brand) unavailable at a store, or the brand available again. */
+  setItemUnavailable(itemId: string, shopId: string, unavailable: boolean, brandOnly: boolean): void;
+  /** An item's nutrition panel, or a box's. null removes it. */
+  setNutritionPanel(itemId: string, boxId: string | null, panel: FoodNutrition | null): void;
+  /** Add, rename or delete an aisle, or mark it non-food, as the aisle editor does. */
+  saveAisle(name: string, change: { newName?: string; delete?: boolean; nonFood?: boolean }): { aisle: string | null; itemsMoved: number };
+  /** The aisles in walk order: the named first, the rest after, Other last. */
+  reorderAisles(names: string[]): string[];
+  /** Delete a store, with its links and receipt names. Ends the trip if it was there. */
+  deleteShop(id: string): Shop;
+  /** A store's own settings: left out of suggestions, which aisles it has, and its own walk order. */
+  updateShopSettings(id: string, patch: { excludeFromSuggestions?: boolean; aisles?: string[] | null; aisleOrder?: string[] | null }): Shop;
+  reorderShops(ids: string[]): void;
+  reorderGroceryLists(ids: string[]): void;
+  /** Merge one item into another, as the app's merge (`planMergeItems`). */
+  mergeGroceryItems(fromId: string, intoId: string): { merged: GroceryItem; from: GroceryItem };
+
+  /**
    * Put a name on the shopping list, exactly as typing it into the app would.
    *
    * `planGroceryAdd` (`src/utils/groceryAdd.ts`) decides everything; this only
@@ -1288,6 +1355,10 @@ export interface Replica {
   aisleOverrides(): Record<string, string>;
   /** The aisles that exist, in the person's walk order. */
   aisleNames(): string[];
+  /** Aisles marked non-food. */
+  nonFoodAisles(): string[];
+  /** The shopping trip in progress, while it is live (`resolveActiveTrip`), or null. */
+  activeTrip(): { shop: Shop; startedAt: string; budgetMinor: number | null } | null;
   updateGroceryItem(id: string, change: GroceryItemChange): GroceryItemOutcome;
   /** Add, edit or delete one brand/variant box of an item. Returns what it left, or null for a delete. */
   saveGroceryBox(itemId: string, input: GroceryBoxInput): ItemProduct | null;
@@ -3906,6 +3977,439 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { item: plan.item, isNew: plan.isNew, wasOnList };
     },
 
+    plannedIngredients(source: { recipeId: string; scale?: number } | { from: string; to: string }, listId: string | null): PlannedIngredientRow[] {
+      const mpg = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const lists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const items = db.dbGetAllGroceryItems();
+      const products = db.dbGetAllItemProducts();
+      const subs = db.dbGetAllItemSubLinks();
+      const recipes = db.dbGetAllRecipes();
+      const recipesById = new Map(recipes.map(r => [r.id, r]));
+      const swaps = standingSwaps.standingSwapMap(subs, items);
+      const onHand = grocerySuggest.onHandNameKeys(items, new Date(), products);
+      let planned: ReturnType<typeof mpg.collectPlannedIngredients>;
+      if ('recipeId' in source) {
+        const recipe = recipesById.get(source.recipeId);
+        if (!recipe) throw new Error(`No recipe with id ${source.recipeId}. list_recipes names them.`);
+        planned = mpg.plannedIngredientsForRecipe(recipe, recipesById, { onHand }, source.scale ?? 1, swaps);
+      } else {
+        const entries = db.dbGetMealPlanEntries(source.from, source.to);
+        planned = mpg.collectPlannedIngredients(entries, recipesById, { startKey: source.from, endKey: source.to }, swaps, onHand);
+      }
+      const classified = mpg.classifyPlanned(planned, items, new Date(), subs, lists.trolleyStateFor(db.dbGetAllGroceryListEntries(), listId), products);
+      return classified.map(r => ({
+        name: r.name, nameKey: r.nameKey, quantity: r.quantity, aisle: r.aisle, category: r.category, reason: r.reason ?? null,
+        sources: r.sources, optional: !!r.optional, choiceGroup: r.choiceGroup ?? null,
+        sourceRecipeId: r.sourceRecipeId ?? null, sourceRecipeTitle: r.sourceRecipeTitle ?? null,
+      }));
+    },
+
+    addPlannedToList(rows: PlannedRow[], listId: string | null): PlannedAddResult {
+      const mpg = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const lists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const plural = require('../../src/utils/groceryPlural') as typeof import('../../src/utils/groceryPlural'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const result: PlannedAddResult = { added: [], alreadyOnList: [], toppedUp: [], skippedInCart: [] };
+      // One opaque id per incoming either/or key, as addFromPlan mints them.
+      const groupIds = new Map<string, string>();
+      const groupIdFor = (key: string) => groupIds.get(key) ?? (groupIds.set(key, generateId()), groupIds.get(key)!);
+      db.dbTransaction(() => {
+        for (const row of rows) {
+          const items = db.dbGetAllGroceryItems();
+          const existing = plural.catalogItemForKey(parse.groceryNameKey(row.name), items) ?? undefined;
+          const entry = existing ? lists.entryFor(db.dbGetAllGroceryListEntries(), existing.id, listId) : undefined;
+          if (existing && entry?.checked) { result.skippedInCart.push(existing); continue; }
+          if (existing && entry) {
+            // mergeOnListRecipeNeed: a recipe amount tops up a recipe-owned
+            // quantity, and a row wanted by two recipes credits neither.
+            const patch = { ...existing };
+            let changed = false;
+            if (row.quantity && existing.quantityFromRecipe) {
+              const merged = mpg.mergeQuantities([existing.quantity ?? '', row.quantity]);
+              if (merged && merged !== existing.quantity) { patch.quantity = merged; changed = true; }
+            }
+            if (existing.sourceRecipeId && row.sourceRecipeId !== existing.sourceRecipeId) {
+              patch.sourceRecipeId = null;
+              patch.sourceRecipeTitle = null;
+              changed = true;
+            }
+            if (changed) db.dbUpdateGroceryItem(patch);
+            if (changed && patch.quantity !== existing.quantity) result.toppedUp.push(patch);
+            result.alreadyOnList.push(changed ? patch : existing);
+            continue;
+          }
+          const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+          const overrides = db.dbGetGroceryAisleOverrides();
+          const plan = groceryAdd.planGroceryAdd(
+            row.name,
+            { items, itemProducts: db.dbGetAllItemProducts(), listEntries: db.dbGetAllGroceryListEntries(), aisleOverrides: overrides, aisleOrder: order, listId, now: new Date().toISOString() },
+            row.choiceGroup ? { ...parse.parseGroceryInput(row.name), choiceGroup: groupIdFor(row.choiceGroup) } : undefined,
+            row.sourceRecipeId ? { recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle ?? '' } : undefined,
+          );
+          let item = plan.item;
+          // The recipe's aisle files the row unless the person already filed
+          // that name somewhere (setAisle, which also remembers the filing).
+          const key = parse.groceryNameKey(row.name);
+          if (row.aisle && !overrides[key]) {
+            item = { ...item, aisle: aisles.placeAisle(row.aisle, order) };
+            const remembered = aisles.rememberAisles(overrides, [{ nameKey: item.nameKey, aisle: item.aisle }]);
+            if (remembered) db.dbSetGroceryAisleOverrides(remembered);
+          }
+          // A cooking amount only fills an empty or recipe-owned quantity.
+          if (row.quantity && (!item.quantity || item.quantityFromRecipe)) item = { ...item, quantity: row.quantity, quantityFromRecipe: true };
+          if (plan.product) db.dbSetItemProduct(plan.product);
+          if (plan.isNew) db.dbInsertGroceryItem(item);
+          else db.dbUpdateGroceryItem(item);
+          if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
+          result.added.push(item);
+        }
+      });
+      refresh();
+      return result;
+    },
+
+    addChoiceToList(options: { name: string; quantity?: string | null }[], listId: string | null): GroceryItem[] {
+      const named = options.filter(o => o.name.trim());
+      if (named.length < 2) throw new Error('An either/or needs at least two options.');
+      const group = generateId();
+      const added: GroceryItem[] = [];
+      db.dbTransaction(() => {
+        for (const option of named) {
+          const items = db.dbGetAllGroceryItems();
+          const parsed = parse.parseGroceryInput(option.name);
+          const plan = groceryAdd.planGroceryAdd(option.name, {
+            items, itemProducts: db.dbGetAllItemProducts(), listEntries: db.dbGetAllGroceryListEntries(),
+            aisleOverrides: db.dbGetGroceryAisleOverrides(),
+            aisleOrder: aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles()),
+            listId, now: new Date().toISOString(),
+          }, { name: parsed.name, quantity: option.quantity ?? parsed.quantity, choiceGroup: group });
+          if (plan.product) db.dbSetItemProduct(plan.product);
+          if (plan.isNew) db.dbInsertGroceryItem(plan.item);
+          else db.dbUpdateGroceryItem(plan.item);
+          if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
+          added.push(plan.item);
+        }
+      });
+      refresh();
+      return added;
+    },
+
+    settleChoice(itemId: string, listId: string | null, keepAll: boolean): { kept: GroceryItem[]; removed: GroceryItem[] } {
+      const items = db.dbGetAllGroceryItems();
+      const item = items.find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      const entries = db.dbGetAllGroceryListEntries().filter(e => e.listId === listId);
+      const entry = entries.find(e => e.itemId === itemId);
+      if (!entry?.choiceGroup) throw new Error(`"${item.name}" is not one of an either/or on that list.`);
+      const group = entries.filter(e => e.choiceGroup === entry.choiceGroup);
+      const byId = new Map(items.map(i => [i.id, i]));
+      db.dbTransaction(() => {
+        if (keepAll) {
+          for (const e of group) db.dbSetGroceryListEntry({ ...e, choiceGroup: null });
+          return;
+        }
+        // resolveChoice: the others are parked (a recipe's amount was for this
+        // shop only) and taken off this list.
+        for (const e of group) {
+          if (e.itemId === itemId) { db.dbSetGroceryListEntry({ ...e, choiceGroup: null }); continue; }
+          const loser = byId.get(e.itemId);
+          if (loser) db.dbUpdateGroceryItem({ ...loser, quantity: loser.quantityFromRecipe ? null : loser.quantity, quantityFromRecipe: false });
+          db.dbDeleteGroceryListEntry(e.itemId, listId);
+        }
+      });
+      refresh();
+      const fresh = new Map(db.dbGetAllGroceryItems().map(i => [i.id, i]));
+      const others = group.filter(e => e.itemId !== itemId).map(e => fresh.get(e.itemId)!).filter(Boolean);
+      return keepAll ? { kept: group.map(e => fresh.get(e.itemId)!).filter(Boolean), removed: [] } : { kept: [fresh.get(itemId)!], removed: others };
+    },
+
+    swapForSubstitute(itemId: string, subItemId: string, listId: string | null): { removed: GroceryItem; added: GroceryItem } {
+      const items = db.dbGetAllGroceryItems();
+      const item = items.find(i => i.id === itemId);
+      const sub = items.find(i => i.id === subItemId);
+      if (!item || !sub) throw new Error('Both the item and its substitute have to be in the catalog.');
+      const entries = db.dbGetAllGroceryListEntries();
+      const entry = entries.find(e => e.itemId === itemId && e.listId === listId);
+      if (!entry) throw new Error(`"${item.name}" is not on that list, so there is nothing to swap.`);
+      const link = db.dbGetAllItemSubLinks().find(l => l.itemId === itemId && l.subItemId === subItemId);
+      if (!link) throw new Error(`"${sub.name}" isn't a substitute for "${item.name}". Link it first with update_grocery_item's addSubstitutes.`);
+      const itemSubs = require('../../src/utils/itemSubs') as typeof import('../../src/utils/itemSubs'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const converted = item.quantity && link.ratioFrom && link.ratioTo ? itemSubs.substituteQuantity(item.quantity, link.ratioFrom, link.ratioTo) : null;
+      const q = converted?.converted ? converted.text : null;
+      const now = new Date().toISOString();
+      db.dbTransaction(() => {
+        if (!entries.some(e => e.itemId === subItemId && e.listId === listId)) {
+          db.dbUpdateGroceryItem({ ...sub, quantity: q ?? sub.quantity, quantityFromRecipe: q ? item.quantityFromRecipe : sub.quantityFromRecipe, lastAddedAt: now });
+          db.dbSetGroceryListEntry({ ...entry, itemId: subItemId, checked: false, addedAt: now });
+        }
+        db.dbUpdateGroceryItem({ ...item, quantity: item.quantityFromRecipe ? null : item.quantity, quantityFromRecipe: false });
+        db.dbDeleteGroceryListEntry(itemId, listId);
+      });
+      refresh();
+      const fresh = db.dbGetAllGroceryItems();
+      return { removed: fresh.find(i => i.id === itemId)!, added: fresh.find(i => i.id === subItemId)! };
+    },
+
+    clearGroceryList(listId: string | null): { cleared: number; deleted: string[] } {
+      const facts = require('../../src/utils/groceryFacts') as typeof import('../../src/utils/groceryFacts'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const deleted: string[] = [];
+      let cleared = 0;
+      db.dbTransaction(() => {
+        const ids = db.dbClearGroceryList(listId);
+        cleared = ids.length;
+        if (ids.length === 0) return;
+        const items = db.dbGetAllGroceryItems();
+        const stillListed = new Set(db.dbGetAllGroceryListEntries().map(e => e.itemId));
+        const linked = facts.linkCounts({ products: db.dbGetAllItemProducts(), subs: db.dbGetAllItemSubLinks(), shops: db.dbGetAllItemShopLinks(), aliases: db.dbGetAllStoreAliases() });
+        for (const id of ids) {
+          const item = items.find(i => i.id === id);
+          if (!item || stillListed.has(id)) continue;
+          // A row nobody wrote anything about goes; one with history stays in
+          // the catalog with its recipe amount (for this shop only) dropped.
+          if (!facts.hasUserFacts(item, linked)) { db.dbDeleteGroceryItem(id); deleted.push(item.name); continue; }
+          if (item.quantityFromRecipe || item.sourceRecipeId) {
+            db.dbUpdateGroceryItem({ ...item, quantity: item.quantityFromRecipe ? null : item.quantity, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null });
+          }
+        }
+        if (db.dbGetTripShopId()) db.dbSetTrip(null, null, null);
+      });
+      refresh();
+      return { cleared, deleted };
+    },
+
+    setTrip(change: { shopId: string; budgetMinor?: number | null } | { budgetMinor: number | null } | { end: true }) {
+      const shops = db.dbGetAllGroceryShops();
+      const current = { shopId: db.dbGetTripShopId(), startedAt: db.dbGetTripStartedAt(), budget: db.dbGetTripBudgetMinor() };
+      const checkBudget = (b: number | null | undefined) => {
+        if (b != null && (!Number.isInteger(b) || b <= 0)) throw new Error('A budget is a positive whole number of cents (minor units).');
+      };
+      if ('end' in change) db.dbSetTrip(null, null, null);
+      else if ('shopId' in change) {
+        if (!shops.some(sh => sh.id === change.shopId)) throw new Error(`No store with id ${change.shopId}. grocery_setup lists them.`);
+        checkBudget(change.budgetMinor);
+        const activeTrip = require('../../src/utils/activeTrip') as typeof import('../../src/utils/activeTrip'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const live = activeTrip.resolveActiveTrip(current.shopId, current.startedAt, shops, new Date());
+        const budget = change.budgetMinor !== undefined ? change.budgetMinor : (live ? current.budget : null);
+        db.dbSetTrip(change.shopId, new Date().toISOString(), budget);
+      } else {
+        if (!current.shopId || !current.startedAt) throw new Error('No trip is going: start one with a store first.');
+        checkBudget(change.budgetMinor);
+        db.dbSetTrip(current.shopId, current.startedAt, change.budgetMinor);
+      }
+      const shopId = db.dbGetTripShopId();
+      return { shop: shops.find(sh => sh.id === shopId) ?? null, startedAt: db.dbGetTripStartedAt(), budgetMinor: db.dbGetTripBudgetMinor() };
+    },
+
+    setItemUnavailable(itemId: string, shopId: string, unavailable: boolean, brandOnly: boolean): void {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      if (!db.dbGetAllGroceryShops().some(sh => sh.id === shopId)) throw new Error(`No store with id ${shopId}. grocery_setup lists them.`);
+      const link = db.dbGetAllItemShopLinks().find(l => l.itemId === itemId && l.shopId === shopId);
+      const now = new Date().toISOString();
+      const base = {
+        itemId, shopId, purchaseCount: link?.purchaseCount ?? 0, lastPurchasedAt: link?.lastPurchasedAt ?? null,
+        unavailableAt: link?.unavailableAt ?? null, unavailableProductIds: { ...(link?.unavailableProductIds ?? {}) },
+        productId: link?.productId ?? null, lastPriceMinor: link?.lastPriceMinor ?? null, lastPricedAt: link?.lastPricedAt ?? null,
+        lastPriceQuantity: link?.lastPriceQuantity ?? null, priceHistory: link?.priceHistory ?? [],
+      };
+      if (!brandOnly) {
+        // markItemsUnavailable stamps; a purchase is what clears it in the app,
+        // and taking a claim back here clears the stamp the same way.
+        if (unavailable && link?.unavailableAt) return;
+        if (!unavailable && !link?.unavailableAt) return;
+        db.dbSetItemShopLink({ ...base, unavailableAt: unavailable ? now : null });
+      } else {
+        const productId = item.preferredProductId;
+        if (!productId || !db.dbGetAllItemProducts().some(p => p.id === productId && p.itemId === itemId)) {
+          throw new Error(`"${item.name}" has no preferred brand to mark. Set one with update_grocery_item's preferredBoxId.`);
+        }
+        if (unavailable) base.unavailableProductIds[productId] = now;
+        else delete base.unavailableProductIds[productId];
+        if (!unavailable && Object.keys(base.unavailableProductIds).length === 0 && base.purchaseCount === 0 && !base.unavailableAt) {
+          if (link) db.dbDeleteItemShopLink(itemId, shopId);
+        } else db.dbSetItemShopLink(base);
+      }
+      refresh();
+    },
+
+    setNutritionPanel(itemId: string, boxId: string | null, panel: FoodNutrition | null): void {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      if (boxId) {
+        const box = db.dbGetAllItemProducts().find(p => p.id === boxId && p.itemId === itemId);
+        if (!box) throw new Error(`"${item.name}" has no box with id ${boxId}.`);
+        db.dbSetItemProduct({ ...box, nutrition: panel });
+      } else {
+        db.dbUpdateGroceryItem({ ...item, nutrition: panel });
+      }
+      refresh();
+    },
+
+    saveAisle(name: string, change: { newName?: string; delete?: boolean; nonFood?: boolean }): { aisle: string | null; itemsMoved: number } {
+      const items = db.dbGetAllGroceryItems();
+      const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+      const found = order.find(a => a.toLowerCase() === name.trim().toLowerCase()) ?? null;
+      const commit = (next: string[]) => {
+        const used = db.dbGetAllGroceryItems().map(i => i.aisle);
+        const hidden = aisles.hiddenDefaultAisles(next);
+        db.dbSetGroceryAisleOrder(aisles.normalizeAisleOrder(next, used, hidden));
+        db.dbSetGroceryHiddenAisles(hidden);
+      };
+      const settings = useSettingsStore.getState();
+      let itemsMoved = 0;
+      let result: string | null = found;
+      db.dbTransaction(() => {
+        if (change.delete) {
+          if (!found) throw new Error(`No aisle called "${name}". grocery_setup lists them.`);
+          if (found === aisles.OTHER_AISLE) throw new Error(`"${aisles.OTHER_AISLE}" is where everything unfiled goes, so it cannot be deleted.`);
+          for (const item of items.filter(i => i.aisle === found)) { db.dbUpdateGroceryItem({ ...item, aisle: aisles.OTHER_AISLE }); itemsMoved += 1; }
+          const forgotten = aisles.forgetRememberedAisle(db.dbGetGroceryAisleOverrides(), found);
+          if (forgotten) db.dbSetGroceryAisleOverrides(forgotten);
+          db.dbSetGroceryNonFoodAisles(db.dbGetGroceryNonFoodAisles().filter(a => a !== found));
+          for (const shop of db.dbGetAllGroceryShops()) {
+            if (shop.aisles?.includes(found)) { const next = shop.aisles.filter(a => a !== found); db.dbSetShopAisles(shop.id, next.length ? next : null); }
+            if (shop.aisleOrder?.includes(found)) { const next = shop.aisleOrder.filter(a => a !== found); db.dbSetShopAisleOrder(shop.id, next.length ? next : null); }
+          }
+          commit(order.filter(a => a !== found && a !== aisles.OTHER_AISLE));
+          if (settings.collapsedGroceryGroups.includes(`aisle:${found}`)) settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.filter(g => g !== `aisle:${found}`));
+          result = null;
+          return;
+        }
+        if (!found) {
+          if (change.newName !== undefined) throw new Error(`No aisle called "${name}". grocery_setup lists them.`);
+          if (!name.trim()) throw new Error('An aisle needs a name.');
+          result = name.trim();
+          commit([...order.filter(a => a !== aisles.OTHER_AISLE), result]);
+        }
+        if (change.newName !== undefined && found) {
+          const to = change.newName.trim();
+          if (!to) throw new Error('An aisle needs a name.');
+          if (found === aisles.OTHER_AISLE || to === aisles.OTHER_AISLE) throw new Error(`"${aisles.OTHER_AISLE}" cannot be renamed, or taken as a name.`);
+          if (order.some(a => a !== found && a.toLowerCase() === to.toLowerCase())) throw new Error(`There is already an aisle called "${to}".`);
+          if (to !== found) {
+            for (const item of items.filter(i => i.aisle === found)) { db.dbUpdateGroceryItem({ ...item, aisle: to }); itemsMoved += 1; }
+            const remapped = aisles.remapRememberedAisle(db.dbGetGroceryAisleOverrides(), found, to);
+            if (remapped) db.dbSetGroceryAisleOverrides(remapped);
+            db.dbSetGroceryNonFoodAisles(db.dbGetGroceryNonFoodAisles().map(a => (a === found ? to : a)));
+            for (const shop of db.dbGetAllGroceryShops()) {
+              if (shop.aisles?.includes(found)) db.dbSetShopAisles(shop.id, shop.aisles.map(a => (a === found ? to : a)));
+              if (shop.aisleOrder?.includes(found)) db.dbSetShopAisleOrder(shop.id, shop.aisleOrder.map(a => (a === found ? to : a)));
+            }
+            commit(order.filter(a => a !== aisles.OTHER_AISLE).map(a => (a === found ? to : a)));
+            if (settings.collapsedGroceryGroups.includes(`aisle:${found}`)) settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.map(g => (g === `aisle:${found}` ? `aisle:${to}` : g)));
+          }
+          result = to;
+        }
+        if (change.nonFood !== undefined && result) {
+          if (result === aisles.OTHER_AISLE) throw new Error(`"${aisles.OTHER_AISLE}" cannot be marked non-food.`);
+          const current = db.dbGetGroceryNonFoodAisles();
+          const next = change.nonFood ? [...new Set([...current, result])] : current.filter(a => a !== result);
+          db.dbSetGroceryNonFoodAisles(next);
+        }
+      });
+      refresh();
+      return { aisle: result, itemsMoved };
+    },
+
+    reorderAisles(names: string[]): string[] {
+      const items = db.dbGetAllGroceryItems();
+      const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+      const named = names.map(n => {
+        const hit = order.find(a => a.toLowerCase() === n.trim().toLowerCase());
+        if (!hit) throw new Error(`No aisle called "${n}". grocery_setup lists them.`);
+        return hit;
+      });
+      const next = [...new Set(named), ...order.filter(a => !named.includes(a))];
+      const hidden = aisles.hiddenDefaultAisles(next);
+      db.dbSetGroceryAisleOrder(aisles.normalizeAisleOrder(next, items.map(i => i.aisle), hidden));
+      db.dbSetGroceryHiddenAisles(hidden);
+      refresh();
+      return aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+    },
+
+    deleteShop(id: string): Shop {
+      const shop = db.dbGetAllGroceryShops().find(sh => sh.id === id);
+      if (!shop) throw new Error(`No store with id ${id}. grocery_setup lists them.`);
+      db.dbTransaction(() => {
+        db.dbDeleteGroceryShop(id);
+        if (db.dbGetAllGroceryShops().length === 0) db.dbSetLastShopId(null);
+        if (db.dbGetTripShopId() === id) db.dbSetTrip(null, null, null);
+      });
+      refresh();
+      return shop;
+    },
+
+    updateShopSettings(id: string, patch: { excludeFromSuggestions?: boolean; aisles?: string[] | null; aisleOrder?: string[] | null }): Shop {
+      const shop = db.dbGetAllGroceryShops().find(sh => sh.id === id);
+      if (!shop) throw new Error(`No store with id ${id}. grocery_setup lists them.`);
+      const items = db.dbGetAllGroceryItems();
+      const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+      const resolve = (names: string[]) => names.map(n => {
+        const hit = order.find(a => a.toLowerCase() === n.trim().toLowerCase());
+        if (!hit) throw new Error(`No aisle called "${n}". grocery_setup lists them.`);
+        return hit;
+      });
+      const shopsUtil = require('../../src/utils/groceryShops') as typeof import('../../src/utils/groceryShops'); // eslint-disable-line @typescript-eslint/no-require-imports
+      db.dbTransaction(() => {
+        if (patch.excludeFromSuggestions !== undefined) db.dbSetShopExcludeFromSuggestions(id, patch.excludeFromSuggestions);
+        if (patch.aisles !== undefined) {
+          const list = patch.aisles === null ? null : [...new Set(resolve(patch.aisles))];
+          db.dbSetShopAisles(id, list && list.length > 0 ? list : null);
+        }
+        if (patch.aisleOrder !== undefined) db.dbSetShopAisleOrder(id, patch.aisleOrder === null ? null : shopsUtil.shopAisleOrderToSave(resolve(patch.aisleOrder), order));
+      });
+      refresh();
+      return db.dbGetAllGroceryShops().find(sh => sh.id === id)!;
+    },
+
+    reorderShops(ids: string[]): void {
+      const shops = [...db.dbGetAllGroceryShops()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const unknown = ids.filter(sid => !shops.some(sh => sh.id === sid));
+      if (unknown.length > 0) throw new Error(`No store with id ${unknown.join(', ')}.`);
+      const order = [...new Set(ids), ...shops.map(sh => sh.id).filter(sid => !ids.includes(sid))];
+      db.dbTransaction(() => order.forEach((sid, i) => db.dbUpdateGroceryShop({ ...shops.find(sh => sh.id === sid)!, sortOrder: i + 1 })));
+      refresh();
+    },
+
+    reorderGroceryLists(ids: string[]): void {
+      const lists = [...db.dbGetAllGroceryLists()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const unknown = ids.filter(lid => !lists.some(l => l.id === lid));
+      if (unknown.length > 0) throw new Error(`No separate list with id ${unknown.join(', ')}.`);
+      const order = [...new Set(ids), ...lists.map(l => l.id).filter(lid => !ids.includes(lid))];
+      db.dbTransaction(() => order.forEach((lid, i) => db.dbUpdateGroceryList({ ...lists.find(l => l.id === lid)!, sortOrder: i + 1 })));
+      refresh();
+    },
+
+    mergeGroceryItems(fromId: string, intoId: string): { merged: GroceryItem; from: GroceryItem } {
+      const merge = require('../../src/utils/groceryMerge') as typeof import('../../src/utils/groceryMerge'); // eslint-disable-line @typescript-eslint/no-require-imports
+      if (fromId === intoId) throw new Error('An item cannot be merged into itself.');
+      const plan = merge.planMergeItems(fromId, intoId, {
+        items: db.dbGetAllGroceryItems(), itemShops: db.dbGetAllItemShopLinks(), itemSubs: db.dbGetAllItemSubLinks(),
+        itemProducts: db.dbGetAllItemProducts(), listEntries: db.dbGetAllGroceryListEntries(),
+      });
+      if (!plan) throw new Error('Both items have to be in the catalog. get_grocery_item names them.');
+      db.dbTransaction(() => {
+        db.dbUpdateGroceryItem(plan.merged);
+        for (const other of plan.repointedVarieties.values()) db.dbUpdateGroceryItem(other);
+        for (const product of plan.mergedProducts) db.dbSetItemProduct(product);
+        for (const product of plan.mergedProducts) if (product.gtin) db.dbSetProductGtin(product.id, product.gtin);
+        for (const link of plan.mergedShopLinks) db.dbSetItemShopLink(link);
+        for (const link of plan.finalRetargetedSubs) db.dbSetItemSubLink(link);
+        db.dbRepointStoreAliases(fromId, intoId);
+        db.dbDeleteGroceryItem(fromId);
+        const remembered = aisles.renameRememberedAisle(db.dbGetGroceryAisleOverrides(), plan.fromItem.nameKey, plan.intoItem.nameKey);
+        if (remembered) db.dbSetGroceryAisleOverrides(remembered);
+        // Recipe lines find the catalog by name, so they follow the survivor's.
+        for (const recipe of recipeUtils.remapIngredientKeyIn(db.dbGetAllRecipes(), plan.fromItem.nameKey, plan.intoItem.nameKey)) db.dbUpdateRecipe(recipe);
+        for (const entry of plan.movedEntries) db.dbSetGroceryListEntry(entry);
+        for (const gone of plan.removedEntries) db.dbDeleteGroceryListEntry(gone.itemId, gone.listId);
+        // A supply task that restocked the loser restocks the survivor.
+        for (const t of db.dbGetAllTasks().filter(x => x.supplyGroceryItemId === fromId)) db.dbUpdateTask({ ...t, supplyGroceryItemId: intoId });
+        db.dbRepointItemReferences(fromId, intoId);
+      });
+      refresh();
+      return { merged: db.dbGetAllGroceryItems().find(i => i.id === intoId)!, from: plan.fromItem };
+    },
+
     setGroceryChecked(id: string, checked: boolean, listId: string | null = null): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
@@ -3951,6 +4455,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     itemSubLinks: () => db.dbGetAllItemSubLinks(),
     storeAliases: () => db.dbGetAllStoreAliases(),
     aisleOverrides: () => db.dbGetGroceryAisleOverrides(),
+    nonFoodAisles: () => db.dbGetGroceryNonFoodAisles(),
+    activeTrip: () => {
+      const activeTripUtil = require('../../src/utils/activeTrip') as typeof import('../../src/utils/activeTrip'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const startedAt = db.dbGetTripStartedAt();
+      const shop = activeTripUtil.resolveActiveTrip(db.dbGetTripShopId(), startedAt, db.dbGetAllGroceryShops(), new Date());
+      return shop && startedAt ? { shop, startedAt, budgetMinor: db.dbGetTripBudgetMinor() } : null;
+    },
     aisleNames: () => {
       const items = db.dbGetAllGroceryItems();
       return aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());

@@ -116,7 +116,7 @@ only the fallback until the first sync.
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history, each with its id. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
-| `grocery_setup` | The aisles, the stores (with receipt style) and the lists (home and separate), with item counts. |
+| `grocery_setup` | The aisles (and which are non-food), the stores (with receipt style, their own aisles and order), the lists (home and separate) with item counts, and the trip in progress. |
 | `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names. |
 | `match_receipt` | The app's receipt matching over lines Claude read. Writes nothing. |
 | `list_pantry` | What the app has a reason to think is in the kitchen: pantry, fridge and freezer, each with the app's reason, use-by day and freshness. `filter: use_up`, `frozen` or `fridge` narrows it. Has no quantities, on purpose. |
@@ -195,6 +195,17 @@ only the fallback until the first sync.
 | `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
 | `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item. |
 | `save_store` | **Write.** Add or rename a store, or set its receipt style. |
+| `update_store` | **Write.** A store's own aisles and walk order, whether it is suggested, or delete it. |
+| `reorder_stores_and_lists` | **Write.** The order of the stores and of the separate lists. |
+| `save_aisle` / `reorder_aisles` | **Write.** Add, rename, delete or mark non-food an aisle; the walk order. |
+| `add_ingredients_to_list` | **Write.** A recipe's ingredients, or the planned meals' over a range, onto a list as the app's add-to-list sheets do. |
+| `add_choice_to_list` / `settle_choice` | **Write.** An either/or on a list, and deciding it. |
+| `swap_for_substitute` | **Write.** Swaps a row on a list for one of its substitutes. |
+| `clear_grocery_list` | **Write.** Empties a list as the app's Clear list does, and ends a trip. |
+| `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
+| `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
+| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel. |
+| `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
 | `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |

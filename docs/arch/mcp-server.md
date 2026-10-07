@@ -1082,8 +1082,9 @@ is. Decisions specific to the server:
 - **An edit is undoable only when it touched the item's own fields** (`CATALOG_REVERT_FIELDS`) and the
   remembered aisle for its name, written back by `restoreCatalogItem`. A rename moves keys in other tables, and
   store links, substitutes and boxes are other rows, so those are recorded in Activity and not undoable.
-- **An aisle must be one that exists.** Aisles are the person's walk order, so an agent naming a new one would
-  create a section nobody made; `grocery_setup` lists them and an unknown name is refused with the list.
+- **An aisle must be one that exists.** Aisles are the person's walk order, so filing an item under a name
+  nobody made is refused with the list (`grocery_setup`). Making one is its own deliberate call,
+  `save_aisle`, whose description asks for the person's word.
 - **A receipt is read by Claude.** The server cannot see an image and the phone's reader (on-device OCR, or the
   person's own API key) is not available here, so `match_receipt` takes the lines Claude extracted and runs
   `matchReceiptLines` (remembered store names, then exact, likely, weak), and `import_receipt` does what the scan
@@ -1095,8 +1096,26 @@ is. Decisions specific to the server:
 - **A separate list records almost nothing when finished.** No purchase count, price, store link or use-by day
   (`docs/arch/groceries.md`, "An away trip records nothing"); `planFinishShopping` zeroes them and the result says so.
 - **Not written here:** the use-up task and the supply restock a finished trip also triggers in the app (both go
-  through the task store; the phone catches up), merging two items, deleting a store, and aisle-level edits
-  (renaming or deleting an aisle rewrites every item and store).
+  through the task store; the phone catches up).
+- **The catalog's structure is the aisle editor's and the store sheet's own rules.** `save_aisle` adds,
+  renames (every item, the remembered filings, the non-food set and each store's aisles follow), deletes
+  (its items move to Other) and marks non-food; `reorder_aisles` sets the walk order through the same
+  `normalizeAisleOrder` and hidden-default tombstones. `update_store` deletes a store (its links, prices and
+  receipt names go with it, and a trip there ends) or sets its aisles, its own walk order and whether it is
+  suggested. These are records in Activity, not undoable from there: each rewrites rows across the catalog.
+- **A merge is `planMergeItems` (`src/utils/groceryMerge.ts`)**, lifted out of the store's `mergeItems` so the
+  two write the same rows: history summed, boxes folded by key, store links and price histories combined,
+  substitutes retargeted, receipt names, list entries, recipe lines (`remapIngredientKeyIn`), supply tasks and
+  food-log references moved, and the remembered aisle renamed. Its use-up task is device work the phone
+  reconciles. It cannot be undone from Activity, which the tool says before it is confirmed.
+- **The list's own verbs** are the app's: `add_ingredients_to_list` is `addFromPlan` over the rows the two
+  add-to-list sheets build (`plannedIngredientsForRecipe` or `collectPlannedIngredients`, then
+  `classifyPlanned` against the list), adding the rows those sheets tick by default and listing the rest for
+  the person to ask for by name. `add_choice_to_list` and `settle_choice` are the either/or's add, resolve and
+  clear; `swap_for_substitute` is the swap; `clear_grocery_list` is Clear list (items with nothing recorded
+  are deleted, as there); `set_shopping_trip` writes the trip's three settings (the reminder is device work).
+  A nutrition panel is `source: 'manual'` when read off a label and `'estimated'` when it is the model's own,
+  and keeps the `portions` the row already had.
 - **Logged as `subject: 'catalog'`.** Writes to a separate list are recorded there too, never as a `grocery`
   entry, because that subject's undo acts on the list at home.
 

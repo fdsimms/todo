@@ -46,6 +46,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   log_medication: ['update_medication_log', 'delete_medication_log'],
   plan_meal: ['update_meal', 'remove_meal'],
   add_grocery_item: ['remove_from_grocery_list', 'check_off_grocery_item'],
+  add_ingredients_to_list: ['remove_from_grocery_list', 'clear_grocery_list'],
+  add_choice_to_list: ['settle_choice', 'remove_from_grocery_list'],
   add_to_pantry: ['update_pantry_item'],
   log_leftover: ['update_leftover'],
   create_grocery_list: ['rename_grocery_list', 'delete_grocery_list'],
@@ -60,7 +62,8 @@ const NO_COUNTERPART: Record<string, string> = {
   save_grocery_box: 'One tool adds, edits and deletes a box (boxId, delete: true), so it is its own correction.',
   save_person_group: 'One tool adds, renames (newName) and deletes (delete: true) a person group, so it is its own correction.',
   save_project_category: 'One tool adds, renames (newName) and deletes (delete: true) a project category, so it is its own correction.',
-  save_store: 'Adds and renames a store with the one tool; deleting a store rewrites its links and aliases, so that stays in the app.',
+  save_store: 'Adds and renames a store; update_store deletes one.',
+  save_aisle: 'One tool adds, renames (newName) and deletes (delete: true) an aisle, so it is its own correction.',
 };
 
 describe('creating tools and their counterparts', () => {

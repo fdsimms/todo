@@ -683,6 +683,117 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return shop;
     },
 
+    // A row put on the list at home is a 'grocery' entry, undone by taking it
+    // back off; anything else is a 'catalog' record, as addGroceryItem does.
+    addPlannedToList(rows, listId) {
+      const result = replica.addPlannedToList(rows, listId);
+      for (const item of result.added) {
+        if (listId === null) log({ action: 'created', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
+        else log({ action: 'created', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `Put "${item.name}" on ${listLabel(listId)}` });
+      }
+      for (const item of result.toppedUp) {
+        log({ action: 'edited', subject: 'catalog', title: item.name, taskId: null, note: `Raise the amount of "${item.name}" on ${listLabel(listId)} to ${item.quantity}` });
+      }
+      return result;
+    },
+
+    addChoiceToList(options, listId) {
+      const added = replica.addChoiceToList(options, listId);
+      log({ action: 'created', subject: 'catalog', title: added.map(i => i.name).join(' or '), taskId: null, note: `Put "${added.map(i => i.name).join('" or "')}" on ${listLabel(listId)} as an either/or` });
+      return added;
+    },
+
+    settleChoice(itemId, listId, keepAll) {
+      const result = replica.settleChoice(itemId, listId, keepAll);
+      const note = keepAll
+        ? `Keep every option of the either/or on ${listLabel(listId)}: ${result.kept.map(i => i.name).join(', ')}`
+        : `Get "${result.kept[0]?.name}" and take ${result.removed.map(i => `"${i.name}"`).join(', ')} off ${listLabel(listId)}`;
+      log({ action: 'edited', subject: 'catalog', title: result.kept[0]?.name ?? 'Either/or', taskId: null, note });
+      return result;
+    },
+
+    swapForSubstitute(itemId, subItemId, listId) {
+      const result = replica.swapForSubstitute(itemId, subItemId, listId);
+      log({ action: 'edited', subject: 'catalog', title: result.added.name, taskId: null, note: `Swap "${result.removed.name}" for "${result.added.name}" on ${listLabel(listId)}` });
+      return result;
+    },
+
+    clearGroceryList(listId) {
+      const result = replica.clearGroceryList(listId);
+      log({
+        action: 'cleared', subject: 'catalog', title: 'Grocery list', taskId: null,
+        note: `Clear ${listLabel(listId)} (${result.cleared} ${result.cleared === 1 ? 'item' : 'items'})${result.deleted.length > 0 ? `, deleting ${result.deleted.length} with nothing recorded on ${result.deleted.length === 1 ? 'it' : 'them'}` : ''}. It cannot be restored from here.`,
+      });
+      return result;
+    },
+
+    setTrip(change) {
+      const trip = replica.setTrip(change);
+      const money = (m: number | null) => (m == null ? 'no budget' : `a budget of ${(m / 100).toFixed(2)}`);
+      const note = 'end' in change ? 'End the shopping trip'
+        : 'shopId' in change ? `Start a shopping trip at ${trip.shop?.name ?? 'the store'}, with ${money(trip.budgetMinor)}`
+          : `Set the trip's budget to ${money(trip.budgetMinor)}`;
+      log({ action: 'edited', subject: 'catalog', title: trip.shop?.name ?? 'Shopping trip', taskId: null, note });
+      return trip;
+    },
+
+    setItemUnavailable(itemId, shopId, unavailable, brandOnly) {
+      replica.setItemUnavailable(itemId, shopId, unavailable, brandOnly);
+      const item = replica.groceryItems().find(i => i.id === itemId);
+      const shop = replica.shops().find(sh => sh.id === shopId);
+      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'Item', taskId: null, note: `Mark ${brandOnly ? `the preferred brand of "${item?.name}"` : `"${item?.name}"`} ${unavailable ? 'unavailable' : 'available again'} at ${shop?.name ?? 'the store'}` });
+    },
+
+    setNutritionPanel(itemId, boxId, panel) {
+      replica.setNutritionPanel(itemId, boxId, panel);
+      const item = replica.groceryItems().find(i => i.id === itemId);
+      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'Item', taskId: null, note: `${panel ? 'Set' : 'Remove'} the nutrition panel of ${boxId ? 'a brand of ' : ''}"${item?.name}"` });
+    },
+
+    saveAisle(name, change) {
+      const result = replica.saveAisle(name, change);
+      const note = change.delete ? `Delete the aisle "${name}", moving ${result.itemsMoved} ${result.itemsMoved === 1 ? 'item' : 'items'} to Other`
+        : change.newName !== undefined ? `Rename the aisle "${name}" to "${result.aisle}"${result.itemsMoved ? `, refiling ${result.itemsMoved} ${result.itemsMoved === 1 ? 'item' : 'items'}` : ''}`
+          : change.nonFood !== undefined ? `Mark the aisle "${result.aisle}" as ${change.nonFood ? 'non-food' : 'food'}`
+            : `Add the aisle "${result.aisle}"`;
+      log({ action: change.delete ? 'cleared' : 'edited', subject: 'catalog', title: result.aisle ?? name, taskId: null, note });
+      return result;
+    },
+
+    reorderAisles(names) {
+      const order = replica.reorderAisles(names);
+      log({ action: 'moved', subject: 'catalog', title: 'Aisles', taskId: null, note: `Put the aisles in this order: ${order.join(', ')}` });
+      return order;
+    },
+
+    deleteShop(id) {
+      const shop = replica.deleteShop(id);
+      log({ action: 'cleared', subject: 'catalog', title: shop.name, taskId: null, recordId: id, note: `Delete the store "${shop.name}", with its item links, prices there and receipt names. It cannot be restored from here.` });
+      return shop;
+    },
+
+    updateShopSettings(id, patch) {
+      const shop = replica.updateShopSettings(id, patch);
+      log({ action: 'edited', subject: 'catalog', title: shop.name, taskId: null, recordId: id, note: `Change the store "${shop.name}": ${Object.keys(patch).join(', ')}` });
+      return shop;
+    },
+
+    reorderShops(ids) {
+      replica.reorderShops(ids);
+      log({ action: 'moved', subject: 'catalog', title: 'Stores', taskId: null, note: 'Reorder the stores' });
+    },
+
+    reorderGroceryLists(ids) {
+      replica.reorderGroceryLists(ids);
+      log({ action: 'moved', subject: 'catalog', title: 'Lists', taskId: null, note: 'Reorder the separate grocery lists' });
+    },
+
+    mergeGroceryItems(fromId, intoId) {
+      const result = replica.mergeGroceryItems(fromId, intoId);
+      log({ action: 'edited', subject: 'catalog', title: result.merged.name, taskId: null, note: `Merge "${result.from.name}" into "${result.merged.name}": its history, brands, store links, substitutes, receipt names and recipe lines move over, and "${result.from.name}" is gone. It cannot be undone from here.` });
+      return result;
+    },
+
     deleteGroceryItem(id) {
       const snapshot = replica.deleteGroceryItem(id);
       log({
