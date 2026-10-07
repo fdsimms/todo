@@ -22,6 +22,7 @@ import { Fab, FAB_SIZE } from '../components/Fab';
 import { SelectionDot } from '../components/SelectionDot';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
@@ -411,11 +412,13 @@ const PersonRow = React.memo(function PersonRow({
   const press = () => onPress(person.id);
   const toggleSelect = () => onToggleSelect(person.id);
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = { onSelect: () => onSwipeSelect(person.id), accessibilityLabel: `Select ${name}` };
   return (
     <SwipeableRow
       style={styles.card}
       enabled={!selectionMode}
-      selectAction={{ onSelect: () => onSwipeSelect(person.id), accessibilityLabel: `Select ${name}` }}
+      selectAction={swipeSelect}
     >
       <View
         ref={paintRef}
@@ -453,6 +456,7 @@ const PersonRow = React.memo(function PersonRow({
             )}
           </View>
         </TouchableOpacity>
+        <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
         {selectionMode ? (
           <SelectionDot selected={selected} onPress={toggleSelect} />
         ) : (

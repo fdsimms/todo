@@ -8,13 +8,14 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { freshest, redoIsCurrent, topOf } from '../utils/undoHistory';
+import { freshest, offersOnUndoBar, redoIsCurrent, topOf } from '../utils/undoHistory';
 
 /** What the bar is currently offering: the undo of an action, or its redo. */
 type Shown = { mode: 'undo' | 'redo'; label: string; run: () => void };
@@ -49,8 +50,13 @@ const VISIBLE_MS = 6000;
  * schedule reaching its end leaves no row to un-tick and nothing else on
  * screen saying it happened. Don't fold it back in with the rest.
  *
- * **One bar for six independent histories.** Mirrors `useShakeToUndo`:
- * offers whichever of the six stores' top entry is freshest, so a grocery
+ * **iPhone Mirroring widens it to every action** (`mirroringMode`,
+ * `offersOnUndoBar`). Driven from a Mac the phone can't be shaken, so the
+ * rule above would leave a reschedule or a grocery check with no way back.
+ * Only a destructive entry buzzes, in either mode.
+ *
+ * **One bar for seven independent histories.** Mirrors `useShakeToUndo`:
+ * offers whichever of the seven stores' top entry is freshest, so a grocery
  * clear and a task delete can't both want the slot at once.
  *
  * **It stays up to offer the redo.** Undoing from the bar replaces it with
@@ -70,6 +76,7 @@ export function UndoBar() {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
+  const everyAction = useSettingsStore(s => s.mirroringMode);
 
   const taskAction = useTaskStore(s => topOf(s.undoStack));
   const taskRedo = useTaskStore(s => topOf(s.redoStack));
@@ -110,11 +117,11 @@ export function UndoBar() {
     { action: foodLogAction, redoEntry: foodLogRedo, undo: undoFoodLog, redo: redoFoodLog },
   ];
   const freshestUndo = freshest(
-    candidates.filter(c => c.action?.destructive),
+    candidates.filter(c => offersOnUndoBar(c.action, everyAction)),
     c => c.action?.at
   );
   const freshestRedo = freshest(
-    candidates.filter(c => c.redoEntry?.destructive),
+    candidates.filter(c => offersOnUndoBar(c.redoEntry, everyAction)),
     c => c.redoEntry?.at
   );
   const redoCurrent = redoIsCurrent(
@@ -134,16 +141,30 @@ export function UndoBar() {
   const shownAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Turning mirroring on widens the filter, which can surface an entry from
+  // minutes ago as if it had just happened. Only what lands after the switch
+  // flips raises the bar. Declared ahead of the effect below so it runs first
+  // in the commit where both change.
+  const filterChangedAtRef = useRef(0);
+  const everyActionRef = useRef(everyAction);
   useEffect(() => {
-    if (latestAt === 0 || latestAt <= shownAtRef.current) return;
+    if (everyActionRef.current === everyAction) return;
+    everyActionRef.current = everyAction;
+    filterChangedAtRef.current = Date.now();
+  }, [everyAction]);
+
+  useEffect(() => {
+    if (latestAt === 0 || latestAt <= Math.max(shownAtRef.current, filterChangedAtRef.current)) return;
     shownAtRef.current = latestAt;
+    const showRedo = redoAt > undoAt && freshestRedo;
+    const entry = showRedo ? freshestRedo!.redoEntry! : freshestUndo!.action!;
     setShown(
-      redoAt > undoAt && freshestRedo
-        ? { mode: 'redo', label: freshestRedo.redoEntry!.label, run: freshestRedo.redo }
-        : { mode: 'undo', label: freshestUndo!.action!.label, run: freshestUndo!.undo }
+      showRedo
+        ? { mode: 'redo', label: entry.label, run: freshestRedo!.redo }
+        : { mode: 'undo', label: entry.label, run: freshestUndo!.undo }
     );
     setVisible(true);
-    haptics.warning();
+    if (entry.destructive) haptics.warning();
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setVisible(false), VISIBLE_MS);
   }, [latestAt]);

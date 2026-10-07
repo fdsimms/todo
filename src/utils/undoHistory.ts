@@ -137,6 +137,17 @@ export function redoIsCurrent(
   return topUndos.every(u => (u?.at ?? 0) <= redoAt);
 }
 
+/**
+ * Whether the UndoBar offers this entry. Ordinarily only a `destructive` one
+ * (see that flag and UndoBar's doc comment): every other action is left to
+ * shake-to-undo. iPhone Mirroring (`mirroringMode`) takes the shake away, so
+ * there the bar is the only route back and offers everything.
+ */
+export function offersOnUndoBar(action: UndoableAction | null, everyAction: boolean): boolean {
+  if (!action) return false;
+  return everyAction || action.destructive === true;
+}
+
 /** The four actions every store with a history exposes. */
 export interface UndoHistoryActions {
   /**

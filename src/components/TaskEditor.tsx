@@ -781,6 +781,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
@@ -1412,6 +1413,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (categoryTagsParsed.tags.length > 0) {
       setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
     }
+  };
+
+  // Return on the title in iPhone Mirroring (`mirroringMode`): accepts the
+  // banner on show, the schedule first since it sits above, the way quick
+  // add's Return does. The field is multiline with blurOnSubmit, so Return
+  // already ends title editing; this only adds the accept to it.
+  const acceptTitleSuggestionOnReturn = () => {
+    if (!mirroringMode) return;
+    if (activeParsedSchedule) applyParsedSchedule();
+    else if (activeCategoryTags) applyCategoryTagsBanner();
   };
 
   // The banner's own ✕ — same as dismissParsedSchedule, just hides the
@@ -3109,6 +3120,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // opaque fields (link/phone/email) this pairing is off for.
           spellCheck
           multiline blurOnSubmit
+          onSubmitEditing={acceptTitleSuggestionOnReturn}
           selection={titleCaret.selection}
           onSelectionChange={titleCaret.onSelectionChange}
           onFocus={() => setTitleFocused(true)}

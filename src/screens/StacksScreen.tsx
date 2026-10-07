@@ -23,6 +23,7 @@ import { InlineNameField } from '../components/InlineNameField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { SelectionDot } from '../components/SelectionDot';
 import { ListBulkBar } from '../components/ListBulkBar';
@@ -327,12 +328,14 @@ const StackRow = React.memo(function StackRow({
   const todayLabel = dueToday > 0 ? `${dueToday} due today` : 'Nothing due today';
   const catLabel = group.category ? categoryLabel(group.category, categories) : null;
   const spokenMeta = [memberLabel, todayLabel, catLabel].filter(Boolean).join('. ');
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = { onSelect: () => onSwipeSelect(group.id), accessibilityLabel: `Select ${group.title}` };
 
   return (
     <SwipeableRow
       style={styles.card}
       enabled={!selectionMode}
-      selectAction={{ onSelect: () => onSwipeSelect(group.id), accessibilityLabel: `Select ${group.title}` }}
+      selectAction={swipeSelect}
     >
       <View ref={paintRef} style={[styles.row, selectionMode && selected && styles.rowSelected]}>
         <TouchableOpacity
@@ -364,6 +367,7 @@ const StackRow = React.memo(function StackRow({
             </View>
           </View>
         </TouchableOpacity>
+        <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
         {selectionMode ? (
           <SelectionDot selected={selected} onPress={() => onToggleSelect(group.id)} />
         ) : (

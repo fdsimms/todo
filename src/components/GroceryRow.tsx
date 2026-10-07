@@ -19,6 +19,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
 import { SelectionDot } from './SelectionDot';
+import { SwipeActionButtons } from './SwipeActionButtons';
 import { usePaintSelectionRow } from './PaintSelection';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { convertQuantity } from '../utils/unitConvert';
@@ -375,6 +376,13 @@ export const GroceryRow = React.memo(function GroceryRow({
   };
 
   // ==== render. Everything below is JSX ====
+  // Shared by the swipe and the iPhone Mirroring button, so the two can't
+  // disagree about what selecting this row does.
+  const swipeSelect = onSwipeSelect ? {
+    onSelect: () => onSwipeSelect(item.id),
+    accessibilityLabel: `Select ${item.name}`,
+  } : undefined;
+
   const rowBody = (
     <View
       style={[
@@ -705,6 +713,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
       )}
+      <SwipeActionButtons enabled={!isActive && !selectionMode} selectAction={swipeSelect} />
 
       {/* In the slot the swap and ellipsis icons give up while selecting, so
           nothing moves aside for it. On every row, picked or not: the empty
@@ -735,10 +744,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           the mount, same as every other list's row. */}
       <SwipeableRow
         enabled={!isActive && !selectionMode}
-        selectAction={onSwipeSelect ? {
-          onSelect: () => onSwipeSelect(item.id),
-          accessibilityLabel: `Select ${item.name}`,
-        } : undefined}
+        selectAction={swipeSelect}
       >
         {rowBody}
       </SwipeableRow>

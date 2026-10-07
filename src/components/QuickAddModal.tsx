@@ -279,6 +279,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.taskDefaults : null) ?? null;
   const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
@@ -1147,6 +1148,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const rawMatchSignature = rawMatch ? `${rawMatch.matchStart}|${rawMatch.matchedText}` : null;
   const matchDismissed = rawMatchSignature !== null && rawMatchSignature === dismissedMatchSignature;
   const activeMatch = matchDismissed ? null : rawMatch;
+  // The "#cat #tag" token is the one parse applied without a tap (the effect
+  // under applyCategoryTags, and resolveTags/resolveCategory/handleAdd as a
+  // fallback), so it's the one that has to honor "Not that" by hand: every
+  // other parse only ever applies from the tooltip, which a dismissal hides.
+  // When it's present it's always rawMatch (it outranks everything but
+  // `parsed`, which excludes it), so matchDismissed is about this token.
+  const categoryTagsKept = matchDismissed ? null : categoryTagsParsed;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // "beach with @gideon @tessa sat" — every "@name" token that resolves to
@@ -1332,11 +1340,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // meaning of. A token sitting at the very end of the title is still
   // covered — handleAdd applies it as a fallback right before saving.
   useEffect(() => {
-    if (categoryTagsParsed && categoryTagsParsed.matchEnd < title.length) {
+    if (categoryTagsKept && categoryTagsKept.matchEnd < title.length) {
       applyCategoryTags();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryTagsParsed]);
+  }, [categoryTagsKept]);
 
   // Record a pick off the ambiguous-token list. Unlike every other tooltip
   // here, this doesn't touch the title text — matchPersonMentions can't be
@@ -1705,11 +1713,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // of the title — the auto-accept effect only fires once something
     // follows the token, so hitting Add straight off the last keystroke
     // needs this fallback too.
-    return categoryTagsParsed?.tags.length
-      ? [...new Set([...base, ...categoryTagsParsed.tags])]
+    return categoryTagsKept?.tags.length
+      ? [...new Set([...base, ...categoryTagsKept.tags])]
       : base;
   };
-  const resolveCategory = () => categoryTagsParsed?.category ?? category;
+  const resolveCategory = () => categoryTagsKept?.category ?? category;
 
   // ==== creating the task ====
   // The burst mode itself. Gated on there being no drop seed, so the toggle is
@@ -1910,13 +1918,30 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     dismiss();
   };
 
+  // Return on the title field. In iPhone Mirroring (`mirroringMode`) a
+  // hardware keyboard is the main way in, and reaching for the pointer to
+  // click a suggestion's bubble breaks the typing, so Return accepts the
+  // suggestion on show first and the next Return adds, the way autocomplete
+  // behaves. Shift+Return would have been the natural chord, but a single-line
+  // RN field reports no modifiers. Gated on `confirmVisible` rather than the
+  // raw parses because `applyActiveParse` doesn't know about "Not that": a
+  // dismissed suggestion must let Return add. Off the mode, Return adds as it
+  // always has, since on the touch keyboard it's the Done key.
+  const handleTitleSubmit = () => {
+    if (mirroringMode && confirmVisible) {
+      applyActiveParse();
+      return;
+    }
+    handleAdd();
+  };
+
   const handleAdd = () => {
     if (eventText !== null) { void addAsEvent(eventText); return; }
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
     // would empty the title is refused (see stripMatchedKeywords).
-    const finalTitle = (ruleFill?.cleanTitle ?? categoryTagsParsed?.cleanTitle ?? title).trim();
+    const finalTitle = (ruleFill?.cleanTitle ?? categoryTagsKept?.cleanTitle ?? title).trim();
     if (!finalTitle || !canSaveType(type, typeValues)) return;
 
     const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), finalTitle);
@@ -1947,7 +1972,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const handleOpenFull = () => {
     const baked = bakedFields(type, typeValues);
     onOpenFull({
-      title: (categoryTagsParsed?.cleanTitle ?? title).trim(),
+      title: (categoryTagsKept?.cleanTitle ?? title).trim(),
       priority,
       difficulty: avoidsHere ? null : difficulty,
       ...baked,
@@ -2356,7 +2381,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 placeholderTextColor={colors.textTertiary}
                 value={title}
                 onChangeText={setTitle}
-                onSubmitEditing={handleAdd}
+                onSubmitEditing={handleTitleSubmit}
                 returnKeyType="done"
                 maxLength={TITLE_MAX_LENGTH}
                 // iOS's own inline predictive-text completion draws its candidate

@@ -46,6 +46,8 @@ export function AppearanceSettings() {
   const confirmBeforeDeleting = useSettingsStore(s => s.confirmBeforeDeleting);
   const setConfirmBeforeDeleting = useSettingsStore(s => s.setConfirmBeforeDeleting);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
+  const mirroringMode = useSettingsStore(s => s.mirroringMode);
+  const setMirroringMode = useSettingsStore(s => s.setMirroringMode);
   const tipsEnabled = useSettingsStore(s => s.tipsEnabled);
   const setTipsEnabled = useSettingsStore(s => s.setTipsEnabled);
   const setHideHelpText = useSettingsStore(s => s.setHideHelpText);
@@ -189,6 +191,18 @@ export function AppearanceSettings() {
             : 'Shaking your phone does nothing'}
           toggle={shakeToUndoEnabled}
           onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="mirroringMode"
+          icon="laptop-outline"
+          iconColor={mirroringMode ? colors.accent : undefined}
+          label="iPhone Mirroring"
+          hint={mirroringMode
+            ? "Rows show buttons for what their swipes do, every change offers Undo, and Return accepts a suggestion found in a task's title"
+            : 'For using the app from a Mac, where you can click but not shake the phone'}
+          toggle={mirroringMode}
+          onPress={() => setMirroringMode(!mirroringMode)}
         />
         <View style={styles.sep} />
         <SettingsRow

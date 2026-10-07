@@ -9,6 +9,7 @@ import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
 import { SwipeableRow } from './SwipeableRow';
 import { SelectionDot } from './SelectionDot';
+import { SwipeActionButtons } from './SwipeActionButtons';
 import { usePaintSelectionRow } from './PaintSelection';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 
@@ -165,6 +166,12 @@ export function MealSlotRow({
   // shows it without having to open each night's sheet.
   const scaleLabel = isUnscaled(entry.recipeScale) ? null : formatScale(entry.recipeScale);
 
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = onSwipeSelect ? {
+    onSelect: () => onSwipeSelect(entry.id),
+    accessibilityLabel: `Select ${title}`,
+  } : undefined;
+
   const rowBody = (
     <TouchableOpacity
       style={[
@@ -249,6 +256,7 @@ export function MealSlotRow({
           </Animated.View>
         </TouchableOpacity>
       )}
+      <SwipeActionButtons enabled={!dragging && !selectionMode} selectAction={swipeSelect} />
       {!selectionMode && (
         <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
       )}
@@ -270,10 +278,7 @@ export function MealSlotRow({
   return (
     <SwipeableRow
       enabled={!dragging && !selectionMode}
-      selectAction={onSwipeSelect ? {
-        onSelect: () => onSwipeSelect(entry.id),
-        accessibilityLabel: `Select ${title}`,
-      } : undefined}
+      selectAction={swipeSelect}
     >
       <View ref={paintRowRef}>{rowBody}</View>
     </SwipeableRow>

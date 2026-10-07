@@ -102,6 +102,7 @@ import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallT
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
+import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
@@ -1113,6 +1114,8 @@ export const TaskItem = React.memo(function TaskItem({
   const [completionMenuAnchor, setCompletionMenuAnchor] = useState<CardAnchor | null>(null);
   const [showCompletionMenu, setShowCompletionMenu] = useState(false);
   const mountCompletionMenu = useSheetMount(showCompletionMenu);
+  // iPhone Mirroring: Return on the inline rename takes the title offer.
+  const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // One reading per render rather than one per helper, so the chip, the
   // over-commitment test and the sheet can't land on different sides of a
@@ -1166,6 +1169,28 @@ export const TaskItem = React.memo(function TaskItem({
   // renaming, adding subtasks); the checkbox, the meta chips and the link
   // button are untouched, because those are how a notice is read and answered.
   const notice = isNoticeTask(task);
+
+  // The row's swipe actions, decided once so SwipeableRow and the iPhone
+  // Mirroring buttons (SwipeActionButtons) offer exactly the same ones.
+  // No reschedule on a notice: there's nothing a later date would mean for
+  // it, and the button that opens the same picker is gone from its panel for
+  // that reason. A list item has no date to move, and deleting is what a list
+  // is swiped for (deleteTask raises the Undo bar; see SwipeableRow's
+  // deleteAction for why this is the one destructive swipe). No select unless
+  // the screen can actually bulk-select: a list without a bulk bar (Demo, say)
+  // would otherwise offer an action whose handler is a no-op.
+  const swipeWhen = notice || listRow ? undefined : {
+    onAction: () => setShowWhenPicker(true),
+    accessibilityLabel: `Reschedule ${task.title}`,
+  };
+  const swipeDelete = swipeDeletes && !notice ? {
+    onDelete: () => { animateLayout(); deleteTask(task.id); },
+    accessibilityLabel: `Delete ${task.title}`,
+  } : undefined;
+  const swipeSelect = onSwipeSelect ? {
+    onSelect: () => onSwipeSelect(task.id),
+    accessibilityLabel: `Select ${task.title}`,
+  } : undefined;
 
   // ==== a phrase found in the title being renamed ====
   // The same offer the task editor makes: "pay rent tmrw #home" renamed in the
@@ -2722,7 +2747,11 @@ export const TaskItem = React.memo(function TaskItem({
             onChangeText={setTitleEdit}
             onBlur={saveTitle}
             onSubmitEditing={() => {
-              saveTitle();
+              // In iPhone Mirroring, Return takes the pill on show rather
+              // than saving the raw text, so a hardware keyboard needn't reach
+              // for the pointer. Taking it saves the cleaned title too.
+              if (mirroringMode && activeTitleOffer) applyTitleOffer();
+              else saveTitle();
               if (listRow) onSubmitLine?.(task.id);
             }}
             returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
@@ -3542,6 +3571,15 @@ export const TaskItem = React.memo(function TaskItem({
             color={(pinOverride ?? task.pinned) ? colors.orangeText : colors.textSecondary}
           />
         </TouchableOpacity>
+      )}
+
+      {showActions && (
+        <SwipeActionButtons
+          enabled={!selectionMode && !spotlightDisabled}
+          whenAction={swipeWhen}
+          deleteAction={swipeDelete}
+          selectAction={swipeSelect}
+        />
       )}
 
       {/* Takes the slot the row's action buttons vacate on entering selection
@@ -4422,24 +4460,11 @@ export const TaskItem = React.memo(function TaskItem({
               accent panel whose handler is a no-op. */}
           <SwipeableRow
             enabled={!selectionMode && !spotlightDisabled}
-            selectAction={onSwipeSelect ? {
-              onSelect: () => onSwipeSelect(task.id),
-              accessibilityLabel: `Select ${task.title}`,
-            } : undefined}
-            // No reschedule panel on a notice: there's nothing a later date
-            // would mean for it, and the button that opens the same picker
-            // is gone from its panel for that reason (see `notice`).
-            whenAction={notice || listRow ? undefined : {
-              onAction: () => setShowWhenPicker(true),
-              accessibilityLabel: `Reschedule ${task.title}`,
-            }}
-            // A list item has no date to move, and deleting is what a list is
-            // swiped for. deleteTask raises the Undo bar. See SwipeableRow's
-            // deleteAction for why this is the one destructive swipe.
-            deleteAction={swipeDeletes && !notice ? {
-              onDelete: () => { animateLayout(); deleteTask(task.id); },
-              accessibilityLabel: `Delete ${task.title}`,
-            } : undefined}
+            // The three actions and their conditions are decided once, at
+            // `swipeWhen`, so the iPhone Mirroring menu offers the same set.
+            selectAction={swipeSelect}
+            whenAction={swipeWhen}
+            deleteAction={swipeDelete}
           >
             <View>
               <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>

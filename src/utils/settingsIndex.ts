@@ -426,6 +426,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['audio', 'chime', 'notes', 'all clear', 'finished', 'done', 'celebrate'] },
   { id: 'shakeToUndo', groupId: 'appearance', label: 'Shake to undo', section: 'Feedback',
     keywords: ['gesture', 'revert', 'mistake', 'accident', 'restore', 'take back'] },
+  { id: 'mirroringMode', groupId: 'appearance', label: 'iPhone Mirroring', section: 'Feedback',
+    keywords: ['mac', 'laptop', 'computer', 'desktop', 'mouse', 'pointer', 'trackpad', 'click', 'continuity'] },
   { id: 'tipsEnabled', groupId: 'appearance', label: 'Tips', section: 'Feedback',
     keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 

@@ -45,6 +45,7 @@ import type { CardAnchor } from '../components/CardSheet';
 import { RotationWeekSheet } from '../components/RotationWeekSheet';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { SelectionDot } from '../components/SelectionDot';
 import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
@@ -959,6 +960,13 @@ const LogbookRow = React.memo(function LogbookRow({
     [displayTitle, task.personIds]
   );
 
+  // Shared by the swipe and the iPhone Mirroring button. Only select gets a
+  // button: the "when" swipe opens the same menu the row's ⋯ already does.
+  const swipeSelect = {
+    onSelect: () => onEnterSelection(task.id),
+    accessibilityLabel: `Select ${task.title}`,
+  };
+
   // ==== render. Everything below is JSX ====
   return (
     // Swipe right to move when it was completed — the same "when" slot tasks
@@ -974,10 +982,7 @@ const LogbookRow = React.memo(function LogbookRow({
         onAction: () => onOpenMenu(task),
         accessibilityLabel: `Change when ${task.title} was completed`,
       }}
-      selectAction={{
-        onSelect: () => onEnterSelection(task.id),
-        accessibilityLabel: `Select ${task.title}`,
-      }}
+      selectAction={swipeSelect}
     >
       <View ref={paintRef} style={[styles.row, selectionMode && selected && styles.rowSelected]}>
         {/* Unchanged by selection mode, like TaskItem's — this circle says what
@@ -1161,6 +1166,7 @@ const LogbookRow = React.memo(function LogbookRow({
             <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
+        <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       </View>
     </SwipeableRow>
   );
