@@ -155,7 +155,7 @@ only the fallback until the first sync.
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
 | `update_meal` | **Write.** Moves a planned meal, renames a free-text one, or sets a recipe's scale. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
-| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details. Never a cadence, nudge, group or order. |
+| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text). Never a cadence, nudge, group or order. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |

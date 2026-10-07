@@ -260,6 +260,15 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   collision text can't spell, so there's no need for the override mechanism's
   workaround. `TaskEditor` has its own version, described above.
 
+- **A row's link, call, text and mail buttons fall back to the one person it names.**
+  `contactDetailsFor` (`peopleRegistry.ts`) returns the task's own number,
+  address and link, else the single named person's. Generated tasks copy these onto
+  themselves at creation; a hand-typed "Call @Dr. Kushman" only links the person,
+  so without the fallback it had no button. Read at render, so it covers existing
+  tasks and follows an edited number. With two people named it offers nothing
+  (the bar `stampReachOut` already sets). `TaskItem` and `FocusSessionSheet` both
+  read it.
+
 ## History is completed tasks, and there is no interactions table
 
 A completed task carrying `personIds` **is** the record that something happened
@@ -1232,10 +1241,14 @@ doc's own mechanisms assumed one without saying so.
   Backfill screen's `cadence` and `askAbout` fields (`peopleBackfill.ts`) read
   as never-missing for a business for the same reason: there's nothing to
   backfill toward.
-- **Everything else about a `Person` is unaffected.** Birthdays (an
-  anniversary, an owner's own birthday on file), notes, location, groups,
-  waiting-on and the call/text/email buttons all work identically — the
-  distinction this field draws is narrow and specific to the two mechanisms
+- **A business has no birthday.** `PersonEditor` hides the Birthday card for
+  one, and `wantedBirthdayTasks` skips it and the Backfill screen never asks, so a
+  birthday left over from before the card was hidden stays on the row but
+  produces nothing. Nothing is erased, so switching back to Person brings it
+  back.
+- **Everything else about a `Person` is unaffected.** Notes, location,
+  groups, waiting-on and the call/text/email buttons all work identically —
+  the distinction this field draws is narrow and specific to the mechanisms
   above, not a second, stripped-down kind of row.
 
 ## Groups: a couple counted once

@@ -41,7 +41,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
@@ -112,10 +112,13 @@ import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { liveBlockersOf } from '../utils/blocking';
 import { isDriftingTask } from '../utils/postpone';
 import { bountyCoinsFor, formatCoins, isBountyLive } from '../utils/rewards';
-import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
+import { resolvePerson, peopleOn, groupMentionTokens, contactDetailsFor } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
-import { matchPersonMentions } from '../utils/parseTaskInput';
+import { matchPersonMentions, parseTaskInput, parseCategoryAndTagsInput, describeSchedule, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { confirmLineSuggestion, linePendingFields, NO_LINE_PENDING } from '../utils/listLineParse';
+import { categoryLabel } from '../utils/categoryLabel';
+import { TitleSuggestionBanner } from './TitleSuggestionBanner';
 import { HighlightedText } from './HighlightedText';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -283,6 +286,17 @@ interface Props {
   onOpenCategory?: (category: string) => void;
 }
 
+
+/** Pill label for a "#word" match in a title being renamed: the category, the tag, or both. */
+function filedOfferLabel(parsed: ParsedCategoryAndTags, categories: Parameters<typeof categoryLabel>[1]): string {
+  const parts: string[] = [];
+  if (parsed.category) parts.push(categoryLabel(parsed.category, categories));
+  if (parsed.tags.length > 0) {
+    parts.push(parsed.tags.length > 1 ? `${parsed.tags.length} tags` : `#${parsed.tags[0]}`);
+  }
+  return parts.join(' + ');
+}
+
 /**
  * Memoized: a task list re-renders its rows on every store mutation, and
  * without this each of those renders is O(all rows) rather than O(the rows
@@ -391,8 +405,10 @@ export const TaskItem = React.memo(function TaskItem({
     deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
+  // The task's own link (or chain step's), else the one named person's.
+  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl;
   const handleOpenLink = async () => {
-    const url = linkFor(task);
+    const url = rowLink;
     if (!url) return;
     haptics.tap();
     // A link this app owns (dundundun://groceries) navigates in place. Going
@@ -413,8 +429,11 @@ export const TaskItem = React.memo(function TaskItem({
   // Sanitised here rather than at save time, so the row keeps showing the
   // number the way it was written (see utils/phone.ts). Null means the field
   // holds nothing a dialler could use, and the button doesn't render at all.
-  const callUrl = telUrl(task.phoneNumber);
-  const textUrl = smsUrl(task.phoneNumber);
+  // A hand-written "@name" task has no number of its own; the one person it
+  // names supplies it (see contactDetailsFor).
+  const contact = contactDetailsFor(task);
+  const callUrl = telUrl(contact.phoneNumber);
+  const textUrl = smsUrl(contact.phoneNumber);
   /**
    * Stamps the tap so `useReachOutPrompt` can offer it as history when the user
    * comes back — see `src/utils/reachOutIntent.ts` for why a tap is all the app
@@ -463,7 +482,7 @@ export const TaskItem = React.memo(function TaskItem({
     }
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl above.
-  const emailUrl = mailtoUrl(task.emailAddress);
+  const emailUrl = mailtoUrl(contact.emailAddress);
   /**
    * Both actions live behind one button, so the choice moves to a prompt.
    * Titled with the number itself — it's the thing being acted on, and it's
@@ -473,7 +492,7 @@ export const TaskItem = React.memo(function TaskItem({
     if (!callUrl) return;
     haptics.tap();
     Alert.alert(
-      task.phoneNumber ?? '',
+      contact.phoneNumber ?? '',
       undefined,
       [
         { text: 'Call', onPress: handleCall },
@@ -1130,6 +1149,43 @@ export const TaskItem = React.memo(function TaskItem({
   // renaming, adding subtasks); the checkbox, the meta chips and the link
   // button are untouched, because those are how a notice is read and answered.
   const notice = isNoticeTask(task);
+
+  // ==== a phrase found in the title being renamed ====
+  // The same offer the task editor makes: "pay rent tmrw #home" renamed in the
+  // open row shows a pill to move the date or filing out of the title, and
+  // nothing is applied until it is tapped (a phrase like "on Friday" can be a
+  // real title). Read off the stores at the moment it is needed rather than
+  // subscribed to, since every row in a list mounts this and only one is being
+  // renamed.
+  //
+  // Tapping the pill blurs the field first, which saves the rename and ends
+  // edit mode, so the pill can't depend on `isEditingTitle`: `renameOffer`
+  // holds the saved title the offer was found in until the row collapses, the
+  // title changes again, or the offer is applied or dismissed.
+  const applyTaskDates = useTaskStore(s => s.applyTaskDates);
+  const [renameOffer, setRenameOffer] = useState<string | null>(null);
+  const [dismissedOffer, setDismissedOffer] = useState<string | null>(null);
+  // Set when the pill is applied, so the blur that follows doesn't save the raw
+  // text over the cleaned title.
+  const skipTitleSaveRef = useRef(false);
+  const offerSource = isEditingTitle ? titleEdit : renameOffer === task.title ? task.title : null;
+  const titleOffer = useMemo(() => {
+    if (!expanded || notice || !offerSource || !offerSource.trim()) return null;
+    const dayReset = useSettingsStore.getState().dayResetTime;
+    const schedule = parseTaskInput(offerSource, getLogicalNow(dayReset), new Date());
+    if (schedule) {
+      return { kind: 'schedule' as const, parsed: schedule, key: `schedule|${schedule.matchStart}|${schedule.matchedText}` };
+    }
+    const filed = parseCategoryAndTagsInput(
+      offerSource,
+      useCategoryStore.getState().categories.map(c => c.name),
+      useTaskStore.getState().allTags(),
+    );
+    if (filed) return { kind: 'filed' as const, parsed: filed, key: `filed|${filed.matchStart}|${filed.matchEnd}` };
+    return null;
+  }, [expanded, notice, offerSource]);
+  const activeTitleOffer = titleOffer && titleOffer.key !== dismissedOffer ? titleOffer : null;
+
   // A notice offers no subtasks, but one that somehow has them still lists
   // them — only the "Add subtask" field goes. Hiding a row somebody put there
   // would be losing it, not simplifying it.
@@ -1261,11 +1317,16 @@ export const TaskItem = React.memo(function TaskItem({
   useEffect(() => {
     if (!expanded && isEditingTitle) {
       const trimmed = titleEdit.trim();
-      if (trimmed && trimmed !== task.title) {
+      if (trimmed && trimmed !== task.title && !skipTitleSaveRef.current) {
         updateTask(task.id, { title: trimmed });
       }
       setIsEditingTitle(false);
       Keyboard.dismiss();
+    }
+    // The offer is for the open row only; reopening it starts clean.
+    if (!expanded) {
+      setRenameOffer(null);
+      setDismissedOffer(null);
     }
   }, [expanded, isEditingTitle]);
 
@@ -2243,15 +2304,54 @@ export const TaskItem = React.memo(function TaskItem({
   const handleTitleTap = () => {
     if (selectionMode) { onSelect?.(task.id); return; }
     setTitleEdit(task.title);
+    skipTitleSaveRef.current = false;
     setIsEditingTitle(true);
   };
 
   const saveTitle = () => {
     setIsEditingTitle(false);
+    if (skipTitleSaveRef.current) return;
     const trimmed = titleEdit.trim();
     if (trimmed && trimmed !== task.title) {
       updateTask(task.id, { title: trimmed });
+      setRenameOffer(trimmed);
     }
+  };
+
+  const applyTitleOffer = () => {
+    if (!activeTitleOffer) return;
+    haptics.success();
+    animateLayout();
+    skipTitleSaveRef.current = true;
+    if (activeTitleOffer.kind === 'schedule') {
+      // The same fields a confirmed list line sets, including a "remind me …
+      // at 4pm" reminder and the further dates of "on the 10th and the 15th".
+      const { text, pending } = confirmLineSuggestion(
+        { kind: 'schedule', parsed: activeTitleOffer.parsed },
+        NO_LINE_PENDING,
+        useSettingsStore.getState().dayResetTime,
+      );
+      const { draft, seriesDates } = linePendingFields(pending);
+      updateTask(task.id, { ...draft, title: text.trim() });
+      if (seriesDates) applyTaskDates(task.id, seriesDates);
+    } else {
+      const { category, tags, cleanTitle } = activeTitleOffer.parsed;
+      updateTask(task.id, {
+        title: cleanTitle.trim(),
+        ...(category ? { category } : {}),
+        ...(tags.length > 0 ? { tags: [...new Set([...task.tags, ...tags])] } : {}),
+      });
+    }
+    setIsEditingTitle(false);
+    setRenameOffer(null);
+    Keyboard.dismiss();
+  };
+
+  const dismissTitleOffer = () => {
+    if (!activeTitleOffer) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedOffer(activeTitleOffer.key);
   };
 
   const handleSubtaskTitleTap = (sub: Task) => {
@@ -2653,6 +2753,26 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
           </View>
+        )}
+        {activeTitleOffer && (
+          <TitleSuggestionBanner
+            icon={
+              activeTitleOffer.kind === 'filed'
+                ? (activeTitleOffer.parsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                : activeTitleOffer.parsed.schedule.recurrenceType !== 'none'
+                  ? 'repeat'
+                  : activeTitleOffer.parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline'
+            }
+            label={
+              activeTitleOffer.kind === 'filed'
+                ? filedOfferLabel(activeTitleOffer.parsed, useCategoryStore.getState().categories)
+                : describeSchedule(activeTitleOffer.parsed.schedule, getLogicalNow(useSettingsStore.getState().dayResetTime))
+            }
+            style={{ marginTop: spacing.xsm }}
+            onApply={applyTitleOffer}
+            onDismiss={dismissTitleOffer}
+            dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
+          />
         )}
         {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
@@ -3276,7 +3396,7 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && linkFor(task) && (
+      {!selectionMode && showActions && rowLink && (
         <TouchableOpacity
           onPress={handleOpenLink}
           hitSlop={8}
@@ -3284,7 +3404,7 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityRole="button"
           accessibilityLabel={`Open link for ${task.title}`}
         >
-          <Ionicons name={linkIconFor(linkFor(task)!) as never} size={iconSize.sm} color={colors.accent} />
+          <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 
@@ -3298,7 +3418,7 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.callBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Call or text ${task.phoneNumber} for ${task.title}`}
+          accessibilityLabel={`Call or text ${contact.phoneNumber} for ${task.title}`}
         >
           {/* Accent, not the iOS phone-app green: in this row green already
               means done (the checkbox) or ready (the timer), and the link and
@@ -3314,7 +3434,7 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.emailBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Email ${task.emailAddress} for ${task.title}`}
+          accessibilityLabel={`Email ${contact.emailAddress} for ${task.title}`}
         >
           <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>

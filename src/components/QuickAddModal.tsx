@@ -68,6 +68,7 @@ import { firstWeekAnchor, proratedWeeklyTarget, weekDaysLeft, firstWeekPatch } f
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { WeekdaySelector } from './WeekdaySelector';
+import { TitleSuggestionBanner } from './TitleSuggestionBanner';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -2495,16 +2496,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                     ))}
                   </View>
                 ) : (
-                  <View
-                    style={[styles.tooltipPillRow, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
+                  <TitleSuggestionBanner
+                    style={tooltipRowW > 0 ? { maxWidth: tooltipRowW } : undefined}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
-                  >
-                    <PressableScale
-                      style={[styles.tooltipBubble, styles.tooltipBubbleJoined]}
-                      onPress={applyActiveParse}
-                    >
-                      <Ionicons
-                        name={
+                    icon={
                           parsed
                             ? (parsed.schedule.recurrenceType !== 'none'
                                 ? 'repeat'
@@ -2538,12 +2533,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                                   : subtasksParsed
                                                     ? 'list-outline'
                                                     : 'shield-checkmark-outline'
-                        }
-                        size={14}
-                        color={colors.onAccent}
-                      />
-                      <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
-                        {parsed
+                    }
+                    label={
+parsed
                           ? `${describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))}${remindsFromTitle(parsed) ? ' · Reminder' : ''}`
                           : categoryTagsParsed
                             ? categoryTagsLabel(categoryTagsParsed, categories)
@@ -2573,20 +2565,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                                 ? `Waiting on · ${waitingParsed.title}`
                                                 : subtasksParsed
                                                   ? `${subtasksParsed.subtasks.length} subtasks`
-                                                  : 'Avoid this habit'}
-                      </Text>
-                      <View style={styles.tooltipDot} />
-                      <Text style={styles.tooltipHint}>Tap to set</Text>
-                    </PressableScale>
-                    <View style={styles.tooltipDivider} />
-                    <PressableScale
-                      style={styles.tooltipDismiss}
-                      onPress={dismissActiveParse}
-                      accessibilityLabel="Not that"
-                    >
-                      <Ionicons name="close" size={14} color={colors.onAccent} />
-                    </PressableScale>
-                  </View>
+                                                  : 'Avoid this habit'
+                    }
+                    onApply={applyActiveParse}
+                    onDismiss={dismissActiveParse}
+                    dismissLabel="Not that"
+                  />
                 )}
               </View>
             </Animated.View>
@@ -3890,52 +3874,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     // 0-height triangle and the bubble below it can never leave a seam.
     marginBottom: -1,
   },
-  tooltipBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: spacing.xsm,
-    paddingHorizontal: spacing.smd,
-    paddingVertical: 7,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentFill,
-  },
-  tooltipPillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    // Backs the 1px divider between the bubble and the ✕: the row itself
-    // has no fill, only its two children do, so the divider's translucent
-    // (opacity-based) color sat over the transparent gap between them and
-    // showed the screen behind it instead of a subtle line on the pill.
-    backgroundColor: colors.accentFill,
-    borderRadius: radius.md,
-  },
-  // Overrides for the tooltip's own apply button, joined to the ✕ on its
-  // right: square that side off and let the text give way to it instead of
-  // pushing it past the row's edge.
-  tooltipBubbleJoined: {
-    flexShrink: 1,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  tooltipDismiss: {
-    flexShrink: 0,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: spacing.xsm,
-    borderTopRightRadius: radius.md,
-    borderBottomRightRadius: radius.md,
-    backgroundColor: colors.accentFill,
-  },
-  tooltipDivider: {
-    width: 1,
-    alignSelf: 'stretch',
-    marginVertical: 7,
-    backgroundColor: colors.onAccent,
-    opacity: 0.25,
-  },
   tooltipCandidateRow: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
@@ -3958,19 +3896,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     // up space to the icon/dot/"Tap to set" hint that share the row rather
     // than growing the row past the bubble's own maxWidth.
     flexShrink: 1,
-  },
-  tooltipDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: colors.onAccent,
-    opacity: 0.6,
-  },
-  tooltipHint: {
-    color: colors.onAccent,
-    fontSize: font.xs,
-    fontWeight: fontWeight.medium,
-    opacity: 0.75,
   },
   intervalRow: {
     flexDirection: 'row',
