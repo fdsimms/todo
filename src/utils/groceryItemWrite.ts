@@ -11,10 +11,12 @@ import type {
 } from '../types';
 import { isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
+import { catalogItemForKey } from './groceryPlural';
 import { productKeyFor } from './groceryProduct';
 import { HOME_LIST_NAME, isAwayList, itemsOnList } from './groceryLists';
 import { expiresAtForPurchase } from './groceryShelfLife';
 import { aliasKeyFor } from './storeAliases';
+import { mergePriceHistories } from './priceHistory';
 import type { GroceryListEntry } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -100,7 +102,24 @@ export function preferredProductRow(
 // ---------------------------------------------------------------------------
 
 /**
- * A rename. Refused when the name is empty or its key belongs to another item.
+ * The other catalog row a rename to `name` would duplicate, or null. Plural
+ * aware, through the same `catalogItemForKey` every add path resolves a name
+ * with: "Pear" renamed to "Apples" beside an "Apple" row is the near-duplicate
+ * an add would never have made. The row being renamed doesn't count, so
+ * "Tomato" to "Tomatoes" is fine. The item sheet asks this too, to offer the
+ * merge for exactly what the rename refused.
+ */
+export function renameClash(items: readonly GroceryItem[], id: string, name: string): GroceryItem | null {
+  const key = groceryNameKey(name.trim());
+  if (!key) return null;
+  // A respelling that keeps the row's own key ("milk" to "Milk") duplicates
+  // nothing it didn't already sit beside.
+  if (items.find(i => i.id === id)?.nameKey === key) return null;
+  return catalogItemForKey(key, items.filter(i => i.id !== id));
+}
+
+/**
+ * A rename. Refused when the name is empty or names another item (`renameClash`).
  * Variety declarations aimed at the old key follow the rename, and the
  * caller moves the remembered aisle and the recipe keys (`renameRememberedAisle`,
  * `remapIngredientKeyIn`).
@@ -115,8 +134,9 @@ export function renameRows(
   const trimmed = name.trim();
   const key = trimmed ? groceryNameKey(trimmed) : '';
   if (!key) return { refusal: 'An item needs a name.' };
-  if (key !== item.nameKey && items.some(i => i.nameKey === key)) {
-    return { refusal: `There is already an item called "${items.find(i => i.nameKey === key)!.name}". Merging two items is done in the app.` };
+  const clash = renameClash(items, id, trimmed);
+  if (clash) {
+    return { refusal: `There is already an item called "${clash.name}". Merging two items is done in the app.` };
   }
   const renamed: GroceryItem = {
     ...item,
@@ -317,6 +337,36 @@ export interface FinishShoppingPlan {
 }
 
 /**
+ * Checking off one option of an either/or ("apples or pears"): the winner
+ * stops being an option and every other option in the same group on the same
+ * list leaves that list, parked off it rather than deleted. A recipe-owned
+ * quantity on a parked row is cleared, the same park shape removeFromList uses,
+ * so a rejected "2 cups pears" doesn't come back on a later re-add.
+ *
+ * Null when the row isn't an option on that list. An empty `remove` means the
+ * group had no other members left, and the winner simply stops being one.
+ * Shared by `useGroceryStore.resolveChoice` and the MCP replica, whose
+ * check-off used to tick an option and leave the rest of its group listed.
+ */
+export function chosenOptionRows(
+  entries: readonly GroceryListEntry[],
+  items: readonly GroceryItem[],
+  itemId: string,
+  listId: string | null
+): { winner: GroceryListEntry; remove: GroceryListEntry[]; parked: GroceryItem[] } | null {
+  const entry = entries.find(e => e.itemId === itemId && e.listId === listId);
+  if (!entry?.choiceGroup) return null;
+  const remove = entries.filter(
+    e => e.listId === listId && e.itemId !== itemId && e.choiceGroup === entry.choiceGroup
+  );
+  const removed = new Set(remove.map(e => e.itemId));
+  const parked = items
+    .filter(i => removed.has(i.id))
+    .map(i => ({ ...i, quantity: i.quantityFromRecipe ? null : i.quantity, quantityFromRecipe: false }));
+  return { winner: { ...entry, choiceGroup: null }, remove, parked };
+}
+
+/**
  * What finishing a list records. **An away trip records nothing**: no store, no
  * use-by day, no prices (see `GroceryList`). A store deleted since it was
  * chosen is dropped rather than written as a link nothing can resolve.
@@ -387,4 +437,146 @@ export function deletedItemSnapshot(
     aliases: rows.aliases.filter(a => a.itemId === id).map(a => ({ ...a })),
     aisleOverride: rows.aisleOverrides[item.nameKey] ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Merge
+// ---------------------------------------------------------------------------
+
+/**
+ * How `mergeItems` folds each field of the losing row into the survivor.
+ *
+ * A `Record` over every key of `GroceryItem`, so a new field fails the
+ * typecheck until someone says what a merge does with it. Without the table a
+ * merge spread the survivor and patched a handful of fields, and the rest of
+ * the loser's own facts (frozen, opened, its use-by, a scanned label, a note,
+ * the waste counts, its price history) went with the deleted row.
+ *
+ * - `survivor`: the surviving row's, always.
+ * - `caller`: decided by `mergeItems` itself from rows this function can't see
+ *   (list membership, the product boxes, the variety map); the survivor's here.
+ * - `fillGap`: the survivor's, unless it has none (null, '' or Other).
+ * - `sum`, `later`, `either`, `union`: what they say.
+ * - `pantry`: one claim about what's in the kitchen, taken whole from one row
+ *   (see `pantrySourceOf`), never mixed: a frozen loser's `onHandUntil` with
+ *   the survivor's null `frozenAt` restarted a paused clock.
+ * - `price`: the three last-price fields as a group from the more recently
+ *   priced row, and both rows' history.
+ */
+type ItemMergeRule = 'survivor' | 'caller' | 'fillGap' | 'sum' | 'later' | 'either' | 'union' | 'pantry' | 'price';
+
+export const ITEM_MERGE_RULES: Readonly<Record<keyof GroceryItem, ItemMergeRule>> = {
+  id: 'survivor',
+  name: 'survivor',
+  nameKey: 'survivor',
+  nameFromScan: 'survivor',
+  createdAt: 'survivor',
+  preferredProductId: 'caller',
+  productStrict: 'survivor',
+  aisle: 'fillGap',
+  quantity: 'caller',
+  quantityFromRecipe: 'caller',
+  note: 'fillGap',
+  onList: 'caller',
+  checked: 'caller',
+  sortOrder: 'caller',
+  choiceGroup: 'caller',
+  varietyOfKey: 'caller',
+  purchaseCount: 'sum',
+  lastAddedAt: 'later',
+  lastPurchasedAt: 'later',
+  // Not averaged: the two rows' gaps were measured against different purchase
+  // stamps.
+  purchaseIntervalDays: 'fillGap',
+  sourceRecipeId: 'fillGap',
+  sourceRecipeTitle: 'fillGap',
+  isStaple: 'either',
+  onHandUntil: 'pantry',
+  expiresAt: 'pantry',
+  runningLowAt: 'pantry',
+  openedAt: 'pantry',
+  frozenAt: 'pantry',
+  shelfLifeDays: 'fillGap',
+  lastPriceMinor: 'price',
+  lastPricedAt: 'price',
+  lastPriceQuantity: 'price',
+  priceHistory: 'price',
+  useUpTask: 'fillGap',
+  pantryCheckDeclinedAt: 'later',
+  pantryReviewedAt: 'later',
+  usedUpCount: 'sum',
+  spoiledCount: 'sum',
+  lastSpoiledAt: 'later',
+  nutrition: 'fillGap',
+  backfillDismissedFields: 'union',
+};
+
+const PANTRY_FIELDS = (Object.keys(ITEM_MERGE_RULES) as (keyof GroceryItem)[])
+  .filter(k => ITEM_MERGE_RULES[k] === 'pantry');
+
+function laterIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+/**
+ * The row whose pantry claim survives a merge: the loser's when its
+ * `onHandUntil` is the later one (the same "later wins" the field always
+ * had), or when the survivor says nothing about the kitchen at all;
+ * otherwise the survivor's.
+ */
+function pantrySourceOf(into: GroceryItem, from: GroceryItem): GroceryItem {
+  const later = laterIso(into.onHandUntil, from.onHandUntil);
+  if (later !== null && later !== into.onHandUntil) return from;
+  const intoSilent = PANTRY_FIELDS.every(k => into[k] === null);
+  return intoSilent ? from : into;
+}
+
+function isGap(value: unknown, key: keyof GroceryItem): boolean {
+  if (value === null || value === '') return true;
+  return key === 'aisle' && value === 'Other';
+}
+
+/**
+ * The survivor of a merge, folded field by field per `ITEM_MERGE_RULES`.
+ * `caller` fields come back as the survivor's for `mergeItems` to overwrite.
+ */
+export function mergedItemRow(into: GroceryItem, from: GroceryItem): GroceryItem {
+  const pantry = pantrySourceOf(into, from);
+  const priced = !into.lastPricedAt ? from : !from.lastPricedAt || into.lastPricedAt >= from.lastPricedAt ? into : from;
+  const out = { ...into } as Record<keyof GroceryItem, unknown>;
+  for (const key of Object.keys(ITEM_MERGE_RULES) as (keyof GroceryItem)[]) {
+    const a = into[key];
+    const b = from[key];
+    switch (ITEM_MERGE_RULES[key]) {
+      case 'survivor':
+      case 'caller':
+        break;
+      case 'fillGap':
+        if (isGap(a, key) && !isGap(b, key)) out[key] = b;
+        break;
+      case 'sum':
+        out[key] = (a as number) + (b as number);
+        break;
+      case 'later':
+        out[key] = laterIso(a as string | null, b as string | null);
+        break;
+      case 'either':
+        out[key] = (a as boolean) || (b as boolean);
+        break;
+      case 'union':
+        out[key] = [...new Set([...(a as string[]), ...(b as string[])])];
+        break;
+      case 'pantry':
+        out[key] = pantry[key];
+        break;
+      case 'price':
+        out[key] = key === 'priceHistory'
+          ? mergePriceHistories(into.priceHistory, from.priceHistory)
+          : priced[key];
+        break;
+    }
+  }
+  return out as unknown as GroceryItem;
 }

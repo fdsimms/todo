@@ -62,6 +62,31 @@ describe('parseGroceryInput', () => {
     expect(parseGroceryInput('2 bottles wine')).toEqual({ name: 'wine', quantity: '2 bottles' });
   });
 
+  it('reads an amount said in words, only ahead of a known unit', () => {
+    expect(parseGroceryInput('a dozen eggs')).toEqual({ name: 'eggs', quantity: '1 dozen' });
+    expect(parseGroceryInput('half gallon milk')).toEqual({ name: 'milk', quantity: '1/2 gallon' });
+    expect(parseGroceryInput('a head of lettuce')).toEqual({ name: 'lettuce', quantity: '1 head' });
+    // A name that merely opens with one of the words is left whole.
+    expect(parseGroceryInput('half and half')).toEqual({ name: 'half and half', quantity: null });
+    expect(parseGroceryInput('an apple')).toEqual({ name: 'an apple', quantity: null });
+  });
+
+  it('reads store shorthand units and a count hyphenated onto its unit', () => {
+    expect(parseGroceryInput('12 pk soda')).toEqual({ name: 'soda', quantity: '12 pk' });
+    expect(parseGroceryInput('24 ct napkins')).toEqual({ name: 'napkins', quantity: '24 ct' });
+    expect(parseGroceryInput('2 ea apples')).toEqual({ name: 'apples', quantity: '2 ea' });
+    expect(parseGroceryInput('6-pack beer')).toEqual({ name: 'beer', quantity: '6 pack' });
+  });
+
+  it('reads x2 in front as well as behind', () => {
+    expect(parseGroceryInput('x2 milk')).toEqual({ name: 'milk', quantity: 'x2' });
+    expect(parseGroceryInput('milk x2')).toEqual({ name: 'milk', quantity: 'x2' });
+  });
+
+  it('reads a count of sized packs', () => {
+    expect(parseGroceryInput('2 x 500g pasta')).toEqual({ name: 'pasta', quantity: '2 x 500g' });
+  });
+
   it('peels a bare leading count', () => {
     expect(parseGroceryInput('3 avocados')).toEqual({ name: 'avocados', quantity: '3' });
     expect(parseGroceryInput('12 eggs')).toEqual({ name: 'eggs', quantity: '12' });

@@ -1,6 +1,7 @@
-import type { GroceryItem, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation } from '../types';
 import { describeQuantities } from './mealPlanGroceries';
 import { mergePriceHistories } from './priceHistory';
+import { mergedItemRow } from './groceryItemWrite';
 
 /**
  * Merging one catalog item into another: every row the merge writes, worked
@@ -62,6 +63,12 @@ export interface MergePlan {
   movedEntries: GroceryListEntry[];
   /** The loser's entries, to take off every list. */
   removedEntries: { itemId: string; listId: string | null }[];
+  /**
+   * A loser's box id → the survivor's box that now stands for it, for the
+   * pointers outside these rows (food log entries, saved meals) that the
+   * caller repoints with `dbRepointItemReferences`.
+   */
+  productIdRemap: ReadonlyMap<string, string>;
 }
 
 export function planMergeItems(fromId: string, intoId: string, rows: MergeRows): MergePlan | null {
@@ -187,16 +194,19 @@ export function planMergeItems(fromId: string, intoId: string, rows: MergeRows):
       ? null
       : inheritedVarietyOf;
 
+  // A price observation names the box it was paid for, and a box folded
+  // into one of the survivor's hands its id over.
+  const remapHistory = (history: readonly PriceObservation[]): PriceObservation[] =>
+    history.map(o =>
+      o.productId && productIdRemap.has(o.productId) ? { ...o, productId: productIdRemap.get(o.productId)! } : o
+    );
+  // Every field by its rule in ITEM_MERGE_RULES (groceryItemWrite); the ones
+  // it marks `caller` are decided here, from the membership, boxes and
+  // varieties above.
+  const folded = mergedItemRow(intoItem, fromItem);
   const merged: GroceryItem = {
-    ...intoItem,
-    purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
-    lastAddedAt: laterOf(intoItem.lastAddedAt, fromItem.lastAddedAt),
-    lastPurchasedAt: laterOf(intoItem.lastPurchasedAt, fromItem.lastPurchasedAt),
-    // Not averaged: the two rows' gaps were measured against different
-    // purchase stamps. The surviving row's own figure, else the other's.
-    purchaseIntervalDays: intoItem.purchaseIntervalDays ?? fromItem.purchaseIntervalDays,
-    onHandUntil: laterOf(intoItem.onHandUntil, fromItem.onHandUntil),
-    isStaple: intoItem.isStaple || fromItem.isStaple,
+    ...folded,
+    priceHistory: remapHistory(folded.priceHistory),
     onList,
     checked: onList && (intoItem.checked || fromItem.checked),
     quantity,
@@ -204,7 +214,6 @@ export function planMergeItems(fromId: string, intoId: string, rows: MergeRows):
     choiceGroup,
     preferredProductId: mergedPreferredProductId,
     varietyOfKey: mergedVarietyOfKey,
-    ...pickPriceFields(intoItem, fromItem),
   };
 
   // Variety declarations aimed at the loser's key follow the merge onto the
@@ -236,7 +245,7 @@ export function planMergeItems(fromId: string, intoId: string, rows: MergeRows):
         lastPurchasedAt: laterOf(survivorLink.lastPurchasedAt, loserLink.lastPurchasedAt),
         // Neither side is dropped: both are prices actually paid for what is
         // now one item. The cap keeps the most recent of the two runs.
-        priceHistory: mergePriceHistories(survivorLink.priceHistory, loserLink.priceHistory),
+        priceHistory: remapHistory(mergePriceHistories(survivorLink.priceHistory, loserLink.priceHistory)),
         // A purchase on either side refutes an "unavailable" claim, same as
         // a fresh purchase already does to a single link.
         unavailableAt:
@@ -257,6 +266,7 @@ export function planMergeItems(fromId: string, intoId: string, rows: MergeRows):
       mergedShopLinks.push({
         ...only,
         itemId: intoId,
+        priceHistory: remapHistory(only.priceHistory),
         productId: remapProductId(only.productId),
         unavailableProductIds: remapClaims(only.unavailableProductIds),
       });
@@ -332,5 +342,6 @@ export function planMergeItems(fromId: string, intoId: string, rows: MergeRows):
     finalRetargetedSubs,
     movedEntries,
     removedEntries: beforeListEntries.filter(e => e.itemId === fromId).map(e => ({ itemId: e.itemId, listId: e.listId })),
+    productIdRemap,
   };
 }

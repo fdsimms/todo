@@ -1160,7 +1160,7 @@ describe('finishShopping', () => {
     const updated = useGroceryStore.getState().items[0];
     expect(updated.onHandUntil).toBeNull();
     expect(updated.purchaseCount).toBe(3);
-    expect(probablyHaveReason(updated, new Date())).toMatch(/^bought 3× · last on /);
+    expect(probablyHaveReason(updated, new Date(), [])).toMatch(/^bought 3× · last on /);
   });
 
   it('takes back an "Out of it" on something the trip bought', () => {
@@ -1173,10 +1173,10 @@ describe('finishShopping', () => {
 
     const byId = new Map(useGroceryStore.getState().items.map(i => [i.id, i]));
     expect(byId.get(milk.id)!.onHandUntil).toBeNull();
-    expect(probablyHaveReason(byId.get(milk.id)!, new Date())).toMatch(/^bought once · /);
+    expect(probablyHaveReason(byId.get(milk.id)!, new Date(), [])).toMatch(/^bought once · /);
     // The one left in the trolley keeps its claim — nothing refuted it.
     expect(byId.get(eggs.id)!.onHandUntil).toBe(OUT_OF_IT_UNTIL);
-    expect(probablyHaveReason(byId.get(eggs.id)!, new Date())).toBeNull();
+    expect(probablyHaveReason(byId.get(eggs.id)!, new Date(), [])).toBeNull();
   });
 
   it('clears a recipe-owned quantity, but leaves a hand-set one alone', () => {
@@ -1204,7 +1204,7 @@ describe('finishShopping', () => {
     const receiptDate = '2026-08-15T12:00:00.000Z';
     useGroceryStore.getState().finishShopping(null, {}, receiptDate);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null, {});
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.lastPurchasedAt)
       .toBe(receiptDate);
   });
@@ -1322,6 +1322,18 @@ describe('renameItem', () => {
 
     useGroceryStore.getState().renameItem(milk.id, 'Milk');
     expect(useGroceryStore.getState().items[0].nameFromScan).toBe(false);
+  });
+
+  it('refuses a rename onto another row\'s plural', () => {
+    // An add would resolve "Apples" to the Apple row; a rename mustn't mint
+    // the near-duplicate the add path never would.
+    const apple = makeItem({ name: 'Apple' });
+    const pear = makeItem({ name: 'Pear' });
+    seed([apple, pear]);
+
+    expect(useGroceryStore.getState().renameItem(pear.id, 'Apples')).toBe(false);
+    // Its own plural is not a clash.
+    expect(useGroceryStore.getState().renameItem(pear.id, 'Pears')).toBe(true);
   });
 
   it('refuses a collision rather than merging two catalog rows', () => {
@@ -2449,6 +2461,19 @@ describe('prices by hand', () => {
     expect(state.itemShops[0].lastPriceQuantity).toBe('2 L');
   });
 
+  it('finishShopping files a receipt price against the receipt\'s amount, not the list\'s', () => {
+    const chicken = makeItem({ name: 'Chicken thighs', quantity: '2 lb', onList: true, checked: true });
+    seed([chicken]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([chicken.id]);
+
+    useGroceryStore.getState().finishShopping(null, { [chicken.id]: 1047 }, undefined, undefined, { [chicken.id]: '3.5 lb' });
+
+    const item = useGroceryStore.getState().items[0];
+    expect(item.lastPriceQuantity).toBe('3.5 lb');
+    expect(item.priceHistory[0]).toMatchObject({ minor: 1047, quantity: '3.5 lb' });
+    expect((dbFinishGroceryShopping as jest.Mock).mock.calls[0][6]).toEqual({ [chicken.id]: '3.5 lb' });
+  });
+
   it('setItemPrice pairs no quantity when a recipe wrote the one on the row', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', quantity: '3 cups', quantityFromRecipe: true });
@@ -2540,7 +2565,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -2789,7 +2814,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -2804,7 +2829,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -3495,6 +3520,44 @@ describe('renameItem keeps recipe ingredients in step', () => {
     // The label the recipe was written with is untouched — only the bridge moved.
     expect(ingredients[0].name).toBe('Tomatos');
     expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('undoes a rename without moving lines that already used the new name', () => {
+    // Renaming back would remap every "peanut butter" line, including the one
+    // that was always peanut butter. Undo puts back exactly what moved.
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1', name: 'Toast', nameKey: 'toast', notes: '', sourceUrl: null, servings: null,
+      ingredients: [
+        { id: 'i1', name: 'Butter', nameKey: 'butter', quantity: '', aisle: null },
+        { id: 'i2', name: 'Peanut butter', nameKey: 'peanut butter', quantity: '', aisle: null },
+      ],
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+    const butter = makeItem({ name: 'Butter' });
+    seed([butter]);
+
+    useGroceryStore.getState().renameItem(butter.id, 'Peanut butter');
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items[0]).toMatchObject({ name: 'Butter', nameKey: 'butter' });
+    const keys = useRecipeStore.getState().recipeById('r1')!.ingredients.map(i => i.nameKey);
+    expect(keys).toEqual(['butter', 'peanut butter']);
+  });
+
+  it('moves a line that reached the row by the other plural', () => {
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1', name: 'Salad', nameKey: 'salad', notes: '', sourceUrl: null, servings: null,
+      ingredients: [{ id: 'i1', name: 'Tomato', nameKey: 'tomato', quantity: '1', aisle: null }],
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+    const tomatoes = makeItem({ name: 'Tomatoes' });
+    seed([tomatoes]);
+
+    useGroceryStore.getState().renameItem(tomatoes.id, 'Plum tomatoes');
+
+    expect(useRecipeStore.getState().recipeById('r1')!.ingredients[0].nameKey).toBe('plum tomatoes');
   });
 
   it('writes nothing when no recipe referenced the old key', () => {
@@ -4521,6 +4584,20 @@ describe('setOnHandUntil', () => {
 });
 
 describe('markOutOfMany', () => {
+  it('undoes the mark without undoing a tick made since', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, onHandUntil: '2099-01-01T00:00:00.000Z' });
+    seed([milk]);
+    useGroceryStore.getState().markOutOfMany([milk.id]);
+    const undo = useGroceryStore.getState().lastAction!.undo;
+    useGroceryStore.getState().toggleChecked(milk.id);
+
+    undo();
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after.onHandUntil).toBe('2099-01-01T00:00:00.000Z');
+    expect(after.checked).toBe(true);
+  });
+
   it('writes the same assertion the item sheet writes, to every row named', () => {
     const soy = makeItem({ name: 'Soy sauce', onHandUntil: '2026-08-21T00:00:00.000Z' });
     const cumin = makeItem({ name: 'Cumin' });
@@ -4531,7 +4608,7 @@ describe('markOutOfMany', () => {
     for (const item of useGroceryStore.getState().items) {
       expect(item.onHandUntil).toBe(OUT_OF_IT_UNTIL);
       // Which is the whole point: the pantry stops claiming them.
-      expect(probablyHaveReason(item, new Date())).toBeNull();
+      expect(probablyHaveReason(item, new Date(), [])).toBeNull();
     }
   });
 
@@ -4729,7 +4806,7 @@ describe('addToPantry', () => {
       expect.objectContaining({ id: added!.id, onList: false })
     );
     // Which is exactly the set the pantry sheet lists.
-    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date(), [])).toBe(
       'marked as on hand'
     );
   });
@@ -4785,7 +4862,7 @@ describe('addToPantry', () => {
 
     useGroceryStore.getState().addToPantry('Rice');
 
-    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date(), [])).toBe(
       'marked as on hand'
     );
   });
@@ -6212,6 +6289,34 @@ describe('use-up tasks', () => {
     expect(useUpTaskFor(spinach.id)).toBeDefined();
   });
 
+  it('does not hand back a finished task while the use-by day is unchanged', () => {
+    mockUseUpTasks = true;
+    const pesto = makeItem({ name: 'Pesto', expiresAt: '2026-08-17', openedAt: '2026-08-14T09:00:00.000Z' });
+    seed([pesto]);
+    useGroceryStore.getState().setUseUpTask(pesto.id, true);
+    const first = useUpTaskFor(pesto.id)!;
+    mockTaskState.updateTask(first.id, { completed: true });
+
+    // Un-opening leaves the day where it was: still this jar's task, done.
+    useGroceryStore.getState().setOpened(pesto.id, false);
+
+    const forPesto = mockTaskState.tasks.filter(t => t.generatedSourceId === pesto.id);
+    expect(forPesto).toHaveLength(1);
+  });
+
+  it('gives a new use-by day its own task after the last one was finished', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    mockTaskState.updateTask(useUpTaskFor(spinach.id)!.id, { completed: true });
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-24');
+
+    const live = mockTaskState.tasks.filter(t => t.generatedSourceId === spinach.id && !t.completed);
+    expect(live).toHaveLength(1);
+  });
+
   // #1953. reconcileUseUpTask fires on mutations that leave expiresAt exactly
   // where it was, and it used to recompute the day anyway — so a task the user
   // had deferred snapped back to the lead-time date on the strength of an
@@ -6429,6 +6534,22 @@ describe('use-up tasks', () => {
 
       expect(useGroceryStore.getState().items.find(i => i.id === spinach.id)!.expiresAt)
         .not.toBe('2026-01-01');
+    });
+
+    it('clears an opened jar\'s day when the purchase has none of its own to stamp', () => {
+      // Pesto has an opened shelf life but no purchase one, so the trip names
+      // no new day; the old one was the opened jar's and the new jar is sealed.
+      const pesto = makeItem({
+        name: 'pesto', onList: true, checked: true, expiresAt: '2026-01-01', openedAt: '2025-12-27T12:00:00.000Z',
+      });
+      seed([pesto]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([pesto.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      const stored = useGroceryStore.getState().items.find(i => i.id === pesto.id)!;
+      expect(stored.expiresAt).toBeNull();
+      expect(stored.openedAt).toBeNull();
     });
 
     it('dates a shelf-life day from an explicit purchasedAt rather than now (#1806)', () => {
@@ -8151,7 +8272,7 @@ describe('separate shopping lists', () => {
       useGroceryStore.getState().finishShopping(null, {});
 
       expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
-        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}
       );
     });
 
@@ -8196,7 +8317,7 @@ describe('separate shopping lists', () => {
       // And the db is told nothing to record either, rather than being trusted
       // to drop it on its own.
       expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
-        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}
       );
     });
 

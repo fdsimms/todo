@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption, RecipeStep, RecipeVote } from '../types';
+import type { GroceryItem, ItemProduct, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption, RecipeStep, RecipeVote } from '../types';
 import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from './stepTimers';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
@@ -693,10 +693,11 @@ export function countLikelyInPantry(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  products: readonly ItemProduct[],
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): LikelyInPantryCount | null {
-  return likelyCountOf(pantryCoverageForRecipe(recipe, items, now, recipesById, itemSubs));
+  return likelyCountOf(pantryCoverageForRecipe(recipe, items, now, products, recipesById, itemSubs));
 }
 
 /**
@@ -715,10 +716,11 @@ export function countLikelyInPantryByRecipe(
   recipes: readonly Recipe[],
   items: readonly GroceryItem[],
   now: Date,
+  products: readonly ItemProduct[],
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): Map<string, LikelyInPantryCount> {
-  const lookups = pantryLookups(items, now, itemSubs);
+  const lookups = pantryLookups(items, now, products, itemSubs);
   const counts = new Map<string, LikelyInPantryCount>();
   for (const recipe of recipes) {
     const count = likelyCountOf(coverageWithLookups(recipe, items, now, recipesById, itemSubs, lookups));
@@ -833,10 +835,11 @@ export function pantryCoverageForRecipe(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  products: readonly ItemProduct[],
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): PantryCoverage {
-  return coverageWithLookups(recipe, items, now, recipesById, itemSubs, pantryLookups(items, now, itemSubs));
+  return coverageWithLookups(recipe, items, now, recipesById, itemSubs, pantryLookups(items, now, products, itemSubs));
 }
 
 /**
@@ -853,15 +856,22 @@ interface PantryLookups {
   itemKeys: ReadonlySet<string>;
   /** `classifyPlanned`'s own catalog lookups, the larger part of what a recipe used to rebuild. */
   catalog: PlannedCatalogIndex;
+  /** The boxes, so a packet frozen or marked "Got it" counts as it does in the Pantry. */
+  products: readonly ItemProduct[];
 }
 
-function pantryLookups(items: readonly GroceryItem[], now: Date, itemSubs: readonly ItemSubLink[]): PantryLookups {
+function pantryLookups(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[],
+  itemSubs: readonly ItemSubLink[]
+): PantryLookups {
   const catalog = plannedCatalogIndex(items);
   return {
     // Live, not persisted — an unresolved choice group counts toward coverage
     // via whichever alternative is already on hand (see recipeComponents.ts's
     // ChoiceResolution.onHand), the same rule the shopping read uses.
-    onHand: onHandNameKeys(items, now),
+    onHand: onHandNameKeys(items, now, products),
     // Swapped, from the same links this already takes: a cook who never buys
     // dairy milk is not missing an ingredient, and a coverage number that says
     // they are is the exact complaint #1571 exists to answer. Built here rather
@@ -871,6 +881,7 @@ function pantryLookups(items: readonly GroceryItem[], now: Date, itemSubs: reado
     swaps: standingSwapMap(itemSubs, items),
     itemKeys: catalog.keys,
     catalog,
+    products,
   };
 }
 
@@ -885,7 +896,7 @@ function coverageWithLookups(
   const planned = plannedIngredientsForRecipe(recipe, recipesById, { onHand: lookups.onHand }, 1, lookups.swaps);
   if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
-  const classified = classifyPlanned(planned, items, now, itemSubs, null, [], lookups.catalog);
+  const classified = classifyPlanned(planned, items, now, itemSubs, null, lookups.products, lookups.catalog);
   const total = classified.length;
   const catalogMatches = classified.filter(row => lookups.itemKeys.has(row.nameKey)).length;
   const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length;
@@ -1694,6 +1705,7 @@ function catalogCoverage(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  products: readonly ItemProduct[],
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): { matched: number; total: number; coverage: number; avgRecency: number } {
@@ -1714,7 +1726,7 @@ function catalogCoverage(
   // under its alternate ingredient doesn't score as less ready than one
   // scored under the option nobody has.
   const ingredients = flattenRecipeIngredients(
-    recipe, recipesById ?? new Map([[recipe.id, recipe]]), { onHand: onHandNameKeys(items, now) },
+    recipe, recipesById ?? new Map([[recipe.id, recipe]]), { onHand: onHandNameKeys(items, now, products) },
     standingSwapMap(itemSubs, items)
   ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
@@ -1758,7 +1770,7 @@ function catalogCoverage(
     // worse, while a linked substitute the app currently thinks is on hand is
     // a real, if lesser, signal that this line is actually coverable tonight.
     const own = purchaseRecency(item, now);
-    const subs = substitutesOnHand(item.id, itemSubs, items, now);
+    const subs = substitutesOnHand(item.id, itemSubs, items, now, products);
     const recency = subs.length > 0 ? Math.max(own, SUBSTITUTE_RECENCY_CREDIT) : own;
     recencySum += recency;
   }
@@ -1774,10 +1786,11 @@ export function scoreRecipeAgainstCatalog(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  products: readonly ItemProduct[],
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): number {
-  const { matched, coverage, avgRecency } = catalogCoverage(recipe, items, now, recipesById, itemSubs);
+  const { matched, coverage, avgRecency } = catalogCoverage(recipe, items, now, products, recipesById, itemSubs);
   if (matched === 0) return 0;
   const catalogFit = coverage * (0.5 + 0.5 * avgRecency);
   return catalogFit * suggestionNovelty(recipe, now);
@@ -1800,14 +1813,15 @@ export function suggestRecipesForEmptyNight(
   recipes: readonly Recipe[],
   items: readonly GroceryItem[],
   now: Date,
+  products: readonly ItemProduct[],
   limit = 3,
   itemSubs: readonly ItemSubLink[] = [],
 ): Recipe[] {
   const byId = recipeMap(recipes);
   return recipes
-    .map(recipe => ({ recipe, ...catalogCoverage(recipe, items, now, byId, itemSubs) }))
+    .map(recipe => ({ recipe, ...catalogCoverage(recipe, items, now, products, byId, itemSubs) }))
     .filter(x => x.coverage >= MIN_SUGGESTION_COVERAGE)
-    .map(x => ({ recipe: x.recipe, score: scoreRecipeAgainstCatalog(x.recipe, items, now, byId, itemSubs) }))
+    .map(x => ({ recipe: x.recipe, score: scoreRecipeAgainstCatalog(x.recipe, items, now, products, byId, itemSubs) }))
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)
     .map(x => x.recipe);

@@ -254,6 +254,7 @@ export function RecipesScreen() {
   // memo holds too. See samePantryCatalog.
   const pantryCatalog = useGroceryStore(usePantryCatalog());
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
@@ -534,8 +535,8 @@ export function RecipesScreen() {
   // sorting or filtering never recounts, and `pantryCatalog` rather than the
   // raw items, so neither does checking a grocery item off.
   const pantryCounts = useMemo(
-    () => countLikelyInPantryByRecipe(recipes, pantryCatalog, new Date(), recipeMap(recipes), itemSubs),
-    [recipes, pantryCatalog, itemSubs]
+    () => countLikelyInPantryByRecipe(recipes, pantryCatalog, new Date(), itemProducts, recipeMap(recipes), itemSubs),
+    [recipes, pantryCatalog, itemProducts, itemSubs]
   );
 
   // Each row's subtitle, worked out once per recipe rather than twice per row

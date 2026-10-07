@@ -161,6 +161,30 @@ const realDb = SQLite.openDatabaseSync(REAL_DB_NAME);
 // handle is never closed, so switching back is just a reassignment.
 let db = realDb;
 
+// How many transactions are open on `db` right now. expo-sqlite's
+// withTransactionSync is a bare BEGIN/COMMIT, so a second one opened inside
+// the first throws ("cannot start a transaction within a transaction"), and
+// its ROLLBACK then undoes the outer one's writes while the store's state
+// keeps them. Store actions call each other freely (addFromPlan → setAisle →
+// setAisleMany), so "never nest" was a rule nobody could see from the call
+// site. An inner call joins the transaction already open instead: it commits
+// or rolls back with the outer one, which is what a caller wrapping several
+// writes in one transaction asked for in the first place.
+let transactionDepth = 0;
+
+function withTransaction(fn: () => void): void {
+  if (transactionDepth > 0) {
+    fn();
+    return;
+  }
+  transactionDepth++;
+  try {
+    db.withTransactionSync(fn);
+  } finally {
+    transactionDepth--;
+  }
+}
+
 // Opens a blank demo database, deleting any file left behind by a previous
 // session that was killed mid-demo (the active-demo flag lives in memory
 // only, so a crash always lands back on real data — at worst with a stale
@@ -2468,7 +2492,7 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
     .getAllSync<BackupRow>('SELECT * FROM settings')
     .filter(row => isDeviceLocalSetting(row.key));
 
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     // Cleared in reverse, children first, for the same reason rows go back in
     // parents-first.
     for (const table of [...BACKUP_TABLES].reverse()) {
@@ -2586,7 +2610,7 @@ export function isSyncableDatabase(): boolean {
 export function dbSyncChangesSince(since: string | null, transport?: string): SyncChangeSet {
   let result: SyncChangeSet | null = null;
 
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const until =
       db.getFirstSync<{ now: string }>(`SELECT ${NOW_EXPR} AS now`)?.now ??
       new Date().toISOString();
@@ -2777,21 +2801,34 @@ export interface RepointSnapshot {
  * were left naming a deleted row. Reuses the fold's own reference map, so the
  * two merges can't disagree about what points at an item.
  */
-export function dbRepointItemReferences(fromId: string, intoId: string): RepointSnapshot {
+export function dbRepointItemReferences(
+  fromId: string,
+  intoId: string,
+  // Boxes the merge folded into one of the survivor's (a loser's box id →
+  // the survivor box that now stands for it). A food log entry or a saved
+  // meal naming the folded box otherwise points at a deleted row.
+  productRemap: ReadonlyMap<string, string> = new Map()
+): RepointSnapshot {
   const snapshot: RepointSnapshot = { rows: [], settings: [] };
   const tables = new Set(['food_logs', 'saved_meals']);
-  db.withTransactionSync(() => {
+  const repoint = (target: string, from: string, into: string) => {
     for (const ref of REFERENCES) {
-      if (ref.target !== 'grocery_items' || !tables.has(ref.table)) continue;
+      if (ref.target !== target || !tables.has(ref.table)) continue;
       const rows = ref.match === 'equals'
-        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [fromId])
-        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [fromId]);
+        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [from])
+        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [from]);
       for (const row of rows) {
-        const next = ref.rewrite(row, fromId, intoId);
+        const next = ref.rewrite(row, from, into);
         if (!next) continue;
         snapshot.rows.push({ table: ref.table, id: String(row.id), column: ref.column, before: row[ref.column] });
         db.runSync(`UPDATE "${ref.table}" SET "${ref.column}" = ? WHERE id = ?`, [next[ref.column], row.id]);
       }
+    }
+  };
+  withTransaction(() => {
+    repoint('grocery_items', fromId, intoId);
+    for (const [from, into] of productRemap) {
+      if (from !== into) repoint('grocery_item_products', from, into);
     }
     for (const setting of SETTING_REFERENCES) {
       if (setting.target !== 'grocery_items') continue;
@@ -2807,8 +2844,11 @@ export function dbRepointItemReferences(fromId: string, intoId: string): Repoint
 }
 
 export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
-  db.withTransactionSync(() => {
-    for (const r of snapshot.rows) {
+  withTransaction(() => {
+    // Newest first: a row rewritten twice (a saved meal naming both the item
+    // and one of its boxes) recorded its intermediate value the second time,
+    // and only the first record holds what it was before the merge.
+    for (const r of [...snapshot.rows].reverse()) {
       db.runSync(`UPDATE "${r.table}" SET "${r.column}" = ? WHERE id = ?`, [r.before, r.id]);
     }
     for (const s of snapshot.settings) dbSetSetting(s.key, s.before);
@@ -2917,7 +2957,9 @@ function insertRowStampNow(name: string, row: BackupRow): void {
 function afterFold(name: string, id: string): void {
   // The item's on-list columns mirror its home-list entry, which the fold may
   // just have merged or moved onto it.
-  if (name === 'grocery_items') dbSyncGroceryHomeColumns(id);
+  // Restamped where it corrects anything, so the fix travels back (the
+  // resync's rule, not the local write's).
+  if (name === 'grocery_items') resyncGroceryHomeColumns(id);
 }
 
 /**
@@ -3029,7 +3071,7 @@ function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boole
 export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const ctx = loadFoldContext();
     // Grocery rows whose on-list mirror this apply may have left wrong: an item
     // row arrives with the peer's copy of it, and an entry arriving or leaving
@@ -3849,7 +3891,7 @@ export function dbMarkTaskSeen(id: string, seenAt: string): void {
 }
 
 export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE tasks SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -3857,7 +3899,7 @@ export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number
 }
 
 export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, pinnedOrder } of updates) {
       db.runSync('UPDATE tasks SET pinned_order = ? WHERE id = ?', [pinnedOrder, id]);
     }
@@ -3868,7 +3910,7 @@ export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: nu
 // different table: reordering the Up Next shelf renumbers every row in one
 // transaction rather than one dbUpdateRecipe round-trip per row.
 export function dbBatchUpdateRecipeUpNextOrders(updates: { id: string; upNextOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, upNextOrder } of updates) {
       db.runSync('UPDATE recipes SET up_next_order = ? WHERE id = ?', [upNextOrder, id]);
     }
@@ -3886,7 +3928,7 @@ export function dbBatchUpdateRecipeUpNextOrders(updates: { id: string; upNextOrd
 export function dbBatchUpdatePostponeCounts(
   updates: { id: string; postponeCount: number; driftingSince: string | null; bountyPushes: number | null }[],
 ): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, postponeCount, driftingSince, bountyPushes } of updates) {
       // Written together, never separately: the count and the day it started
       // from describe one run of pushes, and a batch that set one without the
@@ -3917,12 +3959,10 @@ export function dbClearAllPins(): void {
 
 // Lets a store-level cascade (looping a single-task action like completeTask
 // or deleteTask over many ids) commit as one WAL transaction instead of one
-// per iteration. Safe to wrap around any of dbInsertTask/dbUpdateTask/
-// dbDeleteTask/dbDeleteSubtasks — all plain runSync — but never around a
-// dbBulk* function below, which already opens its own transaction and would
-// nest.
+// per iteration. Safe to wrap around anything in this file, a dbBulk*
+// function included: see withTransaction.
 export function dbTransaction(fn: () => void): void {
-  db.withTransactionSync(fn);
+  withTransaction(fn);
 }
 
 /**
@@ -3965,7 +4005,7 @@ function fillCalendarExternalIds(
   if (Object.keys(found).length === 0) return [];
   const wanting = pairs.map(([idCol, extCol]) => `(${idCol} IS NOT NULL AND ${extCol} IS NULL)`).join(' OR ');
   const written: string[] = [];
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const rows = db.getAllSync<Record<string, string | null>>(
       `SELECT id, updated_at, ${pairs.flat().join(', ')} FROM ${table} WHERE ${wanting}`
     );
@@ -4061,7 +4101,7 @@ function updateDeviceLocalColumns(
       throw new Error(`${table}.${column} syncs, so it goes through the row's ordinary update`);
     }
   }
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const row = db.getFirstSync<{ updated_at: string | null }>(
       `SELECT updated_at FROM ${table} WHERE id = ?`, [id]
     );
@@ -4124,7 +4164,7 @@ const BULK_DELETE_CHUNK_SIZE = 500;
 
 export function dbBulkDeleteTasks(ids: string[]): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
       const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
       const placeholders = chunk.map(() => '?').join(', ');
@@ -4136,7 +4176,7 @@ export function dbBulkDeleteTasks(ids: string[]): void {
 
 export function dbBulkSetPriority(ids: string[], priority: number): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET priority = ? WHERE id = ?', [priority, id]);
     }
@@ -4145,7 +4185,7 @@ export function dbBulkSetPriority(ids: string[], priority: number): void {
 
 export function dbBulkSetDifficulty(ids: string[], difficulty: string | null): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET difficulty = ? WHERE id = ?', [difficulty, id]);
     }
@@ -4154,7 +4194,7 @@ export function dbBulkSetDifficulty(ids: string[], difficulty: string | null): v
 
 export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET defer_until = ? WHERE id = ?', [deferUntil, id]);
     }
@@ -4164,7 +4204,7 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
 export function dbBulkSetWhen(ids: string[], dueDate: string | null, timeSegments: TimeOfDay[]): void {
   if (ids.length === 0) return;
   const timeOfDay = timeSegments.length ? JSON.stringify(timeSegments) : null;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET due_date = ?, time_of_day = ? WHERE id = ?', [dueDate, timeOfDay, id]);
     }
@@ -4178,7 +4218,7 @@ export function dbBulkSetWhen(ids: string[], dueDate: string | null, timeSegment
 export function dbBulkSetTimeSegments(ids: string[], timeSegments: TimeOfDay[]): void {
   if (ids.length === 0) return;
   const timeOfDay = timeSegments.length ? JSON.stringify(timeSegments) : null;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET time_of_day = ? WHERE id = ?', [timeOfDay, id]);
     }
@@ -4187,7 +4227,7 @@ export function dbBulkSetTimeSegments(ids: string[], timeSegments: TimeOfDay[]):
 
 export function dbBulkSetCategory(ids: string[], category: string | null): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET category = ? WHERE id = ?', [category, id]);
     }
@@ -4196,7 +4236,7 @@ export function dbBulkSetCategory(ids: string[], category: string | null): void 
 
 export function dbBulkSetPinned(ids: string[], pinned: boolean): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET pinned = ? WHERE id = ?', [pinned ? 1 : 0, id]);
     }
@@ -4225,7 +4265,7 @@ export function dbRemoveTagFromAllTasks(tag: string): void {
   const rows = db.getAllSync<{ id: string; tags: string }>(
     "SELECT id, tags FROM tasks WHERE tags != '[]'"
   );
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const row of rows) {
       const existing: string[] = JSON.parse(row.tags ?? '[]');
       if (!existing.includes(tag)) continue;
@@ -4237,7 +4277,7 @@ export function dbRemoveTagFromAllTasks(tag: string): void {
 
 export function dbBulkAddTags(ids: string[], tagsToAdd: string[]): void {
   if (ids.length === 0 || tagsToAdd.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       const row = db.getFirstSync<{ tags: string }>('SELECT tags FROM tasks WHERE id = ?', [id]);
       if (!row) continue;
@@ -4287,7 +4327,7 @@ export function dbInsertCategory(name: string): Category {
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -4343,7 +4383,7 @@ export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'sc
 }
 
 export function dbDeleteCategory(name: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('DELETE FROM categories WHERE name = ?', [name]);
     db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
     db.runSync('UPDATE task_groups SET category = NULL WHERE category = ?', [name]);
@@ -4374,7 +4414,7 @@ export function dbInsertCategoryRow(category: Category): void {
 }
 
 export function dbRenameCategory(id: string, oldName: string, newName: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('UPDATE categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
@@ -4415,7 +4455,7 @@ export function dbInsertProjectCategory(name: string): ProjectCategory {
  * tasks inside it (see Project.category).
  */
 export function dbDeleteProjectCategory(name: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('DELETE FROM project_categories WHERE name = ?', [name]);
     db.runSync('UPDATE projects SET category = NULL WHERE category = ?', [name]);
   });
@@ -4430,14 +4470,14 @@ export function dbInsertProjectCategoryRow(category: ProjectCategory): void {
 }
 
 export function dbRenameProjectCategory(id: string, oldName: string, newName: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('UPDATE project_categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE projects SET category = ? WHERE category = ?', [newName, oldName]);
   });
 }
 
 export function dbBatchUpdateProjectCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE project_categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -4550,7 +4590,7 @@ export function dbDeleteSavedView(id: string): void {
 export function dbBatchUpdateSavedViewSortOrders(
   updates: { id: string; sortOrder: number }[]
 ): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE saved_views SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -4590,7 +4630,7 @@ export function dbGetFocusSession(): FocusSession | null {
  * the only thing keeping a stale session out.
  */
 export function dbSaveFocusSession(session: FocusSession): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('DELETE FROM focus_sessions');
     db.runSync(
       `INSERT INTO focus_sessions
@@ -4840,12 +4880,19 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
   );
 }
 
+/**
+ * Every column of a catalog row **except the four that mirror its list
+ * entries** (`on_list`, `checked`, `sort_order`, `choice_group`), which only
+ * `dbSyncGroceryHomeColumns` writes. A row snapshotted for an undo carries the
+ * mirror as it stood then, and writing it back here restored a check or a
+ * list membership that had changed since, with the entry saying otherwise.
+ */
 export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
-       name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
-       sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
+       name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, in_catalog=?,
+       purchase_count=?, last_added_at=?, last_purchased_at=?,
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, is_staple=?,
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
@@ -4854,12 +4901,12 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
+      1,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null, item.isStaple ? 1 : 0,
+      item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.pantryCheckDeclinedAt ?? null, item.pantryReviewedAt ?? null,
@@ -4949,7 +4996,9 @@ export function dbFinishGroceryShopping(
   // It doubles as the away flag rather than there being a second parameter,
   // because the two could then disagree: "away" is exactly "not the home
   // list", and see `away` below for what that costs a trip.
-  listId: string | null = null
+  listId: string | null = null,
+  // What a price was paid for where a receipt said; see finishShopping.
+  priceQuantityById: Readonly<Record<string, string>> = {}
 ): string[] {
   const away = listId !== null;
   // Joined rather than read off grocery_items' own checked/on_list, because
@@ -4963,9 +5012,10 @@ export function dbFinishGroceryShopping(
     price_history: string | null;
     last_purchased_at: string | null;
     purchase_interval_days: number | null;
+    expires_at: string | null;
   }>(
     `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history,
-            i.last_purchased_at, i.purchase_interval_days
+            i.last_purchased_at, i.purchase_interval_days, i.expires_at
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
@@ -4977,8 +5027,8 @@ export function dbFinishGroceryShopping(
   // against nothing rather than against that: recipeCost divides by this
   // string, and a gallon's price over "3 cups" costs every later recipe wrong.
   // Mirrors pricedQuantityById in useGroceryStore.finishShopping.
-  const pricedQuantity = (row: { quantity: string | null; quantity_from_recipe: number | null }) =>
-    row.quantity_from_recipe ? null : row.quantity ?? null;
+  const pricedQuantity = (row: { id: string; quantity: string | null; quantity_from_recipe: number | null }) =>
+    priceQuantityById[row.id] ?? (row.quantity_from_recipe ? null : row.quantity ?? null);
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   // The trolley empties by the entries going, which is the whole of what an
@@ -5079,9 +5129,13 @@ export function dbFinishGroceryShopping(
     // A use-by day, unlike the clear above, is per item: it comes off the shelf
     // life of *this* row (see groceryShelfLife.ts), so it can't ride the bulk
     // UPDATE. Only the rows the lexicon recognises get one — a bag of rice is
-    // in this trip too and has no day worth naming.
-    const expires = expiresAtById[row.id];
-    if (expires) db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
+    // in this trip too and has no day worth naming. Every other row's old day
+    // is cleared, for the reason opened_at is: it was the old jar's (an
+    // opened pesto's five days), and the jar just carried home is sealed.
+    const expires = expiresAtById[row.id] ?? null;
+    if (expires !== row.expires_at) {
+      db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
+    }
     // Re-stamped after the blanket clear above, not exempted from it: the claim
     // being written is about this trip's bag, so it wants this trip's instant.
     if (frozenIds.has(row.id)) {
@@ -5285,8 +5339,9 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * Copies the home entry back onto grocery_items' own four membership columns,
  * or clears them when there is no home entry.
  *
- * **The single writer of those columns**, which is what stops the mirror
- * drifting from the table it mirrors — every membership write above ends here.
+ * **The single writer of those columns** (`dbUpdateGroceryItem` leaves them
+ * out), which is what stops the mirror drifting from the table it mirrors —
+ * every membership write above ends here.
  * They exist at all because they are what every reader written before separate
  * lists means by "on the list", and the home list is the one they meant.
  *
@@ -5294,9 +5349,52 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * see GroceryItem.onList. It has to be, because the sweep in `clearList` and the
  * catalog prune both read it to decide whether a row is unused, and a row on the
  * Airbnb list is not unused.
+ *
+ * **Writes only when the columns are wrong, and keeps the row's sync stamp.**
+ * Any UPDATE restamps a row as a local change, and the stamp decides which
+ * copy wins against a peer's. The tick itself lives on the entry, which syncs
+ * on its own, and a peer rebuilds these columns from the entries as they land
+ * (`resyncGroceryHomeColumns`), so the item row has nothing new to send. A
+ * restamp here made every check-off, every Reminders mirror pass and every
+ * finished trip read as an edit of the whole item, and a phone's stale copy of
+ * Milk then beat the note just written to it on the iPad.
  */
 export function dbSyncGroceryHomeColumns(itemId: string): void {
-  const cols = homeColumnsFor(itemId);
+  const stored = storedHomeColumns(itemId);
+  if (!stored) return;
+  const want = homeColumnsFor(itemId);
+  if (sameHomeColumns(stored, want)) return;
+  writeHomeColumns(itemId, want);
+  db.runSync('UPDATE grocery_items SET updated_at = ? WHERE id = ?', [stored.updated_at, itemId]);
+}
+
+function storedHomeColumns(
+  itemId: string
+): (HomeColumns & { updated_at: string | null }) | null {
+  const row = db.getFirstSync<{
+    on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null;
+    updated_at: string | null;
+  }>(
+    'SELECT on_list, checked, sort_order, choice_group, updated_at FROM grocery_items WHERE id = ?',
+    [itemId]
+  );
+  if (!row) return null;
+  return {
+    on_list: row.on_list ? 1 : 0,
+    checked: row.checked ? 1 : 0,
+    sort_order: row.sort_order ?? 0,
+    choice_group: row.choice_group ?? null,
+    updated_at: row.updated_at,
+  };
+}
+
+function sameHomeColumns(a: HomeColumns, b: HomeColumns): boolean {
+  return a.on_list === b.on_list && a.checked === b.checked
+    && a.sort_order === b.sort_order && a.choice_group === b.choice_group;
+}
+
+/** The write itself, which restamps the row like any UPDATE. */
+function writeHomeColumns(itemId: string, cols: HomeColumns): void {
   db.runSync(
     'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
     [cols.on_list, cols.checked, cols.sort_order, cols.choice_group, itemId]
@@ -5342,21 +5440,12 @@ function homeColumnsFor(itemId: string): HomeColumns {
  * recomputes them from the same entries, finds them right and writes nothing.
  */
 function resyncGroceryHomeColumns(itemId: string): void {
-  const stored = db.getFirstSync<{ on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null }>(
-    'SELECT on_list, checked, sort_order, choice_group FROM grocery_items WHERE id = ?',
-    [itemId]
-  );
+  const stored = storedHomeColumns(itemId);
   if (!stored) return;
   const want = homeColumnsFor(itemId);
-  if (
-    (stored.on_list ? 1 : 0) === want.on_list &&
-    (stored.checked ? 1 : 0) === want.checked &&
-    (stored.sort_order ?? 0) === want.sort_order &&
-    (stored.choice_group ?? null) === want.choice_group
-  ) {
-    return;
-  }
-  dbSyncGroceryHomeColumns(itemId);
+  if (sameHomeColumns(stored, want)) return;
+  // Restamped, unlike the local write: the correction has to travel back.
+  writeHomeColumns(itemId, want);
 }
 
 // ─── Grocery lists ──────────────────────────────────────────────────────────
@@ -5823,13 +5912,9 @@ export function dbSetItemProduct(product: ItemProduct): void {
  * folded product adopts the loser's barcode while the loser's row is still
  * there waiting for the cascade.
  *
- * **Two bare statements, no transaction of its own**, deliberately: both call
- * sites already run inside `dbTransaction`, and opening a second one there
- * would nest `withTransactionSync` — the thing that comment warns against.
- * Wrap a future standalone caller rather than putting one back here; a run
- * that released without claiming loses a link, which is recoverable, where a
- * nested BEGIN throws on device and passes in tests (better-sqlite3 nests via
- * savepoints, expo-sqlite does not).
+ * **Two bare statements, no transaction of its own**: both call sites already
+ * run inside `dbTransaction`. Wrap a future standalone caller; a run that
+ * released without claiming loses a link, which is recoverable.
  *
  * Re-scanning a barcode onto a different box is an ordinary correction, not an
  * error: the latest thing a person confirmed is what the code means, the same
@@ -7086,7 +7171,7 @@ export function dbDeleteFoodLogEntry(id: string): void {
 
 export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
       const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
       const placeholders = chunk.map(() => '?').join(', ');
@@ -7097,7 +7182,7 @@ export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
 
 export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE food_logs SET slot = ? WHERE id = ?', [slot, id]);
     }
@@ -7110,7 +7195,7 @@ export function dbBulkUpdateFoodLogPlacement(
   updates: { id: string; slot: MealSlot | null; sortOrder: number }[]
 ): void {
   if (updates.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const u of updates) {
       db.runSync('UPDATE food_logs SET slot = ?, sort_order = ? WHERE id = ?', [u.slot, u.sortOrder, u.id]);
     }
@@ -7645,7 +7730,7 @@ export function dbDeleteProject(id: string): void {
 }
 
 export function dbBatchUpdateProjectSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE projects SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -7749,7 +7834,7 @@ export function dbDeletePerson(id: string): void {
 }
 
 export function dbBatchUpdatePersonSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE people SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -7792,7 +7877,7 @@ export function dbDeletePersonGroup(id: string): void {
 }
 
 export function dbBatchUpdatePersonGroupSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE person_groups SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }

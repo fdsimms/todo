@@ -801,16 +801,24 @@ describe('a preferred product scopes the run', () => {
 });
 
 describe('estimateCartTotal', () => {
-  const cart = (...items: GroceryItem[]) => estimateCartTotal(items);
+  const cart = (...items: GroceryItem[]) => estimateCartTotal(items, null, []);
 
   it('counts what is ticked, where estimateListTotal counts the whole list', () => {
     const items = [
       makeItem({ id: 'a', onList: true, checked: true, lastPriceMinor: 429 }),
       makeItem({ id: 'b', onList: true, checked: false, lastPriceMinor: 999 }),
     ];
-    expect(estimateCartTotal(items)).toEqual({ totalMinor: 429, priced: 1, total: 1 });
+    expect(estimateCartTotal(items, null, [])).toEqual({ totalMinor: 429, priced: 1, total: 1 });
     // The sibling still answers about the list, unchanged.
     expect(estimateListTotal(items)).toEqual({ totalMinor: 1428, priced: 2, total: 2 });
+  });
+
+  it('prices a row at the trip\'s store where it has a price there', () => {
+    // Last paid $9.99 at Costco; $4.29 here. A trolley here is the $4.29 one.
+    const item = makeItem({ id: 'a', onList: true, checked: true, lastPriceMinor: 999 });
+    const here = link({ itemId: 'a', shopId: 'tj', lastPriceMinor: 429, lastPricedAt: '2026-08-01T00:00:00.000Z' });
+    expect(estimateCartTotal([item], 'tj', [here]).totalMinor).toBe(429);
+    expect(estimateCartTotal([item], null, [here]).totalMinor).toBe(999);
   });
 
   it('ignores anything off the list', () => {

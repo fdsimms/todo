@@ -16,7 +16,7 @@
  */
 import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { getCurrentDayStart, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
+import { deadlineInstant, getCurrentDayStart, getTaskDayStart, recurrenceAnchorDayFor } from './dateUtils';
 import { quotaRunSpan, quotaTargetForInterval } from './quotaSchedule';
 import { isRotationTask, rotationTargetTotal } from './rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
@@ -192,7 +192,8 @@ export interface TaskUpdateContext {
 }
 
 /** `t` with `updates` applied, and every field derived from the edit filled in. */
-export function mergeTaskUpdate(t: Task, updates: Partial<Task>, ctx: TaskUpdateContext): Task {
+export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateContext): Task {
+  const updates = typeof patch.deadline === 'string' ? { ...patch, deadline: deadlineInstant(patch.deadline) } : patch;
   let seriesDefaults = t.seriesDefaults;
   if (ctx.scope === 'occurrence') {
     const captured: Partial<Task> = {};

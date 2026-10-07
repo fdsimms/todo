@@ -3023,7 +3023,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // could only ever show corrections. A purchase is read back in its own
     // words now, and a row created this instant sits inside the flat window,
     // so the evidence line seeds like anything else.
-    const pantry = pantryEntries(items, new Date());
+    const pantry = pantryEntries(items, new Date(), []);
     expect(pantry.length).toBeGreaterThan(5);
     expect(pantry.some(e => e.asserted)).toBe(true);
     expect(pantry.some(e => !e.asserted && e.reason.startsWith('bought '))).toBe(true);
@@ -3142,7 +3142,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const plannedLine = planned.find(p => p.nameKey === optionalLine!.nameKey);
     expect(plannedLine?.optional).toBe(true);
 
-    const classified = classifyPlanned(planned, useGroceryStore.getState().items, new Date());
+    const classified = classifyPlanned(planned, useGroceryStore.getState().items, new Date(), [], null, []);
     const row = classified.find(r => r.nameKey === optionalLine!.nameKey);
     expect(row?.optional).toBe(true);
     expect(row?.category).toBe('needToBuy');
@@ -3256,7 +3256,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const row = classifyPlanned(
       [{ name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Ragù' }],
       items,
-      new Date()
+      new Date(), [], null, []
     )[0];
     expect(row.nameKey).toBe('white onion');
     expect(row.category).toBe('probablyHave');
@@ -3337,7 +3337,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       plannedIngredientsForRecipe(usesButter!, recipesById),
       items,
       new Date(),
-      itemSubs
+      itemSubs, null, []
     );
     const butterRow = rows.find(r => r.nameKey === 'butter')!;
 
@@ -3357,18 +3357,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       flattenRecipeIngredients(r, recipesById).some(f => f.ingredient.nameKey === 'butter')
     )!;
 
-    const count = countLikelyInPantry(usesButter, items, new Date(), recipesById, itemSubs);
+    const count = countLikelyInPantry(usesButter, items, new Date(), [], recipesById, itemSubs);
     expect(count?.viaSubstitute).toBeGreaterThanOrEqual(1);
 
-    const coverage = pantryCoverageForRecipe(usesButter, items, new Date(), recipesById, itemSubs);
+    const coverage = pantryCoverageForRecipe(usesButter, items, new Date(), [], recipesById, itemSubs);
     expect(coverage.viaSubstitute).toBeGreaterThanOrEqual(1);
     expect(describeRecipe(usesButter, count)).toContain('with a substitute');
     expect(describePantryCoverage(coverage)).toContain('with a substitute');
 
     // Never a free ride to a higher score than the same recipe would earn if
     // butter itself were genuinely fresh — the fully-stocked read still wins.
-    const scoreWithSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), recipesById, itemSubs);
-    const scoreWithoutSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), recipesById);
+    const scoreWithSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), [], recipesById, itemSubs);
+    const scoreWithoutSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), [], recipesById);
     expect(scoreWithSub).toBeGreaterThanOrEqual(scoreWithoutSub);
   });
 
@@ -4100,7 +4100,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(oats.purchaseCount).toBeGreaterThanOrEqual(3);
     // And its guess has to have actually run out — an item still inside its
     // window is the state this feature has nothing to say about.
-    expect(probablyHaveReason(oats, new Date())).toBeNull();
+    expect(probablyHaveReason(oats, new Date(), [])).toBeNull();
 
     const check = tasks.find(t => t.generatedKind === 'pantryCheck');
     expect(check).toBeDefined();
@@ -4112,7 +4112,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     // And the real rule agrees, so the first foreground sweep doesn't clear the
     // seeded row as describing an item that wants nothing.
-    expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
+    expect(wantedPantryChecks(items, tasks, new Date(), []).map(w => w.itemId)).toContain(oats.id);
   });
 
   it('seeds the bulk form of the same question, and a deck with something in it', () => {
@@ -4932,7 +4932,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // The one pantry state that reaches into onList.
     expect(low.every(i => i.onList)).toBe(true);
     // Still had, which is the whole distinction from "Out of it".
-    expect(probablyHaveReason(low[0], new Date())).toBe('running low');
+    expect(probablyHaveReason(low[0], new Date(), [])).toBe('running low');
   });
 
   it('seeds a row with a record of going bad, and no banner up to say so', () => {
@@ -5063,7 +5063,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       const leftover = leftovers.find(l => l.id === task.generatedSourceId);
       expect(leftover).toBeDefined();
       expect(task.title).toBe(`Use up ${leftover!.title}`);
-      expect(task.deadline).toBe(leftover!.keepUntil);
+      expect(dayKeyOf(new Date(task.deadline!))).toBe(leftover!.keepUntil);
       // Same kitchen link shape the grocery use-up tasks carry, opening
       // straight to this leftover's own row.
       expect(task.linkUrl).toBe(`dundundun://kitchen?item=leftover-${leftover!.id}`);

@@ -347,6 +347,14 @@ describe('the catalog tools', () => {
       expect(getPantryItem(replica, { name: 'rice' }).status).toBe('on_hand');
     });
 
+    it('reads a null price on a pantry line as no price, leaving the stored one', () => {
+      addGroceryItem(replica, 'spinach');
+      const id = idOf('spinach');
+      importReceipt(replica, { context: 'pantry', lines: [{ label: 'SPINACH', itemId: id, priceMinor: 349 }] });
+      importReceipt(replica, { context: 'pantry', lines: [{ label: 'SPINACH', itemId: id, priceMinor: null }] });
+      expect(replica.groceryItems().find(i => i.id === id)).toMatchObject({ lastPriceMinor: 349 });
+    });
+
     it('refuses a line with neither an item nor a name, and an empty receipt', () => {
       expect(() => importReceipt(replica, { lines: [{ label: 'WHAT' }] })).toThrow(/needs an itemId or a name/);
       expect(() => importReceipt(replica, { lines: [] })).toThrow(/at least one/);

@@ -19,7 +19,8 @@ An aisle is a *string*, held in six places at once: `aisleOrder` (a settings key
 column on every row, the values of `aisleOverrides` (the remembered filings), the non-food set
 (`nonFoodAisles`), and on each store a range (`Shop.aisles`) and a walk of its own
 (`Shop.aisleOrder`). **`renameAisle` and `deleteAisle` are the list**: a new place an aisle name
-lives is added to both, and `deleteAisle` moves the rows to `Other` — every row, not just this
+lives is added to both. (A recipe line's `RecipeIngredient.aisle` is a seventh, deliberately left
+alone: it is only a hint, clamped by `placeAisle` when the line is added to the list.) and `deleteAisle` moves the rows to `Other` — every row, not just this
 week's list, since the aisle lives on the catalog row. See the store sections below for the two
 store copies.
 
@@ -63,11 +64,8 @@ list, which meant every feature recording a fact had to remember to promote its 
   history with no undo. Anything arguable counts as a fact. What doesn't: an auto-filed aisle (kept
   in `grocery_aisle_overrides` by `nameKey`, so it outlives the row anyway), a recipe stamp, a
   recipe-owned quantity, and this trolley's own `choiceGroup`.
-- **`choiceGroup` is cleared by every path that takes a row off the list** — `removeFromList`,
-  `removeFromListMany`, `clearList` (in the SQL as well as in memory), `swapForSubstitute` and
-  `resolveChoice`. Carried off-list it would silently re-form the pair
-  when both names were added again, and it is exempt above on the express grounds that it dies
-  with the trolley, so something has to kill it.
+- **`choiceGroup` lives on the list entry** (`GroceryListEntry`), so it dies with the entry and
+  nothing has to clear it. That is why it is exempt above.
 - **Undoing an *add* still deletes**, through `undoForAdds`. `addByName` mints or re-lists, and
   only the caller knows which, so every add path snapshots the item ids that existed before it ran
   and hands that set over: a minted row is deleted, a re-listed one parks. Every add path goes through it, `GroceryAddField`'s either/or and `GroceryAISheet`'s recipe apply
@@ -166,6 +164,10 @@ chips are scoped to the item's own products**, deliberately: brands don't genera
   Pointers at a deduped id (`ItemShopLink.productId`, the claims, a `PriceObservation`) are
   remapped rather than left to dangle: they would only *read* as absent, but a claim quietly
   ceasing to apply because of a rename is the staleness this whole model was built to avoid.
+  That includes food log entries and saved meals (`dbRepointItemReferences`' box remap).
+- **The item row itself folds by `ITEM_MERGE_RULES`** (`groceryItemWrite.ts`), one rule per field,
+  typed so a new `GroceryItem` field fails the build until it has one. The pantry claim
+  (`onHandUntil`, `expiresAt`, `frozenAt`, `openedAt`, `runningLowAt`) moves whole from one row.
 - **A purchase clears every claim about that store**, not just the one about the box that came
   home. Coming home with something refutes the whole shelf-shaped claim at once, and it's the one
   correction nobody should have to make by hand.
@@ -180,8 +182,8 @@ it off the first.
   both sync and backup on the grounds that it records nothing about the user, so a pointer at one
   of their catalog rows kept there would not survive a restore and would never reach a second
   device. What a barcode *denotes* is shared and impersonal; which of your boxes it is, is yours.
-- **A second, item-level link is written alongside it**, as a GTIN-keyed `StoreAlias` with a
-  null `shopId` (`gtinAliasText`, prefixed so an all-digits receipt line can't key the same).
+- **A second, item-level link is written alongside it**, as a GTIN-keyed `StoreAlias` with an
+  empty `shopId` (`gtinAliasText`, prefixed so an all-digits receipt line can't key the same).
   The two are different facts and the item-level one is the durable half: it is what answers for
   a row with no box at all, which is the unfound-barcode case, and it is the code most worth
   remembering since nothing about it will ever improve on its own. `gtinItemFor` reads box first,
@@ -245,14 +247,11 @@ times over, and the restraint that keeps it from becoming one is a single rule:
 - **A purchase clears the bought box's claims**, alongside the item's and for the same reason: the
   packet you froze is not the packet you carried home. Preferred-only, exactly like the counter —
   a trip that bought an item with no preference says nothing about which box it was.
-- **Every "do I have this" read on the plan side takes the boxes too.** `probablyHaveReason`'s
-  `products` is opt-in per caller, and the Pantry and `onHandNameKeys` adopted it first while
-  `classifyPlanned` and the meal shortfall readers didn't, so a packet frozen on its own was "in
-  the freezer" on the Pantry, pre-ticked under Need to buy in the add sheet, and the subject of a
-  "Shop for Tacos" task, all at once. `classifyPlanned`, `coveringVariety`, `mealShortfallRows`
-  and both sweep passes take `products` now, and the two add-to-list sheets, the shortfall chip on
-  a task row and `checkMealShortfallTasks` pass them. A new reader of "do I have it" passes them
-  too, or it disagrees with the screen that lists the pantry.
+- **Every "do I have this" read takes the boxes, enforced by the signature.** `products` is a
+  required argument of `probablyHaveReason`, `onHandNameKeys`, `pantryEntries`, `classifyPlanned`
+  and the readers above them; a reader that means to ignore boxes passes `[]` and says why. Left
+  optional, a packet frozen on its own read as "in the freezer" on the Pantry and as missing to
+  whichever reader skipped it.
 - **`KitchenKind` grew a third value rather than a flag on `grocery`**, because everything
   downstream switches on it: the ✕ writes a different column, a drop resolves to a different
   action, and the row opens the item sheet on its Products field rather than its Pantry one.
@@ -399,14 +398,17 @@ lasted one commit. Three fields had to move with it:
   keep meaning what it meant: the home list is the original one and these columns have always held
   it. Two functions write them and they are twins — `dbSyncGroceryHomeColumns` in SQLite and
   `withHomeMembership` in memory — both reached only through the store's single `writeMembership`
-  path, so they cannot drift. **Sync is the one path around the store**: it writes a peer's item
+  path, so they cannot drift. `dbUpdateGroceryItem` leaves them out, so an undo writing back a
+  snapshot can't revert a tick made since (`restoredRows` is the in-memory half), and a local write
+  that changes them keeps the row's sync stamp: the entry carries the tick to a peer. **Sync is the one path around the store**: it writes a peer's item
   row (carrying the peer's copy of these columns) and a peer's entries straight into the tables, so
   `dbApplySyncChanges` recomputes the mirror for every item it touched before its transaction ends.
   It writes only a row that came out wrong, because any write restamps the row and recomputing every
   applied row would send each one straight back to the peer.
-- **`onList` is the home list's mirror like the other three, and deliberately not "in some
-  trolley".** A row on the Airbnb list must not be swept as unused or asked about as absent, so the
-  four readers that want the broader question ask `onListAnywhere`/`listedAnywhere` instead:
+- **`onList` is the one that isn't the home entry's: it is "in any trolley".** A row on the Airbnb
+  list must not be swept as unused or asked about as absent. Readers that need one list's answer
+  read the entry (`entryFor`, `itemsOnList`); the ones that want the broader question can also ask
+  `onListAnywhere`/`listedAnywhere`:
   `hasUserFacts` (behind `clearList`'s sweep), `catalogPruneCandidates`, `pantryCheckTasks`, and
   the Pantry row's "on the list" caption (see `GroceryItem.onList`).
 - **`itemsOnList` projects, it does not just filter.** It returns each row with that list's

@@ -24,6 +24,7 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { itemsOnList } from '../utils/groceryLists';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeader } from './SheetHeader';
@@ -180,6 +181,8 @@ interface Props {
     purchasedAt: string,
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
+    /** The receipt's own amount for each priced row it names, where it printed one. */
+    quantityById: Record<string, string>,
   ) => void;
 }
 
@@ -259,7 +262,24 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // ==== state ====
-  const items = useGroceryStore(useShallow(s => s.items));
+  const catalog = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
+  // The catalog as the list being shopped sees it. A row's own `onList` and
+  // `checked` answer for the home list alone, so on an away list the home
+  // ticks drove the pre-checks and the away list's rows fell to the off-list
+  // pass. The home list needs no projection: those fields already describe it.
+  const items = useMemo(() => {
+    if (activeListId === null) return catalog;
+    const listed = itemsOnList(catalog, listEntries, activeListId);
+    const listedIds = new Set(listed.map(i => i.id));
+    return [
+      ...listed,
+      ...catalog
+        .filter(i => !listedIds.has(i.id))
+        .map(i => (i.onList || i.checked ? { ...i, onList: false, checked: false } : i)),
+    ];
+  }, [catalog, listEntries, activeListId]);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
@@ -353,11 +373,21 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   // reset above runs first and the answer would then land on the hidden sheet,
   // opening next week's shop on this one's receipt. Read inside the
   // continuation, never as a dependency. Same guard RecipeExtractSheet keeps.
+  // Open alone isn't enough: closed and reopened mid-read, the sheet is open
+  // again and the stale answer would land on the new session. So each read
+  // takes a number, every open or close moves it on, and a continuation
+  // writes only while it still holds the current one.
   const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  const runRef = useRef(0);
+  useEffect(() => {
+    visibleRef.current = visible;
+    runRef.current++;
+  }, [visible]);
+  const isCurrent = (n: number) => visibleRef.current && runRef.current === n;
 
   const run = useCallback(async () => {
     if (!photo) return;
+    const runId = ++runRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -366,7 +396,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       // bridge, an unreadable file, a read too thin to be a receipt — so that
       // path can only ever cost the upload it usually saves.
       const ocr = await readReceipt(photo.sourceUri);
-      if (!visibleRef.current) return;
+      if (!isCurrent(runId)) return;
       // On the device path there is no fallback and no second opinion: the
       // reading is the whole answer, or there isn't one.
       if (receiptRoute === 'onDevice' && !ocr) {
@@ -377,7 +407,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       const result = offline
         ? extractReceiptOffline(ocr as OcrReceipt)
         : await extractReceipt(ocr?.text ?? photo);
-      if (!visibleRef.current) return;
+      if (!isCurrent(runId)) return;
       setReadOffline(offline);
       setReceipt(result);
       // The store has to be resolved before the lines are, since an alias is
@@ -400,9 +430,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       setDateImplausible(!!result.date && !plausible);
       if (result.lines.length > 0) haptics.success();
     } catch (e) {
-      if (visibleRef.current) setError(describeAIError(e));
+      if (isCurrent(runId)) setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      // Only the read that started the spinner stops it.
+      if (runRef.current === runId) setLoading(false);
     }
   }, [photo, items, shops, aliasItemFor, pantry, receiptRoute]);
 
@@ -510,9 +541,15 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 
   const handleApply = () => {
     const priceById: Record<string, number> = {};
+    const quantityById: Record<string, string> = {};
     for (const match of matches) {
       if (!match.itemId || !accepted.has(match.itemId)) continue;
-      if (match.line.priceMinor !== null) priceById[match.itemId] = match.line.priceMinor;
+      if (match.line.priceMinor !== null) {
+        priceById[match.itemId] = match.line.priceMinor;
+        // What that price bought, as printed, so it isn't filed against the
+        // list's amount instead ("3.5 lb" against a row listed as "2 lb").
+        if (match.line.quantity.trim()) quantityById[match.itemId] = match.line.quantity.trim();
+      }
     }
     const toAdd: ReceiptAddDraft[] = matches
       .filter(m => m.itemId === null)
@@ -554,7 +591,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       pantry ? Array.from(accepted).filter(id => frozenMatched.has(id)) : []
     );
     haptics.success();
-    onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd, frozenItemIds);
+    onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd, frozenItemIds, quantityById);
   };
 
   /** Returning the message rejects the name and holds the field open. */
@@ -1299,7 +1336,7 @@ function makeStyles(colors: Colors) {
       height: CHECK_SIZE,
       borderRadius: checkboxRadius(CHECK_SIZE),
       borderWidth: 1.5,
-      borderColor: colors.separator,
+      borderColor: colors.controlBorder,
       alignItems: 'center',
       justifyContent: 'center',
     },

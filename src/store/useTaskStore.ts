@@ -5751,7 +5751,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const tasks = get().tasks;
     if (!creating && liveGeneratedTasksOfKind(tasks, 'pantryCheck').length === 0) return;
 
-    const { items, listEntries } = useGroceryStore.getState();
+    const { items, listEntries, itemProducts } = useGroceryStore.getState();
     // Every trolley, not just the one at home: a row already on the Airbnb list
     // is shopping you are on your way to do, so asking whether you still have it
     // is asking the wrong question. See pantryCheckLapse.
@@ -5775,7 +5775,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
-    const stale = stalePantryCheckTasks(tasks, items, now, listed);
+    const stale = stalePantryCheckTasks(tasks, items, now, itemProducts, listed);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
     if (!creating) return;
 
@@ -5788,7 +5788,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its item's lapse null, which is exactly what that pass tests.
     if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
 
-    const wanted = wantedPantryChecks(items, tasks, now, undefined, listed);
+    const wanted = wantedPantryChecks(items, tasks, now, itemProducts, undefined, listed);
     if (wanted.length === 0) return;
 
     ensureGeneratedTaskCategory('pantryCheck');
@@ -8221,10 +8221,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   // Members adopt the new stack's category as part of the same write that
-  // files them into it. Deliberately *not* wrapped in a dbTransaction:
-  // applyTemplate already calls this from inside one, and expo-sqlite's
-  // withTransactionSync can't nest — it would throw on device while the tests,
-  // which mock dbTransaction, stayed green.
+  // files them into it. Not wrapped in a dbTransaction of its own:
+  // applyTemplate already calls this from inside one.
   groupTasks(taskIds, title, category) {
     const group = useTaskGroupStore.getState().createGroup(title, category);
     // A stack holds a slot in the list order like a task does (see

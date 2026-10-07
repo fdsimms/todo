@@ -171,9 +171,12 @@ describe('useUpTaskFields', () => {
     expect(new Date(fields.dueDate).getHours()).toBe(12);
   });
 
-  it('carries keepUntil itself as the deadline', () => {
+  it('carries keepUntil as the deadline, at local noon on that day', () => {
+    // An instant, not the bare key: `new Date('2026-08-14')` is UTC midnight,
+    // which every deadline reader renders as the 13th west of UTC.
     const fields = useUpTaskFields(leftover({ keepUntil: '2026-08-14' }), now);
-    expect(fields.deadline).toBe('2026-08-14');
+    const d = new Date(fields.deadline);
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([2026, 7, 14, 12]);
   });
 
   it('opens straight to this leftover\'s own row in the kitchen view', () => {
@@ -222,7 +225,19 @@ describe('useUpTaskDrift', () => {
   });
 
   it('notices the keep-until day moving out', () => {
-    expect(useUpTaskDrift(inStep, { ...chilli, keepUntil: '2026-08-20' })).toEqual({ deadline: '2026-08-20' });
+    const moved = { ...chilli, keepUntil: '2026-08-20' };
+    expect(useUpTaskDrift(inStep, moved)).toEqual({ deadline: useUpTaskFields(moved, now).deadline });
+  });
+
+  it('rewrites a deadline stored as a bare day key', () => {
+    expect(useUpTaskDrift({ ...inStep, deadline: '2026-08-14' }, chilli)).toEqual({ deadline: inStep.deadline });
+  });
+
+  it('leaves a deadline alone that lands on the right day at another hour', () => {
+    // A trip across time zones moves where local noon falls in UTC; the day
+    // the food is answerable to hasn't changed.
+    const elsewhere = new Date(2026, 7, 14, 9).toISOString();
+    expect(useUpTaskDrift({ ...inStep, deadline: elsewhere }, chilli)).toBeNull();
   });
 
   it('notices the container being renamed', () => {

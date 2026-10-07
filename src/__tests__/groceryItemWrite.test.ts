@@ -5,6 +5,8 @@ import {
   clearOtherStandingLinks,
   deletedItemSnapshot,
   listNameProblem,
+  mergedItemRow,
+  chosenOptionRows,
   newListRow,
   newShopRow,
   planFinishShopping,
@@ -203,5 +205,69 @@ describe('the shared Shop type', () => {
   it('a new store reads as an ordinary receipt with every aisle', () => {
     const shop: Shop = newShopRow('Costco', [], 's', NOW)!;
     expect(shop).toMatchObject({ receiptStyle: 'itemized', aisles: null, aisleOrder: null, excludeFromSuggestions: false });
+  });
+});
+
+describe('mergedItemRow', () => {
+  it('keeps a frozen loser\'s pantry claim whole, rather than half of it', () => {
+    const coriander = item('Coriander');
+    const cilantro = item('Cilantro', {
+      onHandUntil: '2026-09-30T12:00:00.000Z', frozenAt: '2026-08-01T12:00:00.000Z', expiresAt: '2026-08-05',
+    });
+    const merged = mergedItemRow(coriander, cilantro);
+    expect(merged).toMatchObject({
+      id: coriander.id, name: 'Coriander',
+      onHandUntil: cilantro.onHandUntil, frozenAt: cilantro.frozenAt, expiresAt: '2026-08-05',
+    });
+  });
+
+  it('keeps the survivor\'s pantry claim when its on-hand day is the later one', () => {
+    const milk = item('Milk', { onHandUntil: '2026-09-30T12:00:00.000Z', openedAt: null });
+    const other = item('Whole milk', { onHandUntil: '2026-09-01T12:00:00.000Z', openedAt: '2026-08-20T12:00:00.000Z' });
+    expect(mergedItemRow(milk, other).openedAt).toBeNull();
+  });
+
+  it('fills the survivor\'s gaps from the loser and sums the counts', () => {
+    const nutrition = { source: 'label' } as unknown as GroceryItem['nutrition'];
+    const merged = mergedItemRow(
+      item('Coriander', { usedUpCount: 1, spoiledCount: 0 }),
+      item('Cilantro', { note: 'the bunch, not dried', aisle: 'Produce', nutrition, usedUpCount: 2, spoiledCount: 3, shelfLifeDays: 6 }),
+    );
+    expect(merged).toMatchObject({
+      note: 'the bunch, not dried', aisle: 'Produce', nutrition, usedUpCount: 3, spoiledCount: 3, shelfLifeDays: 6,
+    });
+  });
+
+  it('never fills over something the survivor already says', () => {
+    const merged = mergedItemRow(item('A', { note: 'mine', aisle: 'Produce' }), item('B', { note: 'theirs', aisle: 'Deli' }));
+    expect(merged).toMatchObject({ note: 'mine', aisle: 'Produce' });
+  });
+
+  it('keeps both rows\' price history and the more recent last price', () => {
+    const merged = mergedItemRow(
+      item('A', { lastPriceMinor: 100, lastPricedAt: '2026-08-01T00:00:00.000Z', priceHistory: [{ minor: 100, quantity: null, at: '2026-08-01T00:00:00.000Z', productId: null }] }),
+      item('B', { lastPriceMinor: 200, lastPricedAt: '2026-08-10T00:00:00.000Z', priceHistory: [{ minor: 200, quantity: null, at: '2026-08-10T00:00:00.000Z', productId: null }] }),
+    );
+    expect(merged.lastPriceMinor).toBe(200);
+    expect(merged.priceHistory.map(o => o.minor)).toEqual([200, 100]);
+  });
+});
+
+describe('chosenOptionRows', () => {
+  const entry = (itemId: string, over: Partial<GroceryListEntry> = {}): GroceryListEntry => ({
+    itemId, listId: null, checked: false, choiceGroup: 'g', addedAt: NOW, sortOrder: 1, ...over,
+  });
+
+  it('ends the winner\'s option and takes the rest of its group off that list only', () => {
+    const entries = [entry('a'), entry('b'), entry('b', { listId: 'away' }), entry('c', { choiceGroup: null })];
+    const items = [item('a', { id: 'a' }), item('b', { id: 'b', quantity: '2 cups', quantityFromRecipe: true })];
+    const plan = chosenOptionRows(entries, items, 'a', null)!;
+    expect(plan.winner.choiceGroup).toBeNull();
+    expect(plan.remove.map(e => [e.itemId, e.listId])).toEqual([['b', null]]);
+    expect(plan.parked[0]).toMatchObject({ id: 'b', quantity: null, quantityFromRecipe: false });
+  });
+
+  it('is null for a row that is not an option', () => {
+    expect(chosenOptionRows([entry('c', { choiceGroup: null })], [], 'c', null)).toBeNull();
   });
 });

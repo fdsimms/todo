@@ -542,7 +542,14 @@ export function describeFridge(
   const live = leftovers.filter(isLiveLeftover);
   if (live.length === 0) return 'Nothing in the fridge';
   const urgent = live.filter(l => needsAttention(l, now)).length;
-  const base = `${live.length} in the fridge`;
+  // A frozen container is in the freezer, not the fridge, and says so.
+  const frozen = live.filter(l => l.frozenAt).length;
+  const chilled = live.length - frozen;
+  const parts = [
+    ...(chilled > 0 ? [`${chilled} in the fridge`] : []),
+    ...(frozen > 0 ? [`${frozen} in the freezer`] : []),
+  ];
+  const base = parts.join(' · ');
   return urgent > 0 ? `${base} · ${urgent} to use up` : base;
 }
 

@@ -354,9 +354,14 @@ export function kitchenInventory(
     // stored `expiresAt` is deliberately still there and deliberately not read:
     // it's the day this purchase *would* be answerable to, waiting for a thaw
     // to make it a countdown again.
-    const useBy = product
-      ? liveUseBy(product.expiresAt ?? item.expiresAt, frozenAt)
-      : liveExpiresAt(item);
+    // A box that falls back to its item's day takes the item's suspension
+    // with it: that day is paused while the item row is frozen, and reading it
+    // under the box's own (unfrozen) state would count it down anyway.
+    const useBy = !product
+      ? liveExpiresAt(item)
+      : product.expiresAt !== null || product.frozenAt
+        ? liveUseBy(product.expiresAt, product.frozenAt)
+        : liveExpiresAt(item);
     // `reason` is already FROZEN_REASON for a frozen row — probablyHaveReason
     // and productHaveReason both return it — so this only supplies the clock.
     const useByCaption = frozenAt

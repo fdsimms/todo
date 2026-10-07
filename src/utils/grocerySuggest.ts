@@ -533,10 +533,12 @@ export function probablyHaveReason(
   item: GroceryItem,
   now: Date,
   /**
-   * This item's boxes, when the caller has them. Empty — the default, and what
-   * every caller passed before boxes could carry pantry state — makes this
-   * behave exactly as it always did, which is why adopting it is per-caller
-   * rather than a sweep.
+   * The catalog's boxes (any item's; this one's are picked out). Required:
+   * left optional, about ten readers skipped it, and each then disagreed with
+   * the Pantry screen about anything only a box vouched for, one of them in a
+   * task it wrote unasked ("Check if you still have chicken" beside a frozen
+   * packet of it). A caller that means to ignore boxes passes `[]` and says
+   * why at the call site.
    *
    * A box only ever *adds* an answer, never removes one: it's consulted below
    * the item's own claims and above the purchase guess, so a packet the user
@@ -546,7 +548,7 @@ export function probablyHaveReason(
    * with the one exception of a frozen portion, which that statement was never
    * about.
    */
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[]
 ): string | null {
   // A staple outranks everything below: it's a standing fact ("I always have
   // salt"), not a guess, and it doesn't need purchase history or an
@@ -603,8 +605,8 @@ export function probablyHaveReason(
   // asking the plain question "is there any of this in the kitchen".
   //
   // A frozen portion is held back to the very end instead (see below).
-  for (const product of products) {
-    if (product.itemId !== item.id || isPortionBox(product)) continue;
+  for (const product of boxesOf(item.id, products)) {
+    if (isPortionBox(product)) continue;
     const reason = productHaveReason(product, now);
     if (reason) return reason;
   }
@@ -619,12 +621,38 @@ export function probablyHaveReason(
   // answer. Ranked above, a pack bought yesterday with half frozen would read
   // as "in the freezer", and a meal planned from the half left out would be
   // told to thaw the other half (`mealThawTasks`).
-  for (const product of products) {
-    if (product.itemId !== item.id || !isPortionBox(product)) continue;
+  for (const product of boxesOf(item.id, products)) {
+    if (!isPortionBox(product)) continue;
     const reason = productHaveReason(product, now);
     if (reason) return reason;
   }
   return null;
+}
+
+/**
+ * The catalog's boxes grouped by item, built once per boxes array. Every
+ * pantry read asks this per item across the whole catalog, and scanning every
+ * box for each item made the Pantry screen's pass items × boxes. Keyed on the
+ * array the store hands out (replaced, never mutated, on every write), and on
+ * its length as a guard against a caller that does push into one.
+ */
+const boxesByItem = new WeakMap<readonly ItemProduct[], { length: number; byItem: Map<string, ItemProduct[]> }>();
+const NO_BOXES: readonly ItemProduct[] = [];
+
+function boxesOf(itemId: string, products: readonly ItemProduct[]): readonly ItemProduct[] {
+  if (products.length === 0) return NO_BOXES;
+  let cached = boxesByItem.get(products);
+  if (!cached || cached.length !== products.length) {
+    const byItem = new Map<string, ItemProduct[]>();
+    for (const p of products) {
+      const list = byItem.get(p.itemId);
+      if (list) list.push(p);
+      else byItem.set(p.itemId, [p]);
+    }
+    cached = { length: products.length, byItem };
+    boxesByItem.set(products, cached);
+  }
+  return cached.byItem.get(itemId) ?? NO_BOXES;
 }
 
 /** The purchase reading's own words, or null when there's no purchase inside this item's window. */
@@ -651,7 +679,7 @@ function purchaseReason(item: GroceryItem, now: Date): string | null {
 export function onHandNameKeys(
   items: readonly GroceryItem[],
   now: Date,
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[]
 ): ReadonlySet<string> {
   const keys = new Set<string>();
   for (const item of items) {
@@ -749,7 +777,10 @@ export function outlivesItemOutOfIt(product: ItemProduct, now: Date): boolean {
  */
 export function correctableHaveReason(item: GroceryItem, now: Date): string | null {
   if (item.isStaple || isRunningLow(item, now) || item.frozenAt) return null;
-  return probablyHaveReason(item, now);
+  // The item's own claim only: what this offers to correct is the item-level
+  // answer, and a box vouching for the item isn't something "Out of it" on
+  // the item would take back.
+  return probablyHaveReason(item, now, []);
 }
 
 /**
@@ -822,7 +853,7 @@ export interface PantryEntry {
 export function pantryEntries(
   items: readonly GroceryItem[],
   now: Date,
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[]
 ): PantryEntry[] {
   const entries: PantryEntry[] = [];
   for (const item of items) {
@@ -833,7 +864,7 @@ export function pantryEntries(
     // be that box's claim wearing the item's name, and the box row below says
     // it better. That's the one case `probablyHaveReason`'s box rung produces,
     // and it's exactly "the packet in the freezer is the only one I have".
-    const itemReason = probablyHaveReason(item, now);
+    const itemReason = probablyHaveReason(item, now, []);
     if (itemReason) {
       entries.push({ item, reason: itemReason, asserted: onHandAssertion(item, now) === true, product: null });
     }
@@ -842,8 +873,7 @@ export function pantryEntries(
     // brings. A staple is let through on its own account and keeps the rows
     // it always had.
     const outOfIt = !item.isStaple && onHandAssertion(item, now) === false;
-    for (const product of products) {
-      if (product.itemId !== item.id) continue;
+    for (const product of boxesOf(item.id, products)) {
       if (outOfIt && !outlivesItemOutOfIt(product, now)) continue;
       const boxReason = productHaveReason(product, now);
       if (!boxReason) continue;

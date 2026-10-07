@@ -51,12 +51,56 @@ export function gtinCheckDigit(body: string): number {
  * misreading one digit produces a code that fails the check digit essentially
  * always, so this is most of what stops a bad read reaching the network at all.
  */
-export function normalizeGtin(raw: string): string | null {
+export function normalizeGtin(raw: string, symbology?: string): string | null {
   const digits = raw.replace(/\D/g, '');
+  // A UPC-E is a UPC-A with zeros suppressed, and its check digit is the
+  // UPC-A's, so it has to be expanded before it can be keyed or checked. The
+  // scanner says which it read when it can; an 8-digit code with no word on
+  // that is read as GTIN-8 first (what it always was here), and as UPC-E only
+  // when it fails that check, which recovers the zero-suppressed codes on
+  // small sodas and gum without second-guessing a real EAN-8.
+  if (isUpcESymbology(symbology)) return expandUpcE(digits);
   if (!VALID_LENGTHS.has(digits.length)) return null;
   const body = digits.slice(0, -1);
-  if (gtinCheckDigit(body) !== Number(digits[digits.length - 1])) return null;
+  if (gtinCheckDigit(body) !== Number(digits[digits.length - 1])) {
+    return digits.length === 8 ? expandUpcE(digits) : null;
+  }
   return digits.padStart(14, '0');
+}
+
+function isUpcESymbology(symbology: string | undefined): boolean {
+  return !!symbology && /^upc[_-]?e$/i.test(symbology.replace(/^.*\./, ''));
+}
+
+/**
+ * A UPC-E (number system, six digits, check) as the GTIN-14 of the UPC-A it
+ * stands for, or null when it isn't one. The six digits expand by the rule
+ * keyed on the last of them (GS1's zero-suppression table).
+ */
+export function expandUpcE(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length !== 8 || (digits[0] !== '0' && digits[0] !== '1')) return null;
+  const ns = digits[0];
+  const [d1, d2, d3, d4, d5, d6] = digits.slice(1, 7);
+  let body: string;
+  if (d6 === '0' || d6 === '1' || d6 === '2') body = `${ns}${d1}${d2}${d6}0000${d3}${d4}${d5}`;
+  else if (d6 === '3') body = `${ns}${d1}${d2}${d3}00000${d4}${d5}`;
+  else if (d6 === '4') body = `${ns}${d1}${d2}${d3}${d4}00000${d5}`;
+  else body = `${ns}${d1}${d2}${d3}${d4}${d5}0000${d6}`;
+  if (gtinCheckDigit(body) !== Number(digits[7])) return null;
+  return `${body}${digits[7]}`.padStart(14, '0');
+}
+
+/**
+ * Whether a GTIN-14 is a store's own code rather than a product's: UPC-A
+ * number systems 2 and 4 and EAN-13 prefixes 20 to 29, which the deli and
+ * the by-weight counter print with the price or weight inside the digits.
+ * Every package gets a different one, and the same digits mean something else
+ * at the next store, so one is never looked up online and never remembered as
+ * naming an item.
+ */
+export function isStoreInternalGtin(gtin14: string): boolean {
+  return gtin14.startsWith('02') || gtin14.startsWith('002') || gtin14.startsWith('004');
 }
 
 /** Whether a string reads as a barcode at all. */

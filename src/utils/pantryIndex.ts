@@ -48,11 +48,22 @@ export const MAX_PANTRY_INDEX_ENTRIES = 500;
  * write, and most of those don't touch this set at all.
  */
 export function buildPantryIndex(items: readonly GroceryItem[]): PantryIndexEntry[] {
-  return items
-    .filter(item => item.onHandUntil !== OUT_OF_IT_UNTIL && item.name.trim() !== '')
+  const eligible = items.filter(item => item.onHandUntil !== OUT_OF_IT_UNTIL && item.name.trim() !== '');
+  // Over the cap, the rows last bought or added are the ones kept: cut by the
+  // alphabet, a large catalog lost "Zucchini" whatever was in the fridge.
+  // Sorted by name afterwards either way, for the stable bytes above.
+  const kept = eligible.length <= MAX_PANTRY_INDEX_ENTRIES
+    ? eligible
+    : [...eligible]
+      .sort((a, b) => lastTouched(b).localeCompare(lastTouched(a)) || a.name.localeCompare(b.name))
+      .slice(0, MAX_PANTRY_INDEX_ENTRIES);
+  return kept
     .map(item => ({ id: item.id, name: item.name }))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, MAX_PANTRY_INDEX_ENTRIES);
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function lastTouched(item: GroceryItem): string {
+  return item.lastPurchasedAt ?? item.lastAddedAt ?? item.createdAt;
 }
 
 /** One thing said to Siri, waiting for a foreground to be applied. */

@@ -171,6 +171,13 @@ describe('matchIngredientToCatalog', () => {
     expect(match.suggestedName).toBe('Greek yogurt');
   });
 
+  it('does not trim a compound that is a food of its own down to another', () => {
+    const items = [makeItem({ name: 'Butter' }), makeItem({ name: 'Milk' }), makeItem({ name: 'Garlic' })];
+    expect(matchIngredientToCatalog('peanut butter', items, NOW).suggestedName).not.toBe('Butter');
+    expect(matchIngredientToCatalog('coconut milk', items, NOW).suggestedName).not.toBe('Milk');
+    expect(matchIngredientToCatalog('garlic powder', items, NOW).suggestedName).not.toBe('Garlic');
+  });
+
   it('will not let a prefix match cross a word boundary', () => {
     // "egg" must not claim "eggplant" — the space is the whole safety of it.
     const items = [makeItem({ name: 'Egg' })];

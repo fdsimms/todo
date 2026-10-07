@@ -177,8 +177,18 @@ jest.mock('expo-sqlite', () => {
       getFirstSync<T>(sql: string, params: any[] = []): T | null {
         return (mockRawDb.prepare(sql).get(...params) as T) ?? null;
       },
+      // expo-sqlite's own shape (a bare BEGIN/COMMIT), not better-sqlite3's
+      // transaction(), which nests through savepoints and so would let a
+      // nested transaction pass here that throws on device.
       withTransactionSync(fn: () => void) {
-        mockRawDb.transaction(fn)();
+        mockRawDb.exec('BEGIN');
+        try {
+          fn();
+          mockRawDb.exec('COMMIT');
+        } catch (e) {
+          mockRawDb.exec('ROLLBACK');
+          throw e;
+        }
       },
     }),
   };
@@ -1507,6 +1517,27 @@ describe('dbTransaction', () => {
       });
     }).toThrow('boom');
     expect(dbGetAllTasks().map((t) => t.id)).toEqual(['existing']);
+  });
+
+  it('joins a transaction already open rather than nesting one', () => {
+    // A store action that wraps its writes calls others that wrap theirs
+    // (addFromPlan → setAisleMany). A second BEGIN throws on device.
+    dbTransaction(() => {
+      dbInsertTask(makeTask({ id: 'a' }));
+      dbTransaction(() => dbInsertTask(makeTask({ id: 'b' })));
+      dbBulkDeleteTasks(['nothing']);
+    });
+    expect(dbGetAllTasks().map((t) => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('rolls an inner write back with the outer transaction', () => {
+    expect(() => {
+      dbTransaction(() => {
+        dbTransaction(() => dbInsertTask(makeTask({ id: 'inner' })));
+        throw new Error('boom');
+      });
+    }).toThrow('boom');
+    expect(dbGetAllTasks()).toEqual([]);
   });
 });
 
@@ -3159,12 +3190,37 @@ describe('grocery items', () => {
   it('updates in place', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
     insertListedGroceryItem(item);
-    dbUpdateGroceryItem({ ...item, aisle: 'Dairy & Eggs', quantity: '1 gal', checked: true });
+    dbUpdateGroceryItem({ ...item, aisle: 'Dairy & Eggs', quantity: '1 gal' });
 
     const [after] = dbGetAllGroceryItems();
     expect(after.aisle).toBe('Dairy & Eggs');
     expect(after.quantity).toBe('1 gal');
-    expect(after.checked).toBe(true);
+  });
+
+  // The four mirror columns follow the entries alone, so an undo writing back
+  // a snapshot taken before a tick can't untick a row the entry says is
+  // checked, or put a row back "on the list" with no entry.
+  it('leaves the list mirror columns to the entries', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    insertListedGroceryItem(item);
+    dbUpdateGroceryItem({ ...item, onList: false, checked: true, choiceGroup: 'g', sortOrder: 99 });
+
+    const [after] = dbGetAllGroceryItems();
+    expect(after).toMatchObject({ onList: true, checked: false, choiceGroup: null });
+    expect(after.sortOrder).not.toBe(99);
+  });
+
+  it('keeps the row\'s sync stamp when a check only moves the mirror', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    insertListedGroceryItem(item);
+    mockRawDb.prepare("UPDATE grocery_items SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'g1'").run();
+    const [entry] = dbGetAllGroceryListEntries();
+
+    dbSetGroceryListEntry({ ...entry, checked: true });
+
+    expect(dbGetAllGroceryItems()[0].checked).toBe(true);
+    const stamp = mockRawDb.prepare("SELECT updated_at FROM grocery_items WHERE id = 'g1'").get();
+    expect(stamp).toEqual({ updated_at: '2026-01-01T00:00:00.000Z' });
   });
 
   // Only the finish-trip write used to set price_history, so writing back a
@@ -3192,6 +3248,18 @@ describe('grocery items', () => {
     expect(items()).toEqual([{ id: 'f1', item_id: 'winner' }, { id: 'f2', item_id: 'winner' }]);
     dbRestoreRepoint(snap);
     expect(items()).toEqual([{ id: 'f1', item_id: 'loser' }, { id: 'f2', item_id: 'winner' }]);
+  });
+
+  it('repoints a food log entry naming a box the merge folded, and puts it back on undo', () => {
+    mockRawDb.exec('DELETE FROM food_logs');
+    mockRawDb.prepare(
+      "INSERT INTO food_logs (id, day_key, at_iso, label, item_id, product_id, nutrition, created_at) VALUES ('f1', '2026-03-01', '2026-03-01T12:00:00.000Z', 'x', 'loser', 'box-l', '{}', '2026-03-01')"
+    ).run();
+    const snap = dbRepointItemReferences('loser', 'winner', new Map([['box-l', 'box-w'], ['box-kept', 'box-kept']]));
+    const row = () => mockRawDb.prepare('SELECT item_id, product_id FROM food_logs').get();
+    expect(row()).toEqual({ item_id: 'winner', product_id: 'box-w' });
+    dbRestoreRepoint(snap);
+    expect(row()).toEqual({ item_id: 'loser', product_id: 'box-l' });
   });
 
   it('deletes', () => {
@@ -3496,6 +3564,30 @@ describe('grocery items', () => {
       expect(byId.get('g1')!.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
       // Not bought, so still on the list for next time.
       expect(byId.get('g2')!.onList).toBe(true);
+    });
+
+    it('stamps a fresh day where the trip names one and clears the old day elsewhere', () => {
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Spinach', nameKey: 'spinach', checked: true, expiresAt: '2026-08-01',
+      }));
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'g2', name: 'Pesto', nameKey: 'pesto', checked: true, expiresAt: '2026-08-02',
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, { g1: '2026-08-12' });
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('g1')!.expiresAt).toBe('2026-08-12');
+      // The opened jar's day: the jar carried home is sealed.
+      expect(byId.get('g2')!.expiresAt).toBeNull();
+    });
+
+    it('pairs a price with the amount the receipt printed, where it printed one', () => {
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken', nameKey: 'chicken', checked: true, quantity: '2 lb' }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, { g1: 1047 }, new Set(), null, { g1: '3.5 lb' });
+
+      expect(dbGetAllGroceryItems()[0]).toMatchObject({ lastPriceMinor: 1047, lastPriceQuantity: '3.5 lb' });
     });
 
     it('measures the gap since the last purchase into the running average', () => {

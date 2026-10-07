@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
 import {
   type DeletedItemSnapshot,
@@ -14,6 +14,8 @@ import {
   shopLinkRow,
   clearOtherStandingLinks,
   subLinkRows,
+  chosenOptionRows,
+  mergedItemRow,
 } from '../utils/groceryItemWrite';
 import {
   dbGetAllGroceryItems,
@@ -78,6 +80,7 @@ import {
 import { useRecipeStore } from './useRecipeStore';
 import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
+import { isStoreInternalGtin } from '../utils/gtin';
 import { useSettingsStore } from './useSettingsStore';
 import { useProjectStore } from './useProjectStore';
 import { awayListDriver, isProjectAwayNow } from '../utils/awayDates';
@@ -121,7 +124,7 @@ import { ensureProductFor, newItemRow, nextSortOrder, planGroceryAdd } from '../
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
-import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
+import { finishedUseUpFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
 import { useUpSweepOrder } from '../utils/useUpSweep';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
@@ -321,6 +324,32 @@ async function runAutoAisleClassification(batch: { id: string; name: string }[])
   dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
   const byId = new Map(updates.map(u => [u.id, u]));
   useGroceryStore.setState(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+}
+
+/**
+ * A row put back from an undo snapshot, keeping the membership columns it has
+ * now. Those four mirror the list entries, which `writeMembership` keeps in
+ * step in memory; the snapshot's copy is from before the action and would
+ * undo a tick made since (`dbUpdateGroceryItem` leaves them alone on disk
+ * for the same reason).
+ */
+function restoredRows(
+  items: readonly GroceryItem[],
+  snapshots: ReadonlyMap<string, GroceryItem>
+): GroceryItem[] {
+  return items.map(i => {
+    const back = snapshots.get(i.id);
+    if (!back) return i;
+    // Off every list there's no entry for the slot to mirror, so the
+    // snapshot's own value stands.
+    return {
+      ...back,
+      onList: i.onList,
+      checked: i.checked,
+      sortOrder: i.onList ? i.sortOrder : back.sortOrder,
+      choiceGroup: i.choiceGroup,
+    };
+  });
 }
 
 interface GroceryStore extends UndoHistoryActions {
@@ -1307,7 +1336,14 @@ interface GroceryStore extends UndoHistoryActions {
     shopId?: string | null,
     priceById?: Readonly<Record<string, number>>,
     purchasedAt?: string,
-    frozenIds?: ReadonlySet<string>
+    frozenIds?: ReadonlySet<string>,
+    /**
+     * What a price was paid *for*, where a receipt said: "3.5 lb $10.47"
+     * against a row listed as "2 lb". Without it the price was filed against
+     * the list's quantity, a per-pound figure 75% too high. A row not named
+     * here keeps the list's quantity, as before.
+     */
+    priceQuantityById?: Readonly<Record<string, string>>
   ) => number;
   /**
    * Records what one item cost, by hand. Writes the item's own price and — with
@@ -1768,13 +1804,16 @@ function restockLinkedSupplies(boughtItemIds: ReadonlySet<string>): Map<string, 
  * is shared with every other generator (store/generatedTaskSync, #1524); what's
  * decided here is only what a grocery item wants.
  *
- * **Only a *live* task blocks a new one** — hence no `blocksOnFinished`. That
- * flag is for a source that is one event (a planned meal: mealShortfall,
- * mealThaw, mealLogNudge), where a finished task must not be followed by a
- * second. A grocery item is a forever-row that gets bought again and again:
- * last month's ticked-off "Use up spinach" is history, and the bag bought this
- * afternoon needs its own. Reading the wider set here would mean a staple got
- * exactly one use-up task, ever.
+ * **A finished task blocks a new one only for the same use-by day** — hence
+ * no `blocksOnFinished`. That flag is for a source that is one event (a
+ * planned meal: mealShortfall, mealThaw, mealLogNudge), where a finished task
+ * must not be followed by a second. A grocery item is a forever-row that gets
+ * bought again and again: last month's ticked-off "Use up spinach" is history,
+ * and the bag bought this afternoon needs its own. Reading the wider set here
+ * would mean a staple got exactly one use-up task, ever. But a task finished
+ * for the day the row still names is this packet's, so any edit that leaves
+ * the day alone (un-marking Opened) must not hand it back: `finishedUseUpFor`,
+ * the same test the foreground sweep applies.
  */
 function reconcileUseUpTask(item: GroceryItem): void {
   const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, useUpTaskCap } =
@@ -1786,7 +1825,8 @@ function reconcileUseUpTask(item: GroceryItem): void {
     // and owning it in one place is what keeps the frozen case honest — this
     // used to re-check `expiresAt` because an explicit `useUpTask: true` could
     // outrank the qualifier and reach useUpTaskFields' `expiresAt!`.
-    wanted: wantsUseUpTask(item, groceryUseUpTasks),
+    wanted: wantsUseUpTask(item, groceryUseUpTasks)
+      && !finishedUseUpFor(useTaskStore.getState().tasks, item),
     drift: existing => useUpTaskDrift(existing, item, groceryUseUpLeadDays),
     draft: () => useUpTaskDraft(item, groceryUseUpLeadDays, groceryUseUpTaskCategory),
     useUpCap: useUpTaskCap,
@@ -1832,8 +1872,13 @@ function writeMembership(changes: {
   const upsert = changes.upsert ?? [];
   const remove = changes.remove ?? [];
   if (upsert.length === 0 && remove.length === 0) return;
-  for (const entry of upsert) dbSetGroceryListEntry(entry);
-  for (const { itemId, listId } of remove) dbDeleteGroceryListEntry(itemId, listId);
+  // One commit for the lot: a "Check all" over fifty rows was fifty
+  // autocommits of an upsert, two reads and the mirror write each. Joins the
+  // caller's transaction when there is one.
+  dbTransaction(() => {
+    for (const entry of upsert) dbSetGroceryListEntry(entry);
+    for (const { itemId, listId } of remove) dbDeleteGroceryListEntry(itemId, listId);
+  });
   useGroceryStore.setState(s => {
     const dropped = new Set(remove.map(r => entryKey(r.itemId, r.listId)));
     const replaced = new Set(upsert.map(e => entryKey(e.itemId, e.listId)));
@@ -2531,6 +2576,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const renamed = renameRows(get().items, id, name);
     if ('refusal' in renamed) return false;
     const { item: updated, repointed, oldKey, key } = renamed;
+    // The undo snapshot, as mergeItems takes one: the rows themselves, and the
+    // recipes whose lines the remap below is about to rewrite. Restoring those
+    // rather than renaming back is the point, since renaming back remaps every
+    // line holding the new key, including ones that used it before ("Butter"
+    // to "Peanut butter" and back moved real peanut butter lines to Butter).
+    const before = get().items.find(i => i.id === id)!;
+    const beforeRepointed = get().items.filter(i => repointed.some(r => r.id === i.id));
+    const beforeOverrides = get().aisleOverrides;
+    // Every key the recipes reached this row by: its own, and any other
+    // spelling the plural rule resolved to it ("1 tomato" on a Tomatoes row)
+    // while no row of that spelling exists. A remap of the exact key alone
+    // left those lines stranded, and the next add from the recipe made a row.
+    const itemsBefore = get().items;
+    const recipeKeys = key === oldKey ? [] : [...new Set(
+      useRecipeStore.getState().recipes.flatMap(r => r.ingredients.map(i => i.nameKey))
+    )].filter(k => k === oldKey || catalogItemForKey(k, itemsBefore)?.id === id);
+    const beforeRecipes = useRecipeStore.getState().recipes
+      .filter(r => r.ingredients.some(i => recipeKeys.includes(i.nameKey)));
     dbUpdateGroceryItem(updated);
     const repointedVarieties = new Map<string, GroceryItem>();
     for (const next of repointed) {
@@ -2549,11 +2612,41 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // matching. Reached through the store rather than the rows because the key
     // lives inside a JSON blob; remapIngredientKey is a no-op when nothing
     // referenced the old spelling.
-    useRecipeStore.getState().remapIngredientKey(item.nameKey, key);
+    for (const from of recipeKeys) useRecipeStore.getState().remapIngredientKey(from, key);
     set(s => ({
       items: s.items.map(i => (i.id === id ? updated : repointedVarieties.get(i.id) ?? i)),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
+    if (before.name !== updated.name) {
+      get().setLastAction({
+        label: `Renamed "${before.name}" to "${updated.name}"`,
+        redo: () => { get().renameItem(id, name); },
+        undo: () => {
+          // Only the fields a rename writes, onto each row as it is now: a
+          // whole-row snapshot would also put back a check or a pantry answer
+          // made since.
+          const back = new Map<string, GroceryItem>();
+          for (const was of [before, ...beforeRepointed]) {
+            const now = get().items.find(i => i.id === was.id);
+            if (!now) continue;
+            back.set(was.id, {
+              ...now,
+              name: was.name,
+              nameKey: was.nameKey,
+              varietyOfKey: was.varietyOfKey,
+              nameFromScan: was.nameFromScan,
+            });
+          }
+          for (const row of back.values()) dbUpdateGroceryItem(row);
+          if (remembered) dbSetGroceryAisleOverrides(beforeOverrides);
+          useRecipeStore.getState().restoreRecipes(beforeRecipes);
+          set(s => ({
+            items: s.items.map(i => back.get(i.id) ?? i),
+            aisleOverrides: remembered ? beforeOverrides : s.aisleOverrides,
+          }));
+        },
+      });
+    }
     return true;
   },
 
@@ -2672,7 +2765,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       useTaskStore.getState().updateTask(taskId, { supplyGroceryItemId: intoId }, { skipPostponeCount: true });
     }
     // The rest of what named the loser lives in other stores' tables.
-    const repointed = dbRepointItemReferences(fromId, intoId);
+    const repointed = dbRepointItemReferences(fromId, intoId, plan.productIdRemap);
     // Required lazily: the food log store reaches the Health bridge at import,
     // and this only runs when one of its rows actually changed.
     const reloadOtherStores = () => {
@@ -3037,7 +3130,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // pantry, and undoing that is the answer "it didn't" — leaving it up
         // would ask how something went that is, as of now, still there.
         set(s => ({
-          items: s.items.map(i => originalById.get(i.id) ?? i),
+          items: restoredRows(s.items, originalById),
           itemProducts: [
             ...s.itemProducts,
             ...thawedPortions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
@@ -3215,7 +3308,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         undo: () => {
           for (const b of revertRows) dbUpdateGroceryItem(b);
           const revertById = new Map(revertRows.map(b => [b.id, b]));
-          set(s => ({ items: s.items.map(i => revertById.get(i.id) ?? i) }));
+          set(s => ({ items: restoredRows(s.items, revertById) }));
           // Back on the home list with the tick and slot it had, and each task
           // re-derived against the row as it now stands again.
           writeMembership({ upsert: removedEntries });
@@ -3624,14 +3717,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // on another list is a separate choice, still to be made there.
     const listId = get().activeListId;
     const entries = get().listEntries;
-    const entry = entryFor(entries, id, listId);
-    if (!entry?.choiceGroup) return;
-    const group = entry.choiceGroup;
+    const plan = chosenOptionRows(entries, get().items, id, listId);
+    if (!plan) return;
+    const entry = entryFor(entries, id, listId)!;
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const losers = entries.filter(
-      e => e.listId === listId && e.itemId !== id && e.choiceGroup === group
-    );
+    const losers = plan.remove;
     if (losers.length === 0) {
       get().clearChoice(id);
       return;
@@ -3647,12 +3738,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const beforeItems = get().items.filter(i => loserIds.has(i.id));
     // Same park shape removeFromList uses, recipe-owned quantity included: a
     // rejected "2 cups pears" must not hand that amount back on a later manual
-    // re-add.
-    const parked = beforeItems.map(i => ({
-      ...i,
-      quantity: i.quantityFromRecipe ? null : i.quantity,
-      quantityFromRecipe: false,
-    }));
+    // re-add. See chosenOptionRows.
+    const parked = plan.parked;
 
     for (const u of parked) dbUpdateGroceryItem(u);
     const byId = new Map(parked.map(u => [u.id, u]));
@@ -3660,7 +3747,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // The winner keeps its place and stops being an option; every other option
     // leaves this trolley.
     writeMembership({
-      upsert: [{ ...entry, choiceGroup: null }],
+      upsert: [plan.winner],
       remove: losers.map(e => ({ itemId: e.itemId, listId })),
     });
 
@@ -3914,7 +4001,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const id of ids) dropUseUpTask(id);
   },
 
-  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds) {
+  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds, priceQuantityById = {}) {
     const now = new Date(purchasedAt);
     // The list being finished, and whether it is one you're away from home for.
     // **An away trip records nothing** — see GroceryList: no purchase count, no
@@ -3968,7 +4055,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const pricedQuantityById = new Map(
       get().items
         .filter(i => priceById[i.id] !== undefined)
-        .map(i => [i.id, i.quantityFromRecipe ? null : i.quantity])
+        .map(i => [i.id, priceQuantityById[i.id] ?? (i.quantityFromRecipe ? null : i.quantity)])
     );
     // Snapshotted before anything is written, so undo restores the rows
     // themselves rather than reconstructing what they probably were — same
@@ -3990,7 +4077,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       expiresAtById,
       priceById,
       frozenIds ?? new Set(),
-      listId
+      listId,
+      priceQuantityById
     );
     if (ids.length === 0) return 0;
     const done = new Set(ids);
@@ -4191,7 +4279,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // bought — the purchase is what refutes it, exactly as it
                 // refutes an "Out of it".
                 runningLowAt: null,
-                expiresAt: expiresAtById[i.id] ?? i.expiresAt,
+                // Cleared where the trip names no new day: an old day was
+                // about the old jar (an opened one's, usually). Mirrors
+                // dbFinishGroceryShopping.
+                expiresAt: expiresAtById[i.id] ?? null,
                 // Only the rows the user priced. Everything else keeps the
                 // price and the stamp it already had — see the db's own note.
                 ...(priceById[i.id] !== undefined
@@ -4269,7 +4360,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           dbSetLastShopId(beforeLastShopId);
         }
         set(s => ({
-          items: s.items.map(i => byId.get(i.id) ?? i),
+          items: restoredRows(s.items, byId),
           itemProducts: s.itemProducts.map(p => beforeProducts.get(p.id) ?? p),
           itemShops: shop
             ? [
@@ -4441,7 +4532,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     const updated = new Map(updates.map(u => [u.id, u]));
     set(s => ({
-      items: s.items.map(i => updated.get(i.id) ?? i),
+      // Only the aisle onto the row as it is now: the copies in `updates` were
+      // taken before writeMembership above moved their slots.
+      items: s.items.map(i => {
+        const u = updated.get(i.id);
+        return u ? { ...i, aisle: u.aisle } : i;
+      }),
       // Every aisle here came off a header that was already on screen, so this
       // is belt and braces — but normalizing is what setAisleMany does, and an
       // aisle missing from the order renders its section unplaced.
@@ -4823,6 +4919,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     for (const link of links) {
       if (!link.gtin || !items.some(i => i.id === link.itemId)) continue;
+      // A deli or by-weight label names one package at one store's prices,
+      // not a product: remembered, it would claim every later package
+      // printing the same digits elsewhere.
+      if (isStoreInternalGtin(link.gtin)) continue;
       // Found by the words the scan resolved to rather than by id, because the
       // caller knows which box it read and `addProduct` knows which one exists
       // — the same find-by-key `ensureProductFor` does one step earlier.
@@ -5136,7 +5236,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         for (const row of before) dbUpdateGroceryItem(row);
         const byId = new Map(before.map(i => [i.id, i]));
         set(s => ({
-          items: s.items.map(i => byId.get(i.id) ?? i),
+          items: restoredRows(s.items, byId),
           cartHoldIds: s.cartHoldIds.filter(x => x !== item.id && x !== sub.id),
         }));
       },

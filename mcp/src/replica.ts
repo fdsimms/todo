@@ -2159,6 +2159,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   }
 
   /**
+   * The app's resolveChoice: an option checked off on a list takes the rest of
+   * its either/or off that list. A no-op for a row that isn't an option.
+   */
+  const resolveChoiceOn = (itemId: string, listId: string | null): void => {
+    const plan = itemWrite.chosenOptionRows(db.dbGetAllGroceryListEntries(), db.dbGetAllGroceryItems(), itemId, listId);
+    if (!plan) return;
+    for (const row of plan.parked) db.dbUpdateGroceryItem(row);
+    for (const e of plan.remove) db.dbDeleteGroceryListEntry(e.itemId, e.listId);
+    db.dbSetGroceryListEntry(plan.winner);
+  };
+
+  /**
    * What reopening cannot undo from here. Each is state on the phone or in a
    * store this server has no copy of: a calendar event the completion logged, a
    * screen-time credit, and a meal marked cooked or logged by a meal task. The
@@ -2901,7 +2913,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (entry.recipeId && recipes.some(r => r.id === entry.recipeId)) recipeStore().getState().markCooked(entry.recipeId);
 
     const items = db.dbGetAllGroceryItems();
-    const rows = mealPlanGroceries.cookedConsumption(entry, recipes, items, db.dbGetAllItemSubLinks(), now);
+    const rows = mealPlanGroceries.cookedConsumption(entry, recipes, items, db.dbGetAllItemSubLinks(), now, db.dbGetAllItemProducts());
     const at = mealPlanGroceries.openedAtForCook(entry, dates.dayKeyOf(dates.getLogicalToday()), now);
     const opened: string[] = [];
     for (const id of mealPlanGroceries.cookOpenedIds(rows, items)) {
@@ -4836,11 +4848,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
 
       refresh();
-      // plan.wasOnList is "in any trolley", which reads a row on the Airbnb
-      // list as already added to the list at home.
-      const listId = opts?.listId ?? null;
-      const wasOnList = !plan.isNew && entries.some(e => e.itemId === plan.item.id && e.listId === listId);
-      return { item: plan.item, isNew: plan.isNew, wasOnList };
+      // Already per list: planGroceryAdd reads the entry on the list it adds to.
+      return { item: plan.item, isNew: plan.isNew, wasOnList: plan.wasOnList };
     },
 
     plannedIngredients(source: { recipeId: string; scale?: number } | { from: string; to: string }, listId: string | null): PlannedIngredientRow[] {
@@ -5270,7 +5279,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         for (const gone of plan.removedEntries) db.dbDeleteGroceryListEntry(gone.itemId, gone.listId);
         // A supply task that restocked the loser restocks the survivor.
         for (const t of db.dbGetAllTasks().filter(x => x.supplyGroceryItemId === fromId)) db.dbUpdateTask({ ...t, supplyGroceryItemId: intoId });
-        db.dbRepointItemReferences(fromId, intoId);
+        db.dbRepointItemReferences(fromId, intoId, plan.productIdRemap);
       });
       refresh();
       return { merged: db.dbGetAllGroceryItems().find(i => i.id === intoId)!, from: plan.fromItem };
@@ -5285,6 +5294,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!entry) throw new Error(`"${item.name}" is not on ${listId === null ? 'the home list' : 'that list'}, so there is nothing to check off.`);
 
       db.dbSetGroceryListEntry({ ...entry, checked });
+      // Checking one option of an either/or takes the others off this list,
+      // as the app's own tick does (resolveChoice).
+      if (checked) resolveChoiceOn(id, listId);
       refresh();
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
     },
@@ -5582,6 +5594,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             db.dbSetGroceryListEntry(entry
               ? { ...entry, checked: true }
               : { itemId: item.id, listId: input.listId, checked: true, choiceGroup: null, addedAt: nowIso, sortOrder: groceryLists.nextListSortOrder(entries, input.listId) });
+            resolveChoiceOn(item.id, input.listId);
             if (line.priceMinor !== undefined && line.priceMinor !== null) priceById[item.id] = line.priceMinor;
             if (line.frozen) frozen.add(item.id);
           } else {
@@ -5609,7 +5622,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                 item = f;
               }
             }
-            if (line.priceMinor !== undefined) {
+            // Null is "the line has no price" (the tool's own schema), not
+            // "clear the stored one", which is what pricedRows does with it.
+            if (line.priceMinor !== undefined && line.priceMinor !== null) {
               const link = input.shopId ? db.dbGetAllItemShopLinks().find(l => l.itemId === item.id && l.shopId === input.shopId) : undefined;
               const rows = itemWrite.pricedRows(item, link, line.priceMinor, nowIso);
               db.dbUpdateGroceryItem(rows.item);
@@ -6713,7 +6728,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const recipe = recipes.find(r => r.id === next.recipeId);
         if (!recipe) throw new Error('That meal\'s recipe is gone, so it has no choices.');
         const byId = new Map(recipes.map(r => [r.id, r]));
-        const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date());
+        const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date(), db.dbGetAllItemProducts());
         let chosen = [...next.recipeChoices];
         // One at a time, since an answer can open or close a question: a
         // group on a component only exists while that component is cooked.
@@ -6836,7 +6851,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const recipes = db.dbGetAllRecipes();
       const recipe = recipes.find(r => r.id === entry.recipeId);
       if (!recipe) return [];
-      const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date());
+      const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date(), db.dbGetAllItemProducts());
       return components()
         .recipeChoiceGroups(recipe, new Map(recipes.map(r => [r.id, r])), { chosen: entry.recipeChoices, onHand })
         .map(g => ({ group: g.label, options: g.options.map(o => o.name), chosen: g.active.name }));

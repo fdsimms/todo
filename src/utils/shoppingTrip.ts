@@ -40,7 +40,7 @@ import { describeShopAisles, isOutOfRange, lacksWantedProduct } from './groceryS
  * couldn't be acted on: knowing a store "probably" has 2 more of your list
  * tells you nothing you'd change a trip over. Ranking on what's actually been
  * bought or asserted is the whole feature. Don't reintroduce it — if a store's
- * count looks low, the fix is the correction flow ("Actually, it has more"),
+ * count looks low, the fix is the correction flow ("Mark more items it carries"),
  * which turns a guess into a fact the user owns.
  *
  * **The one exception is a claim the user made themselves.** A link carrying

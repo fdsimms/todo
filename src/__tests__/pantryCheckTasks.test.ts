@@ -11,7 +11,7 @@ import {
 } from '../utils/pantryCheckTasks';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
-import type { GroceryItem, Task } from '../types';
+import type { GroceryItem, ItemProduct, Task } from '../types';
 
 // kitchenInventory reaches dateUtils and so the settings store, which opens
 // SQLite — the same stub groceryExpiry.test.ts uses for the same import chain.
@@ -100,25 +100,39 @@ describe('pantryCheckLapse', () => {
     // 30 days into a 122-day cadence: probablyHaveReason still answers, so
     // there is nothing to ask about.
     const item = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(30) });
-    expect(probablyHaveReason(item, NOW)).not.toBeNull();
-    expect(pantryCheckLapse(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).not.toBeNull();
+    expect(pantryCheckLapse(item, NOW, [])).toBeNull();
+  });
+
+  it('is null while a box of the item vouches for it, as the Pantry screen lists it', () => {
+    // The purchase window has lapsed, but one packet is in the freezer: asking
+    // "do you still have flour?" beside it, and taking an "Out of it" answer,
+    // is the contradiction the review deck already refuses.
+    const item = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(125) });
+    const frozenBox: ItemProduct = {
+      id: 'p1', itemId: item.id, brand: 'King Arthur', variant: null, productKey: 'king arthur', rating: null,
+      nutrition: null, note: '', purchaseCount: 1, lastPurchasedAt: daysAgo(125), gtin: null, onHandUntil: null,
+      expiresAt: null, frozenAt: daysAgo(100), openedAt: null, isPortion: false, createdAt: daysAgo(200),
+    };
+    expect(pantryCheckLapse(item, NOW, [])).not.toBeNull();
+    expect(pantryCheckLapse(item, NOW, [frozenBox])).toBeNull();
   });
 
   it('reports the days since the window ran out', () => {
     const item = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(125) });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
     // 125 days since, against a 366/3 = 122-day cadence.
-    expect(pantryCheckLapse(item, NOW)).toBeCloseTo(3, 5);
+    expect(pantryCheckLapse(item, NOW, [])).toBeCloseTo(3, 5);
   });
 
   it('asks about a lapsed "Running low" mark with no purchase history at all', () => {
     const item = makeItem({ name: 'Tahini', purchaseCount: 0, lastPurchasedAt: null, runningLowAt: daysAgo(18) });
-    expect(pantryCheckLapse(item, NOW)).toBeCloseTo(4, 5);
+    expect(pantryCheckLapse(item, NOW, [])).toBeCloseTo(4, 5);
   });
 
   it('stays quiet while the mark is still believed, and while the row is on the list', () => {
-    expect(pantryCheckLapse(makeItem({ name: 'Tahini', runningLowAt: daysAgo(5) }), NOW)).toBeNull();
-    expect(pantryCheckLapse(makeItem({ name: 'Tahini', runningLowAt: daysAgo(18), onList: true }), NOW)).toBeNull();
+    expect(pantryCheckLapse(makeItem({ name: 'Tahini', runningLowAt: daysAgo(5) }), NOW, [])).toBeNull();
+    expect(pantryCheckLapse(makeItem({ name: 'Tahini', runningLowAt: daysAgo(18), onList: true }), NOW, [])).toBeNull();
   });
 
   it('stays quiet below the cadence gate, however long ago the purchase was', () => {
@@ -126,33 +140,33 @@ describe('pantryCheckLapse', () => {
     // a cadence — and asking off the back of a made-up number is how a
     // generator earns its way into being switched off.
     const item = makeItem({ name: 'Saffron', purchaseCount: 2, lastPurchasedAt: daysAgo(300) });
-    expect(pantryCheckLapse(item, NOW)).toBeNull();
+    expect(pantryCheckLapse(item, NOW, [])).toBeNull();
   });
 
   it('stays quiet for a row nothing was ever bought on', () => {
     const item = makeItem({ name: 'Tahini', purchaseCount: 0, lastPurchasedAt: null });
-    expect(pantryCheckLapse(item, NOW)).toBeNull();
+    expect(pantryCheckLapse(item, NOW, [])).toBeNull();
   });
 
   it('stays quiet while something else answers for the item', () => {
     const lapsed = { lastPurchasedAt: daysAgo(200) };
     // A staple is a standing fact, not a guess with a shelf life.
-    expect(pantryCheckLapse(makeItem({ name: 'Salt', isStaple: true, ...lapsed }), NOW)).toBeNull();
+    expect(pantryCheckLapse(makeItem({ name: 'Salt', isStaple: true, ...lapsed }), NOW, [])).toBeNull();
     // A live "Got it" is the user having already said so.
     expect(pantryCheckLapse(
       makeItem({ name: 'Rice', onHandUntil: '2026-12-01T00:00:00.000Z', ...lapsed }),
-      NOW
+      NOW, []
     )).toBeNull();
     // The freezer measures in months, which is the whole reason it outranks the
     // purchase window in probablyHaveReason.
     expect(pantryCheckLapse(
       makeItem({ name: 'Chicken', frozenAt: daysAgo(60), ...lapsed }),
-      NOW
+      NOW, []
     )).toBeNull();
     // Nearly out is still had — and it puts the row on the list anyway.
     expect(pantryCheckLapse(
       makeItem({ name: 'Oats', runningLowAt: daysAgo(2), ...lapsed }),
-      NOW
+      NOW, []
     )).toBeNull();
   });
 
@@ -161,8 +175,8 @@ describe('pantryCheckLapse', () => {
     // gate: asking "still got this?" of someone who just said they haven't is
     // the app not listening.
     const item = makeItem({ name: 'Sugar', onHandUntil: OUT_OF_IT_UNTIL });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
-    expect(pantryCheckLapse(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
+    expect(pantryCheckLapse(item, NOW, [])).toBeNull();
   });
 
   it('hands the question back when a "Got it" has merely lapsed', () => {
@@ -170,18 +184,18 @@ describe('pantryCheckLapse', () => {
     // claim to be out of something — so the purchase reading decides, and it
     // has run out too.
     const item = makeItem({ name: 'Butter', onHandUntil: daysAgo(40) });
-    expect(pantryCheckLapse(item, NOW)).not.toBeNull();
+    expect(pantryCheckLapse(item, NOW, [])).not.toBeNull();
   });
 
   it('stays quiet for a row already on the list', () => {
-    expect(pantryCheckLapse(makeItem({ name: 'Flour', onList: true }), NOW)).toBeNull();
+    expect(pantryCheckLapse(makeItem({ name: 'Flour', onList: true }), NOW, [])).toBeNull();
   });
 
   it('ignores the grace window, so a live task keeps its reason', () => {
     // The grace bounds *raising* a question, not keeping one — see
     // stalePantryCheckTasks.
     const ancient = makeItem({ name: 'Vanilla', lastPurchasedAt: daysAgo(360) });
-    expect(pantryCheckLapse(ancient, NOW)).toBeGreaterThan(PANTRY_CHECK_GRACE_DAYS);
+    expect(pantryCheckLapse(ancient, NOW, [])).toBeGreaterThan(PANTRY_CHECK_GRACE_DAYS);
   });
 });
 
@@ -190,17 +204,17 @@ describe('pantryCheckLapse', () => {
 describe('wantedPantryChecks', () => {
   it('asks about an item whose window has just run out', () => {
     const item = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(125) });
-    expect(wantedPantryChecks([item], [], NOW)).toEqual([
+    expect(wantedPantryChecks([item], [], NOW, [])).toEqual([
       { itemId: item.id, title: 'Check if you still have Flour', lapsedDays: expect.any(Number) },
     ]);
   });
 
   it('asks once about a lapsed "Running low" mark, and not again after it is answered', () => {
     const item = makeItem({ name: 'Tahini', purchaseCount: 0, lastPurchasedAt: null, runningLowAt: daysAgo(18) });
-    expect(wantedPantryChecks([item], [], NOW).map(w => w.itemId)).toEqual([item.id]);
+    expect(wantedPantryChecks([item], [], NOW, []).map(w => w.itemId)).toEqual([item.id]);
     // Swiped away after the mark was set: the question has had its answer.
     const declined = { ...item, pantryCheckDeclinedAt: daysAgo(1) };
-    expect(wantedPantryChecks([declined], [], NOW)).toEqual([]);
+    expect(wantedPantryChecks([declined], [], NOW, [])).toEqual([]);
   });
 
   it('drops a lapse that has gone stale', () => {
@@ -209,7 +223,7 @@ describe('wantedPantryChecks', () => {
     // would meter that out three at a time for ever.
     const fresh = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(125) });
     const stale = makeItem({ name: 'Vanilla', lastPurchasedAt: daysAgo(140) });
-    expect(wantedPantryChecks([fresh, stale], [], NOW).map(w => w.itemId)).toEqual([fresh.id]);
+    expect(wantedPantryChecks([fresh, stale], [], NOW, []).map(w => w.itemId)).toEqual([fresh.id]);
   });
 
   it('ranks the freshest lapse first, then by name', () => {
@@ -219,7 +233,7 @@ describe('wantedPantryChecks', () => {
     const older = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(130) });
     const newer = makeItem({ name: 'Rice', lastPurchasedAt: daysAgo(123) });
     const alsoNewer = makeItem({ name: 'Barley', lastPurchasedAt: daysAgo(123) });
-    expect(wantedPantryChecks([older, newer, alsoNewer], [], NOW).map(w => w.title)).toEqual([
+    expect(wantedPantryChecks([older, newer, alsoNewer], [], NOW, []).map(w => w.title)).toEqual([
       'Check if you still have Barley',
       'Check if you still have Rice',
       'Check if you still have Flour',
@@ -230,7 +244,7 @@ describe('wantedPantryChecks', () => {
     const items = ['Flour', 'Rice', 'Oats', 'Barley', 'Lentils'].map((name, i) =>
       makeItem({ name, lastPurchasedAt: daysAgo(125 + i) })
     );
-    expect(wantedPantryChecks(items, [], NOW)).toHaveLength(MAX_PANTRY_CHECK_TASKS);
+    expect(wantedPantryChecks(items, [], NOW, [])).toHaveLength(MAX_PANTRY_CHECK_TASKS);
   });
 
   it('leaves an item alone once it has been turned down since the last purchase', () => {
@@ -239,7 +253,7 @@ describe('wantedPantryChecks', () => {
       lastPurchasedAt: daysAgo(125),
       pantryCheckDeclinedAt: daysAgo(2),
     });
-    expect(wantedPantryChecks([item], [], NOW)).toEqual([]);
+    expect(wantedPantryChecks([item], [], NOW, [])).toEqual([]);
   });
 
   it('asks again once the item has been bought since it was turned down', () => {
@@ -254,7 +268,7 @@ describe('wantedPantryChecks', () => {
       pantryCheckDeclinedAt: daysAgo(200),
     });
     // 366/4 = 91.5-day window, 95 days since: lapsed, and the old stamp is spent.
-    expect(wantedPantryChecks([item], [], NOW)).toHaveLength(1);
+    expect(wantedPantryChecks([item], [], NOW, [])).toHaveLength(1);
   });
 
   it('leaves an item alone once its task was ticked off since the last purchase', () => {
@@ -266,7 +280,7 @@ describe('wantedPantryChecks', () => {
       completed: true,
       completedAt: daysAgo(1),
     });
-    expect(wantedPantryChecks([item], [done], NOW)).toEqual([]);
+    expect(wantedPantryChecks([item], [done], NOW, [])).toEqual([]);
   });
 
   it('counts an archived task as an answer too', () => {
@@ -279,7 +293,7 @@ describe('wantedPantryChecks', () => {
       archived: true,
       archivedAt: daysAgo(1),
     });
-    expect(wantedPantryChecks([item], [filed], NOW)).toEqual([]);
+    expect(wantedPantryChecks([item], [filed], NOW, [])).toEqual([]);
   });
 
   it('ignores a task answered before the last purchase', () => {
@@ -289,7 +303,7 @@ describe('wantedPantryChecks', () => {
       completed: true,
       completedAt: daysAgo(300),
     });
-    expect(wantedPantryChecks([item], [old], NOW)).toHaveLength(1);
+    expect(wantedPantryChecks([item], [old], NOW, [])).toHaveLength(1);
   });
 
   it('ignores another generator\'s task about the same id', () => {
@@ -302,7 +316,7 @@ describe('wantedPantryChecks', () => {
       completed: true,
       completedAt: daysAgo(1),
     });
-    expect(wantedPantryChecks([item], [other], NOW)).toHaveLength(1);
+    expect(wantedPantryChecks([item], [other], NOW, [])).toHaveLength(1);
   });
 
   it('is unaffected by a live task, which the reconcile handles', () => {
@@ -310,7 +324,7 @@ describe('wantedPantryChecks', () => {
     // reconcileGeneratedTask turns that into a create or a drift check.
     const item = makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(125) });
     const live = makeTask({ generatedSourceId: item.id });
-    expect(wantedPantryChecks([item], [live], NOW)).toHaveLength(1);
+    expect(wantedPantryChecks([item], [live], NOW, [])).toHaveLength(1);
   });
 });
 
@@ -321,7 +335,7 @@ describe('stalePantryCheckTasks', () => {
 
   it('keeps a task whose item still has no answer', () => {
     const live = { ...makeTask({ generatedSourceId: lapsed.id }), id: 't-1' };
-    expect(stalePantryCheckTasks([live], [lapsed], NOW)).toEqual([]);
+    expect(stalePantryCheckTasks([live], [lapsed], NOW, [])).toEqual([]);
   });
 
   it('clears a task once the user has answered from the sheet it links to', () => {
@@ -330,18 +344,18 @@ describe('stalePantryCheckTasks', () => {
     const gotIt = { ...lapsed, onHandUntil: '2026-12-01T00:00:00.000Z' };
     const outOfIt = { ...lapsed, onHandUntil: OUT_OF_IT_UNTIL };
     const live = { ...makeTask({ generatedSourceId: lapsed.id }), id: 't-1' };
-    expect(stalePantryCheckTasks([live], [gotIt], NOW)).toEqual([live]);
-    expect(stalePantryCheckTasks([live], [outOfIt], NOW)).toEqual([live]);
+    expect(stalePantryCheckTasks([live], [gotIt], NOW, [])).toEqual([live]);
+    expect(stalePantryCheckTasks([live], [outOfIt], NOW, [])).toEqual([live]);
   });
 
   it('clears a task once the item is back on the list', () => {
     const live = { ...makeTask({ generatedSourceId: lapsed.id }), id: 't-1' };
-    expect(stalePantryCheckTasks([live], [{ ...lapsed, onList: true }], NOW)).toEqual([live]);
+    expect(stalePantryCheckTasks([live], [{ ...lapsed, onList: true }], NOW, [])).toEqual([live]);
   });
 
   it('clears a task whose item has been deleted', () => {
     const live = { ...makeTask({ generatedSourceId: lapsed.id }), id: 't-1' };
-    expect(stalePantryCheckTasks([live], [], NOW)).toEqual([live]);
+    expect(stalePantryCheckTasks([live], [], NOW, [])).toEqual([live]);
   });
 
   it('keeps a task whose lapse has aged past the grace window', () => {
@@ -351,8 +365,8 @@ describe('stalePantryCheckTasks', () => {
     // staleProjectReviewTasks makes the same split to avoid.
     const ancient = { ...lapsed, lastPurchasedAt: daysAgo(360) };
     const live = { ...makeTask({ generatedSourceId: ancient.id }), id: 't-1' };
-    expect(wantedPantryChecks([ancient], [], NOW)).toEqual([]);
-    expect(stalePantryCheckTasks([live], [ancient], NOW)).toEqual([]);
+    expect(wantedPantryChecks([ancient], [], NOW, [])).toEqual([]);
+    expect(stalePantryCheckTasks([live], [ancient], NOW, [])).toEqual([]);
   });
 
   it('leaves completed and archived tasks alone', () => {
@@ -361,7 +375,7 @@ describe('stalePantryCheckTasks', () => {
     // already makes.
     const done = { ...makeTask({ generatedSourceId: 'gone', completed: true }), id: 't-1' };
     const filed = { ...makeTask({ generatedSourceId: 'gone', archived: true }), id: 't-2' };
-    expect(stalePantryCheckTasks([done, filed], [], NOW)).toEqual([]);
+    expect(stalePantryCheckTasks([done, filed], [], NOW, [])).toEqual([]);
   });
 
   it('leaves another generator\'s tasks alone', () => {
@@ -369,7 +383,7 @@ describe('stalePantryCheckTasks', () => {
       ...makeTask({ generatedKind: 'projectReview', generatedSourceId: 'p-1' }),
       id: 't-1',
     };
-    expect(stalePantryCheckTasks([other], [], NOW)).toEqual([]);
+    expect(stalePantryCheckTasks([other], [], NOW, [])).toEqual([]);
   });
 });
 

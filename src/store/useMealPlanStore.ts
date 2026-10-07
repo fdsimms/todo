@@ -1688,9 +1688,9 @@ function cookRecapFor(entry: MealPlanEntry): CookRecap {
  * either. Resealing is one tap on the item's own sheet.
  */
 function markConsumedOpened(entry: MealPlanEntry): void {
-  const { items, itemSubs, markOpenedMany } = useGroceryStore.getState();
+  const { items, itemSubs, itemProducts, markOpenedMany } = useGroceryStore.getState();
   const now = new Date();
-  const rows = cookedConsumption(entry, useRecipeStore.getState().recipes, items, itemSubs, now);
+  const rows = cookedConsumption(entry, useRecipeStore.getState().recipes, items, itemSubs, now, itemProducts);
   markOpenedMany(cookOpenedIds(rows, items), openedAtForCook(entry, dayKeyOf(getLogicalToday()), now));
 }
 

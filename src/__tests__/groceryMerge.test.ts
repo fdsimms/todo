@@ -13,6 +13,7 @@ const item = (over: Partial<GroceryItem> & { id: string; name: string }): Grocer
   nameKey: over.name.toLowerCase(), aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: null, onList: false, checked: false,
   purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, purchaseIntervalDays: null, onHandUntil: null, isStaple: false,
   choiceGroup: null, preferredProductId: null, varietyOfKey: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+  priceHistory: [], usedUpCount: 0, spoiledCount: 0, backfillDismissedFields: [],
   ...over,
 }) as GroceryItem;
 

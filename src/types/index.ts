@@ -2284,7 +2284,10 @@ export interface Task {
   seenAt: string | null; // last time the user interacted with this task; drives the "new" dot
 
   dueDate: string | null;
-  deadline: string | null;   // separate target date to hit; shown as a subtle countdown, doesn't affect scheduling/visibility
+  // A separate target date to hit; shown as a subtle countdown, doesn't affect
+  // scheduling/visibility. An instant, never a bare day key: readers parse it
+  // with `new Date`, and the write paths convert one (`deadlineInstant`).
+  deadline: string | null;
   // When set, `deadline` is derived as `dueDate` minus this many days instead of
   // a fixed date, and gets recomputed against the new dueDate every time a
   // recurring task spawns its next occurrence (see completeTask). Null means
