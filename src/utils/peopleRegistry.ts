@@ -1,5 +1,6 @@
 import type { Person, PersonGroup, Task } from '../types';
 import type { GroupMentionToken } from './parseTaskInput';
+import { PEOPLE_LINK_URL, personLinkUrl } from './birthdayTasks';
 
 /**
  * How a row resolves the people a task names, and how a person finds the tasks
@@ -119,6 +120,19 @@ export function contactDetailsFor(
     emailAddress: own.emailAddress ?? named[0].email ?? null,
     linkUrl: own.linkUrl ?? named[0].linkUrl ?? null,
   };
+}
+
+/**
+ * The People page link a row offers when it names anybody: that person's own
+ * page for one, the whole People screen for several. Null when the task names
+ * nobody who still exists. The row draws it as its own button beside any link
+ * of the task's or the person's, so neither hides the other.
+ */
+export function peoplePageLinkFor(task: Pick<Task, 'personIds'> | null | undefined): string | null {
+  if (!task?.personIds?.length) return null;
+  const named = peopleOn(task);
+  if (named.length === 0) return null;
+  return named.length === 1 ? personLinkUrl(named[0].id) : PEOPLE_LINK_URL;
 }
 
 /**
