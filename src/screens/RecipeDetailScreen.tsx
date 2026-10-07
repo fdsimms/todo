@@ -46,6 +46,7 @@ import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
@@ -1141,6 +1142,11 @@ export function RecipeDetailScreen() {
     isDragging: boolean,
   ) => {
     const selected = selectedIds.has(ingredient.id);
+    // Shared by the swipe and the iPhone Mirroring button.
+    const swipeSelect = {
+      onSelect: () => enterSelectionMode(ingredient.id),
+      accessibilityLabel: `Select ${ingredient.name}`,
+    };
     // Tinted only where the number on screen is genuinely not what the recipe
     // says, so the pills that did change are findable at a glance and the ones
     // rule 3 passed through are visibly untouched. A converted pill earns the
@@ -1228,10 +1234,7 @@ export function RecipeDetailScreen() {
             is actually called. */}
         <SwipeableRow
           enabled={!selectionMode && !isDragging}
-          selectAction={{
-            onSelect: () => enterSelectionMode(ingredient.id),
-            accessibilityLabel: `Select ${ingredient.name}`,
-          }}
+          selectAction={swipeSelect}
         >
         {/* Registered with the screen's PaintSelectionProvider so a drag down
             the column of dots picks up this line. Not SortableList's floating
@@ -1387,6 +1390,7 @@ export function RecipeDetailScreen() {
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
+          <SwipeActionButtons enabled={!selectionMode && !isDragging} selectAction={swipeSelect} />
           {/* In the slot the × gives up while selecting, so nothing moves
               aside for it. On every line, picked or not: the empty rings are
               what say selection is on. */}

@@ -102,7 +102,7 @@ import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallT
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
-import { SwipeActionsMenu } from './SwipeActionsMenu';
+import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
@@ -1114,13 +1114,8 @@ export const TaskItem = React.memo(function TaskItem({
   const [completionMenuAnchor, setCompletionMenuAnchor] = useState<CardAnchor | null>(null);
   const [showCompletionMenu, setShowCompletionMenu] = useState(false);
   const mountCompletionMenu = useSheetMount(showCompletionMenu);
-  // iPhone Mirroring: a "…" button offering what the row's swipes do, since
-  // a swipe from a Mac is a click-drag nobody would think to try. Anchored
-  // where it was clicked, like the completion menu above.
+  // iPhone Mirroring: Return on the inline rename takes the title offer.
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
-  const [swipeMenuAnchor, setSwipeMenuAnchor] = useState<CardAnchor | null>(null);
-  const [showSwipeMenu, setShowSwipeMenu] = useState(false);
-  const mountSwipeMenu = useSheetMount(showSwipeMenu);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // One reading per render rather than one per helper, so the chip, the
   // over-commitment test and the sheet can't land on different sides of a
@@ -1176,7 +1171,7 @@ export const TaskItem = React.memo(function TaskItem({
   const notice = isNoticeTask(task);
 
   // The row's swipe actions, decided once so SwipeableRow and the iPhone
-  // Mirroring menu (SwipeActionsMenu) offer exactly the same ones.
+  // Mirroring buttons (SwipeActionButtons) offer exactly the same ones.
   // No reschedule on a notice: there's nothing a later date would mean for
   // it, and the button that opens the same picker is gone from its panel for
   // that reason. A list item has no date to move, and deleting is what a list
@@ -1184,11 +1179,18 @@ export const TaskItem = React.memo(function TaskItem({
   // deleteAction for why this is the one destructive swipe). No select unless
   // the screen can actually bulk-select: a list without a bulk bar (Demo, say)
   // would otherwise offer an action whose handler is a no-op.
-  const swipeWhen = notice || listRow ? undefined : () => setShowWhenPicker(true);
-  const swipeDelete = swipeDeletes && !notice
-    ? () => { animateLayout(); deleteTask(task.id); }
-    : undefined;
-  const swipeSelect = onSwipeSelect ? () => onSwipeSelect(task.id) : undefined;
+  const swipeWhen = notice || listRow ? undefined : {
+    onAction: () => setShowWhenPicker(true),
+    accessibilityLabel: `Reschedule ${task.title}`,
+  };
+  const swipeDelete = swipeDeletes && !notice ? {
+    onDelete: () => { animateLayout(); deleteTask(task.id); },
+    accessibilityLabel: `Delete ${task.title}`,
+  } : undefined;
+  const swipeSelect = onSwipeSelect ? {
+    onSelect: () => onSwipeSelect(task.id),
+    accessibilityLabel: `Select ${task.title}`,
+  } : undefined;
 
   // ==== a phrase found in the title being renamed ====
   // The same offer the task editor makes: "pay rent tmrw #home" renamed in the
@@ -2745,7 +2747,11 @@ export const TaskItem = React.memo(function TaskItem({
             onChangeText={setTitleEdit}
             onBlur={saveTitle}
             onSubmitEditing={() => {
-              saveTitle();
+              // In iPhone Mirroring, Return takes the pill on show rather
+              // than saving the raw text, so a hardware keyboard needn't reach
+              // for the pointer. Taking it saves the cleaned title too.
+              if (mirroringMode && activeTitleOffer) applyTitleOffer();
+              else saveTitle();
               if (listRow) onSubmitLine?.(task.id);
             }}
             returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
@@ -3567,21 +3573,13 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && mirroringMode && !spotlightDisabled &&
-        (swipeWhen || swipeDelete || swipeSelect) && (
-        <TouchableOpacity
-          onPress={e => {
-            haptics.tap();
-            setSwipeMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
-            setShowSwipeMenu(true);
-          }}
-          hitSlop={8}
-          style={styles.pinBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`More actions for ${task.title}`}
-        >
-          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
-        </TouchableOpacity>
+      {showActions && (
+        <SwipeActionButtons
+          enabled={!selectionMode && !spotlightDisabled}
+          whenAction={swipeWhen}
+          deleteAction={swipeDelete}
+          selectAction={swipeSelect}
+        />
       )}
 
       {/* Takes the slot the row's action buttons vacate on entering selection
@@ -4464,18 +4462,9 @@ export const TaskItem = React.memo(function TaskItem({
             enabled={!selectionMode && !spotlightDisabled}
             // The three actions and their conditions are decided once, at
             // `swipeWhen`, so the iPhone Mirroring menu offers the same set.
-            selectAction={swipeSelect ? {
-              onSelect: swipeSelect,
-              accessibilityLabel: `Select ${task.title}`,
-            } : undefined}
-            whenAction={swipeWhen ? {
-              onAction: swipeWhen,
-              accessibilityLabel: `Reschedule ${task.title}`,
-            } : undefined}
-            deleteAction={swipeDelete ? {
-              onDelete: swipeDelete,
-              accessibilityLabel: `Delete ${task.title}`,
-            } : undefined}
+            selectAction={swipeSelect}
+            whenAction={swipeWhen}
+            deleteAction={swipeDelete}
           >
             <View>
               <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
@@ -4530,16 +4519,6 @@ export const TaskItem = React.memo(function TaskItem({
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
           onMiss={completionMenuRepeats ? () => { markMissed(task.id); afterCompletionMenuChoice(); } : undefined}
           onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
-        />
-      )}
-      {mountSwipeMenu && (
-        <SwipeActionsMenu
-          visible={showSwipeMenu}
-          anchor={swipeMenuAnchor}
-          onClose={() => setShowSwipeMenu(false)}
-          onWhen={swipeWhen}
-          onSelect={swipeSelect}
-          onDelete={swipeDelete}
         />
       )}
       {mountWhenPicker && (

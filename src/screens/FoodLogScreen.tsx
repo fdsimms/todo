@@ -90,6 +90,7 @@ import {
   type FabIntentChannel,
 } from '../components/FabDropZones';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ListBulkBar } from '../components/ListBulkBar';
@@ -1784,6 +1785,9 @@ const FoodLogRow = React.memo(function FoodLogRow({
   const toggleExpand = () => { haptics.tap(); setExpanded(e => !e); };
   const statedKeys = NUTRIENT_KEYS.filter(key => entry.nutrition.amounts[key] !== undefined);
   const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit));
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = { onSelect: () => onSwipeSelect(entry.id), accessibilityLabel: `Select ${entry.label}` };
+
   const rowBody = (
     <View
       ref={paintRef}
@@ -1825,6 +1829,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
             <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
+        <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       </View>
       {statedKeys.length > 0 && (
         <AnimatedCollapsible expanded={expanded}>
@@ -1847,7 +1852,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
     <SwipeableRow
       style={styles.entryRowSwipe}
       enabled={!selectionMode}
-      selectAction={{ onSelect: () => onSwipeSelect(entry.id), accessibilityLabel: `Select ${entry.label}` }}
+      selectAction={swipeSelect}
     >
       {rowBody}
     </SwipeableRow>

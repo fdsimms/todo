@@ -52,6 +52,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -1162,6 +1163,12 @@ const RecipeRow = React.memo(function RecipeRow({
   // Bound once per row rather than once per render of the list above it.
   const toggleSelect = () => onToggleSelect(recipe.id);
 
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = {
+    onSelect: () => onSwipeSelect(recipe.id),
+    accessibilityLabel: `Select ${recipe.name}`,
+  };
+
   const rowBody = (
     <TouchableOpacity
       style={[styles.row, selectionMode && selected && styles.rowSelected]}
@@ -1257,6 +1264,7 @@ const RecipeRow = React.memo(function RecipeRow({
           <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
         </TouchableOpacity>
       )}
+      <SwipeActionButtons enabled={!isActive && !selectionMode} selectAction={swipeSelect} />
       {!selectionMode && (
         <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
       )}
@@ -1278,10 +1286,7 @@ const RecipeRow = React.memo(function RecipeRow({
           the mount, same as every other list's row. */}
       <SwipeableRow
         enabled={!isActive && !selectionMode}
-        selectAction={{
-          onSelect: () => onSwipeSelect(recipe.id),
-          accessibilityLabel: `Select ${recipe.name}`,
-        }}
+        selectAction={swipeSelect}
       >
         {rowBody}
       </SwipeableRow>

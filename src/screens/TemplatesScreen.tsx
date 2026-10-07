@@ -36,6 +36,7 @@ import {
 } from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
@@ -467,6 +468,9 @@ const TemplateRow = React.memo(function TemplateRow({
   // floating drag copy, which would claim this row's id and evict it on
   // unmount.
   const paintRef = usePaintSelectionRow(isActive ? null : template.id);
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = { onSelect: () => onSwipeSelect(template.id), accessibilityLabel: `Select ${template.name}` };
+
   const rowBody = (
     <TouchableOpacity
       style={[styles.tplRow, selectionMode && selected && styles.tplRowSelected]}
@@ -536,6 +540,7 @@ const TemplateRow = React.memo(function TemplateRow({
           >
             <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
           </TouchableOpacity>
+          <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
           <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </>
       )}
@@ -557,7 +562,7 @@ const TemplateRow = React.memo(function TemplateRow({
           the mount, same as every other list's row. */}
       <SwipeableRow
         enabled={!selectionMode}
-        selectAction={{ onSelect: () => onSwipeSelect(template.id), accessibilityLabel: `Select ${template.name}` }}
+        selectAction={swipeSelect}
       >
         {rowBody}
       </SwipeableRow>

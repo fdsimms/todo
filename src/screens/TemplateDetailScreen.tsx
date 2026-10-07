@@ -23,6 +23,7 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -543,6 +544,9 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
   const refTitle = resolvedRefTemplate ? resolvedRefTemplate.name : item.refTemplateName || 'Nested template';
   const refCount = resolvedRefTemplate?.items.length ?? 0;
 
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = { onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` };
+
   const rowBody = (
     <TouchableOpacity
       style={[styles.itemRow, isActive && styles.itemRowActive, broken && styles.itemRowBroken]}
@@ -668,6 +672,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
           <Text style={styles.rowButtonText}>Swap</Text>
         </TouchableOpacity>
       )}
+      <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
       {!selectionMode && !broken && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
       {selectionMode && <SelectionDot selected={selected} onPress={handlePress} />}
     </TouchableOpacity>
@@ -692,7 +697,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
     <View ref={paintRef} style={styles.itemCard}>
       <SwipeableRow
         enabled={!selectionMode}
-        selectAction={{ onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` }}
+        selectAction={swipeSelect}
       >
         {rowBody}
       </SwipeableRow>

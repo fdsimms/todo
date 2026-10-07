@@ -46,6 +46,7 @@ import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
@@ -803,12 +804,14 @@ const ProjectRow = React.memo(function ProjectRow({
   // Bound once per row rather than once per render of the list above it.
   const press = () => onPress(project);
   const toggleSelect = () => onToggleSelect(project.id);
+  // Shared by the swipe and the iPhone Mirroring button.
+  const swipeSelect = { onSelect: () => onSwipeSelect(project.id), accessibilityLabel: `Select ${project.title}` };
 
   return (
     <SwipeableRow
       style={styles.projectCard}
       enabled={!selectionMode}
-      selectAction={{ onSelect: () => onSwipeSelect(project.id), accessibilityLabel: `Select ${project.title}` }}
+      selectAction={swipeSelect}
     >
       <View ref={paintRef}>
         <TouchableOpacity
@@ -918,6 +921,7 @@ const ProjectRow = React.memo(function ProjectRow({
                       lower than the add circle's beside it. */}
                   <Ionicons name="create-outline" size={16} color={colors.textTertiary} style={{ marginTop: -1 }} />
                 </TouchableOpacity>
+                <SwipeActionButtons enabled={!selectionMode} selectAction={swipeSelect} />
                 </>
               )}
             </View>

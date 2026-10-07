@@ -11,6 +11,7 @@ import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
+import { SwipeActionButtons } from './SwipeActionButtons';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
 import { useTrayFold, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
@@ -187,6 +188,17 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
     onComplete(group.id, totalToday > 0 ? dueToday.filter(c => !c.completed).map(c => c.id) : undefined);
   };
 
+  // Shared by the swipe and the iPhone Mirroring buttons, so the two can't
+  // disagree about what this row offers.
+  const swipeSelect = onSwipeSelect ? {
+    onSelect: () => onSwipeSelect(group.id),
+    accessibilityLabel: `Select all of ${group.title}`,
+  } : undefined;
+  const swipeWhen = {
+    onAction: () => setShowDefer(true),
+    accessibilityLabel: `Reschedule all of ${group.title}`,
+  };
+
   return (
     <>
       <View style={styles.band}>
@@ -215,14 +227,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               "delete" on stacks and "select" on every task under them. */}
           <SwipeableRow
             enabled={!selectionMode}
-            selectAction={onSwipeSelect ? {
-              onSelect: () => onSwipeSelect(group.id),
-              accessibilityLabel: `Select all of ${group.title}`,
-            } : undefined}
-            whenAction={{
-              onAction: () => setShowDefer(true),
-              accessibilityLabel: `Reschedule all of ${group.title}`,
-            }}
+            selectAction={swipeSelect}
+            whenAction={swipeWhen}
           >
             <Reanimated.View style={[styles.row, rowStyle]}>
               {/* A filled tile, deliberately not the outlined box a task row
@@ -357,6 +363,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>
+              <SwipeActionButtons enabled={!selectionMode} whenAction={swipeWhen} selectAction={swipeSelect} />
             </Reanimated.View>
           </SwipeableRow>
           <SpotlightScrim />

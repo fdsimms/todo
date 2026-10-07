@@ -602,11 +602,12 @@ interface SettingsStore {
   /**
    * Whether the app is being used through iPhone Mirroring on a Mac, where a
    * pointer stands in for a finger and the phone can't be shaken. On, every
-   * task row gets a "…" button offering what its swipes do, and the UndoBar
-   * offers every undoable action rather than only the destructive ones, since
-   * shake-to-undo (the route to the rest) is out of reach. Off by default and
-   * device-local: it describes how this phone is being held, not a preference
-   * another device should inherit.
+   * swipeable row shows its swipe actions as buttons (SwipeActionButtons),
+   * the UndoBar offers every undoable action rather than only the destructive
+   * ones (shake-to-undo, the route to the rest, is out of reach), and Return
+   * on a task title (quick add, the editor, a row's rename) accepts the
+   * suggestion found in it. Off by default and device-local: it describes how
+   * this phone is being held, not a preference another device should inherit.
    */
   mirroringMode: boolean;
   /**

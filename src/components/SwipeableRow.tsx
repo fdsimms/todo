@@ -9,7 +9,7 @@ import { haptics } from '../utils/haptics';
 /** Every revealed panel is this wide, on every screen. */
 const ACTION_WIDTH = 80;
 
-interface WhenAction {
+export interface WhenAction {
   /** Ionicon for the panel. Defaults to the clock used for rescheduling. */
   icon?: keyof typeof Ionicons.glyphMap;
   /** Panel background. Defaults to colors.orangeFill — the app's "when" color. */
@@ -19,12 +19,12 @@ interface WhenAction {
   accessibilityLabel: string;
 }
 
-interface SelectAction {
+export interface SelectAction {
   onSelect: () => void;
   accessibilityLabel: string;
 }
 
-interface DeleteAction {
+export interface DeleteAction {
   /** Must raise the Undo bar: that is the only thing making this safe. */
   onDelete: () => void;
   accessibilityLabel: string;

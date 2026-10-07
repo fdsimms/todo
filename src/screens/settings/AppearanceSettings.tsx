@@ -199,7 +199,7 @@ export function AppearanceSettings() {
           iconColor={mirroringMode ? colors.accent : undefined}
           label="iPhone Mirroring"
           hint={mirroringMode
-            ? 'Task rows show a menu button for what their swipes do, and every change offers Undo at the bottom of the screen'
+            ? "Rows show buttons for what their swipes do, every change offers Undo, and Return accepts a suggestion found in a task's title"
             : 'For using the app from a Mac, where you can click but not shake the phone'}
           toggle={mirroringMode}
           onPress={() => setMirroringMode(!mirroringMode)}
