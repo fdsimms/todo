@@ -3,6 +3,7 @@ import {
   catalogRecallFoods,
   describeCatalogRecall,
   describeRecall,
+  describedEstimateFactor,
   describedGrams,
   descriptionClauses,
   rankRecallCandidates,
@@ -459,6 +460,36 @@ describe('logging a recalled food again (#2914)', () => {
       // It kept nothing before, so the whole it is twice of is kept now.
       expect(twice.sourcePanel?.amounts.calorieKcal).toBe(1250);
       expect(twice.sourcePanel?.servingText).toBe('1 burger and a regular fries');
+    });
+  });
+
+  describe('a weight typed beside an estimate', () => {
+    const hummus: FoodNutrition = {
+      basis: 'perServing',
+      servingGrams: 27,
+      servingText: '2 tablespoons',
+      amounts: { calorieKcal: 48 },
+      portions: [],
+      source: 'estimated',
+      sourceId: null,
+      recordedAt: '2026-04-02T19:00:00.000Z',
+    };
+    const food = (nutrition: FoodNutrition = hummus) => recallFoods([entry({
+      label: 'Homemade hummus', quantity: '27 g', grams: nutrition.servingGrams, nutrition,
+    })], 'hummus')[0];
+
+    it('reads the weight as a multiple of the whole that recorded one', () => {
+      expect(describedEstimateFactor(food(), '54g homemade hummus')).toBe(2);
+      expect(describedEstimateFactor(food(), '29g homemade hummus')).toBeCloseTo(29 / 27);
+    });
+
+    it('says nothing without a weight typed, or one recorded for the whole', () => {
+      expect(describedEstimateFactor(food(), 'homemade hummus')).toBeNull();
+      expect(describedEstimateFactor(food({ ...hummus, servingGrams: null }), '29g hummus')).toBeNull();
+    });
+
+    it('says nothing past the largest multiple an estimate may take', () => {
+      expect(describedEstimateFactor(food(), '900g homemade hummus')).toBeNull();
     });
   });
 

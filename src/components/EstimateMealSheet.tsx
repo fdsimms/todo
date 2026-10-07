@@ -42,6 +42,7 @@ import {
   recallMeasuringPanel,
   recallWeight,
   recalledHelping,
+  describedEstimateFactor,
   type RecallAmountAsk,
   type RecallChange,
   type RecalledCatalogFood,
@@ -632,12 +633,20 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       ? staged.food.grams
       : helpingOf(staged.food)?.servingGrams ?? null;
     const weight = scaled?.grams != null ? String(scaled.grams) : (baseline != null ? String(baseline) : '');
+    // A weight typed with an estimate ("29g hummus") opens the amount in the
+    // estimate's own terms, the same way it does for a food weighed in grams.
+    const described = staged.kind === 'recall' && (ask.kind === 'count' || ask.kind === 'multiple')
+      ? describedEstimateFactor(staged.food, staged.clause)
+      : null;
+    const typedGrams = described !== null ? describedGrams(staged.clause)?.replace(/g$/, '') ?? null : null;
     return {
       weight,
       baseline,
-      count: ask.kind === 'count' ? ask.opensAt ?? ask.count.count : null,
+      count: ask.kind === 'count'
+        ? described !== null ? Math.round(ask.count.count * described * 100) / 100 : ask.opensAt ?? ask.count.count
+        : null,
       factor: ask.kind === 'multiple' ? ask.opensAt : null,
-      typed: null,
+      typed: ask.kind === 'multiple' ? typedGrams : null,
       unit: wholeGramsOf(staged) ? 'grams' : 'percent',
     };
   };

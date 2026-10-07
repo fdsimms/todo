@@ -9,6 +9,7 @@ import {
   estimateAmountPatch,
   estimateCount,
   keptDatabasePanel,
+  MAX_ESTIMATE_MULTIPLE,
   scalePanelToAmount,
   wholeEstimate,
   type EstimateCount,
@@ -141,6 +142,26 @@ export interface RecalledFood {
 export function describedGrams(description: string): string | null {
   const match = /(\d+(?:\.\d+)?)\s*(?:g|grams?)\b/i.exec(description);
   return match ? `${match[1]}g` : null;
+}
+
+/**
+ * A weight named in a description, as a multiple of the whole an estimate
+ * described, or null when there is none to read.
+ *
+ * **The weight typed with the food is the amount, whatever the food was last
+ * logged as.** An estimate is asked for a count or a share rather than grams
+ * (`recallAmountAsk`), so a "29g" in the clause was ignored and the row opened
+ * on the previous amount. When the estimate recorded a weight for its whole
+ * the two meet: 29 g of a 27 g whole is 29/27 of it, the same arithmetic
+ * `recalledHelping` applies to a gram change. With no recorded weight there is
+ * nothing to compare 29 g to, so this says nothing and the row opens as logged.
+ */
+export function describedEstimateFactor(food: RecalledFood, clause: string): number | null {
+  const whole = wholeEstimate(food);
+  const typed = describedGrams(clause);
+  if (!whole || !typed || !whole.servingGrams || whole.servingGrams <= 0) return null;
+  const factor = parseFloat(typed) / whole.servingGrams;
+  return factor > 0 && factor <= MAX_ESTIMATE_MULTIPLE ? factor : null;
 }
 
 /**
