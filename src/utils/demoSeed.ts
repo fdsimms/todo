@@ -1929,14 +1929,15 @@ export function seedDemoData(): void {
   // the middle. Both of those are invisible until something is actually
   // queued, which is exactly the kind of capability this seed exists for.
   //
-  // It runs rather than sits paused: a session on a demo phone should look
-  // like one in progress, and the clock is stamped at seed time, so entering
-  // demo mode always starts it from the top rather than showing something that
-  // ran out days ago.
+  // It sits paused rather than running: entering demo mode must not start a
+  // clock on its own (a running session ticks, hands the screen a countdown and
+  // would run out while the phone sits on the table). Pressing Resume is the
+  // person's own start.
   useFocusStore.getState().startSession(
     [roadmap, gutters],
     focusPlanOptionsFrom(useSettingsStore.getState()),
   );
+  useFocusStore.getState().pause();
 
   // --- Finished sessions, so the Stats focus sections aren't empty ---------
   // The one place here that reaches the database directly rather than going
@@ -3279,8 +3280,8 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  * groups by it and a missing type reads as a missing section, and one instance
  * of each of the features that are otherwise invisible: components (shared and
  * either/or), ingredient alternatives, sections, prep tasks, both duration
- * fields, a live cook timer, a hand-set step timer length, a step timer already
- * counting down, cook history, all three attribution shapes, and the Up Next
+ * fields, a hand-set step timer length, a paused step timer (nothing in the
+ * seed starts a clock), cook history, all three attribution shapes, and the Up Next
  * shelf (two recipes neither cooked nor voted on yet, in a hand-picked order
  * rather than creation order — so the shelf reads as deliberately ordered,
  * not just "whatever was added last").
@@ -3314,7 +3315,6 @@ function seedRecipes(): DemoRecipes {
     setLeftoverKeepDays,
     setCookedWeight,
     markCooked,
-    startCookTimer,
     addStep,
     setStepTimerSeconds,
     setStepNote,
@@ -3641,8 +3641,7 @@ function seedRecipes(): DemoRecipes {
   const marinate = addPrepTask(stirFry.id, 'Slice the chicken and marinate');
   if (marinate) updatePrepTask(stirFry.id, marinate.id, { offsetDays: 0, reminderOffsetMinutes: 60 });
   // A written-out method (Recipe.steps), on the one recipe that's mid-cook
-  // below — so cook mode opens here with the timer already running, which is
-  // the state the whole screen was built for.
+  // below, so cook mode opens here with a step timer waiting.
   [
     'Slice the chicken thin and toss it with the soy sauce.',
     'Get the pan as hot as it goes, then sear the chicken in one layer.',
@@ -3670,16 +3669,15 @@ function seedRecipes(): DemoRecipes {
   }
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
-  // Tonight's dinner, mid-cook — the one place a live timer shows up.
-  startCookTimer(stirFry.id);
-  // And one step timer counting down alongside it, on the step that names two
-  // minutes. Cook mode's footer stack, the Lock Screen activity and the row's
-  // own Pause/+1m/Again are all invisible until something is actually running:
-  // with an empty stack the screen reads as one that can't hold a step timer
-  // at all.
+  // No cook timer is started here: entering demo mode must not start a clock on
+  // its own, and a recipe timer paused at zero reads the same as an idle one.
+  // One step timer is seeded, paused, on the step that names two minutes. Cook
+  // mode's footer stack and the row's own Resume/+1m/Again are invisible with
+  // an empty stack, so the screen would read as one that can't hold a step
+  // timer at all. Paused, it shows the row without counting down or alarming.
   const stirFryStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[2];
   if (stirFryStep) {
-    useStepTimerStore.getState().start({
+    const stepTimer = useStepTimerStore.getState().start({
       recipeId: stirFry.id,
       recipeName: stirFry.name,
       stepId: stirFryStep.id,
@@ -3688,6 +3686,7 @@ function seedRecipes(): DemoRecipes {
       stepExcerpt: stepTimerExcerpt(stirFryStep.text, stepDurationOffers(stirFryStep)[0]?.start ?? 0),
       durationSeconds: 2 * 60,
     });
+    if (stepTimer) useStepTimerStore.getState().pause(stepTimer.id);
   }
 
   const salmon = newRecipe('Lemon garlic salmon');

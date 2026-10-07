@@ -714,12 +714,13 @@ describe('demo mode', () => {
   // this asserts is the *shape* the plan builder made of the two seeded tasks,
   // not just that a session exists, since a queue that produced one flat
   // stretch would demo none of it.
-  it('seeds a focus session in flight, with a split task and a break in it', () => {
+  it('seeds a paused focus session, with a split task and a break in it', () => {
     useDemoStore.getState().enterDemoMode();
     const { session } = useFocusStore.getState();
 
     expect(session).not.toBeNull();
-    expect(isFocusRunning(session!)).toBe(true);
+    // Paused: entering demo mode must not start a clock on its own.
+    expect(isFocusRunning(session!)).toBe(false);
     expect(session!.stepIndex).toBe(0);
 
     // The long task was cut into more than one stretch...
@@ -3089,14 +3090,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useRecipeStore.getState().recipes.some(r => r.sourceUrl?.includes(label))).toBe(false);
   });
 
-  it('seeds a cooking step timer already counting down', () => {
-    // The footer stack in cook mode, the row's own controls and the Lock Screen
-    // activity are all invisible with an empty stack, so a demo without one
-    // reads as a build that can't hold a step timer at all.
+  it('seeds a paused cooking step timer, and starts no timer on its own', () => {
+    // The footer stack in cook mode and the row's own controls are invisible
+    // with an empty stack, so a demo without one reads as a build that can't
+    // hold a step timer at all. It is paused so entering demo mode starts no
+    // clock.
     const timers = useStepTimerStore.getState().timers;
     expect(timers.length).toBeGreaterThanOrEqual(1);
+    expect(timers.some(isStepTimerRunning)).toBe(false);
+    expect(useRecipeStore.getState().recipes.some(r => r.timerStartedAt)).toBe(false);
     const [timer] = timers;
-    expect(isStepTimerRunning(timer)).toBe(true);
     expect(stepTimerRemaining(timer)).toBeGreaterThan(0);
     // Attached to a step of a recipe that really has one, and named so the row
     // reads without resolving anything.
@@ -3749,9 +3752,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const byId = recipeMap(recipes);
 
     // Structured steps (Recipe.steps), including on the recipe that's mid-cook,
-    // so cook mode opens there with the timer already running.
+    // so cook mode opens there with a step timer waiting.
     expect(recipes.some(r => r.steps.length > 1)).toBe(true);
-    expect(recipes.some(r => r.steps.length > 0 && r.timerStartedAt)).toBe(true);
 
     // A recipe whose method is still a notes blob, which is what cook mode's
     // fallback reads — and it's a composed one, so the same cook also shows a
@@ -3860,7 +3862,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const upNext = useRecipeStore.getState().upNextRecipes();
     expect(upNext.map(r => r.name)).toEqual(['Weeknight vegetable soup', 'Brown sugar shortbread']);
     expect(upNext.every(r => r.cookCount === 0 && r.vote === null)).toBe(true);
-    expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
     expect(recipes.some(r => r.author && r.source)).toBe(true);
