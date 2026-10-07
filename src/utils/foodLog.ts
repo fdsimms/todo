@@ -1252,6 +1252,27 @@ export function wholeEstimate(entry: EstimatedHelping): FoodNutrition | null {
   };
 }
 
+/** A weight the words open with: "56 g (15g pepitas, 27g walnuts)". */
+const LEADING_GRAMS = /^\s*(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b/i;
+
+/**
+ * The weight of the whole estimated meal, for asking "how many grams" about it,
+ * or null when nothing states one.
+ *
+ * Read from the stored weight first, then from a weight the meal's own words
+ * open with. Estimates store no weight (`estimateToPanel` keeps it null so none
+ * is invented), but a description like "mixed nuts (15g pepitas, 27g walnuts)"
+ * comes back as "56 g (15g pepitas, ...)", and that figure is the person's own
+ * and the model's sum of them. Words that merely count a weight ("56 g") are
+ * `estimateCount`'s and never reach here.
+ */
+export function estimateWholeGrams(whole: FoodNutrition): number | null {
+  if (whole.servingGrams && whole.servingGrams > 0) return whole.servingGrams;
+  const match = LEADING_GRAMS.exec(whole.servingText ?? '');
+  const grams = match ? parseFloat(match[1].replace(',', '.')) : NaN;
+  return Number.isFinite(grams) && grams > 0 ? grams : null;
+}
+
 /** What "Change amount" writes: the new helping, and the whole it was scaled from. */
 export interface EstimateAmountPatch {
   quantity: string;

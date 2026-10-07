@@ -14,6 +14,7 @@ import {
   estimateAmountUnchanged,
   estimateCount,
   estimateCountQuestion,
+  estimateWholeGrams,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
@@ -929,6 +930,27 @@ describe('changing an estimate\'s amount (#2914)', () => {
     // Not an estimate: a database food that kept its panel is re-measured,
     // and one that didn't claims figures a multiple would still be a guess at.
     expect(wholeEstimate(entry({ nutrition: panel({ basis: 'perServing' }) }))).toBeNull();
+  });
+
+  describe('estimateWholeGrams', () => {
+    const panel = (servingText: string | null, servingGrams: number | null = null): FoodNutrition => ({
+      basis: 'perServing', servingGrams, servingText, amounts: { calorieKcal: 267 }, source: 'estimated',
+    } as FoodNutrition);
+
+    it('reads the weight a meal\'s words open with', () => {
+      expect(estimateWholeGrams(panel('56 g (15g pepitas, 27g walnuts, 14g almonds)'))).toBe(56);
+      expect(estimateWholeGrams(panel('56g mixed nuts'))).toBe(56);
+      expect(estimateWholeGrams(panel('12,5 grams of rice'))).toBe(12.5);
+    });
+
+    it('prefers a stored weight, and gives none when no weight leads the words', () => {
+      expect(estimateWholeGrams(panel('2 slices', 300))).toBe(300);
+      // A weight inside the words is a part, not the whole.
+      expect(estimateWholeGrams(panel('1 burger and 100 g fries'))).toBeNull();
+      expect(estimateWholeGrams(panel('a bowl of pho'))).toBeNull();
+      expect(estimateWholeGrams(panel('0 g'))).toBeNull();
+      expect(estimateWholeGrams(panel(null))).toBeNull();
+    });
   });
 
   describe('estimateCount', () => {
