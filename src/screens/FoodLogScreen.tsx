@@ -63,7 +63,6 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
-import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
@@ -242,16 +241,8 @@ export function FoodLogScreen() {
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
-  const [estimateOpen, setEstimateOpen] = useState(false);
-  /**
-   * The description the estimate sheet opens on. Empty from the header action,
-   * which is a cold start with nothing typed yet; whatever was in the food
-   * search when it came up empty, from the "Describe what you ate instead"
-   * route — see `FoodLogEntrySheet`'s `onEstimate`.
-   */
-  const [estimateSeed, setEstimateSeed] = useState('');
-  // The add sheet, so a log made from a sheet raised over it (describe, scan,
-  // saved meal) can apply "Add another" to it.
+  // The add sheet, so a log made from a sheet raised over it (scan, saved
+  // meal) can apply "Add another" to it.
   const addSheetRef = useRef<FoodLogEntrySheetHandle>(null);
   /**
    * After a log made from a sheet raised over the add sheet: the add sheet
@@ -279,7 +270,6 @@ export function FoodLogScreen() {
    * on an empty form. Null the rest of the time.
    */
   const [editingEntry, setEditingEntry] = useState<FoodLogEntry | null>(null);
-  const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
   /** The entry whose day is being corrected, opening the "Re-date" picker on it. */
   const [redatingEntry, setRedatingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
@@ -1156,7 +1146,8 @@ export function FoodLogScreen() {
           // present from and silently do nothing.
           ...(estimateRoute !== 'unavailable' ? [{
             icon: 'sparkles-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setEstimateSeed(''); setAddOpen(true); setEstimateOpen(true); },
+            // The add sheet estimates inline: type what you ate, then Estimate.
+            onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
           ...(scanShown ? [{
@@ -1370,10 +1361,9 @@ export function FoodLogScreen() {
         visible={addOpen}
         slot={addingSlot}
         at={loggingAt}
-        seedRecipeId={seedRecipeId}
         allowBurst
-        onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
-        onEstimate={estimateRoute !== 'unavailable' ? query => { setEstimateSeed(query); setEstimateOpen(true); } : undefined}
+        onClose={() => setAddOpen(false)}
+        canEstimate={estimateRoute !== 'unavailable'}
         onScan={scanShown ? () => setScanOpen(true) : undefined}
         onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
         // Inside that sheet's own Modal, not beside it: as siblings these
@@ -1393,25 +1383,6 @@ export function FoodLogScreen() {
               // a scan actually logs something — cancelling leaves it open,
               // same as backing out of its own database search does.
               onLogged={labels => keepAddSheetOrClose(labels)}
-            />
-            <EstimateMealSheet
-              visible={estimateOpen}
-              slot={addingSlot}
-              at={loggingAt}
-              initialDescription={estimateSeed}
-              onClose={() => setEstimateOpen(false)}
-              // With "Add another" on, the add sheet takes the described food
-              // the same way it takes its own saves and stays open for the next
-              // one; otherwise it closes, as it always did.
-              onLogged={label => keepAddSheetOrClose([label])}
-              onPickRecipe={recipeId => {
-                // Handed to the picker rather than logged here: a recipe is
-                // logged in servings, which is a question this sheet has not
-                // asked. Seeded, so the offer lands on the dish rather than on
-                // a list to search again.
-                setEstimateOpen(false);
-                setSeedRecipeId(recipeId);
-              }}
             />
             <SavedMealsSheet
               visible={savedMealsOpen}

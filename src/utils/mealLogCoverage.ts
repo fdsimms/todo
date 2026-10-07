@@ -13,7 +13,7 @@ import { isNutrientOnlyEntry } from './nutrientLog';
  * thing either feature consulted to decide whether a planned meal had been
  * dealt with. It is stamped on one path (`offerMealLog`'s prompt, plus
  * `matchMealPlanEntry`'s one confident guess in `FoodLogEntrySheet`) and left
- * null on every other way into the log: the estimate sheet, a scanned package,
+ * null on every other way into the log: an estimate, a scanned package,
  * a saved meal, a recalled food, a row typed straight into the day. So a person
  * who logged a whole lunch by hand had a plan that still read as unlogged, a
  * "Log lunch?" task the next morning, and a prompt offering to log it again.

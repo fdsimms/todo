@@ -7,7 +7,6 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { logInstantFor } from '../utils/foodLog';
 import { featureHidden } from '../utils/simpleMode';
-import { EstimateMealSheet } from './EstimateMealSheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
 import type { MealSlot } from '../types';
@@ -55,29 +54,29 @@ function mealInstant(dayKey: string): Date {
  * scan carries the meal it is logging (`mealPlanEntryId`), so what it writes
  * is linked exactly as a searched entry would be.
  *
- * **So is describing it, same gate and same handoff `FoodLogScreen`'s own
- * sparkles action uses** (`estimateRoute !== 'unavailable'`) — a meal-plan
- * prompt is as likely to be a takeout order nobody's going to find in a
- * search as anything logged from the food log screen. `EstimateMealSheet`
- * gets the same `mealPlanEntryId` the search path already carries, so an
- * estimate logged from here links back to the meal exactly as a searched
- * entry would.
+ * **So is estimating it, behind the same gate `FoodLogScreen` uses**
+ * (`estimateRoute !== 'unavailable'`): a meal-plan prompt is as likely to be
+ * a takeout order nobody's going to find in a search as anything logged from
+ * the food log screen. The estimate runs inside `FoodLogEntrySheet` itself and
+ * carries its `mealPlanEntryId`, so it links back to the meal exactly as a
+ * searched entry would.
  *
- * **`pending` stays put while Scan or Describe is open, and they are handed
- * to `FoodLogEntrySheet` as `overlays` so they render inside its Modal.**
- * Opening either used to clear `pending`, closing this sheet outright — so
- * backing out of a scan or an estimate landed on the food log with nothing,
- * rather than back where you started. Keeping `pending` is what fixes that:
- * only a completed Log clears it (`onLogged` on both), so cancelling either
- * reveals this sheet again exactly as it was left, typed query included.
+ * **`pending` stays put while Scan is open, and the scanner is handed to
+ * `FoodLogEntrySheet` as `overlays` so it renders inside its Modal.**
+ * Opening it used to clear `pending`, closing this sheet outright, so backing
+ * out of a scan landed on the food log with nothing rather than back where you
+ * started. Keeping `pending` is what fixes that: only a completed Log clears
+ * it (`onLogged`), so cancelling reveals this sheet again exactly as it was
+ * left, typed query included.
  *
  * **Rendering them out here as siblings is what broke this, and "it stays
  * open behind the database search" is not the precedent it looked like.**
  * iOS presents a Modal from `[self reactViewController]` — the nearest view
  * controller up the responder chain — and a view controller can present only
- * one thing at a time. `NutritionSearchSheet` works *because it is rendered
+ * one thing at a time. `EstimateAmountSheet` works *because it is rendered
  * inside* `FoodLogEntrySheet`'s own Modal, so it presents from that sheet's
- * view controller, which is presenting nothing. As siblings, these two
+ * view controller, which is presenting nothing. As siblings, the scanner and
+ * the old describe sheet
  * presented from the *root* view controller, which was already presenting
  * this sheet: UIKit refused, nothing appeared, and RN had already flipped its
  * internal `_isPresented`, so the flow wedged with no error to point at it.
@@ -114,39 +113,18 @@ export function LogMealEntrySheet() {
     { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
 
-  /**
-   * Same shape as `scan` above, for the describe-instead handoff, plus the
-   * words to open on. Those come from the search field rather than from
-   * `pending.label` directly: the field starts as the meal's own name
-   * (`initialQuery`) and anything typed since is a better description of what
-   * was actually eaten than the plan's title is.
-   */
-  const [estimate, setEstimate] = useState<
-    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null; description: string } | null
-  >(null);
-
-  /**
-   * A dish the estimate sheet matched to something already in the recipe
-   * box, handed back to `FoodLogEntrySheet` already picked — same
-   * `seedRecipeId` handoff `FoodLogScreen` uses for its own estimate sheet.
-   */
-  const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
-
   return (
     <FoodLogEntrySheet
         visible={!!pending && !pendingFinishLeftoverId}
         slot={pending?.slot ?? null}
         at={pending ? mealInstant(pending.dayKey) : new Date()}
-        seedRecipeId={seedRecipeId}
         initialQuery={pending?.label ?? ''}
         mealPlanEntryId={mealPlanEntryId}
-        onClose={() => { setPending(null); setSeedRecipeId(null); }}
+        onClose={() => setPending(null)}
         onScan={featureHidden('barcodeScanning', simpleMode) ? undefined : () => {
           setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
-        onEstimate={estimateRoute !== 'unavailable' ? query => {
-          setEstimate({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId, description: query });
-        } : undefined}
+        canEstimate={estimateRoute !== 'unavailable'}
         onDeclineMeal={mealPlanEntryId ? () => {
           setLogMeal(mealPlanEntryId, false);
           setPending(null);
@@ -160,19 +138,6 @@ export function LogMealEntrySheet() {
               mealPlanEntryId={scan?.mealPlanEntryId ?? null}
               onClose={() => setScan(null)}
               onLogged={() => setPending(null)}
-            />
-            <EstimateMealSheet
-              visible={!!estimate}
-              slot={estimate?.slot ?? null}
-              at={estimate ? mealInstant(estimate.dayKey) : new Date()}
-              mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
-              initialDescription={estimate?.description}
-              onClose={() => setEstimate(null)}
-              onLogged={() => setPending(null)}
-              onPickRecipe={recipeId => {
-                setSeedRecipeId(recipeId);
-                setEstimate(null);
-              }}
             />
           </>
         }

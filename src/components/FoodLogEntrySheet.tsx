@@ -11,12 +11,14 @@
 // `docs/arch/health-data.md` for why a wrong figure here is expensive.
 import React, { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -67,6 +69,7 @@ import {
   helpingAgain,
   rankByRecency,
   recentUnlinkedHelpings,
+  usualForSlot,
 } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
@@ -76,7 +79,11 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
-import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionSearchSheet';
+import { PressableScale } from './PressableScale';
+import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
+import { EstimatePanel } from './EstimatePanel';
+import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
+import type { RankedFood } from '../utils/foodSearchMatch';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -181,14 +188,6 @@ interface Props {
   /** The logical day being logged, so a backdated entry lands where it is shown. */
   at: Date;
   /**
-   * A dish to open already picked, rather than a list to search.
-   *
-   * One caller: the estimate sheet, which offers a matching recipe instead of
-   * guessing at a description. Handing over a list with the dish somewhere in
-   * it would make the offer worth less than the tap it cost.
-   */
-  seedRecipeId?: string | null;
-  /**
    * The search field's starting text, for a caller that already knows what
    * this entry is probably about — `LogMealEntrySheet`, opening on a meal
    * plan entry's own name so finding it is a tap rather than a retype.
@@ -198,7 +197,7 @@ interface Props {
   initialQuery?: string;
   /**
    * The planned meal this entry is logging, carried onto whatever gets
-   * saved — the manual counterpart of `seedRecipeId`'s own caller. Omitted
+   * saved. Omitted
    * (or null) for every other caller, which is why `FoodLogDraft`'s field
    * defaults to null rather than this prop defaulting to it: a screen simply
    * adding an entry has no meal plan row to point back at.
@@ -209,9 +208,8 @@ interface Props {
    * closing it, for a caller with an open-ended run of foods to log rather
    * than one thing to log and be done.
    *
-   * Only the plain "add a food" mount sets this. `LogMealEntrySheet` and the
-   * estimate sheet's own reopen (`seedRecipeId`) each answer one particular
-   * planned or described meal — `mealPlanEntryId`/`initialQuery` name it —
+   * Only the plain "add a food" mount sets this. `LogMealEntrySheet` answers
+   * one particular planned meal (`mealPlanEntryId`/`initialQuery` name it),
    * and closing once that's logged is the point, the same reasoning
    * `QuickAddModal` gives for gating its own burst mode off a seeded sheet.
    * Ignored whenever `editing` is set, regardless of what a caller passes: a
@@ -220,25 +218,22 @@ interface Props {
   allowBurst?: boolean;
   onClose: () => void;
   /**
-   * Offers to describe the meal instead of searching for it, handing off to
-   * the estimate sheet. Omitted by a caller that has nowhere to send that
-   * (no API key, no on-device engine) — same gate `FoodLogScreen`'s own
-   * sparkles action uses, just read by the caller instead of duplicated here.
+   * Whether the Estimate button is offered: describing the meal instead of
+   * finding it, estimated by a model in a panel inside this sheet
+   * (`EstimatePanel`). Left off by a caller that has nowhere to send that (no
+   * API key, no on-device engine), the same gate `FoodLogScreen`'s own sparkles
+   * action uses, read by the caller instead of duplicated here.
    *
-   * **It carries whatever is in the search field**, so the estimate sheet opens
-   * on the dish rather than on an empty box. This is the one route by which a
-   * composed or homemade thing gets logged at all — a grilled cheese with
-   * mozzarella is in no barcode source and no food database — and it is
-   * reached *after* a search has come up empty, so the words have already been
-   * typed once. Two callers, two sources for the same string and neither needs
-   * a second mechanism: `initialQuery` seeds this field from a meal's own name
-   * (`LogMealEntrySheet`), and anything typed since replaces it.
+   * **It reads whatever is in the search field**, so a food the search came up
+   * empty on is estimated from the words already typed. This is the one route
+   * by which a composed or homemade thing gets logged at all: a grilled cheese
+   * with mozzarella is in no barcode source and no food database.
    */
-  onEstimate?: (query: string) => void;
+  canEstimate?: boolean;
   /**
    * Opens the barcode scanner, handing off to `ScanToLogFlow` — the third way
    * in, beside searching and describing. Omitted by a caller with nowhere to
-   * send it, same split `onEstimate` draws.
+   * send it, same split `canEstimate` draws.
    *
    * It is here rather than only on the screen's header because a packaged food
    * is most often reached for *after* the search has come up empty: the sheet
@@ -251,7 +246,7 @@ interface Props {
    * describing and scanning. Logs several entries at once rather than one,
    * so unlike the other three it never hands control back to this sheet: the
    * caller closes this one and opens `SavedMealsSheet` in its place, same
-   * split `onEstimate`/`onScan` already draw. Omitted by a caller with
+   * split `onScan` already draws. Omitted by a caller with
    * nowhere to send it, or nothing yet saved to offer.
    */
   onSavedMeal?: () => void;
@@ -260,13 +255,13 @@ interface Props {
    * `LogMealPrompt`'s own secondary button of the same name. Present only
    * while there's a meal to decline: `LogMealEntrySheet` supplies it exactly
    * when its `pending.mealPlanEntryId` is set, and every other caller (the
-   * plain "add a food" flow, the estimate sheet) leaves it out, since there's
+   * plain "add a food" flow) leaves it out, since there's
    * no meal here to say no to. Writing the flag and closing the sheet is left
-   * to the caller, same split `onEstimate` already draws.
+   * to the caller, same split `onScan` already draws.
    */
   onDeclineMeal?: () => void;
   /**
-   * The sheets `onScan`/`onEstimate`/`onSavedMeal` raise, rendered **inside**
+   * The sheets `onScan`/`onSavedMeal` raise, rendered **inside**
    * this sheet's own Modal rather than beside it in the caller.
    *
    * That placement is the whole point and is not a tidiness choice. iOS
@@ -277,7 +272,7 @@ interface Props {
    * sheet: UIKit refuses, nothing appears, and RN has already set its own
    * `_isPresented`, so the flow wedges with no error. Rendered in here it
    * presents from this sheet's view controller, which is presenting nothing,
-   * exactly as `NutritionSearchSheet` below already does.
+   * exactly as `EstimateAmountSheet` below already does.
    *
    * Nesting rather than hiding this sheet is what keeps what the user typed:
    * a hidden Modal unmounts its children once it finishes dismissing, so the
@@ -288,7 +283,7 @@ interface Props {
    */
   overlays?: React.ReactNode;
   /**
-   * Lets a sheet raised from `overlays` (the describe sheet, today) report a
+   * Lets a sheet raised from `overlays` (a scan or a saved meal) report a
    * food it logged, so this sheet can apply "Add another" to it the same way it
    * applies to its own saves. See `FoodLogEntrySheetHandle`.
    */
@@ -393,7 +388,7 @@ function databaseCandidate(key: string, label: string, panel: FoodNutrition): Ca
 }
 
 export function FoodLogEntrySheet({
-  visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
+  visible, slot, at, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, canEstimate, onScan, onSavedMeal, onDeclineMeal,
   overlays, ref,
 }: Props) {
   const colors = useColors();
@@ -476,7 +471,17 @@ export function FoodLogEntrySheet({
   // discards it; reset whenever the picked food changes (effect below).
   const [pantryAnswer, setPantryAnswer] = useState<PantryReviewAnswer | null>(null);
   const [weighGrams, setWeighGrams] = useState('');
-  const [dbSearchOpen, setDbSearchOpen] = useState(false);
+  // The food database section under the search field: open once its button
+  // is tapped, and ranked against what was searched rather than the live
+  // field, since the field may have moved on to something unrelated.
+  const [dbOpen, setDbOpen] = useState(false);
+  const [dbQuery, setDbQuery] = useState('');
+  const [dbShowAll, setDbShowAll] = useState(false);
+  const db = useFoodDatabaseSearch(dbQuery);
+  // The estimate panel, and a key bumped on each opening so the panel starts
+  // over (it resets by remounting; see `EstimatePanel`).
+  const [estimateOpen, setEstimateOpen] = useState(false);
+  const [estimateKey, setEstimateKey] = useState(0);
   // The earlier estimated helping whose amount is being changed before it is
   // logged again (`openHelping`).
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
@@ -500,7 +505,8 @@ export function FoodLogEntrySheet({
     setRecalledAmount(null);
     setChosenSlot(slot);
     setPantryAnswer(null);
-    setDbSearchOpen(false);
+    closeDatabase();
+    setEstimateOpen(false);
     setCatalogPickOpen(false);
     setBurstAdded([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -613,23 +619,6 @@ export function FoodLogEntrySheet({
     return out;
   }, [items, itemProducts, recipes, nonFoodAisles, swaps]);
 
-  // After the reset above, and off `candidates` rather than the recipe store,
-  // so a dish that has no figures is left unpicked rather than opening onto a
-  // form that can never save. Its amount seeds the way tapping the row does.
-  //
-  // Fired once per seed rather than on every `candidates` identity: that list
-  // rebuilds on any grocery or recipe write, and re-running `choose` there
-  // re-picked the dish and threw away whatever amount had been typed since.
-  const [seededRecipeId, setSeededRecipeId] = useState<string | null>(null);
-  useEffect(() => { if (!visible) setSeededRecipeId(null); }, [visible]);
-  useEffect(() => {
-    if (!visible || !seedRecipeId || seedRecipeId === seededRecipeId) return;
-    const dish = candidates.find(c => c.recipeId === seedRecipeId);
-    if (!dish) return;
-    setSeededRecipeId(seedRecipeId);
-    choose(dish);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, seedRecipeId, seededRecipeId, candidates]);
 
   /**
    * Picking one, and opening it on the question it can actually answer: grams
@@ -766,15 +755,24 @@ export function FoodLogEntrySheet({
     setAmountNumber(parsed?.number ?? '');
   }, [visible, editing, candidates]);
 
+  // What this meal usually is, put in front before anything is typed
+  // (`usualForSlot`). Once typing starts the search decides, so it goes.
+  const usual = useMemo(
+    () => (editing || query.trim() ? [] : usualForSlot(candidates, recentLog, chosenSlot)),
+    [editing, query, candidates, recentLog, chosenSlot],
+  );
+
   const results = useMemo(() => {
     const key = groceryNameKey(query);
     // Ranked before the cap, not after, which is the whole point: a food eaten
     // every morning was landing below forty things bought once and being cut
     // off by the slice, so the list promised what it could not be searched for.
     const ranked = rankByRecency(candidates, recency);
-    if (!key) return ranked.slice(0, 40);
+    // A row already offered as this meal's usual isn't offered twice.
+    const shown = new Set(usual.map(c => c.key));
+    if (!key) return ranked.filter(c => !shown.has(c.key)).slice(0, 40);
     return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
-  }, [candidates, query, recency]);
+  }, [candidates, query, recency, usual]);
 
   // Earlier helpings of foods with no row (an estimate, a database food nobody
   // filed), offered above the list to log again as they were, since the list
@@ -1060,8 +1058,8 @@ export function FoodLogEntrySheet({
    * about which meal plan square a lunch fills. False when the store refused.
    */
   const logNew = (measurement: Omit<FoodLogDraft, 'mealPlanEntryId' | 'at'>): boolean => {
-    // A caller that already knows the planned meal (`LogMealEntrySheet`,
-    // the estimate sheet's offer) says so via the prop; a plain manual log
+    // A caller that already knows the planned meal (`LogMealEntrySheet`)
+    // says so via the prop; a plain manual log
     // has none, so it gets one last chance at `matchMealPlanEntry` before
     // settling for null — see that function's doc comment for why this
     // stays a guess rather than something the store attempts on every save.
@@ -1117,7 +1115,8 @@ export function FoodLogEntrySheet({
       setAmountUnit(null);
       setAmountNumber('');
       setRecalledAmount(null);
-      setDbSearchOpen(false);
+      closeDatabase();
+      setEstimateOpen(false);
       refreshRecency();
       return;
     }
@@ -1125,7 +1124,7 @@ export function FoodLogEntrySheet({
     onClose();
   };
 
-  // A food logged from a sheet raised over this one (the describe sheet). It is
+  // A food logged from a sheet raised over this one (a scan, a saved meal). It is
   // the same save as one made here, so it takes the same path: stay open for
   // the next food with "Add another" on, and the caller closes this sheet only
   // when it returns false. Set on every render so the closure sees the current
@@ -1185,7 +1184,7 @@ export function FoodLogEntrySheet({
    * it kept one, the way `duplicateEntry` copies an entry; see
    * `recentUnlinkedHelpings` for why these are offered at all. It lands in the
    * meal the sheet was opened for, or the one it was eaten at last time when
-   * the sheet names none, the call the estimate sheet's recall makes.
+   * the sheet names none, the call `EstimatePanel`'s recall makes.
    */
   const logHelpingAgain = (entry: FoodLogEntry) => {
     const again = helpingAgain(entry);
@@ -1269,7 +1268,7 @@ export function FoodLogEntrySheet({
         || answeredExtra
       : picked
         ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra
-        : !!amount.trim();
+        : !!amount.trim() || estimateOpen;
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
     Alert.alert(
       'Discard changes?',
@@ -1283,16 +1282,54 @@ export function FoodLogEntrySheet({
 
   const handleCancel = () => requestClose(onClose);
 
-  // The one door into the food database search, shared by the action row and
-  // the empty state so a missing key is answered the same way from both.
+  // The one door into the food database search, shared by the button under
+  // the field and the empty state so a missing key is answered the same way
+  // from both. It searches what is typed, inline: a network request, so only
+  // on this tap, never as the field changes.
   const openFoodDatabase = () => {
     haptics.tap();
     Keyboard.dismiss();
-    if (hasFdcKey) { setDbSearchOpen(true); return; }
+    if (hasFdcKey) {
+      const text = query.trim();
+      if (!text) return;
+      setDbOpen(true);
+      setDbQuery(text);
+      setDbShowAll(false);
+      void db.run(text);
+      return;
+    }
     // The key row is shown only while lookups are on, so with them off this
     // lands on the switch that brings it back.
     const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
     requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+  };
+
+  // Shut, and anything in flight with it, so a late reply lands nowhere.
+  function closeDatabase() {
+    setDbOpen(false);
+    setDbQuery('');
+    setDbShowAll(false);
+    db.reset();
+  }
+
+  const pickDatabaseFood = async (row: RankedFood) => {
+    if (db.picking) return;
+    haptics.tap();
+    const found = await db.pick(row);
+    if (!found) return;
+    closeDatabase();
+    handleDbPick(found.nutrition, found.description);
+  };
+
+  const openEstimate = () => {
+    if (!query.trim()) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    // Already open: the panel brings its own Estimate row back once the field
+    // differs from what it estimated, so a second tap has nothing to add.
+    if (estimateOpen) return;
+    setEstimateKey(k => k + 1);
+    setEstimateOpen(true);
   };
 
   // ==== render. Everything below is JSX ====
@@ -1349,6 +1386,128 @@ export function FoodLogEntrySheet({
       ))}
       {!helpingsAfterResults && results.length > 0 && (
         <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
+  // This meal's usual foods, above the earlier helpings and the list. Rows
+  // like the list's own, since that's what they are.
+  const usualBlock = usual.length > 0 && chosenSlot ? (
+    <View style={helpings.length > 0 ? styles.usualGap : undefined}>
+      <Text style={[styles.label, styles.helpingsLabel]}>
+        {`YOUR USUAL ${MEAL_SLOT_LABELS[chosenSlot].toUpperCase()}`}
+      </Text>
+      {usual.map(item => <React.Fragment key={item.key}>{renderRow({ item })}</React.Fragment>)}
+      {/* The helpings block labels the list when it is there; with none, this does. */}
+      {helpings.length === 0 && results.length > 0 && (
+        <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
+  // What the two lookup buttons answer, at the top of the list: the estimate
+  // first, since it is about everything typed, then the database's matches.
+  const dbRows = dbShowAll ? db.ranked : db.ranked.slice(0, DB_ROWS_SHOWN);
+  const dbStale = dbOpen && !!db.searchedFor && query.trim() !== '' && query.trim() !== db.searchedFor;
+  const lookupBlock = (estimateOpen || dbOpen) ? (
+    <View style={styles.lookupBlock}>
+      {estimateOpen && (
+        <EstimatePanel
+          key={estimateKey}
+          description={query}
+          onDescriptionChange={text => searchFilter.seed(text)}
+          slot={chosenSlot}
+          at={at}
+          mealPlanEntryId={mealPlanEntryId}
+          onPickRecipe={recipeId => {
+            // A recipe is logged in servings, which the panel doesn't ask, so
+            // it hands the dish to this sheet's own amount step, already picked.
+            const dish = candidates.find(c => c.recipeId === recipeId);
+            setEstimateOpen(false);
+            if (dish) choose(dish);
+          }}
+          onLogged={label => { setEstimateOpen(false); afterSave(label); }}
+          onDismiss={() => setEstimateOpen(false)}
+        />
+      )}
+      {dbOpen && (
+        <View>
+          <View style={styles.lookupHead}>
+            <Text style={[styles.label, styles.lookupTitle]}>FOOD DATABASE</Text>
+            {db.searching && <ActivityIndicator size="small" color={colors.textSecondary} />}
+            <TouchableOpacity
+              style={styles.lookupClose}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); closeDatabase(); }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close the food database results"
+            >
+              <Ionicons name="close" size={iconSize.sm} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          {!!db.error && (
+            <View style={styles.lookupNote}>
+              <Text style={styles.lookupNoteText}>{db.error}</Text>
+              {!!db.errorSettingsEntryId && (
+                <InlineAction
+                  label="Open Settings"
+                  variant="neutral"
+                  onPress={() => {
+                    const entryId = db.errorSettingsEntryId;
+                    if (!entryId) return;
+                    haptics.tap();
+                    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+                  }}
+                />
+              )}
+            </View>
+          )}
+          {db.searched && !db.error && db.ranked.length === 0 && (
+            <Text style={[styles.lookupNoteText, styles.lookupNote]}>
+              No matching foods. Try a plainer name: this database files foods as "Onions, raw" rather than by brand.
+            </Text>
+          )}
+          {dbRows.map(row => (
+            <TouchableOpacity
+              key={row.candidate.fdcId}
+              style={styles.row}
+              activeOpacity={interaction.activeOpacity}
+              disabled={!!db.picking}
+              onPress={() => void pickDatabaseFood(row)}
+              accessibilityRole="button"
+              accessibilityLabel={`Log ${row.candidate.description}, from a food database`}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{row.candidate.description}</Text>
+                <Text style={styles.rowMeta}>
+                  {[row.candidate.category, `${row.candidate.reports.length} nutrients`].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              {db.picking === row.candidate.fdcId
+                ? <ActivityIndicator color={colors.textSecondary} />
+                : <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />}
+            </TouchableOpacity>
+          ))}
+          {!dbShowAll && db.ranked.length > DB_ROWS_SHOWN && (
+            <InlineAction
+              label={`Show ${db.ranked.length - DB_ROWS_SHOWN} more`}
+              variant="neutral"
+              onPress={() => { haptics.tap(); setDbShowAll(true); }}
+            />
+          )}
+          {/* The field has moved on since this search, so the results are
+              said to be for the old text and a search for the new one is a tap. */}
+          {dbStale && (
+            <InlineAction
+              label={`Search for \u201C${query.trim()}\u201D`}
+              icon="search-outline"
+              variant="neutral"
+              onPress={openFoodDatabase}
+              style={styles.lookupAgain}
+            />
+          )}
+        </View>
       )}
     </View>
   ) : null;
@@ -1678,58 +1837,60 @@ export function FoodLogEntrySheet({
                 key={searchFilter.fieldKey}
                 {...searchFilter.props}
                 style={styles.searchInput}
-                placeholder="Search foods and recipes"
+                placeholder={canEstimate ? 'A food, a recipe, or what you ate' : 'Search foods and recipes'}
                 inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
               />
-            </View>
-            {/* Hidden for a caller answering one specific food (a correction,
-                a seeded dish, an already-known meal), same as this sheet's
-                other one-off affordances above. */}
-            {!!allowBurst && !editing && (
-              <View style={styles.burstRow}>
-                <TouchableOpacity
-                  style={[styles.keepOpenChip, keepOpenAfterFoodLog && styles.keepOpenChipOn]}
-                  onPress={() => { haptics.tap(); setKeepOpenAfterFoodLog(!keepOpenAfterFoodLog); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: keepOpenAfterFoodLog }}
-                  accessibilityLabel="Add another"
-                >
-                  <Ionicons
-                    name={keepOpenAfterFoodLog ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={15}
-                    color={keepOpenAfterFoodLog ? colors.accent : colors.textSecondary}
-                  />
-                  <Text style={[styles.keepOpenText, keepOpenAfterFoodLog && styles.keepOpenTextOn]}>
-                    Add another
-                  </Text>
-                </TouchableOpacity>
-                {burstAdded.length > 0 && (
-                  <Text style={styles.burstCount}>
-                    {burstAdded.length} added
-                  </Text>
-                )}
-              </View>
-            )}
-            <View style={styles.actionRow}>
+              {/* In the field rather than in a row of its own: a packet in hand
+                  is most often reached for after a search has come up empty,
+                  and this is where the eye already is. */}
               {!!onScan && (
-                <InlineAction
-                  label="Scan a barcode"
-                  icon="barcode-outline"
+                <PressableScale
+                  style={styles.scanButton}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                  accessibilityLabel="Scan a barcode"
+                >
+                  <Ionicons name="barcode-outline" size={iconSize.sm} color={colors.accentText} />
+                </PressableScale>
+              )}
+            </View>
+            {/* The two ways past what this app already has figures for, both
+                acting on the field above and both answered in the list below
+                rather than in a sheet of their own. Dimmed with nothing typed,
+                since there is nothing yet for either to look up. Always offered
+                apart from the estimate's own gate: the list only holds foods
+                that already have figures, and these are the way to one that
+                doesn't. */}
+            <View style={styles.lookupRow}>
+              <LookupButton
+                styles={styles}
+                colors={colors}
+                icon="search-outline"
+                label={hasFdcKey ? 'Food database' : 'Add database key'}
+                active={dbOpen}
+                busy={db.searching}
+                disabled={hasFdcKey && !query.trim()}
+                onPress={openFoodDatabase}
+                accessibilityLabel={hasFdcKey
+                  ? (query.trim() ? `Search a food database for ${query.trim()}` : 'Search a food database. Type a food first')
+                  : 'Add a food database key in Settings'}
+              />
+              {!!canEstimate && (
+                <LookupButton
+                  styles={styles}
+                  colors={colors}
+                  icon="sparkles-outline"
+                  label="Estimate"
+                  active={estimateOpen}
+                  disabled={!query.trim()}
+                  onPress={openEstimate}
+                  accessibilityLabel={query.trim() ? `Estimate the nutrition of ${query.trim()}` : 'Estimate from a description. Type what you ate first'}
                 />
               )}
-              {/* Always offered: the catalog list above only holds foods that
-                  already have figures, and this is the way to a food that
-                  doesn't. It searches what is typed above. */}
-              <InlineAction
-                label={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
-                icon="search-outline"
-                variant="neutral"
-                onPress={openFoodDatabase}
-              />
+            </View>
+            {!!onSavedMeal && (
+            <View style={styles.actionRow}>
               {!!onSavedMeal && (
                 <InlineAction
                   label="Log a saved meal"
@@ -1738,15 +1899,8 @@ export function FoodLogEntrySheet({
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
                 />
               )}
-              {!!onEstimate && (
-                <InlineAction
-                  label="Describe what you ate instead"
-                  icon="sparkles-outline"
-                  variant="neutral"
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(query); }}
-                />
-              )}
             </View>
+            )}
             {!!onDeclineMeal && (
               <TouchableOpacity
                 style={styles.declineMeal}
@@ -1772,9 +1926,19 @@ export function FoodLogEntrySheet({
               // outside to tap.
               keyboardDismissMode="on-drag"
               {...listScroll.props}
-              ListHeaderComponent={helpingsAfterResults ? null : helpingsBlock}
+              ListHeaderComponent={
+                <>
+                  {lookupBlock}
+                  {usualBlock}
+                  {helpingsAfterResults ? null : helpingsBlock}
+                </>
+              }
               ListFooterComponent={helpingsAfterResults ? helpingsBlock : null}
-              ListEmptyComponent={
+              // Not under an open estimate or database section, or this meal's
+              // usual foods: those are the
+              // answer to "no matching food", and a full-height empty state
+              // under them would say there was nothing while showing something.
+              ListEmptyComponent={lookupBlock || usualBlock ? null : (
                 <EmptyState
                   icon="nutrition-outline"
                   // Said about the catalog when logged-before rows are showing
@@ -1789,30 +1953,43 @@ export function FoodLogEntrySheet({
                       : 'Only foods and recipes with nutrition on them can be logged.')
                     + (hasFdcKey
                       ? (candidates.length === 0
-                        ? ' Search a food database below, or open a grocery item to attach nutrition to it there.'
-                        : ' Search a food database instead, or open a grocery item to attach nutrition to it there.')
+                        ? ' Type a food above and tap Food database, or open a grocery item to attach nutrition to it there.'
+                        : ' Tap Food database to search for it, or open a grocery item to attach nutrition to it there.')
                       // Without a key the search can only fail, so the next
                       // step is the key, not the search.
                       : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
                   }
-                  actionLabel={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
-                  onAction={openFoodDatabase}
+                  // With nothing typed there is nothing to search for, so the
+                  // button would do nothing; the subtitle says what to type.
+                  actionLabel={!hasFdcKey ? 'Add a food database key' : query.trim() ? 'Search a food database' : undefined}
+                  onAction={!hasFdcKey || query.trim() ? openFoodDatabase : undefined}
                 />
-              }
+              )}
             />
+            {/* Hidden for a caller answering one specific food (a correction,
+                a seeded dish, an already-known meal), same as this sheet's
+                other one-off affordances above. At the foot of the sheet
+                rather than among the ways to find a food, because it isn't
+                one: it says what happens after a save. */}
+            {!!allowBurst && !editing && (
+              <View style={styles.burstFooter}>
+                <Text style={styles.burstLabel}>Log several</Text>
+                {burstAdded.length > 0 && (
+                  <Text style={styles.burstCount}>
+                    {burstAdded.length} added
+                  </Text>
+                )}
+                <Switch
+                  value={keepOpenAfterFoodLog}
+                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
+                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                  accessibilityLabel="Log several. Keep this open after each food"
+                />
+              </View>
+            )}
           </>
         )}
       </View>
-      <NutritionSearchSheet
-        visible={dbSearchOpen}
-        itemName={query}
-        onClose={() => setDbSearchOpen(false)}
-        onPick={handleDbPick}
-        onOpenSettings={entryId => {
-          setDbSearchOpen(false);
-          requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
-        }}
-      />
       {/* Inside this Modal, not beside it: the card is raised from a sheet that
           is already presenting. */}
       <EstimateAmountSheet
@@ -1826,6 +2003,45 @@ export function FoodLogEntrySheet({
       {overlays}
       <NumberPadAccessory />
     </SheetModal>
+  );
+}
+
+/** How many database matches show before "Show N more". */
+const DB_ROWS_SHOWN = 4;
+
+interface LookupButtonProps {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  /** Its results are open in the list below. */
+  active: boolean;
+  busy?: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  accessibilityLabel: string;
+}
+
+/**
+ * One of the two buttons under the search field (Food database, Estimate).
+ * Equal halves of one row, tinted while their results are open below, so the
+ * button says which section it answered.
+ */
+function LookupButton({ styles, colors, icon, label, active, busy, disabled, onPress, accessibilityLabel }: LookupButtonProps) {
+  return (
+    <PressableScale
+      style={[styles.lookupButton, active && styles.lookupButtonOn, disabled && styles.lookupButtonOff]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled, selected: active }}
+      accessibilityLabel={accessibilityLabel}
+    >
+      {busy
+        ? <ActivityIndicator size="small" color={active ? colors.accentText : colors.textSecondary} />
+        : <Ionicons name={icon} size={iconSize.sm} color={active ? colors.accentText : colors.text} />}
+      <Text style={[styles.lookupButtonText, active && styles.lookupButtonTextOn]} numberOfLines={1}>{label}</Text>
+    </PressableScale>
   );
 }
 
@@ -1959,35 +2175,29 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
     },
     searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
-    // Same shape as QuickAddModal's own burst row: the chip toggles the
-    // setting directly (no local on/off state of its own), and the count
-    // beside it only appears once there's something to count.
-    burstRow: {
+    // The "Log several" switch, a bar across the foot of the search half.
+    burstFooter: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.md,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.smd,
+      paddingBottom: spacing.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.bgSecondary,
     },
-    keepOpenChip: {
-      flexDirection: 'row',
+    burstLabel: { flex: 1, color: colors.text, fontSize: font.md },
+    scanButton: {
+      width: 34,
+      height: 34,
+      borderRadius: radius.sm,
       alignItems: 'center',
-      gap: spacing.xs,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: radius.md,
-      backgroundColor: colors.bgTertiary,
-    },
-    keepOpenChipOn: {
-      backgroundColor: colors.accent + '22',
-    },
-    keepOpenText: {
-      color: colors.textSecondary,
-      fontSize: font.sm,
-    },
-    keepOpenTextOn: {
-      color: colors.accent,
-      fontWeight: fontWeight.semibold,
+      justifyContent: 'center',
+      // Taken back out of the field's own padding so it doesn't make the
+      // field taller than it is without it.
+      marginVertical: -spacing.xs,
+      backgroundColor: colors.accentSubtle,
     },
     burstCount: {
       color: colors.textSecondary,
@@ -2009,6 +2219,42 @@ function makeStyles(colors: Colors) {
       marginHorizontal: spacing.md,
       marginBottom: spacing.md,
     },
+    // The Food database / Estimate pair under the field. Same block gap below
+    // as the field above it keeps.
+    lookupRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
+    },
+    lookupButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xsm,
+      minHeight: 40,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgTertiary,
+    },
+    lookupButtonOn: { backgroundColor: colors.accentSubtle },
+    lookupButtonOff: { opacity: 0.45 },
+    lookupButtonText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, flexShrink: 1 },
+    lookupButtonTextOn: { color: colors.accentText },
+    // The estimate and the database matches, above the list's own rows, with
+    // a block gap between them and before what follows.
+    lookupBlock: { gap: spacing.md, marginBottom: spacing.md },
+    // Rows keep spacing.sm below themselves; this makes it a block gap before
+    // the helpings' own label, which has none above it.
+    usualGap: { marginBottom: spacing.sm },
+    lookupHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+    lookupTitle: { flex: 1 },
+    lookupClose: { padding: spacing.xxs },
+    lookupNote: { gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'flex-start' },
+    lookupNoteText: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    lookupAgain: { marginTop: spacing.xs },
     list: { flex: 1 },
     listContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
     row: {

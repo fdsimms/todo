@@ -58,7 +58,7 @@ type Props = React.ComponentProps<typeof Modal> & {
  * CLAUDE.md. It shipped as a bug, got swept across 27 sheets, shipped again in
  * `CookModeSheet` (missed by that very sweep, despite matching the pattern
  * exactly), got swept again across 9 more, and then shipped a fifth time in
- * `EstimateMealSheet`'s recipe-match row — every time in a sheet whose *other*
+ * the old describe sheet's recipe-match row — every time in a sheet whose *other*
  * close paths were already correct. A rule that has to be re-applied by hand
  * at every callback that can lead to a close is a rule with one call site per
  * chance to forget, and there are hundreds: `onRequestClose`, a scrim tap, a

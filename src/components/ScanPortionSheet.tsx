@@ -101,9 +101,10 @@ interface Props {
   onClose: () => void;
   /**
    * Fired right before `onClose` on a successful Log, and only then, with the
-   * label of each food that was logged — see `EstimateMealSheet`'s own
-   * `onLogged` for why this is a separate prop from `onClose` rather than one
-   * more thing `onClose` means.
+   * label of each food that was logged. A separate prop from `onClose` rather
+   * than one more thing `onClose` means: a caller keeping its own "what did
+   * you eat?" sheet open underneath closes that sheet (or, with "Add another"
+   * on, keeps it for the next food) only on a log, never on a cancel.
    */
   onLogged?: (labels: string[]) => void;
 }
