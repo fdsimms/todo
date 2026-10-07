@@ -40,6 +40,24 @@ export interface BusyEvent {
   status: string;
   /** EventKit's `Availability` — 'busy' | 'free' | 'tentative' | 'unavailable' | 'notSupported'. */
   availability: string;
+  /**
+   * Whether the event's notes or URL hold a video-call link (see
+   * `hasVideoCallLink`). Worked out at read time so the notes themselves are
+   * never kept. Optional: absent reads as false.
+   */
+  videoCall?: boolean;
+}
+
+/**
+ * Hosts whose links are a video call. A closed list for the same reason as
+ * `VIRTUAL_LOCATION_NAMES` in `travelTasks.ts`: a link to a host not named
+ * here is left alone rather than guessed at.
+ */
+const VIDEO_CALL_LINK = /https?:\/\/[^\s/]*\b(?:zoom\.us|zoomgov\.com|meet\.google\.com|teams\.microsoft\.com|teams\.live\.com|webex\.com|facetime\.apple\.com|whereby\.com|gotomeeting\.com|bluejeans\.com)\b/i;
+
+/** Whether any of these fields holds a link to a video call. */
+export function hasVideoCallLink(...fields: readonly (string | null | undefined)[]): boolean {
+  return fields.some(field => !!field && VIDEO_CALL_LINK.test(field));
 }
 
 /** Half-open [start, end) in epoch milliseconds. */

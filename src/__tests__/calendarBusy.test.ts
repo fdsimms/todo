@@ -5,6 +5,7 @@ import {
   eventsIn,
   freeGapsIn,
   freeMinutesIn,
+  hasVideoCallLink,
   hasWholeDayBlockIn,
   isLiveEvent,
   nextEventAfter,
@@ -300,5 +301,19 @@ describe('blocksWholeDay / hasWholeDayBlockIn', () => {
     expect(hasWholeDayBlockIn([conference], DAY_START, DAY_END)).toBe(true);
     expect(hasWholeDayBlockIn([conference], DAY_END, new Date(2026, 7, 14))).toBe(false);
     expect(hasWholeDayBlockIn([ev(...ALL_DAY, { allDay: true, availability: 'free' })], DAY_START, DAY_END)).toBe(false);
+  });
+});
+
+describe('hasVideoCallLink', () => {
+  it('finds a call link in notes or a URL', () => {
+    expect(hasVideoCallLink('Join Zoom Meeting:\nhttps://springhealth-internal.zoom.us/j/91256396488?pwd=x')).toBe(true);
+    expect(hasVideoCallLink(null, 'https://meet.google.com/abc-defg-hij')).toBe(true);
+    expect(hasVideoCallLink('https://teams.microsoft.com/l/meetup-join/abc')).toBe(true);
+  });
+
+  it('leaves other links, plain mentions and empty fields alone', () => {
+    expect(hasVideoCallLink('Bring the blue folder', null, undefined)).toBe(false);
+    expect(hasVideoCallLink('We will zoom in on the numbers')).toBe(false);
+    expect(hasVideoCallLink('https://maps.example/x', 'https://example.com/zoom.us')).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import type {
   RecurrenceRule,
   RecurringEventOptions,
 } from 'expo-calendar/legacy';
-import type { BusyEvent } from './calendarBusy';
+import { hasVideoCallLink, type BusyEvent } from './calendarBusy';
 import { isDemoModeActive } from './demoState';
 import type { EventRecurrence } from './quickEvent';
 
@@ -142,6 +142,7 @@ function toBusyEvent(event: Event): BusyEvent | null {
     // owns what they mean.
     status: String(event.status ?? ''),
     availability: String(event.availability ?? ''),
+    videoCall: hasVideoCallLink(event.notes, event.url),
   };
 }
 

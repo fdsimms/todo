@@ -354,9 +354,13 @@ export function eventHasLocation(event: Pick<BusyEvent, 'location'>): boolean {
  * `eventIsRuleEligible`. That gate keeps them because "Pack a bag" two days
  * before a conference is a good rule; "leave 30 minutes before" an event with
  * no start time has nothing to subtract from.
+ *
+ * **An event carrying a video-call link is refused** even with a real place in
+ * its location (a booked conference room beside a Zoom link in the notes). The
+ * link is the answer to "where is it": people join from wherever they are.
  */
 export function eventIsTravelEligible(event: BusyEvent, now: Date): boolean {
-  return !event.allDay && eventHasLocation(event) && eventIsRuleEligible(event, now);
+  return !event.allDay && !event.videoCall && eventHasLocation(event) && eventIsRuleEligible(event, now);
 }
 
 /** The moment to leave: the event's start, less the lead. Null for a start that doesn't parse. */

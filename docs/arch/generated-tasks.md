@@ -1100,6 +1100,9 @@ argued out before it was built; read them before reopening one.
   exact service names ("Microsoft Teams Meeting", "Zoom", "Google Meet"…). It is a closed list on
   purpose: a pattern would start deciding which real places are really places, and "Zoom Cafe, 12
   Bedford Ave" is somewhere you walk to.
+  A room in the location doesn't rescue a call: `BusyEvent.videoCall` is set at read time when the
+  event's notes or URL hold a link to a known call host (`hasVideoCallLink`), and
+  `eventIsTravelEligible` refuses it. A hybrid meeting you do attend in person gets no row.
 - **The travel time is the user's number unless they ask for Apple Maps'.** By default no routing
   service is asked. Asking one means sending the addresses of somebody's appointments, and where
   they are, to a third party, and a computed figure can be wrong in a way the user's own estimate
