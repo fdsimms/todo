@@ -185,11 +185,27 @@ export function mirrorNote(raw: string | null | undefined): string {
  * split them apart on the way in so the name could stay a clean catalog key,
  * and putting them back is what makes "2 lb chicken" read like a shopping list
  * rather than like a catalog dump.
+ *
+ * **Only where `parseGroceryInput` reads it back the same way.** The mirror
+ * re-parses every title it finds, so a title it can't split is a reminder it
+ * can't match: "milk x2" was stored as quantity "x2", written as "x2 milk",
+ * and read back as an item called "x2 milk", which the next pass added as a
+ * new row with a reminder of its own. Anything that wouldn't round-trip in
+ * front goes after the name ("milk x2") or, failing that, in trailing
+ * parentheses, which the parser always splits off.
  */
 export function mirrorTitleFor(item: { name: string; quantity: string | null }): string {
   const name = item.name.trim();
   const quantity = item.quantity?.trim();
-  return quantity ? `${quantity} ${name}`.trim() : name;
+  if (!quantity) return name;
+  // In front where it reads back ("2 lb chicken", and "3 large eggs" for the
+  // stored "3, large"), else after the name where that does, else in
+  // parentheses.
+  for (const title of [`${quantity} ${name}`, `${quantity.replace(/, /g, ' ')} ${name}`, `${name} ${quantity}`]) {
+    const back = parseGroceryInput(title);
+    if (back.name === name && back.quantity === quantity) return title;
+  }
+  return `${name} (${quantity})`;
 }
 
 /**

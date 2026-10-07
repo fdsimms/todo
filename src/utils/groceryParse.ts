@@ -69,6 +69,8 @@ const UNITS = [
   'stick', 'sticks', 'sheet', 'sheets', 'fillet', 'fillets', 'piece', 'pieces',
   'ear', 'ears', 'wedge', 'wedges', 'strip', 'strips',
   'pinch', 'pinches', 'dash', 'dashes', 'handful', 'handfuls',
+  // Store and receipt shorthand: "12 pk soda", "24 ct napkins", "2 ea apples".
+  'pk', 'ct', 'count', 'ea', 'each',
 ];
 const UNIT_SET = new Set(UNITS);
 
@@ -173,9 +175,40 @@ function clampQuantity(s: string): string {
  * the container word — see CONTAINER_QTY — which needs its own pass since
  * LEADING_QTY only ever captures one number and one unit.
  */
+// "x2 milk": the TRAILING_X amount written in front, which is how the
+// Reminders app's own users tend to type it.
+const LEADING_X = /^x\s*(\d+)\s+(.+)$/i;
+// "a dozen eggs", "half gallon milk", "a head of lettuce": an amount said in
+// words, only ahead of a known unit, so "a" or "half" opening a name
+// ("half and half", "a1 sauce") is left alone.
+const WORD_AMOUNT = /^(a|an|one|half(?:\s+a)?)\s+([a-z]+)\.?\s+(.+)$/i;
+// The "500g" in "2 x 500g pasta".
+const PACK_SIZE = /^(\d+(?:\.\d+)?)\s*([a-z]+)\s+(.+)$/i;
+// "6-pack beer", "12-ct eggs": a count hyphenated onto its unit.
+const HYPHENATED_COUNT = /^(\d+)-(pack|pk|ct|count)\b\s*/i;
+
 export function parseGroceryInput(raw: string): { name: string; quantity: string | null } {
-  const input = raw.trim().replace(/\s+/g, ' ');
+  const input = raw.trim().replace(/\s+/g, ' ').replace(HYPHENATED_COUNT, '$1 $2 ');
   if (!input) return { name: '', quantity: null };
+
+  const leadingX = LEADING_X.exec(input);
+  if (leadingX && leadingX[2].trim()) {
+    return { name: clampName(leadingX[2]), quantity: clampQuantity(`x${leadingX[1]}`) };
+  }
+
+  const words = WORD_AMOUNT.exec(input);
+  if (words) {
+    const [, amount, unitRaw, rest] = words;
+    const unit = unitRaw.toLowerCase();
+    const stripped = rest.replace(/^of\s+/i, '');
+    if (unit !== 'x' && UNIT_SET.has(unit) && stripped.trim()) {
+      const count = amount.toLowerCase().startsWith('half') ? '1/2' : '1';
+      return {
+        name: clampName(stripped),
+        quantity: clampQuantity(`${count} ${UNIT_ABBREVIATIONS[unit] ?? unit}`),
+      };
+    }
+  }
 
   const container = CONTAINER_QTY.exec(input);
   if (container) {
@@ -202,6 +235,15 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
         // the name).
         const stripped = rest.replace(/^of\s+/i, '');
         const name = stripped.trim() ? stripped : rest;
+        // "2 x 500g pasta": a count of packs of a stated size, where the size
+        // is the next thing rather than the start of the name.
+        const packSize = canonicalUnit === 'x' ? PACK_SIZE.exec(name.trim()) : null;
+        if (packSize && UNIT_SET.has(packSize[2].toLowerCase()) && packSize[3].trim()) {
+          return {
+            name: clampName(packSize[3]),
+            quantity: clampQuantity(`${count} x ${packSize[1]}${packSize[2].toLowerCase()}`),
+          };
+        }
         const sized = extractLeadingSize(name.trim(), `${count} ${canonicalUnit}`);
         return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
       }
