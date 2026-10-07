@@ -2758,6 +2758,7 @@ export const TaskItem = React.memo(function TaskItem({
                 ? filedOfferLabel(activeTitleOffer.parsed, useCategoryStore.getState().categories)
                 : describeSchedule(activeTitleOffer.parsed.schedule, getLogicalNow(useSettingsStore.getState().dayResetTime))
             }
+            style={{ marginTop: spacing.xsm }}
             onApply={applyTitleOffer}
             onDismiss={dismissTitleOffer}
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}

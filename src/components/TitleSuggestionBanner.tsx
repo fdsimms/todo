@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
@@ -12,6 +12,9 @@ interface Props {
   onApply: () => void;
   onDismiss: () => void;
   dismissLabel: string;
+  /** Outer margins or a width cap; the pill itself is always content-sized. */
+  style?: StyleProp<ViewStyle>;
+  onLayout?: (e: LayoutChangeEvent) => void;
 }
 
 /**
@@ -19,39 +22,34 @@ interface Props {
  * tap the ✕ to say it is just part of the title. Nothing is applied until
  * tapped, because a phrase like "on Friday" can be a legitimate title.
  *
- * The task row's inline rename uses this. The editor and quick add draw the
- * same pill by hand with their own styles.
+ * One pill for every place a title is read for a phrase: the task editor,
+ * quick add and the open row's inline rename.
  */
-export function TitleSuggestionBanner({ icon, label, onApply, onDismiss, dismissLabel }: Props) {
+export function TitleSuggestionBanner({ icon, label, onApply, onDismiss, dismissLabel, style, onLayout }: Props) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
   return (
-    <View style={styles.wrap}>
-      <View style={styles.pill}>
-        <PressableScale style={styles.button} onPress={onApply} accessibilityLabel={`${label}. Tap to set`}>
-          <Ionicons name={icon} size={14} color={colors.onAccent} />
-          <Text style={styles.text} numberOfLines={1}>{label}</Text>
-          <View style={styles.dot} />
-          <Text style={styles.hint}>Tap to set</Text>
-        </PressableScale>
-        <View style={styles.divider} />
-        <PressableScale style={styles.dismiss} onPress={onDismiss} accessibilityLabel={dismissLabel}>
-          <Ionicons name="close" size={14} color={colors.onAccent} />
-        </PressableScale>
-      </View>
+    <View style={[styles.pill, style]} onLayout={onLayout}>
+      <PressableScale style={styles.button} onPress={onApply} accessibilityLabel={`${label}. Tap to set`}>
+        <Ionicons name={icon} size={14} color={colors.onAccent} />
+        <Text style={styles.text} numberOfLines={1}>{label}</Text>
+        <View style={styles.dot} />
+        <Text style={styles.hint}>Tap to set</Text>
+      </PressableScale>
+      <View style={styles.divider} />
+      <PressableScale style={styles.dismiss} onPress={onDismiss} accessibilityLabel={dismissLabel}>
+        <Ionicons name="close" size={14} color={colors.onAccent} />
+      </PressableScale>
     </View>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: {
-    alignItems: 'flex-start',
-    marginTop: spacing.xsm,
-  },
   // Backs the 1px divider, which is translucent and otherwise reads as a gap.
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     maxWidth: '100%',
     backgroundColor: colors.accentFill,
     borderRadius: radius.md,
