@@ -11,11 +11,11 @@ import type { ChainItem } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
+import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useShallow } from 'zustand/react/shallow';
 import { PillGroup } from './PillGroup';
-import { SegmentedControl } from './SegmentedControl';
+import { DoseAmountField } from './DoseAmountField';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 
@@ -156,23 +156,12 @@ export function ChainStepMedicationSheet({
 
           {name.trim().length > 0 && (
             <>
-              <TextField
-                style={styles.fieldBox}
-                value={amount}
-                onChangeText={setAmount}
-                placeholder="e.g. 50"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-                returnKeyType="done"
-                accessibilityLabel="How much, optional"
-              />
-              <SegmentedControl
-                options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
-                value={unit ?? ''}
-                columns={5}
-                label="Unit"
-                surface="card"
-                onChange={next => { haptics.tap(); setUnit(next === unit ? null : next); }}
+              <DoseAmountField
+                name="ChainStepMedicationSheet dose unit menu"
+                amount={amount}
+                onChangeAmount={setAmount}
+                unit={unit}
+                onChangeUnit={setUnit}
               />
             </>
           )}

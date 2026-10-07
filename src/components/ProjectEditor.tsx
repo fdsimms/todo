@@ -1129,27 +1129,13 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               {/* No allowNull on the stepper: the track above is where Never
                   lives now, and two controls clearing to the same state is the
                   ambiguity this merge removed. */}
-              <View style={styles.pillRow}>
-                {CADENCE_UNITS.map(unit => {
-                  const active = cadence.unit === unit;
-                  return (
-                    <TouchableOpacity
-                      key={unit}
-                      style={[styles.pill, active && styles.pillActiveNeutral]}
-                      onPress={() => {
-                        haptics.tap();
-                        setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
-                      }}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                        {cadenceUnitLabel(unit)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.cadenceUnit}>
+                <SegmentedControl
+                  label="Review cadence unit"
+                  options={CADENCE_UNITS.map(unit => ({ value: unit, label: cadenceUnitLabel(unit) }))}
+                  value={cadence.unit}
+                  onChange={unit => setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)))}
+                />
               </View>
             </View>
           )}
@@ -1440,23 +1426,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginHorizontal: spacing.xs, marginTop: spacing.lg, marginBottom: spacing.xs,
   },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   modeBlock: { marginTop: spacing.md, gap: spacing.sm },
   modeHint: { color: colors.textTertiary, fontSize: font.xs },
-  // The unit pills stay one group: at a narrow width the whole set drops to a
-  // second line rather than splitting "Months" off on its own.
+  // The unit track stays one group: at a narrow width the whole track drops to
+  // a second line rather than splitting "Months" off on its own.
   cadenceRow: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
     gap: spacing.sm, marginTop: spacing.md,
   },
-  pill: {
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-  },
-  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
-  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
-  pillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
+  cadenceUnit: { flexGrow: 1, flexBasis: 200 },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,
