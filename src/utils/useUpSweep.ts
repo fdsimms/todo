@@ -1,6 +1,6 @@
 import type { GroceryItem, Leftover, Task } from '../types';
 import { generatedSourceOf } from './generatedTasks';
-import { useUpTaskFields, wantsUseUpTask } from './groceryExpiry';
+import { useUpDeadlineDay, useUpTaskFields, wantsUseUpTask } from './groceryExpiry';
 import { liveExpiresAt } from './groceryShelfLife';
 import { liveKeepUntil } from './leftovers';
 
@@ -65,7 +65,8 @@ export function useUpSweepOrder(
       continue;
     }
     const itemId = generatedSourceOf(task, 'groceryUseUp');
-    if (itemId && task.deadline) finished.add(`${itemId}\u0000${task.deadline}`);
+    const day = useUpDeadlineDay(task.deadline);
+    if (itemId && day) finished.add(`${itemId}\u0000${day}`);
   }
 
   // An item still holding a live task it no longer wants (marked out of it
@@ -87,8 +88,8 @@ export function useUpSweepOrder(
       continue;
     }
     // wantsUseUpTask has already required a live day, so `expiresAt` is set.
-    const deadline = useUpTaskFields(item, 0).deadline;
-    if (finished.has(`${item.id}\u0000${deadline}`)) continue;
+    const day = useUpDeadlineDay(useUpTaskFields(item, 0).deadline);
+    if (finished.has(`${item.id}\u0000${day}`)) continue;
     queue.push({
       source: { kind: 'groceryUseUp', id: item.id },
       day: liveExpiresAt(item),

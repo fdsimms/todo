@@ -6182,6 +6182,34 @@ describe('use-up tasks', () => {
     expect(useUpTaskFor(spinach.id)).toBeDefined();
   });
 
+  it('does not hand back a finished task while the use-by day is unchanged', () => {
+    mockUseUpTasks = true;
+    const pesto = makeItem({ name: 'Pesto', expiresAt: '2026-08-17', openedAt: '2026-08-14T09:00:00.000Z' });
+    seed([pesto]);
+    useGroceryStore.getState().setUseUpTask(pesto.id, true);
+    const first = useUpTaskFor(pesto.id)!;
+    mockTaskState.updateTask(first.id, { completed: true });
+
+    // Un-opening leaves the day where it was: still this jar's task, done.
+    useGroceryStore.getState().setOpened(pesto.id, false);
+
+    const forPesto = mockTaskState.tasks.filter(t => t.generatedSourceId === pesto.id);
+    expect(forPesto).toHaveLength(1);
+  });
+
+  it('gives a new use-by day its own task after the last one was finished', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    mockTaskState.updateTask(useUpTaskFor(spinach.id)!.id, { completed: true });
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-24');
+
+    const live = mockTaskState.tasks.filter(t => t.generatedSourceId === spinach.id && !t.completed);
+    expect(live).toHaveLength(1);
+  });
+
   // #1953. reconcileUseUpTask fires on mutations that leave expiresAt exactly
   // where it was, and it used to recompute the day anyway — so a task the user
   // had deferred snapped back to the lead-time date on the strength of an
@@ -6399,6 +6427,22 @@ describe('use-up tasks', () => {
 
       expect(useGroceryStore.getState().items.find(i => i.id === spinach.id)!.expiresAt)
         .not.toBe('2026-01-01');
+    });
+
+    it('clears an opened jar\'s day when the purchase has none of its own to stamp', () => {
+      // Pesto has an opened shelf life but no purchase one, so the trip names
+      // no new day; the old one was the opened jar's and the new jar is sealed.
+      const pesto = makeItem({
+        name: 'pesto', onList: true, checked: true, expiresAt: '2026-01-01', openedAt: '2025-12-27T12:00:00.000Z',
+      });
+      seed([pesto]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([pesto.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      const stored = useGroceryStore.getState().items.find(i => i.id === pesto.id)!;
+      expect(stored.expiresAt).toBeNull();
+      expect(stored.openedAt).toBeNull();
     });
 
     it('dates a shelf-life day from an explicit purchasedAt rather than now (#1806)', () => {

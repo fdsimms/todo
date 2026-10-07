@@ -623,14 +623,15 @@ export function GroceryScreen() {
   );
   // The other half of the same read: what the trip is taking home, in the same
   // walk order, for the finish sheet's price fields. Carries quantity because a
-  // price is only meaningful next to what it bought.
+  // price is only meaningful next to what it bought. Most of it is in
+  // `inCart`: a checked row leaves its aisle once its cart hold runs out, so
+  // the sections alone hold only what was checked in the last second or so.
   const purchased = useMemo(
     () =>
-      grouped.sections.flatMap(section =>
-        section.data
-          .filter(i => i.checked)
-          .map(i => ({ id: i.id, name: i.name, quantity: i.quantity }))
-      ),
+      [
+        ...grouped.sections.flatMap(section => section.data.filter(i => i.checked)),
+        ...grouped.inCart,
+      ].map(i => ({ id: i.id, name: i.name, quantity: i.quantity })),
     [grouped]
   );
   // "≈ $47.30 · 9 of 14 priced", or null while nothing on the list has a price.

@@ -818,7 +818,7 @@ describe('use-up tasks', () => {
     const task = mockTaskState.tasks.find(t => t.generatedSourceId === logged.id);
     expect(task).toBeDefined();
     expect(task!.title).toBe('Use up Chilli');
-    expect(task!.deadline).toBe(logged.keepUntil);
+    expect(dayKeyOf(new Date(task!.deadline!))).toBe(logged.keepUntil);
   });
 
   it('drops the task when the leftover is finished', () => {
@@ -949,7 +949,7 @@ describe('use-up tasks', () => {
     useLeftoverStore.getState().setKeepDays('chilli', 6);
 
     const after = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
-    expect(after.deadline).toBe(useLeftoverStore.getState().leftoverById('chilli')!.keepUntil);
+    expect(dayKeyOf(new Date(after.deadline!))).toBe(useLeftoverStore.getState().leftoverById('chilli')!.keepUntil);
     expect(after.dueDate).toBe(deferred);
   });
 });

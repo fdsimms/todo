@@ -120,7 +120,7 @@ import { ensureProductFor, newItemRow, nextSortOrder, planGroceryAdd } from '../
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
-import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
+import { finishedUseUpFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
 import { useUpSweepOrder } from '../utils/useUpSweep';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
@@ -1785,13 +1785,16 @@ function restockLinkedSupplies(boughtItemIds: ReadonlySet<string>): Map<string, 
  * is shared with every other generator (store/generatedTaskSync, #1524); what's
  * decided here is only what a grocery item wants.
  *
- * **Only a *live* task blocks a new one** — hence no `blocksOnFinished`. That
- * flag is for a source that is one event (a planned meal: mealShortfall,
- * mealThaw, mealLogNudge), where a finished task must not be followed by a
- * second. A grocery item is a forever-row that gets bought again and again:
- * last month's ticked-off "Use up spinach" is history, and the bag bought this
- * afternoon needs its own. Reading the wider set here would mean a staple got
- * exactly one use-up task, ever.
+ * **A finished task blocks a new one only for the same use-by day** — hence
+ * no `blocksOnFinished`. That flag is for a source that is one event (a
+ * planned meal: mealShortfall, mealThaw, mealLogNudge), where a finished task
+ * must not be followed by a second. A grocery item is a forever-row that gets
+ * bought again and again: last month's ticked-off "Use up spinach" is history,
+ * and the bag bought this afternoon needs its own. Reading the wider set here
+ * would mean a staple got exactly one use-up task, ever. But a task finished
+ * for the day the row still names is this packet's, so any edit that leaves
+ * the day alone (un-marking Opened) must not hand it back: `finishedUseUpFor`,
+ * the same test the foreground sweep applies.
  */
 function reconcileUseUpTask(item: GroceryItem): void {
   const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, useUpTaskCap } =
@@ -1803,7 +1806,8 @@ function reconcileUseUpTask(item: GroceryItem): void {
     // and owning it in one place is what keeps the frozen case honest — this
     // used to re-check `expiresAt` because an explicit `useUpTask: true` could
     // outrank the qualifier and reach useUpTaskFields' `expiresAt!`.
-    wanted: wantsUseUpTask(item, groceryUseUpTasks),
+    wanted: wantsUseUpTask(item, groceryUseUpTasks)
+      && !finishedUseUpFor(useTaskStore.getState().tasks, item),
     drift: existing => useUpTaskDrift(existing, item, groceryUseUpLeadDays),
     draft: () => useUpTaskDraft(item, groceryUseUpLeadDays, groceryUseUpTaskCategory),
     useUpCap: useUpTaskCap,
@@ -4442,7 +4446,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // bought — the purchase is what refutes it, exactly as it
                 // refutes an "Out of it".
                 runningLowAt: null,
-                expiresAt: expiresAtById[i.id] ?? i.expiresAt,
+                // Cleared where the trip names no new day: an old day was
+                // about the old jar (an opened one's, usually). Mirrors
+                // dbFinishGroceryShopping.
+                expiresAt: expiresAtById[i.id] ?? null,
                 // Only the rows the user priced. Everything else keeps the
                 // price and the stamp it already had — see the db's own note.
                 ...(priceById[i.id] !== undefined

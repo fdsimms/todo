@@ -177,8 +177,18 @@ jest.mock('expo-sqlite', () => {
       getFirstSync<T>(sql: string, params: any[] = []): T | null {
         return (mockRawDb.prepare(sql).get(...params) as T) ?? null;
       },
+      // expo-sqlite's own shape (a bare BEGIN/COMMIT), not better-sqlite3's
+      // transaction(), which nests through savepoints and so would let a
+      // nested transaction pass here that throws on device.
       withTransactionSync(fn: () => void) {
-        mockRawDb.transaction(fn)();
+        mockRawDb.exec('BEGIN');
+        try {
+          fn();
+          mockRawDb.exec('COMMIT');
+        } catch (e) {
+          mockRawDb.exec('ROLLBACK');
+          throw e;
+        }
       },
     }),
   };
@@ -1497,6 +1507,27 @@ describe('dbTransaction', () => {
       });
     }).toThrow('boom');
     expect(dbGetAllTasks().map((t) => t.id)).toEqual(['existing']);
+  });
+
+  it('joins a transaction already open rather than nesting one', () => {
+    // A store action that wraps its writes calls others that wrap theirs
+    // (addFromPlan → setAisleMany). A second BEGIN throws on device.
+    dbTransaction(() => {
+      dbInsertTask(makeTask({ id: 'a' }));
+      dbTransaction(() => dbInsertTask(makeTask({ id: 'b' })));
+      dbBulkDeleteTasks(['nothing']);
+    });
+    expect(dbGetAllTasks().map((t) => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('rolls an inner write back with the outer transaction', () => {
+    expect(() => {
+      dbTransaction(() => {
+        dbTransaction(() => dbInsertTask(makeTask({ id: 'inner' })));
+        throw new Error('boom');
+      });
+    }).toThrow('boom');
+    expect(dbGetAllTasks()).toEqual([]);
   });
 });
 
@@ -3486,6 +3517,22 @@ describe('grocery items', () => {
       expect(byId.get('g1')!.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
       // Not bought, so still on the list for next time.
       expect(byId.get('g2')!.onList).toBe(true);
+    });
+
+    it('stamps a fresh day where the trip names one and clears the old day elsewhere', () => {
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Spinach', nameKey: 'spinach', checked: true, expiresAt: '2026-08-01',
+      }));
+      insertListedGroceryItem(makeGroceryItem({
+        id: 'g2', name: 'Pesto', nameKey: 'pesto', checked: true, expiresAt: '2026-08-02',
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, { g1: '2026-08-12' });
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('g1')!.expiresAt).toBe('2026-08-12');
+      // The opened jar's day: the jar carried home is sealed.
+      expect(byId.get('g2')!.expiresAt).toBeNull();
     });
 
     it('measures the gap since the last purchase into the running average', () => {

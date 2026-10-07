@@ -677,6 +677,17 @@ describe('a box of its own', () => {
     expect(entry.useBy).toBe('2026-08-20');
   });
 
+  it('does not count down the item\'s paused day under a box that falls back to it', () => {
+    // The item row is frozen, so its day is suspended; a box with no day of
+    // its own borrows the day and the pause together.
+    const item = bought('Bread');
+    item.expiresAt = '2026-08-01';
+    item.frozenAt = daysAgo(3);
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.useBy).toBeNull();
+  });
+
   it('suspends a frozen box\'s countdown without losing the day', () => {
     const item = bought('Bread');
     const box = makeProduct({

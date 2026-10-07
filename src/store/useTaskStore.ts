@@ -8477,10 +8477,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   // Members adopt the new stack's category as part of the same write that
-  // files them into it. Deliberately *not* wrapped in a dbTransaction:
-  // applyTemplate already calls this from inside one, and expo-sqlite's
-  // withTransactionSync can't nest — it would throw on device while the tests,
-  // which mock dbTransaction, stayed green.
+  // files them into it. Not wrapped in a dbTransaction of its own:
+  // applyTemplate already calls this from inside one.
   groupTasks(taskIds, title, category) {
     const group = useTaskGroupStore.getState().createGroup(title, category);
     // A stack holds a slot in the list order like a task does (see

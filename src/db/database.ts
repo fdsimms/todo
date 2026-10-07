@@ -160,6 +160,30 @@ const realDb = SQLite.openDatabaseSync(REAL_DB_NAME);
 // handle is never closed, so switching back is just a reassignment.
 let db = realDb;
 
+// How many transactions are open on `db` right now. expo-sqlite's
+// withTransactionSync is a bare BEGIN/COMMIT, so a second one opened inside
+// the first throws ("cannot start a transaction within a transaction"), and
+// its ROLLBACK then undoes the outer one's writes while the store's state
+// keeps them. Store actions call each other freely (addFromPlan → setAisle →
+// setAisleMany), so "never nest" was a rule nobody could see from the call
+// site. An inner call joins the transaction already open instead: it commits
+// or rolls back with the outer one, which is what a caller wrapping several
+// writes in one transaction asked for in the first place.
+let transactionDepth = 0;
+
+function withTransaction(fn: () => void): void {
+  if (transactionDepth > 0) {
+    fn();
+    return;
+  }
+  transactionDepth++;
+  try {
+    db.withTransactionSync(fn);
+  } finally {
+    transactionDepth--;
+  }
+}
+
 // Opens a blank demo database, deleting any file left behind by a previous
 // session that was killed mid-demo (the active-demo flag lives in memory
 // only, so a crash always lands back on real data — at worst with a stale
@@ -2459,7 +2483,7 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
     .getAllSync<BackupRow>('SELECT * FROM settings')
     .filter(row => isDeviceLocalSetting(row.key));
 
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     // Cleared in reverse, children first, for the same reason rows go back in
     // parents-first.
     for (const table of [...BACKUP_TABLES].reverse()) {
@@ -2577,7 +2601,7 @@ export function isSyncableDatabase(): boolean {
 export function dbSyncChangesSince(since: string | null, transport?: string): SyncChangeSet {
   let result: SyncChangeSet | null = null;
 
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const until =
       db.getFirstSync<{ now: string }>(`SELECT ${NOW_EXPR} AS now`)?.now ??
       new Date().toISOString();
@@ -2771,7 +2795,7 @@ export interface RepointSnapshot {
 export function dbRepointItemReferences(fromId: string, intoId: string): RepointSnapshot {
   const snapshot: RepointSnapshot = { rows: [], settings: [] };
   const tables = new Set(['food_logs', 'saved_meals']);
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const ref of REFERENCES) {
       if (ref.target !== 'grocery_items' || !tables.has(ref.table)) continue;
       const rows = ref.match === 'equals'
@@ -2798,7 +2822,7 @@ export function dbRepointItemReferences(fromId: string, intoId: string): Repoint
 }
 
 export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const r of snapshot.rows) {
       db.runSync(`UPDATE "${r.table}" SET "${r.column}" = ? WHERE id = ?`, [r.before, r.id]);
     }
@@ -3020,7 +3044,7 @@ function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boole
 export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const ctx = loadFoldContext();
     // Grocery rows whose on-list mirror this apply may have left wrong: an item
     // row arrives with the peer's copy of it, and an entry arriving or leaving
@@ -3837,7 +3861,7 @@ export function dbMarkTaskSeen(id: string, seenAt: string): void {
 }
 
 export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE tasks SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -3845,7 +3869,7 @@ export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number
 }
 
 export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, pinnedOrder } of updates) {
       db.runSync('UPDATE tasks SET pinned_order = ? WHERE id = ?', [pinnedOrder, id]);
     }
@@ -3856,7 +3880,7 @@ export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: nu
 // different table: reordering the Up Next shelf renumbers every row in one
 // transaction rather than one dbUpdateRecipe round-trip per row.
 export function dbBatchUpdateRecipeUpNextOrders(updates: { id: string; upNextOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, upNextOrder } of updates) {
       db.runSync('UPDATE recipes SET up_next_order = ? WHERE id = ?', [upNextOrder, id]);
     }
@@ -3874,7 +3898,7 @@ export function dbBatchUpdateRecipeUpNextOrders(updates: { id: string; upNextOrd
 export function dbBatchUpdatePostponeCounts(
   updates: { id: string; postponeCount: number; driftingSince: string | null; bountyPushes: number | null }[],
 ): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, postponeCount, driftingSince, bountyPushes } of updates) {
       // Written together, never separately: the count and the day it started
       // from describe one run of pushes, and a batch that set one without the
@@ -3905,12 +3929,10 @@ export function dbClearAllPins(): void {
 
 // Lets a store-level cascade (looping a single-task action like completeTask
 // or deleteTask over many ids) commit as one WAL transaction instead of one
-// per iteration. Safe to wrap around any of dbInsertTask/dbUpdateTask/
-// dbDeleteTask/dbDeleteSubtasks — all plain runSync — but never around a
-// dbBulk* function below, which already opens its own transaction and would
-// nest.
+// per iteration. Safe to wrap around anything in this file, a dbBulk*
+// function included: see withTransaction.
 export function dbTransaction(fn: () => void): void {
-  db.withTransactionSync(fn);
+  withTransaction(fn);
 }
 
 /**
@@ -3953,7 +3975,7 @@ function fillCalendarExternalIds(
   if (Object.keys(found).length === 0) return [];
   const wanting = pairs.map(([idCol, extCol]) => `(${idCol} IS NOT NULL AND ${extCol} IS NULL)`).join(' OR ');
   const written: string[] = [];
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const rows = db.getAllSync<Record<string, string | null>>(
       `SELECT id, updated_at, ${pairs.flat().join(', ')} FROM ${table} WHERE ${wanting}`
     );
@@ -4049,7 +4071,7 @@ function updateDeviceLocalColumns(
       throw new Error(`${table}.${column} syncs, so it goes through the row's ordinary update`);
     }
   }
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     const row = db.getFirstSync<{ updated_at: string | null }>(
       `SELECT updated_at FROM ${table} WHERE id = ?`, [id]
     );
@@ -4112,7 +4134,7 @@ const BULK_DELETE_CHUNK_SIZE = 500;
 
 export function dbBulkDeleteTasks(ids: string[]): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
       const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
       const placeholders = chunk.map(() => '?').join(', ');
@@ -4124,7 +4146,7 @@ export function dbBulkDeleteTasks(ids: string[]): void {
 
 export function dbBulkSetPriority(ids: string[], priority: number): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET priority = ? WHERE id = ?', [priority, id]);
     }
@@ -4133,7 +4155,7 @@ export function dbBulkSetPriority(ids: string[], priority: number): void {
 
 export function dbBulkSetDifficulty(ids: string[], difficulty: string | null): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET difficulty = ? WHERE id = ?', [difficulty, id]);
     }
@@ -4142,7 +4164,7 @@ export function dbBulkSetDifficulty(ids: string[], difficulty: string | null): v
 
 export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET defer_until = ? WHERE id = ?', [deferUntil, id]);
     }
@@ -4152,7 +4174,7 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
 export function dbBulkSetWhen(ids: string[], dueDate: string | null, timeSegments: TimeOfDay[]): void {
   if (ids.length === 0) return;
   const timeOfDay = timeSegments.length ? JSON.stringify(timeSegments) : null;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET due_date = ?, time_of_day = ? WHERE id = ?', [dueDate, timeOfDay, id]);
     }
@@ -4166,7 +4188,7 @@ export function dbBulkSetWhen(ids: string[], dueDate: string | null, timeSegment
 export function dbBulkSetTimeSegments(ids: string[], timeSegments: TimeOfDay[]): void {
   if (ids.length === 0) return;
   const timeOfDay = timeSegments.length ? JSON.stringify(timeSegments) : null;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET time_of_day = ? WHERE id = ?', [timeOfDay, id]);
     }
@@ -4175,7 +4197,7 @@ export function dbBulkSetTimeSegments(ids: string[], timeSegments: TimeOfDay[]):
 
 export function dbBulkSetCategory(ids: string[], category: string | null): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET category = ? WHERE id = ?', [category, id]);
     }
@@ -4184,7 +4206,7 @@ export function dbBulkSetCategory(ids: string[], category: string | null): void 
 
 export function dbBulkSetPinned(ids: string[], pinned: boolean): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET pinned = ? WHERE id = ?', [pinned ? 1 : 0, id]);
     }
@@ -4213,7 +4235,7 @@ export function dbRemoveTagFromAllTasks(tag: string): void {
   const rows = db.getAllSync<{ id: string; tags: string }>(
     "SELECT id, tags FROM tasks WHERE tags != '[]'"
   );
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const row of rows) {
       const existing: string[] = JSON.parse(row.tags ?? '[]');
       if (!existing.includes(tag)) continue;
@@ -4225,7 +4247,7 @@ export function dbRemoveTagFromAllTasks(tag: string): void {
 
 export function dbBulkAddTags(ids: string[], tagsToAdd: string[]): void {
   if (ids.length === 0 || tagsToAdd.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       const row = db.getFirstSync<{ tags: string }>('SELECT tags FROM tasks WHERE id = ?', [id]);
       if (!row) continue;
@@ -4275,7 +4297,7 @@ export function dbInsertCategory(name: string): Category {
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -4331,7 +4353,7 @@ export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'sc
 }
 
 export function dbDeleteCategory(name: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('DELETE FROM categories WHERE name = ?', [name]);
     db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
     db.runSync('UPDATE task_groups SET category = NULL WHERE category = ?', [name]);
@@ -4362,7 +4384,7 @@ export function dbInsertCategoryRow(category: Category): void {
 }
 
 export function dbRenameCategory(id: string, oldName: string, newName: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('UPDATE categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
@@ -4403,7 +4425,7 @@ export function dbInsertProjectCategory(name: string): ProjectCategory {
  * tasks inside it (see Project.category).
  */
 export function dbDeleteProjectCategory(name: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('DELETE FROM project_categories WHERE name = ?', [name]);
     db.runSync('UPDATE projects SET category = NULL WHERE category = ?', [name]);
   });
@@ -4418,14 +4440,14 @@ export function dbInsertProjectCategoryRow(category: ProjectCategory): void {
 }
 
 export function dbRenameProjectCategory(id: string, oldName: string, newName: string): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('UPDATE project_categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE projects SET category = ? WHERE category = ?', [newName, oldName]);
   });
 }
 
 export function dbBatchUpdateProjectCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE project_categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -4538,7 +4560,7 @@ export function dbDeleteSavedView(id: string): void {
 export function dbBatchUpdateSavedViewSortOrders(
   updates: { id: string; sortOrder: number }[]
 ): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE saved_views SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -4578,7 +4600,7 @@ export function dbGetFocusSession(): FocusSession | null {
  * the only thing keeping a stale session out.
  */
 export function dbSaveFocusSession(session: FocusSession): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     db.runSync('DELETE FROM focus_sessions');
     db.runSync(
       `INSERT INTO focus_sessions
@@ -4951,9 +4973,10 @@ export function dbFinishGroceryShopping(
     price_history: string | null;
     last_purchased_at: string | null;
     purchase_interval_days: number | null;
+    expires_at: string | null;
   }>(
     `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history,
-            i.last_purchased_at, i.purchase_interval_days
+            i.last_purchased_at, i.purchase_interval_days, i.expires_at
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
@@ -5067,9 +5090,13 @@ export function dbFinishGroceryShopping(
     // A use-by day, unlike the clear above, is per item: it comes off the shelf
     // life of *this* row (see groceryShelfLife.ts), so it can't ride the bulk
     // UPDATE. Only the rows the lexicon recognises get one — a bag of rice is
-    // in this trip too and has no day worth naming.
-    const expires = expiresAtById[row.id];
-    if (expires) db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
+    // in this trip too and has no day worth naming. Every other row's old day
+    // is cleared, for the reason opened_at is: it was the old jar's (an
+    // opened pesto's five days), and the jar just carried home is sealed.
+    const expires = expiresAtById[row.id] ?? null;
+    if (expires !== row.expires_at) {
+      db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
+    }
     // Re-stamped after the blanket clear above, not exempted from it: the claim
     // being written is about this trip's bag, so it wants this trip's instant.
     if (frozenIds.has(row.id)) {
@@ -5811,13 +5838,9 @@ export function dbSetItemProduct(product: ItemProduct): void {
  * folded product adopts the loser's barcode while the loser's row is still
  * there waiting for the cascade.
  *
- * **Two bare statements, no transaction of its own**, deliberately: both call
- * sites already run inside `dbTransaction`, and opening a second one there
- * would nest `withTransactionSync` — the thing that comment warns against.
- * Wrap a future standalone caller rather than putting one back here; a run
- * that released without claiming loses a link, which is recoverable, where a
- * nested BEGIN throws on device and passes in tests (better-sqlite3 nests via
- * savepoints, expo-sqlite does not).
+ * **Two bare statements, no transaction of its own**: both call sites already
+ * run inside `dbTransaction`. Wrap a future standalone caller; a run that
+ * released without claiming loses a link, which is recoverable.
  *
  * Re-scanning a barcode onto a different box is an ordinary correction, not an
  * error: the latest thing a person confirmed is what the code means, the same
@@ -7057,7 +7080,7 @@ export function dbDeleteFoodLogEntry(id: string): void {
 
 export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
       const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
       const placeholders = chunk.map(() => '?').join(', ');
@@ -7068,7 +7091,7 @@ export function dbBulkDeleteFoodLogEntries(ids: string[]): void {
 
 export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null): void {
   if (ids.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const id of ids) {
       db.runSync('UPDATE food_logs SET slot = ? WHERE id = ?', [slot, id]);
     }
@@ -7081,7 +7104,7 @@ export function dbBulkUpdateFoodLogPlacement(
   updates: { id: string; slot: MealSlot | null; sortOrder: number }[]
 ): void {
   if (updates.length === 0) return;
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const u of updates) {
       db.runSync('UPDATE food_logs SET slot = ?, sort_order = ? WHERE id = ?', [u.slot, u.sortOrder, u.id]);
     }
@@ -7616,7 +7639,7 @@ export function dbDeleteProject(id: string): void {
 }
 
 export function dbBatchUpdateProjectSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE projects SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -7720,7 +7743,7 @@ export function dbDeletePerson(id: string): void {
 }
 
 export function dbBatchUpdatePersonSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE people SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
@@ -7763,7 +7786,7 @@ export function dbDeletePersonGroup(id: string): void {
 }
 
 export function dbBatchUpdatePersonGroupSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
+  withTransaction(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE person_groups SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }

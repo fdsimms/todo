@@ -409,6 +409,11 @@ export function FinishShoppingSheet({
       const frozenSeed = new Set(seed.frozenIds ?? []);
       frozenSeedRef.current = frozenSeed;
       setFrozen(frozenSeed);
+      // Last trip's "they didn't have it" answers, which the effect on
+      // `selected` below doesn't clear when this trip is at the same store:
+      // setSelected to the value it already holds changes nothing.
+      setUnavailable([]);
+      setSubstituteFor({});
     }
   }, [visible]);
 
@@ -428,8 +433,7 @@ export function FinishShoppingSheet({
   }, [visible, seedStamp]);
 
   // A "they didn't have it" is about one named store, so changing the store
-  // throws the answers away rather than refiling them. Includes the reset
-  // above, which is the same rule at the start of a trip. The substitute
+  // throws the answers away rather than refiling them. The substitute
   // follow-up is about the same store, so it goes with them.
   useEffect(() => {
     setUnavailable([]);

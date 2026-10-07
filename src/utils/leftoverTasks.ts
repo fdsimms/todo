@@ -3,7 +3,7 @@ import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { needsAttention } from './leftovers';
 import { resolveOffsetDate } from './templateUtils';
-import { getCurrentDayStart } from './dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from './dateUtils';
 
 /**
  * Projecting a leftover onto a "Use up X" task in the task list.
@@ -131,7 +131,10 @@ export function useUpTaskFields(
     title: useUpTaskTitle(leftover),
     // Never null: `now` is a real Date and the offset is 0.
     dueDate: resolveOffsetDate(now, 0)!,
-    deadline: leftover.keepUntil,
+    // An instant at local noon, like the grocery use-up task's, never the bare
+    // day key: every deadline reader parses it with `new Date`, which reads
+    // "2026-10-09" as UTC midnight, the evening before anywhere west of UTC.
+    deadline: resolveOffsetDate(dayKeyToDate(leftover.keepUntil), 0)!,
     linkUrl: kitchenLinkUrl(kitchenEntryId('leftover', leftover.id)),
   };
 }
@@ -175,6 +178,19 @@ export function useUpTaskDraft(
  * container's keep-for moves the day the food is answerable to, and the row
  * should say so.
  */
+/**
+ * Whether a use-up task's stored deadline already lands on the leftover's
+ * day. Compared as a local day rather than as the ISO string, so a trip across
+ * time zones (which moves where local noon falls) isn't read as the keep-for
+ * having changed. A bare day key, which this file used to write, never
+ * matches, so the next reconcile rewrites it as an instant.
+ */
+function onKeepUntil(deadline: string | null, keepUntil: string): boolean {
+  if (!deadline || !deadline.includes('T')) return false;
+  const d = new Date(deadline);
+  return !Number.isNaN(d.getTime()) && dayKeyOf(d) === keepUntil;
+}
+
 export function useUpTaskDrift(
   task: Pick<Task, 'title' | 'deadline' | 'linkUrl'>,
   leftover: Leftover
@@ -182,7 +198,7 @@ export function useUpTaskDrift(
   const next = useUpTaskFields(leftover);
   const updates: Partial<Task> = {};
   if (task.title !== next.title) updates.title = next.title;
-  if (task.deadline !== next.deadline) updates.deadline = next.deadline;
+  if (!onKeepUntil(task.deadline, leftover.keepUntil)) updates.deadline = next.deadline;
   if (task.linkUrl !== next.linkUrl) updates.linkUrl = next.linkUrl;
   return Object.keys(updates).length > 0 ? updates : null;
 }

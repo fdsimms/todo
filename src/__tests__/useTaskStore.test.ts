@@ -10313,9 +10313,8 @@ describe('groupTasks', () => {
   });
 
   it('opens no transaction of its own', () => {
-    // applyTemplate calls this from inside a dbTransaction, and expo-sqlite's
-    // withTransactionSync can't nest — a transaction here would throw on
-    // device while this suite, which mocks dbTransaction, stayed green.
+    // applyTemplate calls this from inside a dbTransaction, which already
+    // covers its writes.
     useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
     (dbTransaction as jest.Mock).mockClear();
     useTaskStore.getState().groupTasks(['a'], 'Take supplements', 'health');

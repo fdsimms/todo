@@ -1,7 +1,7 @@
 import type { GroceryItem, Task, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
-import { dayKeyToDate } from './dateUtils';
-import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { generatedBy, generatedSourceOf, wantsGeneratedTask } from './generatedTasks';
 import { OUT_OF_IT_UNTIL } from './grocerySuggest';
 import { liveExpiresAt } from './groceryShelfLife';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
@@ -201,7 +201,7 @@ export function useUpTaskDrift(
   leadDays: number
 ): Partial<Task> | null {
   const next = useUpTaskFields(item, leadDays);
-  const expiryMoved = task.deadline !== next.deadline;
+  const expiryMoved = useUpDeadlineDay(task.deadline) !== useUpDeadlineDay(next.deadline);
   const updates: Partial<Task> = {};
   if (task.title !== next.title) updates.title = next.title;
   if (expiryMoved) {
@@ -210,4 +210,37 @@ export function useUpTaskDrift(
   }
   if (task.linkUrl !== next.linkUrl) updates.linkUrl = next.linkUrl;
   return Object.keys(updates).length > 0 ? updates : null;
+}
+
+/**
+ * The local day a use-up task's `deadline` lands on, which is what says which
+ * packet the task was about. Compared as a day rather than as the stored ISO
+ * string, because local noon is a different instant in another time zone: read
+ * as a string, a trip abroad looked like every expiry had moved, re-dated each
+ * task (undoing a defer) and stopped matching the finished ones.
+ */
+export function useUpDeadlineDay(deadline: string | null): string | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  return Number.isNaN(d.getTime()) ? null : dayKeyOf(d);
+}
+
+/**
+ * Whether this item's use-up task for its current use-by day was already
+ * finished (completed or archived). The foreground sweep and a mutation's
+ * reconcile both ask, so that a "Use up pesto" ticked off doesn't come back
+ * the next time the row is touched (un-marking Opened, say) while it still
+ * names the same day. A new day is a new packet and gets its own task.
+ */
+export function finishedUseUpFor(
+  tasks: readonly Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived' | 'deadline'>[],
+  item: GroceryItem
+): boolean {
+  if (item.expiresAt === null) return false;
+  const day = useUpDeadlineDay(useUpTaskFields(item, 0).deadline);
+  return tasks.some(task =>
+    (task.completed || task.archived)
+    && generatedSourceOf(task, 'groceryUseUp') === item.id
+    && useUpDeadlineDay(task.deadline) === day
+  );
 }
