@@ -73,6 +73,7 @@ export const READ_TOOLS: Record<string, string> = {
   list_people: 'List people',
   get_person: 'Person details',
   upcoming_birthdays: 'Upcoming birthdays',
+  get_settings: 'Settings',
 };
 
 /**
@@ -109,6 +110,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   log_mood: { title: 'Log a mood check-in', destructive: false, idempotent: false },
   request_calendar_event: { title: 'Ask the phone to add a calendar event', destructive: false, idempotent: false },
   cancel_calendar_request: { title: 'Cancel a calendar request', destructive: false, idempotent: true },
+  change_calendar_event: { title: 'Change or remove a calendar event Claude added', destructive: true, idempotent: false },
   update_food_entry: { title: 'Correct a food entry', destructive: true, idempotent: true },
   delete_food_entry: { title: 'Delete a food entry', destructive: true, idempotent: true },
   update_mood_log: { title: 'Correct a mood check-in', destructive: true, idempotent: true },
@@ -122,6 +124,9 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   reopen_task: { title: 'Reopen a task', destructive: true, idempotent: true },
   update_answer: { title: 'Correct a recorded answer', destructive: true, idempotent: true },
   delete_task: { title: 'Delete tasks', destructive: true, idempotent: false },
+  update_settings: { title: 'Change settings', destructive: true, idempotent: true },
+  archive_medication: { title: 'Archive a medicine', destructive: false, idempotent: true },
+  rename_mood_tag: { title: 'Rename a mood tag', destructive: true, idempotent: true },
   skip_occurrence: { title: 'Skip an occurrence', destructive: false, idempotent: false },
   reorder_tasks: { title: 'Reorder tasks', destructive: true, idempotent: true },
   set_task_dates: { title: 'Set a task\'s dates', destructive: true, idempotent: true },

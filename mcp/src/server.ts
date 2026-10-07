@@ -99,13 +99,15 @@ import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
-import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
+import { NUTRIENT_KEY_LIST, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
+import { getSettings, updateSettings } from './settingsTools';
+import { SETTINGS_SPEC } from './settingsSpec';
 import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
@@ -301,6 +303,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   /** Set while a write tool is previewing; collects what the write would record in Activity. */
   let previewing: AgentLedgerEntry[] | null = null;
+
+  server.tool(
+    'get_settings',
+    "The person's settings that can be changed from here, grouped as in Settings, each with its value and what it does: when the day starts and its parts, task defaults, what is switched on (the kitchen, simplified mode, rewards), the kitchen's units, and each automation's own timing.",
+    {},
+    async () => json(await withFresh(() => getSettings(replica)))
+  );
 
   server.tool(
     'list_tasks',
@@ -1936,6 +1945,68 @@ function registerWriteTools(
         return json(await withWrite(() => archiveTask(replica, id, archived ?? true)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not archive the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_settings',
+    `Change settings, as the Settings screen does, by name from get_settings: ${Object.keys(SETTINGS_SPEC).join(', ')}. Every value is checked before any is stored, and the app's own limits apply (the result says when one was adjusted). Only on the person's word: these change how the whole app behaves.`,
+    {
+      changes: z.record(z.unknown()).describe('Setting names to their new values, e.g. { "dayResetTime": "04:00", "weekStartsOn": 1 }.'),
+    },
+    async ({ changes }) => {
+      try {
+        return json(await withWrite(() => updateSettings(replica, changes)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the settings.' });
+      }
+    }
+  );
+
+  server.tool(
+    'archive_medication',
+    'Move a medicine out of "what you take" on the Medication screen (it stops being offered), or bring it back with archived: false. No dose is deleted.',
+    { name: z.string().min(1), archived: z.boolean().optional().describe('Default true.') },
+    async ({ name, archived }) => {
+      try {
+        return json(await withWrite(() => setMedicationArchived(replica, name, archived ?? true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not archive it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_mood_tag',
+    'Correct a mood context tag ("work stress", "slept badly") on every check-in that has it, as the app\'s rename does: a typo otherwise sits in the suggestions for good.',
+    { from: z.string().min(1), to: z.string().min(1) },
+    async ({ from, to }) => {
+      try {
+        return json(await withWrite(() => renameMoodTag(replica, from, to)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename the tag.' });
+      }
+    }
+  );
+
+  server.tool(
+    'change_calendar_event',
+    "Change, or remove (delete: true), an event that request_calendar_event added (requestId from list_calendar_requests; it has to have been written). Only events this server asked for: nothing the person put on their calendar can be reached. Like a new request, the phone set to add them does it the next time it syncs; check list_calendar_requests for the outcome. A new start with no end keeps the event's length.",
+    {
+      requestId: z.string().min(1),
+      delete: z.literal(true).optional(),
+      title: z.string().optional(),
+      start: z.string().optional().describe('YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM.'),
+      end: z.string().optional(),
+      location: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => changeCalendarEvent(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not ask for the change.' });
       }
     }
   );

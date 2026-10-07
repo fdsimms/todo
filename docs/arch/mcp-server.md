@@ -1202,15 +1202,50 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
   pending until access is given. Demo mode leaves requests untouched for the real database.
 - **A request already over when it arrives fails rather than writing into the past**, with a reason
   on the row, so a phone that didn't sync for a week doesn't fill last week with events.
-- **Create only.** Nothing edits or deletes an event once written, the "never deletes a time block"
-  rule in `calendarSync.ts`. `cancel_calendar_request` works only while a request is pending; after
-  that the event is the person's, in their calendar app.
+- **It edits and deletes only the events it wrote.** `change_calendar_event` is a second kind of
+  request (`action: 'update' | 'delete'`, with `targetRequestId` naming the `written` create it is
+  about), and the phone finds the event through `requestEventMatch`: the id `saveEventDirect` gave
+  back, else the calendar server's id. An event the person made is never in reach, because nothing
+  else carries a request id; the "never deletes a time block" rule in `calendarSync.ts` still holds
+  for every event the app did not write for Claude. An event that has gone (deleted by hand, or its
+  calendar removed) fails the change with `CALENDAR_CHANGE_NO_EVENT_REASON` rather than recreating it,
+  and the update goes through `updateEventDirect`, so the fields the change leaves out survive
+  (`rewriteEvent`). A change row also carries the event's epoch start and end, so a phone on a build
+  that predates the column reads it as a create already over and fails it instead of writing a
+  second copy. A moved start keeps the event's length unless an end is named.
+- **`cancel_calendar_request` works only while a request is pending**; once written, the event is
+  changed or deleted with `change_calendar_event`.
 - **The Activity entry is the agent's request** (subject `event`), written here and synced like the
   rest of the ledger. Its "Don't add" button cancels the request while it is still pending
   (`agentRecordPlan`), and says why not once it isn't. The phone's write adds no second entry: the row's status is the record of what
   became of it. Answered requests are purged after 30 days by the writing device.
 - **The race it accepts:** a cancel and the phone's write can cross in sync, and last writer wins on
   the row. The phone re-reads each row just before writing, which makes the window one sync wide.
+
+### Settings: an allowlist, through the store's own setters
+
+`get_settings` and `update_settings` (`mcp/src/settingsTools.ts`) read and change the preferences
+in `mcp/src/settingsSpec.ts`, and nothing else. `SETTINGS_SPEC` is an allowlist for the reason
+`SYNCED_SETTING_KEYS` is one: a change only reaches the phone if the key syncs, and only a choice
+the person makes in Settings belongs on it. Device-local settings (calendars, the app lock, the API
+key, the theme, notification schedules) and state (per-day marks, handled-event records) are not
+in it, and the read says so. Each entry names its Settings group, says what it does in the app's
+words, and checks the value before anything is written. A batch is checked whole first, against a
+copy of the store whose setters do nothing, so one bad value refuses the call rather than leaving
+half of it applied; then every write goes through the store's own setter, which clamps the way the
+Settings stepper does, and a value the app stored differently from what was asked is named in the
+result. The entry in Activity is a record (subject `automation`) listing what changed, from and to.
+
+Adding these found that most generators' "File them under" categories and their own parameters
+(lead days, time segments, thresholds) were missing from `SYNCED_SETTING_KEYS`, so they never
+left the device they were set on, and `set_automation`'s `category` never reached the phone at
+all. They are on the list now. `nutritionTargets` syncs with the health record
+(`HEALTH_SYNC_SETTING_KEYS`), since a calorie target says something about a body.
+
+`archive_medication` is the medicines list's own archive (`medication_archived`, which already
+synced with the health record), and `rename_mood_tag` renames a context tag across every mood
+entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
+person's to set on the phone.
 
 ### Focus sessions, milestones, saved views and the vacation switch
 

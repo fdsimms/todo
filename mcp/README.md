@@ -99,7 +99,9 @@ only the fallback until the first sync.
 | `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
+| `archive_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a mood context tag on every check-in that has it. |
 | `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
+| `get_settings` / `update_settings` | Read and **Write.** The person's preferences that sync (the day, task defaults, feature areas, rewards, kitchen, automation parameters), each with what it does. Device-local settings are changed on the device. |
 | `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off and choose the category its tasks file under; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
 | `delete_category` | **Write.** Delete a task category. Its tasks and stacks move to `moveTo` (or `uncategorize: true`), and every automation that filed under it is re-pointed. Previews unless `apply: true`; not undoable from here. |
 | `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
@@ -149,6 +151,7 @@ only the fallback until the first sync.
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
 | `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. The server never touches the calendar itself. |
+| `change_calendar_event` | **Write.** Asks the phone to move, edit or delete an event an earlier `request_calendar_event` wrote. Events the person made are out of reach. |
 | `list_calendar_requests` | Those requests and what became of each: pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |

@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, logFood, logMedication, logMood, logWater, saveRecipe, updateMoodLog } from '../logTools';
+import { atFrom, logFood, logMedication, logMood, logWater, renameMoodTag, saveRecipe, setMedicationArchived, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -150,5 +150,21 @@ describe('atFrom', () => {
     expect([at.getDate(), at.getHours()]).toEqual([1, 12]);
     expect(atFrom(undefined)).toBeUndefined();
     expect(() => atFrom('soon')).toThrow();
+  });
+});
+
+describe('archive_medication and rename_mood_tag', () => {
+  it('archives a medicine by the log\'s spelling and brings it back', () => {
+    logMedication(replica, { name: 'Ibuprofen' });
+    expect(setMedicationArchived(replica, 'ibuprofen', true)).toEqual({ medicine: 'Ibuprofen', archived: true });
+    expect(setMedicationArchived(replica, 'Ibuprofen', false).archived).toBe(false);
+    expect(() => setMedicationArchived(replica, 'Nothing', true)).toThrow(/No medicine called/);
+  });
+
+  it('renames a context tag on every check-in that has it', () => {
+    logMood(replica, { mood: 3, contextTags: ['Wrok'] });
+    logMood(replica, { mood: 4, contextTags: ['wrok', 'Gym'] });
+    expect(renameMoodTag(replica, 'wrok', 'Work').checkIns).toBe(2);
+    expect(() => renameMoodTag(replica, 'wrok', 'Work')).toThrow(/No check-in has the tag/);
   });
 });

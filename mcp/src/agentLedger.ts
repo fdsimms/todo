@@ -528,6 +528,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    setMedicationArchived(name, archived) {
+      const spelled = replica.setMedicationArchived(name, archived);
+      log({ action: 'edited', subject: 'medication', title: 'Medication', taskId: null, note: archived ? `Archive a medicine: it leaves "what you take", and no dose is deleted` : 'Bring an archived medicine back' });
+      return spelled;
+    },
+
+    renameMoodTag(from, to) {
+      const count = replica.renameMoodTag(from, to);
+      log({ action: 'edited', subject: 'mood', title: 'Mood log', taskId: null, note: `Rename a context tag on ${count} mood ${count === 1 ? 'check-in' : 'check-ins'}` });
+      return count;
+    },
+
     updateMedicationLog(id, patch) {
       const entry = replica.updateMedicationLog(id, patch);
       log({ action: 'edited', subject: 'medication', title: entry.name, taskId: null, note: `Correct the ${entry.name} dose from ${entry.dayKey}` });
@@ -992,6 +1004,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return view;
     },
 
+    applySettings(changes) {
+      const result = replica.applySettings(changes);
+      const show = (v: unknown) => (v === null || v === undefined ? 'none' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+      for (const { key, before, after } of result) {
+        log({ action: 'edited', subject: 'automation', title: key, taskId: null, note: `Change the setting ${key} from ${show(before)} to ${show(after)}` });
+      }
+      return result;
+    },
+
     setVacationMode(on, until) {
       const outcome = replica.setVacationMode(on, until);
       const day = until ? ` until ${replica.logicalDayKeyOf(until.toISOString())}` : '';
@@ -1017,6 +1038,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     requestCalendarEvent(input) {
       const request = replica.requestCalendarEvent(input);
       log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id });
+      return request;
+    },
+
+    requestCalendarChange(targetId, change) {
+      const request = replica.requestCalendarChange(targetId, change);
+      const target = replica.calendarRequests().find(r => r.id === targetId);
+      log({
+        action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id,
+        note: 'delete' in change
+          ? `Ask the phone to remove "${target?.title ?? request.title}" from the calendar the next time it syncs`
+          : `Ask the phone to change "${target?.title ?? request.title}" on the calendar the next time it syncs`,
+      });
       return request;
     },
 

@@ -35,6 +35,7 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import { shimModule } from './expoSqliteShim';
 import type {
   CalendarRequest,
+  CalendarRequestChanges,
   Category,
   ChainItem,
   CoinEntry,
@@ -100,6 +101,7 @@ import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateSch
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
+import { SETTINGS_SPEC } from './settingsSpec';
 import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
 
 /** What `deleteTask` removed: the row and its checklist, as they were. */
@@ -855,6 +857,10 @@ export interface Replica {
 
   /** See `ReplicaSettings`. Read fresh from the settings store, so it follows a sync. */
   settings(): ReplicaSettings;
+  /** Every setting `SETTINGS_SPEC` names, as stored now. */
+  settingValues(): Record<string, unknown>;
+  /** Change settings through `SETTINGS_SPEC`'s checks and the store's setters. All are checked before any is written. */
+  applySettings(changes: Record<string, unknown>): { key: string; before: unknown; after: unknown }[];
   /**
    * The app's own look-ahead (`buildLookAhead`) from the start of the logical
    * today across `days` days: per-day rows, projected recurring occurrences,
@@ -995,6 +1001,10 @@ export interface Replica {
   updateMoodLog(id: string, patch: MoodPatch): MoodLog;
   deleteMoodLog(id: string): MoodLog;
   updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
+  /** Move a medicine out of "what you take", or back. Deletes no doses. Returns the name as the log spells it. */
+  setMedicationArchived(name: string, archived: boolean): string;
+  /** Correct a mood context tag's text on every check-in that has it, as the app's rename does. Returns how many changed. */
+  renameMoodTag(from: string, to: string): number;
   deleteMedicationLog(id: string): MedicationLog;
   /** Every calendar request, oldest first (`CalendarRequest`). */
   calendarRequests(): CalendarRequest[];
@@ -1006,6 +1016,12 @@ export interface Replica {
   requestCalendarEvent(input: CalendarRequestInput): CalendarRequest;
   /** Take back a request that is still pending. One already answered is the phone's to keep. */
   cancelCalendarRequest(id: string): CalendarRequest;
+  /**
+   * Ask the phone to change, or delete, an event an earlier request of this
+   * server's wrote (`CalendarRequest.action`). Only that event: a request names
+   * the one it changes, and nothing else on the calendar is reachable.
+   */
+  requestCalendarChange(targetId: string, change: { delete: true } | { changes: CalendarRequestChanges }): CalendarRequest;
   /** Every automation rule list, as the settings store holds it. */
   ruleLists(): RuleLists;
   /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
@@ -2325,7 +2341,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // quietly filling a screen the person cannot open.
   const requireRewardsOn = (): void => {
     if (!useSettingsStore.getState().rewardsEnabled) {
-      throw new Error('Rewards are switched off in the app. The person turns them on from the Rewards screen.');
+      throw new Error('Rewards are switched off in the app. Turn them on with update_settings (rewardsEnabled: true) if the person wants them.');
     }
   };
   const requireReward = (id: string): Reward => {
@@ -2666,6 +2682,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
 
     templates: () => db.dbGetAllTemplates(),
+
+    settingValues(): Record<string, unknown> {
+      const state = useSettingsStore.getState();
+      return Object.fromEntries(Object.entries(SETTINGS_SPEC).map(([key, spec]) => [key, spec.read(state)]));
+    },
+
+    applySettings(changes: Record<string, unknown>): { key: string; before: unknown; after: unknown }[] {
+      const unknown = Object.keys(changes).filter(k => !(k in SETTINGS_SPEC));
+      if (unknown.length > 0) throw new Error(`Not a setting this can change: ${unknown.join(', ')}. get_settings lists them.`);
+      const before = replica.settingValues();
+      // Every check first, against the state with its setters stubbed out, so
+      // one bad value refuses the call before any setting is stored.
+      const state = useSettingsStore.getState();
+      const dry = new Proxy(state, { get: (target, prop) => (typeof prop === 'string' && prop.startsWith('set') ? () => {} : Reflect.get(target, prop)) });
+      for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(dry, value);
+      db.dbTransaction(() => {
+        for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(useSettingsStore.getState(), value);
+      });
+      refresh();
+      const after = replica.settingValues();
+      return Object.keys(changes).map(key => ({ key, before: before[key], after: after[key] }));
+    },
 
     settings(): ReplicaSettings {
       const s = useSettingsStore.getState();
@@ -3230,13 +3268,46 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return request;
     },
 
+    requestCalendarChange(targetId: string, change: { delete: true } | { changes: CalendarRequestChanges }): CalendarRequest {
+      if (!db.dbGetSetting('calendarRequestDeviceId')) {
+        throw new Error('No device is set to add events to the calendar, so none can change one either.');
+      }
+      const target = db.dbGetCalendarRequest(targetId);
+      if (!target || (target.action ?? 'create') !== 'create') throw new Error(`No request for a new event with id ${targetId}. list_calendar_requests lists them.`);
+      if (target.status === 'pending') throw new Error('That event has not been added yet. Cancel the request with cancel_calendar_request and ask again with what it should be.');
+      if (target.status !== 'written') throw new Error(`That request was ${target.status}, so there is no event to change.`);
+      if (!target.eventExternalId) throw new Error('The phone could not read that event\'s calendar id when it added it, so it cannot find it again. Change it in the calendar app.');
+      const epoch = new Date(0).toISOString();
+      const request: CalendarRequest = {
+        id: generateId(),
+        title: 'changes' in change && change.changes.title ? change.changes.title : target.title,
+        // Already over, on purpose: an older build expires this rather than
+        // creating an event from it (see CalendarRequest.action).
+        startAt: epoch,
+        endAt: epoch,
+        allDay: target.allDay,
+        location: null,
+        notes: null,
+        status: 'pending',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+        action: 'delete' in change ? 'delete' : 'update',
+        targetRequestId: target.id,
+        changes: 'changes' in change ? change.changes : null,
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
     cancelCalendarRequest(id: string): CalendarRequest {
       const existing = db.dbGetCalendarRequest(id);
       if (!existing) throw new Error(`No calendar request with id ${id}.`);
       if (existing.status !== 'pending') {
         throw new Error(
           existing.status === 'written'
-            ? 'That event is already on the calendar. Only the person can remove it, in their calendar app.'
+            ? 'That event is already on the calendar. change_calendar_event with delete: true asks the phone to remove it.'
             : `That request is already ${existing.status}.`
         );
       }
@@ -3251,6 +3322,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!existing) throw new Error(`No mood check-in with id ${id}.`);
       useMoodStore.getState().removeLog(id);
       return existing;
+    },
+
+    setMedicationArchived(name: string, archived: boolean): string {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const spelled = known.find(n => medication.medicationKey(n) === key) ?? meds.getState().archived.find(n => medication.medicationKey(n) === key);
+      if (!spelled) throw new Error(`No medicine called "${name}" in the log. list_medication_logs shows them.`);
+      if (archived) meds.getState().archiveMedication(spelled);
+      else meds.getState().unarchiveMedication(spelled);
+      return spelled;
+    },
+
+    renameMoodTag(from: string, to: string): number {
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = useMoodStore.getState();
+      store.initialize();
+      const target = to.trim();
+      if (!target) throw new Error('A tag needs a name.');
+      const match = (t: string) => t.trim().toLowerCase() === from.trim().toLowerCase();
+      const hit = store.logs.flatMap(l => l.contextTags).find(match);
+      if (!hit) throw new Error(`No check-in has the tag "${from}".`);
+      const count = store.logs.filter(l => l.contextTags.some(match)).length;
+      store.renameContextTag(hit, target);
+      return count;
     },
 
     updateMedicationLog(id: string, patch: DosePatch): MedicationLog {

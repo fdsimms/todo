@@ -286,3 +286,13 @@ export function deleteRecipe(replica: Replica, id: string) {
       : {}),
   };
 }
+
+/** Archive a medicine, or bring one back. See `Replica.setMedicationArchived`. */
+export function setMedicationArchived(replica: Replica, name: string, archived: boolean): { medicine: string; archived: boolean } {
+  return { medicine: replica.setMedicationArchived(name, archived), archived };
+}
+
+/** Correct a mood context tag everywhere it was logged. */
+export function renameMoodTag(replica: Replica, from: string, to: string): { from: string; to: string; checkIns: number } {
+  return { from, to: to.trim(), checkIns: replica.renameMoodTag(from, to) };
+}
