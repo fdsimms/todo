@@ -54,7 +54,7 @@ import { spacing, radius, font, border, interaction, animation, checkboxRadius, 
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
-import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
+import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -133,6 +133,8 @@ import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, is
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
+import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
+import { DoseAmountField } from './DoseAmountField';
 import { SegmentedControl } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
@@ -330,6 +332,25 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   caffeineMg: { step: 10, max: 500 },
   waterMl: { step: 50, max: 1000 },
 };
+
+// The nutrient menu's sections. Anything in `NUTRIENT_KEYS` that no section
+// names lands in a trailing unlabelled one, so a nutrient added later is
+// offered here rather than silently missing.
+const LOG_NUTRIENT_SECTIONS: Array<{ heading: string; keys: NutrientKey[] }> = [
+  { heading: 'MACROS', keys: ['calorieKcal', 'proteinG', 'carbsG', 'fatG', 'satFatG', 'fiberG', 'sugarG'] },
+  { heading: 'MINERALS', keys: ['sodiumMg', 'calciumMg', 'ironMg', 'potassiumMg'] },
+  { heading: 'DRINKS', keys: ['caffeineMg', 'waterMl'] },
+];
+const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {
+  const named = new Set(LOG_NUTRIENT_SECTIONS.flatMap(sec => sec.keys));
+  const option = (key: NutrientKey) => ({ key, label: NUTRIENT_LABEL[key].label });
+  const groups: ChoiceGroup[] = LOG_NUTRIENT_SECTIONS.map(sec => ({
+    heading: sec.heading,
+    options: sec.keys.filter(k => NUTRIENT_KEYS.includes(k)).map(option),
+  }));
+  const rest = NUTRIENT_KEYS.filter(k => !named.has(k));
+  return rest.length > 0 ? [...groups, { options: rest.map(option) }] : groups;
+})();
 
 // The fl oz equivalent of waterMl's own step/max above, for people who think
 // in cups/fl oz rather than millilitres. Whole numbers so the stepper still
@@ -4302,10 +4323,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </TouchableOpacity>
                   ) : undefined}
                 >
-                  <SegmentedControl<NutrientKey>
-                    options={NUTRIENT_KEYS.map(key => ({ value: key, label: NUTRIENT_LABEL[key].label }))}
-                    value={logHealthMetric ?? 'waterMl'}
-                    onChange={next => {
+                  <ChoiceMenuChip
+                    variant="field"
+                    name="TaskEditor nutrient menu"
+                    noun="Nutrient"
+                    groups={LOG_NUTRIENT_GROUPS}
+                    selectedKey={logHealthMetric ?? 'waterMl'}
+                    onSelect={key => {
+                      const next = key as NutrientKey;
                       haptics.tap();
                       setLogHealthMetric(next);
                       // Re-defaulted rather than carried over, same reasoning
@@ -4314,9 +4339,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       // of the new one, so switching starts back at one step.
                       setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
                     }}
-                    columns={2}
-                    label="Nutrient"
-                    surface="card"
                   />
                   <View style={styles.logHealthAmountRow}>
                     <CountStepper
@@ -4445,23 +4467,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     it labels nothing. */}
                 {medicationName !== null && (
                   <>
-                    <TextField
-                      style={[styles.fieldBox, styles.medicationAmountInput]}
-                      value={medicationAmount}
-                      onChangeText={setMedicationAmount}
-                      placeholder="e.g. 50"
-                      placeholderTextColor={colors.textTertiary}
-                      keyboardType="decimal-pad"
-                      returnKeyType="done"
-                      accessibilityLabel="How much, optional"
-                    />
-                    <SegmentedControl
-                      options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
-                      value={medicationUnit ?? ''}
-                      columns={5}
-                      label="Unit"
-                      surface="card"
-                      onChange={next => { haptics.tap(); setMedicationUnit(next === medicationUnit ? null : next); }}
+                    <DoseAmountField
+                      name="TaskEditor dose unit menu"
+                      style={styles.medicationAmountInput}
+                      amount={medicationAmount}
+                      onChangeAmount={setMedicationAmount}
+                      unit={medicationUnit}
+                      onChangeUnit={setMedicationUnit}
                     />
                   </>
                 )}
@@ -7213,8 +7225,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
-  /** Sits between the medication's name and its unit row. */
-  medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  /** Sits below the medication's name. */
+  medicationAmountInput: { marginTop: spacing.sm },
   /** Sits below the completion timer's stepper. */
   completionTimerNoteInput: { marginTop: spacing.sm },
   /** The count in its read-out state, where a cadence is deriving it. */

@@ -26,6 +26,7 @@ import {
 } from '../utils/healthRules';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
+import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
 import { SegmentedControl } from './SegmentedControl';
 import { RuleListSheet, RuleSheetNoticeCard, RuleFieldLabel } from './RuleListSheet';
 
@@ -34,10 +35,18 @@ interface Props {
   onClose: () => void;
 }
 
-const METRIC_OPTIONS = HEALTH_METRICS.map(metric => ({
-  value: metric,
-  label: healthMetricLabel(metric),
-}));
+// Steps, sleep and exercise are read straight off the day; the rest are the
+// nutrient readings, which also carry a direction and a checkpoint hour.
+const METRIC_GROUPS: ChoiceGroup[] = [
+  {
+    heading: 'ACTIVITY',
+    options: HEALTH_METRICS.filter(m => !usesCheckpoint(m)).map(m => ({ key: m, label: healthMetricLabel(m) })),
+  },
+  {
+    heading: 'NUTRIENTS',
+    options: HEALTH_METRICS.filter(m => usesCheckpoint(m)).map(m => ({ key: m, label: healthMetricLabel(m) })),
+  },
+];
 
 const DIRECTION_OPTIONS: { value: 'under' | 'over'; label: string }[] = [
   { value: 'under', label: 'Under' },
@@ -130,29 +139,32 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
       renderEditor={(rule, update) => (
         <View style={styles.editor}>
           <RuleFieldLabel>Reading</RuleFieldLabel>
-          <SegmentedControl<HealthRuleMetric>
-            options={METRIC_OPTIONS}
-            value={rule.metric}
-            onChange={metric => update({
-              metric,
-              // Re-clamped into the new metric's range, or switching from
-              // "under 3,000 steps" to hours would leave a rule asking about
-              // three thousand hours of sleep.
-              threshold: clampHealthThreshold(metric, rule.threshold),
-              // Checkpoint hour and direction both only apply to the eight
-              // nutrients, so both are only given a starting value the first
-              // time a rule turns into one of them — everything else leaves
-              // whatever the rule already carries alone.
-              checkpointHour: usesCheckpoint(metric)
-                ? (rule.checkpointHour ?? HEALTH_METRIC_EARLIEST_HOUR[metric])
-                : rule.checkpointHour,
-              direction: usesCheckpoint(metric)
-                ? (rule.direction ?? HEALTH_METRIC_DIRECTION[metric])
-                : rule.direction,
-            })}
-            label="Reading"
-            surface="card"
-            columns={2}
+          <ChoiceMenuChip
+            variant="field"
+            name="HealthRulesSheet reading menu"
+            noun="Reading"
+            groups={METRIC_GROUPS}
+            selectedKey={rule.metric}
+            onSelect={key => {
+              const metric = key as HealthRuleMetric;
+              update({
+                metric,
+                // Re-clamped into the new metric's range, or switching from
+                // "under 3,000 steps" to hours would leave a rule asking about
+                // three thousand hours of sleep.
+                threshold: clampHealthThreshold(metric, rule.threshold),
+                // Checkpoint hour and direction both only apply to the eight
+                // nutrients, so both are only given a starting value the first
+                // time a rule turns into one of them — everything else leaves
+                // whatever the rule already carries alone.
+                checkpointHour: usesCheckpoint(metric)
+                  ? (rule.checkpointHour ?? HEALTH_METRIC_EARLIEST_HOUR[metric])
+                  : rule.checkpointHour,
+                direction: usesCheckpoint(metric)
+                  ? (rule.direction ?? HEALTH_METRIC_DIRECTION[metric])
+                  : rule.direction,
+              });
+            }}
           />
 
           {usesCheckpoint(rule.metric) && (
