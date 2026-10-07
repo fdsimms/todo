@@ -5,6 +5,7 @@ import { dayKeyToDate } from './dateUtils';
 import type { CookingWindow } from './cookingStats';
 import type { FoodDayInput } from './moodInsights';
 import { isNutrientOnlyEntry } from './nutrientLog';
+import { dayProduce, type RecipeProduceResolver } from './produceServings';
 
 /**
  * What the Stats screen can say about eating, derived from food log entries
@@ -201,6 +202,63 @@ export function nutritionCounts(
     daysAveraged,
     entries: count,
   };
+}
+
+/** The average day's vegetable and fruit servings, and what it was built on. */
+export interface ProduceAverage {
+  vegetable: number;
+  fruit: number;
+  /** Complete, finished days the average divides by. */
+  days: number;
+  /** Complete days left out because an entry on them could not be measured. */
+  daysLeftOut: number;
+}
+
+/**
+ * The average day's servings of vegetables and fruit, over the window's
+ * completed days.
+ *
+ * **Same pool as `nutrientAverages`**: complete days (two distinct meals) that
+ * have finished, and a day any of whose entries could not be measured
+ * (`dayProduce`'s `unmeasured`) is left out rather than averaged in low. That
+ * is the coverage rule `nutrientAverages` applies for the same reason: across
+ * days there is nowhere to print "from 1 of 3 entries", and a day that was
+ * unmeasurable would read as a day of little. The days left out travel back so
+ * the screen can say so. Null when no day qualifies, never an average of zero.
+ */
+export function produceAverage(
+  entries: readonly FoodLogEntry[],
+  window: CookingWindow,
+  recipeGrams?: RecipeProduceResolver,
+): ProduceAverage | null {
+  const byDay = new Map<string, FoodLogEntry[]>();
+  for (const entry of inWindow(entries, window)) {
+    if (entry.dayKey >= window.todayKey) continue;
+    const day = byDay.get(entry.dayKey);
+    if (day) day.push(entry);
+    else byDay.set(entry.dayKey, [entry]);
+  }
+
+  let vegetable = 0;
+  let fruit = 0;
+  let days = 0;
+  let daysLeftOut = 0;
+  for (const dayEntries of byDay.values()) {
+    const slots = new Set(
+      dayEntries.filter(e => !isNutrientOnlyEntry(e)).map(e => e.slot ?? 'none'),
+    );
+    if (slots.size < COMPLETE_DAY_SLOTS) continue;
+    const day = dayProduce(dayEntries, recipeGrams);
+    if (day.unmeasured > 0) {
+      daysLeftOut += 1;
+      continue;
+    }
+    vegetable += day.vegetable;
+    fruit += day.fruit;
+    days += 1;
+  }
+  if (days === 0) return null;
+  return { vegetable: vegetable / days, fruit: fruit / days, days, daysLeftOut };
 }
 
 /**

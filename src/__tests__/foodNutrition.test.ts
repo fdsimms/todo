@@ -46,6 +46,15 @@ describe('parseFoodNutrition', () => {
     expect(parseFoodNutrition(serializeFoodNutrition(original))).toEqual(original);
   });
 
+  it('keeps a food category through a round trip, and adds no key when there is none', () => {
+    const withCategory = nutrition({ foodCategory: 'Vegetables and Vegetable Products' });
+    expect(parseFoodNutrition(serializeFoodNutrition(withCategory))?.foodCategory)
+      .toBe('Vegetables and Vegetable Products');
+    const without = parseFoodNutrition(serializeFoodNutrition(nutrition({})));
+    expect(without).not.toBeNull();
+    expect('foodCategory' in without!).toBe(false);
+  });
+
   it('answers null for an empty column, which is every row predating the migration', () => {
     expect(parseFoodNutrition(null)).toBeNull();
     expect(parseFoodNutrition(undefined)).toBeNull();

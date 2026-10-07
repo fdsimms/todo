@@ -238,6 +238,11 @@ describe('the replica', () => {
     replica.refresh();
 
     expect(replica.foodLogEntries('2026-09-01', '2026-09-30').map(e => e.label)).toEqual(['Porridge']);
+    // The servings estimate runs against the real catalog, recipes and swaps. A
+    // porridge entry is not produce, so the day exists and counts as none.
+    expect(replica.foodProduce(replica.foodLogEntries('2026-09-01', '2026-09-30'))).toEqual([
+      { dayKey: '2026-09-11', vegetable: 0, fruit: 0, unmeasured: 0 },
+    ]);
 
     const mood = replica.moodLogs('2026-09-01', '2026-09-30');
     expect(mood).toHaveLength(1);

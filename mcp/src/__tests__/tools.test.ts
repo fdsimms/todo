@@ -119,6 +119,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
       return d.toISOString().slice(0, 10);
     },
     foodLogEntries: () => [],
+    foodProduce: () => [],
     foodTotals: () => ({ total: {}, reported: {}, entries: 0 }),
     moodLogs: () => [],
     medicationLogs: () => [],
@@ -622,6 +623,25 @@ describe('listFoodLog', () => {
     expect(result.range).toEqual({ from: '2026-09-05', to: '2026-09-11' });
     expect(result.entries).toEqual([
       { id: 'f1', dayKey: '2026-09-11', at: '2026-09-11T08:00:00.000Z', slot: 'breakfast', label: 'Porridge' },
+    ]);
+  });
+
+  it('estimates vegetable and fruit servings per day, and says what it could not weigh', () => {
+    const result = listFoodLog(
+      stubReplica({
+        foodLogEntries: () => [
+          entry({ id: 'f1', label: 'Carrots' }),
+          entry({ id: 'f3', label: 'Broccoli', dayKey: '2026-09-10' }),
+        ],
+        foodProduce: () => [
+          { dayKey: '2026-09-10', vegetable: 0, fruit: 0, unmeasured: 1 },
+          { dayKey: '2026-09-11', vegetable: 2.2, fruit: 1.4, unmeasured: 0 },
+        ],
+      })
+    );
+    expect(result.produce).toEqual([
+      { dayKey: '2026-09-10', vegetable: 0, fruit: 0, unmeasured: 1 },
+      { dayKey: '2026-09-11', vegetable: 2, fruit: 1.5, unmeasured: 0 },
     ]);
   });
 

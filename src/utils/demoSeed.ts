@@ -2202,6 +2202,13 @@ function seedFoodLog(today: Date): void {
     // The low patch in `seedMoodLog` runs 8 to 11 days back. Plainer, smaller
     // dinners through it.
     const lean = daysAgo >= 8 && daysAgo <= 11;
+    // Vegetables and fruit at lunch, so the servings rows on the day view and
+    // on Stats have something to count (`produceServings.ts`). Spinach every
+    // day and a banana on alternate ones, so the average is not a round number.
+    meals.push({ name: 'Spinach', quantity: '85 g', slot: 'lunch', hour: 12, daysAgo });
+    if (daysAgo % 2 === 0) {
+      meals.push({ name: 'Bananas', quantity: '1 medium', slot: 'lunch', hour: 12, daysAgo });
+    }
     meals.push({
       name: 'Potatoes',
       quantity: lean ? '150 g' : '250 g',
@@ -4002,6 +4009,28 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     portions: [{ amount: 1, label: 'tbsp', grams: 14.2 }],
     source: 'fdc',
     sourceId: '173410',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  // The two foods the servings estimate reads: a leafy green and a fruit with a
+  // weighed portion, so a count ("1 medium") resolves to grams.
+  setItemNutrition(itemNamed('Spinach').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 23, proteinG: 2.9, carbsG: 3.6, fatG: 0.4, fiberG: 2.2, sugarG: 0.4, sodiumMg: 79 },
+    portions: [{ amount: 1, label: 'cup', grams: 30 }],
+    source: 'fdc',
+    sourceId: '168462',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  setItemNutrition(itemNamed('Bananas').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 89, proteinG: 1.1, carbsG: 22.8, fatG: 0.3, fiberG: 2.6, sugarG: 12.2, sodiumMg: 1 },
+    portions: [{ amount: 1, label: 'medium', grams: 118 }],
+    source: 'fdc',
+    sourceId: '173944',
     recordedAt: subDays(today, 30).toISOString(),
   });
   setItemNutrition(itemNamed('Milk').id, {

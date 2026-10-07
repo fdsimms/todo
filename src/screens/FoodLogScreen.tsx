@@ -46,6 +46,9 @@ import {
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
+import { dayProduce, formatServings } from '../utils/produceServings';
+import { recipeProduceResolver } from '../utils/recipeProduce';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
 import { effectiveWaterTargetMl, waterExerciseBoostApplies } from '../utils/waterExerciseBoost';
 import { activeEnergyBoostKcal } from '../utils/activeEnergyBoost';
@@ -56,6 +59,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { featureHidden } from '../utils/simpleMode';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
 import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
@@ -217,6 +221,8 @@ export function FoodLogScreen() {
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
   // Gated so the button can't exist for a call that would refuse — the pairing
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
@@ -406,6 +412,11 @@ export function FoodLogScreen() {
     [sections],
   );
   const totals = useMemo(() => foodLogTotals(dayEntries), [dayEntries]);
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
+  const produce = useMemo(
+    () => dayProduce(dayEntries, recipeProduceResolver(recipes, items, itemProducts, swaps)),
+    [dayEntries, recipes, items, itemProducts, swaps],
+  );
 
   // The flat row list ReorderableList actually drags — a header opens each
   // section's entries, same shape `CategoryListItem` gives Today's own
@@ -1088,6 +1099,27 @@ export function FoodLogScreen() {
     </View>
   );
 
+  // Counts, never a score: no target, no colour, nothing that reads as a
+  // result (`produceServings.ts`). Withheld on a day with nothing to say so an
+  // empty day does not carry a row of zeros.
+  const produceCard = produce.vegetable > 0 || produce.fruit > 0 || produce.unmeasured > 0 ? (
+    <View style={styles.produceCard}>
+      <View style={styles.totalRow}>
+        <Text style={styles.totalLabel}>Vegetables</Text>
+        <Text style={styles.totalValue}>{`about ${formatServings(produce.vegetable)}`}</Text>
+      </View>
+      <View style={styles.totalRow}>
+        <Text style={styles.totalLabel}>Fruit</Text>
+        <Text style={styles.totalValue}>{`about ${formatServings(produce.fruit)}`}</Text>
+      </View>
+      <Text style={styles.boostNote}>
+        {produce.unmeasured > 0
+          ? `Servings of 80 g. ${produce.unmeasured === 1 ? '1 entry' : `${produce.unmeasured} entries`} could not be measured and ${produce.unmeasured === 1 ? 'is' : 'are'} not counted.`
+          : 'Servings of 80 g, estimated from food names and weights.'}
+      </Text>
+    </View>
+  ) : null;
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
@@ -1198,6 +1230,7 @@ export function FoodLogScreen() {
           <View style={styles.plannedAlone}>
             {plannedCard}
             {totalsCard}
+            {produceCard}
             {waterCard}
           </View>
         </ScrollView>
@@ -1225,6 +1258,7 @@ export function FoodLogScreen() {
               <>
               {plannedCard}
               {totalsCard}
+              {produceCard}
               {waterCard}
               </>
             }
@@ -1583,6 +1617,13 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.md,
     },
     totalsEmptyNote: { marginBottom: spacing.md },
+    produceCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
     waterCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

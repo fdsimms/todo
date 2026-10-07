@@ -79,8 +79,12 @@ import {
   mostLoggedFoods,
   nutrientAverages,
   nutritionCounts,
+  produceAverage,
   sourceMix,
 } from '../utils/nutritionStats';
+import { formatServings } from '../utils/produceServings';
+import { recipeProduceResolver } from '../utils/recipeProduce';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { capitalize } from '../utils/capitalize';
@@ -404,6 +408,8 @@ export function StatsScreen() {
   // computed at mount would still end on the day the app was opened.
   const foodEntries = useFoodLogStore(s => s.windowEntries);
   const groceryItems = useGroceryStore(s => s.items);
+  const itemProducts = useGroceryStore(s => s.itemProducts);
+  const itemSubs = useGroceryStore(s => s.itemSubs);
   const loadFoodWindow = useFoodLogStore(s => s.loadWindow);
   useFocusEffect(
     useCallback(() => {
@@ -445,6 +451,11 @@ export function StatsScreen() {
     return {
       counts: nutritionCounts(foodEntries, span),
       averages: nutrientAverages(foodEntries, span),
+      produce: produceAverage(
+        foodEntries,
+        span,
+        recipeProduceResolver(recipes, groceryItems, itemProducts, standingSwapMap(itemSubs, groceryItems)),
+      ),
       mix: sourceMix(foodEntries, span),
       // A food is named by the catalog row or recipe it is, as it is called
       // now, rather than by whichever box of it was logged last.
@@ -453,7 +464,7 @@ export function StatsScreen() {
         recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
       }),
     };
-  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, recipes]);
+  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, itemProducts, itemSubs, recipes]);
   // Asked of the whole month whichever span is showing, so a week with nothing
   // logged in it keeps the section, and with it the control that switches back.
   const hasEating = useMemo(
@@ -1011,7 +1022,7 @@ export function StatsScreen() {
                 {eating.averages.map((row, i) => (
                   <View
                     key={row.key}
-                    style={[styles.row, i < eating.averages.length - 1 && styles.rowBorder]}
+                    style={[styles.row, (i < eating.averages.length - 1 || eating.produce !== null) && styles.rowBorder]}
                   >
                     <View style={styles.instanceMain}>
                       <Text style={styles.rowText}>{NUTRIENT_LABEL[row.key].label} a day</Text>
@@ -1029,6 +1040,28 @@ export function StatsScreen() {
                     </Text>
                   </View>
                 ))}
+                {/* Counts, never a score, and an estimate from food names and
+                    weights (`produceServings.ts`), so the rows say so. */}
+                {eating.produce !== null && (
+                  <>
+                    <View style={[styles.row, styles.rowBorder]}>
+                      <View style={styles.instanceMain}>
+                        <Text style={styles.rowText}>Vegetables a day</Text>
+                        <Text style={styles.instanceMeta}>
+                          {`Servings of 80 g, across ${eating.produce.days} ${eating.produce.days === 1 ? 'day' : 'days'}`
+                            + (eating.produce.daysLeftOut > 0
+                              ? `. ${eating.produce.daysLeftOut} ${eating.produce.daysLeftOut === 1 ? 'day was' : 'days were'} left out because some entries could not be measured.`
+                              : '')}
+                        </Text>
+                      </View>
+                      <Text style={styles.cookValue}>{`about ${formatServings(eating.produce.vegetable)}`}</Text>
+                    </View>
+                    <View style={styles.row}>
+                      <Text style={styles.rowText}>Fruit a day</Text>
+                      <Text style={styles.cookValue}>{`about ${formatServings(eating.produce.fruit)}`}</Text>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
             </StaggerIn>

@@ -9,6 +9,7 @@ import {
   mostLoggedFoods,
   nutrientAverages,
   nutritionCounts,
+  produceAverage,
   sourceMix,
 } from '../utils/nutritionStats';
 
@@ -599,5 +600,33 @@ describe('mostLoggedFoods by food', () => {
     const top = mostLoggedFoods(rows, WINDOW, 5, { items: new Map([['bread', 'Bread']]) });
     expect(top[0]).toMatchObject({ key: 'item:bread', label: 'Bread', count: 2 });
     expect(top[1]).toMatchObject({ key: 'porridge', label: 'Porridge', count: 1 });
+  });
+});
+
+describe('produceAverage', () => {
+  /** A complete day with some produce on it: 160 g of carrot and 80 g of apple. */
+  function produceDay(dayKey: string, extra: FoodLogEntry[] = []): FoodLogEntry[] {
+    return [
+      { ...entry(dayKey, { label: 'Carrots', slot: 'lunch' }), grams: 160 },
+      { ...entry(dayKey, { label: 'Apple', slot: 'snack' }), grams: 80 },
+      ...extra,
+    ];
+  }
+
+  it('averages complete, finished days, and leaves today out', () => {
+    const entries = [...produceDay('2026-09-08'), ...produceDay('2026-09-09'), ...produceDay('2026-09-10')];
+    expect(produceAverage(entries, WINDOW)).toEqual({ vegetable: 2, fruit: 1, days: 2, daysLeftOut: 0 });
+  });
+
+  it('is null when nothing qualifies, rather than an average of zero', () => {
+    expect(produceAverage([], WINDOW)).toBeNull();
+    // One meal is not a day.
+    expect(produceAverage([entry('2026-09-08', { label: 'Carrots' })], WINDOW)).toBeNull();
+  });
+
+  it('leaves out a day with an entry it could not measure, and says so', () => {
+    const unweighed = { ...entry('2026-09-08', { label: 'Broccoli', slot: 'dinner' }), grams: null };
+    const entries = [...produceDay('2026-09-08', [unweighed]), ...produceDay('2026-09-09')];
+    expect(produceAverage(entries, WINDOW)).toEqual({ vegetable: 2, fruit: 1, days: 1, daysLeftOut: 1 });
   });
 });
