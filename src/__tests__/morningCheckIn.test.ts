@@ -238,6 +238,18 @@ describe('isMorningCheckInCandidate', () => {
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
   });
 
+  // A weekly target's row keeps its spawn day as dueDate until the week ends,
+  // so it read as overdue every morning in between.
+  it('is false for a weekly target mid-week', () => {
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, targetCount: 3, quotaPeriod: 'week' });
+    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+  });
+
+  it('is false for a daily target', () => {
+    const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, targetCount: 4 });
+    expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
+  });
+
   it('is false for a subtask', () => {
     const task = makeTask({ dueDate: localIso('2025-06-09T00:00'), deadline: DEADLINE, parentId: 'parent-1' });
     expect(isMorningCheckInCandidate(task, DAY_RESET)).toBe(false);
