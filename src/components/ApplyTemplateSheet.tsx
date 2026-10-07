@@ -1,3 +1,9 @@
+// The sheet that runs a template. One component holding most of the file, so
+// grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   QuestionRow, AnchorRow  the two row components after it
+//   makeStyles              styles, at the bottom
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -135,6 +141,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * on what the answers say), then create them all as real tasks.
  */
 export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
+  // ==== store bindings and the template tree ====
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
   // clears the template in the same commit that lowers `visible`, and that
@@ -167,6 +174,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   );
   const away = (template?.anchorsAreAway ?? false) || (targetProject ? awaySpanOf(targetProject) !== null : false);
 
+  // ==== local state: the selection, anchors, run name and answers ====
   // Leaf item ids the user has checked — the only ids the checklist UI
   // itself needs to track; ref-item ids are derived at apply time.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -205,6 +213,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // ==== effects: loading a template into the sheet, and re-selecting on answers ====
   useEffect(() => {
     if (visible && template) {
       // Non-optional leaves start checked; optional ones (and everything under
@@ -253,6 +262,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev));
   }, [answersKey, visible, tree]);
 
+  // ==== exits and gestures: dismiss, open the template, the calendar, swipe-down ====
   const dismiss = (onDismissed?: () => void) => {
     Keyboard.dismiss();
     sheet.hide(() => {
@@ -318,6 +328,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
   if (!template) return null;
 
+  // ==== the checklist: ticking items, and what the selection decides (container, blanks, apply) ====
   const toggleItem = (id: string) => {
     haptics.tap();
     setSelectedIds(prev => {
@@ -396,6 +407,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     dismiss(() => onApplied?.(created));
   };
 
+  // ==== the checklist rows ====
   const renderApplyTreeNodes = (nodes: ApplyTreeNode[], depth: number) =>
     nodes.map((node, idx) => {
       const isLast = idx === nodes.length - 1;
@@ -497,6 +509,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     );
   };
 
+  // ==== render. Everything below is JSX; landmarks are the `{/* … */}` block comments ====
   return (
     <SheetModal
       visible={visible}
