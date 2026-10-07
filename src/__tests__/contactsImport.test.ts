@@ -8,6 +8,7 @@ import {
   contactBirthday,
   contactPersonDraft,
   describeCandidateBirthday,
+  fillFromContactPatch,
   filterBrowsableContacts,
   normalizePhone,
   rankContacts,
@@ -287,5 +288,40 @@ describe('contactPersonDraft', () => {
     const draft = contactPersonDraft(candidate({ phoneNumber: '   ', email: '' }));
     expect(draft.phoneNumber).toBeNull();
     expect(draft.email).toBeNull();
+  });
+});
+
+describe('fillFromContactPatch', () => {
+  const draft = {
+    name: 'Gideon Reyes', phoneNumber: '555 123 4567', email: 'g@example.com',
+    birthdayMonth: 3, birthdayDay: 14, birthYear: 1992,
+  };
+  const empty = { phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null };
+
+  it('fills every empty field', () => {
+    expect(fillFromContactPatch(empty, draft)).toEqual({
+      phoneNumber: '555 123 4567', email: 'g@example.com',
+      birthdayMonth: 3, birthdayDay: 14, birthYear: 1992,
+    });
+  });
+
+  it('never overwrites what the person already has', () => {
+    const full = { phoneNumber: '111', email: 'a@b.c', birthdayMonth: 1, birthdayDay: 2, birthYear: null };
+    expect(fillFromContactPatch(full, draft)).toEqual({});
+  });
+
+  it('treats a blank string as empty', () => {
+    expect(fillFromContactPatch({ ...empty, phoneNumber: '  ' }, draft).phoneNumber).toBe('555 123 4567');
+  });
+
+  it('skips fields the contact does not have', () => {
+    const bare = { ...draft, phoneNumber: null, email: null, birthdayMonth: null, birthdayDay: null, birthYear: null };
+    expect(fillFromContactPatch(empty, bare)).toEqual({});
+  });
+
+  it('takes the birthday as a whole, so the year never lands beside another date', () => {
+    const patch = fillFromContactPatch({ ...empty, birthdayMonth: 5, birthdayDay: 9 }, draft);
+    expect(patch.birthYear).toBeUndefined();
+    expect(patch.birthdayMonth).toBeUndefined();
   });
 });

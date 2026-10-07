@@ -41,6 +41,12 @@ interface Props {
   /** Called once per pick. The sheet stays open so a run of them is possible. */
   onPick: (draft: ContactPersonDraft) => void;
   onClose: () => void;
+  /**
+   * Set when the pick fills in somebody who is already on file. That person is
+   * left out of the duplicate check (they would otherwise hide their own
+   * contact), and the sheet closes after one pick, since a fill has one target.
+   */
+  fillingPersonId?: string;
 }
 
 /**
@@ -70,14 +76,18 @@ interface Props {
  * the ordinary "type a name" path with one line saying so and no nagging: the
  * People screen's own add field is right behind this sheet.
  */
-export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
+export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // Everybody, archived included: a contact already on file as an archived
   // person is still already on file, and offering them again would mint the
   // duplicate this check exists to prevent.
-  const people = usePersonStore(useShallow(s => s.people));
+  const allPeople = usePersonStore(useShallow(s => s.people));
+  const people = useMemo(
+    () => (fillingPersonId ? allPeople.filter(p => p.id !== fillingPersonId) : allPeople),
+    [allPeople, fillingPersonId]
+  );
 
   const [permission, setPermission] = useState<ContactsPermission | null>(null);
   const [scope, setScope] = useState<ContactsAccessScope | null>(null);
@@ -162,8 +172,9 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
     // without the search having to run again — and a re-search that turns it
     // up again still hides it, since `alreadyAdded` can only see the person
     // once the store has caught up.
-    setAdded(prev => [...prev, candidate.id]);
     onPick(contactPersonDraft(candidate));
+    if (fillingPersonId) { onClose(); return; }
+    setAdded(prev => [...prev, candidate.id]);
   };
 
   const askPermission = async () => {
@@ -184,7 +195,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
       header={
         <SheetHeader
           bare
-          title="From contacts"
+          title={fillingPersonId ? 'Fill from contacts' : 'From contacts'}
           left={<SheetHeaderButton label="Done" onPress={onClose} />}
           right={<View style={styles.headerSpacer} />}
         />
@@ -242,13 +253,13 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
                       onPress={() => pick(candidate)}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`Add ${candidate.name}${meta ? `, ${meta}` : ''}`}
+                      accessibilityLabel={`${fillingPersonId ? 'Use' : 'Add'} ${candidate.name}${meta ? `, ${meta}` : ''}`}
                     >
                       <View style={styles.rowText}>
                         <Text style={styles.rowName} numberOfLines={1}>{candidate.name}</Text>
                         {!!meta && <Text style={styles.rowMeta} numberOfLines={1}>{meta}</Text>}
                       </View>
-                      <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+                      <Ionicons name={fillingPersonId ? 'checkmark-circle-outline' : 'add-circle-outline'} size={iconSize.md} color={colors.accent} />
                     </TouchableOpacity>
                   </View>
                 );
