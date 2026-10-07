@@ -39,10 +39,17 @@ struct WidgetTask: Codable, Identifiable {
     let eventTitle: String?
     /// Set only on a row of `upcomingTasks`: when it reaches Today.
     let visibleAt: String?
+    /// The reminder's instant, which the row shows as a clock time.
+    let reminderTime: String?
+    /// Whether the checkbox has to open the app (`widgetTapNeedsApp` in the
+    /// app). True when absent: a snapshot from before the field existed gets
+    /// the checkbox it always had.
+    let needsApp: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
         case targetCount, progressCount, targetUnit, eventTitle, visibleAt
+        case reminderTime, needsApp
     }
 
     init(from decoder: Decoder) throws {
@@ -60,7 +67,16 @@ struct WidgetTask: Codable, Identifiable {
         targetUnit = try c.decodeIfPresent(String.self, forKey: .targetUnit)
         eventTitle = try c.decodeIfPresent(String.self, forKey: .eventTitle)
         visibleAt = try c.decodeIfPresent(String.self, forKey: .visibleAt)
+        reminderTime = try c.decodeIfPresent(String.self, forKey: .reminderTime)
+        needsApp = try c.decodeIfPresent(Bool.self, forKey: .needsApp) ?? true
     }
+
+    var reminderDate: Date? { reminderTime.flatMap(isoDate) }
+
+    /// A daily target whose tap is one unit rather than the whole task — the
+    /// app's `isQuotaTask` for every target above one. A target of one is
+    /// ticked like any task, and the app works out which it is.
+    var tapsAreUnits: Bool { (targetCount ?? 0) > 1 }
 
     var visibleAtDate: Date? { visibleAt.flatMap(isoDate) }
 
@@ -103,13 +119,16 @@ struct WidgetGroceryList: Codable, Identifiable {
     /// same field on the JS side for why `items.count` can't stand in.
     let total: Int
     let items: [String]
+    /// The same rows with ids, for the checkbox. Built from `items` with no
+    /// ids (so no checkbox) when the snapshot predates the field.
+    let rows: [WidgetGroceryRow]
 
     /// How much of the list is already in the trolley, 0...1.
     var boughtFraction: Double {
         total > 0 ? Double(total - remaining) / Double(total) : 0
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, remaining, total, items }
+    enum CodingKeys: String, CodingKey { case id, name, remaining, total, items, rows }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -117,8 +136,39 @@ struct WidgetGroceryList: Codable, Identifiable {
         name = try c.decode(String.self, forKey: .name)
         remaining = try c.decodeIfPresent(Int.self, forKey: .remaining) ?? 0
         total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
-        items = try c.decodeIfPresent([String].self, forKey: .items) ?? []
+        // Through a local: the `??` fallback is an autoclosure, and reading
+        // `self.items` there captures self before `rows` is set.
+        let decodedItems = try c.decodeIfPresent([String].self, forKey: .items) ?? []
+        items = decodedItems
+        rows = try c.decodeIfPresent([WidgetGroceryRow].self, forKey: .rows)
+            ?? decodedItems.map { WidgetGroceryRow(id: "", name: $0, choice: false) }
     }
+}
+
+/// One unbought row on a list (`WidgetGroceryRow` in widgetSnapshot.ts).
+struct WidgetGroceryRow: Codable, Identifiable {
+    /// Empty when the snapshot carried names only; such a row has no checkbox.
+    let id: String
+    let name: String
+    /// One side of an either/or, which is ticked in the app, not here.
+    let choice: Bool
+
+    init(id: String, name: String, choice: Bool) {
+        self.id = id
+        self.name = name
+        self.choice = choice
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, choice }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try c.decode(String.self, forKey: .name)
+        choice = try c.decodeIfPresent(Bool.self, forKey: .choice) ?? false
+    }
+
+    var canCheck: Bool { !id.isEmpty && !choice }
 }
 
 struct WidgetGroceries: Codable {

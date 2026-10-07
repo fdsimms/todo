@@ -99,6 +99,7 @@ const snapshotInput = (overrides: Partial<Parameters<typeof buildWidgetSnapshot>
   events: null as readonly BusyEvent[] | null,
   dayEnd: new Date(2026, 7, 7),
   upcoming: [] as { task: Task; visibleAt: Date }[],
+  mealLogPrompt: true,
   ...overrides,
 });
 
@@ -126,6 +127,16 @@ describe('toWidgetTask', () => {
 
   it('leaves targetCount null on an ordinary task', () => {
     expect(toWidgetTask(makeTask()).targetCount).toBeNull();
+  });
+
+  it('carries the reminder as a stamp for the widget to format', () => {
+    const reminderTime = new Date(2026, 7, 6, 17).toISOString();
+    expect(toWidgetTask(makeTask({ reminderTime })).reminderTime).toBe(reminderTime);
+  });
+
+  it('marks the rows whose checkbox has to open the app', () => {
+    expect(toWidgetTask(makeTask()).needsApp).toBe(false);
+    expect(toWidgetTask(makeTask({ deliverableKind: 'text' })).needsApp).toBe(true);
   });
 
   describe('eventTitle', () => {
@@ -182,6 +193,20 @@ describe('buildGroceries', () => {
     );
     expect(built.lists[0].remaining).toBe(1);
     expect(built.lists[0].items).toEqual(['Milk']);
+  });
+
+  it('gives the widget each row with its id, flagging either/or rows it must not tick', () => {
+    const built = buildGroceries(
+      groceryInput({
+        items: [makeItem(), makeItem({ id: 'i2', name: 'Pears', sortOrder: 1 })],
+        listEntries: [makeEntry(), makeEntry({ itemId: 'i2', sortOrder: 1, choiceGroup: 'fruit' })],
+      }),
+      NOW
+    );
+    expect(built.lists[0].rows).toEqual([
+      { id: 'i1', name: 'Milk', choice: false },
+      { id: 'i2', name: 'Pears', choice: true },
+    ]);
   });
 
   it('reports a live trip as a name and the raw stamp, leaving the minutes to Swift', () => {

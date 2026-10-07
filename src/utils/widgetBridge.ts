@@ -43,6 +43,11 @@ export interface WidgetBridge {
    * half re-encodes it from decoded payloads, so this is always parseable.
    */
   drainPendingDisposals: () => Promise<string>;
+  /**
+   * Taps the widget applied without opening the app (`QuietTap[]` as JSON —
+   * see widgetQuietTaps.ts). A string for the same reason as the line above.
+   */
+  drainQuietWidgetTaps: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;

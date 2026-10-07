@@ -358,17 +358,17 @@ func taskCountLabel(_ count: Int) -> String {
 ///
 /// The count comes first because a target's row is otherwise indistinguishable
 /// from a one-tap task, and a tap on it logs one unit rather than finishing it.
-/// `unitQueued` adds the tap the app hasn't applied yet, so the number moves
+/// `queuedUnits` adds the taps the app hasn't applied yet, so the number moves
 /// the moment the checkbox is pressed, as the in-app meter does. A target of
 /// one has no count worth saying and keeps the streak.
-func taskRowDetail(_ task: WidgetTask, unitQueued: Bool = false) -> String? {
-    if let target = task.targetCount, target > 1 {
-        return "\(task.progressCount + (unitQueued ? 1 : 0))/\(target)"
+func taskRowDetail(_ task: WidgetTask, queuedUnits: Int = 0) -> String? {
+    if task.tapsAreUnits, let target = task.targetCount {
+        return "\(task.progressCount + queuedUnits)/\(target)"
     }
     return task.streakCount > 1 ? "\(task.streakCount)" : nil
 }
 
 func taskRowDetailSymbol(_ task: WidgetTask) -> String? {
-    if let target = task.targetCount, target > 1 { return nil }
+    if task.tapsAreUnits { return nil }
     return task.streakCount > 1 ? "flame.fill" : nil
 }

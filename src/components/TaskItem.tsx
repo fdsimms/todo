@@ -2247,10 +2247,13 @@ export const TaskItem = React.memo(function TaskItem({
   // the same pop-checkmark-and-fade animation a real tap gets instead of the
   // row just silently vanishing.
   //
-  // Dispatched the way the checkbox's own onPress is, not straight to
-  // handleComplete: a daily target's widget tap is one unit, the same as a tap
-  // on its meter here. Sent to handleComplete it finished the whole target, so
-  // one glass logged from the home screen marked all eight drunk.
+  // **A tap made somewhere else is this row's own tap, so it dispatches the way
+  // the checkbox's onPress does** (rotation → pick, target → one unit, else
+  // complete), never straight to handleComplete. The widget and a Live Activity
+  // both arrive here, and a handleComplete shortcut finishes a daily target's
+  // every remaining unit on one tap. The same split in the paths that can't
+  // reach a row goes through completionTapFor (TodayScreen's widget drain,
+  // widgetQuietTaps.ts).
   useEffect(() => {
     if (!autoComplete) return;
     if (isRotation) handleRotationTap();
