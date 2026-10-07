@@ -82,7 +82,7 @@ import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -2069,7 +2069,11 @@ export const TaskItem = React.memo(function TaskItem({
       }
       scheduleQuotaSendOff();
     }
-    setLastAction({ label: 'Logged', undo: () => unlogRotationUnit(task.id) });
+    setLastAction({
+      label: 'Logged',
+      undo: () => unlogRotationUnit(task.id),
+      redo: () => useTaskStore.getState().logRotationUnit(task.id, itemId),
+    });
   };
 
   // Pushed out by every tap; when it finally lapses the row plays the beats a
@@ -3020,7 +3024,11 @@ export const TaskItem = React.memo(function TaskItem({
                   // it drops the wait's start and follow-up day with it.
                   const snapshot = { ...task };
                   updateTask(task.id, { waitingOnPersonId: null });
-                  setLastAction({ label: 'Stopped waiting', undo: () => updateTask(snapshot.id, snapshot) });
+                  setLastAction({
+                    label: 'Stopped waiting',
+                    undo: () => updateTask(snapshot.id, snapshot),
+                    redo: redoRestoringRows([task.id]),
+                  });
                 }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
@@ -4362,6 +4370,7 @@ export const TaskItem = React.memo(function TaskItem({
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
+              redo: redoRestoringRows([task.id]),
             });
             setShowWhenPicker(false);
           }))}
@@ -4378,6 +4387,7 @@ export const TaskItem = React.memo(function TaskItem({
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
+              redo: redoRestoringRows([task.id]),
             });
             setShowWhenPicker(false);
           }}

@@ -12,7 +12,7 @@ import type { Task, TaskGroup } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { getVisibleAt, isRelevantToGroupToday, isTaskDeferred, isTaskVisible } from '../utils/visibilityUtils';
 import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -308,6 +308,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         setLastAction({
           label: `${previous.length} task${previous.length === 1 ? '' : 's'} moved to ${category ? categoryLabel(category, categories) : 'no category'}`,
           undo: () => previous.forEach(p => updateTask(p.id, { category: p.category })),
+          redo: redoRestoringRows(previous.map(p => p.id)),
         });
       }
     }

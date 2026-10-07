@@ -13,7 +13,7 @@ import { parseLabelledLink, linkHost } from '../utils/textLinks';
 import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { templateFromProject } from '../utils/projectTemplate';
@@ -325,6 +325,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             setLastAction({
               label: `Defaults applied to ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}`,
               undo: () => { for (const snap of snapshots) updateTask(snap.id, snap); },
+              redo: redoRestoringRows(snapshots.map(t => t.id)),
             });
           },
         },

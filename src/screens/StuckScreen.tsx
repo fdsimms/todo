@@ -5,7 +5,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { resolvePerson } from '../utils/peopleRegistry';
@@ -264,7 +264,11 @@ export function StuckScreen() {
     updateTask(task.id, { ...blockerFields([]), waitingOnPersonId: null, answerGate: null });
     // What it was waiting on is gone from the row once released, so the
     // only way back from a slip is here.
-    setLastAction({ label: 'Released', undo: () => updateTask(snapshot.id, snapshot) });
+    setLastAction({
+      label: 'Released',
+      undo: () => updateTask(snapshot.id, snapshot),
+      redo: redoRestoringRows([task.id]),
+    });
   }, [updateTask, setLastAction]);
 
   const finishBlocker = (blocker: Task) => {

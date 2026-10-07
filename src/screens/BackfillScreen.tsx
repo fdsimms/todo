@@ -8,7 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
 import { describeReminderTracksVisibility } from '../utils/dateUtils';
 import { getVisibleAt } from '../utils/visibilityUtils';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -905,7 +905,11 @@ export function BackfillScreen() {
       const stepId = activeMealSlotStepId(currentTask);
       if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
     }
-    setLastAction({ label: `${fieldLabel} set`, undo: () => updateTask(snapshot.id, snapshot) });
+    setLastAction({
+      label: `${fieldLabel} set`,
+      undo: () => updateTask(snapshot.id, snapshot),
+      redo: redoRestoringRows([snapshot.id]),
+    });
     logSession({
       itemId: currentTask.id,
       title: displayTitleFor(currentTask),
@@ -955,6 +959,7 @@ export function BackfillScreen() {
     setLastAction({
       label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
       undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+      redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
     setSkippedIds(prev => {
       const next = new Set(prev);
@@ -1118,6 +1123,7 @@ export function BackfillScreen() {
     setLastAction({
       label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
       undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+      redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
     // One write rather than `advance` per task: in a from-scratch run the
     // candidate filter doesn't drop a task that now has a value, so this is
@@ -1380,7 +1386,11 @@ export function BackfillScreen() {
       const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
       const wasMissing = isFieldMissing(currentTask, active.id, categories);
       updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
-      setLastAction({ label: `${fieldLabel} left unset`, undo: () => updateTask(snapshot.id, snapshot) });
+      setLastAction({
+        label: `${fieldLabel} left unset`,
+        undo: () => updateTask(snapshot.id, snapshot),
+        redo: redoRestoringRows([snapshot.id]),
+      });
       logSession({
         itemId: currentTask.id,
         title: displayTitleFor(currentTask),
