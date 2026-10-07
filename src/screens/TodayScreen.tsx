@@ -3371,7 +3371,7 @@ export function TodayScreen() {
               Its ids are the visible children only, so it never collapses
               while any member is still live. */}
           <CompletionCollapse taskIds={item.children.map(c => c.id)}>
-          <TaskGroupTray>
+          <TaskGroupTray collapsed={item.group.collapsed}>
             <TaskGroupHeader
               selectionMode={selectionMode}
               group={item.group}
@@ -3509,7 +3509,7 @@ export function TodayScreen() {
   const renderLaterGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
-      <TaskGroupTray>
+      <TaskGroupTray collapsed={group.collapsed}>
         <TaskGroupHeader
           selectionMode={selectionMode}
           group={group}
@@ -3572,7 +3572,7 @@ export function TodayScreen() {
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
       <CompletionCollapse taskIds={children.map(c => c.id)}>
-      <TaskGroupTray>
+      <TaskGroupTray collapsed={group.collapsed}>
         <TaskGroupHeader
           selectionMode={selectionMode}
           group={group}
@@ -3655,7 +3655,7 @@ export function TodayScreen() {
     const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
     return (
     <CompletionCollapse taskIds={children.map(c => c.id)}>
-    <TaskGroupTray>
+    <TaskGroupTray collapsed={!open}>
       <TaskGroupHeader
         selectionMode={selectionMode}
         group={group}
