@@ -1041,7 +1041,7 @@ function makeStyles(colors: Colors) {
       height: CHECK_SIZE,
       borderRadius: checkboxRadius(CHECK_SIZE),
       borderWidth: border.md,
-      borderColor: colors.textTertiary,
+      borderColor: colors.controlBorder,
       alignItems: 'center',
       justifyContent: 'center',
     },

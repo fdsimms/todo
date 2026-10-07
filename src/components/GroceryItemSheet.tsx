@@ -41,6 +41,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -175,7 +176,15 @@ export function GroceryItemSheet({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
+  const liveItem = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
+  // Held through the dismissal (useSheetSubject), as ProductSheet and
+  // MergeItemSheet hold theirs. The caller clears the id in the same commit
+  // that closes the sheet, and a merge deletes this row before closing it:
+  // read live, the sheet swapped its whole body (the nested Product,
+  // Substitute, Merge and Nutrition sheets included) for an empty one while
+  // they were still presented, which is the freeze SheetModal's ordering is
+  // there to prevent, and slid down blank on every close.
+  const item = useSheetSubject(liveItem);
   // On the list being viewed, which is the one "Remove from list" acts on.
   // `item.onList` is "in any trolley", so milk on the home list offered a
   // Remove on the Airbnb list that closed the sheet and changed nothing.
@@ -357,10 +366,9 @@ export function GroceryItemSheet({
   };
 
   if (!item) {
-    // Themed even though there's nothing to show: this branch renders while
-    // the sheet is closing too (onClose nulls itemId in the same update that
-    // flips visible to false), and an unstyled Modal here defaults to a
-    // native white background, flashing behind the close animation (#1618).
+    // Only before the first item has arrived. Themed even though there's
+    // nothing to show: an unstyled Modal defaults to a native white
+    // background (#1618).
     return (
       <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
         <View style={styles.root} />
@@ -518,10 +526,14 @@ export function GroceryItemSheet({
   // commitPendingChainItem/resolveLinkUrl. Flush every field explicitly
   // rather than trust that blur already ran.
   const handleDone = () => {
-    commitName();
-    commitQuantity();
-    commitNote();
-    commitPrice(priceKey);
+    // The held item can outlive its row (a merge deleted it); there is
+    // nothing left to commit to.
+    if (liveItem) {
+      commitName();
+      commitQuantity();
+      commitNote();
+      commitPrice(priceKey);
+    }
     Keyboard.dismiss();
     onClose();
   };

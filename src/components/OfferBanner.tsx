@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Text, View, StyleSheet, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { animation, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
+import { animation, font, fontWeight, iconSize, radius, spacing, textOnFill, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
@@ -45,8 +45,9 @@ interface Props {
    * "Threw it out"): neither answer is the recommended one, so the color carries
    * the meaning where a filled-versus-grey pair would nominate a winner.
    *
-   * Text on a tinted button is always `colors.onAccent` — that's what the token
-   * is for.
+   * Text on a tinted button follows its fill through `textOnFill`: `onAccent`
+   * on the accent, `onFill` on a status fill. In the dark themes `onAccent`
+   * is ink, which on green and red read as dark text on a bright button.
    */
   actionTint?: string;
   secondaryActionTint?: string;
@@ -177,7 +178,9 @@ export function OfferBanner({
             onPress={handleAction}
             accessibilityLabel={actionAccessibilityLabel}
           >
-            <Text style={styles.buttonText}>{actionLabel}</Text>
+            <Text style={[styles.buttonText, actionTint ? { color: textOnFill(actionTint, colors) } : null]}>
+              {actionLabel}
+            </Text>
           </PressableScale>
         )}
         {dismissButton}
@@ -189,7 +192,9 @@ export function OfferBanner({
             onPress={handleAction}
             accessibilityLabel={actionAccessibilityLabel}
           >
-            <Text style={styles.buttonText}>{actionLabel}</Text>
+            <Text style={[styles.buttonText, actionTint ? { color: textOnFill(actionTint, colors) } : null]}>
+              {actionLabel}
+            </Text>
           </PressableScale>
           {secondaryActionLabel !== undefined && (
             <PressableScale
@@ -200,7 +205,12 @@ export function OfferBanner({
               onPress={handleSecondary}
               accessibilityLabel={secondaryActionAccessibilityLabel}
             >
-              <Text style={[styles.buttonText, !secondaryActionTint && styles.secondaryButtonText]}>
+              <Text
+                style={[
+                  styles.buttonText,
+                  secondaryActionTint ? { color: textOnFill(secondaryActionTint, colors) } : styles.secondaryButtonText,
+                ]}
+              >
                 {secondaryActionLabel}
               </Text>
             </PressableScale>

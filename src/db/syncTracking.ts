@@ -383,6 +383,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'reachOutTasks',
   'waitingFollowUpTasks',
   'pantryReviewTasks',
+  'pantryReviewTaskCategory',
   'weatherTasks',
   'eventTasks',
   'travelTasks',
@@ -442,6 +443,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'groceryUseUpLeadDays',
   'leftoverUseUpTasks',
   'leftoverUseUpTaskCategory',
+  // Caps the use-up tasks, which sync; two devices with different caps
+  // disagree about one shared pile.
+  'useUpTaskCap',
   'mealPlanNudgeEnabled',
   'mealPlanNudgeTime',
   'mealPlanNudgeWeekday',
@@ -467,6 +471,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'grocery_aisle_order',
   'grocery_aisle_hidden',
   'grocery_aisle_overrides',
+  // Which aisles hold non-food. The food log pickers and the nutrition
+  // prompt read it, and an aisle rename on one device moves it here too.
+  'grocery_aisle_nonfood',
   // Which medications you have archived. A statement about what you take, and
   // a device without it would list a medicine you stopped on the other one.
   'medication_archived',

@@ -22,7 +22,7 @@ import {
 import { entryFor, trolleyStateFor } from '../utils/groceryLists';
 import { reAddNotice } from '../utils/groceryAdd';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { correctableHaveReason, OUT_OF_IT_UNTIL, rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { correctableHaveReason, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { InlineAction } from './InlineAction';
 import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
@@ -129,7 +129,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const addManyFromText = useGroceryStore(s => s.addManyFromText);
   const setLastAction = useGroceryStore(s => s.setLastAction);
   const undoForAdds = useGroceryStore(s => s.undoForAdds);
-  const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setCheckedMany = useGroceryStore(s => s.setCheckedMany);
 
@@ -367,7 +367,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       if (!pantryOffer) return;
       haptics.tap();
       animateLayout();
-      if (answer === 'out') setOnHandUntil(pantryOffer.id, OUT_OF_IT_UNTIL);
+      // markOutOfMany, as the item sheet's pill does, not a bare
+      // setOnHandUntil: that left the "Use up" task and a thawed portion
+      // behind, registered no undo and never asked how the thing went.
+      if (answer === 'out') markOutOfMany([pantryOffer.id]);
       // Its own `onList` write is a no-op here (the row was just added), which
       // is why this doesn't register an undo of its own — see setRunningLow.
       else setRunningLow(pantryOffer.id, true);
@@ -382,7 +385,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       setStatus(`“${pantryOffer.name}” marked ${answer === 'out' ? 'not on hand' : 'nearly out'}`);
       setPantryOffer(null);
     },
-    [pantryOffer, setOnHandUntil, setRunningLow]
+    [pantryOffer, markOutOfMany, setRunningLow]
   );
 
   // ==== submit, discard, paste ====

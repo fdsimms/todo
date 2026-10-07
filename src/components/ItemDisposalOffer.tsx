@@ -66,7 +66,7 @@ export function ItemDisposalOffer({ itemId, onOpenShelfLife }: Props) {
     // "once" rather than "1×". The count can't be lower than the threshold.
     const times = item.spoiledCount === 2 ? 'twice' : `${item.spoiledCount} times`;
     const lead = `${item.name} went bad ${times}.`;
-    const rest = 'Change how long the app thinks it keeps?';
+    const rest = 'Change its shelf life?';
     return (
       <OfferBanner
         lead={lead}
@@ -104,8 +104,8 @@ export function ItemDisposalOffer({ itemId, onOpenShelfLife }: Props) {
       // Green and *red* rather than the fridge's green and orange, which is a
       // contrast call rather than a change of meaning: those are icon tints on
       // a plain row there, and as a fill under 13pt bold white text orange
-      // measures about 2:1. `colors.onAccent` names accent, green and red
-      // surfaces for exactly this reason, and red carries no verdict here — the
+      // measures about 2:1. OfferBanner sets the label in `onFill` on both,
+      // and red carries no verdict here — the
       // copy is "Went bad", the same refusal to grade that picks "Thrown out"
       // over "Wasted".
       actionTint={colors.greenFill}
@@ -113,7 +113,7 @@ export function ItemDisposalOffer({ itemId, onOpenShelfLife }: Props) {
       onSecondaryAction={() => recordDisposal(item.id, 'spoiled')}
       secondaryActionTint={colors.redFill}
       onDismiss={dismiss}
-      accessibilityLabel={`${item.name} is marked out. How did it go?`}
+      accessibilityLabel={`${lead} ${rest}`}
       actionAccessibilityLabel={`Record that you used up the ${item.name}`}
       secondaryActionAccessibilityLabel={`Record that the ${item.name} went bad`}
       dismissAccessibilityLabel="Dismiss question"

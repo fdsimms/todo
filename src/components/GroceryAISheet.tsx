@@ -135,15 +135,26 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   // RecipeExtractSheet and RecipeCreateSheet keep: without it the answer lands
   // on the hidden sheet after the reset above, and the next open starts on a
   // pre-ticked review of the input that was discarded.
+  //
+  // Open alone isn't enough: closed and reopened while a request is still out,
+  // the sheet is open again and the stale answer would land on the new
+  // session. So each run takes a number, every open or close moves it on, and
+  // a continuation writes only while it still holds the current one.
   const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  const runRef = useRef(0);
+  useEffect(() => {
+    visibleRef.current = visible;
+    runRef.current++;
+  }, [visible]);
+  const isCurrent = (run: number) => visibleRef.current && runRef.current === run;
 
   const runTidy = useCallback(async () => {
+    const run = ++runRef.current;
     setLoading(true);
     setError(null);
     try {
       const map = await suggestGroceryAisles(unsorted.map(i => i.name), [...aisleOrder]);
-      if (!visibleRef.current) return;
+      if (!isCurrent(run)) return;
       const rows: TidyRow[] = [];
       for (const item of unsorted) {
         const aisle = map[item.name];
@@ -154,38 +165,41 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       setTidyRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      if (visibleRef.current) setError(describeAIError(e));
+      if (isCurrent(run)) setError(describeAIError(e));
     } finally {
       // Guarded too: an answer stamped on a closed sheet would stop the next
       // open from asking at all.
-      if (visibleRef.current) setTidyAnswered(true);
-      setLoading(false);
+      if (isCurrent(run)) setTidyAnswered(true);
+      // Only the run that started the spinner stops it, or a stale one ends
+      // the newer run's.
+      if (runRef.current === run) setLoading(false);
     }
   }, [unsorted, aisleOrder]);
 
   const runRecipe = useCallback(async () => {
+    const run = ++runRef.current;
     setLoading(true);
     setError(null);
     try {
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveRecipeSource();
-      if (!resolved) return;
+      if (!resolved || !isCurrent(run)) return;
       // A staple like water at a stated amount (RecipeGroceryItem.
       // excludeFromShoppingList) has nowhere to be kept visible in this
       // shopping-only sheet, unlike a saved recipe's own ingredient list — so
       // it's dropped here rather than offered as something to buy.
       const rows = (await suggestRecipeGroceries(resolved.source, [...aisleOrder]))
         .filter(r => !r.excludeFromShoppingList);
-      if (!visibleRef.current) return;
+      if (!isCurrent(run)) return;
       setRecipeRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      if (visibleRef.current) {
+      if (isCurrent(run)) {
         setError(describeImportError(e));
         setCanRetry(isRetryableImportError(e));
       }
     } finally {
-      setLoading(false);
+      if (runRef.current === run) setLoading(false);
     }
   }, [resolveRecipeSource, aisleOrder]);
 
@@ -496,7 +510,7 @@ function makeStyles(colors: Colors) {
       height: CHECKBOX_SIZE,
       borderRadius: checkboxRadius(CHECKBOX_SIZE),
       borderWidth: border.md,
-      borderColor: colors.separator,
+      borderColor: colors.controlBorder,
       alignItems: 'center',
       justifyContent: 'center',
     },

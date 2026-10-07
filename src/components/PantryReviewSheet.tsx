@@ -373,7 +373,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
           <EmptyState
             icon="checkmark-done-outline"
             title="Nothing to check"
-            subtitle="The app isn't in any doubt about what's in the pantry right now."
+            subtitle="Nothing in the pantry needs checking right now."
           />
         ) : finished ? (
           <View style={styles.reviewWrap}>
