@@ -499,6 +499,9 @@ export function ProjectDetailScreen() {
   // time. Null when closed; a number otherwise, bumped on every add so the
   // field remounts empty and focused for the next one.
   const [topLineOpen, setTopLineOpen] = useState<number | null>(null);
+  // A task project's own field, at the foot of the page where a new task
+  // lands. Counts up like topLineOpen so each add remounts it empty.
+  const [taskLineOpen, setTaskLineOpen] = useState<number | null>(null);
   // From a list card's "+": the field opens once the push has finished, so
   // the keyboard doesn't ride in on top of the transition.
   useEffect(() => {
@@ -1041,7 +1044,7 @@ export function ProjectDetailScreen() {
       // A list's item is typed in its own field, which takes no dates or
       // categories and adds on return, not in the task sheet.
       if (isList) { listScroller.current?.scrollToTop(); setTopLineOpen(v => v ?? 0); return; }
-      setQuickAddVisible(true);
+      openTaskLine();
       return;
     }
     if (key === 'template') {
@@ -1062,6 +1065,19 @@ export function ProjectDetailScreen() {
     }
     searchFilter.clear();
     setShowExistingPicker(true);
+  };
+
+  /**
+   * A task project's add field, at the foot of the list. Typed in place like
+   * a section's: Return adds the task and opens the next field, where quick
+   * add cost a sheet per task. Dropping the add button still opens the sheet.
+   */
+  const openTaskLine = () => {
+    setExpandedTaskId(null);
+    setInsertAfterId(null);
+    setSectionLine(null);
+    setTaskLineOpen(v => v ?? 0);
+    listScroller.current?.scrollToEnd();
   };
 
   /** A section named from the foot of the list, placed after what's there. */
@@ -1200,6 +1216,26 @@ export function ProjectDetailScreen() {
     // "On the 10th and the 15th": the rest of the set, not just its first date.
     if (seriesDates) useTaskStore.getState().applyTaskDates(task.id, seriesDates);
     return task;
+  };
+
+  /** Tasks from the foot field, at the end of the project as quick add put them. */
+  const addTaskLines = (raw: string[], pending?: LinePending) => {
+    const lines = cleanPastedLines(raw);
+    if (lines.length === 0 || !project) return;
+    animateLayout();
+    let last: Task | null = null;
+    for (const line of lines) {
+      last = createLine(line, { projectId: project.id }, lines.length === 1 ? pending : undefined, true);
+    }
+    if (last) {
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      setFlashTaskId(last.id);
+      flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 1200);
+    }
+    haptics.tap();
+    lineFilter.clear();
+    setTaskLineOpen(v => (v ?? 0) + 1);
+    listScroller.current?.scrollToEnd();
   };
 
   const addLineToSection = (group: TaskGroup, text: string, pending?: LinePending) => {
@@ -2274,7 +2310,7 @@ export function ProjectDetailScreen() {
                   title={isList ? 'Nothing on this list yet' : 'No tasks yet'}
                   subtitle={isList ? 'Add an item above. Paste several at once to add them all' : "Add a new task, or pull in one you've already written down"}
                   actionLabel={isList ? 'Add an item' : 'New task'}
-                  onAction={() => isList ? setTopLineOpen(v => v ?? 0) : setQuickAddVisible(true)}
+                  onAction={() => isList ? setTopLineOpen(v => v ?? 0) : openTaskLine()}
                 />
               ) : null
             }
@@ -2282,7 +2318,7 @@ export function ProjectDetailScreen() {
             // completed the footer is bare padding — and that padding comes off
             // the box the empty state centres in.
             ListFooterComponent={
-              completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection ? null : (
+              completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection && taskLineOpen === null ? null : (
               <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
                 {/* Where the new section will land: after everything else. */}
                 {namingSection && (
@@ -2297,12 +2333,22 @@ export function ProjectDetailScreen() {
                 {/* One tap to a new task from wherever the list ends. A
                     list's own add field is reached from the FAB instead —
                     see the top of the screen. */}
-                {showInlineNewTask && !isList && (
+                {!isList && !selectionMode && taskLineOpen !== null ? (
+                  <NewLineField
+                    key={`task-line-${taskLineOpen}`}
+                    onAdd={(text, pending) => addTaskLines([text], pending)}
+                    onAddMany={addTaskLines}
+                    onDone={() => setTaskLineOpen(null)}
+                    styles={styles}
+                    placeholderColor={colors.textTertiary}
+                    placeholder="New task"
+                  />
+                ) : showInlineNewTask && !isList && (
                   <View style={styles.inlineNewTask}>
                     <InlineAction
                       icon="add"
                       label="New task"
-                      onPress={() => setQuickAddVisible(true)}
+                      onPress={openTaskLine}
                     />
                   </View>
                 )}
