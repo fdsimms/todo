@@ -3,7 +3,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, ProjectKind, Task } from '../types';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { kindFields, kindSwitchFields } from '../utils/projectKind';
-import { isRealCompletion } from '../utils/missed';
+import { isResolvedAsDone } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
 import {
   dbGetAllProjects,
@@ -104,7 +104,7 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
     // where there is no successor: a recurrence that hit its end date or ran
     // out its count on the very occurrence that got missed. That member was
     // never done, and a project shouldn't reach 100% on it.
-    if (rows.every(r => r.completed) && rows.some(r => isRealCompletion(r))) done += 1;
+    if (rows.every(r => r.completed) && rows.some(r => isResolvedAsDone(r))) done += 1;
   }
   return { done, total: groups.size };
 }

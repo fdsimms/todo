@@ -304,6 +304,14 @@ describe('earnRatePerDay', () => {
     expect(earnRatePerDay(tasks, now)).toBeCloseTo(0 / 10);
   });
 
+  it('leaves out a completion somebody else made, which paid nothing', () => {
+    const tasks = [
+      done({ completedAt: daysAgo(10) }),
+      done({ completedAt: daysAgo(2), doneByOtherAt: daysAgo(2) }),
+    ];
+    expect(earnRatePerDay(tasks, now)).toBeCloseTo(3 / 10);
+  });
+
   it('counts the streak bonus each completion was paid', () => {
     const tasks = [done({ completedAt: daysAgo(10), streakCount: 7 })];
     expect(earnRatePerDay(tasks, now)).toBeCloseTo(4 / 10);

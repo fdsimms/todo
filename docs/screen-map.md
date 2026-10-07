@@ -104,6 +104,7 @@ Where each component can appear.
 - `src/components/CoinToast.tsx` — on app shell
 - `src/components/CollapsibleField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, GroceryScreen, KitchenScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RemindersScreen, SavedViewDetailScreen, SavedViewsScreen, +8 more
 - `src/components/CompletionCollapse.tsx` — on TodayScreen
+- `src/components/CompletionOptionsMenu.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
 - `src/components/ComponentChoiceSheet.tsx` — on RecipeDetailScreen
 - `src/components/ContactPickerSheet.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/ContrastBars.tsx` — on MoodScreen, SymptomDetailScreen

@@ -393,6 +393,7 @@ export type EarnHistoryTask = CoinSource & {
   completed: boolean;
   completedAt: string | null;
   missedAt?: string | null;
+  doneByOtherAt?: string | null;
   streakCount: number;
 };
 
@@ -416,7 +417,7 @@ export function earnRatePerDay(tasks: readonly EarnHistoryTask[], now: Date): nu
   let total = 0;
   let oldest = nowMs;
   for (const t of tasks) {
-    if (!t.completed || !t.completedAt || !taskEarnsCoins(t)) continue;
+    if (!t.completed || !t.completedAt || !taskEarnsCoins(t) || t.doneByOtherAt) continue;
     const at = Date.parse(t.completedAt);
     if (!Number.isFinite(at) || at < from || at > nowMs) continue;
     oldest = Math.min(oldest, at);

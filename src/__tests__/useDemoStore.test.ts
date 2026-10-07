@@ -98,7 +98,7 @@ import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoo
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
-import { isMissed, mostMissed } from '../utils/missed';
+import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
 import { entriesOfKind, journalStats } from '../utils/journal';
@@ -2778,6 +2778,15 @@ describe('demo seed — people', () => {
     expect(next).toBeDefined();
     expect(next!.completed).toBe(false);
     expect(Date.parse(next!.dueDate!)).toBeGreaterThan(Date.parse(miss.dueDate!));
+  });
+
+  it('seeds an occurrence somebody else did, which is not a completion of the user\'s', () => {
+    const { tasks } = useTaskStore.getState();
+    const other = tasks.filter(t => t.doneByOtherAt);
+    expect(other).toHaveLength(1);
+    expect(other[0].completed).toBe(true);
+    expect(isRealCompletion(other[0])).toBe(false);
+    expect(tasks.find(t => t.previousOccurrenceId === other[0].id)?.completed).toBe(false);
   });
 
   it('seeds a monthly repeat on the second Tuesday', () => {
