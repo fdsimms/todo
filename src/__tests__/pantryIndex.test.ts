@@ -99,6 +99,16 @@ describe('buildPantryIndex', () => {
     );
     expect(buildPantryIndex(items)).toHaveLength(MAX_PANTRY_INDEX_ENTRIES);
   });
+
+  it('keeps the rows last bought when it has to cut, not the start of the alphabet', () => {
+    const items = Array.from({ length: MAX_PANTRY_INDEX_ENTRIES }, (_, i) =>
+      makeItem({ name: `Apple ${String(i).padStart(4, '0')}`, lastPurchasedAt: '2025-01-01T00:00:00.000Z' })
+    );
+    items.push(makeItem({ name: 'Zucchini', lastPurchasedAt: '2026-08-01T00:00:00.000Z' }));
+    const names = buildPantryIndex(items).map(e => e.name);
+    expect(names).toContain('Zucchini');
+    expect(names).toHaveLength(MAX_PANTRY_INDEX_ENTRIES);
+  });
 });
 
 // ─── parseQueuedDisposals ────────────────────────────────────────────────────

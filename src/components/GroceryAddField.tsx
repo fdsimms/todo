@@ -38,6 +38,7 @@ import {
 import { describePreferredProduct } from '../utils/groceryProduct';
 import { generateId } from '../utils/id';
 import { useFilterField } from '../hooks/useFilterField';
+import { useTextScale } from '../hooks/useTextScale';
 import { TextField } from './TextField';
 
 interface Props {
@@ -60,19 +61,22 @@ interface Props {
  * block below is positioned off it, and the whole point of that block being out
  * of flow is that neither piece moves as you type.
  */
-const FIELD_HEIGHT = 48 + border.sm * 2;
+const INPUT_HEIGHT = 48;
+/** The field's height at the system text size (`useTextScale`), border included. */
+const fieldHeightAt = (scale: number) => Math.round(INPUT_HEIGHT * scale) + border.sm * 2;
 
 /**
  * The attribute toolbar (Brand/Variant) and its inline edit panel, sized the
- * same explicit way FIELD_HEIGHT is — `results` is positioned off the sum of
+ * same explicit way fieldHeightAt is — `results` is positioned off the sum of
  * all three, and unlike the field these two are tap-driven rather than
  * typing-driven, so they live in flow above `results` instead of inside its
  * out-of-flow block. TOOLBAR_HEIGHT matches the chip row's own minHeight;
  * ATTRIBUTE_PANEL_HEIGHT is given to the panel row directly rather than left
- * to its content, for the same reason FIELD_HEIGHT is.
+ * to its content, for the same reason fieldHeightAt is.
  */
 const TOOLBAR_HEIGHT = interaction.pillHeight;
 const ATTRIBUTE_PANEL_HEIGHT = 40;
+const panelHeightAt = (scale: number) => Math.round(ATTRIBUTE_PANEL_HEIGHT * scale);
 
 /** Lets the sheet focus the field once its entrance animation has settled. */
 export interface GroceryAddFieldHandle {
@@ -115,7 +119,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 ) {
   // ==== state ====
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Both heights are pinned (see fieldHeightAt), so they grow with the system
+  // text size by hand or a large setting clips the text inside them.
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const items = useGroceryStore(s => s.items);
   const listEntries = useGroceryStore(s => s.listEntries);
@@ -497,12 +504,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     || suggestions.length > 0;
 
   // `results` is pinned off the bottom of everything static above it — see
-  // FIELD_HEIGHT's own note. The toolbar is there unless simplified mode took
+  // fieldHeightAt's own note. The toolbar is there unless simplified mode took
   // it away; the panel only adds to this when a chip is open.
   const resultsTop =
-    FIELD_HEIGHT + spacing.sm +
+    fieldHeightAt(textScaleFactor) + spacing.sm +
     (attributesShown ? TOOLBAR_HEIGHT + spacing.sm : 0) +
-    (attributesShown && activePanel ? ATTRIBUTE_PANEL_HEIGHT + spacing.sm : 0);
+    (attributesShown && activePanel ? panelHeightAt(textScaleFactor) + spacing.sm : 0);
 
   return (
     <View style={styles.wrap}>
@@ -840,7 +847,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   );
 });
 
-function makeStyles(colors: Colors) {
+function makeStyles(colors: Colors, textScaleFactor = 1) {
   return StyleSheet.create({
     wrap: {
       // No gap: the field, toolbar and attribute panel space themselves with
@@ -852,7 +859,7 @@ function makeStyles(colors: Colors) {
     // see the note at the call site. `top` is passed in per-render as
     // `resultsTop`, since it now also depends on whether the attribute panel
     // is open; the constants it's built from stay in step with what's
-    // actually rendered above for the same reason FIELD_HEIGHT does.
+    // actually rendered above for the same reason fieldHeightAt does.
     results: {
       position: 'absolute',
       left: 0,
@@ -895,7 +902,7 @@ function makeStyles(colors: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      height: ATTRIBUTE_PANEL_HEIGHT,
+      height: panelHeightAt(textScaleFactor),
       marginTop: spacing.sm,
       paddingHorizontal: spacing.xs,
     },
@@ -911,7 +918,7 @@ function makeStyles(colors: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      height: FIELD_HEIGHT,
+      height: fieldHeightAt(textScaleFactor),
       // Tertiary, not secondary: the sheet card behind it is already secondary,
       // and a field the same colour as its card is a field you can't see.
       backgroundColor: colors.bgTertiary,
@@ -931,7 +938,7 @@ function makeStyles(colors: Colors) {
       // style with no baseline compensation, so the glyphs sit low in the box
       // while the caret stays centred. A fixed height is the way to pin the
       // row height instead.
-      height: 48,
+      height: Math.round(INPUT_HEIGHT * textScaleFactor),
       padding: 0,
     },
     altSuggestion: {

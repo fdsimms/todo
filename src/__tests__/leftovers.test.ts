@@ -526,6 +526,12 @@ describe('describeFridge', () => {
     expect(describeFridge([aged(0, 5), aged(3, 3), aged(7, 2)], NOW))
       .toBe('3 in the fridge · 2 to use up');
   });
+
+  it('counts a frozen container as in the freezer', () => {
+    const frozen = aged(1, 90, { frozenAt: NOW.toISOString() });
+    expect(describeFridge([aged(0, 5), frozen], NOW)).toBe('1 in the fridge · 1 in the freezer');
+    expect(describeFridge([frozen], NOW)).toBe('1 in the freezer');
+  });
 });
 
 // #1731: this used to bake "(N days old)" into the title. Dropped — a meal

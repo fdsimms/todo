@@ -572,8 +572,8 @@ export function probablyHaveReason(
   // asking the plain question "is there any of this in the kitchen".
   //
   // A frozen portion is held back to the very end instead (see below).
-  for (const product of products) {
-    if (product.itemId !== item.id || isPortionBox(product)) continue;
+  for (const product of boxesOf(item.id, products)) {
+    if (isPortionBox(product)) continue;
     const reason = productHaveReason(product, now);
     if (reason) return reason;
   }
@@ -588,12 +588,38 @@ export function probablyHaveReason(
   // answer. Ranked above, a pack bought yesterday with half frozen would read
   // as "in the freezer", and a meal planned from the half left out would be
   // told to thaw the other half (`mealThawTasks`).
-  for (const product of products) {
-    if (product.itemId !== item.id || !isPortionBox(product)) continue;
+  for (const product of boxesOf(item.id, products)) {
+    if (!isPortionBox(product)) continue;
     const reason = productHaveReason(product, now);
     if (reason) return reason;
   }
   return null;
+}
+
+/**
+ * The catalog's boxes grouped by item, built once per boxes array. Every
+ * pantry read asks this per item across the whole catalog, and scanning every
+ * box for each item made the Pantry screen's pass items × boxes. Keyed on the
+ * array the store hands out (replaced, never mutated, on every write), and on
+ * its length as a guard against a caller that does push into one.
+ */
+const boxesByItem = new WeakMap<readonly ItemProduct[], { length: number; byItem: Map<string, ItemProduct[]> }>();
+const NO_BOXES: readonly ItemProduct[] = [];
+
+function boxesOf(itemId: string, products: readonly ItemProduct[]): readonly ItemProduct[] {
+  if (products.length === 0) return NO_BOXES;
+  let cached = boxesByItem.get(products);
+  if (!cached || cached.length !== products.length) {
+    const byItem = new Map<string, ItemProduct[]>();
+    for (const p of products) {
+      const list = byItem.get(p.itemId);
+      if (list) list.push(p);
+      else byItem.set(p.itemId, [p]);
+    }
+    cached = { length: products.length, byItem };
+    boxesByItem.set(products, cached);
+  }
+  return cached.byItem.get(itemId) ?? NO_BOXES;
 }
 
 /** The purchase reading's own words, or null when there's no purchase inside this item's window. */
@@ -814,8 +840,7 @@ export function pantryEntries(
     // brings. A staple is let through on its own account and keeps the rows
     // it always had.
     const outOfIt = !item.isStaple && onHandAssertion(item, now) === false;
-    for (const product of products) {
-      if (product.itemId !== item.id) continue;
+    for (const product of boxesOf(item.id, products)) {
       if (outOfIt && !outlivesItemOutOfIt(product, now)) continue;
       const boxReason = productHaveReason(product, now);
       if (!boxReason) continue;

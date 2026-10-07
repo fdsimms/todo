@@ -145,23 +145,6 @@ export function liveUseBy(useBy: string | null, frozenAt: string | null): string
 }
 
 /**
- * "Frozen Jul 12" — what a frozen row says in the slot a countdown would
- * otherwise fill.
- *
- * The clock half only. The *reason* half ("in the freezer") is
- * `types.FROZEN_REASON`, and the two are paired by whatever draws the row, the
- * same way "bought 6× · last on Jul 12" is paired with "Use by today". Split
- * because a kitchen row renders them in different colours: the reason is grey
- * and the clock clause carries the freshness tint.
- *
- * A date rather than an elapsed count ("3 weeks in the freezer"), which is the
- * opposite call `describeAge` makes for the fridge, and deliberately: a
- * container in the fridge is measured in days because days are what it has
- * left, while a freezer is measured in months and the useful fact is *which
- * shop it came home from*. Same reasoning as `lastPricedAt` rendering "(March)"
- * rather than an age.
- */
-/**
  * "opened Aug 12" — the clause a pantry row adds once a jar has been opened.
  *
  * Lower case and dateful, because it lands beside `probablyHaveReason`'s own
@@ -178,6 +161,23 @@ export function describeOpenedOn(openedAt: string, now: Date = new Date()): stri
   return `opened ${format(then, 'MMM d')}`;
 }
 
+/**
+ * "Frozen Jul 12" — what a frozen row says in the slot a countdown would
+ * otherwise fill.
+ *
+ * The clock half only. The *reason* half ("in the freezer") is
+ * `types.FROZEN_REASON`, and the two are paired by whatever draws the row, the
+ * same way "bought 6× · last on Jul 12" is paired with "Use by today". Split
+ * because a kitchen row renders them in different colours: the reason is grey
+ * and the clock clause carries the freshness tint.
+ *
+ * A date rather than an elapsed count ("3 weeks in the freezer"), which is the
+ * opposite call `describeAge` makes for the fridge, and deliberately: a
+ * container in the fridge is measured in days because days are what it has
+ * left, while a freezer is measured in months and the useful fact is *which
+ * shop it came home from*. Same reasoning as `lastPricedAt` rendering "(March)"
+ * rather than an age.
+ */
 export function describeFrozenSince(frozenAt: string, now: Date = new Date()): string {
   const then = new Date(frozenAt);
   // "Frozen" alone for the two cases a date would be a lie: an unparseable

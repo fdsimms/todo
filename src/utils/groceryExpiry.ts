@@ -80,10 +80,9 @@ export function wantsUseUpTask(item: GroceryItem, enabled: boolean): boolean {
  *
  * Built off `item.name` — the label the user typed, which is what the grocery
  * row and every sheet already show — so the task can't disagree with the item
- * it came from. Renaming the item doesn't chase the task, for the same reason
- * the aisle lexicon doesn't: reconciling runs on the expiry, not on every
- * edit, and a task the user may have since filed and annotated is not worth
- * rewriting over a spelling.
+ * it came from. A rename does follow the task: `useUpTaskDrift` compares the
+ * title on every reconcile, the foreground sweep included, so a task retitled
+ * by hand is put back to this the next time its item is reconciled.
  */
 export function useUpTaskTitle(item: GroceryItem): string {
   return `Use up ${item.name}`;

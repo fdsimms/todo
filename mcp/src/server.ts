@@ -1906,7 +1906,7 @@ function registerWriteTools(
 
   server.tool(
     'check_off_grocery_item',
-    'Check something off on the home grocery list, or un-check it with checked: false. Takes the item id from list_grocery_items.',
+    'Check something off on the home grocery list, or un-check it with checked: false. Takes the item id from list_grocery_items. Checking off one option of an either/or ("apples or pears") takes the other options off that list, as in the app.',
     { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.'), list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'), },
     async ({ id, checked, list }) => {
       try {
