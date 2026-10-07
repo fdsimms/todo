@@ -35,6 +35,10 @@ import { personHistory } from '../utils/personHistory';
 import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
+import { InlineAction } from './InlineAction';
+import { placeLocationText, placeSubtitle, type PlaceResult } from '../utils/places';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
   visible: boolean;
@@ -110,6 +114,11 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const [cadenceDays, setCadenceDays] = useState(0);
   const [askAbout, setAskAbout] = useState('');
   const [location, setLocation] = useState('');
+  // The text a tapped suggestion wrote, so the list stays closed until the
+  // field is edited again instead of searching for the address just chosen.
+  const [pickedLocation, setPickedLocation] = useState<string | null>(null);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
+  const placeSuggestions = usePlaceSuggestions(location, visible && location !== pickedLocation);
   const [showGroupEditor, setShowGroupEditor] = useState(false);
 
   const group = usePersonGroupStore(s => (person?.groupId ? s.groups.find(g => g.id === person.groupId) ?? null : null));
@@ -142,6 +151,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     setCadenceDays(person.cadenceDays);
     setAskAbout(person.askAbout);
     setLocation(person.location ?? '');
+    setPickedLocation(person.location ?? null);
     setShowBirthdayPicker(false);
   }, [person, visible]);
 
@@ -454,6 +464,44 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           />
         </View>
       </View>
+      {placeSuggestions.results.length > 0 && (
+        <View style={[styles.sectionCard, styles.placeList]}>
+          {placeSuggestions.results.map((place: PlaceResult, index) => {
+            const subtitle = placeSubtitle(place);
+            return (
+              <TouchableOpacity
+                key={`${place.latitude},${place.longitude},${index}`}
+                style={[styles.placeRow, index > 0 && styles.placeRowRuled]}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  const text = placeLocationText(place);
+                  setLocation(text);
+                  setPickedLocation(text);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${placeLocationText(place)}`}
+              >
+                <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
+                {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {!placeSuggestions.enabled && placeSuggestions.wanted && (
+        <View style={styles.placeOffer}>
+          <InlineAction
+            icon="search-outline"
+            label="Suggest places"
+            variant="neutral"
+            onPress={() => setPlaceSuggestionsEnabled(true)}
+            accessibilityLabel="Turn on place suggestions from Apple Maps"
+          />
+          <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+        </View>
+      )}
       <Text style={styles.sectionFooter}>
         Where they live. Used to find them when you're planning a trip somewhere.
       </Text>
@@ -619,6 +667,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.md,
   },
   offerText: { flex: 1, color: colors.accent, fontSize: font.xs, lineHeight: 17 },
+  placeList: { marginTop: spacing.sm },
+  placeRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.xxs },
+  placeRowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  placeName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+  placeAddress: { color: colors.textSecondary, fontSize: font.xs },
+  placeOffer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  placeOfferText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   fieldInput: {
     flex: 1, color: colors.text, fontSize: font.md, textAlign: 'right',
     // A fixed height rather than a lineHeight keeps the row from resizing as
