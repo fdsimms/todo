@@ -1706,6 +1706,28 @@ describe('cookRecapEnabled', () => {
   });
 });
 
+describe('runningLowAddsToList', () => {
+  // Defaults on because that is how marking "Running low" has always behaved.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().runningLowAddsToList).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'runningLowAddsToList' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().runningLowAddsToList).toBe(false);
+  });
+
+  it('round-trips through setRunningLowAddsToList', () => {
+    useSettingsStore.getState().setRunningLowAddsToList(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('runningLowAddsToList', 'false');
+    expect(useSettingsStore.getState().runningLowAddsToList).toBe(false);
+  });
+});
+
 describe('restockOfferEnabled', () => {
   // Same reasoning as timerLiveActivity: defaults on, since the offer itself
   // is already gated on having something to offer (#1481) — this is a toggle

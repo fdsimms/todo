@@ -5154,13 +5154,18 @@ export interface GroceryItem {
    * **Running low still means you have it.** `probablyHaveReason` answers for a
    * low row, so it stays in the pantry and a week plan still counts it: there
    * is some left, which is exactly what distinguishes this from "Out of it".
-   * What changes is that the row goes on the list.
+   * What changes is that the row goes on the list, unless the person has
+   * switched "Running low adds to the list" off.
    *
-   * **Unlike `onHandUntil` this never self-expires.** A "Got it" is a guess
-   * with a shelf life, so it lapses back into silence; being nearly out is a
-   * fact that stays true until something refutes it, and the thing that refutes
-   * it is buying more. So a purchase clears it, and so does saying either of
-   * the other two things.
+   * **It lapses, which is read at the time and never written.** The stamp stays
+   * on the row, but `isRunningLow` stops counting it after up to two weeks (the
+   * item's own purchase window when that is shorter). It once held until a
+   * purchase cleared it, which only works if every purchase goes through the
+   * app: one bought off the books left the row claiming "some left" for good,
+   * and since a low row counts as on hand, it hid the item from a week plan's
+   * shortfalls. A lapsed mark hands the question to the pantry check
+   * (`pantryCheckLapse`). A purchase still clears it, and so does saying either
+   * of the other two things.
    */
   runningLowAt: string | null;
   /**

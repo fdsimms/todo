@@ -6377,7 +6377,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // The active list may be an away one (checkAwayGroceryList switches to
       // it), and a supply flagged low there is never restocked by that trip
       // and, already flagged, never reaches the home list after it.
-      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null }));
+      // addToList: true — a supply running low is a request to reorder, so the
+      // person's "Running low adds to the list" choice about their own taps
+      // doesn't apply.
+      lowIds.forEach(itemId =>
+        grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null, addToList: true })
+      );
     }
 
     if (!settings.supplyReorderTasks) return;
