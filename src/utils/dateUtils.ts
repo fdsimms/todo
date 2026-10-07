@@ -355,7 +355,7 @@ export type RecurrenceScheduleInput = Pick<Task,
 export function getNextDueDate(
   task: RecurrenceScheduleInput,
   dayResetTime?: string,
-  options?: { catchUp?: boolean; completedAt?: Date },
+  options?: { catchUp?: boolean; completedAt?: Date; coversCompletionDay?: boolean },
 ): Date | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
@@ -433,8 +433,19 @@ export function getNextDueDate(
   let next = step(base);
   if (options?.catchUp) {
     const todayStart = getDayStart(new Date(), dayResetTime);
+    // A real completion covers the day it happened on, so the successor lands
+    // strictly after it. Without this a daily task finished a day late got
+    // today's occurrence back at once, and finishing that one a day late again
+    // kept it a day behind for ever, a row that reappeared after every tap.
+    // Off for a skip or a missed mark, which cover nothing: today's occurrence
+    // is still owed. 'hours' steps within the day, so it can't be pushed past it.
+    const coveredDay =
+      options?.coversCompletionDay && task.recurrenceType !== 'hours'
+        ? getDayStart(options.completedAt ?? new Date(), dayResetTime)
+        : null;
     for (let i = 0; i < MAX_CATCH_UP_STEPS; i++) {
-      if (getTaskDayStart(next, dayResetTime) >= todayStart) break;
+      const nextDay = getTaskDayStart(next, dayResetTime);
+      if (nextDay >= todayStart && (!coveredDay || nextDay > coveredDay)) break;
       const after = step(next);
       // A rule that doesn't advance is a rule that loops — same backstop
       // projectOccurrences keeps, and the same choice: a stale answer beats a
