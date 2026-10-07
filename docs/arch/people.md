@@ -260,9 +260,9 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   collision text can't spell, so there's no need for the override mechanism's
   workaround. `TaskEditor` has its own version, described above.
 
-- **A row's call, text and mail buttons fall back to the one person it names.**
-  `contactDetailsFor` (`peopleRegistry.ts`) returns the task's own number and
-  address, else the single named person's. Generated tasks copy these onto
+- **A row's link, call, text and mail buttons fall back to the one person it names.**
+  `contactDetailsFor` (`peopleRegistry.ts`) returns the task's own number,
+  address and link, else the single named person's. Generated tasks copy these onto
   themselves at creation; a hand-typed "Call @Dr. Kushman" only links the person,
   so without the fallback it had no button. Read at render, so it covers existing
   tasks and follows an edited number. With two people named it offers nothing

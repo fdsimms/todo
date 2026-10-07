@@ -390,8 +390,10 @@ export const TaskItem = React.memo(function TaskItem({
     deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
+  // The task's own link (or chain step's), else the one named person's.
+  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl;
   const handleOpenLink = async () => {
-    const url = linkFor(task);
+    const url = rowLink;
     if (!url) return;
     haptics.tap();
     // A link this app owns (dundundun://groceries) navigates in place. Going
@@ -3270,7 +3272,7 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && linkFor(task) && (
+      {!selectionMode && showActions && rowLink && (
         <TouchableOpacity
           onPress={handleOpenLink}
           hitSlop={8}
@@ -3278,7 +3280,7 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityRole="button"
           accessibilityLabel={`Open link for ${task.title}`}
         >
-          <Ionicons name={linkIconFor(linkFor(task)!) as never} size={iconSize.sm} color={colors.accent} />
+          <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 

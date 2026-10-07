@@ -89,7 +89,7 @@ export function peopleOn(task: Pick<Task, 'personIds'>): Person[] {
 }
 
 /**
- * The phone number and email a row's call/text/mail buttons should use: the
+ * The phone number, email and link a row's buttons should use: the
  * task's own, else the one person it names.
  *
  * Generated tasks copy a person's contact details onto themselves, but a task
@@ -102,20 +102,22 @@ export function peopleOn(task: Pick<Task, 'personIds'>): Person[] {
  * always wins.
  */
 export function contactDetailsFor(
-  task: Pick<Task, 'personIds' | 'phoneNumber' | 'emailAddress'> | null | undefined,
-): { phoneNumber: string | null; emailAddress: string | null } {
-  if (!task) return { phoneNumber: null, emailAddress: null };
+  task: Pick<Task, 'personIds' | 'phoneNumber' | 'emailAddress' | 'linkUrl'> | null | undefined,
+): { phoneNumber: string | null; emailAddress: string | null; linkUrl: string | null } {
+  if (!task) return { phoneNumber: null, emailAddress: null, linkUrl: null };
   const own = {
     phoneNumber: task.phoneNumber ?? null,
     emailAddress: task.emailAddress ?? null,
+    linkUrl: task.linkUrl ?? null,
   };
-  if (own.phoneNumber && own.emailAddress) return own;
+  if (own.phoneNumber && own.emailAddress && own.linkUrl) return own;
   if (!task.personIds?.length) return own;
   const named = peopleOn(task);
   if (named.length !== 1) return own;
   return {
     phoneNumber: own.phoneNumber ?? named[0].phoneNumber ?? null,
     emailAddress: own.emailAddress ?? named[0].email ?? null,
+    linkUrl: own.linkUrl ?? named[0].linkUrl ?? null,
   };
 }
 

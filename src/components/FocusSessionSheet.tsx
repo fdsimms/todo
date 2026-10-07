@@ -142,10 +142,12 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // Same handlers and sanitisation as TaskItem's row actions (utils/phone.ts,
   // utils/email.ts) — a session is exactly the place someone needs the
   // number or link a task carries without backing out to find the row.
+  const contact = contactDetailsFor(currentTask);
+  const stepLink = currentTask?.linkUrl ?? contact.linkUrl;
   const handleOpenLink = async () => {
-    if (!currentTask?.linkUrl) return;
+    if (!stepLink) return;
     haptics.tap();
-    if (openInAppUrl(currentTask.linkUrl)) {
+    if (openInAppUrl(stepLink)) {
       // An in-app link navigates the screen underneath this sheet, which does
       // nothing on its own — the sheet stays on top and the destination is
       // stuck behind it. Same "closing is not stopping" close this sheet's own
@@ -155,12 +157,11 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       return;
     }
     try {
-      await Linking.openURL(currentTask.linkUrl);
+      await Linking.openURL(stepLink);
     } catch {
       // silently ignore — no toast infra for this action
     }
   };
-  const contact = contactDetailsFor(currentTask);
   const callUrl = telUrl(contact.phoneNumber);
   const textUrl = smsUrl(contact.phoneNumber);
   const handleCall = async () => {
@@ -458,9 +459,9 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             <Text style={styles.notesText}>{currentTask.notes}</Text>
           )}
 
-          {!isRest && currentTask && (currentTask.linkUrl || callUrl || emailUrl) && (
+          {!isRest && currentTask && (stepLink || callUrl || emailUrl) && (
             <View style={styles.contactRow}>
-              {currentTask.linkUrl && (
+              {stepLink && (
                 <TouchableOpacity
                   onPress={handleOpenLink}
                   style={styles.contactBtn}
@@ -468,7 +469,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={`Open link for ${titleOf(step.taskId)}`}
                 >
-                  <Ionicons name={linkIconFor(currentTask.linkUrl) as never} size={iconSize.sm} color={colors.accent} />
+                  <Ionicons name={linkIconFor(stepLink) as never} size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Link</Text>
                 </TouchableOpacity>
               )}

@@ -176,31 +176,38 @@ describe('group mention tokens', () => {
 });
 
 describe('contact details for a task row', () => {
-  const withContact = (id: string, phoneNumber: string | null, email: string | null): Person => ({
-    ...person(id, 'Dr. Kushman'), phoneNumber, email,
+  const withContact = (id: string, phoneNumber: string | null, email: string | null, linkUrl: string | null = null): Person => ({
+    ...person(id, 'Dr. Kushman'), phoneNumber, email, linkUrl,
   });
-  const row = (personIds: string[], phoneNumber: string | null = null, emailAddress: string | null = null) =>
-    ({ personIds, phoneNumber, emailAddress });
+  const row = (personIds: string[], phoneNumber: string | null = null, emailAddress: string | null = null, linkUrl: string | null = null) =>
+    ({ personIds, phoneNumber, emailAddress, linkUrl });
+  const none = { phoneNumber: null, emailAddress: null, linkUrl: null };
 
   it('uses the one person a task names when it holds no number of its own', () => {
     registerPersonSource(() => [withContact('a', '555-0100', 'k@example.com')]);
-    expect(contactDetailsFor(row(['a']))).toEqual({ phoneNumber: '555-0100', emailAddress: 'k@example.com' });
+    expect(contactDetailsFor(row(['a']))).toEqual({ phoneNumber: '555-0100', emailAddress: 'k@example.com', linkUrl: null });
   });
 
   it("lets the task's own number win and still fills the other field", () => {
     registerPersonSource(() => [withContact('a', '555-0100', 'k@example.com')]);
-    expect(contactDetailsFor(row(['a'], '555-0199'))).toEqual({ phoneNumber: '555-0199', emailAddress: 'k@example.com' });
+    expect(contactDetailsFor(row(['a'], '555-0199'))).toEqual({ phoneNumber: '555-0199', emailAddress: 'k@example.com', linkUrl: null });
+  });
+
+  it('falls back to the person\'s link, and the task\'s own link wins', () => {
+    registerPersonSource(() => [withContact('a', null, null, 'https://portal.example/kushman')]);
+    expect(contactDetailsFor(row(['a'])).linkUrl).toBe('https://portal.example/kushman');
+    expect(contactDetailsFor(row(['a'], null, null, 'https://own.example')).linkUrl).toBe('https://own.example');
   });
 
   it('offers nothing when two people are named, since one button cannot say whose', () => {
     registerPersonSource(() => [withContact('a', '555-0100', null), withContact('b', '555-0101', null)]);
-    expect(contactDetailsFor(row(['a', 'b']))).toEqual({ phoneNumber: null, emailAddress: null });
+    expect(contactDetailsFor(row(['a', 'b']))).toEqual(none);
   });
 
   it('shrugs at a person who has gone, and at a person with no number', () => {
     registerPersonSource(() => [withContact('a', null, null)]);
-    expect(contactDetailsFor(row(['gone']))).toEqual({ phoneNumber: null, emailAddress: null });
-    expect(contactDetailsFor(row(['a']))).toEqual({ phoneNumber: null, emailAddress: null });
-    expect(contactDetailsFor(null)).toEqual({ phoneNumber: null, emailAddress: null });
+    expect(contactDetailsFor(row(['gone']))).toEqual(none);
+    expect(contactDetailsFor(row(['a']))).toEqual(none);
+    expect(contactDetailsFor(null)).toEqual(none);
   });
 });
