@@ -46,8 +46,8 @@ interface Props {
   onClose: () => void;
   /**
    * Fired right before the final `onClose` of a successful Log in
-   * `ScanPortionSheet`, and only then — see `EstimateMealSheet`'s own
-   * `onLogged` for why a caller wants this kept apart from `onClose`.
+   * `ScanPortionSheet`, and only then — see that sheet's own `onLogged`
+   * for why a caller wants this kept apart from `onClose`.
    */
   onLogged?: (labels: string[]) => void;
 }

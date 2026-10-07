@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,14 +13,8 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { font, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { rankFoodCandidates, type RankedFood } from '../utils/foodSearchMatch';
-import {
-  describeFoodSearchError,
-  fetchFoodPortions,
-  foodSearchErrorSettingsEntryId,
-  searchFoods,
-  type FoodSearchHit,
-} from '../services/foodSearch';
+import { type RankedFood } from '../utils/foodSearchMatch';
+import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -94,12 +88,8 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
 
   const searchFilter = useFilterField(itemName);
   const query = searchFilter.query;
-  const [hits, setHits] = useState<FoodSearchHit[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [picking, setPicking] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [errorSettingsEntryId, setErrorSettingsEntryId] = useState<string | null>(null);
-  const [searched, setSearched] = useState(false);
+  const db = useFoodDatabaseSearch(query);
+  const { ranked, searching, searched, picking, error, errorSettingsEntryId, run, reset } = db;
 
   // SheetModal holds the close until the keyboard is gone (see its doc
   // comment), so this dismiss isn't what prevents the freeze; it only starts
@@ -108,44 +98,6 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
     Keyboard.dismiss();
     onClose();
   };
-
-  // Which opening a reply belongs to, and which search is the newest. Both
-  // are network round trips: a search submitted over a slower one landed its
-  // results under the newer query, and a portion fetch for a row tapped just
-  // before Cancel handed `onPick` a food to a sheet that had been closed (or
-  // reopened on another item). Bumped on every open and close, and by every
-  // search; read back after each await.
-  const openingRef = useRef(0);
-  useEffect(() => { openingRef.current += 1; }, [visible]);
-  const searchRef = useRef(0);
-
-  const run = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setSearching(true);
-    setError(null);
-    setErrorSettingsEntryId(null);
-    const opening = openingRef.current;
-    const search = ++searchRef.current;
-    const stillHere = () => openingRef.current === opening && searchRef.current === search;
-    try {
-      const found = await searchFoods(trimmed);
-      if (!stillHere()) return;
-      setHits(found);
-    } catch (e) {
-      if (!stillHere()) return;
-      setHits([]);
-      setError(describeFoodSearchError(e));
-      setErrorSettingsEntryId(foodSearchErrorSettingsEntryId(e));
-    } finally {
-      // Left alone for a search that was overtaken: the newer one owns the
-      // spinner now, and the reopen's own reset covers a closed sheet.
-      if (stillHere()) {
-        setSearching(false);
-        setSearched(true);
-      }
-    }
-  }, []);
 
   // Closing is entirely the caller's job — see the note on `onOpenSettings`
   // above. This just dismisses the keyboard (the search field may still hold
@@ -159,45 +111,24 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
 
   // Opening with the item's own name already searched: the answer is nearly
   // always among the first results for it, and making someone retype the name
-  // of the row they are already looking at is a step for nothing.
+  // of the row they are already looking at is a step for nothing. Every open
+  // and close resets the search, which also retires a reply still in flight
+  // from the last opening (see `useFoodDatabaseSearch`).
   useEffect(() => {
+    reset();
     if (!visible) return;
     searchFilter.seed(itemName);
-    setHits([]);
-    setError(null);
-    setErrorSettingsEntryId(null);
-    setSearched(false);
-    setPicking(null);
     void run(itemName);
-  }, [visible, itemName, run]);
-
-  const ranked = useMemo(
-    () => rankFoodCandidates(query, hits.map(h => h.candidate)),
-    [query, hits],
-  );
+  }, [visible, itemName, run, reset]);
 
   const handlePick = async (row: RankedFood) => {
-    const hit = hits.find(h => h.candidate.fdcId === row.candidate.fdcId);
-    if (!hit || picking) return;
+    if (picking) return;
     haptics.tap();
-    setPicking(row.candidate.fdcId);
-    setError(null);
-    const opening = openingRef.current;
-    const stillHere = () => openingRef.current === opening;
-    try {
-      // The second request, and the reason there is one: the portion table is
-      // on the detail endpoint only, and without it a recipe line written as a
-      // volume or a count can never become grams. See `readFdcPortions`.
-      const portions = await fetchFoodPortions(row.candidate.fdcId);
-      if (!stillHere()) return;
-      onPick({ ...hit.nutrition, portions }, row.candidate.description);
-      haptics.success();
-      close();
-    } catch (e) {
-      if (!stillHere()) return;
-      setError(describeFoodSearchError(e));
-      setPicking(null);
-    }
+    const picked = await db.pick(row);
+    if (!picked) return;
+    onPick(picked.nutrition, picked.description);
+    haptics.success();
+    close();
   };
 
   const renderRow = ({ item }: { item: RankedFood }) => {

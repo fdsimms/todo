@@ -20,7 +20,7 @@ import { packageChoices, type PackageChoice } from './scanPortion';
 /**
  * Something already eaten, found again from the words describing it.
  *
- * **The estimate sheet is a main way in, and a meal eaten before does not need
+ * **Estimating is a main way in, and a meal eaten before does not need
  * guessing at.** `estimateMealNutrition` is given nothing but the typed
  * description — no recipe, no catalog, no history — so describing last
  * Tuesday's lunch a second time spends a request to re-derive figures the log
@@ -192,7 +192,7 @@ export function describedEstimateFactor(food: RecalledFood, clause: string): num
  * one query mixes them up: "peach jam" can match a clause it isn't in, and a
  * weight search over the whole string finds whichever number comes first
  * rather than the one sitting next to the food it's meant to describe. Every
- * offer `EstimateMealSheet` stages is scoped to the clause that produced it
+ * offer `EstimatePanel` stages is scoped to the clause that produced it
  * for exactly this reason.
  */
 export function descriptionClauses(description: string): string[] {
@@ -353,7 +353,7 @@ export function measuresByWeight(panel: FoodNutrition): boolean {
  *
  * An estimate is never asked for grams, even one whose whole carried a
  * weight: the count is the unit it was estimated in, and a described meal is
- * logged with no weight (`handleLog` in `EstimateMealSheet`).
+ * logged with no weight (`handleLog` in `EstimatePanel`).
  */
 export type RecallAmountAsk =
   | { kind: 'count'; count: EstimateCount; opensAt: number | null }

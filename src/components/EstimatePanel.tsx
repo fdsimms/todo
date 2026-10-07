@@ -1,16 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { subDays } from 'date-fns/subDays';
-import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
@@ -62,15 +59,12 @@ import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { recipeInBook } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CountStepper } from './CountStepper';
 import { ESTIMATE_AMOUNT_OPTIONS, UNIT_OPTIONS, amountRefusal, amountText, factorFromTyped, type AmountUnit } from './EstimateAmountSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
-import { SheetHeaderButton } from './SheetHeaderButton';
-import { SheetHeader } from './SheetHeader';
 import { TextField } from './TextField';
 
 /**
@@ -121,18 +115,24 @@ import { TextField } from './TextField';
  * narrow a re-ask, so unanswered is a meaningful state rather than a third one
  * for every reader to handle.
  *
- * The description typed here is staged before an explicit Log, so the swipe
- * down is guarded.
+ * **It is a panel inside the food log's own sheet, not a sheet of its own.**
+ * The description is whatever is in that sheet's search field, so a food that
+ * came up empty in the search is estimated from the words already typed, with
+ * no second field and no second sheet to open and dismiss. The host mounts it
+ * when its Estimate button is tapped and unmounts it on ×, which is what resets
+ * it. × needs no confirm, since it is the one deliberate way out; the host's own
+ * Cancel counts an open panel as unsaved work and asks first.
  */
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
-//   state          the description, the estimate on screen, the staged row
+//   state          the estimate on screen, the staged row (the description
+//                  is the host's search field, passed in)
 //   offers         past entries, catalog rows and recipes the text names
 //   estimate       asking the model, refining with answers, the Log button
 //   staged rows    a past entry's amount step (a weight, or an estimate's
 //                  count or multiple), what it would log, and its one-tap +
-//   save/cancel    filing the estimate as a recipe, the discard guard
+//   save           filing the estimate as a recipe
 //   render         the offer list (a staged row's amount step is
 //                  `renderAmountStep`), the estimate row, the result card
 // Below the component: PendingRecallCard, KcalFigure, NutrientLine, styles.
@@ -171,51 +171,41 @@ interface StagedAmount {
 type StagedWrite = RecalledHelping;
 
 interface Props {
-  visible: boolean;
-  /** Which meal it lands in, chosen by the section the estimate was started from. */
+  /**
+   * What was eaten, in words: the host sheet's search field. Read live, so
+   * editing the field after an estimate brings the Estimate row back for the
+   * new text (see `showEstimateRow`).
+   */
+  description: string;
+  /**
+   * Rewrites the host's field. Called when a "you've had this before" row logs
+   * its own clause and the rest of the description is left to log.
+   */
+  onDescriptionChange: (text: string) => void;
+  /** Which meal it lands in, chosen by the section the add was started from. */
   slot: MealSlot | null;
   /** The logical day being logged, so a backdated estimate lands where it is shown. */
   at: Date;
   /**
    * The planned meal this estimate is logging, carried onto whatever gets
-   * saved — same field `FoodLogEntrySheet`'s own `mealPlanEntryId` prop
-   * writes, for a caller reached from a meal-plan prompt rather than the
-   * plain "add a food" flow. Omitted (or null) for every other caller.
+   * saved, same field the host sheet's own `mealPlanEntryId` writes. Omitted
+   * (or null) for every other caller.
    */
   mealPlanEntryId?: string | null;
-  /**
-   * What the description field starts as — the dish's own name, from whatever
-   * the caller already knew: a meal's title, or the words typed into the food
-   * search before it came up empty (`FoodLogEntrySheet`'s `onEstimate`).
-   *
-   * It seeds the field rather than estimating on open, and that distinction is
-   * the whole of it: a request costs Anthropic tokens, so the person still taps
-   * Estimate. Same call `sharedRecipeLinks` makes about a page waiting for a
-   * tap, and the reason `nutritionEstimate.ts` cites it.
-   *
-   * Read at the moment the sheet opens, like `slot` beside it. A caller that
-   * changes it while the sheet is up would otherwise rewrite a description
-   * somebody is part-way through editing.
-   */
-  initialDescription?: string;
-  onClose: () => void;
   /** Offered instead of estimating, when the description names one. See the note above. */
   onPickRecipe: (recipeId: string) => void;
   /**
-   * Fired right before `onClose` on a successful Log, and only then, with the
-   * label of what was logged — a caller that keeps its own "what did you eat?"
-   * sheet open underneath this one (rather than closing it to open this) uses
-   * this to either close that sheet, so a completed estimate doesn't reveal it
-   * again, or, with "Add another" on, stay open for the next food. Cancelling
-   * leaves it unfired, which is what lets that sheet stay in place.
+   * After a successful Log, with the label of what was logged. The host decides
+   * what follows: close, or with "Add another" on, reset for the next food.
    */
-  onLogged?: (label: string) => void;
+  onLogged: (label: string) => void;
+  /** The × in the panel's own header. */
+  onDismiss: () => void;
 }
 
-export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialDescription, onClose, onPickRecipe, onLogged }: Props) {
+export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onDismiss }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const addEntry = useFoodLogStore(s => s.addEntry);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
@@ -233,7 +223,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
 
   // ==== state ====
-  const [description, setDescription] = useState('');
+  // Capped where the old field capped it, since that is what the request accepts.
+  const description = rawDescription.slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
   const [estimate, setEstimate] = useState<NutritionEstimate | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -292,33 +283,11 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    * closes this sheet anyway. Ninety days for the reason given there, that a
    * fortnight answers "what do you eat" badly for anything weekly.
    */
-  const [history, setHistory] = useState<FoodLogEntry[]>([]);
-
-  // `initialDescription` is deliberately not a dependency: it is read on the
-  // opening edge only, so a caller whose value changes underneath (the food
-  // search's own query keeps moving while its sheet sits open behind this one)
-  // cannot wipe an edit in progress. Same reason `defaultSlot` is held in a ref
-  // in `PlanMealSheet`; here `visible` already gates it.
-  useEffect(() => {
-    if (!visible) return;
-    setDescription(initialDescription ?? '');
-    setEstimate(null);
-    setAnswers({});
-    setLoading(false);
-    setError(null);
-    setChosenSlot(slot);
-    setSavedRecipeId(null);
-    setPendingLog(null);
-    setPendingAmount(null);
-    setPendingError(null);
-    setEstimatedFor(null);
-    setQuestions([]);
-    setDetailsOpen(false);
-    setAmount('');
-    setAmountDraft(null);
+  const [history] = useState<FoodLogEntry[]>(() => {
     const today = getCurrentDayStart();
-    setHistory(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today)));
-  }, [visible, slot]);
+    return recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today));
+  });
+
 
   // ==== offers: what has been eaten or filed before ====
   // Real data the user already owns beats a guess, so every offer is made
@@ -443,15 +412,12 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
 
   // ==== estimate: asking, refining, logging ====
   /**
-   * Which request is the current one. Bumped on every open and close, and by
-   * each new ask, so an answer is kept only if nothing has happened since it
-   * was sent. A token rather than the `visibleRef` the recipe sheets keep,
-   * because this sheet resets on open rather than on close: a request sent
-   * just before a cancel, answered just after a quick reopen, would otherwise
-   * fill the new session with the old meal's estimate.
+   * Which request is the current one. Bumped by each new ask and when the
+   * panel closes, so an answer is kept only if nothing has happened since it
+   * was sent: a request answered after × has nowhere to land.
    */
   const runTokenRef = useRef(0);
-  useEffect(() => { runTokenRef.current += 1; }, [visible]);
+  useEffect(() => () => { runTokenRef.current += 1; }, []);
 
   /**
    * Resolves to whether the request came back with an estimate, or null when
@@ -494,6 +460,15 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setEstimatedFor(description);
     run(description, true);
   };
+
+  // The host's Estimate button is the tap that asks for one, so with nothing
+  // already logged to offer first there is no second tap to wait for. With
+  // offers, they come first and the Estimate row is the way past them, which
+  // is the "real data beats a guess" rule above.
+  useEffect(() => {
+    if (recalled.length === 0 && catalogMatches.length === 0 && matches.length === 0) handleEstimate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Re-asked rather than adjusted here: the model knows what a large changes
   // about a portion and this sheet does not, and scaling a published figure by
@@ -561,8 +536,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     if (!written) { haptics.error(); return; }
     haptics.success();
     Keyboard.dismiss();
-    onLogged?.(estimate.label);
-    onClose();
+    onLogged(estimate.label);
   };
 
   // ==== staged rows: the amount step and the one-tap + ====
@@ -821,7 +795,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       })
       .join(', ');
     if (remaining.trim()) {
-      setDescription(remaining);
+      onDescriptionChange(remaining);
       setEstimate(null);
       setEstimatedFor(null);
       setQuestions([]);
@@ -831,8 +805,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       return null;
     }
 
-    onLogged?.(staged.food.label);
-    onClose();
+    onLogged(staged.food.label);
     return null;
   };
 
@@ -854,7 +827,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     }
   };
 
-  // ==== save as recipe, cancel ====
+  // ==== save as recipe ====
   // Files the description as a recipe made of the lines it names, so it can be
   // logged again later without re-describing it. Deliberately not the
   // estimate's own total figures: those are a claim about *this* telling
@@ -880,18 +853,6 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     }
     setSavedRecipeId(recipe.id);
     haptics.success();
-  };
-
-  const handleCancel = () => {
-    if (!description.trim() && !estimate) { Keyboard.dismiss(); onClose(); return; }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
-      ],
-    );
   };
 
   // ==== render ====
@@ -1112,38 +1073,21 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   return (
-    <SheetModal name="Describe a meal" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
-      <View style={styles.root}>
-        <SheetHeader
-          title="Describe a meal"
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
-          right={<View style={styles.headerSpacer} />}
-        />
-
-        <ScrollView
-          ref={keyboardScroll.ref}
-          style={styles.body}
-          contentContainerStyle={styles.bodyContent}
-          keyboardShouldPersistTaps="handled"
-          // The results sit under the field, so the keyboard left up after
-          // editing the description covers them; a drag down the page puts it
-          // away, the way NutritionPanelSheet's form does.
-          keyboardDismissMode="interactive"
-          {...keyboardScroll.props}
+    <View style={styles.root}>
+      <View style={styles.panelHead}>
+        <Ionicons name="sparkles" size={iconSize.sm} color={colors.accentText} />
+        <Text style={styles.panelTitle}>ESTIMATE</Text>
+        <TouchableOpacity
+          style={styles.panelClose}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); onDismiss(); }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Close the estimate"
         >
-          <TextField
-            style={styles.input}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="e.g. cheeseburger and fries at Five Guys"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={ESTIMATE_DESCRIPTION_MAX_LENGTH}
-            multiline
-            blurOnSubmit
-            returnKeyType="done"
-            onSubmitEditing={() => { if (!hasOffers) handleEstimate(); }}
-            accessibilityLabel="What you ate"
-          />
+          <Ionicons name="close" size={iconSize.sm} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
 
           {hasOffers && !estimate && (
             <>
@@ -1212,8 +1156,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
 
           {!trimmed && !estimate && (
             <Text style={styles.listHint}>
-              Type what you ate. Anything you've logged before shows up here, and anything new
-              can be estimated.
+              Type what you ate in the search field. Anything you've logged before shows up
+              here, and anything new can be estimated.
             </Text>
           )}
 
@@ -1385,10 +1329,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
               />
             </>
           )}
-        </ScrollView>
 
         {estimate && (
-          <View style={styles.footer}>
+          <View>
             <TouchableOpacity
               style={[styles.action, loading && styles.actionOff]}
               activeOpacity={interaction.activeOpacity}
@@ -1403,8 +1346,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
             </TouchableOpacity>
           </View>
         )}
-      </View>
-    </SheetModal>
+    </View>
   );
 }
 
@@ -1473,9 +1415,16 @@ function PendingRecallCard({ styles, label, meta, amount, preview, error, onCanc
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.bg },
-    body: { flex: 1 },
-    bodyContent: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
+    root: { gap: spacing.md },
+    panelHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+    panelTitle: {
+      flex: 1,
+      color: colors.accentText,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+    },
+    panelClose: { padding: spacing.xxs },
     label: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -1483,16 +1432,6 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
     },
     labelSpaced: { marginTop: spacing.md },
-    input: {
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      color: colors.text,
-      fontSize: font.md,
-      minHeight: 52,
-      textAlignVertical: 'top',
-    },
     hint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
     card: {
       backgroundColor: colors.bgSecondary,
@@ -1591,7 +1530,6 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     estimateTitle: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.medium },
-    headerSpacer: { minWidth: 64 },
     cardBusy: { opacity: 0.5 },
     resultHead: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     estimateTag: { color: colors.textSecondary, fontSize: font.xs },
@@ -1615,14 +1553,6 @@ function makeStyles(colors: Colors) {
     },
     disclosureText: { color: colors.textSecondary, fontSize: font.sm },
     details: { gap: spacing.xs },
-    footer: {
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.smd,
-      paddingBottom: spacing.xl,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.separator,
-      backgroundColor: colors.bg,
-    },
     // The recall row's confirm step, in place of the plain row while it's
     // staged — same tint as the row it replaces, with room for the weight
     // field and the Cancel/Log pair.

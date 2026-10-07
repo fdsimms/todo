@@ -1,0 +1,4 @@
+{
+  "message": "\"What did you eat?\" now has Food database and Estimate buttons under the search field. Both work on what you typed and show their results in the same sheet, so finding a food in the USDA database or estimating a meal no longer opens a second sheet",
+  "date": "2026-10-07"
+}
