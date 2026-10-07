@@ -1138,6 +1138,21 @@ export function seedDemoData(): void {
   });
   markMissed(recycling.id);
 
+  // --- An occurrence somebody else did ---------------------------------------
+  // The long-press menu's "Someone else did it": a completed row carrying
+  // doneByOtherAt, which the Logbook tags and Stats leaves out. Before the
+  // coins are switched on, like the miss above, though it pays nothing either way.
+  const trash = addTask({
+    title: 'Take out the trash',
+    notes: 'Bins go to the curb the night before pickup.',
+    category: 'Home',
+    recurrenceType: 'weekly',
+    recurrenceDays: [subDays(today, 1).getDay()],
+    dueDate: subDays(today, 1).toISOString(),
+    effort: 1,
+  });
+  completeTask(trash.id, { byOther: true });
+
   // --- A monthly repeat on the Nth weekday ----------------------------------
   // recurrenceWeekOrdinal, otherwise invisible until a task uses it: "the
   // second Tuesday" rather than a day of the month. Dated onto the grid's own
@@ -1905,23 +1920,9 @@ export function seedDemoData(): void {
     addSubtask(trip.id, title);
   });
 
-  // --- A focus session, mid-stretch ----------------------------------------
-  // Started through the real store action, so the plan is whatever
-  // buildFocusPlan makes of these two tasks under the shipped settings rather
-  // than a hand-written run that could drift from it. These two are chosen for
-  // what the plan does to them: the roadmap fits in one stretch, the gutters
-  // are estimated past the work cap and so get split in half with a break in
-  // the middle. Both of those are invisible until something is actually
-  // queued, which is exactly the kind of capability this seed exists for.
-  //
-  // It runs rather than sits paused: a session on a demo phone should look
-  // like one in progress, and the clock is stamped at seed time, so entering
-  // demo mode always starts it from the top rather than showing something that
-  // ran out days ago.
-  useFocusStore.getState().startSession(
-    [roadmap, gutters],
-    focusPlanOptionsFrom(useSettingsStore.getState()),
-  );
+  // No focus session is started here: entering demo mode must not begin one on
+  // its own, running or paused. The finished sessions below carry the focus
+  // history the Stats screen needs.
 
   // --- Finished sessions, so the Stats focus sections aren't empty ---------
   // The one place here that reaches the database directly rather than going
@@ -3264,8 +3265,8 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  * groups by it and a missing type reads as a missing section, and one instance
  * of each of the features that are otherwise invisible: components (shared and
  * either/or), ingredient alternatives, sections, prep tasks, both duration
- * fields, a live cook timer, a hand-set step timer length, a step timer already
- * counting down, cook history, all three attribution shapes, and the Up Next
+ * fields, a hand-set step timer length, a paused step timer (nothing in the
+ * seed starts a clock), cook history, all three attribution shapes, and the Up Next
  * shelf (two recipes neither cooked nor voted on yet, in a hand-picked order
  * rather than creation order — so the shelf reads as deliberately ordered,
  * not just "whatever was added last").
@@ -3299,7 +3300,6 @@ function seedRecipes(): DemoRecipes {
     setLeftoverKeepDays,
     setCookedWeight,
     markCooked,
-    startCookTimer,
     addStep,
     setStepTimerSeconds,
     setStepNote,
@@ -3626,8 +3626,7 @@ function seedRecipes(): DemoRecipes {
   const marinate = addPrepTask(stirFry.id, 'Slice the chicken and marinate');
   if (marinate) updatePrepTask(stirFry.id, marinate.id, { offsetDays: 0, reminderOffsetMinutes: 60 });
   // A written-out method (Recipe.steps), on the one recipe that's mid-cook
-  // below — so cook mode opens here with the timer already running, which is
-  // the state the whole screen was built for.
+  // below, so cook mode opens here with a step timer waiting.
   [
     'Slice the chicken thin and toss it with the soy sauce.',
     'Get the pan as hot as it goes, then sear the chicken in one layer.',
@@ -3655,16 +3654,15 @@ function seedRecipes(): DemoRecipes {
   }
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
-  // Tonight's dinner, mid-cook — the one place a live timer shows up.
-  startCookTimer(stirFry.id);
-  // And one step timer counting down alongside it, on the step that names two
-  // minutes. Cook mode's footer stack, the Lock Screen activity and the row's
-  // own Pause/+1m/Again are all invisible until something is actually running:
-  // with an empty stack the screen reads as one that can't hold a step timer
-  // at all.
+  // No cook timer is started here: entering demo mode must not start a clock on
+  // its own, and a recipe timer paused at zero reads the same as an idle one.
+  // One step timer is seeded, paused, on the step that names two minutes. Cook
+  // mode's footer stack and the row's own Resume/+1m/Again are invisible with
+  // an empty stack, so the screen would read as one that can't hold a step
+  // timer at all. Paused, it shows the row without counting down or alarming.
   const stirFryStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[2];
   if (stirFryStep) {
-    useStepTimerStore.getState().start({
+    const stepTimer = useStepTimerStore.getState().start({
       recipeId: stirFry.id,
       recipeName: stirFry.name,
       stepId: stirFryStep.id,
@@ -3673,6 +3671,7 @@ function seedRecipes(): DemoRecipes {
       stepExcerpt: stepTimerExcerpt(stirFryStep.text, stepDurationOffers(stirFryStep)[0]?.start ?? 0),
       durationSeconds: 2 * 60,
     });
+    if (stepTimer) useStepTimerStore.getState().pause(stepTimer.id);
   }
 
   const salmon = newRecipe('Lemon garlic salmon');
@@ -3922,7 +3921,6 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setShopAisleOrder,
     setShopReceiptStyle,
     rememberAliases,
-    startTrip,
     setItemPrice,
     addList,
     setActiveList,
@@ -4909,28 +4907,13 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setActiveList(null);
   }
 
-  // ...and you're at Trader Joe's right now, which is the only state in which
-  // the list says anything about stores. Two of the three things a row can say
-  // are on screen because of it: Tortillas are marked as not stocked here, and
-  // Peanut butter is on record at Costco alone. The third ("Usually X") can't
-  // be seeded honestly — it needs an item bought at two stores while you stand
-  // in a third, and this demo has two stores anyone would shop at.
+  // No shopping trip is started here: entering demo mode must not begin one on
+  // its own. The store claims below (Tortillas not stocked at Trader Joe's,
+  // Peanut butter on record at Costco alone) are recorded on the rows, and show
+  // up as soon as someone starts a trip at that store.
   //
-  // Last, because `setActiveList` above ends a running trip.
-  //
-  // With a budget on it, since a trip without one compares its running total
-  // to nothing and the ceiling is invisible. $60 against a cart holding Milk
-  // at $3.49 and an unpriced Bananas puts the banner in the state worth
-  // showing: neither over nor fully priced, so it reports the total and the
-  // coverage and offers no verdict at all. That refusal is the feature — a
-  // seed that happened to be fully priced would demo the easy half.
-  startTrip(traderJoes.id, 6000);
-
-  // ...and Milk already has its price for today's trip, priced the moment it
-  // went in the cart — the capability this seed exists for. Bananas is left
-  // unpriced so the "+ Price" chip has an instance too: a demo where every
-  // checked row already carried a price would hide the affordance behind the
-  // one state nobody needs it for.
+  // Milk has a price recorded at Trader Joe's, so the item's price history is
+  // not empty. Bananas is left unpriced.
   setItemPrice(itemNamed('Milk').id, 349, traderJoes.id);
 
   // Stated per 100g with no portions and no serving weight — a real barcode

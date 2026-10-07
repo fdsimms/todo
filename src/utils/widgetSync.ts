@@ -12,6 +12,9 @@ import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
 import { buildWidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
+import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
+import { parseQuietTaps, planQuietTaps } from './widgetQuietTaps';
+import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
@@ -143,6 +146,59 @@ async function processPendingDisposals(): Promise<void> {
   }
 }
 
+// Applies the taps the widget handled without opening the app (see
+// widgetQuietTaps.ts for which those are and why). Silent, unlike the
+// completion drain above: there is no animation to show and nothing to
+// navigate to, because the person tapping it is already somewhere else.
+//
+// A tap that needs a person after all (the task gained a question since the
+// snapshot was written) is handed to useWidgetCompletionStore, the opening
+// intent's path, and Today runs it the next time a row for it mounts. It
+// navigates nowhere: the app came forward for some other reason.
+//
+// Grocery ticks name their list, and are written to that list rather than to
+// whichever one the app has open (CLAUDE.md, "A caller that isn't a person
+// looking at the grocery screen passes listId explicitly").
+async function processQuietWidgetTaps(): Promise<void> {
+  // Same demo-mode reasoning as the drains above: a drain consumes real taps.
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  try {
+    const taps = parseQuietTaps(await bridge.drainQuietWidgetTaps());
+    if (taps.length === 0) return;
+    const { dayResetTime, mealLogPrompt } = useSettingsStore.getState();
+    const todayKey = getLogicalDayKey(new Date(), dayResetTime);
+    const plan = planQuietTaps(
+      taps,
+      useTaskStore.getState().tasks,
+      useGroceryStore.getState().listEntries,
+      mealLogPrompt,
+      iso => getLogicalDayKey(new Date(iso), dayResetTime) === todayKey,
+    );
+    const handedOver: Record<string, string> = {};
+    for (const action of plan) {
+      switch (action.type) {
+        case 'complete':
+          useTaskStore.getState().completeTask(action.id, { completedAt: action.at });
+          break;
+        case 'logUnit':
+          useTaskStore.getState().logQuotaUnit(action.id);
+          break;
+        case 'checkGrocery':
+          useGroceryStore.getState().setCheckedMany([action.itemId], true, { listId: action.listId });
+          break;
+        case 'handToApp':
+          handedOver[action.id] = action.at;
+          break;
+      }
+    }
+    const ids = Object.keys(handedOver);
+    if (ids.length > 0) useWidgetCompletionStore.getState().enqueue(ids, handedOver);
+  } catch {
+    // A build predating drainQuietTaps — no-op.
+  }
+}
+
 /**
  * Exported for the background refresh task, which has no store subscription to
  * ride and needs the snapshot rewritten once, synchronously, at the end of its
@@ -178,6 +234,18 @@ function widgetEvents(calendarReadEnabled: boolean): readonly BusyEvent[] | null
   if (!loaded) return null;
   const hidden = useHiddenEventsStore.getState().hiddenByKey;
   return events.filter(e => !(hiddenEventKey(e) in hidden));
+}
+
+/**
+ * Every task on Later, with the moment it reaches Today (an on-pace target's
+ * next unit included — `getVisibleAt` already answers that). The pass is pinned
+ * to the snapshot's own `now`: a task with no moment to give comes back as
+ * `now`, and the builder drops exactly those, which a pass reading its own
+ * clock a millisecond later would let through as "surfacing any moment".
+ */
+function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; visibleAt: Date }[] {
+  const pass = { ...beginVisibleAtPass(), now };
+  return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
 }
 
 function writeSnapshotNow(): void {
@@ -229,6 +297,8 @@ function writeSnapshotNow(): void {
         : null,
     events: widgetEvents(settings.calendarReadEnabled),
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
+    upcoming: widgetUpcoming(tasks.deferredTasks(), now),
+    mealLogPrompt: settings.mealLogPrompt,
   });
 
   writeToNativeBridge(JSON.stringify(snapshot));
@@ -324,6 +394,7 @@ export function useWidgetSync(): void {
       processPendingWidgetCompletions(),
       processPendingAddTasks(),
       processPendingDisposals(),
+      processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
       // making the very first native module call while the app (and its
@@ -343,6 +414,7 @@ export function useWidgetSync(): void {
           processPendingWidgetCompletions(),
           processPendingAddTasks(),
           processPendingDisposals(),
+          processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }
     });

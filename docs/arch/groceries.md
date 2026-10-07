@@ -1134,11 +1134,22 @@ on that scale is in the middle, and it's the one the app had no way to hear abou
 - **Running low still means you have it**, so `probablyHaveReason` answers for it and a week plan
   still counts it. Some left is exactly what distinguishes it from "Out of it", which still
   outranks it.
-- **It never self-expires**, unlike `onHandUntil`. A "Got it" is a guess with a shelf life, so it
-  lapses into silence; being nearly out is a fact that stays true until a purchase refutes it.
+- **It lapses, but by being read as lapsed, not by being cleared.** `isRunningLow`
+  (`grocerySuggest.ts`) stops counting the stamp after up to two weeks, sooner for an item whose own
+  purchase window is shorter. Nearly out is the state closest to being out, so it resolves before a
+  whole purchase cycle does, never after. It used to hold until a purchase refuted it, which fails
+  for anything bought off the books and, because a low row counts as on hand, hid that item from a
+  week plan's shortfalls. A lapsed mark is no longer an answer, so `pantryCheckLapse` asks about it
+  (from the mark's own date, with no purchase-history gate), and marking again renews it
+  (`runningLowRow`). The supply sweep reads the raw stamp on purpose: a row it flagged and the person
+  took off the list by hand must stay off while the supply is still low.
 - **It is the one pantry assertion that touches `onList`**, and the exception that proves
   `addToPantry`'s rule: saying you *have* something is not a plan to buy it, and saying you're
-  nearly out is nothing but one. **In one direction only** — marking adds, clearing leaves the list
+  nearly out is nothing but one, **unless "Running low adds to the list" is off** (Settings, Groceries
+  & meals; `runningLowAddsToList`, default on). That switch governs a mark made by hand, in the item
+  sheet, the add field's offer and the review deck; a supply running low passes `addToList: true`,
+  since that is a request to reorder. The item sheet says what the pill will do before it is tapped.
+  **In one direction only** — marking adds, clearing leaves the list
   alone. `onList` has several owners and nothing on the row records which of them put it there, so
   a clear that removed it would be guessing with someone else's data. The add is undoable the
   moment it happens, which is the honest answer for a mis-tap.

@@ -856,6 +856,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },
+  { id: 'runningLowAddsToList', groupId: 'kitchen', label: 'Running low adds to the list', section: 'Pantry',
+    keywords: ['nearly out', 'almost out', 'shopping list', 'pantry', 'buy', 'automatic', 'grocery'] },
   { id: 'unitSystem', groupId: 'kitchen', label: 'Units', section: 'Recipe & grocery amounts',
     keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'] },
   { id: 'currencySymbol', groupId: 'kitchen', label: 'Currency', section: 'Recipe & grocery amounts',

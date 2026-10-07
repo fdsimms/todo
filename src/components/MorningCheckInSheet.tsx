@@ -80,7 +80,6 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>Yesterday</Text>
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />
         </View>
         <View style={styles.titleBlock}>
@@ -148,17 +147,10 @@ function makeStyles(colors: Colors) {
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-end',
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
       paddingBottom: spacing.sm,
-    },
-    eyebrow: {
-      color: colors.accentText,
-      fontSize: font.sm,
-      fontWeight: fontWeight.semibold,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
     },
     titleBlock: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
     title: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold },

@@ -170,6 +170,7 @@ let mockUseUpCategory: string | null = null;
 let mockActiveListDrivenBy: string | null = null;
 let mockProjects: any[] = [];
 let mockCollapsedGroceryGroups: string[] = [];
+let mockRunningLowAddsToList = true;
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -179,6 +180,7 @@ jest.mock('../store/useSettingsStore', () => ({
       get groceryUseUpTaskCategory() { return mockUseUpCategory; },
       get useUpTaskCap() { return mockUseUpCap; },
       dayResetTime: '00:00',
+      get runningLowAddsToList() { return mockRunningLowAddsToList; },
       get activeListDrivenBy() { return mockActiveListDrivenBy; },
       setActiveListDrivenBy: (id: string | null) => { mockActiveListDrivenBy = id; },
       get collapsedGroceryGroups() { return mockCollapsedGroceryGroups; },
@@ -5760,6 +5762,34 @@ describe('setRunningLow', () => {
     const updated = useGroceryStore.getState().items[0];
     expect(updated.runningLowAt).not.toBeNull();
     expect(updated.onList).toBe(true);
+  });
+
+  describe('with "Running low adds to the list" off', () => {
+    afterEach(() => { mockRunningLowAddsToList = true; });
+
+    it('marks the row without putting it on the list or stamping lastAddedAt', () => {
+      mockRunningLowAddsToList = false;
+      const flour = makeItem({ name: 'Flour', onList: false });
+      seed([flour]);
+
+      useGroceryStore.getState().setRunningLow(flour.id, true);
+
+      const updated = useGroceryStore.getState().items[0];
+      expect(updated.runningLowAt).not.toBeNull();
+      expect(updated.onList).toBe(false);
+      expect(updated.lastAddedAt).toBe(flour.lastAddedAt);
+      expect(useGroceryStore.getState().lastAction).toBeNull();
+    });
+
+    it('still adds when the caller says it is a reorder request', () => {
+      mockRunningLowAddsToList = false;
+      const flour = makeItem({ name: 'Flour', onList: false });
+      seed([flour]);
+
+      useGroceryStore.getState().setRunningLow(flour.id, true, { registerUndo: false, addToList: true });
+
+      expect(useGroceryStore.getState().items[0].onList).toBe(true);
+    });
   });
 
   // One direction only: nothing on the row records *which* owner put it on the

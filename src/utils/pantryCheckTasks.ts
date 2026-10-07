@@ -1,6 +1,11 @@
 import type { GroceryItem, ItemProduct, Task } from '../types';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
-import { OUT_OF_IT_UNTIL, pantryGuessLapsedDays, probablyHaveReason } from './grocerySuggest';
+import {
+  OUT_OF_IT_UNTIL,
+  pantryGuessLapsedDays,
+  probablyHaveReason,
+  runningLowLapsedDays,
+} from './grocerySuggest';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 
 /**
@@ -166,6 +171,11 @@ export function pantryCheckLapse(
   if (probablyHaveReason(item, now, products) !== null) return null;
   if (item.onHandUntil === OUT_OF_IT_UNTIL) return null;
   if (listed ? listed.has(item.id) : item.onList) return null;
+  // A lapsed "Running low" is its own event and needs no purchase history: the
+  // person said it was nearly out, so a month later it is worth one question
+  // whether or not the cadence guess below has ever had three purchases to go on.
+  const lowLapse = runningLowLapsedDays(item, now);
+  if (lowLapse !== null) return lowLapse;
   return pantryGuessLapsedDays(item, now);
 }
 
@@ -215,7 +225,9 @@ export function pantryCheckAnswers(
  * than needing a rule of its own.
  */
 function answeredSincePurchase(item: GroceryItem, answeredAt: string | undefined): boolean {
-  const last = item.lastPurchasedAt;
+  // A lapsed "Running low" is measured from the mark, not the last purchase: a
+  // purchase clears the mark, so any mark still standing is the later of the two.
+  const last = item.runningLowAt ?? item.lastPurchasedAt;
   if (!last) return false;
   if (item.pantryCheckDeclinedAt && item.pantryCheckDeclinedAt > last) return true;
   return !!answeredAt && answeredAt > last;

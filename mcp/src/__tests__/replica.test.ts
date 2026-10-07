@@ -1535,6 +1535,30 @@ describe('the replica', () => {
       expect(balance()).toBe(before);
     });
 
+    it('marks a repeat done by someone else with no coins, and reopening clears the mark', () => {
+      earn(90);
+      const before = balance();
+      const dailyDue = new Date(Date.now() - 86_400_000).toISOString();
+      const t = replica.createTask({ title: 'Dishes daily', recurrenceType: 'daily', dueDate: dailyDue, estimatedMinutes: 30 });
+      const result = replica.markDoneByOther(t.id);
+      expect(result.completed.doneByOtherAt).toBeTruthy();
+      expect(result.completed.missedAt ?? null).toBeNull();
+      expect(result.nextTask).not.toBeNull();
+      expect(balance()).toBe(before);
+
+      const reopened = replica.reopenTask(t.id);
+      expect(reopened.task.doneByOtherAt ?? null).toBeNull();
+      expect(balance()).toBe(before);
+    });
+
+    it('marks a one-off done by someone else', () => {
+      const t = replica.createTask({ title: 'One-off chore' });
+      const result = replica.markDoneByOther(t.id);
+      expect(result.completed.completed).toBe(true);
+      expect(result.completed.doneByOtherAt).toBeTruthy();
+      expect(result.nextTask).toBeNull();
+    });
+
     it('refuses to mark a one-off task missed', () => {
       const t = replica.createTask({ title: 'One-off' });
       expect(() => replica.markMissed(t.id)).toThrow(/repeating task/);

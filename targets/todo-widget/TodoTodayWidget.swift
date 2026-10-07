@@ -5,7 +5,11 @@ import AppIntents
 struct TodoEntry: TimelineEntry {
     let date: Date
     let result: WidgetLoadResult
+    /// Tasks checked off here that the app hasn't applied yet, through either
+    /// checkbox (the one that opens the app, and the quiet one).
     let pendingCompletionIds: Set<String>
+    /// Units of a daily target queued by the quiet checkbox, per task id.
+    let queuedUnits: [String: Int]
     let configuration: TodayWidgetIntent
 }
 
@@ -15,6 +19,7 @@ struct TodoTodayProvider: AppIntentTimelineProvider {
             date: Date(),
             result: .noSnapshotYet,
             pendingCompletionIds: [],
+            queuedUnits: [:],
             configuration: TodayWidgetIntent()
         )
     }
@@ -24,26 +29,83 @@ struct TodoTodayProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: TodayWidgetIntent, in context: Context) async -> Timeline<TodoEntry> {
-        // The app calls WidgetCenter.reloadAllTimelines() after every task
-        // mutation (and CompleteTaskIntent does the same), so this fallback
-        // only matters if the app hasn't been opened in a while.
-        let current = entry(for: configuration)
-        var nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
-        // Sooner when the next meeting starts first, so its row moves on to the
-        // one after it at the moment it begins rather than up to 15 minutes late.
-        if let start = current.result.snapshot?.nextEvent(after: current.date)?.startDate, start < nextRefresh {
-            nextRefresh = start
+        // One entry now, then one at every moment the snapshot already knows
+        // the widget will change (a deferred task arriving, a meeting starting,
+        // the day turning over, the snapshot going stale) — so the widget keeps
+        // up with the day while the app stays closed, rather than showing the
+        // list as it stood at the last write until iOS next lets it reload.
+        //
+        // The app still calls WidgetCenter.reloadAllTimelines() after every
+        // task mutation (and CompleteTaskIntent does the same), which replaces
+        // all of this with a timeline built off the new snapshot.
+        let now = Date()
+        let result = loadWidgetSnapshot()
+        let quiet = QueuedQuietTaps.load()
+        let pending = loadPendingCompletionIds().union(quiet.completed)
+        let dates = [now] + (result.snapshot?.changeDates(after: now) ?? [])
+        // WidgetKit renders each entry up front, so a day with dozens of
+        // deferred tasks is capped rather than built out in full; the reload
+        // below picks up where the cap left off.
+        let entries = dates.prefix(maxTimelineEntries).map {
+            TodoEntry(
+                date: $0,
+                result: result,
+                pendingCompletionIds: pending,
+                queuedUnits: quiet.units,
+                configuration: configuration
+            )
         }
-        return Timeline(entries: [current], policy: .after(nextRefresh))
+        // A fallback reload, for a snapshot rewritten by something that didn't
+        // reload timelines (the background refresh task's first run after an
+        // update, say). Never later than the last entry, so a capped timeline
+        // can't run dry.
+        var nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now
+        if let last = entries.last?.date, last > now, last < nextRefresh { nextRefresh = last }
+        return Timeline(entries: Array(entries), policy: .after(nextRefresh))
     }
 
     private func entry(for configuration: TodayWidgetIntent) -> TodoEntry {
-        TodoEntry(
+        let quiet = QueuedQuietTaps.load()
+        return TodoEntry(
             date: Date(),
             result: loadWidgetSnapshot(),
-            pendingCompletionIds: loadPendingCompletionIds(),
+            pendingCompletionIds: loadPendingCompletionIds().union(quiet.completed),
+            queuedUnits: quiet.units,
             configuration: configuration
         )
+    }
+}
+
+/// How many entries one Today timeline holds at most.
+private let maxTimelineEntries = 40
+
+/// How many units of a daily target are queued and not yet applied: the quiet
+/// checkbox's run of units, plus one for a tap on the checkbox that opens the
+/// app (which the app also applies as one unit; see TaskItem's autoComplete).
+func widgetQueuedUnits(_ task: WidgetTask, entry: TodoEntry) -> Int {
+    (entry.queuedUnits[task.id] ?? 0) + (entry.pendingCompletionIds.contains(task.id) ? 1 : 0)
+}
+
+/// Whether a row reads as finished: an ordinary task once its tap is queued, a
+/// daily target only once its queued units reach the target. A target below
+/// that is still owed more, so it keeps its place in the count.
+func widgetRowDone(_ task: WidgetTask, entry: TodoEntry) -> Bool {
+    if task.tapsAreUnits, let target = task.targetCount {
+        let queued = widgetQueuedUnits(task, entry: entry)
+        return queued > 0 && task.progressCount + queued >= target
+    }
+    return entry.pendingCompletionIds.contains(task.id)
+}
+
+/// The colours of the app's priority bar (`PRIORITY_COLORS` in
+/// src/types/index.ts), low to urgent. Nil for no priority.
+func priorityColor(_ priority: Int) -> Color? {
+    switch priority {
+    case 1: return Color(hex: "30D158")
+    case 2: return Color(hex: "FFD60A")
+    case 3: return Color(hex: "FF9F0A")
+    case 4: return Color(hex: "FF453A")
+    default: return nil
     }
 }
 
@@ -84,35 +146,61 @@ struct EventRowView: View {
 struct TaskRowView: View {
     let task: WidgetTask
     let palette: WidgetPalette
-    let isPendingCompletion: Bool
+    /// Units of a daily target tapped here and not yet applied.
+    let queuedUnits: Int
+    /// Whether the row draws as finished (`widgetRowDone`).
+    let isDone: Bool
     let height: CGFloat
+
+    /// The checkbox, wired to whichever intent this task's tap needs: the one
+    /// that opens the app for a task that asks something on completion, the
+    /// quiet one for everything else. `needsApp` is the app's call.
+    @ViewBuilder private var checkboxButton: some View {
+        if task.needsApp {
+            Button(intent: CompleteTaskIntent(taskId: task.id)) { checkbox }
+                .buttonStyle(.plain)
+        } else {
+            Button(intent: CompleteTaskQuietlyIntent(taskId: task.id, unit: task.tapsAreUnits)) { checkbox }
+                .buttonStyle(.plain)
+        }
+    }
+
+    private var checkbox: some View {
+        ZStack {
+            // Rounded square, matching the app's checkbox — .continuous
+            // is the same superellipse RN draws with borderCurve.
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .stroke(palette.separator, lineWidth: 2)
+            if isDone {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(palette.done)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(palette.onDone)
+            }
+        }
+        .frame(width: 16, height: 16)
+        // Padding here (not on the row) widens the actual tap target
+        // beyond the visible box without affecting layout. Vertically
+        // it takes the whole row rather than a fixed inset, so the
+        // target doesn't shrink with the row on a smaller device.
+        .padding(.horizontal, 6)
+        .frame(height: height)
+        // The app's priority bar, at the row's leading edge. Inside
+        // the checkbox's padding, so it moves nothing.
+        .overlay(alignment: .leading) {
+            if let color = priorityColor(task.priority) {
+                Capsule()
+                    .fill(color)
+                    .frame(width: 2.5, height: min(14, height * 0.6))
+            }
+        }
+        .contentShape(Rectangle())
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(intent: CompleteTaskIntent(taskId: task.id)) {
-                ZStack {
-                    // Rounded square, matching the app's checkbox — .continuous
-                    // is the same superellipse RN draws with borderCurve.
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .stroke(palette.separator, lineWidth: 2)
-                    if isPendingCompletion {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(palette.done)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(palette.onDone)
-                    }
-                }
-                .frame(width: 16, height: 16)
-                // Padding here (not on the row) widens the actual tap target
-                // beyond the visible box without affecting layout. Vertically
-                // it takes the whole row rather than a fixed inset, so the
-                // target doesn't shrink with the row on a smaller device.
-                .padding(.horizontal, 6)
-                .frame(height: height)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            checkboxButton
 
             // layoutPriority, because the title is the one thing the row exists
             // to show and everything beside it is short and fixed. A row that
@@ -122,21 +210,32 @@ struct TaskRowView: View {
             // dimmer colour, on the same line, so a row's height never changes.
             // Truncation takes the event's name before the task's own.
             (Text(task.title)
-                .foregroundColor(isPendingCompletion ? palette.textTertiary : palette.text)
+                .foregroundColor(isDone ? palette.textTertiary : palette.text)
                 + Text(task.eventTitle.map { " · " + $0 } ?? "")
                 .foregroundColor(palette.textTertiary))
                 .font(.system(size: 12))
-                .strikethrough(isPendingCompletion)
+                .strikethrough(isDone)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .layoutPriority(1)
 
             Spacer(minLength: 2)
 
-            // The streak, if there's one worth mentioning. See taskRowDetail.
-            // Fixed-size so a tight row shrinks the title (which already
-            // truncates) rather than clipping these few short characters.
-            if !isPendingCompletion, let detail = taskRowDetail(task) {
+            // A daily target's count, else the streak if there's one worth
+            // mentioning. See taskRowDetail. Fixed-size so a tight row shrinks
+            // the title (which already truncates) rather than clipping these
+            // few short characters.
+            // The reminder's clock time, as the app's row shows it. The one
+            // fixed piece a row can carry beside the count, so it drops out
+            // once the row is done rather than crowding a struck title.
+            if !isDone, let reminder = task.reminderDate {
+                Text(reminder, style: .time)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(palette.textSecondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            if !isDone, let detail = taskRowDetail(task, queuedUnits: queuedUnits) {
                 HStack(spacing: 2) {
                     if let symbol = taskRowDetailSymbol(task) {
                         Image(systemName: symbol)
@@ -155,6 +254,25 @@ struct TaskRowView: View {
     }
 }
 
+/// The small widget's last slot when there are more rows than it can hold.
+/// The small size drops the header count for room, so without this a list
+/// cut off at four reads the same as a list of four.
+struct MoreRowView: View {
+    let count: Int
+    let palette: WidgetPalette
+    let height: CGFloat
+
+    var body: some View {
+        Text("+\(count) more")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(palette.textSecondary)
+            .lineLimit(1)
+            // Lined up with the task titles, past the checkbox column.
+            .padding(.leading, 28 + 8)
+            .frame(height: height, alignment: .leading)
+    }
+}
+
 struct TodoTodayWidgetEntryView: View {
     var entry: TodoTodayProvider.Entry
     @Environment(\.colorScheme) var colorScheme
@@ -166,18 +284,34 @@ struct TodoTodayWidgetEntryView: View {
         case .noSnapshotYet: return "Open the app to get started"
         case .decodeFailed: return "Couldn't read task data"
         case .success:
+            if isStale { return staleMessage }
             return entry.configuration.categoryFilter == nil ? "All clear" : "Nothing in this list"
         }
     }
+
+    /// Past the point the snapshot looked ahead to, the task rows would be
+    /// missing a whole day's arrivals, and "All clear" would be a claim the
+    /// widget can't back. It says so instead. Pinned rows ignore the clock
+    /// gates in the app too (`pinnedTasks()`), so a pinned-only widget keeps
+    /// showing them.
+    private var isStale: Bool {
+        guard !entry.configuration.pinnedOnly else { return false }
+        return entry.result.snapshot?.isStale(at: entry.date) ?? false
+    }
+
+    // Computed rather than a stored `let`: a private stored property would make
+    // the view's memberwise init private, and `TodoTodayWidget` builds it.
+    private var staleMessage: String { "Open the app to update" }
 
     /// The rows this particular placed widget draws, after its own
     /// configuration. Filtered here rather than in the snapshot because there
     /// is one snapshot on disk and any number of widgets reading it.
     private var tasks: [WidgetTask] {
         guard let snapshot = entry.result.snapshot else { return [] }
+        if isStale { return [] }
         let base = entry.configuration.pinnedOnly
             ? snapshot.pinnedTasks
-            : snapshot.visibleTasks
+            : snapshot.visibleTasks(at: entry.date)
         guard let category = entry.configuration.categoryFilter else { return base }
         return base.filter { $0.category == category }
     }
@@ -190,10 +324,10 @@ struct TodoTodayWidgetEntryView: View {
     /// whose snapshot has already been rewritten). Subtracting its raw count
     /// under-reported the tally, and did so by more the more the user tapped.
     private var remaining: Int {
-        tasks.filter { !entry.pendingCompletionIds.contains($0.id) }.count
+        tasks.filter { !widgetRowDone($0, entry: entry) }.count
     }
 
-    private var doneToday: Int { entry.result.snapshot?.doneToday ?? 0 }
+    private var doneToday: Int { entry.result.snapshot?.doneToday(at: entry.date) ?? 0 }
 
     /// Today's next meeting, as of this entry. Only on the unfiltered Today
     /// widget: one configured for a category or for pins is about those.
@@ -246,12 +380,13 @@ struct TodoTodayWidgetEntryView: View {
     var body: some View {
         switch family {
         case .accessoryInline:
-            Text(remaining == 0 ? "All clear" : taskCountLabel(remaining))
+            Text(headline)
         case .accessoryCircular:
             AccessoryRing(
-                fraction: doneToday + remaining == 0 ? 0 : Double(doneToday) / Double(doneToday + remaining),
-                label: "\(remaining)",
-                caption: "left"
+                fraction: isStale || doneToday + remaining == 0 ? 0 : Double(doneToday) / Double(doneToday + remaining),
+                // A dash rather than a 0, which would read as "nothing left".
+                label: isStale ? "–" : "\(remaining)",
+                caption: isStale ? "open" : "left"
             )
         case .accessoryRectangular:
             rectangularView
@@ -265,7 +400,7 @@ struct TodoTodayWidgetEntryView: View {
     /// tap target that small on a locked screen is a mis-tap waiting to happen.
     private var rectangularView: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(remaining == 0 ? "All clear" : taskCountLabel(remaining))
+            Text(headline)
                 .font(.headline)
                 .lineLimit(1)
             // The task title before the agenda summary, deliberately: a
@@ -286,7 +421,7 @@ struct TodoTodayWidgetEntryView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            } else if let agenda = entry.result.snapshot?.agenda, let line = agendaLine(agenda) {
+            } else if let agenda = entry.result.snapshot?.agenda(at: entry.date), let line = agendaLine(agenda) {
                 Text(line)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -294,6 +429,12 @@ struct TodoTodayWidgetEntryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    /// The Lock Screen's one line about the day.
+    private var headline: String {
+        if isStale { return staleMessage }
+        return remaining == 0 ? "All clear" : taskCountLabel(remaining)
     }
 
     /// "3 due · 1 carried over · 2 deadlines", or nothing worth a line.
@@ -316,7 +457,14 @@ struct TodoTodayWidgetEntryView: View {
         let columns = family == .systemSmall ? 1 : 2
         // The next meeting takes the grid's last slot, so one task fewer fits.
         let event = nextEvent
-        let shown = Array(tasks.prefix(perColumn * columns - (event == nil ? 0 : 1)))
+        let capacity = perColumn * columns - (event == nil ? 0 : 1)
+        // Only the small size says what's cut off. Its header has no count
+        // (see `header`), so four rows of a twelve-task day look like the
+        // whole day; medium and large already say "12 tasks" up top, and a
+        // row spent repeating that would be one task fewer on screen.
+        let overflows = family == .systemSmall && tasks.count > capacity
+        let shown = Array(tasks.prefix(max(0, overflows ? capacity - 1 : capacity)))
+        let moreCount = overflows ? tasks.count - shown.count : 0
         let leftColumn = Array(shown.prefix(perColumn))
         let rightColumn = Array(shown.dropFirst(perColumn))
 
@@ -339,7 +487,7 @@ struct TodoTodayWidgetEntryView: View {
                         // each. Same reason the grid keeps its empty slots.
                         HStack(alignment: .top, spacing: WidgetLayout.columnGap) {
                             columnView(leftColumn, palette: palette, rowHeight: rowHeight,
-                                       footer: columns == 1 ? event : nil)
+                                       moreCount: moreCount, footer: columns == 1 ? event : nil)
                             if columns > 1 {
                                 columnView(rightColumn, palette: palette, rowHeight: rowHeight, footer: event)
                             }
@@ -358,6 +506,7 @@ struct TodoTodayWidgetEntryView: View {
         _ tasks: [WidgetTask],
         palette: WidgetPalette,
         rowHeight: CGFloat,
+        moreCount: Int = 0,
         footer: WidgetEvent? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -365,9 +514,13 @@ struct TodoTodayWidgetEntryView: View {
                 TaskRowView(
                     task: task,
                     palette: palette,
-                    isPendingCompletion: entry.pendingCompletionIds.contains(task.id),
+                    queuedUnits: widgetQueuedUnits(task, entry: entry),
+                    isDone: widgetRowDone(task, entry: entry),
                     height: rowHeight
                 )
+            }
+            if moreCount > 0 {
+                MoreRowView(count: moreCount, palette: palette, height: rowHeight)
             }
             Spacer(minLength: 0)
             // Pinned to the bottom slot, so it sits in the same place on a

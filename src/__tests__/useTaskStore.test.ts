@@ -1985,6 +1985,16 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks[0].dueDate).toBe(due);
   });
 
+  it('offers a day to a task freed by a blocker somebody else did, but not by an unattended close', () => {
+    const blocked = () => makeTask({ id: 'w', blockedById: 'b1' } as Partial<Task>);
+    useTaskStore.setState({ readyOffer: null, tasks: [makeTask({ id: 'b1' }), blocked()] });
+    useTaskStore.getState().completeTask('b1', { neutral: true });
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    useTaskStore.setState({ readyOffer: null, tasks: [makeTask({ id: 'b1' }), blocked()] });
+    useTaskStore.getState().completeTask('b1', { byOther: true });
+    expect(useTaskStore.getState().readyOffer?.taskIds).toEqual(['w']);
+  });
+
   it('offers a day to an undated task once its last blocker is done, and dates it on the answer', () => {
     useTaskStore.setState({
       readyOffer: null,
@@ -4556,7 +4566,7 @@ describe('supplies', () => {
 
           useTaskStore.getState().checkSupplyReorderTasks();
 
-          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null, addToList: true });
           expect(liveOrders()).toHaveLength(0);
         } finally {
           useGroceryStore.setState({ setRunningLow: realSetRunningLow });
@@ -4591,7 +4601,7 @@ describe('supplies', () => {
           useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
           useGroceryStore.setState({ setRunningLow: flagLow });
           useTaskStore.getState().checkSupplyReorderTasks();
-          expect(flagLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(flagLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null, addToList: true });
         } finally {
           useGroceryStore.setState({ setRunningLow: realSetRunningLow });
         }
@@ -19154,6 +19164,41 @@ describe('coins', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('t1', { neutral: true });
     expect(useRewardStore.getState().entries).toEqual([]);
+  });
+
+  // "Someone else did it" on a repeating task: the row closes and the next
+  // occurrence appears, with no coins and the streak neither advanced nor broken.
+  it('closes a repeat as done by someone else with no coins and the streak kept', () => {
+    useTaskStore.setState({ tasks: [{ ...recurring(), streakCount: 4, streakDate: new Date(2025, 5, 8).toISOString() }] });
+    useTaskStore.getState().completeTask('t1', { byOther: true });
+    const tasks = useTaskStore.getState().tasks;
+    const done = tasks.find(t => t.id === 't1')!;
+    expect(done.completed).toBe(true);
+    expect(done.missedAt).toBeNull();
+    expect(done.doneByOtherAt).toBeTruthy();
+    expect(done.streakCount).toBe(4);
+    expect(tasks.filter(t => !t.completed)).toHaveLength(1);
+    expect(tasks.find(t => !t.completed)!.streakCount).toBe(4);
+    expect(tasks.find(t => !t.completed)!.doneByOtherAt ?? null).toBeNull();
+    expect(useRewardStore.getState().entries).toEqual([]);
+  });
+
+  it('marks a one-off as done by someone else with no coins', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1', { byOther: true });
+    const done = useTaskStore.getState().tasks.find(t => t.id === 't1')!;
+    expect(done.completed).toBe(true);
+    expect(done.doneByOtherAt).toBeTruthy();
+    expect(useRewardStore.getState().entries).toEqual([]);
+  });
+
+  it('clears the done-by-someone-else mark when the row is reopened', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1', { byOther: true });
+    useTaskStore.getState().uncompleteTask('t1');
+    const row = useTaskStore.getState().tasks.find(t => t.id === 't1')!;
+    expect(row.completed).toBe(false);
+    expect(row.doneByOtherAt ?? null).toBeNull();
   });
 
   it('pays nothing for a subtask', () => {

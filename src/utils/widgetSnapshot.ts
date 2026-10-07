@@ -25,6 +25,8 @@ import { compareKitchenEntries, useUpEntries, type KitchenEntry } from './kitche
 import { agendaCounts, type AgendaCounts } from './dailyAgenda';
 import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { eventTaskEventOf } from './eventTasks';
+import { addDays } from 'date-fns/addDays';
+import { widgetTapNeedsApp } from './widgetQuietTaps';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.
@@ -52,6 +54,7 @@ import { eventTaskEventOf } from './eventTasks';
 /** How much of each section crosses the bridge. */
 const MAX_VISIBLE_TASKS = 50;
 const MAX_PINNED_TASKS = 10;
+const MAX_UPCOMING_TASKS = 30;
 const MAX_GROCERY_LISTS = 12;
 const MAX_GROCERY_ITEMS_PER_LIST = 10;
 const MAX_MEALS = 6;
@@ -80,6 +83,34 @@ export interface WidgetTask {
    * every other row. The widget dims it after the task's own title.
    */
   eventTitle: string | null;
+  /**
+   * The reminder's instant, the one clock time a task row in the app names
+   * (see `reminderTimeLabel` in TaskItem). An ISO stamp, so the widget formats
+   * it in the device's own clock style.
+   */
+  reminderTime: string | null;
+  /**
+   * Whether the row's checkbox has to open the app (`widgetTapNeedsApp`):
+   * anything a tap in the app answers with a question or a picker. Every other
+   * row is checked off from the widget without leaving the home screen.
+   */
+  needsApp: boolean;
+}
+
+/**
+ * A task that isn't on Today yet but will be before the widget has to admit
+ * the snapshot is stale: deferred to this afternoon, or due tomorrow.
+ *
+ * **This is what lets the widget move on without the app.** The snapshot used
+ * to carry only what was visible at the moment it was written, so a task
+ * deferred to 3 PM stayed off the home screen until the app (or a background
+ * refresh, whenever iOS chose to run one) wrote again, and the day rolling over
+ * left yesterday's list up with nothing to say so. The widget now builds a
+ * timeline entry at each `visibleAt` and folds the task in from that moment.
+ */
+export interface WidgetUpcomingTask extends WidgetTask {
+  /** When `getVisibleAt` says the task surfaces, as an ISO stamp. */
+  visibleAt: string;
 }
 
 export interface WidgetGroceryList {
@@ -96,6 +127,22 @@ export interface WidgetGroceryList {
   total: number;
   /** The first few rows still to buy, in the list's own walk order. */
   items: string[];
+  /**
+   * The same rows with the ids the widget's checkbox needs. `items` stays for
+   * a widget built before this field, which reads only names.
+   */
+  rows: WidgetGroceryRow[];
+}
+
+export interface WidgetGroceryRow {
+  id: string;
+  name: string;
+  /**
+   * One side of an either/or. The widget draws no checkbox on these: ticking
+   * one option is how the choice gets made, which removes the others, and that
+   * is a decision to make in front of the whole list.
+   */
+  choice: boolean;
 }
 
 export interface WidgetGroceries {
@@ -138,6 +185,19 @@ export interface WidgetSnapshot {
   updatedAt: string;
   visibleTasks: WidgetTask[];
   pinnedTasks: WidgetTask[];
+  /** Tasks surfacing before `staleAfter`, soonest first. See `WidgetUpcomingTask`. */
+  upcomingTasks: WidgetUpcomingTask[];
+  /**
+   * When the next logical day starts. From then on `doneToday` and `agenda`
+   * describe yesterday, so the widget stops showing them.
+   */
+  nextDayStart: string;
+  /**
+   * When the task rows stop being trustworthy at all: the end of tomorrow,
+   * which is as far as `upcomingTasks` looks. Past it the widget asks to be
+   * opened rather than showing a list that is missing a day's worth of tasks.
+   */
+  staleAfter: string;
   /**
    * Category names in the user's own order, for the Today widget's category
    * parameter. The widget filters rows it already has rather than asking for a
@@ -180,7 +240,13 @@ export function isWidgetWorthy(task: Task): boolean {
   return task.generatedKind !== 'mealPlanNudge';
 }
 
-export function toWidgetTask(task: Task, events: readonly BusyEvent[] | null = null): WidgetTask {
+export function toWidgetTask(
+  task: Task,
+  events: readonly BusyEvent[] | null = null,
+  // True by default, the answer that can't go wrong: an extra trip into the
+  // app rather than a question skipped.
+  mealLogPrompt = true,
+): WidgetTask {
   return {
     id: task.id,
     title: displayTitleFor(task),
@@ -197,6 +263,8 @@ export function toWidgetTask(task: Task, events: readonly BusyEvent[] | null = n
     // time is wrong after midnight. Null when the event has left the window or
     // the calendar wasn't read (a background refresh).
     eventTitle: events ? eventTaskEventOf(task, events)?.title || null : null,
+    reminderTime: task.reminderTime,
+    needsApp: widgetTapNeedsApp(task, mealLogPrompt),
   };
 }
 
@@ -208,6 +276,18 @@ export interface GroceryInput {
   shops: readonly Shop[];
   tripShopId: string | null;
   tripStartedAt: string | null;
+}
+
+/** One list's unbought rows, as names and as rows the widget can tick. */
+function groceryRows(input: GroceryInput, listId: string | null): Pick<WidgetGroceryList, 'items' | 'rows'> {
+  const choiceIds = new Set(
+    input.listEntries.filter(e => e.listId === listId && e.choiceGroup).map(e => e.itemId)
+  );
+  const rows = itemsOnList(input.items, input.listEntries, listId)
+    .filter(item => !item.checked)
+    .slice(0, MAX_GROCERY_ITEMS_PER_LIST)
+    .map(item => ({ id: item.id, name: item.name, choice: choiceIds.has(item.id) }));
+  return { items: rows.map(r => r.name), rows };
 }
 
 /**
@@ -231,10 +311,7 @@ export function buildGroceries(input: GroceryInput, now: Date): WidgetGroceries 
     name: id === null ? HOME_LIST_NAME : listNameFor(id, input.lists),
     remaining: listRemainingCount(input.listEntries, id),
     total: listCount(input.listEntries, id),
-    items: itemsOnList(input.items, input.listEntries, id)
-      .filter(item => !item.checked)
-      .slice(0, MAX_GROCERY_ITEMS_PER_LIST)
-      .map(item => item.name),
+    ...groceryRows(input, id),
   }));
 
   const shop = resolveActiveTrip(input.tripShopId, input.tripStartedAt, input.shops, now);
@@ -296,6 +373,41 @@ export interface SnapshotInput {
   events: readonly BusyEvent[] | null;
   /** The end of the logical day, so tonight's meetings count and tomorrow's don't. */
   dayEnd: Date;
+  /**
+   * Tasks not visible yet, each with the moment `getVisibleAt` puts it on
+   * Today. Worked out by the caller because `getVisibleAt` reads the stores;
+   * `buildUpcomingTasks` decides which of them cross.
+   */
+  upcoming: readonly { task: Task; visibleAt: Date }[];
+  /** The "what did you eat?" setting, which decides whether a tap needs the app. */
+  mealLogPrompt: boolean;
+}
+
+/**
+ * The tasks that will reach Today between now and `staleAfter`, soonest
+ * first. Anything surfacing later than that would be drawn past the point the
+ * widget stops trusting the snapshot anyway, so it isn't carried.
+ */
+export function buildUpcomingTasks(
+  upcoming: readonly { task: Task; visibleAt: Date }[],
+  now: Date,
+  staleAfter: Date,
+  events: readonly BusyEvent[] | null = null,
+  mealLogPrompt = true,
+): WidgetUpcomingTask[] {
+  return upcoming
+    .filter(({ task, visibleAt }) =>
+      isWidgetWorthy(task) &&
+      visibleAt.getTime() > now.getTime() &&
+      visibleAt.getTime() < staleAfter.getTime()
+    )
+    .slice()
+    .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
+    .slice(0, MAX_UPCOMING_TASKS)
+    .map(({ task, visibleAt }) => ({
+      ...toWidgetTask(task, events, mealLogPrompt),
+      visibleAt: visibleAt.toISOString(),
+    }));
 }
 
 /**
@@ -319,16 +431,20 @@ export function buildUpcomingEvents(
 }
 
 export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
+  const staleAfter = addDays(input.dayEnd, 1);
   return {
     updatedAt: input.now.toISOString(),
     visibleTasks: input.visibleTasks
       .filter(isWidgetWorthy)
       .slice(0, MAX_VISIBLE_TASKS)
-      .map(t => toWidgetTask(t, input.events)),
+      .map(t => toWidgetTask(t, input.events, input.mealLogPrompt)),
     pinnedTasks: input.pinnedTasks
       .filter(isWidgetWorthy)
       .slice(0, MAX_PINNED_TASKS)
-      .map(t => toWidgetTask(t, input.events)),
+      .map(t => toWidgetTask(t, input.events, input.mealLogPrompt)),
+    upcomingTasks: buildUpcomingTasks(input.upcoming, input.now, staleAfter, input.events, input.mealLogPrompt),
+    nextDayStart: input.dayEnd.toISOString(),
+    staleAfter: staleAfter.toISOString(),
     categories: [...input.categories],
     // Withheld and held-back rows are filtered out first, exactly as the
     // daily notification does before calling this (`notifications.ts`). The

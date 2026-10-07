@@ -1,8 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Reanimated, { useAnimatedStyle, useSharedValue, interpolateColor } from 'react-native-reanimated';
 import type { Task, TaskGroup } from '../types';
-import { useColors } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
@@ -11,6 +12,7 @@ import { WhenPicker } from './WhenPicker';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
+import { useTrayFold, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
 
@@ -125,9 +127,29 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   pinDisabled = false,
   onPressPin,
 }: Props) {
-  const colors = useColors();
+  const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const isExpanded = expanded ?? !group.collapsed;
+
+  // ==== Deck ====
+  // Folded, this header is a card with two card edges under it, so it reads
+  // as several cards rather than as a heading over the next one (see
+  // TaskGroupTray). The tray owns the progress; outside one it stays 0 and
+  // the header keeps its open look.
+  const trayFold = useTrayFold();
+  const noFold = useSharedValue(0);
+  const fold = trayFold ?? noFold;
+  const deckStyle = useAnimatedStyle(() => ({ opacity: fold.value }));
+  // The row is opaque for the swipe panels behind it (see `band`), so it
+  // changes colour with the card rather than letting the card show through.
+  const rowStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(fold.value, [0, 1], [colors.bgSunken, colors.bgSecondary]),
+  }));
+  // The tile swaps surfaces with the row so it stays a filled tile on both.
+  const glyphStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(fold.value, [0, 1], [colors.bgSecondary, colors.bgSunken]),
+    borderColor: interpolateColor(fold.value, [0, 1], [colors.separator, colors.bgSunken]),
+  }));
   const toggleCollapse = useCallback(() => onToggleCollapse(group.id), [onToggleCollapse, group.id]);
   const [showDefer, setShowDefer] = useState(false);
   // Mounted on first open and kept, so it closes through `visible` rather
@@ -168,6 +190,24 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   return (
     <>
       <View style={styles.band}>
+        {/* Behind the row, and wider than it by the tray's padding so the
+            folded card is as wide as the task cards around it. Each layer
+            paints its own scrim, like every other card. The edges hang below
+            this view into the room the tray makes for them, and the stack's
+            rows (later siblings) draw over them while they fold away. */}
+        {trayFold && (
+          <Reanimated.View style={[styles.deck, deckStyle]} pointerEvents="none">
+            <View style={[styles.edgeFar, shadows.card]}>
+              <View style={styles.layerClip}><SpotlightScrim /></View>
+            </View>
+            <View style={[styles.edgeNear, shadows.card]}>
+              <View style={styles.layerClip}><SpotlightScrim /></View>
+            </View>
+            <View style={[styles.deckCard, shadows.card]}>
+              <View style={styles.layerClip}><SpotlightScrim /></View>
+            </View>
+          </Reanimated.View>
+        )}
         <View style={styles.cardClip}>
           {/* Deleting a stack lives in TaskGroupEditor (behind the ⋯), not
               here. It used to be this row's swipe-left, which both put a
@@ -184,7 +224,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               accessibilityLabel: `Reschedule all of ${group.title}`,
             }}
           >
-            <View style={styles.row}>
+            <Reanimated.View style={[styles.row, rowStyle]}>
               {/* A filled tile, deliberately not the outlined box a task row
                   uses: this control cascades across the whole roster, and for
                   a while it wore the exact shape, size, position and colour of
@@ -216,9 +256,9 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 accessibilityElementsHidden
                 importantForAccessibility="no-hide-descendants"
               >
-                <View style={styles.glyph}>
+                <Reanimated.View style={[styles.glyph, glyphStyle]}>
                   <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
-                </View>
+                </Reanimated.View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -317,7 +357,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>
-            </View>
+            </Reanimated.View>
           </SwipeableRow>
           <SpotlightScrim />
         </View>
@@ -347,6 +387,9 @@ const GLYPH_GAP = 10;
 // `alignItems: 'center'` no longer does that job.
 const BAND_MIN_HEIGHT = 48;
 const ICON_BTN_SIZE = iconSize.sm + spacing.sm * 2;
+// Tall enough to round both bottom corners of a card edge; all but the part
+// below the card is hidden behind it.
+const EDGE_HEIGHT = spacing.lg;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   /**
@@ -368,6 +411,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    *
    * Three unambiguous levels end up on screen: category caption (tiny,
    * uppercase, tertiary), stack caption (17pt regular + tile), task card.
+   *
+   * All of that is the *open* stack. Folded, there is no tray left to do the
+   * grouping, and a caption with nothing under it reads as the heading of the
+   * next card, so it becomes a card after all: the plain card surface (not a
+   * brighter one, which is the trap above) with two card edges under it. See
+   * the Deck banner in the component.
    */
   band: {
     // Geometry belongs to the tray. The one thing kept here is an opaque
@@ -405,7 +454,46 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // make room for the line under it; an expanded header is the same 48.
     alignItems: 'flex-start',
     minHeight: BAND_MIN_HEIGHT,
-    backgroundColor: colors.bgSunken,
+    // Its colour is animated (rowStyle): bgSunken open, the card folded.
+  },
+  deck: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: -TRAY_PAD,
+    right: -TRAY_PAD,
+  },
+  deckCard: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+  },
+  // Inset a step each, and only their bottoms show: the near one half the
+  // tray's room, the far one all of it.
+  edgeNear: {
+    position: 'absolute',
+    left: spacing.sm,
+    right: spacing.sm,
+    bottom: -STACK_EDGE_DEPTH / 2,
+    height: EDGE_HEIGHT,
+    borderRadius: radius.md,
+    backgroundColor: colors.stackEdge,
+  },
+  edgeFar: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    bottom: -STACK_EDGE_DEPTH,
+    height: EDGE_HEIGHT,
+    borderRadius: radius.md,
+    backgroundColor: colors.stackEdgeFar,
+  },
+  // Rounds a layer's scrim without clipping the layer's own shadow, which
+  // `overflow: hidden` on the layer itself would on iOS.
+  layerClip: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   glyphWrapper: {
     // No padding: the tile's leading edge lines up with the left edge of the

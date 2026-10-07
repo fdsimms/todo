@@ -12,6 +12,7 @@ import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { usePersonStore } from './usePersonStore';
 import { usePersonGroupStore } from './usePersonGroupStore';
+import { useFoodLogStore } from './useFoodLogStore';
 
 /**
  * Drops every undo and redo entry in all four stores that keep a history.
@@ -35,6 +36,7 @@ export function clearUndoHistories(): void {
   // the real database.
   usePersonStore.getState().clearUndoHistory();
   usePersonGroupStore.getState().clearUndoHistory();
+  useFoodLogStore.getState().clearUndoHistory();
 }
 
 // Demo mode replaces the app's entire data source with a throwaway one, so

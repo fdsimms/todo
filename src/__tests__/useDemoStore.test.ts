@@ -98,7 +98,7 @@ import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoo
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } from '../utils/waterShortfallTasks';
-import { isMissed, mostMissed } from '../utils/missed';
+import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
 import { entriesOfKind, journalStats } from '../utils/journal';
@@ -714,35 +714,9 @@ describe('demo mode', () => {
   // this asserts is the *shape* the plan builder made of the two seeded tasks,
   // not just that a session exists, since a queue that produced one flat
   // stretch would demo none of it.
-  it('seeds a focus session in flight, with a split task and a break in it', () => {
+  it('starts no focus session on its own', () => {
     useDemoStore.getState().enterDemoMode();
-    const { session } = useFocusStore.getState();
-
-    expect(session).not.toBeNull();
-    expect(isFocusRunning(session!)).toBe(true);
-    expect(session!.stepIndex).toBe(0);
-
-    // The long task was cut into more than one stretch...
-    const split = session!.steps.filter(s => s.kind === 'work' && s.partCount > 1);
-    expect(split.length).toBeGreaterThan(1);
-    // ...and the rest rules put a break somewhere in the run.
-    expect(session!.steps.some(s => s.kind === 'rest')).toBe(true);
-    // Never on the end, whatever the queue was.
-    expect(session!.steps[session!.steps.length - 1].kind).toBe('work');
-
-    // Every stretch points at a task that is actually in the seeded list.
-    const ids = new Set(useTaskStore.getState().tasks.map(t => t.id));
-    for (const step of session!.steps) {
-      if (step.kind === 'work') expect(ids.has(step.taskId!)).toBe(true);
-    }
-
-    // The session's own task-details display (notes, link) has nothing to
-    // show unless the task the plan starts on actually carries one.
-    const byId = new Map(useTaskStore.getState().tasks.map(t => [t.id, t]));
-    const firstTask = byId.get(session!.steps[0].taskId!);
-    expect(firstTask?.notes).not.toBe('');
-    expect(firstTask?.linkUrl).not.toBeNull();
-
+    expect(useFocusStore.getState().session).toBeNull();
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -2780,6 +2754,15 @@ describe('demo seed — people', () => {
     expect(Date.parse(next!.dueDate!)).toBeGreaterThan(Date.parse(miss.dueDate!));
   });
 
+  it('seeds an occurrence somebody else did, which is not a completion of the user\'s', () => {
+    const { tasks } = useTaskStore.getState();
+    const other = tasks.filter(t => t.doneByOtherAt);
+    expect(other).toHaveLength(1);
+    expect(other[0].completed).toBe(true);
+    expect(isRealCompletion(other[0])).toBe(false);
+    expect(tasks.find(t => t.previousOccurrenceId === other[0].id)?.completed).toBe(false);
+  });
+
   it('seeds a monthly repeat on the second Tuesday', () => {
     // recurrenceWeekOrdinal is invisible until a task uses it, and a
     // day-of-month rule cannot say "second Tuesday".
@@ -2914,12 +2897,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const away = listEntries.filter(e => e.listId === airbnb!.id).map(e => e.itemId);
     expect(away.some(id => home.has(id))).toBe(true);
 
-    // And the trip survived being seeded around: setActiveList ends one, so
-    // the away list has to be built before startTrip.
-    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
+    // And no trip is started by entering demo mode.
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
   });
 
-  it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
+  it('seeds a grocery catalog bigger than the list, with no trip started', () => {
     const { items, itemShops, itemProducts, listEntries } = useGroceryStore.getState();
     // The home list — every count below is about the trolley the demo's own
     // trip is shopping, not about both lists at once.
@@ -3050,17 +3032,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       items.some(i => !i.onList && i.purchaseCount === 0 && !i.lastAddedAt)
     ).toBe(true);
-    // Milk was priced the moment it went in the cart on today's trip — the
-    // trip price chip's "recorded" state. Bananas is checked but left
-    // unpriced, so the chip's other state (an unconfirmed "+ Price") has a
-    // seeded instance too.
-    const { tripShopId, tripStartedAt } = useGroceryStore.getState();
+    // Milk carries a price at the shop the seed names; Bananas is checked but
+    // left unpriced. No trip is running, so there is no trip clock to read.
     const milk = onList.find(i => i.name === 'Milk')!;
     const bananas = onList.find(i => i.name === 'Bananas')!;
     expect(milk.checked).toBe(true);
     expect(bananas.checked).toBe(true);
-    expect(pricedSince(milk, tripShopId, itemShops, tripStartedAt!)).toBe(true);
-    expect(pricedSince(bananas, tripShopId, itemShops, tripStartedAt!)).toBe(false);
   });
 
   it('seeds a recipe page waiting to be imported from the share sheet', () => {
@@ -3080,14 +3057,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useRecipeStore.getState().recipes.some(r => r.sourceUrl?.includes(label))).toBe(false);
   });
 
-  it('seeds a cooking step timer already counting down', () => {
-    // The footer stack in cook mode, the row's own controls and the Lock Screen
-    // activity are all invisible with an empty stack, so a demo without one
-    // reads as a build that can't hold a step timer at all.
+  it('seeds a paused cooking step timer, and starts no timer on its own', () => {
+    // The footer stack in cook mode and the row's own controls are invisible
+    // with an empty stack, so a demo without one reads as a build that can't
+    // hold a step timer at all. It is paused so entering demo mode starts no
+    // clock.
     const timers = useStepTimerStore.getState().timers;
     expect(timers.length).toBeGreaterThanOrEqual(1);
+    expect(timers.some(isStepTimerRunning)).toBe(false);
+    expect(useRecipeStore.getState().recipes.some(r => r.timerStartedAt)).toBe(false);
     const [timer] = timers;
-    expect(isStepTimerRunning(timer)).toBe(true);
     expect(stepTimerRemaining(timer)).toBeGreaterThan(0);
     // Attached to a step of a recipe that really has one, and named so the row
     // reads without resolving anything.
@@ -3435,7 +3414,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const walk = shopWalkOrder(own[0].aisleOrder, aisleOrder);
     expect(walk.indexOf('Frozen')).toBe(walk.indexOf('Produce') + 1);
     expect(walk).not.toEqual(aisleOrder);
-    expect(useGroceryStore.getState().activeShop()?.id).toBe(own[0].id);
+    expect(useGroceryStore.getState().activeShop()).toBeNull();
 
     // A pile in "Other" the offline lexicon couldn't place, which is what the
     // "Sort N into aisles" action at the foot of the list is offered for. With
@@ -3637,12 +3616,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ]);
   });
 
-  it('seeds a trip in progress, with rows that have something to say about it', () => {
+  it('seeds rows that have something to say once a trip starts at Trader Joe\'s', () => {
     const { items, itemShops, shops, itemSubs, itemProducts } = useGroceryStore.getState();
 
-    // The banner, and the only state in which the list mentions stores at all.
-    const trip = useGroceryStore.getState().activeShop();
-    expect(trip).not.toBeNull();
+    // No trip is started by entering demo mode, so the markers are read
+    // against the shop a trip would be at.
+    expect(useGroceryStore.getState().activeShop()).toBeNull();
+    const trip = shops.find(s => s.name === "Trader Joe's");
+    expect(trip).toBeDefined();
 
     const markers = items
       .filter(i => i.onList)
@@ -3672,7 +3653,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     it('seeds a shelf substitute on the unavailable row, tappable to swap (#1567)', () => {
       const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
-      const trip = useGroceryStore.getState().activeShop()!;
+      const trip = shops.find(s => s.name === "Trader Joe's")!;
 
       const tortillas = items.find(i => i.name === 'Tortillas')!;
       const cornTortillas = items.find(i => i.nameKey === 'corn tortillas')!;
@@ -3740,9 +3721,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const byId = recipeMap(recipes);
 
     // Structured steps (Recipe.steps), including on the recipe that's mid-cook,
-    // so cook mode opens there with the timer already running.
+    // so cook mode opens there with a step timer waiting.
     expect(recipes.some(r => r.steps.length > 1)).toBe(true);
-    expect(recipes.some(r => r.steps.length > 0 && r.timerStartedAt)).toBe(true);
 
     // A recipe whose method is still a notes blob, which is what cook mode's
     // fallback reads — and it's a composed one, so the same cook also shows a
@@ -3851,7 +3831,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const upNext = useRecipeStore.getState().upNextRecipes();
     expect(upNext.map(r => r.name)).toEqual(['Weeknight vegetable soup', 'Brown sugar shortbread']);
     expect(upNext.every(r => r.cookCount === 0 && r.vote === null)).toBe(true);
-    expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
     expect(recipes.some(r => r.author && r.source)).toBe(true);
@@ -5100,26 +5079,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const fresh = leftovers.find(l => isLiveLeftover(l) && freshnessOf(l) === 'fresh');
     expect(fresh).toBeDefined();
     expect(tasks.some(t => t.generatedSourceId === fresh!.id)).toBe(false);
-  });
-});
-
-describe('demo seed — the trip budget', () => {
-  beforeAll(freshDemo);
-
-  it('puts a budget on the running trip, so the total is compared to something', () => {
-    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
-    expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
-  });
-
-  it('leaves the cart part-priced, which is the state worth demonstrating', () => {
-    // Neither over nor fully priced, so the banner reports the total and the
-    // coverage and offers no verdict. That refusal is the feature.
-    const { items, listEntries, activeListId, tripBudgetMinor } = useGroceryStore.getState();
-    const cart = estimateCartTotal(itemsOnList(items, listEntries, activeListId), null, []);
-    expect(cart.priced).toBeGreaterThan(0);
-    expect(cart.priced).toBeLessThan(cart.total);
-    expect(cartBudgetStanding(cart, tripBudgetMinor)).toBeNull();
-    expect(describeCartTotal(cart, tripBudgetMinor, '$')).toContain('priced');
   });
 });
 

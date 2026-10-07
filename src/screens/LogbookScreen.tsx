@@ -72,6 +72,7 @@ import {
 import { formatScale } from '../utils/recipeScale';
 import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
 import { isQuotaPartial, isMissed, displayTitleFor, quotaFraction } from '../utils/visibilityUtils';
+import { isDoneByOther } from '../utils/missed';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { matchPersonMentions } from '../utils/parseTaskInput';
@@ -943,6 +944,9 @@ const LogbookRow = React.memo(function LogbookRow({
   // A miss outranks a partial in the glyph: a quota task marked missed is both,
   // and "you didn't do this" is the more important of the two things to say.
   const missed = isMissed(task);
+  // Done, but not by you: the same tag treatment as a miss, so the row can't be
+  // read as something you did.
+  const doneByOther = isDoneByOther(task);
   // Same purely-visual pass TaskItem's row does: an "@name" mention stays
   // literal in the title, tinted only where it names somebody this task
   // actually links (peopleOn(task)), not the whole roster.
@@ -1035,6 +1039,8 @@ const LogbookRow = React.memo(function LogbookRow({
             displayTitle,
             missed
               ? `missed, ${formatTime(task.completedAt!)}`
+              : doneByOther
+                ? `done by someone else, ${formatTime(task.completedAt!)}`
               : partial
                 ? `fell short at ${task.progressCount} of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatTime(task.completedAt!)}`
                 : `completed ${formatTime(task.completedAt!)}`,
@@ -1062,6 +1068,7 @@ const LogbookRow = React.memo(function LogbookRow({
                 things that happened and "missed" is the one entry whose
                 meaning inverts — it has to survive being skimmed. */}
             {missed && <Text style={styles.missedTag}>· Missed</Text>}
+            {doneByOther && <Text style={styles.missedTag}>· Done by someone else</Text>}
             {task.targetCount !== null && (
               <Text style={styles.taskTime} numberOfLines={1}>
                 · {formatQuotaProgress(task.progressCount, task.targetCount, task.targetUnit)}

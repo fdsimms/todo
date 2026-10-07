@@ -7,6 +7,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { InlineAction } from './InlineAction';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
@@ -94,6 +95,10 @@ export function UndoBar() {
   const personGroupRedo = usePersonGroupStore(s => topOf(s.redoStack));
   const undoPersonGroup = usePersonGroupStore(s => s.undoLastAction);
   const redoPersonGroup = usePersonGroupStore(s => s.redoLastUndone);
+  const foodLogAction = useFoodLogStore(s => topOf(s.undoStack));
+  const foodLogRedo = useFoodLogStore(s => topOf(s.redoStack));
+  const undoFoodLog = useFoodLogStore(s => s.undoLastAction);
+  const redoFoodLog = useFoodLogStore(s => s.redoLastUndone);
 
   const candidates = [
     { action: taskAction, redoEntry: taskRedo, undo: undoTask, redo: redoTask },
@@ -102,6 +107,7 @@ export function UndoBar() {
     { action: leftoverAction, redoEntry: leftoverRedo, undo: undoLeftover, redo: redoLeftover },
     { action: personAction, redoEntry: personRedo, undo: undoPerson, redo: redoPerson },
     { action: personGroupAction, redoEntry: personGroupRedo, undo: undoPersonGroup, redo: redoPersonGroup },
+    { action: foodLogAction, redoEntry: foodLogRedo, undo: undoFoodLog, redo: redoFoodLog },
   ];
   const freshestUndo = freshest(
     candidates.filter(c => c.action?.destructive),

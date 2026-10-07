@@ -475,6 +475,39 @@ export function pantryGuessLapsedDays(item: GroceryItem, now: Date): number | nu
 }
 
 /**
+ * How long "Running low" is believed: the item's own purchase window, capped at
+ * the flat fortnight. Nearly out is the state closest to being out, so it
+ * should resolve sooner than a whole purchase cycle, never later. A weekly item
+ * lapses after a week, and something bought every two months still lapses after
+ * two weeks.
+ */
+function runningLowWindowDays(item: GroceryItem, now: Date): number {
+  return Math.min(onHandWindowDays(item, now), DEFAULT_ON_HAND_DAYS);
+}
+
+/**
+ * How many days ago this item's "Running low" mark ran out, or null when it was
+ * never set or is still believed.
+ *
+ * The mark used to stay true until a purchase cleared it, which holds only when
+ * every purchase goes through the app. One bought off the books, or the last of
+ * it finished, left the row saying "some left" for good, and since running low
+ * counts as on hand that also hid the item from a week plan's shortfalls. Like a
+ * lapsed "Got it", a lapsed mark is no longer an answer, and the pantry check
+ * (`pantryCheckLapse`) is what asks about it.
+ */
+export function runningLowLapsedDays(item: GroceryItem, now: Date): number | null {
+  if (!item.runningLowAt) return null;
+  const lapsed = daysBetween(now, item.runningLowAt) - runningLowWindowDays(item, now);
+  return lapsed >= 0 ? lapsed : null;
+}
+
+/** Whether the item is marked "Running low" and the mark hasn't lapsed. */
+export function isRunningLow(item: GroceryItem, now: Date): boolean {
+  return !!item.runningLowAt && runningLowLapsedDays(item, now) === null;
+}
+
+/**
  * "bought 6× · last on Jul 12" — why an item off the list is treated as
  * probably still in the kitchen, or null when there's no such reason.
  *
@@ -548,7 +581,7 @@ export function probablyHaveReason(
   // pantry entry at all rather than as an absence. Above the freezer because a
   // frozen thing you're nearly out of is a thing to buy, and that's the more
   // actionable half; below "Out of it" because being out beats being low.
-  if (item.runningLowAt) return RUNNING_LOW_REASON;
+  if (isRunningLow(item, now)) return RUNNING_LOW_REASON;
 
   // The freezer then outranks the purchase reading below, for the reason the
   // staple line above does: it's a fact the user handed over, not a guess. It
@@ -743,7 +776,7 @@ export function outlivesItemOutOfIt(product: ItemProduct, now: Date): boolean {
  * second copy of the ladder waiting to drift from the first.
  */
 export function correctableHaveReason(item: GroceryItem, now: Date): string | null {
-  if (item.isStaple || item.runningLowAt || item.frozenAt) return null;
+  if (item.isStaple || isRunningLow(item, now) || item.frozenAt) return null;
   // The item's own claim only: what this offers to correct is the item-level
   // answer, and a box vouching for the item isn't something "Out of it" on
   // the item would take back.

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-na
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, spacing, type Colors } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { pantryStanding, type PantryStanding } from '../utils/pantryStanding';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { SegmentedControl } from './SegmentedControl';
@@ -44,6 +45,7 @@ export function PantryAnswerField({ itemId, value, onChange, label = 'Pantry', s
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const item = useGroceryStore(s => s.items.find(i => i.id === itemId));
+  const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
   const itemProducts = useGroceryStore(s => s.itemProducts);
   const standing: PantryStanding | null = useMemo(
     () => (item ? pantryStanding(item, new Date(), itemProducts.filter(p => p.itemId === itemId)) : null),
@@ -76,7 +78,9 @@ export function PantryAnswerField({ itemId, value, onChange, label = 'Pantry', s
         label={label}
         surface={surface}
       />
-      {value === 'low' && <Text style={styles.hint}>Running low also adds it to your grocery list.</Text>}
+      {value === 'low' && runningLowAddsToList && (
+        <Text style={styles.hint}>Running low also adds it to your grocery list.</Text>
+      )}
     </View>
   );
 }

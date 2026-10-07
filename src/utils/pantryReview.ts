@@ -2,6 +2,7 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, ItemProduct } from '../types';
 import {
   OUT_OF_IT_UNTIL,
+  isRunningLow,
   pantryGuessLapsedDays,
   probablyHaveReason,
 } from './grocerySuggest';
@@ -220,7 +221,7 @@ export function buildPantryReviewDeck(
  * rather than counting as something the user said (see `onHandAssertion`).
  */
 function isAsserted(item: GroceryItem, now: Date): boolean {
-  if (item.runningLowAt || item.frozenAt || item.openedAt) return true;
+  if (isRunningLow(item, now) || item.frozenAt || item.openedAt) return true;
   if (!item.onHandUntil) return false;
   const until = new Date(item.onHandUntil).getTime();
   return !Number.isNaN(until) && until >= now.getTime();

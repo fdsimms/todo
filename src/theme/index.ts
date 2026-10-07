@@ -14,6 +14,15 @@ export type Colors = {
    */
   bgSunken: string;
   /**
+   * The two card edges showing under a collapsed stack (`TaskGroupHeader`),
+   * nearer first. They are what makes a folded stack read as several cards
+   * rather than as a header over the cards below it. In light they stay white
+   * and lean on the card shadow for their outline; in the dark themes they sit
+   * a shade *above* the card, since a darker edge disappears into the page.
+   */
+  stackEdge: string;
+  stackEdgeFar: string;
+  /**
    * The outline of an unchecked control that has no fill of its own: a task's
    * completion checkbox and the `SelectionDot` ring. 3:1 on the card and on a
    * pressed row (`bgSecondary`, `bgTertiary`), the WCAG floor for a control's
@@ -170,6 +179,8 @@ export const darkColors: Colors = {
   bgTertiary: '#2C2C2E',
   bgQuaternary: '#3A3A3C',
   bgSunken: '#0E0E10',
+  stackEdge: '#262628',
+  stackEdgeFar: '#212123',
   controlBorder: '#757579',
   text: '#FFFFFF',
   textSecondary: '#A6A6AA',
@@ -224,6 +235,8 @@ export const nightColors: Colors = {
   bgTertiary: '#27232D',
   bgQuaternary: '#36313D',
   bgSunken: '#0B0A0E',
+  stackEdge: '#25212B',
+  stackEdgeFar: '#1F1C24',
   controlBorder: '#7B7388',
   text: PAPER,
   textSecondary: '#B3ADBD',
@@ -274,6 +287,8 @@ export const lightColors: Colors = {
   bgTertiary: '#EFEDF3',
   bgQuaternary: '#D3D0D9',
   bgSunken: '#E7E5EB',
+  stackEdge: '#FFFFFF',
+  stackEdgeFar: '#FBFAFC',
   controlBorder: '#8A8496',
   text: INK,
   textSecondary: '#4F4A57',

@@ -37,10 +37,19 @@ struct WidgetTask: Codable, Identifiable {
     /// The calendar event a rule wrote this task for, when there is one. Only
     /// the title crosses; the row dims it after the task's own title.
     let eventTitle: String?
+    /// Set only on a row of `upcomingTasks`: when it reaches Today.
+    let visibleAt: String?
+    /// The reminder's instant, which the row shows as a clock time.
+    let reminderTime: String?
+    /// Whether the checkbox has to open the app (`widgetTapNeedsApp` in the
+    /// app). True when absent: a snapshot from before the field existed gets
+    /// the checkbox it always had.
+    let needsApp: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
-        case targetCount, progressCount, targetUnit, eventTitle
+        case targetCount, progressCount, targetUnit, eventTitle, visibleAt
+        case reminderTime, needsApp
     }
 
     init(from decoder: Decoder) throws {
@@ -57,7 +66,19 @@ struct WidgetTask: Codable, Identifiable {
         progressCount = try c.decodeIfPresent(Int.self, forKey: .progressCount) ?? 0
         targetUnit = try c.decodeIfPresent(String.self, forKey: .targetUnit)
         eventTitle = try c.decodeIfPresent(String.self, forKey: .eventTitle)
+        visibleAt = try c.decodeIfPresent(String.self, forKey: .visibleAt)
+        reminderTime = try c.decodeIfPresent(String.self, forKey: .reminderTime)
+        needsApp = try c.decodeIfPresent(Bool.self, forKey: .needsApp) ?? true
     }
+
+    var reminderDate: Date? { reminderTime.flatMap(isoDate) }
+
+    /// A daily target whose tap is one unit rather than the whole task — the
+    /// app's `isQuotaTask` for every target above one. A target of one is
+    /// ticked like any task, and the app works out which it is.
+    var tapsAreUnits: Bool { (targetCount ?? 0) > 1 }
+
+    var visibleAtDate: Date? { visibleAt.flatMap(isoDate) }
 
     /// Whether this row is a daily target with something worth drawing.
     var isTarget: Bool {
@@ -98,13 +119,16 @@ struct WidgetGroceryList: Codable, Identifiable {
     /// same field on the JS side for why `items.count` can't stand in.
     let total: Int
     let items: [String]
+    /// The same rows with ids, for the checkbox. Built from `items` with no
+    /// ids (so no checkbox) when the snapshot predates the field.
+    let rows: [WidgetGroceryRow]
 
     /// How much of the list is already in the trolley, 0...1.
     var boughtFraction: Double {
         total > 0 ? Double(total - remaining) / Double(total) : 0
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, remaining, total, items }
+    enum CodingKeys: String, CodingKey { case id, name, remaining, total, items, rows }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -112,8 +136,39 @@ struct WidgetGroceryList: Codable, Identifiable {
         name = try c.decode(String.self, forKey: .name)
         remaining = try c.decodeIfPresent(Int.self, forKey: .remaining) ?? 0
         total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
-        items = try c.decodeIfPresent([String].self, forKey: .items) ?? []
+        // Through a local: the `??` fallback is an autoclosure, and reading
+        // `self.items` there captures self before `rows` is set.
+        let decodedItems = try c.decodeIfPresent([String].self, forKey: .items) ?? []
+        items = decodedItems
+        rows = try c.decodeIfPresent([WidgetGroceryRow].self, forKey: .rows)
+            ?? decodedItems.map { WidgetGroceryRow(id: "", name: $0, choice: false) }
     }
+}
+
+/// One unbought row on a list (`WidgetGroceryRow` in widgetSnapshot.ts).
+struct WidgetGroceryRow: Codable, Identifiable {
+    /// Empty when the snapshot carried names only; such a row has no checkbox.
+    let id: String
+    let name: String
+    /// One side of an either/or, which is ticked in the app, not here.
+    let choice: Bool
+
+    init(id: String, name: String, choice: Bool) {
+        self.id = id
+        self.name = name
+        self.choice = choice
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, choice }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try c.decode(String.self, forKey: .name)
+        choice = try c.decodeIfPresent(Bool.self, forKey: .choice) ?? false
+    }
+
+    var canCheck: Bool { !id.isEmpty && !choice }
 }
 
 struct WidgetGroceries: Codable {
@@ -190,10 +245,20 @@ struct WidgetSnapshot: Codable {
     /// when this was written (switched off, a failed read, a background run),
     /// which shows nothing rather than "no meetings".
     let upcomingEvents: [WidgetEvent]?
+    /// Tasks that reach Today before `staleAfter`, each with its `visibleAt`.
+    /// What lets the timeline fold a 3 PM task in at 3 PM without the app.
+    let upcomingTasks: [WidgetTask]
+    /// When the next logical day starts (the user's own reset time, which this
+    /// extension can't read). Nil from a build predating it.
+    let nextDayStart: String?
+    /// When the task rows stop being trustworthy. Nil from a build predating
+    /// it, which never goes stale — the widget behaves as it always did.
+    let staleAfter: String?
 
     enum CodingKeys: String, CodingKey {
         case updatedAt, visibleTasks, pinnedTasks, categories, agenda, doneToday
         case groceries, meals, kitchen, upcomingEvents
+        case upcomingTasks, nextDayStart, staleAfter
     }
 
     init(from decoder: Decoder) throws {
@@ -208,6 +273,51 @@ struct WidgetSnapshot: Codable {
         meals = try c.decodeIfPresent([WidgetMeal].self, forKey: .meals) ?? []
         kitchen = try c.decodeIfPresent([WidgetKitchenItem].self, forKey: .kitchen) ?? []
         upcomingEvents = try c.decodeIfPresent([WidgetEvent].self, forKey: .upcomingEvents)
+        upcomingTasks = try c.decodeIfPresent([WidgetTask].self, forKey: .upcomingTasks) ?? []
+        nextDayStart = try c.decodeIfPresent(String.self, forKey: .nextDayStart)
+        staleAfter = try c.decodeIfPresent(String.self, forKey: .staleAfter)
+    }
+
+    // ==== Time passing without the app ====
+    //
+    // The snapshot is written at one moment and read at many. These answer
+    // "as of `date`", so each timeline entry draws the day as it stands at its
+    // own time rather than as it stood when the app last wrote.
+
+    /// Whether `date` is past the point these task rows can speak for.
+    func isStale(at date: Date) -> Bool {
+        guard let end = staleAfter.flatMap(isoDate) else { return false }
+        return date >= end
+    }
+
+    /// Whether `date` falls in a logical day after the one this was written in.
+    func isLaterDay(at date: Date) -> Bool {
+        guard let start = nextDayStart.flatMap(isoDate) else { return false }
+        return date >= start
+    }
+
+    /// Today's rows as of `date`: what was visible when written, then each
+    /// upcoming task whose moment has come, in the order they arrive.
+    func visibleTasks(at date: Date) -> [WidgetTask] {
+        visibleTasks + upcomingTasks.filter { ($0.visibleAtDate ?? .distantFuture) <= date }
+    }
+
+    /// The day's completions, which belong to the day they were counted on.
+    func doneToday(at date: Date) -> Int { isLaterDay(at: date) ? 0 : doneToday }
+
+    /// The agenda counts, or nil once they describe a day that has ended.
+    func agenda(at date: Date) -> WidgetAgenda? { isLaterDay(at: date) ? nil : agenda }
+
+    /// Every moment after `date` at which the Today widget draws something
+    /// different with no new write: a task arriving, a meeting starting (its
+    /// row moves on to the next), the day turning over, the snapshot going
+    /// stale. Sorted, without repeats.
+    func changeDates(after date: Date) -> [Date] {
+        var dates = upcomingTasks.compactMap(\.visibleAtDate)
+        dates += (upcomingEvents ?? []).compactMap(\.startDate)
+        if let start = nextDayStart.flatMap(isoDate) { dates.append(start) }
+        if let end = staleAfter.flatMap(isoDate) { dates.append(end) }
+        return Array(Set(dates.filter { $0 > date })).sorted()
     }
 
     /// The first of today's meetings that hasn't started by `date`. The
