@@ -113,6 +113,7 @@ import { liveBlockersOf } from '../utils/blocking';
 import { isDriftingTask } from '../utils/postpone';
 import { bountyCoinsFor, formatCoins, isBountyLive } from '../utils/rewards';
 import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
+import { mergeRanges } from '../utils/ranges';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from './HighlightedText';
@@ -1594,8 +1595,8 @@ export const TaskItem = React.memo(function TaskItem({
   // the whole roster, so a stray "@word" that isn't one of this task's own
   // personIds is never relit as though it were.
   const titleMentionRanges: [number, number][] = useMemo(
-    () => matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
-      .map((m): [number, number] => [m.start, m.end]),
+    () => mergeRanges(matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
+      .map((m): [number, number] => [m.start, m.end])),
     [displayTitle, task.personIds]
   );
 

@@ -73,6 +73,7 @@ import { formatScale } from '../utils/recipeScale';
 import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
 import { isQuotaPartial, isMissed, displayTitleFor, quotaFraction } from '../utils/visibilityUtils';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
+import { mergeRanges } from '../utils/ranges';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -949,8 +950,8 @@ const LogbookRow = React.memo(function LogbookRow({
   // Which calendar event a rule wrote this row for; null on any other task.
   const eventContext = useEventTaskContext(task);
   const titleMentionRanges: [number, number][] = useMemo(
-    () => matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
-      .map((m): [number, number] => [m.start, m.end]),
+    () => mergeRanges(matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
+      .map((m): [number, number] => [m.start, m.end])),
     [displayTitle, task.personIds]
   );
 
