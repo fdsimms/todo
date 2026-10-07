@@ -128,6 +128,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  // The notes field's measured content height, same fix as PersonEditor: the
+  // native multiline field clipped long notes to a few lines.
+  const [notesHeight, setNotesHeight] = useState(0);
   const [category, setCategory] = useState<string | null>(null);
   // The task category, deliberately a separate pool from the project category
   // just above — see Project.defaultTaskCategory.
@@ -796,14 +799,19 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         // naming it is the one thing it can't be saved without.
         autoFocus={isNew && !project.title}
       />
-      <TextField
-        style={styles.notesInput}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Notes"
-        placeholderTextColor={colors.textTertiary}
-        multiline
-      />
+      <View style={styles.notesCard}>
+        <TextField
+          style={[styles.notesInput, { height: Math.max(styles.notesInput.minHeight, notesHeight) }]}
+          value={notes}
+          onChangeText={setNotes}
+          onContentSizeChange={e => setNotesHeight(Math.ceil(e.nativeEvent.contentSize.height))}
+          placeholder="Notes"
+          placeholderTextColor={colors.textTertiary}
+          multiline
+          scrollEnabled={false}
+          textAlignVertical="top"
+        />
+      </View>
 
       {/* The same card order every other editor follows (Schedule, Organize,
           then the rarely-changed rows), under the same uppercase labels. This
@@ -1397,9 +1405,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text, fontSize: font.xl, fontWeight: fontWeight.medium,
     paddingVertical: spacing.sm, minHeight: 44,
   },
+  notesCard: {
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
+    marginBottom: spacing.md,
+  },
   notesInput: {
-    color: colors.textSecondary, fontSize: font.md,
-    paddingBottom: spacing.sm, minHeight: 44,
+    color: colors.text, fontSize: font.md,
+    padding: 0, minHeight: 120,
     // No lineHeight on a TextInput. RN maps it onto the iOS paragraph style's
     // minimum/maximum line height with no compensating baseline offset, so the
     // glyphs are drawn a full line height below the top of the line box rather
