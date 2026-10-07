@@ -1920,24 +1920,9 @@ export function seedDemoData(): void {
     addSubtask(trip.id, title);
   });
 
-  // --- A focus session, mid-stretch ----------------------------------------
-  // Started through the real store action, so the plan is whatever
-  // buildFocusPlan makes of these two tasks under the shipped settings rather
-  // than a hand-written run that could drift from it. These two are chosen for
-  // what the plan does to them: the roadmap fits in one stretch, the gutters
-  // are estimated past the work cap and so get split in half with a break in
-  // the middle. Both of those are invisible until something is actually
-  // queued, which is exactly the kind of capability this seed exists for.
-  //
-  // It sits paused rather than running: entering demo mode must not start a
-  // clock on its own (a running session ticks, hands the screen a countdown and
-  // would run out while the phone sits on the table). Pressing Resume is the
-  // person's own start.
-  useFocusStore.getState().startSession(
-    [roadmap, gutters],
-    focusPlanOptionsFrom(useSettingsStore.getState()),
-  );
-  useFocusStore.getState().pause();
+  // No focus session is started here: entering demo mode must not begin one on
+  // its own, running or paused. The finished sessions below carry the focus
+  // history the Stats screen needs.
 
   // --- Finished sessions, so the Stats focus sections aren't empty ---------
   // The one place here that reaches the database directly rather than going
@@ -3936,7 +3921,6 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setShopAisleOrder,
     setShopReceiptStyle,
     rememberAliases,
-    startTrip,
     setItemPrice,
     addList,
     setActiveList,
@@ -4923,28 +4907,13 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setActiveList(null);
   }
 
-  // ...and you're at Trader Joe's right now, which is the only state in which
-  // the list says anything about stores. Two of the three things a row can say
-  // are on screen because of it: Tortillas are marked as not stocked here, and
-  // Peanut butter is on record at Costco alone. The third ("Usually X") can't
-  // be seeded honestly — it needs an item bought at two stores while you stand
-  // in a third, and this demo has two stores anyone would shop at.
+  // No shopping trip is started here: entering demo mode must not begin one on
+  // its own. The store claims below (Tortillas not stocked at Trader Joe's,
+  // Peanut butter on record at Costco alone) are recorded on the rows, and show
+  // up as soon as someone starts a trip at that store.
   //
-  // Last, because `setActiveList` above ends a running trip.
-  //
-  // With a budget on it, since a trip without one compares its running total
-  // to nothing and the ceiling is invisible. $60 against a cart holding Milk
-  // at $3.49 and an unpriced Bananas puts the banner in the state worth
-  // showing: neither over nor fully priced, so it reports the total and the
-  // coverage and offers no verdict at all. That refusal is the feature — a
-  // seed that happened to be fully priced would demo the easy half.
-  startTrip(traderJoes.id, 6000);
-
-  // ...and Milk already has its price for today's trip, priced the moment it
-  // went in the cart — the capability this seed exists for. Bananas is left
-  // unpriced so the "+ Price" chip has an instance too: a demo where every
-  // checked row already carried a price would hide the affordance behind the
-  // one state nobody needs it for.
+  // Milk has a price recorded at Trader Joe's, so the item's price history is
+  // not empty. Bananas is left unpriced.
   setItemPrice(itemNamed('Milk').id, 349, traderJoes.id);
 
   // Stated per 100g with no portions and no serving weight — a real barcode
