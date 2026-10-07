@@ -4566,7 +4566,7 @@ describe('supplies', () => {
 
           useTaskStore.getState().checkSupplyReorderTasks();
 
-          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null, addToList: true });
           expect(liveOrders()).toHaveLength(0);
         } finally {
           useGroceryStore.setState({ setRunningLow: realSetRunningLow });
@@ -4601,7 +4601,7 @@ describe('supplies', () => {
           useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
           useGroceryStore.setState({ setRunningLow: flagLow });
           useTaskStore.getState().checkSupplyReorderTasks();
-          expect(flagLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(flagLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null, addToList: true });
         } finally {
           useGroceryStore.setState({ setRunningLow: realSetRunningLow });
         }

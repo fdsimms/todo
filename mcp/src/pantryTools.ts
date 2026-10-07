@@ -185,7 +185,7 @@ export function serializePantryItem(replica: Replica, item: GroceryItem, now: Da
   const status: SerializedPantryItem['status'] =
     item.isStaple ? 'staple'
     : out ? 'out'
-    : item.runningLowAt ? 'running_low'
+    : lib.grocerySuggest.isRunningLow(item, now) ? 'running_low'
     : item.frozenAt ? 'frozen'
     : reason ? 'on_hand'
     : 'unknown';

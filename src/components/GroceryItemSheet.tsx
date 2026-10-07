@@ -88,6 +88,7 @@ import {
 } from '../utils/groceryPrice';
 import {
   defaultOnHandUntil,
+  isRunningLow,
   OUT_OF_IT_UNTIL,
   probablyHaveReason,
   productHaveReason,
@@ -227,6 +228,7 @@ export function GroceryItemSheet({
   const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
   const useUpTasksEnabled = useSettingsStore(s => s.groceryUseUpTasks);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
@@ -568,7 +570,9 @@ export function GroceryItemSheet({
   const onHandPast = item.onHandUntil === OUT_OF_IT_UNTIL;
   const frozen = !!item.frozenAt;
   const opened = !!item.openedAt;
-  const runningLow = !!item.runningLowAt;
+  // A lapsed mark isn't an answer any more, so the pill reads unlit and a tap
+  // marks it again (see `isRunningLow`).
+  const runningLow = isRunningLow(item, new Date());
   const markGotIt = () => {
     haptics.tap();
     setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
@@ -601,7 +605,7 @@ export function GroceryItemSheet({
   };
   const toggleRunningLow = () => {
     haptics.tap();
-    setRunningLow(item.id, !item.runningLowAt);
+    setRunningLow(item.id, !runningLow);
   };
 
   // "Freeze some" (#2925): part of a pack in the freezer while the rest stays
@@ -905,8 +909,10 @@ export function GroceryItemSheet({
       label: 'Running low',
       selected: runningLow,
       accessibilityLabel: runningLow
-        ? 'Running low, and on the list. Tap to clear.'
-        : 'Running low, mark as nearly out and add it to the list',
+        ? 'Running low. Tap to clear.'
+        : runningLowAddsToList
+          ? 'Running low, mark as nearly out and add it to the list'
+          : 'Running low, mark as nearly out',
       onPress: toggleRunningLow,
     },
     {
@@ -1323,7 +1329,7 @@ export function GroceryItemSheet({
             emptySummary="Automatic"
             hint={
               runningLow
-                ? 'Nearly out, and added to this week’s list. Still counts as on hand, because there’s some left.'
+                ? `Nearly out${runningLowAddsToList ? ', and added to this week’s list' : ''}. Still counts as on hand, because there’s some left.`
                 : frozen
                   ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
                   : item.isStaple
@@ -1340,6 +1346,13 @@ export function GroceryItemSheet({
             onToggle={() => toggleField('pantry')}
           >
             <PillGroup options={pantryOptions} noun="state" />
+            {/* What the lit pill is going to do, said before it is tapped: the
+                hint above only describes the state once it is already set. */}
+            <Text style={styles.portionHint}>
+              {runningLowAddsToList
+                ? 'Running low also adds it to the grocery list. The mark lapses after up to two weeks.'
+                : 'Running low only notes that it’s nearly out and doesn’t add it to the list. The mark lapses after up to two weeks.'}
+            </Text>
             {/* The frozen half of a split pack, under the pills rather than
                 as a seventh one: the pills describe the item, and this is a
                 second thing in the kitchen with its own row in the pantry.

@@ -109,6 +109,15 @@ describe('runningLowRow', () => {
     expect(runningLowRow(base, true, true, iso(NOW))).toMatchObject({ runningLowAt: iso(NOW), lastAddedAt: base.lastAddedAt });
     expect(runningLowRow(base, false, false, iso(NOW))).toBeNull();
   });
+
+  it('renews a mark that has lapsed instead of treating it as already set', () => {
+    const lapsed = item({ name: 'Butter', runningLowAt: iso(new Date(NOW.getTime() - 30 * 86_400_000)) });
+    expect(runningLowRow(lapsed, true, true, iso(NOW))).toMatchObject({ runningLowAt: iso(NOW) });
+    // A live mark is still a no-op to set again, and a lapsed one still clears.
+    const live = item({ name: 'Butter', runningLowAt: iso(new Date(NOW.getTime() - 86_400_000)) });
+    expect(runningLowRow(live, true, true, iso(NOW))).toBeNull();
+    expect(runningLowRow(lapsed, false, true, iso(NOW))).toMatchObject({ runningLowAt: null });
+  });
 });
 
 describe('boxes', () => {
