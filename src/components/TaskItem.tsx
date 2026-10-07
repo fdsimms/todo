@@ -112,7 +112,7 @@ import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { liveBlockersOf } from '../utils/blocking';
 import { isDriftingTask } from '../utils/postpone';
 import { bountyCoinsFor, formatCoins, isBountyLive } from '../utils/rewards';
-import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
+import { resolvePerson, peopleOn, groupMentionTokens, contactDetailsFor } from '../utils/peopleRegistry';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from './HighlightedText';
@@ -390,8 +390,10 @@ export const TaskItem = React.memo(function TaskItem({
     deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
+  // The task's own link (or chain step's), else the one named person's.
+  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl;
   const handleOpenLink = async () => {
-    const url = linkFor(task);
+    const url = rowLink;
     if (!url) return;
     haptics.tap();
     // A link this app owns (dundundun://groceries) navigates in place. Going
@@ -412,8 +414,11 @@ export const TaskItem = React.memo(function TaskItem({
   // Sanitised here rather than at save time, so the row keeps showing the
   // number the way it was written (see utils/phone.ts). Null means the field
   // holds nothing a dialler could use, and the button doesn't render at all.
-  const callUrl = telUrl(task.phoneNumber);
-  const textUrl = smsUrl(task.phoneNumber);
+  // A hand-written "@name" task has no number of its own; the one person it
+  // names supplies it (see contactDetailsFor).
+  const contact = contactDetailsFor(task);
+  const callUrl = telUrl(contact.phoneNumber);
+  const textUrl = smsUrl(contact.phoneNumber);
   /**
    * Stamps the tap so `useReachOutPrompt` can offer it as history when the user
    * comes back — see `src/utils/reachOutIntent.ts` for why a tap is all the app
@@ -462,7 +467,7 @@ export const TaskItem = React.memo(function TaskItem({
     }
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl above.
-  const emailUrl = mailtoUrl(task.emailAddress);
+  const emailUrl = mailtoUrl(contact.emailAddress);
   /**
    * Both actions live behind one button, so the choice moves to a prompt.
    * Titled with the number itself — it's the thing being acted on, and it's
@@ -472,7 +477,7 @@ export const TaskItem = React.memo(function TaskItem({
     if (!callUrl) return;
     haptics.tap();
     Alert.alert(
-      task.phoneNumber ?? '',
+      contact.phoneNumber ?? '',
       undefined,
       [
         { text: 'Call', onPress: handleCall },
@@ -3275,7 +3280,7 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && linkFor(task) && (
+      {!selectionMode && showActions && rowLink && (
         <TouchableOpacity
           onPress={handleOpenLink}
           hitSlop={8}
@@ -3283,7 +3288,7 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityRole="button"
           accessibilityLabel={`Open link for ${task.title}`}
         >
-          <Ionicons name={linkIconFor(linkFor(task)!) as never} size={iconSize.sm} color={colors.accent} />
+          <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 
@@ -3297,7 +3302,7 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.callBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Call or text ${task.phoneNumber} for ${task.title}`}
+          accessibilityLabel={`Call or text ${contact.phoneNumber} for ${task.title}`}
         >
           {/* Accent, not the iOS phone-app green: in this row green already
               means done (the checkbox) or ready (the timer), and the link and
@@ -3313,7 +3318,7 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.emailBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Email ${task.emailAddress} for ${task.title}`}
+          accessibilityLabel={`Email ${contact.emailAddress} for ${task.title}`}
         >
           <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>

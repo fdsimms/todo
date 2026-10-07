@@ -18,6 +18,7 @@ import {
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
+import { contactDetailsFor } from '../utils/peopleRegistry';
 import { mailtoUrl } from '../utils/email';
 import { displayTitleFor, isQuotaTask, isQuotaOnPace, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
@@ -141,10 +142,12 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // Same handlers and sanitisation as TaskItem's row actions (utils/phone.ts,
   // utils/email.ts) — a session is exactly the place someone needs the
   // number or link a task carries without backing out to find the row.
+  const contact = contactDetailsFor(currentTask);
+  const stepLink = currentTask?.linkUrl ?? contact.linkUrl;
   const handleOpenLink = async () => {
-    if (!currentTask?.linkUrl) return;
+    if (!stepLink) return;
     haptics.tap();
-    if (openInAppUrl(currentTask.linkUrl)) {
+    if (openInAppUrl(stepLink)) {
       // An in-app link navigates the screen underneath this sheet, which does
       // nothing on its own — the sheet stays on top and the destination is
       // stuck behind it. Same "closing is not stopping" close this sheet's own
@@ -154,13 +157,13 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       return;
     }
     try {
-      await Linking.openURL(currentTask.linkUrl);
+      await Linking.openURL(stepLink);
     } catch {
       // silently ignore — no toast infra for this action
     }
   };
-  const callUrl = telUrl(currentTask?.phoneNumber);
-  const textUrl = smsUrl(currentTask?.phoneNumber);
+  const callUrl = telUrl(contact.phoneNumber);
+  const textUrl = smsUrl(contact.phoneNumber);
   const handleCall = async () => {
     if (!callUrl) return;
     haptics.tap();
@@ -183,7 +186,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     if (!callUrl) return;
     haptics.tap();
     Alert.alert(
-      currentTask?.phoneNumber ?? '',
+      contact.phoneNumber ?? '',
       undefined,
       [
         { text: 'Call', onPress: handleCall },
@@ -192,7 +195,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       ],
     );
   };
-  const emailUrl = mailtoUrl(currentTask?.emailAddress);
+  const emailUrl = mailtoUrl(contact.emailAddress);
   const handleEmail = async () => {
     if (!emailUrl) return;
     haptics.tap();
@@ -456,9 +459,9 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             <Text style={styles.notesText}>{currentTask.notes}</Text>
           )}
 
-          {!isRest && currentTask && (currentTask.linkUrl || callUrl || emailUrl) && (
+          {!isRest && currentTask && (stepLink || callUrl || emailUrl) && (
             <View style={styles.contactRow}>
-              {currentTask.linkUrl && (
+              {stepLink && (
                 <TouchableOpacity
                   onPress={handleOpenLink}
                   style={styles.contactBtn}
@@ -466,7 +469,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={`Open link for ${titleOf(step.taskId)}`}
                 >
-                  <Ionicons name={linkIconFor(currentTask.linkUrl) as never} size={iconSize.sm} color={colors.accent} />
+                  <Ionicons name={linkIconFor(stepLink) as never} size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Link</Text>
                 </TouchableOpacity>
               )}
@@ -476,7 +479,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Call or text ${currentTask.phoneNumber} for ${titleOf(step.taskId)}`}
+                  accessibilityLabel={`Call or text ${contact.phoneNumber} for ${titleOf(step.taskId)}`}
                 >
                   <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Call</Text>
@@ -488,7 +491,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Email ${currentTask.emailAddress} for ${titleOf(step.taskId)}`}
+                  accessibilityLabel={`Email ${contact.emailAddress} for ${titleOf(step.taskId)}`}
                 >
                   <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Email</Text>
