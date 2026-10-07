@@ -111,6 +111,16 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   simpleMode: { group: 'features', describe: 'Simplified mode: hides the advanced half of the app.', read: s => s.simpleMode, write: (s, v) => s.setSimpleMode(bool('simpleMode', v)) },
   simpleTaskForm: { group: 'features', describe: 'A shorter task editor.', read: s => s.simpleTaskForm, write: (s, v) => s.setSimpleTaskForm(bool('simpleTaskForm', v)) },
   hideCategories: { group: 'features', describe: 'Today shows one list instead of a section per category.', read: s => s.hideCategories, write: (s, v) => s.setHideCategories(bool('hideCategories', v)) },
+  healthCategory: {
+    group: 'features',
+    describe: 'The category Apple Health readings (steps, active calories) show as rows under on Today, or null to hide them. A category that does not exist yet is created. Readings only appear once Health access is on, which is set on the phone.',
+    read: s => s.healthCategory,
+    write: (s, v) => {
+      if (v === null) return s.setHealthCategory(null);
+      if (typeof v !== 'string' || !v.trim() || v.trim().length > 40) throw new Error('healthCategory is a category name, or null for none.');
+      s.setHealthCategory(v.trim());
+    },
+  },
   mealsOnToday: { group: 'features', describe: 'Show the day\'s planned meals on Today (inline) or not (off).', read: s => s.mealsOnToday, write: (s, v) => s.setMealsOnToday(oneOf('mealsOnToday', v, ['inline', 'off'] as const)) },
   mealSlotsEnabled: { group: 'features', describe: 'The meals of the day the meal plan has rows for.', read: s => s.mealSlotsEnabled, write: (s, v) => s.setMealSlotsEnabled(slots('mealSlotsEnabled', v)) },
 

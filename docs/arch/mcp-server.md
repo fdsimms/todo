@@ -1301,6 +1301,11 @@ half of it applied; then every write goes through the store's own setter, which 
 Settings stepper does, and a value the app stored differently from what was asked is named in the
 result. The entry in Activity is a record (subject `automation`) listing what changed, from and to.
 
+`healthCategory` ("Show Health readings under") is on the list too. The readings are rows, not
+tasks, so no task tool can move them, and a category only comes into being when something is filed
+under it. Writing it names the category and `applySettings` creates it if missing (outside the dry
+run, which must not write), as the app's own picker does. `null` hides the readings from Today.
+
 Adding these found that most generators' "File them under" categories and their own parameters
 (lead days, time segments, thresholds) were missing from `SYNCED_SETTING_KEYS`, so they never
 left the device they were set on, and `set_automation`'s `category` never reached the phone at
