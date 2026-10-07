@@ -67,6 +67,8 @@ import {
   type NudgeMode,
 } from '../utils/nudgeCadence';
 import { TextField } from './TextField';
+import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
+import { placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
@@ -157,6 +159,11 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [awayListId, setAwayListId] = useState<string | null>(null);
   const [awayListOpen, setAwayListOpen] = useState(false);
   const [destination, setDestination] = useState('');
+  // What a tapped suggestion wrote, so the list stays closed until the field
+  // is edited again.
+  const [pickedDestination, setPickedDestination] = useState<string | null>(null);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
+  const placeSuggestions = usePlaceSuggestions(destination, visible && awayStart !== null && destination !== pickedDestination);
   // The lists to nominate from, and whether there is a Groceries tab at all to
   // nominate one for. With the kitchen switched off this row would name a
   // screen the user cannot reach.
@@ -264,6 +271,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setAwayListId(project.awayListId);
     setAwayListOpen(false);
     setDestination(project.destination ?? '');
+    setPickedDestination(project.destination ?? null);
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
@@ -892,6 +900,47 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             />
           </View>
         )}
+        {awayStart && placeSuggestions.results.length > 0 && (
+          <View style={styles.placeList}>
+            {placeSuggestions.results.map((place: PlaceResult, index) => {
+              const subtitle = placeSubtitle(place);
+              return (
+                <TouchableOpacity
+                  key={`${place.latitude},${place.longitude},${index}`}
+                  style={[styles.placeRow, styles.placeRowRuled]}
+                  onPress={() => {
+                    haptics.tap();
+                    animateLayout();
+                    // The name alone, never the address: the forecast looks the
+                    // destination up by place name, and a street address finds
+                    // nothing there.
+                    const text = place.name ?? place.address ?? '';
+                    setDestination(text);
+                    setPickedDestination(text);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use ${place.name ?? place.address}`}
+                >
+                  <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
+                  {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+        {awayStart && !placeSuggestions.enabled && placeSuggestions.wanted && (
+          <View style={styles.placeOffer}>
+            <InlineAction
+              icon="search-outline"
+              label="Suggest places"
+              variant="neutral"
+              onPress={() => setPlaceSuggestionsEnabled(true)}
+              accessibilityLabel="Turn on place suggestions from Apple Maps"
+            />
+            <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+          </View>
+        )}
         {/* The forecast is an app-wide switch, off by default, and was only
             mentioned in the footer. Offered right where a place is typed. */}
         {awayStart && destination.trim().length > 0 && (
@@ -1469,6 +1518,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
+  placeList: { paddingHorizontal: spacing.md },
+  placeRow: { paddingVertical: spacing.sm, gap: spacing.xxs },
+  placeRowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  placeName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+  placeAddress: { color: colors.textSecondary, fontSize: font.xs },
+  placeOffer: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  placeOfferText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   destinationInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
   linkRow: {
     flexDirection: 'row',
