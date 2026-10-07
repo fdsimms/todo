@@ -126,6 +126,7 @@ export function BulkActionBar({
   const [groupTitle, setGroupTitle] = useState('');
 
   const allSelected = selectedCount === totalCount;
+  const none = selectedCount === 0;
 
   const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
     setWhenVisible(false);
@@ -202,7 +203,8 @@ export function BulkActionBar({
             <View style={styles.actionRow}>
               {(completableCount ?? 1) > 0 && (
                 <PressableScale
-                  style={styles.actionBtn}
+                  style={[styles.actionBtn, none && styles.actionBtnDisabled]}
+                  disabled={none}
                   onPress={() => { haptics.success(); onComplete(); }}
                 >
                   <Ionicons name="checkmark-circle" size={24} color={colors.done} />
@@ -210,14 +212,16 @@ export function BulkActionBar({
                 </PressableScale>
               )}
               <PressableScale
-                style={styles.actionBtn}
+                style={[styles.actionBtn, none && styles.actionBtnDisabled]}
+                  disabled={none}
                 onPress={() => { haptics.tap(); setWhenVisible(true); }}
               >
                 <Ionicons name="calendar" size={24} color={colors.accent} />
                 <Text style={[styles.actionLabel, { color: colors.accent }]}>When</Text>
               </PressableScale>
               <PressableScale
-                style={styles.actionBtn}
+                style={[styles.actionBtn, none && styles.actionBtnDisabled]}
+                  disabled={none}
                 onPress={() => { haptics.tap(); setCategoryVisible(true); }}
               >
                 <Ionicons name="folder" size={24} color={colors.purple} />
@@ -225,7 +229,8 @@ export function BulkActionBar({
               </PressableScale>
               {onTogglePin && (
                 <PressableScale
-                  style={styles.actionBtn}
+                  style={[styles.actionBtn, none && styles.actionBtnDisabled]}
+                  disabled={none}
                   onPress={() => { haptics.tap(); onTogglePin(); }}
                 >
                   <PinIcon filled={allPinned} size={24} color={colors.orangeText} />
@@ -235,14 +240,16 @@ export function BulkActionBar({
                 </PressableScale>
               )}
               <PressableScale
-                style={styles.actionBtn}
+                style={[styles.actionBtn, none && styles.actionBtnDisabled]}
+                  disabled={none}
                 onPress={() => { haptics.impactMedium(); onDelete(); }}
               >
                 <Ionicons name="trash" size={24} color={colors.red} />
                 <Text style={[styles.actionLabel, { color: colors.redText }]}>Delete</Text>
               </PressableScale>
               <PressableScale
-                style={styles.actionBtn}
+                style={[styles.actionBtn, none && styles.actionBtnDisabled]}
+                  disabled={none}
                 onPress={() => { haptics.tap(); setPanel('more'); }}
               >
                 <Ionicons name="ellipsis-horizontal-circle" size={24} color={colors.textSecondary} />
@@ -590,6 +597,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 44,
     flexShrink: 1,
   },
+  actionBtnDisabled: { opacity: 0.4 },
   actionLabel: {
     fontSize: font.xxs,
     fontWeight: '600',
