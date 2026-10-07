@@ -189,7 +189,10 @@ export function CookModeSheet({
     [itemSubs, groceryItems]
   );
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
-  const onHand = useMemo(() => onHandNameKeys(groceryItems, new Date()), [groceryItems]);
+  const onHand = useMemo(
+    () => onHandNameKeys(groceryItems, new Date(), itemProducts),
+    [groceryItems, itemProducts]
+  );
   const resolution = useMemo(() => ({ chosen: choices, onHand }), [choices, onHand]);
 
   // The method follows the picks too: "mash or roast" is a choice between two

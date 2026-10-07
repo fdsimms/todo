@@ -422,7 +422,7 @@ describe('substitutesOnHand', () => {
   it('keeps only the substitutes the app thinks you have', () => {
     const items = [butter, onHand(margarine), ghee];
     const links = [sub(butter.id, margarine.id), sub(butter.id, ghee.id)];
-    expect(substitutesOnHand(butter.id, links, items, NOW).map(s => s.item.name)).toEqual([
+    expect(substitutesOnHand(butter.id, links, items, NOW, []).map(s => s.item.name)).toEqual([
       'Margarine',
     ]);
   });
@@ -431,18 +431,18 @@ describe('substitutesOnHand', () => {
     // The default state of nearly every item, which is why this must not be
     // read as "you have not got it".
     const links = [sub(butter.id, margarine.id)];
-    expect(substitutesOnHand(butter.id, links, ITEMS, NOW)).toEqual([]);
+    expect(substitutesOnHand(butter.id, links, ITEMS, NOW, [])).toEqual([]);
   });
 
   it('drops one the user has marked out of', () => {
     const links = [sub(butter.id, margarine.id)];
-    expect(substitutesOnHand(butter.id, links, [butter, outOf(margarine)], NOW)).toEqual([]);
+    expect(substitutesOnHand(butter.id, links, [butter, outOf(margarine)], NOW, [])).toEqual([]);
   });
 
   it('counts a staple, which needs no purchase history', () => {
     const links = [sub(butter.id, ghee.id)];
     const items = [butter, { ...ghee, isStaple: true }];
-    expect(substitutesOnHand(butter.id, links, items, NOW).map(s => s.item.name)).toEqual(['Ghee']);
+    expect(substitutesOnHand(butter.id, links, items, NOW, []).map(s => s.item.name)).toEqual(['Ghee']);
   });
 });
 
@@ -456,7 +456,7 @@ describe('describeSubstitutesOnHand', () => {
         butter.id,
         subNames.map((s, i) => sub(butter.id, s.id, { createdAt: `2026-0${i + 1}-01T00:00:00.000Z` })),
         [butter, ...subNames.map(onHand)],
-        NOW
+        NOW, []
       )
     );
 

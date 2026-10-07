@@ -82,12 +82,15 @@ export function CookRecap() {
     // the recap names what was actually consumed (see ChoiceResolution.onHand).
     return classifyPlanned(
       plannedIngredientsForRecipe(
-        recipe, recipesById, { chosen: shownRecap.choices, onHand: onHandNameKeys(items, new Date()) }, shownRecap.scale, swaps
+        recipe, recipesById, { chosen: shownRecap.choices, onHand: onHandNameKeys(items, new Date(), itemProducts) }, shownRecap.scale, swaps
       ),
       items,
-      new Date()
+      new Date(),
+      [],
+      null,
+      itemProducts
     );
-  }, [shownRecap, recipe, recipesById, items, swaps]);
+  }, [shownRecap, recipe, recipesById, items, itemProducts, swaps]);
 
   const rows = useMemo(() => consumedRows(classified), [classified]);
 

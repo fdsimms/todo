@@ -180,7 +180,7 @@ export function buildPantryReviewDeck(
     // answers for is skipped below rather than carded, so the products are
     // consulted only to tell "nothing vouches for this" apart from "a packet
     // does" — never to build the card itself.
-    const reason = probablyHaveReason(item, now);
+    const reason = probablyHaveReason(item, now, []);
     if (reason) {
       candidates.push({
         item,

@@ -1158,7 +1158,7 @@ describe('finishShopping', () => {
     const updated = useGroceryStore.getState().items[0];
     expect(updated.onHandUntil).toBeNull();
     expect(updated.purchaseCount).toBe(3);
-    expect(probablyHaveReason(updated, new Date())).toMatch(/^bought 3× · last on /);
+    expect(probablyHaveReason(updated, new Date(), [])).toMatch(/^bought 3× · last on /);
   });
 
   it('takes back an "Out of it" on something the trip bought', () => {
@@ -1171,10 +1171,10 @@ describe('finishShopping', () => {
 
     const byId = new Map(useGroceryStore.getState().items.map(i => [i.id, i]));
     expect(byId.get(milk.id)!.onHandUntil).toBeNull();
-    expect(probablyHaveReason(byId.get(milk.id)!, new Date())).toMatch(/^bought once · /);
+    expect(probablyHaveReason(byId.get(milk.id)!, new Date(), [])).toMatch(/^bought once · /);
     // The one left in the trolley keeps its claim — nothing refuted it.
     expect(byId.get(eggs.id)!.onHandUntil).toBe(OUT_OF_IT_UNTIL);
-    expect(probablyHaveReason(byId.get(eggs.id)!, new Date())).toBeNull();
+    expect(probablyHaveReason(byId.get(eggs.id)!, new Date(), [])).toBeNull();
   });
 
   it('clears a recipe-owned quantity, but leaves a hand-set one alone', () => {
@@ -4579,7 +4579,7 @@ describe('markOutOfMany', () => {
     for (const item of useGroceryStore.getState().items) {
       expect(item.onHandUntil).toBe(OUT_OF_IT_UNTIL);
       // Which is the whole point: the pantry stops claiming them.
-      expect(probablyHaveReason(item, new Date())).toBeNull();
+      expect(probablyHaveReason(item, new Date(), [])).toBeNull();
     }
   });
 
@@ -4777,7 +4777,7 @@ describe('addToPantry', () => {
       expect.objectContaining({ id: added!.id, onList: false })
     );
     // Which is exactly the set the pantry sheet lists.
-    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date(), [])).toBe(
       'marked as on hand'
     );
   });
@@ -4833,7 +4833,7 @@ describe('addToPantry', () => {
 
     useGroceryStore.getState().addToPantry('Rice');
 
-    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date(), [])).toBe(
       'marked as on hand'
     );
   });

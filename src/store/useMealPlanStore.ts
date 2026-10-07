@@ -1716,7 +1716,7 @@ function cookedConsumption(entry: MealPlanEntry): ClassifiedIngredient[] {
   const recipesById = new Map(recipes.map(r => [r.id, r]));
   // Swapped: what a cook used up is what they actually cooked with, so a
   // standing "oat milk for milk" asks after the oat milk.
-  const { items, itemSubs } = useGroceryStore.getState();
+  const { items, itemSubs, itemProducts } = useGroceryStore.getState();
   const now = new Date();
   return consumedRows(
     classifyPlanned(
@@ -1726,12 +1726,15 @@ function cookedConsumption(entry: MealPlanEntry): ClassifiedIngredient[] {
         // Live, not persisted — matches mealShortfallRows' resolution, so a
         // cook marking this meal done consumes the same alternative the
         // shopping task asked them to buy (see ChoiceResolution.onHand).
-        { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now) },
+        { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, itemProducts) },
         normalizeScale(entry.recipeScale),
         standingSwapMap(itemSubs, items)
       ),
       items,
-      now
+      now,
+      [],
+      null,
+      itemProducts
     )
   );
 }

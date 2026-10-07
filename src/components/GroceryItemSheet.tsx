@@ -627,7 +627,7 @@ export function GroceryItemSheet({
   const portionFrozen = !!portion?.frozenAt && productHaveReason(portion, new Date()) !== null;
   const portionThawed = !!portion && !portion.frozenAt && productHaveReason(portion, new Date()) !== null;
   const canFreezeSome = !frozen && !portionFrozen && !portionThawed
-    && probablyHaveReason(item, new Date()) !== null;
+    && probablyHaveReason(item, new Date(), itemProducts) !== null;
   const freezeSome = () => {
     haptics.tap();
     freezePortion(item.id);

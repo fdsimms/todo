@@ -1,4 +1,4 @@
-import type { GroceryItem, Task } from '../types';
+import type { GroceryItem, ItemProduct, Task } from '../types';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { OUT_OF_IT_UNTIL, pantryGuessLapsedDays, probablyHaveReason } from './grocerySuggest';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
@@ -146,6 +146,13 @@ export function pantryCheckLapse(
   item: GroceryItem,
   now: Date,
   /**
+   * The catalog's boxes. A packet marked "Got it" or frozen answers for its
+   * item on the Pantry screen, so it answers here too: without them this
+   * asked "do you still have chicken?" beside a frozen packet of it, and an
+   * "Out of it" answer then hid the packet.
+   */
+  products: readonly ItemProduct[],
+  /**
    * The ids in *any* trolley (`listedAnywhere` in `groceryLists.ts`).
    *
    * The broad reading is the right one here: asking "do you still have olive
@@ -156,7 +163,7 @@ export function pantryCheckLapse(
    */
   listed: ReadonlySet<string> | null = null
 ): number | null {
-  if (probablyHaveReason(item, now) !== null) return null;
+  if (probablyHaveReason(item, now, products) !== null) return null;
   if (item.onHandUntil === OUT_OF_IT_UNTIL) return null;
   if (listed ? listed.has(item.id) : item.onList) return null;
   return pantryGuessLapsedDays(item, now);
@@ -239,6 +246,8 @@ export function wantedPantryChecks(
     'generatedKind' | 'generatedSourceId' | 'completed' | 'completedAt' | 'archived' | 'archivedAt'
   >[],
   now: Date,
+  /** The catalog's boxes — see `pantryCheckLapse`. */
+  products: readonly ItemProduct[],
   cap: number = MAX_PANTRY_CHECK_TASKS,
   /** The ids in any trolley — see `pantryCheckLapse`. */
   listed: ReadonlySet<string> | null = null
@@ -246,7 +255,7 @@ export function wantedPantryChecks(
   const answers = pantryCheckAnswers(tasks);
   const wants: { item: GroceryItem; lapsedDays: number }[] = [];
   for (const item of items) {
-    const lapsedDays = pantryCheckLapse(item, now, listed);
+    const lapsedDays = pantryCheckLapse(item, now, products, listed);
     if (lapsedDays === null || lapsedDays > PANTRY_CHECK_GRACE_DAYS) continue;
     if (answeredSincePurchase(item, answers.get(item.id))) continue;
     wants.push({ item, lapsedDays });
@@ -288,6 +297,8 @@ export function stalePantryCheckTasks<
   tasks: readonly T[],
   items: readonly GroceryItem[],
   now: Date,
+  /** The catalog's boxes — see `pantryCheckLapse`. */
+  products: readonly ItemProduct[],
   /** The ids in any trolley — see `pantryCheckLapse`. */
   listed: ReadonlySet<string> | null = null
 ): T[] {
@@ -295,6 +306,6 @@ export function stalePantryCheckTasks<
   return liveGeneratedTasksOfKind(tasks, 'pantryCheck').filter(task => {
     const itemId = pantryCheckItemId(task);
     const item = itemId ? byId.get(itemId) : undefined;
-    return !item || pantryCheckLapse(item, now, listed) === null;
+    return !item || pantryCheckLapse(item, now, products, listed) === null;
   });
 }

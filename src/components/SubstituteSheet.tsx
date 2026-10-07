@@ -112,6 +112,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
 
   const items = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
@@ -682,7 +683,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               <View style={styles.recordedSection}>
                 <Text style={styles.label}>ALREADY RECORDED</Text>
                 {existing.map(sub => {
-                  const meta = describeSubstituteLink(sub, probablyHaveReason(sub.item, new Date()));
+                  const meta = describeSubstituteLink(sub, probablyHaveReason(sub.item, new Date(), itemProducts));
                   return (
                     <View key={sub.item.id} style={styles.recordedRow}>
                       <TouchableOpacity
@@ -737,7 +738,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                     {suggested.map(s => {
                       const resolvedKey = groceryNameKey(s.name) || s.name.toLowerCase();
                       const resolved = items.find(it => it.nameKey === resolvedKey);
-                      const onHand = resolved ? probablyHaveReason(resolved, new Date()) : null;
+                      const onHand = resolved ? probablyHaveReason(resolved, new Date(), itemProducts) : null;
                       return (
                         <TouchableOpacity
                           key={s.name}

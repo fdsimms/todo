@@ -500,10 +500,12 @@ export function probablyHaveReason(
   item: GroceryItem,
   now: Date,
   /**
-   * This item's boxes, when the caller has them. Empty — the default, and what
-   * every caller passed before boxes could carry pantry state — makes this
-   * behave exactly as it always did, which is why adopting it is per-caller
-   * rather than a sweep.
+   * The catalog's boxes (any item's; this one's are picked out). Required:
+   * left optional, about ten readers skipped it, and each then disagreed with
+   * the Pantry screen about anything only a box vouched for, one of them in a
+   * task it wrote unasked ("Check if you still have chicken" beside a frozen
+   * packet of it). A caller that means to ignore boxes passes `[]` and says
+   * why at the call site.
    *
    * A box only ever *adds* an answer, never removes one: it's consulted below
    * the item's own claims and above the purchase guess, so a packet the user
@@ -513,7 +515,7 @@ export function probablyHaveReason(
    * with the one exception of a frozen portion, which that statement was never
    * about.
    */
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[]
 ): string | null {
   // A staple outranks everything below: it's a standing fact ("I always have
   // salt"), not a guess, and it doesn't need purchase history or an
@@ -618,7 +620,7 @@ function purchaseReason(item: GroceryItem, now: Date): string | null {
 export function onHandNameKeys(
   items: readonly GroceryItem[],
   now: Date,
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[]
 ): ReadonlySet<string> {
   const keys = new Set<string>();
   for (const item of items) {
@@ -716,7 +718,10 @@ export function outlivesItemOutOfIt(product: ItemProduct, now: Date): boolean {
  */
 export function correctableHaveReason(item: GroceryItem, now: Date): string | null {
   if (item.isStaple || item.runningLowAt || item.frozenAt) return null;
-  return probablyHaveReason(item, now);
+  // The item's own claim only: what this offers to correct is the item-level
+  // answer, and a box vouching for the item isn't something "Out of it" on
+  // the item would take back.
+  return probablyHaveReason(item, now, []);
 }
 
 /**
@@ -789,7 +794,7 @@ export interface PantryEntry {
 export function pantryEntries(
   items: readonly GroceryItem[],
   now: Date,
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[]
 ): PantryEntry[] {
   const entries: PantryEntry[] = [];
   for (const item of items) {
@@ -800,7 +805,7 @@ export function pantryEntries(
     // be that box's claim wearing the item's name, and the box row below says
     // it better. That's the one case `probablyHaveReason`'s box rung produces,
     // and it's exactly "the packet in the freezer is the only one I have".
-    const itemReason = probablyHaveReason(item, now);
+    const itemReason = probablyHaveReason(item, now, []);
     if (itemReason) {
       entries.push({ item, reason: itemReason, asserted: onHandAssertion(item, now) === true, product: null });
     }

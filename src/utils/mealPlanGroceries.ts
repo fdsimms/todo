@@ -546,11 +546,10 @@ export function classifyPlanned(
   now: Date,
   /**
    * The substitute links, for the "you have margarine" caption on a row you
-   * still need to buy. Optional and empty by default: with none linked there
-   * is nothing to say, which is also every caller's behaviour before this
-   * existed.
+   * still need to buy. Empty says nothing, which is what a reader with no use
+   * for the caption (a cook's recap) passes.
    */
-  itemSubs: readonly ItemSubLink[] = [],
+  itemSubs: readonly ItemSubLink[],
   /**
    * The trolley "already on the list" is about — the one being added to, as
    * `itemId → checked` (`trolleyStateFor` in `groceryLists.ts`).
@@ -565,17 +564,18 @@ export function classifyPlanned(
    * separate lists, and what the readers that aren't adding to a list (a cook's
    * recap, a pantry-readiness percentage) still mean.
    */
-  inTrolley: ReadonlyMap<string, boolean> | null = null,
+  inTrolley: ReadonlyMap<string, boolean> | null,
   /**
    * The items' boxes, so a packet frozen or marked "Got it" on its own counts as
    * having it here exactly as it does in the Pantry and in `onHandNameKeys`
    * (a box only ever adds an answer; see `probablyHaveReason`). Without them a
    * row whose one claim is a box fell back to the item's lapsed purchase window
    * and read as needToBuy, so the sheet ticked it and a shortfall task asked for
-   * it while the Pantry listed it in the freezer. Empty by default: the
-   * item-only read every caller had before boxes carried pantry state.
+   * it while the Pantry listed it in the freezer. Required for the reason
+   * `probablyHaveReason`'s is: the default let a cook's consumption and the
+   * recipe readiness score skip them.
    */
-  products: readonly ItemProduct[] = [],
+  products: readonly ItemProduct[],
   /**
    * The catalog-wide lookups, for a caller classifying many recipes against one
    * catalog (`countLikelyInPantryByRecipe`). Built from `items` when omitted,
@@ -683,8 +683,8 @@ export function classifyPlanned(
       // fallback, not a third voice: a substitute the user linked by hand
       // outranks a caption the family structure merely implies.
       if (match) {
-        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now))
-          ?? describeFamilyOnHand(familyOnHand(match, byKey, varieties, now));
+        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now, products))
+          ?? describeFamilyOnHand(familyOnHand(match, byKey, varieties, now, products));
       }
     }
 

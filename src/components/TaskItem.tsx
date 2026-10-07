@@ -68,6 +68,7 @@ import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
 import { linkFor } from '../constants/linkApps';
 import { parseHealthSourceId } from '../utils/healthRules';
 import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
+import { listedAnywhere } from '../utils/groceryLists';
 import { pantryReviewDayKey } from '../utils/pantryReviewTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { telUrl, smsUrl } from '../utils/phone';
@@ -1037,10 +1038,15 @@ export const TaskItem = React.memo(function TaskItem({
   // "Check if you still have X" — ready once the item's own probablyHave
   // question has an answer again (pantryCheckLapse back to null), the same
   // predicate stalePantryCheckTasks judges the row stale against.
+  // Read with the boxes and the trolleys, as the store's stale pass reads it:
+  // without them a row could show ready while that pass kept it, or the
+  // reverse. One boolean out of the selector, so no other row re-renders.
   const pantryCheckId = pantryCheckItemId(task);
-  const pantryCheckItem = useGroceryStore(s => (pantryCheckId ? s.itemById(pantryCheckId) : null));
-  const pantryCheckReady =
-    !!pantryCheckItem && !task.completed && pantryCheckLapse(pantryCheckItem, new Date()) === null;
+  const pantryCheckReady = useGroceryStore(s => {
+    if (!pantryCheckId || task.completed) return false;
+    const item = s.itemById(pantryCheckId);
+    return !!item && pantryCheckLapse(item, new Date(), s.itemProducts, listedAnywhere(s.listEntries)) === null;
+  });
 
   // "Review what's in the pantry" — ready once the deck it opens is empty,
   // the same predicate stalePantryReviewTasks judges the row stale against.
