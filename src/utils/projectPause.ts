@@ -14,6 +14,26 @@ import type { Project } from '../types';
 type PausableProject = Pick<Project, 'id' | 'pausedUntil' | 'archived' | 'completed'>;
 
 /**
+ * The `pausedUntil` a project in Planning holds: a pause with no day to lift
+ * on, which only "Mark ready" ends. It is a day key no logical today reaches,
+ * so every reader that already respects a pause (`isWithheld`, the nudges,
+ * pull, the weekend offer) holds a planning project back with no change, and
+ * there is no second flag for a new reader to forget.
+ *
+ * It is deliberately the same state as a pause rather than a column of its own:
+ * a separate flag would let a project be paused *and* planning, and every
+ * withholding check would have to learn both. Anything that shows the pause to
+ * a person asks `isPlanning` first, since "Paused until Dec 31, 9999" is the one
+ * reading of this value that must never reach a screen.
+ */
+export const PLANNING_PAUSE_KEY = '9999-12-31';
+
+/** Whether the project is in Planning: paused with no day to come back on. */
+export function isPlanning(project: Pick<Project, 'pausedUntil'>): boolean {
+  return project.pausedUntil === PLANNING_PAUSE_KEY;
+}
+
+/**
  * Paused on the logical day `todayKey` (`YYYY-MM-DD`): the pause holds through
  * the day before `pausedUntil` and lifts that morning, so "pause until March 1"
  * brings the project back on March 1. Day keys compare as strings.

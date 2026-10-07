@@ -2984,6 +2984,7 @@ function registerWriteTools(
       defaultTaskCategory: z.string().nullable().optional().describe('A task category (from list_categories) every step gets unless it names its own. Without it, every step needs its own category.'),
       newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       kind: z.enum(['project', 'list']).optional(),
+      planning: z.boolean().optional().describe('Start it in Planning: its steps, dated ones too, stay off every list until it is marked ready (update_project planning: false). For a plan the person is still working out.'),
       steps: z.array(planStep).optional(),
     },
     async input => {
@@ -3039,6 +3040,7 @@ function registerWriteTools(
       archived: z.boolean().optional(),
       archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
       pausedUntil: z.string().nullable().optional().describe('Pause it until a day (YYYY-MM-DD, after today): its tasks are held off every list until then, as "park the garden for winter". null resumes it now.'),
+      planning: z.boolean().optional().describe('true puts it in Planning: its tasks, dated ones too, are held off every list and it gets no nudges until it is marked ready, for a project still being set up. false marks it ready. Not with pausedUntil.'),
       inOrder: z.boolean().optional().describe('Work the steps in page order: the app offers only the first open one.'),
       ongoing: z.boolean().optional().describe('Never finished: finishing its last task does not offer to complete it.'),
       personIds: z.array(z.string()).optional().describe('People it is with or for, by id from list_people. Replaces the list.'),

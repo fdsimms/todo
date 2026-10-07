@@ -25,7 +25,7 @@ import { useProjectStore, projectDecisions, projectProgress, projectCompletedRow
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { nextPullCandidate } from '../utils/projectPull';
-import { isPausedOn } from '../utils/projectPause';
+import { isPausedOn, isPlanning } from '../utils/projectPause';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
@@ -1555,6 +1555,8 @@ export function ProjectDetailScreen() {
   // A pause that has run out on its own: its day has passed but the field is
   // still set, which is what lets the page offer its routines a new day once.
   const pauseEnded = !!project?.pausedUntil && !paused;
+  // Planning is a pause with no day (PLANNING_PAUSE_KEY), ended only by hand.
+  const planning = !!project && isPlanning(project);
   const routinesToCatchUp = useMemo(
     () => (pauseEnded ? overdueRoutines(projectId, allTasks, getCurrentDayStart(), dayResetTime) : []),
     [pauseEnded, projectId, allTasks, dayResetTime],
@@ -1569,11 +1571,12 @@ export function ProjectDetailScreen() {
   const endPause = () => {
     if (!project) return;
     const overdue = overdueRoutines(project.id, allTasks, getCurrentDayStart(), dayResetTime);
+    const wasPlanning = isPlanning(project);
     updateProject(project.id, { pausedUntil: null });
     if (overdue.length === 0) return;
     Alert.alert(
       overdue.length === 1 ? 'Move the routine that came due?' : `Move ${overdue.length} routines that came due?`,
-      'They came due while the project was paused. Move each to its next day from today, or leave them overdue.',
+      `They came due while the project was ${wasPlanning ? 'in Planning' : 'paused'}. Move each to its next day from today, or leave them overdue.`,
       [
         { text: 'Leave them', style: 'cancel' },
         { text: 'Move them', onPress: () => { animateLayout(); redateRoutines(overdue.map(t => t.id)); } },
@@ -1967,11 +1970,13 @@ export function ProjectDetailScreen() {
                       <View style={styles.summaryActions}>
                         {paused && (
                           <InlineAction
-                            icon="play-outline"
-                            label="Resume now"
+                            icon={planning ? 'checkmark-circle-outline' : 'play-outline'}
+                            label={planning ? 'Mark ready' : 'Resume now'}
                             variant="neutral"
                             onPress={() => { haptics.tap(); endPause(); }}
-                            accessibilityLabel="Resume this project now"
+                            accessibilityLabel={planning
+                              ? 'Mark this project ready, so its tasks show up in your lists'
+                              : 'Resume this project now'}
                           />
                         )}
                         {!!pullable && (

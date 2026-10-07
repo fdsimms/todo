@@ -51,6 +51,8 @@ export interface SerializedProjectDetail {
   pausesTasksWhileAway?: true;
   /** Paused until this day (YYYY-MM-DD): its tasks are held off every list until then. */
   pausedUntil?: string;
+  /** In Planning: its tasks are held off every list until it is marked ready. */
+  planning?: true;
   /** Its steps are worked in page order. */
   inOrder?: true;
   /** Never finished on its own. */
@@ -121,7 +123,9 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     ...(p.archived ? { archived: true } : {}),
     ...awayFields(replica, p),
     ...(p.awayPauses && p.awayStart ? { pausesTasksWhileAway: true as const } : {}),
-    ...(p.pausedUntil ? { pausedUntil: p.pausedUntil } : {}),
+    // Planning is stored as a pause on a day no today reaches (PLANNING_PAUSE_KEY),
+    // said by name rather than as that day. Compared inline: no app value import here.
+    ...(p.pausedUntil === '9999-12-31' ? { planning: true as const } : p.pausedUntil ? { pausedUntil: p.pausedUntil } : {}),
     ...(p.inOrder ? { inOrder: true as const } : {}),
     ...(p.ongoing ? { ongoing: true as const } : {}),
     ...((p.personIds ?? []).length > 0

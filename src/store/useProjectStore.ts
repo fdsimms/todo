@@ -13,7 +13,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { registerPausedProjectSource } from '../utils/projectPause';
+import { PLANNING_PAUSE_KEY, registerPausedProjectSource } from '../utils/projectPause';
 import { registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 import { blockerIdsOf, isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
@@ -387,6 +387,8 @@ export interface CreateProjectOptions {
   awayStart?: string | null;
   awayEnd?: string | null;
   destination?: string | null;
+  /** Start in Planning: held back until it's marked ready. See PLANNING_PAUSE_KEY. */
+  planning?: boolean;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -461,7 +463,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Project.awayListId.
       awayListId: null,
       awayListDeclinedFor: null,
-      pausedUntil: null,
+      pausedUntil: options.planning ? PLANNING_PAUSE_KEY : null,
       personIds: [],
       links: [],
       inOrder: false,

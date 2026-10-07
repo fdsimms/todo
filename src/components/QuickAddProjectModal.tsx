@@ -37,6 +37,8 @@ export interface ProjectDraft {
   deadline: string | null;
   /** The "List" chip was on: a running list rather than work with an end. */
   asList?: boolean;
+  /** The "Planning" chip was on: held back until it's marked ready. */
+  planning?: boolean;
   /** The "Trip" chip's departure, stored the way the editor stores it. */
   awayStart?: string | null;
 }
@@ -96,6 +98,7 @@ export function QuickAddProjectModal({
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [asList, setAsList] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
   // A trip's departure. Offered here because the only date this sheet had was
@@ -148,6 +151,7 @@ export function QuickAddProjectModal({
     setLeaving(null);
     setLeavingPickerVisible(false);
     setAsList(false);
+    setPlanning(false);
     setActivePanel(null);
     setDeadlinePickerVisible(false);
     scaleAnim.setValue(0.95);
@@ -195,6 +199,7 @@ export function QuickAddProjectModal({
       category: resolvedCategory,
       awayStart: leaving ? awayNoonIso(leaving) : null,
       kind: asList ? 'list' : 'project',
+      planning,
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     onCreated?.(project, seedActive);
@@ -262,6 +267,7 @@ export function QuickAddProjectModal({
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
       asList,
+      planning,
       awayStart: leaving ? awayNoonIso(leaving) : null,
     });
   };
@@ -425,6 +431,18 @@ export function QuickAddProjectModal({
             >
               <Ionicons name="list-outline" size={13} color={asList ? colors.accent : colors.textTertiary} />
               <Text style={[styles.toolChipText, asList && styles.toolChipTextSet]} numberOfLines={1}>List</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.toolChip, planning && styles.toolChipSet]}
+              onPress={() => { haptics.tap(); setPlanning(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: planning }}
+              accessibilityLabel="Planning, with its tasks hidden until you mark it ready"
+            >
+              <Ionicons name="construct-outline" size={13} color={planning ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.toolChipText, planning && styles.toolChipTextSet]} numberOfLines={1}>Planning</Text>
             </TouchableOpacity>
           </View>
 

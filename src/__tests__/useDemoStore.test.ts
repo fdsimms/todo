@@ -23,7 +23,8 @@ import { useProjectStore, projectDecisions, projectProgress, projectAnswerTallie
 import { nextPullCandidate } from '../utils/projectPull';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { projectCardCaption } from '../utils/projectList';
-import { isHeldBack, isQuotaOnPace, isTaskNotNeeded, isTaskVisible } from '../utils/visibilityUtils';
+import { isHeldBack, isQuotaOnPace, isTaskDeferred, isTaskNotNeeded, isTaskVisible } from '../utils/visibilityUtils';
+import { isPlanning } from '../utils/projectPause';
 import { proratedFrom } from '../utils/quotaSchedule';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -1621,6 +1622,15 @@ describe('demo mode', () => {
     const members = useTaskStore.getState().tasks.filter(t => t.projectId === garden?.id);
     expect(members.length).toBeGreaterThan(0);
     expect(members.some(t => isTaskVisible(t))).toBe(false);
+  });
+
+  it('seeds a project in Planning whose dated tasks are held off every list', () => {
+    useDemoStore.getState().enterDemoMode();
+    const party = useProjectStore.getState().projects.find(p => p.title === 'Housewarming party');
+    expect(party && isPlanning(party)).toBe(true);
+    const members = useTaskStore.getState().tasks.filter(t => t.projectId === party?.id);
+    expect(members.some(t => t.dueDate !== null)).toBe(true);
+    expect(members.some(t => isTaskVisible(t) || isTaskDeferred(t))).toBe(false);
   });
 
   it('seeds a reference-list project excluded from every nudge', () => {
