@@ -922,24 +922,29 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     switch (ask.kind) {
       case 'weight':
         return (
-          <View style={styles.confirmWeightRow}>
-            <Text style={styles.confirmWeightLabel}>Amount to log</Text>
-            <TextField
-              style={styles.confirmWeightInput}
-              value={amount.weight}
-              onChangeText={text => editPending({ weight: text })}
-              keyboardType="numeric"
-              placeholder="grams"
-              placeholderTextColor={colors.textTertiary}
-              accessibilityLabel={`Amount to log for ${food.label}, in grams`}
-            />
-            <Text style={styles.confirmWeightUnit}>g</Text>
+          <View>
+            <Text style={styles.confirmCaption}>HOW MUCH</Text>
+            <View style={styles.confirmInputRow}>
+              <TextField
+                style={styles.confirmInput}
+                value={amount.weight}
+                onChangeText={text => editPending({ weight: text })}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                placeholder="Amount"
+                placeholderTextColor={colors.textTertiary}
+                accessibilityLabel={`Amount to log for ${food.label}, in grams`}
+              />
+              <Text style={styles.confirmSuffix}>g</Text>
+            </View>
           </View>
         );
       case 'count': {
         const count = amount.count ?? ask.count.count;
         return (
-          <View style={styles.confirmWeightRow}>
+          <View>
+            <Text style={styles.confirmCaption}>HOW MUCH</Text>
+            <View style={styles.confirmWeightRow}>
             <Text style={styles.confirmWeightLabel}>Amount to log</Text>
             <CountStepper
               value={count}
@@ -953,6 +958,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
               style={styles.confirmStepper}
             />
             <Text style={styles.confirmWeightUnit}>{estimateCountNoun(ask.count, count)}</Text>
+            </View>
           </View>
         );
       }
@@ -961,66 +967,85 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
         const fieldText = amount.typed ?? (amount.factor === null ? '' : amountText(amount.factor, amount.unit, wholeGrams));
         const typedBad = amount.typed !== null && amount.typed.trim() !== ''
           && factorFromTyped(amount.typed, amount.unit, wholeGrams) === null;
-        // With a weight to speak in, the amount is asked in grams first and the
-        // shares are the alternative; without one the shares are all there is.
-        const shares = (
-          // On a card of its own colour, so the track reads as a track rather
-          // than as the card it sits in.
-          <View style={styles.confirmTrackCard}>
-            <SegmentedControl
-              options={ESTIMATE_AMOUNT_OPTIONS}
-              value={amount.typed === null ? amount.factor : null}
-              onChange={factor => editPending({ factor, typed: null })}
-              columns={3}
-              label={`Amount of ${food.label} to log`}
-            />
-          </View>
-        );
-        const field = (
-          <View style={styles.confirmWeightRow}>
-            <Text style={styles.confirmWeightLabel}>{wholeGrams ? 'Amount to log' : 'Or enter an amount'}</Text>
-            <TextField
-              style={styles.confirmWeightInput}
-              value={fieldText}
-              onChangeText={text => editPending({ typed: text })}
-              keyboardType="decimal-pad"
-              selectTextOnFocus
-              placeholder={amount.unit === 'grams' ? 'e.g. 30' : 'e.g. 50'}
-              placeholderTextColor={colors.textTertiary}
-              accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
-            />
-            {wholeGrams ? (
-              <SegmentedControl
-                options={UNIT_OPTIONS}
-                value={amount.unit}
-                onChange={unit => editPending({
-                  unit,
-                  // Keep the amount shown, restated in the new unit.
-                  factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
-                  typed: null,
+        if (wholeGrams) {
+          // Same shape as the food log's amount step: a number with its unit
+          // beside it, and the units as chips underneath.
+          return (
+            <View>
+              <Text style={styles.confirmCaption}>HOW MUCH</Text>
+              <View style={styles.confirmInputRow}>
+                <TextField
+                  style={styles.confirmInput}
+                  value={fieldText}
+                  onChangeText={text => editPending({ typed: text })}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  placeholder="Amount"
+                  placeholderTextColor={colors.textTertiary}
+                  accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
+                />
+                <Text style={styles.confirmSuffix}>{amount.unit === 'grams' ? 'g' : '%'}</Text>
+              </View>
+              <View style={styles.confirmChips}>
+                {UNIT_OPTIONS.map(option => {
+                  const on = amount.unit === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.confirmChip, on && styles.confirmChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        editPending({
+                          unit: option.value,
+                          // Keep the amount shown, restated in the new unit.
+                          factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
+                          typed: null,
+                        });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={option.accessibilityLabel}
+                    >
+                      <Text style={[styles.confirmChipText, on && styles.confirmChipTextOn]}>
+                        {option.value === 'grams' ? 'g' : '% of last'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
                 })}
-                label="Unit"
-              />
-            ) : (
-              <Text style={styles.confirmWeightUnit}>%</Text>
-            )}
-          </View>
-        );
+              </View>
+              {typedBad && <Text style={[styles.error, styles.confirmErrorGap]}>{amountRefusal(amount.unit, wholeGrams)}</Text>}
+            </View>
+          );
+        }
+        // With no weight to speak in, the shares and a percent are all there is.
         return (
           <View style={styles.confirmMultiple}>
-            {wholeGrams ? (
-              <>
-                {field}
-                <Text style={styles.confirmMultipleLabel}>Or choose a share</Text>
-                {shares}
-              </>
-            ) : (
-              <>
-                <Text style={styles.confirmMultipleLabel}>Amount to log</Text>
-                {shares}
-                {field}
-              </>
-            )}
+            <Text style={styles.confirmCaption}>HOW MUCH</Text>
+            {/* On a card of its own colour, so the track reads as a track rather
+                than as the card it sits in. */}
+            <View style={styles.confirmTrackCard}>
+              <SegmentedControl
+                options={ESTIMATE_AMOUNT_OPTIONS}
+                value={amount.typed === null ? amount.factor : null}
+                onChange={factor => editPending({ factor, typed: null })}
+                columns={3}
+                label={`Amount of ${food.label} to log`}
+              />
+            </View>
+            <View style={styles.confirmInputRow}>
+              <TextField
+                style={styles.confirmInput}
+                value={fieldText}
+                onChangeText={text => editPending({ typed: text })}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                placeholder="Or enter a percent"
+                placeholderTextColor={colors.textTertiary}
+                accessibilityLabel={`Amount of ${food.label} to log, in percent of the amount shown`}
+              />
+              <Text style={styles.confirmSuffix}>%</Text>
+            </View>
             {typedBad && <Text style={styles.error}>{amountRefusal(amount.unit, wholeGrams)}</Text>}
           </View>
         );
@@ -1626,6 +1651,34 @@ function makeStyles(colors: Colors) {
     confirmMultiple: { gap: spacing.smd },
     confirmMultipleLabel: { color: colors.text, fontSize: font.sm },
     confirmTrackCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.xs },
+    confirmCaption: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
+    },
+    // The food log's amount field: a number with its unit beside it.
+    confirmInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+    },
+    confirmInput: { flex: 1, paddingVertical: spacing.sm, color: colors.text, fontSize: font.md },
+    confirmSuffix: { color: colors.textSecondary, fontSize: font.md, marginLeft: spacing.xs },
+    confirmChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
+    confirmChip: {
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+    },
+    confirmChipOn: { backgroundColor: colors.accentFill },
+    confirmChipText: { color: colors.text, fontSize: font.sm },
+    confirmChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
+    confirmErrorGap: { marginTop: spacing.sm },
     confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
     confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18 },
