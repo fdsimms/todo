@@ -6,9 +6,9 @@
  * re-rendering on every store write. `FreezeWhenBlurred` holds the tab's
  * subtree instead. This is the one rule it applies.
  *
- * **Only a tab blurred by another tab is frozen.** Focus is read off the tab
- * navigator's own state, so a detail screen pushed over the tab does not
- * count: the native push animates the screen underneath, and freezing it
+ * **Only a tab blurred by another tab is frozen.** Focus is the tab
+ * navigator's focused route (`isTabFocused`), not screen focus, so a detail
+ * screen pushed over the tab does not count: the native push animates the screen underneath, and freezing it
  * would blank it for the length of the transition.
  *
  * **Never while a sheet is presented.** Freezing hides the subtree, and a
@@ -20,6 +20,30 @@
  */
 export function shouldFreezeTab(opts: { focused: boolean; sheetPresented: boolean }): boolean {
   return !opts.focused && !opts.sheetPresented;
+}
+
+/**
+ * Whether this tab is the focused one, given the container's answer and the
+ * tab navigator's.
+ *
+ * **The container's root state wins whenever it has one.** A jump to a tab from
+ * outside the tab bar (`navigateToTab`: the coins button, a widget tap, a link)
+ * arrives as `screen` params on the tab navigator's own route. The tab
+ * navigator draws the new tab from those params at once but only writes the
+ * state back after commit, so its `getState()`, which `useNavigationState` and
+ * `navigation.isFocused()` both read, still names the old tab while the screens
+ * render. When the write lands, the navigator's rendered state doesn't change
+ * (it was already showing the new tab), so neither hook is told again. The
+ * freeze then hid the tab on screen and left it blank until the next
+ * navigation. The container emits `state` once that write lands, so its answer
+ * catches up. The navigator's answer is only for before the container is ready.
+ */
+export function isTabFocused(opts: {
+  routeName: string;
+  containerTab: string | undefined;
+  navigatorFocused: boolean;
+}): boolean {
+  return opts.containerTab !== undefined ? opts.containerTab === opts.routeName : opts.navigatorFocused;
 }
 
 /**
