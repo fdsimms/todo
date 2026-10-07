@@ -344,6 +344,8 @@ export interface PersonFields {
   phoneNumber?: string | null;
   email?: string | null;
   linkUrl?: string | null;
+  /** Free text, like the app's own field; null clears it. */
+  location?: string | null;
 }
 
 export interface FoodPatch {
@@ -1654,6 +1656,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.phoneNumber !== undefined) out.phoneNumber = f.phoneNumber?.trim() || null;
     if (f.email !== undefined) out.email = f.email?.trim() || null;
     if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
+    if (f.location !== undefined) out.location = f.location?.trim() || null;
     if (f.birthday !== undefined) {
       if (f.birthday === null) {
         Object.assign(out, { birthdayMonth: null, birthdayDay: null, birthYear: null });

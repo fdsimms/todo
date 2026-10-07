@@ -71,6 +71,8 @@ export function listPeople(replica: Replica): SerializedPerson[] {
 export interface PersonDetail extends SerializedPerson {
   phone?: string;
   email?: string;
+  /** Where they live, as the free text the user (or Claude) wrote. */
+  location?: string;
   /** What they did together, newest first, capped at HISTORY_LIMIT. */
   history: { title: string; date: string }[];
   giftIdeas?: string[];
@@ -95,6 +97,7 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     ...serializePerson(replica, p, groups),
     ...(p.phoneNumber ? { phone: p.phoneNumber } : {}),
     ...(p.email ? { email: p.email } : {}),
+    ...(p.location ? { location: p.location } : {}),
     history: replica
       .personHistory(id)
       .slice(0, HISTORY_LIMIT)

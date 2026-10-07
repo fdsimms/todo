@@ -52,6 +52,12 @@ describe('listPeople', () => {
 });
 
 describe('getPerson', () => {
+  it('shows where they live, and leaves it out when blank', () => {
+    const r = stub([person({ id: 'a', name: 'Al', location: 'Austin, TX' }), person({ id: 'b', name: 'Bea', location: null })]);
+    expect(getPerson(r, 'a')!.location).toBe('Austin, TX');
+    expect(getPerson(r, 'b')!.location).toBeUndefined();
+  });
+
   it('sorts notes into gift ideas, food and the rest, skipping archived ones', () => {
     const r = stub([person({ id: 'a', name: 'Al' })], {
       personNotes: () => [
