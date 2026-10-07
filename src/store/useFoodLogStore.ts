@@ -25,6 +25,11 @@ import { useSettingsStore } from './useSettingsStore';
 import { useHealthStore } from './useHealthStore';
 import { useTaskStore } from './useTaskStore';
 import { buildFoodLogEntry } from '../utils/foodLogEntry';
+import {
+  type UndoableAction,
+  type UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 /**
  * The food log — what was eaten, and when.
@@ -211,7 +216,11 @@ export interface FoodLogPlacement {
   sortOrder: number;
 }
 
-interface FoodLogStore {
+interface FoodLogStore extends UndoHistoryActions {
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
+  lastAction: UndoableAction | null;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
   /** Exactly the loaded window, oldest instant first. Never a superset. */
   entries: FoodLogEntry[];
   rangeStart: string | null;
@@ -294,7 +303,12 @@ interface FoodLogStore {
    * recorded at 12:30am with a 02:00 reset belongs to the evening it happened
    * in, not to the day that had barely started.
    */
-  addEntry: (draft: FoodLogDraft) => FoodLogEntry | null;
+  /**
+   * `undoable: false` is for a caller that is one step of a bigger action and
+   * files its own entry (or none): `moveEntry` removes a row and re-adds it, and
+   * an undo that deleted the re-added row would lose the meal outright.
+   */
+  addEntry: (draft: FoodLogDraft, opts?: { undoable?: boolean }) => FoodLogEntry | null;
   updateEntry: (id: string, patch: FoodLogPatch) => void;
   /**
    * Correct an entry, Health included.
@@ -578,6 +592,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   pendingMealLog: null,
   pendingManualMealLog: null,
   pendingHealthWriteRefusal: false,
+  lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
 
   initialize() {
     // The current logical day, because that is what a day view opens on and it
@@ -625,7 +643,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set({ insightEntries: entries, insightStart: startKey, insightEnd: endKey });
   },
 
-  addEntry(draft) {
+  addEntry(draft, opts) {
     // The row itself, and its refusals, are `buildFoodLogEntry`'s, which the
     // MCP server shares. Everything after the insert is this store's.
     const entry = buildFoodLogEntry(draft, dayKey => dbGetFoodLogEntries(dayKey, dayKey), generateId);
@@ -666,6 +684,15 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // for the one outcome a person can act on — see `recordHealthWrite`.
     void logFoodEntryToHealth(entry).then(result => recordHealthWrite(entry, result, set));
     syncWaterQuotaTasksIfToday(entry.dayKey);
+
+    if (opts?.undoable !== false) {
+      get().setLastAction({
+        label: `Logged "${entry.label}"`,
+        // removeEntry also retracts what was written to Health.
+        undo: () => get().removeEntry(entry.id),
+        redo: () => { get().addEntry(draft); },
+      });
+    }
 
     return entry;
   },
@@ -914,7 +941,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       productId: current.productId,
       mealPlanEntryId: current.mealPlanEntryId,
       at,
-    });
+    }, { undoable: false });
   },
 
   duplicateEntry(id, at) {

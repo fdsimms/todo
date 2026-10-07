@@ -145,6 +145,7 @@ beforeEach(() => {
   (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id));
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
+    lastAction: null, undoStack: [], redoStack: [],
   });
 });
 
@@ -544,6 +545,42 @@ describe('addEntry', () => {
 
   it('keeps none when the draft carries none, which is every linked food', () => {
     expect(state().addEntry(draft())!.sourcePanel).toBeNull();
+  });
+});
+
+describe('addEntry undo', () => {
+  it('registers an undo that removes the entry, and a redo that logs it again', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft({ label: 'Porridge' }))!;
+    const action = state().lastAction;
+    expect(action?.label).toBe('Logged "Porridge"');
+    expect(action?.destructive).toBeUndefined();
+
+    state().undoLastAction();
+    expect(dbDeleteFoodLogEntry).toHaveBeenCalledWith(entry.id);
+    expect(state().entries.find(e => e.id === entry.id)).toBeUndefined();
+    // Replaying the undo must not file an entry describing itself.
+    expect(state().undoStack).toHaveLength(0);
+    expect(state().redoStack).toHaveLength(1);
+
+    state().redoLastUndone();
+    expect(state().entries.map(e => e.label)).toEqual(['Porridge']);
+    expect(state().undoStack).toHaveLength(1);
+    expect(state().redoStack).toHaveLength(0);
+  });
+
+  it('files nothing when the entry is refused', () => {
+    expect(state().addEntry(draft({ label: '   ' }))).toBeNull();
+    expect(state().undoStack).toHaveLength(0);
+  });
+
+  it('moveEntry leaves no undo, since undoing the re-add would lose the meal', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const original = state().addEntry(draft())!;
+    state().setLastAction(null);
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+    state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0));
+    expect(state().undoStack).toHaveLength(0);
   });
 });
 
