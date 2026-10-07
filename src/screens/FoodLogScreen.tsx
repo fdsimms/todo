@@ -72,7 +72,7 @@ import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
-import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
+import { FoodLogEntrySheet, type FoodLogEntrySheetHandle } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
@@ -250,6 +250,18 @@ export function FoodLogScreen() {
    * route — see `FoodLogEntrySheet`'s `onEstimate`.
    */
   const [estimateSeed, setEstimateSeed] = useState('');
+  // The add sheet, so a log made from a sheet raised over it (describe, scan,
+  // saved meal) can apply "Add another" to it.
+  const addSheetRef = useRef<FoodLogEntrySheetHandle>(null);
+  /**
+   * After a log made from a sheet raised over the add sheet: the add sheet
+   * stays open for the next food when "Add another" is on, and closes
+   * otherwise. Every label is reported so the burst count reflects each food.
+   */
+  const keepAddSheetOrClose = (labels: string[]) => {
+    const kept = labels.map(label => addSheetRef.current?.keepOpenAfterLog(label) ?? false);
+    if (!kept.some(Boolean)) setAddOpen(false);
+  };
   const [savedMealsOpen, setSavedMealsOpen] = useState(false);
   /**
    * The entry whose catalog row is being chosen, or null.
@@ -1354,6 +1366,7 @@ export function FoodLogScreen() {
       )}
 
       <FoodLogEntrySheet
+        ref={addSheetRef}
         visible={addOpen}
         slot={addingSlot}
         at={loggingAt}
@@ -1379,7 +1392,7 @@ export function FoodLogScreen() {
               // Closes the "What did you eat?" sheet underneath too, only once
               // a scan actually logs something — cancelling leaves it open,
               // same as backing out of its own database search does.
-              onLogged={() => setAddOpen(false)}
+              onLogged={labels => keepAddSheetOrClose(labels)}
             />
             <EstimateMealSheet
               visible={estimateOpen}
@@ -1387,7 +1400,10 @@ export function FoodLogScreen() {
               at={loggingAt}
               initialDescription={estimateSeed}
               onClose={() => setEstimateOpen(false)}
-              onLogged={() => setAddOpen(false)}
+              // With "Add another" on, the add sheet takes the described food
+              // the same way it takes its own saves and stays open for the next
+              // one; otherwise it closes, as it always did.
+              onLogged={label => keepAddSheetOrClose([label])}
               onPickRecipe={recipeId => {
                 // Handed to the picker rather than logged here: a recipe is
                 // logged in servings, which is a question this sheet has not
@@ -1403,7 +1419,7 @@ export function FoodLogScreen() {
               onLog={meal => {
                 logSavedMeal(meal, addingSlot, loggingAt);
                 setSavedMealsOpen(false);
-                setAddOpen(false);
+                keepAddSheetOrClose([meal.name]);
               }}
               onDelete={meal => removeSavedMeal(meal.id)}
               onClose={() => setSavedMealsOpen(false)}

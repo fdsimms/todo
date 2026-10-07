@@ -9,7 +9,7 @@
 // nothing is offered that has no panel, and no amount is logged that cannot be
 // measured against one. See also `foodLog.ts` for the scaling and
 // `docs/arch/health-data.md` for why a wrong figure here is expensive.
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -287,6 +287,22 @@ interface Props {
    * only where they render is fixed here.
    */
   overlays?: React.ReactNode;
+  /**
+   * Lets a sheet raised from `overlays` (the describe sheet, today) report a
+   * food it logged, so this sheet can apply "Add another" to it the same way it
+   * applies to its own saves. See `FoodLogEntrySheetHandle`.
+   */
+  ref?: React.Ref<FoodLogEntrySheetHandle>;
+}
+
+/**
+ * What a caller that logged a food from a sheet raised above this one reports
+ * back. `keepOpenAfterLog` returns true when "Add another" is on and this sheet
+ * has taken the save (reset for the next food, count bumped), and false when it
+ * is off, in which case the caller closes this sheet as before.
+ */
+export interface FoodLogEntrySheetHandle {
+  keepOpenAfterLog: (label: string) => boolean;
 }
 
 /** The two ways of saying how much of a dish was eaten. */
@@ -378,7 +394,7 @@ function databaseCandidate(key: string, label: string, panel: FoodNutrition): Ca
 
 export function FoodLogEntrySheet({
   visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
-  overlays,
+  overlays, ref,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -1108,6 +1124,19 @@ export function FoodLogEntrySheet({
     Keyboard.dismiss();
     onClose();
   };
+
+  // A food logged from a sheet raised over this one (the describe sheet). It is
+  // the same save as one made here, so it takes the same path: stay open for
+  // the next food with "Add another" on, and the caller closes this sheet only
+  // when it returns false. Set on every render so the closure sees the current
+  // `burstMode`.
+  useImperativeHandle(ref, () => ({
+    keepOpenAfterLog: (label: string) => {
+      if (!burstMode) return false;
+      afterSave(label);
+      return true;
+    },
+  }));
 
   const handleSave = () => {
     if (!picked || !built) return;

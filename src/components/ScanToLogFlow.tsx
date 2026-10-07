@@ -49,7 +49,7 @@ interface Props {
    * `ScanPortionSheet`, and only then — see `EstimateMealSheet`'s own
    * `onLogged` for why a caller wants this kept apart from `onClose`.
    */
-  onLogged?: () => void;
+  onLogged?: (labels: string[]) => void;
 }
 
 /** A stable empty list, so a closed amount sheet doesn't remount on every render. */
