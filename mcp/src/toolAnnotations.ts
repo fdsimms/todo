@@ -122,6 +122,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   update_answer: { title: 'Correct a recorded answer', destructive: true, idempotent: true },
   add_project_steps: { title: 'Add steps to a project', destructive: false, idempotent: false },
   complete_task: { title: 'Complete a task', destructive: false, idempotent: false },
+  mark_done_by_other: { title: 'Mark a task done by someone else', destructive: false, idempotent: false },
   defer_task: { title: 'Reschedule a task', destructive: false, idempotent: true },
   create_project: { title: 'Create a project', destructive: false, idempotent: false },
   update_project: { title: 'Edit a project', destructive: true, idempotent: true },
