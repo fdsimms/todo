@@ -2588,6 +2588,7 @@ function seedPeople(today: Date): void {
   updatePerson(optometrist.id, {
     kind: 'business',
     phoneNumber: '555 0199',
+    faxNumber: '555 0198',
     notes: 'Optometrist.',
   });
   const eyeExam = addTask({

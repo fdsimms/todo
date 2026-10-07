@@ -342,6 +342,7 @@ export interface PersonFields {
   /** null clears the birthday. */
   birthday?: { month: number; day: number; year?: number | null } | null;
   phoneNumber?: string | null;
+  faxNumber?: string | null;
   email?: string | null;
   linkUrl?: string | null;
   /** Free text, like the app's own field; null clears it. */
@@ -1654,6 +1655,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.notes !== undefined) out.notes = f.notes;
     if (f.askAbout !== undefined) out.askAbout = f.askAbout;
     if (f.phoneNumber !== undefined) out.phoneNumber = f.phoneNumber?.trim() || null;
+    if (f.faxNumber !== undefined) out.faxNumber = f.faxNumber?.trim() || null;
     if (f.email !== undefined) out.email = f.email?.trim() || null;
     if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
     if (f.location !== undefined) out.location = f.location?.trim() || null;

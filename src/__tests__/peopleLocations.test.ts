@@ -28,7 +28,7 @@ function person(overrides: Partial<Person> = {}): Person {
     askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
-    location: null,
+    location: null, faxNumber: null,
     ...overrides,
   };
 }

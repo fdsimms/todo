@@ -98,8 +98,10 @@ export function isPersonFieldMissing(person: Person, fieldId: PersonBackfillFiel
     // either one being null means there is no birthday on file. birthYear is
     // deliberately not part of the test: a birthday with no year is the common
     // case and is not missing data — see "The birthday picker" in the arch doc.
+    // A business has no birthday field in the editor, so there is nothing to
+    // ask for.
     case 'birthday':
-      return person.birthdayMonth === null || person.birthdayDay === null;
+      return person.kind !== 'business' && (person.birthdayMonth === null || person.birthdayDay === null);
     // The gate, not the cadence value — the same call `isProjectFieldMissing`
     // makes about `nudgeOptIn`. The editor keeps the two in step (setting a
     // cadence *is* the opt-in), but a row restored from a backup written by an

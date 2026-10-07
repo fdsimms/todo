@@ -70,6 +70,7 @@ export function listPeople(replica: Replica): SerializedPerson[] {
 
 export interface PersonDetail extends SerializedPerson {
   phone?: string;
+  fax?: string;
   email?: string;
   /** Where they live, as the free text the user (or Claude) wrote. */
   location?: string;
@@ -96,6 +97,7 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
   return {
     ...serializePerson(replica, p, groups),
     ...(p.phoneNumber ? { phone: p.phoneNumber } : {}),
+    ...(p.faxNumber ? { fax: p.faxNumber } : {}),
     ...(p.email ? { email: p.email } : {}),
     ...(p.location ? { location: p.location } : {}),
     history: replica

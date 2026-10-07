@@ -1689,6 +1689,8 @@ export function initDatabase(): void {
     'ALTER TABLE projects ADD COLUMN paused_until TEXT',
     // Null on every existing row. See Person.location.
     'ALTER TABLE people ADD COLUMN location TEXT',
+    // Null on every existing row. See Person.faxNumber.
+    'ALTER TABLE people ADD COLUMN fax_number TEXT',
     // Null on every existing row: a completion timer is something a task opts
     // into, not something to infer. See Task.completionTimerMinutes.
     'ALTER TABLE tasks ADD COLUMN completion_timer_minutes INTEGER',
@@ -7651,6 +7653,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     groupId: (row.group_id as string) ?? null,
     location: (row.location as string) ?? null,
+    faxNumber: (row.fax_number as string) ?? null,
   };
 }
 
@@ -7666,8 +7669,8 @@ export function dbInsertPerson(person: Person): void {
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
       reach_out_offer_declined_at, ask_about,
-      backfill_dismissed_fields, group_id, location
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      backfill_dismissed_fields, group_id, location, fax_number
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -7680,6 +7683,7 @@ export function dbInsertPerson(person: Person): void {
       JSON.stringify(person.backfillDismissedFields),
       person.groupId,
       person.location,
+      person.faxNumber,
     ]
   );
 }
@@ -7691,7 +7695,7 @@ export function dbUpdatePerson(person: Person): void {
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
       reach_out_offer_declined_at=?, ask_about=?,
-      backfill_dismissed_fields=?, group_id=?, location=?
+      backfill_dismissed_fields=?, group_id=?, location=?, fax_number=?
     WHERE id=?`,
     [
       person.name, person.kind, person.nickname, person.notes, person.sortOrder,
@@ -7705,6 +7709,7 @@ export function dbUpdatePerson(person: Person): void {
       JSON.stringify(person.backfillDismissedFields),
       person.groupId,
       person.location,
+      person.faxNumber,
       person.id,
     ]
   );

@@ -1564,6 +1564,9 @@ export interface Person {
   // row's existing call and text buttons work, which is the whole reason it's
   // here rather than left to the system contact card.
   phoneNumber: string | null;
+  // Stored as typed, like phoneNumber. Nothing dials or sends to it: it is a
+  // number to read off the card, which is why it is not copied onto a task.
+  faxNumber: string | null;
   email: string | null;
   // Anything else that opens them: a chat app, a profile. Same field and same
   // meaning as `Task.linkUrl`.
