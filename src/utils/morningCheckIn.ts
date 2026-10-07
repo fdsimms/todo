@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { getDayStart, getEffectiveTaskDate, getTaskDayStart } from './dateUtils';
-import { isHeldBack, isWithheld } from './visibilityUtils';
+import { isHeldBack, isQuotaTask, isWithheld } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 
 /**
@@ -13,6 +13,8 @@ import { isNegativeTask } from './negativeHabits';
  * Deliberately excludes:
  * - negative habits (`isNegativeTask`) — there's nothing to complete, see
  *   Task.polarity and `logSlip`.
+ * - a target (`isQuotaTask`), daily or weekly — it is resolved by counting, and
+ *   `rolloverQuotas` closes it when its period ends.
  * - anything `isHeldBack` — a task waiting on a person or another task hasn't
  *   been skipped, it's still stuck, and asking "did you do this?" is the
  *   wrong question for it.
@@ -36,6 +38,11 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   if (task.completed || task.archived) return false;
   if (task.recurrenceType === 'none') return false;
   if (isNegativeTask(task)) return false;
+  // A target counts toward its own period and `rolloverQuotas` closes it out
+  // when that period ends, recording the count. A weekly one keeps its spawn
+  // day as `dueDate` all week, so it read as "yesterday, unanswered" every
+  // morning, and a yes/no answer can't describe a 3-of-5 week anyway.
+  if (isQuotaTask(task)) return false;
   if (isHeldBack(task)) return false;
   // Withheld (vacation or a paused project): nobody could have done it, so
   // asking would record a miss.
