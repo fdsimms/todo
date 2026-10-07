@@ -1138,6 +1138,21 @@ export function seedDemoData(): void {
   });
   markMissed(recycling.id);
 
+  // --- An occurrence somebody else did ---------------------------------------
+  // The long-press menu's "Someone else did it": a completed row carrying
+  // doneByOtherAt, which the Logbook tags and Stats leaves out. Before the
+  // coins are switched on, like the miss above, though it pays nothing either way.
+  const trash = addTask({
+    title: 'Take out the trash',
+    notes: 'Bins go to the curb the night before pickup.',
+    category: 'Home',
+    recurrenceType: 'weekly',
+    recurrenceDays: [subDays(today, 1).getDay()],
+    dueDate: subDays(today, 1).toISOString(),
+    effort: 1,
+  });
+  completeTask(trash.id, { byOther: true });
+
   // --- A monthly repeat on the Nth weekday ----------------------------------
   // recurrenceWeekOrdinal, otherwise invisible until a task uses it: "the
   // second Tuesday" rather than a day of the month. Dated onto the grid's own

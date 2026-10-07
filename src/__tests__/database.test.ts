@@ -366,7 +366,7 @@ describe('initDatabase', () => {
       'recurrence_from_completion', 'parent_id', 'reminder_time',
       'cycle_enabled', 'cycle_index', 'cycle_items',
       'time_of_day', 'category', 'vacation_pause', 'estimated_minutes',
-      'window_start', 'window_end', 'missed_at',
+      'window_start', 'window_end', 'missed_at', 'done_by_other_at',
     ]) {
       expect(cols).toContain(col);
     }
@@ -389,6 +389,16 @@ describe('initDatabase', () => {
 
     dbUpdateTask({ ...byId.get('missed-1')!, missedAt: null });
     expect(dbGetAllTasks().find(t => t.id === 'missed-1')!.missedAt).toBeNull();
+  });
+
+  it('round-trips done_by_other_at, so a completion somebody else made survives a restart', () => {
+    dbInsertTask(makeTask({ id: 'other-1', completed: true, completedAt: '2025-01-05T09:00:00.000Z', doneByOtherAt: '2025-01-05T09:00:00.000Z' }));
+    dbInsertTask(makeTask({ id: 'done-1', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }));
+    const byId = new Map(dbGetAllTasks().map(t => [t.id, t]));
+    expect(byId.get('other-1')!.doneByOtherAt).toBe('2025-01-05T09:00:00.000Z');
+    expect(byId.get('done-1')!.doneByOtherAt).toBeNull();
+    dbUpdateTask({ ...byId.get('other-1')!, doneByOtherAt: null });
+    expect(dbGetAllTasks().find(t => t.id === 'other-1')!.doneByOtherAt).toBeNull();
   });
 
   it('round-trips auto_scheduled_at, both with and without a date beside it', () => {

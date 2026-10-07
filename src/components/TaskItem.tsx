@@ -1478,12 +1478,14 @@ export const TaskItem = React.memo(function TaskItem({
   // does what a completing row's checkbox does — undo. Nor while selecting,
   // where every tap on the row means "pick this one".
   const meterInteractive = showQuotaMeter && !completing && !pacingOut && !selectionMode;
-  // The long-press menu is for a repeating task that can be closed out right
-  // now. A meter, a rotation and a negative habit keep their own long press;
-  // one that isn't due yet has nothing to skip past (completionLocked).
+  // The long-press menu is for a task that can be closed out right now. A
+  // meter, a rotation and a negative habit keep their own long press; one that
+  // isn't due yet has nothing to close (completionLocked). Skip and Mark Missed
+  // are offered only when there is a next date to move to.
   const completionMenuOffered =
     !selectionMode && !isNegative && !completing && !showQuotaMeter && !isRotation &&
-    !completionLocked && task.recurrenceType !== 'none';
+    !completionLocked;
+  const completionMenuRepeats = task.recurrenceType !== 'none';
   const openCompletionMenu = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
     haptics.impactMedium();
     setCompletionMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
@@ -4341,9 +4343,9 @@ export const TaskItem = React.memo(function TaskItem({
           visible={showCompletionMenu}
           anchor={completionMenuAnchor}
           onClose={() => setShowCompletionMenu(false)}
-          onSkip={() => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); }}
-          onMiss={() => { markMissed(task.id); afterCompletionMenuChoice(); }}
-          onSomeoneElse={() => { completeTask(task.id, { neutral: true }); afterCompletionMenuChoice(); }}
+          onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
+          onMiss={completionMenuRepeats ? () => { markMissed(task.id); afterCompletionMenuChoice(); } : undefined}
+          onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
         />
       )}
       {mountWhenPicker && (
