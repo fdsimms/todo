@@ -115,9 +115,31 @@ export interface SerializedCalendarRequest {
   failureReason?: string;
   requestedAt: string;
   resolvedAt?: string;
+  /** Present on a change: what it does to the event the request named in `changes` wrote. */
+  change?: 'update' | 'delete';
+  /** The request whose event this changes. */
+  changes?: string;
 }
 
 export function serializeCalendarRequest(r: CalendarRequest): SerializedCalendarRequest {
+  if (r.action === 'update' || r.action === 'delete') {
+    const c = r.changes ?? {};
+    return {
+      id: r.id,
+      title: r.title,
+      start: c.startAt ?? '',
+      end: c.endAt ?? '',
+      allDay: c.allDay ?? r.allDay,
+      ...(c.location ? { location: c.location } : {}),
+      ...(c.notes ? { notes: c.notes } : {}),
+      status: r.status,
+      ...(r.failureReason ? { failureReason: r.failureReason } : {}),
+      requestedAt: r.createdAt,
+      ...(r.resolvedAt ? { resolvedAt: r.resolvedAt } : {}),
+      change: r.action,
+      ...(r.targetRequestId ? { changes: r.targetRequestId } : {}),
+    };
+  }
   const start = new Date(r.startAt);
   const end = new Date(r.endAt);
   return {
@@ -157,4 +179,54 @@ export function listCalendarRequests(replica: Replica, input: { status?: Calenda
 
 export function cancelCalendarRequest(replica: Replica, input: { id: string }) {
   return { cancelled: serializeCalendarRequest(replica.cancelCalendarRequest(input.id)) };
+}
+
+export interface CalendarChangeInput {
+  /** The request that added the event (list_calendar_requests). */
+  requestId: string;
+  delete?: boolean;
+  title?: string;
+  start?: string;
+  end?: string;
+  location?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Ask the phone to change or remove an event an earlier request added. New
+ * times are checked the way a new request's are, against the event as it was
+ * asked for, so a moved start keeps the length the event had.
+ */
+export function changeCalendarEvent(replica: Replica, input: CalendarChangeInput) {
+  const target = replica.calendarRequests().find(r => r.id === input.requestId);
+  if (!target) throw new Error(`No calendar request with id ${input.requestId}. list_calendar_requests lists them.`);
+  const { requestId, delete: del, ...fields } = input;
+  if (del) {
+    if (Object.keys(fields).length > 0) throw new Error('A delete takes nothing else.');
+    return { request: serializeCalendarRequest(replica.requestCalendarChange(requestId, { delete: true })), note: PENDING_NOTE };
+  }
+  if (Object.keys(fields).length === 0) throw new Error('Nothing to change: give title, start, end, location or notes, or delete: true.');
+  const was = serializeCalendarRequest(target);
+  let startAt: string | undefined;
+  let endAt: string | undefined;
+  let allDay: boolean | undefined;
+  if (fields.start !== undefined || fields.end !== undefined) {
+    // A new start with no end keeps the event's length.
+    const length = new Date(target.endAt).getTime() - new Date(target.startAt).getTime();
+    const start = fields.start ?? was.start;
+    const end = fields.end ?? (fields.start !== undefined && !DAY.test(start) ? new Date(new Date(start).getTime() + length).toISOString() : fields.start !== undefined ? undefined : was.end);
+    const parsed = parseCalendarRequest({ title: fields.title ?? target.title, start, ...(end !== undefined ? { end } : {}) });
+    startAt = parsed.startAt;
+    endAt = parsed.endAt;
+    allDay = parsed.allDay;
+  }
+  const title = fields.title?.trim();
+  if (fields.title !== undefined && !title) throw new Error('An event needs a title.');
+  const changes = {
+    ...(title ? { title } : {}),
+    ...(startAt !== undefined ? { startAt, endAt, allDay } : {}),
+    ...(fields.location !== undefined ? { location: blankToNull(fields.location) } : {}),
+    ...(fields.notes !== undefined ? { notes: blankToNull(fields.notes) } : {}),
+  };
+  return { request: serializeCalendarRequest(replica.requestCalendarChange(requestId, { changes })), note: PENDING_NOTE };
 }

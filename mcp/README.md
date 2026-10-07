@@ -91,21 +91,27 @@ only the fallback until the first sync.
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
 | `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
-| `create_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. A view's clauses are edited in the app. |
+| `create_saved_view` / `update_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. An update can also move it in the list. |
 | `set_vacation_mode` | **Write.** Turn vacation mode on or off as the Settings switch does, optionally with the day it turns itself off. On hides every task marked for vacation pause and every hide-on-vacation category; off brings them back and forgives their streaks. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
+| `list_cookbooks` / `get_cookbook_index` | The cookbooks, and the dishes one's index lists. |
+| `rename_cookbook` / `merge_cookbooks` / `delete_cookbook` | **Write.** Renames a cookbook on every recipe in it, joins two copies of one book, or deletes one (its recipes stay). |
+| `save_index_entry` / `delete_index_entry` / `recipe_from_index_entry` | **Write.** Adds, changes or removes a dish in a cookbook's index, or makes the saved recipe for one. |
+| `reorder_up_next` / `log_cook_time` | **Write.** Orders the Up next shelf; records how long cooking a recipe took. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
+| `archive_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a mood context tag on every check-in that has it. |
 | `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
+| `get_settings` / `update_settings` | Read and **Write.** The person's preferences that sync (the day, task defaults, feature areas, rewards, kitchen, automation parameters), each with what it does. Device-local settings are changed on the device. |
 | `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off and choose the category its tasks file under; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
 | `delete_category` | **Write.** Delete a task category. Its tasks and stacks move to `moveTo` (or `uncategorize: true`), and every automation that filed under it is re-pointed. Previews unless `apply: true`; not undoable from here. |
 | `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
-| `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. Archived tasks are left out, as in the app. |
+| `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`, or `archived`. Filters by category, tag, project. Archived tasks are left out of every other view, as in the app. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today (`hiddenUntil`, or `hiddenReason` for a task held while vacation mode is on). Also, where the task has them: who it waits on, contact details, streak, what completing it also logs (medication, Health, a meal), timer and Health target, postponement history, supply (with the catalog row it reorders) and rotation, the rule behind a recomputed deadline or reminder, whether a water target follows the food log's goal, and the people it is about. |
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion, with each trip's away dates and destination. |
@@ -113,17 +119,21 @@ only the fallback until the first sync.
 | `next_in_project` | The next unchecked checklist item in one project step (the first open step not waiting on anything, unless one is named), with how many items are checked. |
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
-| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |
+| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history, each with its id. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
-| `grocery_setup` | The aisles, the stores (with receipt style) and the lists (home and separate), with item counts. |
+| `grocery_setup` | The aisles (and which are non-food), the stores (with receipt style, their own aisles and order), the lists (home and separate) with item counts, and the trip in progress. |
 | `get_grocery_item` | One item's whole catalog record: aisle, quantity, note, last price, brands, stores, substitutes, lists, receipt names. |
 | `match_receipt` | The app's receipt matching over lines Claude read. Writes nothing. |
 | `list_pantry` | What the app has a reason to think is in the kitchen: pantry, fridge and freezer, each with the app's reason, use-by day and freshness. `filter: use_up`, `frozen` or `fridge` narrows it. Has no quantities, on purpose. |
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
 | `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
-| `list_food_log` | Logged food over a day range, with summed nutrients. |
+| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. |
+| `list_saved_meals` | Foods the person logs together under one name. |
+| `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again. |
+| `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |
+| `set_nutrition_targets` | **Write.** The daily figures the food log reads totals against, only as the person gives them. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
@@ -134,14 +144,16 @@ only the fallback until the first sync.
 | `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. Reports what it left out and why, and any blanks left empty. |
 | `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
 | `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
-| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |
+| `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits, the people it is about, a link, phone, email and location, vacation pause, a medication its completion records, and a deadline or reminder placed by rule. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. A fixed deadline replaces a deadline rule and the result says so; a target on a task that follows the water goal is refused. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
-| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project, set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on), or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). Its existing tasks are untouched. |
+| `update_project` | **Write.** Rename, re-date, re-file, complete (optionally archiving what is left) or archive a project, pause it until a day, set its people, links, step order and nudge settings, set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on), or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). |
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
-| `plan_meal` | **Write.** Puts a recipe, or just a title, on the meal plan. |
+| `plan_meal` | **Write.** Puts a recipe, a leftover, or just a title, on the meal plan. |
+| `set_meal_cooked` | **Write.** Marks a planned meal cooked (counting it, opening what it used and completing its task), or not. |
+| `save_meal_as_recipe` / `copy_meals` | **Write.** Saves a typed meal as a recipe; copies a week, a slot of a week, or one meal onto other days. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures). |
@@ -149,15 +161,34 @@ only the fallback until the first sync.
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
 | `request_calendar_event` / `cancel_calendar_request` | **Write.** Asks the phone set to add them to put an event on the calendar the next time it syncs, or takes back one still waiting. The server never touches the calendar itself. |
+| `change_calendar_event` | **Write.** Asks the phone to move, edit or delete an event an earlier `request_calendar_event` wrote. Events the person made are out of reach. |
 | `list_calendar_requests` | Those requests and what became of each: pending, written, failed (with why) or cancelled. |
 | `update_medication_log` | **Write.** Corrects a recorded dose. |
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
+| `delete_task` | **Write.** Deletes tasks with their checklists, or single checklist items (up to 100 a call). Refuses a task the app generated. Each can be restored from Activity. |
+| `skip_occurrence` | **Write.** Moves a repeating task to its next date with nothing completed or missed, as the app's Skip does. |
+| `reorder_tasks` | **Write.** Hand-orders a project's open steps, a task's checklist, or the Pinned block. |
+| `set_task_dates` | **Write.** Puts one task on several dates (one row per date), changes the set, or takes it back to one; optionally monthly. |
+| `duplicate_task` | **Write.** Copies a task and its checklist, with its progress started over. |
+| `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
+| `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
-| `update_meal` | **Write.** Moves a planned meal, renames a free-text one, or sets a recipe's scale. |
+| `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, or sets its shopping, thaw and log answers. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
-| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text). Never a cadence, nudge, group or order. |
+| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
+| `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
+| `reorder_people` / `save_person_group` | **Write.** The People screen's order, and its groups (add, rename, delete, catch up one at a time). |
+| `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas, food notes and other notes about someone, optionally about a day. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
+| `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |
+| `delete_stack` | **Write.** Deletes a stack, taking its tasks out of it, or with `deleteTasks` deleting its open tasks too. Restorable from Activity. |
+| `update_category` | **Write.** Renames a task category everywhere it is named, or sets its emoji, schedule, vacation and suggestion settings and default time of day. |
+| `reorder_categories` | **Write.** Orders Today's category sections. |
+| `delete_project` | **Write.** Deletes a project, leaving its tasks in no project, or with `deleteTasks` deleting them. Restorable from Activity. |
+| `save_project_category` / `reorder_projects` | **Write.** The Projects screen's sections: add, rename or delete one; order the projects and the sections. |
+| `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
+| `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
 | `create_reward` | **Write.** Adds a reward at a cost in coins. Refused while rewards are off. |
 | `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |
@@ -169,7 +200,7 @@ only the fallback until the first sync.
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
 | `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. A habit with a penalty is refused. |
-| `update_recipe` | **Write.** Changes a recipe; ingredients and steps replace the whole list. |
+| `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
@@ -178,6 +209,17 @@ only the fallback until the first sync.
 | `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, preferred brand, stores and substitutes. Field edits are undoable from Activity. |
 | `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item. |
 | `save_store` | **Write.** Add or rename a store, or set its receipt style. |
+| `update_store` | **Write.** A store's own aisles and walk order, whether it is suggested, or delete it. |
+| `reorder_stores_and_lists` | **Write.** The order of the stores and of the separate lists. |
+| `save_aisle` / `reorder_aisles` | **Write.** Add, rename, delete or mark non-food an aisle; the walk order. |
+| `add_ingredients_to_list` | **Write.** A recipe's ingredients, or the planned meals' over a range, onto a list as the app's add-to-list sheets do. |
+| `add_choice_to_list` / `settle_choice` | **Write.** An either/or on a list, and deciding it. |
+| `swap_for_substitute` | **Write.** Swaps a row on a list for one of its substitutes. |
+| `clear_grocery_list` | **Write.** Empties a list as the app's Clear list does, and ends a trip. |
+| `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
+| `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
+| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel. |
+| `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
 | `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |
@@ -187,7 +229,8 @@ only the fallback until the first sync.
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
 | `answer_pantry_review` | **Write.** Records the person's answers (have, low, out) to `pantry_review` cards. |
 | `log_leftover` | **Write.** Logs a container of cooked food in the fridge or freezer. |
-| `update_leftover` | **Write.** Freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
+| `update_leftover` | **Write.** Renames, re-dates, weighs, freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
+| `split_leftover` / `delete_leftover` | **Write.** Splits a container across the freezer line, or deletes one logged by mistake. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no

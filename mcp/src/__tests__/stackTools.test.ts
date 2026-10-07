@@ -5,7 +5,9 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { assignToStack, createStack, listStacks } from '../stackTools';
+import { assignToStack, createStack, deleteStack, listStacks, updateStack } from '../stackTools';
+import { reorderTasks } from '../taskTools';
+import { agentRecordPlan } from '../../../src/utils/agentRecordRevert';
 import { serializeTask } from '../serialize';
 import { agentRevertPlan } from '../../../src/utils/agentRevert';
 import type { UnattendedEntry } from '../../../src/types';
@@ -162,5 +164,45 @@ describe('the Activity ledger', () => {
 
     const plan = agentRevertPlan(edited, replica.taskById(a.id));
     expect(plan).toMatchObject({ kind: 'restore', patch: { groupId: null, category: 'Routine' } });
+  });
+});
+
+describe('update_stack and delete_stack', () => {
+  const state = { stack: () => null, project: () => null } as unknown as Parameters<typeof agentRecordPlan>[1];
+
+  it('re-files every open member with a new category, each with its way back', () => {
+    const a = make('Algae oil');
+    const b = make('Vitamin D');
+    const stack = createStack(replica, { title: 'Supplements', taskIds: [a.id, b.id] }).stack!;
+    mockRaw.runSync('DELETE FROM unattended_log');
+    const result = updateStack(replica, stack.id, { category: 'Evening Tasks', notes: 'With dinner', checklist: true });
+    expect(result.moved.map(m => m.category)).toEqual([{ from: 'Routine', to: 'Evening Tasks' }, { from: 'Routine', to: 'Evening Tasks' }]);
+    expect(result.stack).toMatchObject({ category: 'Evening Tasks', notes: 'With dinner', checklist: true });
+    const edit = ledger().find(e => e.taskId === a.id)!;
+    expect(agentRevertPlan(edit, replica.taskById(a.id)).kind).toBe('restore');
+  });
+
+  it('takes the tasks out on delete, and deletes the open ones with deleteTasks, restorable either way', () => {
+    const a = make('Algae oil');
+    const stack = createStack(replica, { title: 'Supplements', taskIds: [a.id] }).stack!;
+    const kept = deleteStack(replica, stack.id);
+    expect(kept).toMatchObject({ tasksDeleted: 0, tasksTakenOut: 1 });
+    expect(replica.taskById(a.id)!.groupId).toBeNull();
+
+    const again = createStack(replica, { title: 'Supplements', taskIds: [a.id] }).stack!;
+    const gone = deleteStack(replica, again.id, true);
+    expect(gone.tasksDeleted).toBe(1);
+    expect(replica.taskById(a.id)).toBeNull();
+    const entry = ledger().find(e => e.subject === 'stack' && e.recordId === again.id)!;
+    expect(agentRecordPlan(entry, state).kind).toBe('restoreDeletedStack');
+  });
+
+  it('reorders a stack\'s tasks and makes a stack a section of a project', () => {
+    const [a, b, c] = ['A', 'B', 'C'].map(t => make(t));
+    const stack = createStack(replica, { title: 'Run', taskIds: [a.id, b.id, c.id] }).stack!;
+    expect(reorderTasks(replica, { stackId: stack.id, ids: [c.id] }).order.map(o => o.title)).toEqual(['C', 'A', 'B']);
+    mockRaw.runSync("INSERT INTO projects (id, title, created_at) VALUES ('pr', 'Garden', '2026-01-01T00:00:00.000Z')");
+    replica.refresh();
+    expect(createStack(replica, { title: 'Beds', projectId: 'pr' }).stack).toMatchObject({ projectId: 'pr' });
   });
 });

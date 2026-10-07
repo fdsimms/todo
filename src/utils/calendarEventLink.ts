@@ -230,6 +230,16 @@ function oneOf(matches: readonly ExternalEventMatch[], calendarId: string): stri
 }
 
 /**
+ * Which event found under an agent request's server id is the one the request
+ * wrote, or null to leave the calendar alone: the only one, or the only one in
+ * the calendar requests are written to. Read only to change or delete an event
+ * that same request wrote.
+ */
+export function requestEventMatch(matches: readonly ExternalEventMatch[], calendarId: string | null): string | null {
+  return oneOf(matches, calendarId ?? '');
+}
+
+/**
  * Which event found under a time block's server id is the block, or null to
  * drop the pointer as before: exactly one, and nothing is inferred to choose
  * between several.

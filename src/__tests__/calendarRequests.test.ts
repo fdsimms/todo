@@ -1,4 +1,6 @@
 import {
+  changeRequestProblem,
+  eventFieldsForChange,
   CALENDAR_REQUEST_RETENTION_DAYS,
   eventFieldsForRequest,
   isCalendarRequestWriter,
@@ -100,5 +102,31 @@ describe('eventFieldsForRequest', () => {
     expect(fields).not.toHaveProperty('location');
     expect(fields).not.toHaveProperty('notes');
     expect(fields.calendarId).toBeNull();
+  });
+});
+
+describe('a change to an event an earlier request wrote', () => {
+  const written = request({ id: 'r1', status: 'written', eventExternalId: 'ext-1', title: 'Dentist' });
+
+  it('is planned as a change, not expired, despite the epoch dates an older build expires it by', () => {
+    const change = request({ id: 'c1', action: 'delete', targetRequestId: 'r1', startAt: new Date(0).toISOString(), endAt: new Date(0).toISOString() });
+    const plan = planCalendarRequestDrain([written, change], new Date());
+    expect(plan.change.map(r => r.id)).toEqual(['c1']);
+    expect(plan.expire).toEqual([]);
+  });
+
+  it('needs a target that wrote its event and kept the server id', () => {
+    const change = request({ action: 'update', targetRequestId: 'r1', changes: { title: 'Dentist (moved)' } });
+    expect(changeRequestProblem(change, written)).toBeNull();
+    expect(changeRequestProblem(change, null)).toMatch(/never written/);
+    expect(changeRequestProblem(change, { ...written, status: 'pending' })).toMatch(/never written/);
+    expect(changeRequestProblem({ ...change, changes: null }, written)).toMatch(/nothing to change/);
+  });
+
+  it('lays the change over the target\'s own fields', () => {
+    const fields = eventFieldsForChange(written, { title: 'Dentist (moved)', location: null }, 'cal');
+    expect(fields).toMatchObject({ title: 'Dentist (moved)', calendarId: 'cal' });
+    expect(fields).not.toHaveProperty('location');
+    expect(fields.start).toEqual(new Date(written.startAt));
   });
 });

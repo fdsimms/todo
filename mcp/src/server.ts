@@ -80,13 +80,14 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
-import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
+import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
-import { addProjectSteps, createProject, getProject, nextInProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
-import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
-import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
-import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
+import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, reorderProjects, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, mergeGroceryItems, renameGroceryList, reorderAisles, reorderGroceryPlaces, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
+import { deleteCookbook, deleteIndexEntry, getCookbookIndex, listCookbooks, logCookTime, mergeCookbooks, recipeFromIndexEntry, renameCookbook, reorderUpNext, saveIndexEntry } from './recipeTools';
+import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
+import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, reorderPeople, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_MIN_PUSHES, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
@@ -99,14 +100,17 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
-import { deleteCategory } from './categoryTools';
-import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
-import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, requestCalendarEvent } from './calendarTools';
+import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
-import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews } from './savedViewTools';
+import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
+import { getSettings, updateSettings } from './settingsTools';
+import { SETTINGS_SPEC } from './settingsSpec';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -303,8 +307,15 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   let previewing: AgentLedgerEntry[] | null = null;
 
   server.tool(
+    'get_settings',
+    "The person's settings that can be changed from here, grouped as in Settings, each with its value and what it does: when the day starts and its parts, task defaults, what is switched on (the kitchen, simplified mode, rewards), the kitchen's units, and each automation's own timing.",
+    {},
+    async () => json(await withFresh(() => getSettings(replica)))
+  );
+
+  server.tool(
     'list_tasks',
-    "Tasks in one of the app's own lenses: today (visible now), later (deferred or not yet due), unscheduled, inbox, or all.",
+    "Tasks in one of the app's own lenses: today (visible now), later (deferred or not yet due), unscheduled, inbox, all, or archived (put away with archive_task, as the Archived screen lists them; every other view leaves those out).",
     {
       view: z.enum(TASK_VIEWS).optional(),
       category: z.string().optional(),
@@ -432,6 +443,33 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     "What is at or past its use-by day, and the recipes that would use some of it, the one using the most first. Groceries only, not leftovers.",
     {},
     async () => json(await withFresh(() => useUpRecipes(replica)))
+  );
+
+  server.tool(
+    'list_cookbooks',
+    'The person\'s cookbooks, with how many saved recipes and index lines each holds.',
+    {},
+    async () => json(await withFresh(() => listCookbooks(replica)))
+  );
+
+  server.tool(
+    'get_cookbook_index',
+    'One cookbook\'s index: the dishes in it, each with its page and main ingredients. An index line is a pointer to a page, not a saved recipe; recipe_from_index_entry makes one from it.',
+    { cookbookId: z.string().min(1) },
+    async ({ cookbookId }) => {
+      try {
+        return json(await withFresh(() => getCookbookIndex(replica, cookbookId)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read that index.' });
+      }
+    }
+  );
+
+  server.tool(
+    'list_saved_meals',
+    'The person\'s saved meals: foods they log together under one name ("Usual breakfast"), to log again in one go with log_saved_meal.',
+    {},
+    async () => json(await withFresh(() => listSavedMeals(replica)))
   );
 
   server.tool(
@@ -1083,6 +1121,32 @@ const taskFieldsShape = {
     oneAtATime: z.boolean().optional().describe('Don\'t add another while the last one is still open.'),
   }).nullable().optional()
     .describe('Repeating tasks only: every Nth completion also adds a separate task, e.g. every 4th run, "Replace running shoes" or every 10th clean, "Deep clean the oven". Or with atEnd, adds it once when the repeat ends, e.g. after the last of 6 classes, "Sign up for the next session". null removes it.'),
+  personIds: z.array(z.string()).optional()
+    .describe('People the task is about or with, by id from list_people ("call Mum", "dinner with Sam"). It then shows on their page. [] clears them.'),
+  linkUrl: z.string().nullable().optional().describe('A web address or app link the task row opens. null clears it.'),
+  phoneNumber: z.string().nullable().optional().describe('A number the task row can call, as written. null clears it.'),
+  emailAddress: z.string().nullable().optional().describe('An address the task row can email. null clears it.'),
+  location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
+  vacationPause: z.boolean().optional()
+    .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
+  medication: z.object({
+    name: z.string().describe('Use the spelling list_medication_logs already has.'),
+    amount: z.number().nullable().optional(),
+    unit: z.string().nullable().optional().describe('E.g. "mg".'),
+  }).nullable().optional()
+    .describe('Completing it also records a dose of this medicine in the medication log ("take vitamin D"). Undone with the completion by reopen_task. null stops it.'),
+  deadlineRule: z.object({
+    daysBeforeDate: z.number().int().optional(),
+    daysAfterDate: z.number().int().optional(),
+    dayOfMonth: z.union([z.number().int(), z.literal('last')]).optional().describe('Monthly repeats only: a day of the date\'s own month.'),
+  }).nullable().optional()
+    .describe('A deadline worked out from the date on every occurrence, instead of a fixed deadline: give one of the three. Needs a date. null drops the rule and the deadline.'),
+  reminderRule: z.object({
+    daysBeforeDate: z.number().int().optional().describe('0 for the day itself.'),
+    at: z.string().optional().describe('With daysBeforeDate: "HH:MM". Defaults to the time of the reminder it already has.'),
+    whenItSurfaces: z.literal(true).optional().describe('Remind the moment it comes back into view (off a defer, or when its time of day opens).'),
+  }).nullable().optional()
+    .describe('A reminder placed by rule on every occurrence instead of at a fixed time. A reminderTime given on its own replaces a rule. null drops the rule and the reminder.'),
 };
 
 function registerWriteTools(
@@ -1125,24 +1189,51 @@ function registerWriteTools(
     }
   );
 
+  // The fields save_recipe and update_recipe share.
+  const recipeFields = {
+    ingredients: z.array(z.object({
+      text: z.string().min(1),
+      section: z.string().nullable().optional(),
+      alternativeGroup: z.string().nullable().optional(),
+    })).optional(),
+    steps: z.array(z.object({
+      text: z.string().min(1),
+      section: z.string().nullable().optional(),
+      timerSeconds: z.number().int().nullable().optional().describe('Only when the sentence does not say how long (cook mode reads "for 10 minutes" itself).'),
+      note: z.string().nullable().optional().describe('The cook\'s own note on this step.'),
+    })).optional(),
+    servings: z.number().int().positive().nullable().optional(),
+    servingsMax: z.number().int().positive().nullable().optional().describe('The top of a range: "serves 4-6" is servings 4, servingsMax 6.'),
+    recipeYield: z.string().nullable().optional().describe('What it makes when a person-count does not fit: "3 cups", "2 dozen cookies".'),
+    estimatedMinutes: z.number().int().positive().nullable().optional().describe('Total time, start to table.'),
+    prepMinutes: z.number().int().positive().nullable().optional().describe('Hands-on prep time.'),
+    mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).nullable().optional(),
+    tags: z.array(z.string()).optional(),
+    sourceUrl: z.string().nullable().optional(),
+    sourcePage: z.string().nullable().optional().describe('The page in its cookbook, as printed.'),
+    author: z.string().nullable().optional().describe('Who wrote it, for a recipe not in a cookbook (a book\'s recipes take the book\'s author).'),
+    notes: z.string().optional(),
+    vote: z.enum(['loved', 'liked', 'never']).nullable().optional().describe('The person\'s own rating. Set it only on their word.'),
+    upNext: z.boolean().optional().describe('On the Up next shelf.'),
+    leftoverKeepDays: z.number().int().nullable().optional().describe('Days its leftovers keep, 0 to 90; null for the app default.'),
+    components: z.array(z.object({
+      recipeId: z.string().min(1),
+      choiceGroup: z.string().nullable().optional(),
+    })).optional().describe('Other saved recipes used inside this one (the crust, the sauce), replacing the list. Ones sharing a choiceGroup are alternatives: one is cooked.'),
+    prepTasks: z.array(z.object({
+      title: z.string().min(1),
+      offsetDays: z.number().int().optional().describe('Days before the meal, -7 to 1 (default -1, the day before).'),
+      reminderOffsetMinutes: z.number().int().nullable().optional().describe('Minutes before the task is due to remind, 0 to 1440; null for none.'),
+    })).optional().describe('Tasks the app writes ahead of a planned meal of it ("soak the beans"), replacing the list.'),
+  };
+
   server.tool(
     'save_recipe',
     'Save a recipe to the app: from a page, a photo, or a conversation. Give ingredients as the lines a recipe prints ("2 cloves garlic, minced"), one per entry; the app reads the amount, the name and the prep out of each. Put a heading in section ("For the sauce"), and give lines that are alternatives ("serrano or jalapeño") the same alternativeGroup, one line each, never one line with "or". Refused if a recipe with that name is already in that cookbook. The result counts the ingredient lines the app could read.',
     {
       name: z.string().min(1),
       cookbook: z.string().nullable().optional().describe('A cookbook by title. Created if there is none by that name.'),
-      ingredients: z.array(z.object({
-        text: z.string().min(1),
-        section: z.string().nullable().optional(),
-        alternativeGroup: z.string().nullable().optional(),
-      })).optional(),
-      steps: z.array(z.object({ text: z.string().min(1), section: z.string().nullable().optional() })).optional(),
-      servings: z.number().int().positive().nullable().optional(),
-      estimatedMinutes: z.number().int().positive().nullable().optional().describe('Total time, start to table.'),
-      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).nullable().optional(),
-      tags: z.array(z.string()).optional(),
-      sourceUrl: z.string().nullable().optional(),
-      notes: z.string().optional(),
+      ...recipeFields,
     },
     async input => {
       try {
@@ -1155,28 +1246,132 @@ function registerWriteTools(
 
   server.tool(
     'update_recipe',
-    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients and steps each replace the whole list, so send the full set, in the same form as save_recipe (one line per ingredient, alternatives sharing an alternativeGroup). A rename is refused if another recipe in that cookbook has the name; planned meals made from it are retitled. Moving it to another cookbook is done in the app.',
+    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients, steps, components and prepTasks each replace the whole list, so send the full set, in the same form as save_recipe (one line per ingredient, alternatives sharing an alternativeGroup); a step whose text is unchanged keeps its timer, note and the cook questions asked about it. cookbook moves it to another book by title (made if new), or null takes it out of one; a move clears a page that belonged to the old book. A rename or move is refused if that cookbook already has a recipe of that name; planned meals made from it are retitled.',
     {
       id: z.string().min(1),
       name: z.string().min(1).optional(),
-      ingredients: z.array(z.object({
-        text: z.string().min(1),
-        section: z.string().nullable().optional(),
-        alternativeGroup: z.string().nullable().optional(),
-      })).optional(),
-      steps: z.array(z.object({ text: z.string().min(1), section: z.string().nullable().optional() })).optional(),
-      servings: z.number().int().positive().nullable().optional(),
-      estimatedMinutes: z.number().int().positive().nullable().optional(),
-      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).nullable().optional(),
-      tags: z.array(z.string()).optional(),
-      sourceUrl: z.string().nullable().optional(),
-      notes: z.string().optional(),
+      cookbook: z.string().nullable().optional(),
+      ...recipeFields,
     },
     async ({ id, ...patch }) => {
       try {
         return json(await withWrite(() => updateRecipe(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_cookbook',
+    'Rename a cookbook or change its author. Every recipe in it takes the new title and author. Refused when another book already has that title and author; merge_cookbooks joins two copies of one book.',
+    {
+      id: z.string().min(1),
+      title: z.string().min(1),
+      author: z.string().nullable().optional().describe('Leave out to keep the author; null to clear it.'),
+    },
+    async ({ id, title, author }) => {
+      try {
+        return json(await withWrite(() => renameCookbook(replica, id, title, author)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename that cookbook.' });
+      }
+    }
+  );
+
+  server.tool(
+    'merge_cookbooks',
+    'Two entries that are the same book, made one: every recipe and index line in mergeId moves to keepId (a dish both indexes list is kept once), and mergeId is gone. Not undoable from here.',
+    { keepId: z.string().min(1), mergeId: z.string().min(1) },
+    async ({ keepId, mergeId }) => {
+      try {
+        return json(await withWrite(() => mergeCookbooks(replica, keepId, mergeId)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not merge those cookbooks.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_cookbook',
+    'Delete a cookbook. Its recipes stay, no longer in a book but still naming it as their source, and its index goes with it. Not undoable from here; merge_cookbooks is the way to fold a duplicate into the real one.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteCookbook(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that cookbook.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_index_entry',
+    'Add a dish to a cookbook\'s index (give cookbookId), or change one (give id). Its ingredients are the dish\'s main things, the ones the person would look it up by, which is what Cook with... searches. Refused when that index already lists the dish.',
+    {
+      id: z.string().min(1).optional(),
+      cookbookId: z.string().min(1).optional(),
+      title: z.string().min(1),
+      page: z.string().nullable().optional(),
+      ingredients: z.array(z.string()).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveIndexEntry(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that index line.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_index_entry',
+    'Take a dish out of a cookbook\'s index. A recipe saved from it is not touched.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteIndexEntry(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that index line.' });
+      }
+    }
+  );
+
+  server.tool(
+    'recipe_from_index_entry',
+    'The saved recipe for a cookbook index line: the one already in that book under that name, or a new one with the book and page and nothing else, ready to plan or fill in with update_recipe.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => recipeFromIndexEntry(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not make that recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_up_next',
+    'Put the Up next shelf in an order: recipe ids, first to last. Recipes on the shelf you leave out follow, in their current order. update_recipe with upNext adds or removes one.',
+    { ids: z.array(z.string().min(1)).min(1) },
+    async ({ ids }) => {
+      try {
+        return json(await withWrite(() => reorderUpNext(replica, ids)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder the shelf.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_cook_time',
+    'Record how long cooking a recipe took, timed on the person\'s own clock: the same record the recipe\'s cook timer keeps ("took 32m last time"), which also fills in its time the first time.',
+    { id: z.string().min(1), minutes: z.number().int().positive() },
+    async ({ id, minutes }) => {
+      try {
+        return json(await withWrite(() => logCookTime(replica, id, minutes)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
       }
     }
   );
@@ -1210,6 +1405,94 @@ function registerWriteTools(
         return json(await withWrite(() => logFood(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'move_food_entry',
+    'Move a food log entry to another day or time (it was logged on the wrong day). The entry is rewritten at the new moment and gets a new id, as moving one in the app does. Refused once the entry is in Apple Health, since only the phone can take the old sample back out; and for water, which log_water records a day at a time.',
+    {
+      id: z.string().min(1),
+      at: z.string().min(1).describe('The new moment: an ISO date-time, or YYYY-MM-DD for noon that day.'),
+    },
+    async ({ id, at }) => {
+      try {
+        return json(await withWrite(() => moveFoodEntry(replica, id, at)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not move that entry.' });
+      }
+    }
+  );
+
+  server.tool(
+    'duplicate_food_entry',
+    'Log the same food again ("had the same lunch today"): a copy of an entry at another moment, default now. The original stays.',
+    {
+      id: z.string().min(1),
+      at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for noon that day. Default now.'),
+    },
+    async ({ id, at }) => {
+      try {
+        return json(await withWrite(() => duplicateFoodEntry(replica, id, at)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that again.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_meal_from_entries',
+    'Save logged food entries together as a meal, to log the same combination again later in one go.',
+    { name: z.string().min(1), entryIds: z.array(z.string().min(1)).min(1) },
+    async ({ name, entryIds }) => {
+      try {
+        return json(await withWrite(() => saveMealFromEntries(replica, name, entryIds)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_saved_meal',
+    'Log every food in a saved meal at once, at one moment and meal. Each food becomes its own food log entry.',
+    {
+      id: z.string().min(1),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
+      at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for noon that day. Default now.'),
+    },
+    async ({ id, slot, at }) => {
+      try {
+        return json(await withWrite(() => logSavedMeal(replica, id, slot, at)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_saved_meal',
+    'Delete a saved meal. What it logged before stays in the food log.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteSavedMeal(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that saved meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_nutrition_targets',
+    `Set or clear (null) the daily figures the food log reads a day's totals against, keyed ${NUTRIENT_KEY_LIST.join(', ')} (waterMl is the water goal). Set only figures the person gives you: the app ships with no targets and never suggests one, so do not propose a number of your own. list_food_log shows the current ones.`,
+    { targets: z.record(z.number().nullable()) },
+    async ({ targets }) => {
+      try {
+        return json(await withWrite(() => setNutritionTargets(replica, targets)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set those targets.' });
       }
     }
   );
@@ -1493,7 +1776,7 @@ function registerWriteTools(
 
   server.tool(
     'create_saved_view',
-    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. Views are edited and reordered in the app.',
+    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. update_saved_view edits and reorders one.',
     {
       name: z.string().min(1).max(80),
       icon: z.string().optional().describe('One of the app\'s view icons (the refusal lists them). Default bookmark-outline.'),
@@ -1512,6 +1795,33 @@ function registerWriteTools(
         return json(await withWrite(() => createSavedView(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the view.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_saved_view',
+    'Change a saved view: its name, icon, or its clauses (the whole set, in the shape create_saved_view takes, checked the same way), or move it in the list with position (0 is first).',
+    {
+      view: z.string().min(1).describe('The view\'s id or name.'),
+      name: z.string().min(1).max(80).optional(),
+      icon: z.string().optional(),
+      clauses: z.array(z.object({
+        kind: z.string(),
+        values: z.array(z.union([z.string(), z.number()])).optional(),
+        minutes: z.number().optional(),
+        overdue: z.boolean().optional(),
+        hasReminder: z.boolean().optional(),
+        heldBack: z.boolean().optional(),
+        undated: z.boolean().optional(),
+      })).optional(),
+      position: z.number().int().min(0).optional(),
+    },
+    async ({ view, ...input }) => {
+      try {
+        return json(await withWrite(() => updateSavedView(replica, view, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the view.' });
       }
     }
   );
@@ -1887,7 +2197,7 @@ function registerWriteTools(
 
   server.tool(
     'archive_task',
-    'Archive a task, taking it off every list and out of its project, or restore one with archived: false. This is how to undo a task you created by mistake: there is no delete, and an archived task can always be restored here or in the app. Archiving unpins it; restoring a repeating task starts its streak over, as the app does.',
+    'Archive a task, taking it off every list and out of its project, or restore one with archived: false. Prefer this to delete_task when the person only wants it out of the way: an archived task keeps its history and can always be restored here or in the app (list_tasks with view archived lists them). Archiving unpins it; restoring a repeating task starts its streak over, as the app does.',
     {
       id: z.string().min(1),
       archived: z.boolean().optional().describe('false restores an archived task. Defaults to true.'),
@@ -1897,6 +2207,176 @@ function registerWriteTools(
         return json(await withWrite(() => archiveTask(replica, id, archived ?? true)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not archive the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_settings',
+    `Change settings, as the Settings screen does, by name from get_settings: ${Object.keys(SETTINGS_SPEC).join(', ')}. Every value is checked before any is stored, and the app's own limits apply (the result says when one was adjusted). Only on the person's word: these change how the whole app behaves.`,
+    {
+      changes: z.record(z.unknown()).describe('Setting names to their new values, e.g. { "dayResetTime": "04:00", "weekStartsOn": 1 }.'),
+    },
+    async ({ changes }) => {
+      try {
+        return json(await withWrite(() => updateSettings(replica, changes)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the settings.' });
+      }
+    }
+  );
+
+  server.tool(
+    'archive_medication',
+    'Move a medicine out of "what you take" on the Medication screen (it stops being offered), or bring it back with archived: false. No dose is deleted.',
+    { name: z.string().min(1), archived: z.boolean().optional().describe('Default true.') },
+    async ({ name, archived }) => {
+      try {
+        return json(await withWrite(() => setMedicationArchived(replica, name, archived ?? true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not archive it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'rename_mood_tag',
+    'Correct a mood context tag ("work stress", "slept badly") on every check-in that has it, as the app\'s rename does: a typo otherwise sits in the suggestions for good.',
+    { from: z.string().min(1), to: z.string().min(1) },
+    async ({ from, to }) => {
+      try {
+        return json(await withWrite(() => renameMoodTag(replica, from, to)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename the tag.' });
+      }
+    }
+  );
+
+  server.tool(
+    'change_calendar_event',
+    "Change, or remove (delete: true), an event that request_calendar_event added (requestId from list_calendar_requests; it has to have been written). Only events this server asked for: nothing the person put on their calendar can be reached. Like a new request, the phone set to add them does it the next time it syncs; check list_calendar_requests for the outcome. A new start with no end keeps the event's length.",
+    {
+      requestId: z.string().min(1),
+      delete: z.literal(true).optional(),
+      title: z.string().optional(),
+      start: z.string().optional().describe('YYYY-MM-DD for all day, or YYYY-MM-DDTHH:MM.'),
+      end: z.string().optional(),
+      location: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => changeCalendarEvent(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not ask for the change.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_task',
+    `Delete tasks for good, with their checklists, or single checklist items, as the app's delete does: gone from every list, the Logbook and Stats. Only when the person asks for a delete; archive_task is the gentler way to put something away. Up to ${MAX_DELETE} a call, so clearing old Logbook entries is one call. A task the app wrote itself (generatedBy on get_task) is refused: delete those in the app. Each deletion can be restored from the app's Activity screen.`,
+    {
+      ids: z.array(z.string().min(1)).min(1).describe('Task ids, or checklist item ids.'),
+    },
+    async ({ ids }) => {
+      try {
+        return json(await withWrite(() => deleteTasks(replica, ids)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete.' });
+      }
+    }
+  );
+
+  server.tool(
+    'skip_occurrence',
+    "Skip this occurrence of a repeating task: it moves to its next date with nothing completed, nothing marked missed and its streak untouched, as the app's Skip does. Use mark_missed when the person says they missed it, and defer_task to do it later instead.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(withLink(await withWrite(() => skipOccurrence(replica, id)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not skip it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_tasks',
+    "Put tasks in a hand-sorted order: a project's open steps (projectId), a task's checklist (parentId), a stack's tasks (stackId), or the Pinned block on Today (pinned: true). Name one list. The tasks named go first, in the order given, and the rest keep their order after them. A project's steps swap the places they already hold, so reordering a project does not move them on Today.",
+    {
+      projectId: z.string().optional(),
+      parentId: z.string().optional().describe('The task whose checklist to reorder.'),
+      stackId: z.string().optional(),
+      pinned: z.literal(true).optional(),
+      ids: z.array(z.string().min(1)).min(1),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => reorderTasks(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_task_dates',
+    "Put one task on several dates (\"walk the dog on the 10th and the 15th\"), change that set of dates, or take it back to one. The task becomes one row per date, done separately; a set does not repeat by rule, so forming one drops any repeat on the task. monthly: true brings the same days round again each month once all of them are done. Dates already done stay as history. To move a single date, use defer_task.",
+    {
+      id: z.string().min(1),
+      dates: z.array(z.string()).min(1).describe('YYYY-MM-DD, the whole set as it should be.'),
+      monthly: z.boolean().optional(),
+    },
+    async ({ id, dates, monthly }) => {
+      try {
+        return json(withLink(await withWrite(() => setTaskDates(replica, id, dates, monthly ?? false)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the dates.' });
+      }
+    }
+  );
+
+  server.tool(
+    'duplicate_task',
+    "Copy a task with its checklist, as the app's Duplicate does: every setting comes along, and its progress (completion, streak, timer, answer) starts over. The copy is a new task you can then edit with update_task.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => duplicateTask(replica, id));
+        return json(withLink(result, LINKS?.task(result.task.id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not copy the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_tag',
+    'Delete a tag: take it off every task that has it and out of the tag list, as the Tags screen does. The tasks themselves stay. To take a tag off some tasks only, use batch_update_tasks with their tags.',
+    { tag: z.string().min(1) },
+    async ({ tag }) => {
+      try {
+        return json(await withWrite(() => deleteTag(replica, tag)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the tag.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_completion_date',
+    "Correct when a completed task was done (\"I actually did that yesterday\"), as the Logbook's date edit does. Moves it in the Logbook and Stats; the next occurrence of a repeating task stays where it is.",
+    {
+      id: z.string().min(1),
+      date: z.string().describe('YYYY-MM-DD (noon that day) or an ISO date-time. Not in the future.'),
+    },
+    async ({ id, date }) => {
+      try {
+        const at = /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? `${date.trim()}T12:00` : date;
+        return json(withLink(await withWrite(() => setCompletionDate(replica, id, at)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the date.' });
       }
     }
   );
@@ -2019,18 +2499,47 @@ function registerWriteTools(
 
   server.tool(
     'update_leftover',
-    "Change a container of cooked food (leftoverId of a list_pantry row): freeze or thaw it (thawing restarts its fridge clock), finish it as eaten or tossed, reopen one that was finished (finished: null), or set how many days it keeps from the day it was stored. Eating one on the phone offers to log the meal; that offer does not happen here, so log_food separately if asked.",
+    "Change a container of cooked food (leftoverId of a list_pantry row): rename it, say when it was put away (its keep-for window moves with it), record what it weighs, freeze or thaw it (thawing restarts its fridge clock), finish it as eaten or tossed, reopen one that was finished (finished: null), or set how many days it keeps from the day it was stored. Eating one on the phone offers to log the meal; that offer does not happen here, so log_food separately if asked.",
     {
       id: z.string().min(1),
+      title: z.string().min(1).optional(),
+      storedAt: z.string().optional().describe('When it was put away: an ISO date-time, or YYYY-MM-DD for noon that day.'),
+      weightG: z.number().positive().nullable().optional().describe('What the container holds, in grams; null for unweighed.'),
       frozen: z.boolean().optional(),
       finished: z.enum(['eaten', 'tossed']).nullable().optional(),
       keepDays: z.number().int().positive().max(365).optional(),
     },
-    async ({ id, ...change }) => {
+    async ({ id, storedAt, ...change }) => {
       try {
-        return json(withLink(await withWrite(() => updateLeftover(replica, id, change)), LINKS?.pantry()));
+        return json(withLink(await withWrite(() => updateLeftover(replica, id, { ...change, ...(storedAt !== undefined ? { storedAt: atFrom(storedAt) } : {}) })), LINKS?.pantry()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that leftover.' });
+      }
+    }
+  );
+
+  server.tool(
+    'split_leftover',
+    'Split a container across the freezer line ("froze half the chili"): a second container of the same dish, put away when the first was, on the other side of the line. The original stays as it is.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(withLink(await withWrite(() => splitLeftover(replica, id)), LINKS?.pantry()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not split that leftover.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_leftover',
+    'Delete a leftover logged by mistake. Not undoable from here. A container that was eaten or thrown out is finished with update_leftover instead, which keeps it in the waste record.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteLeftover(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that leftover.' });
       }
     }
   );
@@ -2041,7 +2550,7 @@ function registerWriteTools(
     {
       id: z.string().optional(),
       name: z.string().optional().describe('The item by name, when you have no id.'),
-      rename: z.string().min(1).optional().describe('A new name. Refused if another item has it; merging two items is done in the app.'),
+      rename: z.string().min(1).optional().describe('A new name. Refused if another item has it; merge_grocery_items joins two items that are the same thing.'),
       aisle: z.string().optional(),
       quantity: z.string().nullable().optional(),
       note: z.string().optional(),
@@ -2095,7 +2604,7 @@ function registerWriteTools(
 
   server.tool(
     'save_store',
-    "Add a store, or rename one or set how its receipts read. store is an existing store's name or id to change; omit it (and pass name) to add a new one. receiptStyle itemized is an ordinary receipt, none is a store whose receipts are not worth reading. Deleting a store is done in the app.",
+    "Add a store, or rename one or set how its receipts read. store is an existing store's name or id to change; omit it (and pass name) to add a new one. receiptStyle itemized is an ordinary receipt, none is a store whose receipts are not worth reading. update_store deletes one or sets its aisles.",
     {
       store: z.string().optional(),
       name: z.string().optional(),
@@ -2106,6 +2615,230 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => saveStore(replica, input)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not save that store.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_ingredients_to_list',
+    "Put a recipe's ingredients (recipeId, optionally scaled), or every planned meal's between from and to (default the coming week), on a grocery list, as the app's Add to list sheets do. Ingredients the app thinks are needed go on; ones it thinks are on hand, staples you keep, and optional ones are left off and listed in leftOff, so ask the person and pass include with the names they want. exclude drops ones the default would add. What is already in the cart is skipped, and a recipe amount tops up one already on the list. Preview first: it shows every row.",
+    {
+      recipeId: z.string().optional(),
+      scale: z.number().optional().describe('With recipeId: 0.5 halves it, 2 doubles it.'),
+      from: z.string().optional().describe('YYYY-MM-DD. Without recipeId: the first day of planned meals. Default today.'),
+      to: z.string().optional().describe('YYYY-MM-DD. Default six days after from.'),
+      include: z.array(z.string()).optional(),
+      exclude: z.array(z.string()).optional(),
+      list: z.string().optional().describe('A separate list by name or id. The list at home when omitted.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => addIngredientsToList(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the ingredients.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_choice_to_list',
+    'Put an either/or on a grocery list ("butter or margarine", "apples or pears"): each option is its own row, and checking one off in the app takes the rest off. settle_choice decides it from here.',
+    {
+      options: z.array(z.object({ name: z.string().min(1), quantity: z.string().nullable().optional() })).min(2),
+      list: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => addChoiceToList(replica, input)), LINKS?.groceries()));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the choice.' });
+      }
+    }
+  );
+
+  server.tool(
+    'settle_choice',
+    'Decide an either/or on a list: keep the option named and take the others off, as checking one off does. keepAll: true ends the choice and keeps every option as an ordinary row.',
+    {
+      item: z.string().min(1).describe('One option, by name or id.'),
+      keepAll: z.boolean().optional(),
+      list: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => settleChoice(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not settle the choice.' });
+      }
+    }
+  );
+
+  server.tool(
+    'swap_for_substitute',
+    "Swap an item on a list for one of its substitutes (get_grocery_item lists them), as the app's swap does: the substitute takes its place, with the amount converted where the link has a ratio, and the item comes off the list but stays in the catalog.",
+    {
+      item: z.string().min(1),
+      substitute: z.string().min(1),
+      list: z.string().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => swapForSubstitute(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not swap.' });
+      }
+    }
+  );
+
+  server.tool(
+    'clear_grocery_list',
+    "Empty a grocery list, as the app's Clear list does: everything comes off it, items with history stay in the catalog, and ones with nothing recorded about them are deleted. Ends a shopping trip. To record a shop, use finish_grocery_trip instead. Only on the person's word.",
+    { list: z.string().optional() },
+    async input => {
+      try {
+        return json(await withWrite(() => clearGroceryList(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not clear the list.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_shopping_trip',
+    'Start a shopping trip at a store (store, optionally budget), change the budget of the trip in progress (budget alone, null for none), or end it (end: true) without recording anything. grocery_setup shows the trip. finish_grocery_trip records what was bought.',
+    {
+      store: z.string().optional(),
+      budget: z.number().nullable().optional().describe('In the person\'s currency, e.g. 80 or 79.50.'),
+      end: z.literal(true).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setShoppingTrip(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the trip.' });
+      }
+    }
+  );
+
+  server.tool(
+    'mark_unavailable',
+    "Note that a store doesn't carry an item, or (brandOnly) the item's preferred brand, as the app's \"not at this store\" does. unavailable: false takes the claim back.",
+    {
+      item: z.string().min(1),
+      store: z.string().min(1),
+      unavailable: z.boolean().optional().describe('Default true.'),
+      brandOnly: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => markUnavailable(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not mark it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_nutrition_panel',
+    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. Recipes and the food log read it.`,
+    {
+      item: z.string().min(1),
+      boxId: z.string().optional(),
+      panel: z.object({
+        basis: z.enum(['per100g', 'per100ml', 'perServing']),
+        amounts: z.record(z.number()),
+        servingGrams: z.number().nullable().optional(),
+        servingText: z.string().nullable().optional().describe('As the label prints it: "1 cup (240ml)".'),
+        estimated: z.boolean().optional(),
+      }).nullable(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => setNutritionPanel(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the panel.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_aisle',
+    'Add an aisle to the walk order, rename one (newName: every item, remembered filing and store order follows), delete one (its items move to Other), or mark one non-food (cleaning, toiletries: left out of the pantry and nutrition). Other cannot be renamed or deleted. Only on the person\'s word: the aisles are their walk round the shop.',
+    {
+      name: z.string().min(1),
+      newName: z.string().optional(),
+      delete: z.literal(true).optional(),
+      nonFood: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveAisle(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the aisle.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_aisles',
+    'Put the aisles in walk order: the ones named first, the rest after in their order, Other last.',
+    { names: z.array(z.string().min(1)).min(1) },
+    async ({ names }) => {
+      try {
+        return json(await withWrite(() => reorderAisles(replica, names)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder the aisles.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_store',
+    "Change a store's own settings: leave it out of the app's store suggestions, say which aisles it has, set its own walk order (aisleOrder; null follows the usual one), or delete it (delete: true), which takes its item links, the prices recorded there and its receipt names with it. Add or rename a store with save_store.",
+    {
+      store: z.string().min(1),
+      delete: z.literal(true).optional(),
+      excludeFromSuggestions: z.boolean().optional(),
+      aisles: z.array(z.string()).nullable().optional().describe('The aisles this store has; null for all of them.'),
+      aisleOrder: z.array(z.string()).nullable().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => updateStore(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the store.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_stores_and_lists',
+    'Put the stores (stores) and or the separate grocery lists (lists) in an order: the ones named first, the rest after.',
+    {
+      stores: z.array(z.string().min(1)).optional(),
+      lists: z.array(z.string().min(1)).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => reorderGroceryPlaces(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'merge_grocery_items',
+    "Merge one grocery item into another when they are the same thing under two names (\"cilantro\" into \"coriander\"), as the app's merge does: purchase history, brands, store links and prices, substitutes, receipt names, list entries, recipe lines and supply tasks move to the one kept, and the other is gone. Cannot be undone from Activity, so only on the person's word, and preview first.",
+    {
+      from: z.string().min(1).describe('The item that goes, by name or id.'),
+      into: z.string().min(1).describe('The item kept.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => mergeGroceryItems(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not merge.' });
       }
     }
   );
@@ -2281,7 +3014,7 @@ function registerWriteTools(
 
   server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
+    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, pause it until a day, set who it is with, its links, whether its steps go in order and how it nudges, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -2304,10 +3037,21 @@ function registerWriteTools(
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
+      archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
+      pausedUntil: z.string().nullable().optional().describe('Pause it until a day (YYYY-MM-DD, after today): its tasks are held off every list until then, as "park the garden for winter". null resumes it now.'),
+      inOrder: z.boolean().optional().describe('Work the steps in page order: the app offers only the first open one.'),
+      ongoing: z.boolean().optional().describe('Never finished: finishing its last task does not offer to complete it.'),
+      personIds: z.array(z.string()).optional().describe('People it is with or for, by id from list_people. Replaces the list.'),
+      links: z.array(z.object({ label: z.string().optional(), url: z.string() })).optional().describe('Links kept with it (the booking, the shared doc), in order. Replaces the list; [] clears it.'),
+      nudgeCadenceDays: z.number().int().optional().describe('Days of quiet before the app offers its next task. 0 never offers.'),
+      autoSchedule: z.boolean().optional().describe('When it runs dry, date its next task automatically instead of offering it.'),
+      nudgeOptIn: z.boolean().optional().describe('false keeps it out of every nudge, the Pull from projects sheet included.'),
+      weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
+      showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
     },
-    async ({ id, moveTasks, moveTasksFrom, ...patch }) => {
+    async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {
-        return json(withLink(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom })), LINKS?.project(id)));
+        return json(withLink(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom, archiveRemaining })), LINKS?.project(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
       }
@@ -2321,6 +3065,7 @@ function registerWriteTools(
       title: z.string().min(1),
       category: z.string().nullable().optional().describe('A task category (from list_categories) the stack and its members are filed under. null makes a stack that leaves its members\' categories alone.'),
       taskIds: z.array(z.string().min(1)).optional().describe('Open top-level tasks to file in the new stack.'),
+      projectId: z.string().optional().describe('Make it a section on this project\'s page. Its tasks keep their own projects; file them in the project with update_task.'),
     },
     async input => {
       try {
@@ -2349,13 +3094,168 @@ function registerWriteTools(
 
   server.tool(
     'rename_stack',
-    "Rename a stack (ids from list_stacks). Only the title: its category and members are not touched. Deleting a stack, or changing its category, is left to the person in the app, since each decides what happens to every member.",
+    "Rename a stack (ids from list_stacks). Only the title: its category and members are not touched. update_stack changes the rest.",
     { id: z.string().min(1), title: z.string().min(1) },
     async ({ id, title }) => {
       try {
         return json(await withWrite(() => renameStack(replica, id, title)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not rename the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_stack',
+    "Change a stack, as its editor does: title, notes, tags, which project page shows it as a section (projectId), whether its tasks are ticked off as a checklist, or its category. A stack owns its members' category, so a new category re-files every open task in it (the result lists each move; finished ones keep theirs). To reorder its tasks use reorder_tasks with stackId.",
+    {
+      id: z.string().min(1),
+      title: z.string().optional(),
+      notes: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      category: z.string().nullable().optional().describe('A category from list_categories, or null for none.'),
+      projectId: z.string().nullable().optional().describe('The project whose page shows it as a section. Its tasks keep their own projects.'),
+      checklist: z.boolean().optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updateStack(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_stack',
+    "Delete a stack. Its tasks are taken out of it and keep their category, unless deleteTasks is true, which deletes its open tasks too (finished occurrences are only taken out: they are history). Ask the person which they want. Restorable from Activity.",
+    {
+      id: z.string().min(1),
+      deleteTasks: z.boolean().optional(),
+    },
+    async ({ id, deleteTasks }) => {
+      try {
+        return json(await withWrite(() => deleteStack(replica, id, deleteTasks ?? false)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_category',
+    "Rename a task category, change its settings, or both. A rename reaches everywhere it is named, as the app's rename does: its tasks and stacks, project defaults, saved views, templates, automations and rules. Settings: an emoji, a schedule (the days and hours its tasks show; null removes it), hiding it on vacation, leaving it out of suggestions and of the new-tasks banner, and the time of day new tasks in it start in. To merge two categories, use delete_category with moveTo.",
+    {
+      name: z.string().min(1).describe('The category, from list_categories.'),
+      newName: z.string().optional(),
+      emoji: z.string().nullable().optional(),
+      schedule: z.object({
+        days: z.array(z.number().int()).describe('0 = Sunday to 6 = Saturday.'),
+        start: z.string().describe('"HH:MM", 24-hour.'),
+        end: z.string().describe('"HH:MM", 24-hour.'),
+      }).nullable().optional(),
+      hideOnVacation: z.boolean().optional(),
+      excludeFromSuggestions: z.boolean().optional(),
+      excludeFromNewTasksBanner: z.boolean().optional(),
+      defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => updateCategory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the category.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_categories',
+    "Put the task categories (Today's sections) in an order: the ones named go first, the rest keep their order after them.",
+    { names: z.array(z.string().min(1)).min(1) },
+    async ({ names }) => {
+      try {
+        return json(await withWrite(() => reorderCategories(replica, names)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder the categories.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_project',
+    "Delete a project. Its tasks are left in no project, unless deleteTasks is true, which deletes them too (a task the app wrote is only taken out). Stacks shown on its page stay, in no project. Only when the person asks for a delete: archiving (update_project archived: true) keeps it. Ask whether its tasks should go with it. Restorable from Activity.",
+    {
+      id: z.string().min(1),
+      deleteTasks: z.boolean().optional(),
+    },
+    async ({ id, deleteTasks }) => {
+      try {
+        return json(await withWrite(() => deleteProject(replica, id, deleteTasks ?? false)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_project_category',
+    "Add a project category (a section of the Projects screen, filed with update_project's category), rename one, or delete one (its projects are left in none).",
+    {
+      name: z.string().min(1),
+      newName: z.string().optional(),
+      delete: z.literal(true).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveProjectCategory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the project category.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_projects',
+    'Put projects in an order on the Projects screen (ids: the ones named go first), and or the project categories (categories: by name).',
+    {
+      ids: z.array(z.string().min(1)).optional(),
+      categories: z.array(z.string().min(1)).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => reorderProjects(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'start_fresh_project',
+    "Make a new copy of a project for doing it again (next year's party, the next trip), as the app's Start fresh does: the same tasks, checklists, sections, blockers and settings, every task open and every date cleared (a repeating task starts today). The original is left as it is.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => startFreshProject(replica, id));
+        return json(withLink(result, LINKS?.project(result.project.id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not copy the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_project_as_template',
+    "Save a project as a template, as the app's Save as template does: its tasks, checklists and sections, with each dated task placed as days from the project's own date (the trip's departure, the event date, or the deadline), so applying it later asks for one date.",
+    {
+      id: z.string().min(1),
+      name: z.string().optional().describe('Defaults to the project\'s title.'),
+    },
+    async ({ id, name }) => {
+      try {
+        return json(await withWrite(() => saveProjectAsTemplate(replica, id, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the template.' });
       }
     }
   );
@@ -2506,11 +3406,12 @@ function registerWriteTools(
 
   server.tool(
     'plan_meal',
-    'Put a meal on the plan: a recipe (recipeId) or just a title ("Leftovers", "Takeout"). The app scales a recipe to the household size it is set to.',
+    'Put a meal on the plan: a recipe (recipeId), a leftover in the fridge (leftoverId, from list_pantry\'s leftovers), or just a title ("Takeout"). The app scales a recipe to the household size it is set to. Planning a leftover does not mark it finished.',
     {
       date: dayKey,
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]),
       recipeId: z.string().nullable().optional(),
+      leftoverId: z.string().nullable().optional(),
       title: z.string().optional().describe('Needed when there is no recipe; otherwise the recipe\'s name is used.'),
     },
     async input => {
@@ -2525,13 +3426,18 @@ function registerWriteTools(
 
   server.tool(
     'update_meal',
-    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, rename a free-text one, or set a recipe's scale (0.5 halves it, 2 doubles it). A meal backed by a recipe or a leftover keeps that name. Marking a meal cooked is done in the app, since that also updates the pantry and the cook task. The phone catches up its cook task and calendar event for a moved meal the next time it opens.",
+    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
     {
       id: z.string().min(1),
       date: dayKey.optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).optional(),
       title: z.string().optional(),
       scale: z.number().positive().optional(),
+      recipeId: z.string().nullable().optional(),
+      choices: z.array(z.object({ group: z.string().min(1), option: z.string().min(1) })).optional(),
+      shopTask: z.boolean().nullable().optional(),
+      thawTask: z.boolean().nullable().optional(),
+      logMeal: z.boolean().nullable().optional(),
     },
     async ({ id, ...patch }) => {
       try {
@@ -2556,6 +3462,51 @@ function registerWriteTools(
     }
   );
 
+  server.tool(
+    'set_meal_cooked',
+    'Mark a planned meal cooked, as its checkbox on the plan does: it counts toward the recipe\'s cooking history, marks the packets it was made from opened (only ones the app already thinks the person has), and completes the meal\'s task on Today. cooked: false takes the mark back and reopens that task; the recipe\'s count and the opened packets stay. The phone\'s questions after a cooking (what got used up, whether there are leftovers) are not asked from here, so ask the person yourself if it matters.',
+    { id: z.string().min(1), cooked: z.boolean() },
+    async ({ id, cooked }) => {
+      try {
+        return json(await withWrite(() => setMealCooked(replica, id, cooked)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_meal_as_recipe',
+    'Turn a typed meal on the plan ("Tacos") into a saved recipe: the one already called that, or a new empty one, with the meal pointed at it.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => saveMealAsRecipe(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that meal as a recipe.' });
+      }
+    }
+  );
+
+  server.tool(
+    'copy_meals',
+    'Copy planned meals, as the plan\'s copy offers do. fromWeek and toWeek (any day in each) copy a whole week into one with nothing planned yet; add slot to copy just that meal of each day into a week with none of it planned. mealId and dates put one meal on other days too, in the same slot, skipping a day that already has it. Leftover nights never copy, and a copy is unmarked as cooked.',
+    {
+      fromWeek: dayKey.optional(),
+      toWeek: dayKey.optional(),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).optional(),
+      mealId: z.string().min(1).optional(),
+      dates: z.array(dayKey).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => copyMeals(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not copy those meals.' });
+      }
+    }
+  );
+
   const personShape = {
     nickname: z.string().optional(),
     kind: z.enum(['individual', 'business']).optional(),
@@ -2571,8 +3522,12 @@ function registerWriteTools(
     email: z.string().nullable().optional(),
     linkUrl: z.string().nullable().optional(),
     location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
+    groupId: z.string().nullable().optional().describe('The group they are listed under (save_person_group makes one), or null for none.'),
+    archived: z.boolean().optional().describe('Take them off the list but keep everything about them. false brings them back.'),
+    birthdayTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday task for them.'),
+    birthdayGiftTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday gift task for them.'),
   };
-  const PEOPLE_RULE = ' Identity and contact details only: nothing here sets how often to reach out, turns on nudges, files someone into a group, archives or orders people, because the app never scores or ranks anyone and those are the person\'s own choices.';
+  const PEOPLE_RULE = ' Nothing here sets how often to reach out or turns on nudges for someone: the app never scores anyone, and a rhythm with someone is the person\'s own choice.';
 
   server.tool(
     'create_person',
@@ -2598,6 +3553,100 @@ function registerWriteTools(
         return json(withLink(person, LINKS?.person(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that person.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_person',
+    "Delete someone, as the app's delete does: the notes, gift ideas and food notes about them go too; tasks that name them stay and stop showing their name. Only when the person asks for a delete: update_person with archived: true keeps them. Restorable from Activity.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deletePerson(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that person.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_people',
+    'Put people in an order on the People screen: the ones named go first, the rest keep their order after them. Only on the person\'s say: the order is theirs.',
+    { ids: z.array(z.string().min(1)).min(1) },
+    async ({ ids }) => {
+      try {
+        return json(await withWrite(() => reorderPeople(replica, ids)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_person_group',
+    'Add a group to list people under ("Family", "Book club"), rename one (newName), delete one (its people are left in none), or set whether its members are caught up with one at a time (catchUpSeparately). File someone in a group with update_person\'s groupId.',
+    {
+      name: z.string().min(1),
+      newName: z.string().optional(),
+      delete: z.literal(true).optional(),
+      catchUpSeparately: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => savePersonGroup(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the group.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_person_note',
+    'Write something down about someone: a gift idea (kind gift), a food note such as what they like or cannot eat (kind food), or anything else (kind note). about is the day a note is about ("starts the new job in September"), left out for one that is always true. Write only what the person told you.',
+    {
+      personId: z.string().min(1),
+      kind: z.enum(['note', 'gift', 'food']),
+      text: z.string().min(1),
+      about: z.string().nullable().optional().describe('YYYY-MM-DD.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => addPersonNote(replica, input)), LINKS?.person(input.personId)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_person_note',
+    'Change a note, gift idea or food note about someone (ids from get_person): its text, its kind, the day it is about, or archived: true to keep it but file it away (a gift already given).',
+    {
+      id: z.string().min(1),
+      text: z.string().optional(),
+      kind: z.enum(['note', 'gift', 'food']).optional(),
+      about: z.string().nullable().optional(),
+      archived: z.boolean().optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updatePersonNote(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_person_note',
+    'Delete a note, gift idea or food note about someone (ids from get_person).',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deletePersonNote(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the note.' });
       }
     }
   );

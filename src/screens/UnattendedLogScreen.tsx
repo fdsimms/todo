@@ -303,6 +303,7 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     case 'delete': return { title: 'Remove this task?', message: `Claude added ${t}. Removing it deletes the task.`, destructive: true };
     case 'uncomplete': return { title: 'Reopen this task?', message: `Claude completed ${t}. Reopening it also removes the next occurrence it created, if any.`, destructive: false };
     case 'restore': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreDeletedTask': return { title: 'Restore this task?', message: `Claude deleted ${t}. This puts it back as it was, with its checklist.`, destructive: false };
     case 'restoreProject': return { title: 'Undo this change?', message: `Puts the project ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'restoreRules': return { title: 'Undo this change?', message: `Puts the ${entry.title.toLowerCase()} back the way they were before Claude changed them.`, destructive: false };
     case 'groceryRemove': return { title: 'Remove from the list?', message: `Claude added ${t} to the grocery list. This takes it back off.`, destructive: false };
@@ -315,6 +316,9 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     case 'noteAdd': return { title: 'Restore this note?', message: `Puts the note ${t} back in Notes for Claude.`, destructive: false };
     case 'restorePantryItem': return { title: 'Undo this change?', message: `Puts ${t} in the pantry back the way it was before Claude changed it.`, destructive: false };
     case 'restoreCatalogItem': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreDeletedProject': return { title: 'Restore this project?', message: `Claude deleted the project ${t}. This puts it back with its tasks and sections.`, destructive: false };
+    case 'restoreDeletedStack': return { title: 'Restore this stack?', message: `Claude deleted the stack ${t}. This puts it back with its tasks.`, destructive: false };
+    case 'restoreDeletedPerson': return { title: 'Restore this person?', message: `Claude deleted ${t}. This puts them back with the notes, gift ideas and food notes you had for them.`, destructive: false };
     case 'restoreDeletedItem': return { title: 'Restore this item?', message: `Claude deleted ${t} from your grocery catalog. This puts it back with its aisle, brands, prices, stores, substitutes and receipt names.`, destructive: false };
     case 'restoreLeftover': return { title: 'Undo this change?', message: `Puts the leftover ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'removeLeftover': return { title: 'Remove this leftover?', message: `Claude logged ${t}. Removing it deletes it, including anything you changed on it since.`, destructive: true };

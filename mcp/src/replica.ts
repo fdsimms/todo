@@ -35,13 +35,16 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import { shimModule } from './expoSqliteShim';
 import type {
   CalendarRequest,
+  CalendarRequestChanges,
   Category,
   ChainItem,
   CoinEntry,
   Cookbook,
+  CookbookIndexEntry,
   DeliverableKind,
   EventTaskRule,
   FoodLogEntry,
+  FoodNutrition,
   GeneratedKind,
   HealthRule,
   Milestone,
@@ -73,13 +76,17 @@ import type {
   PersonNote,
   Project,
   ProjectKind,
+  NutrientKey,
   Recipe,
+  RecipeVote,
+  SavedMeal,
   Reward,
   TaskTemplate,
   TemplateItem,
   Task,
   TaskDraft,
   TaskGroup,
+  TimeOfDay,
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -89,6 +96,8 @@ import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { DayProduce } from '../../src/utils/produceServings';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
+import type { DeletedTaskSnapshot } from '../../src/utils/agentRevert';
+import type { DeletedProjectSnapshot, DeletedStackSnapshot } from '../../src/utils/agentRecordRevert';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
@@ -96,7 +105,62 @@ import { CONTAINERS, DEFAULT_SCHEDULE, resolveRef, scheduleErrors as validateSch
 import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
+import { SETTINGS_SPEC } from './settingsSpec';
 import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
+
+/** What `deleteTask` removed: the row and its checklist, as they were. */
+export type DeletedTask = DeletedTaskSnapshot;
+
+export type ReorderScope = { projectId: string } | { parentId: string } | { stackId: string } | { pinned: true };
+
+export interface StackPatch {
+  title?: string;
+  notes?: string;
+  tags?: string[];
+  category?: string | null;
+  projectId?: string | null;
+  checklist?: boolean;
+}
+
+export interface CategorySettingsPatch {
+  emoji?: string | null;
+  hideOnVacation?: boolean;
+  excludeFromSuggestions?: boolean;
+  excludeFromNewTasksBanner?: boolean;
+  defaultTimeSegments?: TimeOfDay[];
+  /** Days (0 = Sunday) and "HH:MM" bounds the category is active; null removes the schedule. */
+  schedule?: { days: number[]; start: string; end: string } | null;
+}
+
+export interface PlannedRow {
+  name: string;
+  quantity: string | null;
+  aisle: string | null;
+  sourceRecipeId?: string | null;
+  sourceRecipeTitle?: string | null;
+  choiceGroup?: string | null;
+}
+
+export interface PlannedIngredientRow {
+  name: string;
+  nameKey: string;
+  quantity: string;
+  aisle: string | null;
+  category: 'needToBuy' | 'alreadyOnList' | 'inCart' | 'probablyHave' | 'staple';
+  reason: string | null;
+  sources: string[];
+  optional: boolean;
+  choiceGroup: string | null;
+  sourceRecipeId: string | null;
+  sourceRecipeTitle: string | null;
+}
+
+export interface PlannedAddResult {
+  added: GroceryItem[];
+  alreadyOnList: GroceryItem[];
+  toppedUp: GroceryItem[];
+  skippedInCart: GroceryItem[];
+}
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -270,16 +334,93 @@ export interface RecipeInput {
   /** A cookbook by title, created when there is none by that name. */
   cookbook?: string | null;
   ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null }[];
-  steps?: { text: string; section?: string | null }[];
+  /**
+   * The method. On an edit the whole list is replaced, but a step whose text
+   * is unchanged keeps its identity (and so its timer, its note and the cook
+   * questions filed under it).
+   */
+  steps?: { text: string; section?: string | null; timerSeconds?: number | null; note?: string | null }[];
   servings?: number | null;
+  /** The top of a range ("serves 4-6"); null for a plain count. */
+  servingsMax?: number | null;
+  /** What it makes when a person-count does not fit: "3 cups", "2 dozen". */
+  recipeYield?: string | null;
   estimatedMinutes?: number | null;
+  prepMinutes?: number | null;
   mealType?: string | null;
   tags?: string[];
   sourceUrl?: string | null;
+  /** The page in its cookbook, as printed ("142"). */
+  sourcePage?: string | null;
+  /** Who wrote it. Refused on a recipe in a cookbook, whose author is the book's. */
+  author?: string | null;
   notes?: string;
+  vote?: RecipeVote | null;
+  upNext?: boolean;
+  /** How many days its leftovers keep; null for the app's default. */
+  leftoverKeepDays?: number | null;
+  /** Other recipes used inside this one, replacing the list. Sharing a choiceGroup makes them alternatives. */
+  components?: { recipeId: string; choiceGroup?: string | null }[];
+  /** Tasks written ahead of a planned meal of it ("soak the beans"), replacing the list. */
+  prepTasks?: { title: string; offsetDays?: number; reminderOffsetMinutes?: number | null }[];
 }
 
-export type RecipePatch = Partial<Omit<RecipeInput, 'cookbook'>>;
+/** `cookbook` on an edit moves the recipe: a title (created when new), or null to take it out of its book. */
+export type RecipePatch = Partial<RecipeInput>;
+
+/** A change to a planned meal. Only what is given changes. */
+export interface MealPatch {
+  date?: string;
+  slot?: MealSlot;
+  title?: string;
+  scale?: number;
+  /** A different recipe for the meal, or null for a typed meal named by `title`. */
+  recipeId?: string | null;
+  /** Answers to its either/or questions, by the group's label and the option's name. */
+  choices?: { group: string; option: string }[];
+  /** Whether it gets a "Shop for X" task, a thaw task, or the offer to log it; null hands it back to the setting. */
+  shopTask?: boolean | null;
+  thawTask?: boolean | null;
+  logMeal?: boolean | null;
+}
+
+export interface MealChoice {
+  group: string;
+  options: string[];
+  /** The option in force: the one picked, else one on hand, else the first. */
+  chosen: string;
+}
+
+export interface MealCooking {
+  entry: MealPlanEntry;
+  /** Names of the packets the cooking opened. */
+  opened: string[];
+  /** Titles of the tasks the cooking completed. */
+  tasksCompleted: string[];
+}
+
+export interface MealUncooking {
+  entry: MealPlanEntry;
+  tasksReopened: string[];
+}
+
+/** One line of a cookbook's index: new with `cookbookId`, or an edit with `id`. */
+export interface IndexEntryInput {
+  id?: string;
+  cookbookId?: string;
+  title: string;
+  page?: string | null;
+  ingredients?: string[];
+}
+
+/** A cookbook on the shelf, with how much of it the app holds. */
+export interface CookbookSummary {
+  id: string;
+  title: string;
+  author: string | null;
+  recipes: number;
+  indexEntries: number;
+}
 
 export interface FoodInput {
   label: string;
@@ -347,6 +488,13 @@ export interface PersonFields {
   linkUrl?: string | null;
   /** Free text, like the app's own field; null clears it. */
   location?: string | null;
+  /** The group they are listed under (a person group's id), or null for none. */
+  groupId?: string | null;
+  /** Filed away: kept, out of the list. */
+  archived?: boolean;
+  /** Never write a birthday task, or a birthday gift task, for this person. */
+  birthdayTaskOptOut?: boolean;
+  birthdayGiftTaskOptOut?: boolean;
 }
 
 export interface FoodPatch {
@@ -536,6 +684,12 @@ export interface ReceiptImportOutcome {
 export type LeftoverDraftInput = import('../../src/utils/pantryWrite').LeftoverDraft;
 
 export interface LeftoverChange {
+  /** What the container is called. Two containers of one dish may share a name. */
+  title?: string;
+  /** When it was put away; the keep-for window moves with it. */
+  storedAt?: Date;
+  /** What it holds, in grams, or null for unweighed. */
+  weightG?: number | null;
   frozen?: boolean;
   /** Finish it, or null to reopen one that was finished. */
   finished?: 'eaten' | 'tossed' | null;
@@ -620,6 +774,26 @@ export interface ProjectPatch {
   awayEnd?: string | null;
   /** Free text, where the trip is going. Needs a span to belong to. */
   destination?: string | null;
+  /** The day (YYYY-MM-DD) a paused project comes back; its tasks are held until then. null resumes it. */
+  pausedUntil?: string | null;
+  /** Work the steps in page order: Pull and auto-schedule offer only the first open one. */
+  inOrder?: boolean;
+  /** Never finished on its own: the last task being done doesn't offer to complete it. */
+  ongoing?: boolean;
+  /** People the project is with or for (list_people ids). Checked here. */
+  personIds?: string[];
+  /** Links kept with the project, in order. Replaces the list. */
+  links?: { label?: string; url: string }[];
+  /** Days of quiet before it offers its next task; 0 never offers. */
+  nudgeCadenceDays?: number;
+  /** Date its next task automatically when it runs dry, instead of offering it. */
+  autoSchedule?: boolean;
+  /** False keeps it out of every nudge, the Pull sheet included. */
+  nudgeOptIn?: boolean;
+  /** Somewhere the weekend nudge looks when a weekend is bare. */
+  weekendSource?: boolean;
+  /** On a list: checked items stay on the page instead of folding away. */
+  showChecked?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -770,6 +944,10 @@ export interface Replica {
 
   /** See `ReplicaSettings`. Read fresh from the settings store, so it follows a sync. */
   settings(): ReplicaSettings;
+  /** Every setting `SETTINGS_SPEC` names, as stored now. */
+  settingValues(): Record<string, unknown>;
+  /** Change settings through `SETTINGS_SPEC`'s checks and the store's setters. All are checked before any is written. */
+  applySettings(changes: Record<string, unknown>): { key: string; before: unknown; after: unknown }[];
   /**
    * The app's own look-ahead (`buildLookAhead`) from the start of the logical
    * today across `days` days: per-day rows, projected recurring occurrences,
@@ -841,6 +1019,8 @@ export interface Replica {
   /** A view through `useSavedViewStore.createView`, which takes the next slot at the bottom of the list. The clauses are already checked. */
   createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView;
   deleteSavedView(id: string): SavedView;
+  /** Change a view's name, icon or clauses (already checked), and optionally move it to a place in the list (0 is first). */
+  updateSavedView(id: string, patch: { name?: string; icon?: string; clauses?: SavedViewClause[] }, position?: number): SavedView;
   /**
    * Vacation mode through the settings store's own setter, the way the
    * Settings toggle does it. On the way off the protected streaks are forgiven
@@ -877,6 +1057,33 @@ export interface Replica {
    * Not undoable from here.
    */
   deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number };
+  /** Every cookbook, with how many recipes and index lines it holds. */
+  cookbookSummaries(): CookbookSummary[];
+  /** One cookbook's index lines. */
+  cookbookIndex(cookbookId: string): CookbookIndexEntry[];
+  /**
+   * Rename a cookbook, or change its author, through the store's
+   * `renameCookbook`: every recipe in it takes the new title and author.
+   * Refused when another book already has that title and author.
+   */
+  renameCookbook(id: string, title: string, author?: string | null): Cookbook;
+  /** Two copies of one book made one, through `mergeCookbooks`: the loser's recipes and index move to the survivor. */
+  mergeCookbooks(survivorId: string, loserId: string): { survivor: Cookbook; merged: Cookbook; recipesMoved: number };
+  /**
+   * Delete a cookbook through the store's `deleteCookbook`: its recipes are
+   * unlinked rather than deleted, keeping the title and author mirrored onto
+   * them, and its index lines go with it.
+   */
+  deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number; indexEntries: number };
+  /** Add or change a cookbook index line. Refused when that book's index already lists the dish. */
+  saveIndexEntry(input: IndexEntryInput): CookbookIndexEntry;
+  deleteIndexEntry(id: string): CookbookIndexEntry;
+  /** The recipe for an index line: the one already in that book under that name, or a new one with the book and page. */
+  recipeFromIndexEntry(id: string): { recipe: Recipe; created: boolean };
+  /** Put the Up next shelf in this order. Recipes left out follow, in their order. */
+  reorderUpNext(ids: string[]): Recipe[];
+  /** A cook time timed on the person's own clock, logged as the cook timer's stop logs one. */
+  logCookTime(id: string, minutes: number): Recipe;
   /**
    * A food entry with an estimated panel, through `readNutritionEstimate`,
    * `estimateToPanel` and `buildFoodLogEntry`. Marked estimated for good, and
@@ -905,9 +1112,34 @@ export interface Replica {
    */
   updateFoodEntry(id: string, patch: FoodPatch): FoodLogEntry;
   deleteFoodEntry(id: string): FoodLogEntry;
+  /**
+   * Move a food entry to another moment, as the app's `moveEntry`: the old row
+   * goes and a new one is written at the new instant (the day it counts on is
+   * stamped from the instant, so it is never patched in place). Refused once
+   * the entry is in Apple Health, whose sample only the phone can retract, and
+   * for a water entry, which `logWater` steps a day at a time.
+   */
+  moveFoodEntry(id: string, at: Date): { from: FoodLogEntry; to: FoodLogEntry };
+  /** Log a copy of an entry at another moment, as `duplicateEntry`: a new meal, not tied to a planned one. */
+  duplicateFoodEntry(id: string, at: Date): FoodLogEntry;
+  /** Saved meals: several foods logged together under a name, newest first. */
+  savedMeals(): SavedMeal[];
+  /** A saved meal from logged entries, as the bulk bar's "Save as meal". */
+  saveMealFromEntries(name: string, entryIds: string[]): SavedMeal;
+  /** Log every food in a saved meal at one moment and meal, as tapping it in the food log does. */
+  logSavedMeal(id: string, slot: MealSlot | null, at: Date): FoodLogEntry[];
+  deleteSavedMeal(id: string): SavedMeal;
+  /** The daily figures the food log's totals are read against, as the person set them. */
+  nutritionTargets(): Partial<Record<NutrientKey, number>>;
+  /** Set or clear (null) targets, through the settings store's own setter. Each is checked against the Settings stepper's range. */
+  setNutritionTargets(changes: Partial<Record<NutrientKey, number | null>>): Partial<Record<NutrientKey, number>>;
   updateMoodLog(id: string, patch: MoodPatch): MoodLog;
   deleteMoodLog(id: string): MoodLog;
   updateMedicationLog(id: string, patch: DosePatch): MedicationLog;
+  /** Move a medicine out of "what you take", or back. Deletes no doses. Returns the name as the log spells it. */
+  setMedicationArchived(name: string, archived: boolean): string;
+  /** Correct a mood context tag's text on every check-in that has it, as the app's rename does. Returns how many changed. */
+  renameMoodTag(from: string, to: string): number;
   deleteMedicationLog(id: string): MedicationLog;
   /** Every calendar request, oldest first (`CalendarRequest`). */
   calendarRequests(): CalendarRequest[];
@@ -919,6 +1151,12 @@ export interface Replica {
   requestCalendarEvent(input: CalendarRequestInput): CalendarRequest;
   /** Take back a request that is still pending. One already answered is the phone's to keep. */
   cancelCalendarRequest(id: string): CalendarRequest;
+  /**
+   * Ask the phone to change, or delete, an event an earlier request of this
+   * server's wrote (`CalendarRequest.action`). Only that event: a request names
+   * the one it changes, and nothing else on the calendar is reachable.
+   */
+  requestCalendarChange(targetId: string, change: { delete: true } | { changes: CalendarRequestChanges }): CalendarRequest;
   /** Every automation rule list, as the settings store holds it. */
   ruleLists(): RuleLists;
   /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
@@ -1108,15 +1346,83 @@ export interface Replica {
 
   /**
    * Archive a task, or restore an archived one, as the app's own
-   * `archiveTask` / `unarchiveTask` do. This is the replica's only way to take
-   * a task back off every list: there is deliberately no delete, since an
-   * archived row can be restored in the app and a deleted one cannot.
+   * `archiveTask` / `unarchiveTask` do. `deleteTask` is the other way off every
+   * list; an archive is the one that keeps the row.
    *
    * Archiving unpins. Restoring breaks the streak (the gap is real) and folds
    * the run into `priorBestStreak`, as the app's resume does. A subtask is
    * refused: it goes with its parent.
    */
   setTaskArchived(id: string, archived: boolean): Task;
+  /**
+   * Delete a task with its checklist, or one checklist item, as the app's
+   * delete does. What was deleted comes back, so the ledger can keep it for a
+   * restore from Activity. A task the app generated is refused: deleting one in
+   * the app also tells its source not to make it again, which writes to rows
+   * this server cannot reach, and without that the phone would just recreate
+   * it. Deleting a timed stretch re-totals its parent's countdown.
+   */
+  deleteTask(id: string): DeletedTask;
+  /** Roll a repeating task onto its next occurrence with no completion: the app's "Skip" (`skipPatch`). */
+  skipOccurrence(id: string): Task;
+  /**
+   * Hand-order one list: a project's open steps (their slots in the one
+   * sortOrder space, `slotUpdates`), a task's checklist, or the Pinned block.
+   * The named rows go first in the order given and the rest keep their order
+   * after them. Returns the rows whose position changed, before and after.
+   */
+  reorderTasks(scope: ReorderScope, ids: string[]): { before: Task; after: Task }[];
+  /**
+   * Give a task a set of dates, or take it back to one, through the rules the
+   * editor's dates row uses (`taskDates.ts`). A set never repeats by rule, so
+   * forming one drops the task's repeat. `monthly` makes the set come round
+   * again each month on the same days.
+   */
+  setTaskDates(id: string, dates: Date[], monthly: boolean): { task: Task; added: Task[]; removed: Task[] };
+  /** A copy of a task and its checklist, as the app's Duplicate makes one (`duplicateRows`). */
+  duplicateTask(id: string): Task;
+  /** Take a tag off every task and out of the tag list. Returns each task it changed, before and after. */
+  deleteTag(tag: string): { before: Task; after: Task }[];
+  /** Correct when a completed task was done, as the Logbook's date edit does. */
+  setCompletedAt(id: string, at: Date): Task;
+  /** The tag list as the app keeps it: every tag in use and every one registered. */
+  tagList(): string[];
+
+  /**
+   * A recipe's ingredients (scaled), or every planned meal's in a day range,
+   * classified against a list the way the app's two add-to-list sheets
+   * classify them (`classifyPlanned`): need to buy, already on the list, in
+   * the cart, probably have, staple.
+   */
+  plannedIngredients(source: { recipeId: string; scale?: number } | { from: string; to: string }, listId: string | null): PlannedIngredientRow[];
+  /** Put planned rows on a list, as the app's `addFromPlan`: in the cart is skipped, on the list is topped up. */
+  addPlannedToList(rows: PlannedRow[], listId: string | null): PlannedAddResult;
+  /** Put an either/or on a list: each option is a row, and ticking one takes the rest off. */
+  addChoiceToList(options: { name: string; quantity?: string | null }[], listId: string | null): GroceryItem[];
+  /** Decide an either/or for the option given (`resolveChoice`), or end the choice and keep every option (`clearChoice`). */
+  settleChoice(itemId: string, listId: string | null, keepAll: boolean): { kept: GroceryItem[]; removed: GroceryItem[] };
+  /** Swap a row on a list for one of its substitutes, as the app's swap does. */
+  swapForSubstitute(itemId: string, subItemId: string, listId: string | null): { removed: GroceryItem; added: GroceryItem };
+  /** Empty a list, as the app's Clear list: rows with nothing worth keeping are deleted, the rest stay in the catalog. Ends the trip. */
+  clearGroceryList(listId: string | null): { cleared: number; deleted: string[] };
+  /** Start a shopping trip at a store (optionally with a budget in minor units), change its budget, or end it. */
+  setTrip(change: { shopId: string; budgetMinor?: number | null } | { budgetMinor: number | null } | { end: true }): { shop: Shop | null; startedAt: string | null; budgetMinor: number | null };
+  /** Mark an item (or just its preferred brand) unavailable at a store, or the brand available again. */
+  setItemUnavailable(itemId: string, shopId: string, unavailable: boolean, brandOnly: boolean): void;
+  /** An item's nutrition panel, or a box's. null removes it. */
+  setNutritionPanel(itemId: string, boxId: string | null, panel: FoodNutrition | null): void;
+  /** Add, rename or delete an aisle, or mark it non-food, as the aisle editor does. */
+  saveAisle(name: string, change: { newName?: string; delete?: boolean; nonFood?: boolean }): { aisle: string | null; itemsMoved: number };
+  /** The aisles in walk order: the named first, the rest after, Other last. */
+  reorderAisles(names: string[]): string[];
+  /** Delete a store, with its links and receipt names. Ends the trip if it was there. */
+  deleteShop(id: string): Shop;
+  /** A store's own settings: left out of suggestions, which aisles it has, and its own walk order. */
+  updateShopSettings(id: string, patch: { excludeFromSuggestions?: boolean; aisles?: string[] | null; aisleOrder?: string[] | null }): Shop;
+  reorderShops(ids: string[]): void;
+  reorderGroceryLists(ids: string[]): void;
+  /** Merge one item into another, as the app's merge (`planMergeItems`). */
+  mergeGroceryItems(fromId: string, intoId: string): { merged: GroceryItem; from: GroceryItem };
 
   /**
    * Put a name on the shopping list, exactly as typing it into the app would.
@@ -1188,6 +1494,18 @@ export interface Replica {
   /** One card of the pantry review. Every answer stamps the card as reviewed. */
   answerPantryReview(id: string, answer: 'have' | 'low' | 'out'): GroceryItem;
   updateLeftover(id: string, change: LeftoverChange): Leftover;
+  /**
+   * Half a container moved across the freezer line, as the leftover sheet's
+   * Split: a second container of the same dish, put away when the first was,
+   * on the other side. The original is untouched. Refused for a finished one.
+   */
+  splitLeftover(id: string): { original: Leftover; split: Leftover };
+  /**
+   * Delete a leftover outright (one logged by mistake; finishing it is the
+   * ordinary way out). Planned meals eating from it keep their title. Its
+   * use-up task goes when the phone next reconciles them.
+   */
+  deleteLeftover(id: string): Leftover;
   /** Log a container of cooked food. Null when the title is empty. */
   createLeftover(draft: LeftoverDraftInput): Leftover | null;
 
@@ -1200,6 +1518,10 @@ export interface Replica {
   aisleOverrides(): Record<string, string>;
   /** The aisles that exist, in the person's walk order. */
   aisleNames(): string[];
+  /** Aisles marked non-food. */
+  nonFoodAisles(): string[];
+  /** The shopping trip in progress, while it is live (`resolveActiveTrip`), or null. */
+  activeTrip(): { shop: Shop; startedAt: string; budgetMinor: number | null } | null;
   updateGroceryItem(id: string, change: GroceryItemChange): GroceryItemOutcome;
   /** Add, edit or delete one brand/variant box of an item. Returns what it left, or null for a delete. */
   saveGroceryBox(itemId: string, input: GroceryBoxInput): ItemProduct | null;
@@ -1265,13 +1587,46 @@ export interface Replica {
    * own. `category` is where it renders on Today; null leaves a stack that
    * files its members under nothing in particular.
    */
-  createStack(title: string, category: string | null): TaskGroup;
-  /**
-   * Rename a stack. Only the title: changing its category would move every
-   * member, and deleting one is a cascade decision (`deleteGroup`) for the
-   * person, so neither is here.
-   */
+  createStack(title: string, category: string | null, projectId?: string | null): TaskGroup;
+  /** Rename a stack. Its category and members are untouched. */
   renameStack(id: string, title: string): TaskGroup;
+  /**
+   * Change a stack as its editor does. A new category re-files every live
+   * member with it, as the editor's save does (`applyGroupCategory`): the stack
+   * owns its members' category. `projectId` is only which project page shows
+   * it as a section; members keep their own projects.
+   */
+  updateStack(id: string, patch: StackPatch): { stack: TaskGroup; moved: { before: Task; after: Task }[] };
+  /**
+   * Delete a stack, as the app's `deleteGroup`: its live members are taken out
+   * of it, or with `cascade` deleted (a dated set's other dates with them), and
+   * its finished occurrences are only taken out, since they are history. A
+   * member the app generated is taken out rather than deleted, for the reason
+   * `deleteTask` gives.
+   */
+  deleteStack(id: string, cascade: boolean): DeletedStackSnapshot;
+  /** Rename a task category everywhere it is named, as the app's rename does. */
+  renameCategory(name: string, newName: string): { from: string; to: string };
+  /** A task category's own settings: emoji, schedule, vacation, suggestions, default time of day. */
+  updateCategorySettings(name: string, patch: CategorySettingsPatch): Category;
+  /** Put the categories (Today's sections) in this order: the named first, the rest after in their order. */
+  reorderCategories(names: string[]): string[];
+  /**
+   * Delete a project, as the app's `deleteProject`: its tasks are unfiled, or
+   * with `cascade` deleted (a task the app generated is unfiled instead), and
+   * the stacks homed on it are unfiled. What it took comes back for the ledger.
+   */
+  deleteProject(id: string, cascade: boolean): DeletedProjectSnapshot;
+  /** The project categories (sections of the Projects screen), in order. */
+  projectCategories(): { id: string; name: string; sortOrder: number }[];
+  /** Add, rename or delete a project category. Deleting leaves its projects with none. */
+  saveProjectCategory(name: string, change: { newName?: string; delete?: boolean }): { name: string | null; projectsAffected: number };
+  /** Projects in this order (the named first), and optionally the project categories too. */
+  reorderProjects(ids: string[], categories?: string[]): void;
+  /** A new project with this one's tasks and sections, every date cleared and every task open: the app's Start fresh. */
+  startFreshProject(id: string): { project: Project; tasks: Task[] };
+  /** A template that recreates this project, as the app's Save as template (`templateFromProject`). */
+  saveProjectAsTemplate(id: string, name?: string): TaskTemplate;
   /**
    * File a task in a stack, or take it out with a null `stackId`: the app's
    * `addExistingToGroup` / `removeFromGroup`, one task row at a time.
@@ -1363,7 +1718,7 @@ export interface Replica {
    * `planMeal` does. Not done: the slot's task and the calendar event, which
    * are device work and catch up on the next launch there.
    */
-  planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null }): MealPlanEntry;
+  planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null; leftoverId?: string | null }): MealPlanEntry;
   /**
    * Move a planned meal to another day or slot, rename a free-text one, or set a
    * recipe's scale. A recipe- or leftover-backed meal's title says what backs it
@@ -1371,9 +1726,32 @@ export interface Replica {
    * also opens pantry items and ticks the cook task, which the phone does.
    * The slot's task and calendar event catch up on the phone, as for `planMeal`.
    */
-  updateMeal(id: string, patch: { date?: string; slot?: MealSlot; title?: string; scale?: number }): MealPlanEntry;
+  updateMeal(id: string, patch: MealPatch): MealPlanEntry;
   /** Remove a planned meal. A cooked meal is refused: it is history and feeds the cooking stats. */
   removeMeal(id: string): MealPlanEntry;
+  /**
+   * Mark a planned meal cooked, or not, as the plan's checkbox does: see
+   * `cookMeal` and `uncookMeal`. Refused when it is already that way.
+   */
+  setMealCooked(id: string, cooked: boolean): MealCooking | MealUncooking;
+  /**
+   * A typed meal saved as a recipe, as the meal sheet's "Save as recipe": the
+   * recipe already called that, or a new empty one, and the meal pointed at it.
+   */
+  saveMealAsRecipe(id: string): { recipe: Recipe; created: boolean; entry: MealPlanEntry };
+  /**
+   * The meal plan's three copies, through `weekCopyDrafts`, `slotCopyDrafts`
+   * and `mealCopyDraft`: what a copy carries is theirs to say (a leftover night
+   * never copies). A week copies only into a week with nothing planned, and a
+   * slot only into a week with nothing in that slot, the rule the app's offers
+   * keep (`slotsToCopy`), so a copy never has to ask how to merge. Weeks are
+   * named by any day in them.
+   */
+  copyMealWeek(fromDay: string, toDay: string, slot?: MealSlot): MealPlanEntry[];
+  /** One meal on other days too, in its slot. A day already holding it is skipped and named. */
+  copyMealTo(id: string, dates: string[]): { copied: MealPlanEntry[]; skipped: string[] };
+  /** A planned meal's either/or questions ("Side": mash or roast), and which option is in force. */
+  mealChoices(entry: MealPlanEntry): MealChoice[];
 
   people(): Person[];
   personGroups(): PersonGroup[];
@@ -1397,6 +1775,20 @@ export interface Replica {
    */
   createPerson(fields: PersonFields): Person;
   updatePerson(id: string, fields: PersonFields): Person;
+  /**
+   * Delete a person, as the app's delete: the notes written about them go with
+   * them (they are about somebody and mean nothing without them), and tasks
+   * naming them are kept. What it took comes back for the ledger.
+   */
+  deletePerson(id: string): { person: Person; notes: PersonNote[] };
+  /** Put people in this order: the named first, the rest after in their order. */
+  reorderPeople(ids: string[]): void;
+  /** Add, rename or delete a person group, or set whether its members are caught up with one at a time. */
+  savePersonGroup(name: string, change: { newName?: string; delete?: boolean; catchUpSeparately?: boolean }): { group: PersonGroup | null; members: number };
+  /** A note, a gift idea or a food note about someone, through `usePersonNoteStore.addNote`. */
+  addPersonNote(personId: string, kind: PersonNote['kind'], text: string, relevantOn?: string | null): PersonNote;
+  updatePersonNote(id: string, patch: { text?: string; kind?: PersonNote['kind']; relevantOn?: string | null; archived?: boolean }): PersonNote;
+  deletePersonNote(id: string): PersonNote;
 
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
@@ -1515,10 +1907,256 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const grocerySuggest = require('../../src/utils/grocerySuggest') as typeof import('../../src/utils/grocerySuggest');
   const shelfLife = require('../../src/utils/groceryShelfLife') as typeof import('../../src/utils/groceryShelfLife');
   const groceryLists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists');
+  const taskSkip = require('../../src/utils/taskSkip') as typeof import('../../src/utils/taskSkip');
+  const taskDates = require('../../src/utils/taskDates') as typeof import('../../src/utils/taskDates');
+  const taskDuplicate = require('../../src/utils/taskDuplicate') as typeof import('../../src/utils/taskDuplicate');
+  const timerSegments = require('../../src/utils/timerSegments') as typeof import('../../src/utils/timerSegments');
+  const projectOrder = require('../../src/utils/projectOrder') as typeof import('../../src/utils/projectOrder');
   const { generateId } = require('../../src/utils/id') as IdModule;
   const { reopenedTask } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
-  const { generatedSourceOf } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
-  const { completesMealSlot } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
+  const { generatedSourceOf, liveGeneratedTask } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
+  const { completesMealSlot, mealSlotSourceId, parseMealSlotSource } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
+  const mealPlanGroceries = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries');
+
+  // ---- recipes ------------------------------------------------------------
+
+  // ---- the food log -------------------------------------------------------
+
+  /**
+   * A food entry built by `buildFoodLogEntry`, the app's own row and refusals,
+   * and inserted flagged `healthWritePending`: this process has no HealthKit,
+   * so the phone writes it to Apple Health on its next foreground, if Health
+   * writing is on there.
+   */
+  function buildFood(draft: Parameters<typeof import('../../src/utils/foodLogEntry').buildFoodLogEntry>[0]): FoodLogEntry | null {
+    const builder = require('../../src/utils/foodLogEntry') as typeof import('../../src/utils/foodLogEntry'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const entry = builder.buildFoodLogEntry(draft, dayKey => db.dbGetFoodLogEntries(dayKey, dayKey), generateId);
+    if (!entry) return null;
+    const flagged = { ...entry, healthWritePending: true };
+    db.dbInsertFoodLogEntry(flagged);
+    return flagged;
+  }
+
+  /** An entry that can be moved or copied: not water, which is one entry a day stepped up a glass at a time. */
+  function foodEntryToCopy(id: string): FoodLogEntry {
+    const water = require('../../src/utils/waterLog') as typeof import('../../src/utils/waterLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const entry = db.dbGetFoodLogEntry(id);
+    if (!entry) throw new Error(`No food entry with id ${id}.`);
+    if (water.isWaterEntry(entry)) throw new Error('Water is one entry a day, stepped up a glass at a time. Use log_water for the other day instead.');
+    return entry;
+  }
+
+  /** The same food at another moment, the draft `moveEntry` and `duplicateEntry` build. */
+  function insertFoodCopy(e: FoodLogEntry, at: Date, slot: MealSlot | null, mealPlanEntryId: string | null): FoodLogEntry {
+    const entry = buildFood({
+      label: e.label,
+      quantity: e.quantity,
+      grams: e.grams,
+      nutrition: e.nutrition,
+      sourcePanel: e.sourcePanel ?? null,
+      slot,
+      recipeId: e.recipeId,
+      itemId: e.itemId,
+      productId: e.productId,
+      mealPlanEntryId,
+      at,
+    });
+    if (!entry) throw new Error('That entry could not be logged again.');
+    return entry;
+  }
+
+  /**
+   * A generated task the app takes back, as `dropGeneratedTask` does on the
+   * phone: the live row and its subtasks deleted, with no opt-out written,
+   * since the reason it goes (a container finished) is not the person saying
+   * never.
+   */
+  function dropGeneratedRow(kind: import('../../src/types').GeneratedKind, sourceId: string): void {
+    const live = liveGeneratedTask(db.dbGetAllTasks(), kind, sourceId);
+    if (!live) return;
+    db.dbDeleteSubtasks(live.id);
+    db.dbDeleteTask(live.id);
+  }
+
+  function mealLogUtils() {
+    return require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+  }
+
+  /** The recipe tree's choice rules, loaded when a meal's choices are read or answered. */
+  function components() {
+    return require('../../src/utils/recipeComponents') as typeof import('../../src/utils/recipeComponents'); // eslint-disable-line @typescript-eslint/no-require-imports
+  }
+
+  /** A copied meal as the store's `copyRow` writes it: its own id, and never the source's calendar event. */
+  function copiedMeal(draft: import('../../src/utils/mealPlan').MealCopyDraft): MealPlanEntry {
+    return { ...draft, id: generateId(), createdAt: new Date().toISOString(), calendarEventId: null, calendarEventExternalId: null };
+  }
+
+  /** The recipe store, loaded and current. Loaded lazily: only the recipe writes read it. */
+  function recipeStore() {
+    const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+    useRecipeStore.getState().initialize();
+    return useRecipeStore;
+  }
+
+  /**
+   * A cookbook by title, ignoring case, whoever wrote it. The store's own
+   * `ensureCookbook` keys on title and author together, so given only a title
+   * it would make a second copy of a book that has an author.
+   */
+  function findCookbook(title: string): Cookbook | null {
+    const wanted = title.trim().toLowerCase();
+    return db.dbGetAllCookbooks().find(c => c.title.trim().toLowerCase() === wanted) ?? null;
+  }
+
+  /**
+   * Every refusal a recipe write can make, before it makes any: so a bad
+   * component or step timer refuses the call rather than leaving half of it
+   * written. `recipe` is null for a new one; `inBook` is whether it will be in
+   * a cookbook once the write lands.
+   */
+  function checkRecipeFields(recipe: Recipe | null, f: RecipePatch, inBook: boolean): void {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const lib = {
+      stepTimers: require('../../src/utils/stepTimers') as typeof import('../../src/utils/stepTimers'),
+      recipeUtils: require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils'),
+      components: require('../../src/utils/recipeComponents') as typeof import('../../src/utils/recipeComponents'),
+      types: require('../../src/types') as typeof import('../../src/types'),
+    };
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    const whole = (name: string, v: number | null | undefined, lo: number, hi: number) => {
+      if (v != null && (!Number.isInteger(v) || v < lo || v > hi)) throw new Error(`${name} must be a whole number from ${lo} to ${hi}, or null.`);
+    };
+    whole('servings', f.servings, 1, 99);
+    whole('servingsMax', f.servingsMax, 1, 99);
+    const servings = f.servings !== undefined ? f.servings : recipe?.servings ?? null;
+    if (f.servingsMax != null && (servings == null || f.servingsMax <= servings)) {
+      throw new Error('servingsMax is the top of a range, so it has to be more than servings.');
+    }
+    whole('leftoverKeepDays', f.leftoverKeepDays, lib.types.LEFTOVER_KEEP_DAYS_MIN, lib.types.LEFTOVER_KEEP_DAYS_MAX);
+    if (f.sourcePage != null && f.sourcePage.trim().length > lib.types.RECIPE_PAGE_MAX_LENGTH) {
+      throw new Error(`A page is at most ${lib.types.RECIPE_PAGE_MAX_LENGTH} characters, as printed ("142", "112-115").`);
+    }
+    if (f.author !== undefined && inBook) {
+      throw new Error('A recipe in a cookbook takes its author from the book. rename_cookbook changes the book\'s author for every recipe in it.');
+    }
+    for (const step of f.steps ?? []) {
+      const t = step.timerSeconds;
+      if (t != null && (!Number.isInteger(t) || t < lib.stepTimers.MIN_STEP_TIMER_SECONDS || t > lib.stepTimers.MAX_STEP_TIMER_SECONDS)) {
+        throw new Error(`A step timer is a whole number of seconds from ${lib.stepTimers.MIN_STEP_TIMER_SECONDS} to ${lib.stepTimers.MAX_STEP_TIMER_SECONDS}.`);
+      }
+      if (step.note != null && step.note.trim().length > lib.types.RECIPE_STEP_NOTE_MAX_LENGTH) {
+        throw new Error(`A step note is at most ${lib.types.RECIPE_STEP_NOTE_MAX_LENGTH} characters.`);
+      }
+    }
+    for (const p of f.prepTasks ?? []) {
+      if (!p.title.trim()) throw new Error('A prep task needs a title.');
+      whole('A prep task\'s offsetDays', p.offsetDays, lib.recipeUtils.PREP_OFFSET_MIN, lib.recipeUtils.PREP_OFFSET_MAX);
+      whole('A prep task\'s reminderOffsetMinutes', p.reminderOffsetMinutes, 0, 1440);
+    }
+    if (f.components) {
+      const recipes = db.dbGetAllRecipes();
+      const byId = new Map(recipes.map(r => [r.id, r]));
+      const seen = new Set<string>();
+      for (const c of f.components) {
+        if (!byId.has(c.recipeId)) throw new Error(`No recipe with id ${c.recipeId} to use inside this one.`);
+        if (recipe && c.recipeId === recipe.id) throw new Error('A recipe cannot use itself.');
+        if (seen.has(c.recipeId)) throw new Error(`${byId.get(c.recipeId)!.name} is named twice.`);
+        seen.add(c.recipeId);
+        if (recipe && lib.components.wouldCreateRecipeCycle(lib.components.recipeMap(recipes), recipe.id, c.recipeId)) {
+          throw new Error(`${byId.get(c.recipeId)!.name} already uses ${recipe.name}, so it cannot also be used inside it.`);
+        }
+      }
+    }
+  }
+
+  /**
+   * The fields of a recipe write past its name and book, through the store's
+   * own setters (already checked by `checkRecipeFields`). Runs inside the
+   * caller's transaction.
+   */
+  function writeRecipeFields(id: string, f: RecipePatch): void {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { useRecipeStore } = require('../../src/store/useRecipeStore') as typeof import('../../src/store/useRecipeStore');
+    const recipeUtils = require('../../src/utils/recipeUtils') as typeof import('../../src/utils/recipeUtils');
+    const { generateId } = require('../../src/utils/id') as typeof import('../../src/utils/id');
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    const store = () => useRecipeStore.getState();
+    const current = () => store().recipes.find(r => r.id === id)!;
+
+    if (f.servings !== undefined || f.servingsMax !== undefined) {
+      store().setServings(id, f.servings !== undefined ? f.servings : current().servings, f.servingsMax !== undefined ? f.servingsMax : current().servingsMax);
+    }
+    if (f.recipeYield !== undefined) store().setRecipeYield(id, f.recipeYield);
+    if (f.estimatedMinutes !== undefined) store().setEstimatedMinutes(id, f.estimatedMinutes);
+    if (f.prepMinutes !== undefined) store().setPrepMinutes(id, f.prepMinutes);
+    if (f.mealType !== undefined) store().setMealType(id, (f.mealType ?? null) as Recipe['mealType']);
+    if (f.tags !== undefined) store().setTags(id, f.tags);
+    if (f.sourceUrl !== undefined) store().setSourceUrl(id, f.sourceUrl);
+    // After any move, which clears a page that belonged to the old book.
+    if (f.sourcePage !== undefined) store().setSourcePage(id, f.sourcePage);
+    if (f.author !== undefined) store().setAuthor(id, f.author);
+    if (f.notes !== undefined) store().setNotes(id, f.notes);
+    if (f.vote !== undefined) store().setVote(id, f.vote);
+    if (f.upNext !== undefined) store().setUpNext(id, f.upNext);
+    if (f.leftoverKeepDays !== undefined) store().setLeftoverKeepDays(id, f.leftoverKeepDays);
+    if (f.ingredients !== undefined) {
+      const made = f.ingredients
+        .map(line => {
+          const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
+          return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
+      if (made.length > 0) store().addStructuredIngredients(id, made);
+    }
+    if (f.steps !== undefined) {
+      // A step whose text is unchanged keeps its id, so a cook question filed
+      // under it (`CookQuestion.stepId`) and its timer and note survive an edit
+      // that only touched the steps around it. The rest are new.
+      const old = [...current().steps];
+      const kept = f.steps.map(step => {
+        const text = step.text.trim();
+        const i = old.findIndex(o => o.text === text);
+        return i >= 0 ? old.splice(i, 1)[0] : null;
+      });
+      const steps = f.steps.flatMap((step, i) => {
+        const text = step.text.trim();
+        if (!text) return [];
+        const section = step.section?.trim() || null;
+        const base = kept[i] ?? { id: generateId(), text };
+        const { section: _section, ...rest } = base;
+        return [section ? { ...rest, section } : rest];
+      });
+      db.dbUpdateRecipe({ ...current(), steps });
+      store().initialize();
+      f.steps.forEach((step, i) => {
+        const stepId = steps[i]?.id;
+        if (!stepId) return;
+        if (step.timerSeconds !== undefined) store().setStepTimerSeconds(id, stepId, step.timerSeconds);
+        if (step.note !== undefined) store().setStepNote(id, stepId, step.note);
+      });
+    }
+    if (f.components !== undefined) {
+      for (const c of current().components) store().removeComponent(id, c.id);
+      for (const c of f.components) {
+        if (!store().addComponent(id, c.recipeId, c.choiceGroup ?? null)) {
+          throw new Error(`Could not use recipe ${c.recipeId} inside this one.`);
+        }
+      }
+    }
+    if (f.prepTasks !== undefined) {
+      for (const p of current().prepTasks) store().removePrepTask(id, p.id);
+      for (const p of f.prepTasks) {
+        const made = store().addPrepTask(id, p.title);
+        if (!made) continue;
+        store().updatePrepTask(id, made.id, {
+          offsetDays: p.offsetDays ?? -1,
+          reminderOffsetMinutes: p.reminderOffsetMinutes ?? null,
+        });
+      }
+    }
+  }
 
   /**
    * What reopening cannot undo from here. Each is state on the phone or in a
@@ -1534,7 +2172,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return 'That completion credited a screen-time penalty, which only the phone can take back. Reopen it in the app.';
     }
     if (generatedSourceOf(task, 'mealCook') || generatedSourceOf(task, 'mealLogNudge') || (generatedSourceOf(task, 'mealSlot') && completesMealSlot(task))) {
-      return 'That completion marked a meal on the plan, which only the phone can undo. Reopen it in the app.';
+      return 'That completion marked a meal on the plan cooked. set_meal_cooked with cooked: false un-cooks the meal and reopens this task with it.';
     }
     return null;
   }
@@ -1667,6 +2305,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.email !== undefined) out.email = f.email?.trim() || null;
     if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
     if (f.location !== undefined) out.location = f.location?.trim() || null;
+    if (f.groupId !== undefined) {
+      if (f.groupId !== null && !db.dbGetAllPersonGroups().some(g => g.id === f.groupId)) throw new Error(`No group with id ${f.groupId}. save_person_group makes one.`);
+      out.groupId = f.groupId;
+    }
+    if (f.archived !== undefined) {
+      out.archived = f.archived;
+      out.archivedAt = f.archived ? new Date().toISOString() : null;
+    }
+    if (f.birthdayTaskOptOut !== undefined) out.birthdayTaskOptOut = f.birthdayTaskOptOut;
+    if (f.birthdayGiftTaskOptOut !== undefined) out.birthdayGiftTaskOptOut = f.birthdayGiftTaskOptOut;
     if (f.birthday !== undefined) {
       if (f.birthday === null) {
         Object.assign(out, { birthdayMonth: null, birthdayDay: null, birthYear: null });
@@ -2047,8 +2695,63 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (gate) patch.answerGate = { taskId: question.id, answers: gate };
       }
     }
+    if (patch.personIds !== undefined) {
+      const known = new Set(people().map(p => p.id));
+      const missing = patch.personIds.filter(id => !known.has(id));
+      if (missing.length > 0) errors.push(`personIds: no person with id ${missing.join(', ')}. list_people names them.`);
+    }
+    if (errors.length === 0) settleDateRules(input, patch, current, errors);
+    // A reminder is a wall-clock time by default (Task.reminderTimeAnchor), and
+    // the phone re-anchors it after a time zone change against the offset it
+    // was set under. Captured here as the editor captures it on save, or an
+    // agent's reminder stays on the old zone's clock after a flight.
+    if (patch.reminderTime !== undefined) patch.reminderUtcOffsetMinutes = patch.reminderTime ? new Date(patch.reminderTime).getTimezoneOffset() : null;
     if (errors.length > 0) throw new Error(errors.join(' '));
     return patch;
+  };
+
+  /**
+   * The date a deadline or reminder rule lands on, worked out the way the
+   * editor works it out on save: whenever the rule is written, or the date it
+   * counts from moves. Against the task as it will be, so a rule written with
+   * a new date in the same call counts from the new date.
+   */
+  const settleDateRules = (input: TaskFieldsInput, patch: Partial<Task>, current: Task | null, errors: string[]): void => {
+    const merged: Task = current
+      ? { ...current, ...patch }
+      : taskDraft.newTaskFromDraft({ title: input.title ?? 'task', ...patch } as Partial<TaskDraft>, new Date().toISOString(), 0, false);
+    const due = merged.dueDate ? new Date(merged.dueDate) : null;
+    const dateMoved = patch.dueDate !== undefined;
+
+    const deadlineRuled = merged.deadlineOffsetDays != null || merged.deadlineMonthDay != null;
+    if (deadlineRuled && (input.deadlineRule || dateMoved) && input.deadline === undefined) {
+      if (!due) errors.push('deadlineRule counts from the task\'s date, and it has none. Give dueDate too.');
+      else {
+        patch.deadline = (merged.deadlineOffsetDays != null
+          ? dates.getDeadlineFromOffset(due, merged.deadlineOffsetDays)
+          : dates.getDeadlineFromMonthDay(due, merged.deadlineMonthDay as number)).toISOString();
+      }
+    }
+
+    if (merged.reminderOffsetDays != null && (input.reminderRule || dateMoved)) {
+      const at = input.reminderRule?.at
+        ?? (merged.reminderTime ? (() => { const d = new Date(merged.reminderTime); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })() : null);
+      if (!due) errors.push('reminderRule.daysBeforeDate counts from the task\'s date, and it has none. Give dueDate too.');
+      else if (!at) errors.push('reminderRule.daysBeforeDate needs a time of day: give at, "HH:MM".');
+      else {
+        const when = dates.getReminderOffsetDate(due, merged.reminderOffsetDays);
+        const [h, m] = at.split(':').map(Number);
+        when.setHours(h, m, 0, 0);
+        patch.reminderTime = when.toISOString();
+      }
+    }
+
+    const surfacesFrom = patch.deferUntil !== undefined || patch.timeSegments !== undefined || dateMoved;
+    if (merged.reminderTracksVisibility && (input.reminderRule?.whenItSurfaces || surfacesFrom)) {
+      if (!merged.deferUntil && merged.timeSegments.length === 0) {
+        errors.push('reminderRule.whenItSurfaces rings when the task comes back into view, so it needs a deferUntil or a time of day (timeSegments) to come back from.');
+      } else patch.reminderTime = visibility.getVisibleAt(merged).toISOString();
+    }
   };
 
   // ==== rewards ====
@@ -2057,7 +2760,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // quietly filling a screen the person cannot open.
   const requireRewardsOn = (): void => {
     if (!useSettingsStore.getState().rewardsEnabled) {
-      throw new Error('Rewards are switched off in the app. The person turns them on from the Rewards screen.');
+      throw new Error('Rewards are switched off in the app. Turn them on with update_settings (rewardsEnabled: true) if the person wants them.');
     }
   };
   const requireReward = (id: string): Reward => {
@@ -2149,6 +2852,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       else store.recordEarn(id, rewards.coinsForCompletion(task, built.completed.streakCount), title, at);
     }
 
+    // A meal's task finishing is that meal being cooked, as on the phone
+    // (useTaskStore's cookedEntryId): a legacy cook task, or the step that ends
+    // a meal slot's chain. Never on a miss. `cookMeal` stamps the meal before
+    // it completes anything, so the tasks it finishes in turn find it cooked
+    // and stop here.
+    if (mode === 'completed') {
+      const entryId = generatedSourceOf(task, 'mealCook') ?? (completesMealSlot(task) ? mealSlotEntryIdOf(task) : null);
+      if (entryId) cookMeal(entryId);
+    }
+
     refresh();
     return {
       completed: built.completed,
@@ -2157,6 +2870,123 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       rolledOver: built.rolledOver,
       loggedDose: dose !== null,
     };
+  };
+
+  /** The planned meal a meal slot task is about: the first in its slot, as the phone reads it. */
+  const mealSlotEntryIdOf = (task: Task): string | null => {
+    const source = parseMealSlotSource(generatedSourceOf(task, 'mealSlot'));
+    if (!source) return null;
+    const day = db.dbGetMealPlanEntries(source.dayKey, source.dayKey);
+    return mealPlanUtils.entriesForSlot(day, source.dayKey, source.slot)[0]?.id ?? null;
+  };
+
+  /**
+   * A planned meal marked cooked, as the app's `setCookedPaired` marks one:
+   * the stamp, the recipe's own counters (`useRecipeStore.markCooked`), the
+   * packets the cooking opened (`cookedConsumption`, the same restraint the
+   * cook recap keeps: only lines the app already claims you have), and the
+   * meal's tasks completed, every remaining step of its slot's chain. What the
+   * phone raises after a cooking (the recap asking what was used up, the
+   * leftovers question, the offer to log it) is a sheet on the phone, and is
+   * not raised from here. Null when the meal is already cooked.
+   */
+  const cookMeal = (entryId: string): MealCooking | null => {
+    const entry = db.dbGetMealPlanEntry(entryId);
+    if (!entry || entry.cookedAt) return null;
+    const now = new Date();
+    const cooked: MealPlanEntry = { ...entry, cookedAt: now.toISOString() };
+    db.dbUpdateMealPlanEntry(cooked);
+
+    const recipes = db.dbGetAllRecipes();
+    if (entry.recipeId && recipes.some(r => r.id === entry.recipeId)) recipeStore().getState().markCooked(entry.recipeId);
+
+    const items = db.dbGetAllGroceryItems();
+    const rows = mealPlanGroceries.cookedConsumption(entry, recipes, items, db.dbGetAllItemSubLinks(), now);
+    const at = mealPlanGroceries.openedAtForCook(entry, dates.dayKeyOf(dates.getLogicalToday()), now);
+    const opened: string[] = [];
+    for (const id of mealPlanGroceries.cookOpenedIds(rows, items)) {
+      const item = items.find(i => i.id === id)!;
+      const row = pantryWrite.openedRow(item, true, at);
+      if (row) {
+        db.dbUpdateGroceryItem(row);
+        opened.push(item.name);
+      }
+    }
+
+    // The tasks, after the stamp: each completion lands back in cookMeal and
+    // finds the meal cooked. A chain is walked a step at a time, since each
+    // step completed spawns the next, bounded by its length so a step that
+    // declines to complete cannot spin.
+    const tasksCompleted: string[] = [];
+    const finish = (t: Task | undefined): boolean => {
+      if (!t || completion.completionRefusal(t)) return false;
+      tasksCompleted.push(visibility.displayTitleFor(t));
+      finishCompletion(t, undefined, 'completed');
+      return true;
+    };
+    finish(liveGeneratedTask(tasks(), 'mealCook', entry.id));
+    const sourceId = mealSlotSourceId(entry.date, entry.slot);
+    let next = liveGeneratedTask(tasks(), 'mealSlot', sourceId);
+    for (let i = 0; next && i <= (next.chainItems?.length || 1); i++) {
+      if (!finish(next)) break;
+      next = liveGeneratedTask(tasks(), 'mealSlot', sourceId);
+    }
+    refresh();
+    return { entry: cooked, opened, tasksCompleted };
+  };
+
+  /**
+   * The other direction, as the app's `setCooked(false)`: the stamp cleared
+   * and the task that finished the meal reopened. The recipe's cook count is
+   * not taken back (it only ever rises), and the packets the cooking opened
+   * stay open, both for the app's reasons (see `markConsumedOpened`). Null
+   * when the meal is not cooked.
+   */
+  const uncookMeal = (entryId: string): { entry: MealPlanEntry; tasksReopened: string[] } | null => {
+    const entry = db.dbGetMealPlanEntry(entryId);
+    if (!entry || !entry.cookedAt) return null;
+    const uncooked: MealPlanEntry = { ...entry, cookedAt: null };
+    db.dbUpdateMealPlanEntry(uncooked);
+    const sourceId = mealSlotSourceId(entry.date, entry.slot);
+    const done = tasks().filter(t =>
+      t.completed && !t.archived && !visibility.isMissed(t) &&
+      ((generatedSourceOf(t, 'mealSlot') === sourceId && completesMealSlot(t)) || generatedSourceOf(t, 'mealCook') === entry.id));
+    const tasksReopened: string[] = [];
+    for (const t of done) {
+      reopenCore(t);
+      tasksReopened.push(visibility.displayTitleFor(t));
+    }
+    refresh();
+    return { entry: uncooked, tasksReopened };
+  };
+
+  /** Reopening once the refusals are past; see `reopenTask`. */
+  const reopenCore = (task: Task): { task: Task; removed: Task[] } => {
+    const id = task.id;
+    const updated = reopenedTask(task);
+
+    // Coins and the dose first, as the store does: both are records this
+    // replica wrote when it completed the task, so they go back with it.
+    useRewardStore.getState().takeBackTask(id);
+    if (medication.medicationFor(task)) {
+      const log = useMedicationStore.getState();
+      if (visibility.isQuotaTask(task) && !visibility.isMissed(task)) log.removeLatestLogForTask(id);
+      else log.removeLogsForTask(id);
+    }
+
+    // A repeating series rolls over as a set, so every unfinished row that
+    // points back here goes, with its subtasks. One already completed is a
+    // real completion and stays.
+    const all = tasks();
+    const followUps = all.filter(t => t.previousOccurrenceId === id && !t.completed);
+    const removed = [...followUps, ...followUps.flatMap(f => all.filter(t => t.parentId === f.id))];
+    for (const f of followUps) {
+      db.dbDeleteSubtasks(f.id);
+      db.dbDeleteTask(f.id);
+    }
+    db.dbUpdateTask(updated);
+    refresh();
+    return { task: updated, removed };
   };
 
   /**
@@ -2399,6 +3229,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     templates: () => db.dbGetAllTemplates(),
 
+    settingValues(): Record<string, unknown> {
+      const state = useSettingsStore.getState();
+      return Object.fromEntries(Object.entries(SETTINGS_SPEC).map(([key, spec]) => [key, spec.read(state)]));
+    },
+
+    applySettings(changes: Record<string, unknown>): { key: string; before: unknown; after: unknown }[] {
+      const unknown = Object.keys(changes).filter(k => !(k in SETTINGS_SPEC));
+      if (unknown.length > 0) throw new Error(`Not a setting this can change: ${unknown.join(', ')}. get_settings lists them.`);
+      const before = replica.settingValues();
+      // Every check first, against the state with its setters stubbed out, so
+      // one bad value refuses the call before any setting is stored.
+      const state = useSettingsStore.getState();
+      const dry = new Proxy(state, { get: (target, prop) => (typeof prop === 'string' && prop.startsWith('set') ? () => {} : Reflect.get(target, prop)) });
+      for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(dry, value);
+      db.dbTransaction(() => {
+        for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(useSettingsStore.getState(), value);
+      });
+      refresh();
+      const after = replica.settingValues();
+      return Object.keys(changes).map(key => ({ key, before: before[key], after: after[key] }));
+    },
+
     settings(): ReplicaSettings {
       const s = useSettingsStore.getState();
       return {
@@ -2604,6 +3456,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.removeView(id);
       return view;
     },
+    updateSavedView(id: string, patch: { name?: string; icon?: string; clauses?: SavedViewClause[] }, position?: number): SavedView {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
+      const store = useSavedViewStore.getState();
+      store.initialize();
+      if (!store.views.some(v => v.id === id)) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
+      if (Object.keys(patch).length > 0) store.updateView(id, patch);
+      if (position !== undefined) {
+        const others = useSavedViewStore.getState().views.map(v => v.id).filter(v => v !== id);
+        const at = Math.max(0, Math.min(others.length, Math.floor(position)));
+        store.reorderViews([...others.slice(0, at), id, ...others.slice(at)]);
+      }
+      return useSavedViewStore.getState().views.find(v => v.id === id)!;
+    },
     setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const streaks = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks');
@@ -2644,31 +3510,33 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // Loaded here rather than on every refresh: only this write reads it, and
       // the library is the largest thing a refresh would otherwise re-read.
       useRecipeStore.getState().initialize();
-      const store = useRecipeStore.getState();
-
-      const book = input.cookbook?.trim() ? store.ensureCookbook(input.cookbook.trim()) : null;
-      const recipe = store.addRecipe(input.name, book?.id ?? null);
-      if (!recipe) {
-        throw new Error(recipeUtils.cleanRecipeName(input.name)
-          ? `There is already a recipe called "${input.name.trim()}"${book ? ` in ${book.title}` : ''}.`
-          : 'A recipe needs a name.');
+      const name = recipeUtils.cleanRecipeName(input.name);
+      if (!name) throw new Error('A recipe needs a name.');
+      const bookTitle = input.cookbook?.trim() || null;
+      const existingBook = bookTitle ? findCookbook(bookTitle) : null;
+      if (existingBook && recipeUtils.recipeInBook(useRecipeStore.getState().recipes, name, existingBook.id)) {
+        throw new Error(`There is already a recipe called "${name}" in ${existingBook.title}.`);
       }
-      const id = recipe.id;
-      const ingredients = (input.ingredients ?? [])
-        .map(line => {
-          const made = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
-          return made ? { ...made, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null);
-      if (ingredients.length > 0) useRecipeStore.getState().addStructuredIngredients(id, ingredients);
-      for (const step of input.steps ?? []) useRecipeStore.getState().addStep(id, step.text, step.section ?? null);
-      const after = useRecipeStore.getState();
-      if (input.servings != null) after.setServings(id, input.servings);
-      if (input.estimatedMinutes != null) after.setEstimatedMinutes(id, input.estimatedMinutes);
-      if (input.mealType) after.setMealType(id, input.mealType as Recipe['mealType']);
-      if (input.tags?.length) after.setTags(id, input.tags);
-      if (input.sourceUrl) after.setSourceUrl(id, input.sourceUrl);
-      if (input.notes?.trim()) after.setNotes(id, input.notes.trim());
+      // Everything else that can refuse is checked before the first write.
+      checkRecipeFields(null, { ...input, cookbook: undefined }, bookTitle !== null);
+
+      let id = '';
+      try {
+        db.dbTransaction(() => {
+          const store = useRecipeStore.getState();
+          const book = bookTitle ? existingBook ?? store.ensureCookbook(bookTitle) : null;
+          const recipe = store.addRecipe(input.name, book?.id ?? null);
+          if (!recipe) {
+            throw new Error(`There is already a recipe called "${name}"${book ? ` in ${book.title}` : ''}.`);
+          }
+          id = recipe.id;
+          writeRecipeFields(id, { ...input, name: undefined, cookbook: undefined });
+        });
+      } finally {
+        // Rehydrated, which also puts the store back if the transaction rolled back.
+        useRecipeStore.getState().initialize();
+      }
+      refresh();
       return useRecipeStore.getState().recipes.find(r => r.id === id)!;
     },
 
@@ -2682,56 +3550,184 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!recipe) throw new Error(`No recipe with id ${id}.`);
 
       // Everything that can refuse is checked before the first write.
+      const others = useRecipeStore.getState().recipes.filter(r => r.id !== id);
       let renamed: { name: string; nameKey: string } | null = null;
       if (patch.name !== undefined) {
         const clean = recipeUtils.cleanRecipeName(patch.name);
         if (!clean) throw new Error('A recipe needs a name.');
         const key = recipeUtils.recipeNameKey(clean);
-        const others = useRecipeStore.getState().recipes.filter(r => r.id !== id);
-        if (key !== recipe.nameKey && recipeUtils.recipeInBook(others, clean, recipe.cookbookId)) {
-          throw new Error(`There is already a recipe called "${clean}" in that cookbook.`);
-        }
-        renamed = { name: clean, nameKey: key };
+        if (key !== recipe.nameKey) renamed = { name: clean, nameKey: key };
       }
-      if (patch.servings != null && (!Number.isInteger(patch.servings) || patch.servings < 1)) throw new Error('servings must be a whole number of 1 or more, or null.');
+      // Where it will live once this edit lands: a move names the book (by
+      // title, found or made), null takes it out of one.
+      const bookTitle = patch.cookbook === undefined ? undefined : patch.cookbook?.trim() || null;
+      const targetBook = bookTitle === undefined
+        ? (recipe.cookbookId ? db.dbGetAllCookbooks().find(c => c.id === recipe.cookbookId) ?? null : null)
+        : bookTitle === null ? null : findCookbook(bookTitle);
+      const finalName = renamed?.name ?? recipe.name;
+      const movingOrRenaming = renamed !== null || (bookTitle !== undefined && (targetBook?.id ?? null) !== recipe.cookbookId);
+      // A book named by a title nobody has yet is made by this edit, so it is empty.
+      const newBook = typeof bookTitle === 'string' && !targetBook;
+      if (movingOrRenaming && !newBook && recipeUtils.recipeInBook(others, finalName, targetBook?.id ?? null)) {
+        throw new Error(`There is already a recipe called "${finalName}"${targetBook ? ` in ${targetBook.title}` : ''}.`);
+      }
+      const inBook = bookTitle === undefined ? recipe.cookbookId !== null : bookTitle !== null;
+      checkRecipeFields(recipe, patch, inBook);
 
       const store = () => useRecipeStore.getState();
-      db.dbTransaction(() => {
-        if (patch.servings !== undefined) store().setServings(id, patch.servings);
-        if (patch.estimatedMinutes !== undefined) store().setEstimatedMinutes(id, patch.estimatedMinutes);
-        if (patch.mealType !== undefined) store().setMealType(id, (patch.mealType ?? null) as Recipe['mealType']);
-        if (patch.tags !== undefined) store().setTags(id, patch.tags);
-        if (patch.sourceUrl !== undefined) store().setSourceUrl(id, patch.sourceUrl);
-        if (patch.notes !== undefined) store().setNotes(id, patch.notes);
-        if (patch.ingredients !== undefined) {
-          const made = patch.ingredients
-            .map(line => {
-              const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
-              return m ? { ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup) } : null;
-            })
-            .filter((x): x is NonNullable<typeof x> => x !== null);
-          store().bulkRemoveIngredients(id, recipe.ingredients.map(i => i.id));
-          if (made.length > 0) store().addStructuredIngredients(id, made);
-        }
-        if (patch.steps !== undefined) {
-          recipe.steps.forEach(s => store().removeStep(id, s.id));
-          for (const step of patch.steps) store().addStep(id, step.text, step.section ?? null);
-        }
-        if (renamed) {
-          // The store's rename also reaches the meal plan store, which Node
-          // cannot load, so the two writes it makes are made here: the recipe
-          // row, and the captured title on each meal planned from it.
-          const current = store().recipes.find(r => r.id === id)!;
-          db.dbUpdateRecipe({ ...current, ...renamed });
-          for (const e of db.dbGetMealPlanEntriesForRecipe(id)) {
-            if (!e.leftoverId && e.title !== renamed.name) db.dbUpdateMealPlanEntry({ ...e, title: renamed.name });
+      try {
+        db.dbTransaction(() => {
+          if (bookTitle !== undefined) {
+            const book = bookTitle === null ? null : targetBook ?? store().ensureCookbook(bookTitle);
+            if (bookTitle !== null && !book) throw new Error('A cookbook needs a title.');
+            if ((book?.id ?? null) !== recipe.cookbookId) store().linkCookbook(id, book?.id ?? null);
           }
-        }
-      });
-      // Rehydrated, which also puts the store back if the transaction rolled back.
-      useRecipeStore.getState().initialize();
+          writeRecipeFields(id, { ...patch, name: undefined, cookbook: undefined });
+          if (renamed) {
+            // The store's rename also reaches the meal plan store, which Node
+            // cannot load, so the two writes it makes are made here: the recipe
+            // row, and the captured title on each meal planned from it.
+            const current = store().recipes.find(r => r.id === id)!;
+            db.dbUpdateRecipe({ ...current, ...renamed });
+            for (const e of db.dbGetMealPlanEntriesForRecipe(id)) {
+              if (!e.leftoverId && e.title !== renamed.name) db.dbUpdateMealPlanEntry({ ...e, title: renamed.name });
+            }
+          }
+        });
+      } finally {
+        // Rehydrated, which also puts the store back if the transaction rolled back.
+        useRecipeStore.getState().initialize();
+      }
       refresh();
       return useRecipeStore.getState().recipes.find(r => r.id === id)!;
+    },
+
+    cookbookSummaries(): CookbookSummary[] {
+      const recipes = db.dbGetAllRecipes();
+      const entries = db.dbGetAllCookbookIndexEntries();
+      return db.dbGetAllCookbooks().map(c => ({
+        id: c.id,
+        title: c.title,
+        author: c.author,
+        recipes: recipes.filter(r => r.cookbookId === c.id).length,
+        indexEntries: entries.filter(e => e.cookbookId === c.id).length,
+      }));
+    },
+
+    cookbookIndex(cookbookId: string): CookbookIndexEntry[] {
+      if (!db.dbGetAllCookbooks().some(c => c.id === cookbookId)) throw new Error(`No cookbook with id ${cookbookId}.`);
+      return db.dbGetAllCookbookIndexEntries().filter(e => e.cookbookId === cookbookId);
+    },
+
+    renameCookbook(id: string, title: string, author?: string | null): Cookbook {
+      const store = recipeStore();
+      const book = store.getState().cookbooks.find(c => c.id === id);
+      if (!book) throw new Error(`No cookbook with id ${id}.`);
+      if (!title.trim()) throw new Error('A cookbook needs a title.');
+      const ok = store.getState().renameCookbook(id, title, author === undefined ? book.author : author);
+      if (!ok) throw new Error(`There is already a cookbook called "${title.trim()}"${author ? ` by ${author.trim()}` : ''}. merge_cookbooks joins two copies of one book.`);
+      refresh();
+      return store.getState().cookbooks.find(c => c.id === id)!;
+    },
+
+    mergeCookbooks(survivorId: string, loserId: string): { survivor: Cookbook; merged: Cookbook; recipesMoved: number } {
+      const store = recipeStore();
+      const survivor = store.getState().cookbooks.find(c => c.id === survivorId);
+      const loser = store.getState().cookbooks.find(c => c.id === loserId);
+      if (!survivor) throw new Error(`No cookbook with id ${survivorId}.`);
+      if (!loser) throw new Error(`No cookbook with id ${loserId}.`);
+      if (survivorId === loserId) throw new Error('Those are the same cookbook.');
+      const recipesMoved = store.getState().recipes.filter(r => r.cookbookId === loserId).length;
+      db.dbTransaction(() => {
+        store.getState().mergeCookbooks(survivorId, loserId);
+      });
+      store.getState().initialize();
+      refresh();
+      return { survivor: store.getState().cookbooks.find(c => c.id === survivorId)!, merged: loser, recipesMoved };
+    },
+
+    deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number; indexEntries: number } {
+      const store = recipeStore();
+      const cookbook = store.getState().cookbooks.find(c => c.id === id);
+      if (!cookbook) throw new Error(`No cookbook with id ${id}.`);
+      const recipesUnlinked = store.getState().recipes.filter(r => r.cookbookId === id).length;
+      const indexEntries = store.getState().indexEntries.filter(e => e.cookbookId === id).length;
+      // `dbDeleteCookbook` unlinks the recipes and takes the index with the book.
+      store.getState().deleteCookbook(id);
+      refresh();
+      return { cookbook, recipesUnlinked, indexEntries };
+    },
+
+    saveIndexEntry(input: IndexEntryInput): CookbookIndexEntry {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const cookbookIndex = require('../../src/utils/cookbookIndex') as typeof import('../../src/utils/cookbookIndex');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const store = recipeStore();
+      const fields = { title: input.title, page: input.page ?? null, ingredients: input.ingredients ?? [] };
+      if (!cookbookIndex.cleanIndexEntryFields(fields)) throw new Error('An index line needs a dish name.');
+      if (input.id) {
+        const entry = store.getState().indexEntries.find(e => e.id === input.id);
+        if (!entry) throw new Error(`No index line with id ${input.id}.`);
+        const merged = {
+          title: input.title,
+          page: input.page !== undefined ? input.page : entry.page,
+          ingredients: input.ingredients ?? entry.ingredients,
+        };
+        if (!store.getState().updateIndexEntry(input.id, merged)) {
+          throw new Error(`That cookbook's index already lists "${input.title.trim()}".`);
+        }
+        refresh();
+        return store.getState().indexEntries.find(e => e.id === input.id)!;
+      }
+      if (!input.cookbookId) throw new Error('Name the cookbook (cookbookId) a new index line belongs to.');
+      if (!store.getState().cookbooks.some(c => c.id === input.cookbookId)) throw new Error(`No cookbook with id ${input.cookbookId}.`);
+      const entry = store.getState().addIndexEntry(input.cookbookId, fields);
+      if (!entry) throw new Error(`That cookbook's index already lists "${input.title.trim()}".`);
+      refresh();
+      return entry;
+    },
+
+    deleteIndexEntry(id: string): CookbookIndexEntry {
+      const store = recipeStore();
+      const entry = store.getState().indexEntries.find(e => e.id === id);
+      if (!entry) throw new Error(`No index line with id ${id}.`);
+      store.getState().deleteIndexEntry(id);
+      refresh();
+      return entry;
+    },
+
+    recipeFromIndexEntry(id: string): { recipe: Recipe; created: boolean } {
+      const store = recipeStore();
+      const entry = store.getState().indexEntries.find(e => e.id === id);
+      if (!entry) throw new Error(`No index line with id ${id}.`);
+      const before = new Set(store.getState().recipes.map(r => r.id));
+      const recipe = store.getState().recipeFromIndexEntry(id);
+      if (!recipe) throw new Error(`Could not make a recipe from "${entry.title}".`);
+      refresh();
+      return { recipe, created: !before.has(recipe.id) };
+    },
+
+    reorderUpNext(ids: string[]): Recipe[] {
+      const store = recipeStore();
+      const shelf = store.getState().upNextRecipes();
+      const onShelf = new Set(shelf.map(r => r.id));
+      const unknown = ids.filter(i => !onShelf.has(i));
+      if (unknown.length > 0) throw new Error(`Not on the Up next shelf: ${unknown.join(', ')}. update_recipe with upNext: true adds one.`);
+      if (new Set(ids).size !== ids.length) throw new Error('A recipe is named twice.');
+      // Ones left out keep their order, after the ones named.
+      const rest = shelf.map(r => r.id).filter(i => !ids.includes(i));
+      store.getState().reorderUpNextRecipes([...ids, ...rest]);
+      refresh();
+      return store.getState().upNextRecipes();
+    },
+
+    logCookTime(id: string, minutes: number): Recipe {
+      const store = recipeStore();
+      if (!store.getState().recipes.some(r => r.id === id)) throw new Error(`No recipe with id ${id}.`);
+      if (!(minutes > 0)) throw new Error('minutes must be more than 0.');
+      store.getState().logManualCookTime(id, minutes);
+      refresh();
+      return store.getState().recipes.find(r => r.id === id)!;
     },
 
     deleteRecipe(id: string): { recipe: Recipe; plannedMeals: number } {
@@ -2887,6 +3883,115 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return updated;
     },
 
+    moveFoodEntry(id: string, at: Date): { from: FoodLogEntry; to: FoodLogEntry } {
+      const entry = foodEntryToCopy(id);
+      if (entry.healthSampleIds.length > 0) {
+        throw new Error('That entry is in Apple Health, and moving it means taking the old sample back out, which only the phone can do. Move it in the app.');
+      }
+      let moved: FoodLogEntry | null = null;
+      db.dbTransaction(() => {
+        db.dbDeleteFoodLogEntry(id);
+        moved = insertFoodCopy(entry, at, entry.slot, entry.mealPlanEntryId);
+      });
+      return { from: entry, to: moved! };
+    },
+
+    duplicateFoodEntry(id: string, at: Date): FoodLogEntry {
+      const entry = foodEntryToCopy(id);
+      return insertFoodCopy(entry, at, entry.slot, null);
+    },
+
+    savedMeals(): SavedMeal[] {
+      return db.dbGetSavedMeals();
+    },
+
+    saveMealFromEntries(name: string, entryIds: string[]): SavedMeal {
+      if (!name.trim()) throw new Error('A saved meal needs a name.');
+      if (entryIds.length === 0) throw new Error('Name the entries to save together.');
+      const entries = entryIds.map(id => {
+        const e = db.dbGetFoodLogEntry(id);
+        if (!e) throw new Error(`No food entry with id ${id}.`);
+        return e;
+      });
+      // The item shape `addFromEntries` writes, one per entry.
+      const meal: SavedMeal = {
+        id: generateId(),
+        name: name.trim(),
+        items: entries.map(e => ({
+          label: e.label,
+          recipeId: e.recipeId,
+          itemId: e.itemId,
+          productId: e.productId,
+          quantity: e.quantity,
+          grams: e.grams,
+          nutrition: e.nutrition,
+          ...(e.sourcePanel ? { sourcePanel: e.sourcePanel } : {}),
+        })),
+        createdAt: new Date().toISOString(),
+      };
+      db.dbInsertSavedMeal(meal);
+      return meal;
+    },
+
+    logSavedMeal(id: string, slot: MealSlot | null, at: Date): FoodLogEntry[] {
+      const meal = db.dbGetSavedMeals().find(m => m.id === id);
+      if (!meal) throw new Error(`No saved meal with id ${id}.`);
+      const written: FoodLogEntry[] = [];
+      db.dbTransaction(() => {
+        for (const item of meal.items) {
+          const entry = buildFood({
+            label: item.label,
+            quantity: item.quantity,
+            grams: item.grams,
+            nutrition: item.nutrition,
+            sourcePanel: item.sourcePanel ?? null,
+            slot,
+            recipeId: item.recipeId,
+            itemId: item.itemId,
+            productId: item.productId,
+            at,
+          });
+          if (entry) written.push(entry);
+        }
+      });
+      if (written.length === 0) throw new Error('Nothing in that saved meal could be logged.');
+      return written;
+    },
+
+    deleteSavedMeal(id: string): SavedMeal {
+      const meal = db.dbGetSavedMeals().find(m => m.id === id);
+      if (!meal) throw new Error(`No saved meal with id ${id}.`);
+      db.dbDeleteSavedMeal(id);
+      return meal;
+    },
+
+    nutritionTargets(): Partial<Record<NutrientKey, number>> {
+      return { ...useSettingsStore.getState().nutritionTargets };
+    },
+
+    setNutritionTargets(changes: Partial<Record<NutrientKey, number | null>>): Partial<Record<NutrientKey, number>> {
+      const { NUTRITION_TARGET_RANGES } = require('../../src/utils/nutritionTargets') as typeof import('../../src/utils/nutritionTargets'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const keys = Object.keys(changes) as NutrientKey[];
+      if (keys.length === 0) throw new Error('Name at least one target.');
+      for (const key of keys) {
+        const range = NUTRITION_TARGET_RANGES[key];
+        if (!range) throw new Error(`"${key}" is not a nutrient. Targets are keyed ${Object.keys(NUTRITION_TARGET_RANGES).join(', ')}.`);
+        const v = changes[key];
+        if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < range.min || v > range.max)) {
+          throw new Error(`A ${key} target is from ${range.min} to ${range.max}, or null to clear it.`);
+        }
+      }
+      const settings = useSettingsStore.getState();
+      const set: Partial<Record<NutrientKey, number>> = {};
+      for (const key of keys) {
+        const v = changes[key];
+        if (v === null) settings.setNutritionTarget(key, null);
+        else set[key] = v as number;
+      }
+      if (Object.keys(set).length > 0) useSettingsStore.getState().setNutritionTargets(set);
+      return { ...useSettingsStore.getState().nutritionTargets };
+    },
+
     deleteFoodEntry(id: string): FoodLogEntry {
       const entry = db.dbGetFoodLogEntry(id);
       if (!entry) throw new Error(`No food entry with id ${id}.`);
@@ -2948,13 +4053,46 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return request;
     },
 
+    requestCalendarChange(targetId: string, change: { delete: true } | { changes: CalendarRequestChanges }): CalendarRequest {
+      if (!db.dbGetSetting('calendarRequestDeviceId')) {
+        throw new Error('No device is set to add events to the calendar, so none can change one either.');
+      }
+      const target = db.dbGetCalendarRequest(targetId);
+      if (!target || (target.action ?? 'create') !== 'create') throw new Error(`No request for a new event with id ${targetId}. list_calendar_requests lists them.`);
+      if (target.status === 'pending') throw new Error('That event has not been added yet. Cancel the request with cancel_calendar_request and ask again with what it should be.');
+      if (target.status !== 'written') throw new Error(`That request was ${target.status}, so there is no event to change.`);
+      if (!target.eventExternalId) throw new Error('The phone could not read that event\'s calendar id when it added it, so it cannot find it again. Change it in the calendar app.');
+      const epoch = new Date(0).toISOString();
+      const request: CalendarRequest = {
+        id: generateId(),
+        title: 'changes' in change && change.changes.title ? change.changes.title : target.title,
+        // Already over, on purpose: an older build expires this rather than
+        // creating an event from it (see CalendarRequest.action).
+        startAt: epoch,
+        endAt: epoch,
+        allDay: target.allDay,
+        location: null,
+        notes: null,
+        status: 'pending',
+        failureReason: null,
+        eventExternalId: null,
+        resolvedAt: null,
+        createdAt: new Date().toISOString(),
+        action: 'delete' in change ? 'delete' : 'update',
+        targetRequestId: target.id,
+        changes: 'changes' in change ? change.changes : null,
+      };
+      db.dbInsertCalendarRequest(request);
+      return request;
+    },
+
     cancelCalendarRequest(id: string): CalendarRequest {
       const existing = db.dbGetCalendarRequest(id);
       if (!existing) throw new Error(`No calendar request with id ${id}.`);
       if (existing.status !== 'pending') {
         throw new Error(
           existing.status === 'written'
-            ? 'That event is already on the calendar. Only the person can remove it, in their calendar app.'
+            ? 'That event is already on the calendar. change_calendar_event with delete: true asks the phone to remove it.'
             : `That request is already ${existing.status}.`
         );
       }
@@ -2969,6 +4107,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!existing) throw new Error(`No mood check-in with id ${id}.`);
       useMoodStore.getState().removeLog(id);
       return existing;
+    },
+
+    setMedicationArchived(name: string, archived: boolean): string {
+      const { useMedicationStore: meds } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      meds.getState().initialize();
+      const key = medication.medicationKey(name);
+      const known = medication.medicationVocabulary(db.dbGetAllMedicationLogs(), []);
+      const spelled = known.find(n => medication.medicationKey(n) === key) ?? meds.getState().archived.find(n => medication.medicationKey(n) === key);
+      if (!spelled) throw new Error(`No medicine called "${name}" in the log. list_medication_logs shows them.`);
+      if (archived) meds.getState().archiveMedication(spelled);
+      else meds.getState().unarchiveMedication(spelled);
+      return spelled;
+    },
+
+    renameMoodTag(from: string, to: string): number {
+      const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = useMoodStore.getState();
+      store.initialize();
+      const target = to.trim();
+      if (!target) throw new Error('A tag needs a name.');
+      const match = (t: string) => t.trim().toLowerCase() === from.trim().toLowerCase();
+      const hit = store.logs.flatMap(l => l.contextTags).find(match);
+      if (!hit) throw new Error(`No check-in has the tag "${from}".`);
+      const count = store.logs.filter(l => l.contextTags.some(match)).length;
+      store.renameContextTag(hit, target);
+      return count;
     },
 
     updateMedicationLog(id: string, patch: DosePatch): MedicationLog {
@@ -3355,31 +4519,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!task.completed) throw new Error('That task is not completed, so there is nothing to reopen.');
       const refusal = reopenRefusal(task);
       if (refusal) throw new Error(refusal);
-
-      const updated = reopenedTask(task);
-
-      // Coins and the dose first, as the store does: both are records this
-      // replica wrote when it completed the task, so they go back with it.
-      useRewardStore.getState().takeBackTask(id);
-      if (medication.medicationFor(task)) {
-        const log = useMedicationStore.getState();
-        if (visibility.isQuotaTask(task) && !visibility.isMissed(task)) log.removeLatestLogForTask(id);
-        else log.removeLogsForTask(id);
-      }
-
-      // A repeating series rolls over as a set, so every unfinished row that
-      // points back here goes, with its subtasks. One already completed is a
-      // real completion and stays.
-      const all = tasks();
-      const followUps = all.filter(t => t.previousOccurrenceId === id && !t.completed);
-      const removed = [...followUps, ...followUps.flatMap(f => all.filter(t => t.parentId === f.id))];
-      for (const f of followUps) {
-        db.dbDeleteSubtasks(f.id);
-        db.dbDeleteTask(f.id);
-      }
-      db.dbUpdateTask(updated);
-      refresh();
-      return { task: updated, removed };
+      return reopenCore(task);
     },
 
     deferTask(id: string, date: Date | null): Task {
@@ -3453,6 +4593,197 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return updated;
     },
 
+    deleteTask(id: string): DeletedTask {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.generatedKind) {
+        throw new Error(`"${task.title}" was written by the app (${task.generatedKind}). Deleting one in the app also tells its source not to make it again, which this server cannot do, so the phone would just add it back. Delete it in the app, or archive it with archive_task.`);
+      }
+      const subtasks = tasks().filter(t => t.parentId === id);
+      // A checklist item carrying a stretch of its parent's countdown is part
+      // of that countdown's length (timerSegments.ts), so the parent is
+      // re-totalled, as the app's deleteSubtask does. The last stretch going
+      // leaves the total where it was rather than clearing it.
+      const parent = task.parentId ? tasks().find(t => t.id === task.parentId) ?? null : null;
+      const retotal = parent !== null && parent.timedMinutes != null && timerSegments.segmentMinutesOf(task) !== null;
+      db.dbTransaction(() => {
+        db.dbDeleteSubtasks(id);
+        db.dbDeleteTask(id);
+        if (retotal) {
+          const total = timerSegments.apportionedMinutes(tasks().filter(t => t.parentId === parent!.id && t.id !== id));
+          if (total !== null) db.dbUpdateTask({ ...parent!, timedMinutes: total });
+        }
+      });
+      refresh();
+      return { task, subtasks };
+    },
+
+    skipOccurrence(id: string): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.completed || task.archived) throw new Error('Only an open task has an occurrence to skip.');
+      if (task.recurrenceType === 'none') throw new Error(`"${task.title}" doesn't repeat, so there is no next occurrence to skip to. Use defer_task to move it, or archive_task to put it away.`);
+      const patch = taskSkip.skipPatch(task, useSettingsStore.getState().dayResetTime);
+      if (!patch) throw new Error(`"${task.title}" has no occurrence after this one: its repeat has ended. Complete it or archive it instead.`);
+      const updated = taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
+    },
+
+    reorderTasks(scope: ReorderScope, ids: string[]): { before: Task; after: Task }[] {
+      const all = tasks();
+      const wanted = [...new Set(ids)];
+      let members: Task[];
+      let updates: { id: string; sortOrder?: number; pinnedOrder?: number }[];
+      const fullOrder = (current: Task[]): string[] => {
+        const unknown = wanted.filter(id => !current.some(t => t.id === id));
+        if (unknown.length > 0) throw new Error(`Not in that list: ${unknown.join(', ')}.`);
+        return [...wanted, ...current.map(t => t.id).filter(id => !wanted.includes(id))];
+      };
+      if ('projectId' in scope) {
+        if (!projects().some(p => p.id === scope.projectId)) throw new Error(`No project with id ${scope.projectId}.`);
+        // Slots, not 1..N: a project's tasks share the one sortOrder space with
+        // every loose task on Today (see projectOrder.slotUpdates).
+        members = projectOrder.liveProjectSteps(scope.projectId, all);
+        const order = fullOrder(members);
+        updates = projectOrder.slotUpdates(members, order);
+      } else if ('parentId' in scope) {
+        const parent = all.find(t => t.id === scope.parentId);
+        if (!parent) throw new Error(`No task with id ${scope.parentId}.`);
+        members = all.filter(t => t.parentId === scope.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+        updates = fullOrder(members).map((id, i) => ({ id, sortOrder: i + 1 }));
+      } else if ('stackId' in scope) {
+        if (!db.dbGetAllTaskGroups().some(g => g.id === scope.stackId)) throw new Error(`No stack with id ${scope.stackId}.`);
+        // A stack's own 1..K space. Finished rows keep their slots
+        // (reorderSubset), as the app's drag over the members on screen does.
+        const children = all.filter(t => t.groupId === scope.stackId).sort((a, b) => a.sortOrder - b.sortOrder);
+        members = children;
+        const live = children.filter(t => !t.completed && !t.archived);
+        const liveOrder = fullOrder(live);
+        const { reorderSubset } = require('../../src/utils/reorder') as typeof import('../../src/utils/reorder'); // eslint-disable-line @typescript-eslint/no-require-imports
+        updates = reorderSubset(children.map(t => t.id), liveOrder).map((id, i) => ({ id, sortOrder: i + 1 }));
+      } else {
+        // The Pinned block's own number space (Task.pinnedOrder); 0 is "never
+        // ranked", which sorts by sortOrder, so the rest are ranked too.
+        members = all.filter(t => t.pinned && !t.completed && !t.archived && !t.parentId)
+          .sort((a, b) => (a.pinnedOrder || Infinity) - (b.pinnedOrder || Infinity) || a.sortOrder - b.sortOrder);
+        updates = fullOrder(members).map((id, i) => ({ id, pinnedOrder: i + 1 }));
+      }
+      const byId = new Map(members.map(t => [t.id, t]));
+      const changed = updates
+        .map(u => ({ before: byId.get(u.id)!, after: { ...byId.get(u.id)!, ...u } as Task }))
+        .filter(c => c.before.sortOrder !== c.after.sortOrder || c.before.pinnedOrder !== c.after.pinnedOrder);
+      db.dbTransaction(() => {
+        const sorts = changed.filter(c => c.before.sortOrder !== c.after.sortOrder).map(c => ({ id: c.after.id, sortOrder: c.after.sortOrder }));
+        const pins = changed.filter(c => c.before.pinnedOrder !== c.after.pinnedOrder).map(c => ({ id: c.after.id, pinnedOrder: c.after.pinnedOrder }));
+        if (sorts.length > 0) db.dbBatchUpdateSortOrders(sorts);
+        if (pins.length > 0) db.dbBatchUpdatePinnedOrders(pins);
+      });
+      refresh();
+      return changed.map(c => ({ before: c.before, after: tasks().find(t => t.id === c.after.id) ?? c.after }));
+    },
+
+    setTaskDates(id: string, wantedDates: Date[], monthly: boolean): { task: Task; added: Task[]; removed: Task[] } {
+      const anchor = tasks().find(t => t.id === id);
+      if (!anchor) throw new Error(`No task with id ${id}.`);
+      if (anchor.completed || anchor.archived) throw new Error('Only an open task can be given dates.');
+      if (anchor.parentId) throw new Error('A checklist item has no dates of its own.');
+      if (anchor.chainEnabled && anchor.chainItems.length > 1) throw new Error('A chain moves through its steps one at a time, so it cannot sit on several dates. Remove the chain first.');
+      const keys = new Set<string>();
+      const unique = wantedDates.filter(d => {
+        const key = taskDates.calendarDayKey(d);
+        if (keys.has(key)) return false;
+        keys.add(key);
+        return true;
+      });
+      const repeat = monthly && unique.length > 1 ? { monthDays: [...new Set(unique.map(d => d.getDate()))].sort((a, b) => a - b), repeatMonths: 1 } : undefined;
+      const merge = (task: Task, patch: Partial<Task>): Task => taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      const step = taskDates.datesAnchorStep(anchor, tasks(), unique, repeat, generateId);
+      const added: Task[] = [];
+      const removed: Task[] = [];
+      db.dbTransaction(() => {
+        if (step.kind === 'dissolve') {
+          for (const t of step.dropped) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+          for (const t of step.unfiled) db.dbUpdateTask(t);
+          removed.push(...step.dropped);
+        }
+        db.dbUpdateTask(merge(anchor, step.patch));
+        if (step.kind !== 'series') return;
+        const fresh = db.dbGetAllTasks();
+        const plan = taskDates.datesReconcile(
+          taskDates.seriesRows(fresh, step.seriesId), id, step, repeat,
+          fresh.reduce((m, t) => Math.max(m, t.sortOrder), 0),
+        );
+        for (const t of plan.removed) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+        for (const t of plan.added) db.dbInsertTask(t);
+        for (const t of plan.rewritten) db.dbUpdateTask(t);
+        removed.push(...plan.removed);
+        added.push(...plan.added);
+      });
+      refresh();
+      return { task: tasks().find(t => t.id === id)!, added, removed };
+    },
+
+    duplicateTask(id: string): Task {
+      const original = tasks().find(t => t.id === id);
+      if (!original) throw new Error(`No task with id ${id}.`);
+      if (original.parentId) throw new Error('A checklist item is copied with the task it belongs to. Duplicate that task, or add the item with create_task and parentId.');
+      const { copy, subtaskCopies } = taskDuplicate.duplicateRows(original, tasks().filter(t => t.parentId === id), {
+        now: new Date().toISOString(),
+        sortOrder: tasks().reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        newId: generateId,
+      });
+      db.dbTransaction(() => {
+        db.dbInsertTask(copy);
+        for (const sub of subtaskCopies) db.dbInsertTask(sub);
+      });
+      refresh();
+      return copy;
+    },
+
+    deleteTag(tag: string): { before: Task; after: Task }[] {
+      const name = tag.trim().toLowerCase();
+      const known = replica.tagList();
+      const match = known.find(t => t.toLowerCase() === name);
+      if (!match) throw new Error(`No tag "${tag}". The tags are: ${known.join(', ') || 'none yet'}.`);
+      const affected = tasks().filter(t => t.tags.includes(match));
+      db.dbTransaction(() => {
+        db.dbRemoveTagFromAllTasks(match);
+        db.dbRemoveFromTagRegistry(match);
+      });
+      refresh();
+      return affected.map(before => ({ before, after: tasks().find(t => t.id === before.id)! }));
+    },
+
+    setCompletedAt(id: string, at: Date): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!task.completed) throw new Error(`"${task.title}" isn't completed, so it has no completion date to change.`);
+      if (Number.isNaN(at.getTime())) throw new Error('That is not a date I can read.');
+      if (at.getTime() > Date.now()) throw new Error('A completion cannot be in the future.');
+      const updated = taskUpdate.mergeTaskUpdate(task, { completedAt: at.toISOString() }, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
+    },
+
+    tagList(): string[] {
+      return [...new Set([...db.dbGetTagRegistry(), ...tasks().flatMap(t => t.tags)])].sort((a, b) => a.localeCompare(b));
+    },
+
     addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome {
       if (!name.trim()) throw new Error('An item needs a name.');
 
@@ -3512,6 +4843,439 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { item: plan.item, isNew: plan.isNew, wasOnList };
     },
 
+    plannedIngredients(source: { recipeId: string; scale?: number } | { from: string; to: string }, listId: string | null): PlannedIngredientRow[] {
+      const mpg = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const lists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const items = db.dbGetAllGroceryItems();
+      const products = db.dbGetAllItemProducts();
+      const subs = db.dbGetAllItemSubLinks();
+      const recipes = db.dbGetAllRecipes();
+      const recipesById = new Map(recipes.map(r => [r.id, r]));
+      const swaps = standingSwaps.standingSwapMap(subs, items);
+      const onHand = grocerySuggest.onHandNameKeys(items, new Date(), products);
+      let planned: ReturnType<typeof mpg.collectPlannedIngredients>;
+      if ('recipeId' in source) {
+        const recipe = recipesById.get(source.recipeId);
+        if (!recipe) throw new Error(`No recipe with id ${source.recipeId}. list_recipes names them.`);
+        planned = mpg.plannedIngredientsForRecipe(recipe, recipesById, { onHand }, source.scale ?? 1, swaps);
+      } else {
+        const entries = db.dbGetMealPlanEntries(source.from, source.to);
+        planned = mpg.collectPlannedIngredients(entries, recipesById, { startKey: source.from, endKey: source.to }, swaps, onHand);
+      }
+      const classified = mpg.classifyPlanned(planned, items, new Date(), subs, lists.trolleyStateFor(db.dbGetAllGroceryListEntries(), listId), products);
+      return classified.map(r => ({
+        name: r.name, nameKey: r.nameKey, quantity: r.quantity, aisle: r.aisle, category: r.category, reason: r.reason ?? null,
+        sources: r.sources, optional: !!r.optional, choiceGroup: r.choiceGroup ?? null,
+        sourceRecipeId: r.sourceRecipeId ?? null, sourceRecipeTitle: r.sourceRecipeTitle ?? null,
+      }));
+    },
+
+    addPlannedToList(rows: PlannedRow[], listId: string | null): PlannedAddResult {
+      const mpg = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const lists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const plural = require('../../src/utils/groceryPlural') as typeof import('../../src/utils/groceryPlural'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const result: PlannedAddResult = { added: [], alreadyOnList: [], toppedUp: [], skippedInCart: [] };
+      // One opaque id per incoming either/or key, as addFromPlan mints them.
+      const groupIds = new Map<string, string>();
+      const groupIdFor = (key: string) => groupIds.get(key) ?? (groupIds.set(key, generateId()), groupIds.get(key)!);
+      db.dbTransaction(() => {
+        for (const row of rows) {
+          const items = db.dbGetAllGroceryItems();
+          const existing = plural.catalogItemForKey(parse.groceryNameKey(row.name), items) ?? undefined;
+          const entry = existing ? lists.entryFor(db.dbGetAllGroceryListEntries(), existing.id, listId) : undefined;
+          if (existing && entry?.checked) { result.skippedInCart.push(existing); continue; }
+          if (existing && entry) {
+            // mergeOnListRecipeNeed: a recipe amount tops up a recipe-owned
+            // quantity, and a row wanted by two recipes credits neither.
+            const patch = { ...existing };
+            let changed = false;
+            if (row.quantity && existing.quantityFromRecipe) {
+              const merged = mpg.mergeQuantities([existing.quantity ?? '', row.quantity]);
+              if (merged && merged !== existing.quantity) { patch.quantity = merged; changed = true; }
+            }
+            if (existing.sourceRecipeId && row.sourceRecipeId !== existing.sourceRecipeId) {
+              patch.sourceRecipeId = null;
+              patch.sourceRecipeTitle = null;
+              changed = true;
+            }
+            if (changed) db.dbUpdateGroceryItem(patch);
+            if (changed && patch.quantity !== existing.quantity) result.toppedUp.push(patch);
+            result.alreadyOnList.push(changed ? patch : existing);
+            continue;
+          }
+          const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+          const overrides = db.dbGetGroceryAisleOverrides();
+          const plan = groceryAdd.planGroceryAdd(
+            row.name,
+            { items, itemProducts: db.dbGetAllItemProducts(), listEntries: db.dbGetAllGroceryListEntries(), aisleOverrides: overrides, aisleOrder: order, listId, now: new Date().toISOString() },
+            row.choiceGroup ? { ...parse.parseGroceryInput(row.name), choiceGroup: groupIdFor(row.choiceGroup) } : undefined,
+            row.sourceRecipeId ? { recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle ?? '' } : undefined,
+          );
+          let item = plan.item;
+          // The recipe's aisle files the row unless the person already filed
+          // that name somewhere (setAisle, which also remembers the filing).
+          const key = parse.groceryNameKey(row.name);
+          if (row.aisle && !overrides[key]) {
+            item = { ...item, aisle: aisles.placeAisle(row.aisle, order) };
+            const remembered = aisles.rememberAisles(overrides, [{ nameKey: item.nameKey, aisle: item.aisle }]);
+            if (remembered) db.dbSetGroceryAisleOverrides(remembered);
+          }
+          // A cooking amount only fills an empty or recipe-owned quantity.
+          if (row.quantity && (!item.quantity || item.quantityFromRecipe)) item = { ...item, quantity: row.quantity, quantityFromRecipe: true };
+          if (plan.product) db.dbSetItemProduct(plan.product);
+          if (plan.isNew) db.dbInsertGroceryItem(item);
+          else db.dbUpdateGroceryItem(item);
+          if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
+          result.added.push(item);
+        }
+      });
+      refresh();
+      return result;
+    },
+
+    addChoiceToList(options: { name: string; quantity?: string | null }[], listId: string | null): GroceryItem[] {
+      const named = options.filter(o => o.name.trim());
+      if (named.length < 2) throw new Error('An either/or needs at least two options.');
+      const group = generateId();
+      const added: GroceryItem[] = [];
+      db.dbTransaction(() => {
+        for (const option of named) {
+          const items = db.dbGetAllGroceryItems();
+          const parsed = parse.parseGroceryInput(option.name);
+          const plan = groceryAdd.planGroceryAdd(option.name, {
+            items, itemProducts: db.dbGetAllItemProducts(), listEntries: db.dbGetAllGroceryListEntries(),
+            aisleOverrides: db.dbGetGroceryAisleOverrides(),
+            aisleOrder: aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles()),
+            listId, now: new Date().toISOString(),
+          }, { name: parsed.name, quantity: option.quantity ?? parsed.quantity, choiceGroup: group });
+          if (plan.product) db.dbSetItemProduct(plan.product);
+          if (plan.isNew) db.dbInsertGroceryItem(plan.item);
+          else db.dbUpdateGroceryItem(plan.item);
+          if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
+          added.push(plan.item);
+        }
+      });
+      refresh();
+      return added;
+    },
+
+    settleChoice(itemId: string, listId: string | null, keepAll: boolean): { kept: GroceryItem[]; removed: GroceryItem[] } {
+      const items = db.dbGetAllGroceryItems();
+      const item = items.find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      const entries = db.dbGetAllGroceryListEntries().filter(e => e.listId === listId);
+      const entry = entries.find(e => e.itemId === itemId);
+      if (!entry?.choiceGroup) throw new Error(`"${item.name}" is not one of an either/or on that list.`);
+      const group = entries.filter(e => e.choiceGroup === entry.choiceGroup);
+      const byId = new Map(items.map(i => [i.id, i]));
+      db.dbTransaction(() => {
+        if (keepAll) {
+          for (const e of group) db.dbSetGroceryListEntry({ ...e, choiceGroup: null });
+          return;
+        }
+        // resolveChoice: the others are parked (a recipe's amount was for this
+        // shop only) and taken off this list.
+        for (const e of group) {
+          if (e.itemId === itemId) { db.dbSetGroceryListEntry({ ...e, choiceGroup: null }); continue; }
+          const loser = byId.get(e.itemId);
+          if (loser) db.dbUpdateGroceryItem({ ...loser, quantity: loser.quantityFromRecipe ? null : loser.quantity, quantityFromRecipe: false });
+          db.dbDeleteGroceryListEntry(e.itemId, listId);
+        }
+      });
+      refresh();
+      const fresh = new Map(db.dbGetAllGroceryItems().map(i => [i.id, i]));
+      const others = group.filter(e => e.itemId !== itemId).map(e => fresh.get(e.itemId)!).filter(Boolean);
+      return keepAll ? { kept: group.map(e => fresh.get(e.itemId)!).filter(Boolean), removed: [] } : { kept: [fresh.get(itemId)!], removed: others };
+    },
+
+    swapForSubstitute(itemId: string, subItemId: string, listId: string | null): { removed: GroceryItem; added: GroceryItem } {
+      const items = db.dbGetAllGroceryItems();
+      const item = items.find(i => i.id === itemId);
+      const sub = items.find(i => i.id === subItemId);
+      if (!item || !sub) throw new Error('Both the item and its substitute have to be in the catalog.');
+      const entries = db.dbGetAllGroceryListEntries();
+      const entry = entries.find(e => e.itemId === itemId && e.listId === listId);
+      if (!entry) throw new Error(`"${item.name}" is not on that list, so there is nothing to swap.`);
+      const link = db.dbGetAllItemSubLinks().find(l => l.itemId === itemId && l.subItemId === subItemId);
+      if (!link) throw new Error(`"${sub.name}" isn't a substitute for "${item.name}". Link it first with update_grocery_item's addSubstitutes.`);
+      const itemSubs = require('../../src/utils/itemSubs') as typeof import('../../src/utils/itemSubs'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const converted = item.quantity && link.ratioFrom && link.ratioTo ? itemSubs.substituteQuantity(item.quantity, link.ratioFrom, link.ratioTo) : null;
+      const q = converted?.converted ? converted.text : null;
+      const now = new Date().toISOString();
+      db.dbTransaction(() => {
+        if (!entries.some(e => e.itemId === subItemId && e.listId === listId)) {
+          db.dbUpdateGroceryItem({ ...sub, quantity: q ?? sub.quantity, quantityFromRecipe: q ? item.quantityFromRecipe : sub.quantityFromRecipe, lastAddedAt: now });
+          db.dbSetGroceryListEntry({ ...entry, itemId: subItemId, checked: false, addedAt: now });
+        }
+        db.dbUpdateGroceryItem({ ...item, quantity: item.quantityFromRecipe ? null : item.quantity, quantityFromRecipe: false });
+        db.dbDeleteGroceryListEntry(itemId, listId);
+      });
+      refresh();
+      const fresh = db.dbGetAllGroceryItems();
+      return { removed: fresh.find(i => i.id === itemId)!, added: fresh.find(i => i.id === subItemId)! };
+    },
+
+    clearGroceryList(listId: string | null): { cleared: number; deleted: string[] } {
+      const facts = require('../../src/utils/groceryFacts') as typeof import('../../src/utils/groceryFacts'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const deleted: string[] = [];
+      let cleared = 0;
+      db.dbTransaction(() => {
+        const ids = db.dbClearGroceryList(listId);
+        cleared = ids.length;
+        if (ids.length === 0) return;
+        const items = db.dbGetAllGroceryItems();
+        const stillListed = new Set(db.dbGetAllGroceryListEntries().map(e => e.itemId));
+        const linked = facts.linkCounts({ products: db.dbGetAllItemProducts(), subs: db.dbGetAllItemSubLinks(), shops: db.dbGetAllItemShopLinks(), aliases: db.dbGetAllStoreAliases() });
+        for (const id of ids) {
+          const item = items.find(i => i.id === id);
+          if (!item || stillListed.has(id)) continue;
+          // A row nobody wrote anything about goes; one with history stays in
+          // the catalog with its recipe amount (for this shop only) dropped.
+          if (!facts.hasUserFacts(item, linked)) { db.dbDeleteGroceryItem(id); deleted.push(item.name); continue; }
+          if (item.quantityFromRecipe || item.sourceRecipeId) {
+            db.dbUpdateGroceryItem({ ...item, quantity: item.quantityFromRecipe ? null : item.quantity, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null });
+          }
+        }
+        if (db.dbGetTripShopId()) db.dbSetTrip(null, null, null);
+      });
+      refresh();
+      return { cleared, deleted };
+    },
+
+    setTrip(change: { shopId: string; budgetMinor?: number | null } | { budgetMinor: number | null } | { end: true }) {
+      const shops = db.dbGetAllGroceryShops();
+      const current = { shopId: db.dbGetTripShopId(), startedAt: db.dbGetTripStartedAt(), budget: db.dbGetTripBudgetMinor() };
+      const checkBudget = (b: number | null | undefined) => {
+        if (b != null && (!Number.isInteger(b) || b <= 0)) throw new Error('A budget is a positive whole number of cents (minor units).');
+      };
+      if ('end' in change) db.dbSetTrip(null, null, null);
+      else if ('shopId' in change) {
+        if (!shops.some(sh => sh.id === change.shopId)) throw new Error(`No store with id ${change.shopId}. grocery_setup lists them.`);
+        checkBudget(change.budgetMinor);
+        const activeTrip = require('../../src/utils/activeTrip') as typeof import('../../src/utils/activeTrip'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const live = activeTrip.resolveActiveTrip(current.shopId, current.startedAt, shops, new Date());
+        const budget = change.budgetMinor !== undefined ? change.budgetMinor : (live ? current.budget : null);
+        db.dbSetTrip(change.shopId, new Date().toISOString(), budget);
+      } else {
+        if (!current.shopId || !current.startedAt) throw new Error('No trip is going: start one with a store first.');
+        checkBudget(change.budgetMinor);
+        db.dbSetTrip(current.shopId, current.startedAt, change.budgetMinor);
+      }
+      const shopId = db.dbGetTripShopId();
+      return { shop: shops.find(sh => sh.id === shopId) ?? null, startedAt: db.dbGetTripStartedAt(), budgetMinor: db.dbGetTripBudgetMinor() };
+    },
+
+    setItemUnavailable(itemId: string, shopId: string, unavailable: boolean, brandOnly: boolean): void {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      if (!db.dbGetAllGroceryShops().some(sh => sh.id === shopId)) throw new Error(`No store with id ${shopId}. grocery_setup lists them.`);
+      const link = db.dbGetAllItemShopLinks().find(l => l.itemId === itemId && l.shopId === shopId);
+      const now = new Date().toISOString();
+      const base = {
+        itemId, shopId, purchaseCount: link?.purchaseCount ?? 0, lastPurchasedAt: link?.lastPurchasedAt ?? null,
+        unavailableAt: link?.unavailableAt ?? null, unavailableProductIds: { ...(link?.unavailableProductIds ?? {}) },
+        productId: link?.productId ?? null, lastPriceMinor: link?.lastPriceMinor ?? null, lastPricedAt: link?.lastPricedAt ?? null,
+        lastPriceQuantity: link?.lastPriceQuantity ?? null, priceHistory: link?.priceHistory ?? [],
+      };
+      if (!brandOnly) {
+        // markItemsUnavailable stamps; a purchase is what clears it in the app,
+        // and taking a claim back here clears the stamp the same way.
+        if (unavailable && link?.unavailableAt) return;
+        if (!unavailable && !link?.unavailableAt) return;
+        db.dbSetItemShopLink({ ...base, unavailableAt: unavailable ? now : null });
+      } else {
+        const productId = item.preferredProductId;
+        if (!productId || !db.dbGetAllItemProducts().some(p => p.id === productId && p.itemId === itemId)) {
+          throw new Error(`"${item.name}" has no preferred brand to mark. Set one with update_grocery_item's preferredBoxId.`);
+        }
+        if (unavailable) base.unavailableProductIds[productId] = now;
+        else delete base.unavailableProductIds[productId];
+        if (!unavailable && Object.keys(base.unavailableProductIds).length === 0 && base.purchaseCount === 0 && !base.unavailableAt) {
+          if (link) db.dbDeleteItemShopLink(itemId, shopId);
+        } else db.dbSetItemShopLink(base);
+      }
+      refresh();
+    },
+
+    setNutritionPanel(itemId: string, boxId: string | null, panel: FoodNutrition | null): void {
+      const item = db.dbGetAllGroceryItems().find(i => i.id === itemId);
+      if (!item) throw new Error(`No grocery item with id ${itemId}.`);
+      if (boxId) {
+        const box = db.dbGetAllItemProducts().find(p => p.id === boxId && p.itemId === itemId);
+        if (!box) throw new Error(`"${item.name}" has no box with id ${boxId}.`);
+        db.dbSetItemProduct({ ...box, nutrition: panel });
+      } else {
+        db.dbUpdateGroceryItem({ ...item, nutrition: panel });
+      }
+      refresh();
+    },
+
+    saveAisle(name: string, change: { newName?: string; delete?: boolean; nonFood?: boolean }): { aisle: string | null; itemsMoved: number } {
+      const items = db.dbGetAllGroceryItems();
+      const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+      const found = order.find(a => a.toLowerCase() === name.trim().toLowerCase()) ?? null;
+      const commit = (next: string[]) => {
+        const used = db.dbGetAllGroceryItems().map(i => i.aisle);
+        const hidden = aisles.hiddenDefaultAisles(next);
+        db.dbSetGroceryAisleOrder(aisles.normalizeAisleOrder(next, used, hidden));
+        db.dbSetGroceryHiddenAisles(hidden);
+      };
+      const settings = useSettingsStore.getState();
+      let itemsMoved = 0;
+      let result: string | null = found;
+      db.dbTransaction(() => {
+        if (change.delete) {
+          if (!found) throw new Error(`No aisle called "${name}". grocery_setup lists them.`);
+          if (found === aisles.OTHER_AISLE) throw new Error(`"${aisles.OTHER_AISLE}" is where everything unfiled goes, so it cannot be deleted.`);
+          for (const item of items.filter(i => i.aisle === found)) { db.dbUpdateGroceryItem({ ...item, aisle: aisles.OTHER_AISLE }); itemsMoved += 1; }
+          const forgotten = aisles.forgetRememberedAisle(db.dbGetGroceryAisleOverrides(), found);
+          if (forgotten) db.dbSetGroceryAisleOverrides(forgotten);
+          db.dbSetGroceryNonFoodAisles(db.dbGetGroceryNonFoodAisles().filter(a => a !== found));
+          for (const shop of db.dbGetAllGroceryShops()) {
+            if (shop.aisles?.includes(found)) { const next = shop.aisles.filter(a => a !== found); db.dbSetShopAisles(shop.id, next.length ? next : null); }
+            if (shop.aisleOrder?.includes(found)) { const next = shop.aisleOrder.filter(a => a !== found); db.dbSetShopAisleOrder(shop.id, next.length ? next : null); }
+          }
+          commit(order.filter(a => a !== found && a !== aisles.OTHER_AISLE));
+          if (settings.collapsedGroceryGroups.includes(`aisle:${found}`)) settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.filter(g => g !== `aisle:${found}`));
+          result = null;
+          return;
+        }
+        if (!found) {
+          if (change.newName !== undefined) throw new Error(`No aisle called "${name}". grocery_setup lists them.`);
+          if (!name.trim()) throw new Error('An aisle needs a name.');
+          result = name.trim();
+          commit([...order.filter(a => a !== aisles.OTHER_AISLE), result]);
+        }
+        if (change.newName !== undefined && found) {
+          const to = change.newName.trim();
+          if (!to) throw new Error('An aisle needs a name.');
+          if (found === aisles.OTHER_AISLE || to === aisles.OTHER_AISLE) throw new Error(`"${aisles.OTHER_AISLE}" cannot be renamed, or taken as a name.`);
+          if (order.some(a => a !== found && a.toLowerCase() === to.toLowerCase())) throw new Error(`There is already an aisle called "${to}".`);
+          if (to !== found) {
+            for (const item of items.filter(i => i.aisle === found)) { db.dbUpdateGroceryItem({ ...item, aisle: to }); itemsMoved += 1; }
+            const remapped = aisles.remapRememberedAisle(db.dbGetGroceryAisleOverrides(), found, to);
+            if (remapped) db.dbSetGroceryAisleOverrides(remapped);
+            db.dbSetGroceryNonFoodAisles(db.dbGetGroceryNonFoodAisles().map(a => (a === found ? to : a)));
+            for (const shop of db.dbGetAllGroceryShops()) {
+              if (shop.aisles?.includes(found)) db.dbSetShopAisles(shop.id, shop.aisles.map(a => (a === found ? to : a)));
+              if (shop.aisleOrder?.includes(found)) db.dbSetShopAisleOrder(shop.id, shop.aisleOrder.map(a => (a === found ? to : a)));
+            }
+            commit(order.filter(a => a !== aisles.OTHER_AISLE).map(a => (a === found ? to : a)));
+            if (settings.collapsedGroceryGroups.includes(`aisle:${found}`)) settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.map(g => (g === `aisle:${found}` ? `aisle:${to}` : g)));
+          }
+          result = to;
+        }
+        if (change.nonFood !== undefined && result) {
+          if (result === aisles.OTHER_AISLE) throw new Error(`"${aisles.OTHER_AISLE}" cannot be marked non-food.`);
+          const current = db.dbGetGroceryNonFoodAisles();
+          const next = change.nonFood ? [...new Set([...current, result])] : current.filter(a => a !== result);
+          db.dbSetGroceryNonFoodAisles(next);
+        }
+      });
+      refresh();
+      return { aisle: result, itemsMoved };
+    },
+
+    reorderAisles(names: string[]): string[] {
+      const items = db.dbGetAllGroceryItems();
+      const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+      const named = names.map(n => {
+        const hit = order.find(a => a.toLowerCase() === n.trim().toLowerCase());
+        if (!hit) throw new Error(`No aisle called "${n}". grocery_setup lists them.`);
+        return hit;
+      });
+      const next = [...new Set(named), ...order.filter(a => !named.includes(a))];
+      const hidden = aisles.hiddenDefaultAisles(next);
+      db.dbSetGroceryAisleOrder(aisles.normalizeAisleOrder(next, items.map(i => i.aisle), hidden));
+      db.dbSetGroceryHiddenAisles(hidden);
+      refresh();
+      return aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+    },
+
+    deleteShop(id: string): Shop {
+      const shop = db.dbGetAllGroceryShops().find(sh => sh.id === id);
+      if (!shop) throw new Error(`No store with id ${id}. grocery_setup lists them.`);
+      db.dbTransaction(() => {
+        db.dbDeleteGroceryShop(id);
+        if (db.dbGetAllGroceryShops().length === 0) db.dbSetLastShopId(null);
+        if (db.dbGetTripShopId() === id) db.dbSetTrip(null, null, null);
+      });
+      refresh();
+      return shop;
+    },
+
+    updateShopSettings(id: string, patch: { excludeFromSuggestions?: boolean; aisles?: string[] | null; aisleOrder?: string[] | null }): Shop {
+      const shop = db.dbGetAllGroceryShops().find(sh => sh.id === id);
+      if (!shop) throw new Error(`No store with id ${id}. grocery_setup lists them.`);
+      const items = db.dbGetAllGroceryItems();
+      const order = aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
+      const resolve = (names: string[]) => names.map(n => {
+        const hit = order.find(a => a.toLowerCase() === n.trim().toLowerCase());
+        if (!hit) throw new Error(`No aisle called "${n}". grocery_setup lists them.`);
+        return hit;
+      });
+      const shopsUtil = require('../../src/utils/groceryShops') as typeof import('../../src/utils/groceryShops'); // eslint-disable-line @typescript-eslint/no-require-imports
+      db.dbTransaction(() => {
+        if (patch.excludeFromSuggestions !== undefined) db.dbSetShopExcludeFromSuggestions(id, patch.excludeFromSuggestions);
+        if (patch.aisles !== undefined) {
+          const list = patch.aisles === null ? null : [...new Set(resolve(patch.aisles))];
+          db.dbSetShopAisles(id, list && list.length > 0 ? list : null);
+        }
+        if (patch.aisleOrder !== undefined) db.dbSetShopAisleOrder(id, patch.aisleOrder === null ? null : shopsUtil.shopAisleOrderToSave(resolve(patch.aisleOrder), order));
+      });
+      refresh();
+      return db.dbGetAllGroceryShops().find(sh => sh.id === id)!;
+    },
+
+    reorderShops(ids: string[]): void {
+      const shops = [...db.dbGetAllGroceryShops()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const unknown = ids.filter(sid => !shops.some(sh => sh.id === sid));
+      if (unknown.length > 0) throw new Error(`No store with id ${unknown.join(', ')}.`);
+      const order = [...new Set(ids), ...shops.map(sh => sh.id).filter(sid => !ids.includes(sid))];
+      db.dbTransaction(() => order.forEach((sid, i) => db.dbUpdateGroceryShop({ ...shops.find(sh => sh.id === sid)!, sortOrder: i + 1 })));
+      refresh();
+    },
+
+    reorderGroceryLists(ids: string[]): void {
+      const lists = [...db.dbGetAllGroceryLists()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const unknown = ids.filter(lid => !lists.some(l => l.id === lid));
+      if (unknown.length > 0) throw new Error(`No separate list with id ${unknown.join(', ')}.`);
+      const order = [...new Set(ids), ...lists.map(l => l.id).filter(lid => !ids.includes(lid))];
+      db.dbTransaction(() => order.forEach((lid, i) => db.dbUpdateGroceryList({ ...lists.find(l => l.id === lid)!, sortOrder: i + 1 })));
+      refresh();
+    },
+
+    mergeGroceryItems(fromId: string, intoId: string): { merged: GroceryItem; from: GroceryItem } {
+      const merge = require('../../src/utils/groceryMerge') as typeof import('../../src/utils/groceryMerge'); // eslint-disable-line @typescript-eslint/no-require-imports
+      if (fromId === intoId) throw new Error('An item cannot be merged into itself.');
+      const plan = merge.planMergeItems(fromId, intoId, {
+        items: db.dbGetAllGroceryItems(), itemShops: db.dbGetAllItemShopLinks(), itemSubs: db.dbGetAllItemSubLinks(),
+        itemProducts: db.dbGetAllItemProducts(), listEntries: db.dbGetAllGroceryListEntries(),
+      });
+      if (!plan) throw new Error('Both items have to be in the catalog. get_grocery_item names them.');
+      db.dbTransaction(() => {
+        db.dbUpdateGroceryItem(plan.merged);
+        for (const other of plan.repointedVarieties.values()) db.dbUpdateGroceryItem(other);
+        for (const product of plan.mergedProducts) db.dbSetItemProduct(product);
+        for (const product of plan.mergedProducts) if (product.gtin) db.dbSetProductGtin(product.id, product.gtin);
+        for (const link of plan.mergedShopLinks) db.dbSetItemShopLink(link);
+        for (const link of plan.finalRetargetedSubs) db.dbSetItemSubLink(link);
+        db.dbRepointStoreAliases(fromId, intoId);
+        db.dbDeleteGroceryItem(fromId);
+        const remembered = aisles.renameRememberedAisle(db.dbGetGroceryAisleOverrides(), plan.fromItem.nameKey, plan.intoItem.nameKey);
+        if (remembered) db.dbSetGroceryAisleOverrides(remembered);
+        // Recipe lines find the catalog by name, so they follow the survivor's.
+        for (const recipe of recipeUtils.remapIngredientKeyIn(db.dbGetAllRecipes(), plan.fromItem.nameKey, plan.intoItem.nameKey)) db.dbUpdateRecipe(recipe);
+        for (const entry of plan.movedEntries) db.dbSetGroceryListEntry(entry);
+        for (const gone of plan.removedEntries) db.dbDeleteGroceryListEntry(gone.itemId, gone.listId);
+        // A supply task that restocked the loser restocks the survivor.
+        for (const t of db.dbGetAllTasks().filter(x => x.supplyGroceryItemId === fromId)) db.dbUpdateTask({ ...t, supplyGroceryItemId: intoId });
+        db.dbRepointItemReferences(fromId, intoId);
+      });
+      refresh();
+      return { merged: db.dbGetAllGroceryItems().find(i => i.id === intoId)!, from: plan.fromItem };
+    },
+
     setGroceryChecked(id: string, checked: boolean, listId: string | null = null): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
@@ -3557,6 +5321,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     itemSubLinks: () => db.dbGetAllItemSubLinks(),
     storeAliases: () => db.dbGetAllStoreAliases(),
     aisleOverrides: () => db.dbGetGroceryAisleOverrides(),
+    nonFoodAisles: () => db.dbGetGroceryNonFoodAisles(),
+    activeTrip: () => {
+      const activeTripUtil = require('../../src/utils/activeTrip') as typeof import('../../src/utils/activeTrip'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const startedAt = db.dbGetTripStartedAt();
+      const shop = activeTripUtil.resolveActiveTrip(db.dbGetTripShopId(), startedAt, db.dbGetAllGroceryShops(), new Date());
+      return shop && startedAt ? { shop, startedAt, budgetMinor: db.dbGetTripBudgetMinor() } : null;
+    },
     aisleNames: () => {
       const items = db.dbGetAllGroceryItems();
       return aisles.normalizeAisleOrder(db.dbGetGroceryAisleOrder(), items.map(i => i.aisle), db.dbGetGroceryHiddenAisles());
@@ -4055,13 +5826,53 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           db.dbUpdateLeftover(next);
           row = next;
         };
+        if (change.title !== undefined) {
+          const title = (require('../../src/utils/leftovers') as typeof import('../../src/utils/leftovers')).cleanLeftoverTitle(change.title); // eslint-disable-line @typescript-eslint/no-require-imports
+          if (!title) throw new Error('A leftover needs a name.');
+          save({ ...row, title });
+        }
+        if (change.storedAt !== undefined) {
+          if (Number.isNaN(change.storedAt.getTime())) throw new Error('storedAt is not a date.');
+          save(pantryWrite.leftoverStoredAtRow(row, change.storedAt.toISOString()));
+        }
+        if (change.weightG !== undefined) {
+          if (change.weightG !== null && !(change.weightG > 0)) throw new Error('weightG is a weight in grams above zero, or null for unweighed.');
+          save({ ...row, weightG: mealLogUtils().clampCookedWeight(change.weightG) });
+        }
         if (change.frozen !== undefined) save(pantryWrite.leftoverFrozenRow(row, change.frozen, nowIso));
         if (change.finished === null) save(pantryWrite.leftoverReopenedRow(row));
         else if (change.finished) save(pantryWrite.leftoverFinishedRow(row, change.finished, nowIso));
         if (change.keepDays !== undefined) save(pantryWrite.leftoverKeepDaysRow(row, Math.max(1, Math.round(change.keepDays))));
+        // A finished or frozen container has no use-up task, and the phone
+        // drops it in the same step (`dropLeftoverTask`); its catch-up pass
+        // skips a container that is not live, so nothing else would.
+        const after = db.dbGetAllLeftovers().find(l => l.id === id)!;
+        if (after.finishedAt || after.frozenAt) dropGeneratedRow('leftoverUseUp', id);
       });
       refresh();
       return db.dbGetAllLeftovers().find(l => l.id === id)!;
+    },
+
+    splitLeftover(id: string): { original: Leftover; split: Leftover } {
+      const original = db.dbGetAllLeftovers().find(l => l.id === id);
+      if (!original) throw new Error(`No leftover with id ${id}.`);
+      const draft = pantryWrite.leftoverSplitDraft(original);
+      if (!draft) throw new Error(`The ${original.title} is finished, so there is nothing to split.`);
+      const split = pantryWrite.newLeftoverRow(draft, generateId(), new Date().toISOString())!;
+      db.dbInsertLeftover(split);
+      refresh();
+      return { original, split };
+    },
+
+    deleteLeftover(id: string): Leftover {
+      const leftover = db.dbGetAllLeftovers().find(l => l.id === id);
+      if (!leftover) throw new Error(`No leftover with id ${id}.`);
+      db.dbTransaction(() => {
+        db.dbDeleteLeftover(id);
+        dropGeneratedRow('leftoverUseUp', id);
+      });
+      refresh();
+      return leftover;
     },
 
     taskPatch: (input: TaskFieldsInput, current: Task | null, isSubtask: boolean) => taskPatch(input, current, isSubtask),
@@ -4210,7 +6021,33 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (destination !== undefined) away.destination = destination === null || !destination.trim() ? null : destination.trim();
         }
       }
-      const fields = { ...contentRest, ...away };
+      const { personIds, links, pausedUntil, nudgeCadenceDays, ...plain } = contentRest as typeof contentRest & Pick<ProjectPatch, 'personIds' | 'links' | 'pausedUntil' | 'nudgeCadenceDays'>;
+      const extra: Partial<Pick<Project, 'personIds' | 'links' | 'pausedUntil' | 'nudgeCadenceDays'>> = {};
+      if (personIds !== undefined) {
+        const known = new Set(people().map(p => p.id));
+        const missing = personIds.filter(pid => !known.has(pid));
+        if (missing.length > 0) throw new Error(`personIds: no person with id ${missing.join(', ')}. list_people names them.`);
+        extra.personIds = [...new Set(personIds)];
+      }
+      if (links !== undefined) {
+        const bad = links.find(l => !l.url?.trim());
+        if (bad) throw new Error('Each link needs a url.');
+        extra.links = links.map(l => ({ id: generateId(), label: l.label?.trim() || l.url.trim(), url: l.url.trim() }));
+      }
+      if (pausedUntil !== undefined) {
+        if (pausedUntil === null) extra.pausedUntil = null;
+        else {
+          const key = /^\d{4}-\d{2}-\d{2}$/.exec(pausedUntil.trim())?.[0];
+          if (!key) throw new Error('pausedUntil is the day it comes back, YYYY-MM-DD.');
+          if (key <= dates.getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime)) throw new Error('pausedUntil has to be a day after today. To resume it now, pass null.');
+          extra.pausedUntil = key;
+        }
+      }
+      if (nudgeCadenceDays !== undefined) {
+        if (!Number.isInteger(nudgeCadenceDays) || nudgeCadenceDays < 0 || nudgeCadenceDays > 365) throw new Error('nudgeCadenceDays is a whole number of days, 0 (never offer) to 365.');
+        extra.nudgeCadenceDays = nudgeCadenceDays;
+      }
+      const fields = { ...plain, ...extra, ...away };
       db.dbTransaction(() => {
         ensureCategory(fields.defaultTaskCategory);
         if (Object.keys(fields).length > 0) {
@@ -4227,16 +6064,373 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return db.dbGetAllTaskGroups();
     },
 
-    createStack(title: string, category: string | null): TaskGroup {
+    createStack(title: string, category: string | null, projectId: string | null = null): TaskGroup {
       const name = title.trim();
       if (!name) throw new Error('A stack needs a title.');
+      if (projectId && !projects().some(p => p.id === projectId)) throw new Error(`No project with id ${projectId}.`);
       let group: TaskGroup | undefined;
       db.dbTransaction(() => {
         ensureCategory(category);
-        group = useTaskGroupStore.getState().createGroup(name, category);
+        group = useTaskGroupStore.getState().createGroup(name, category, projectId);
       });
       refresh();
       return group!;
+    },
+
+    updateStack(id: string, patch: StackPatch): { stack: TaskGroup; moved: { before: Task; after: Task }[] } {
+      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
+      if (!group) throw new Error(`No stack with id ${id}.`);
+      if (patch.title !== undefined && !patch.title.trim()) throw new Error('A stack needs a title.');
+      if (patch.projectId && !projects().some(p => p.id === patch.projectId)) throw new Error(`No project with id ${patch.projectId}.`);
+      const errors: string[] = [];
+      const category = typeof patch.category === 'string' ? categoryNamed(patch.category, false, errors) : patch.category;
+      if (errors.length > 0) throw new Error(errors.join(' '));
+      const { title, category: _c, tags, ...rest } = patch;
+      const moved: { before: Task; after: Task }[] = [];
+      db.dbTransaction(() => {
+        useTaskGroupStore.getState().updateGroup(id, {
+          ...rest,
+          ...(title !== undefined ? { title: title.trim() } : {}),
+          ...(tags !== undefined ? { tags: [...new Set(tags.map(t => t.trim().toLowerCase()).filter(Boolean))] } : {}),
+          ...(category !== undefined ? { category } : {}),
+        });
+        if (category !== undefined && category !== group.category) {
+          // applyGroupCategory: the roster, widened to the live rows of any
+          // dated set in it, and never a finished row (history keeps its category).
+          const children = tasks().filter(t => t.groupId === id);
+          const roster = visibility.groupRoster(children);
+          const series = new Set(roster.map(t => t.seriesId).filter((x): x is string => x != null));
+          const members = new Map(roster.map(t => [t.id, t]));
+          for (const child of children) {
+            if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived) members.set(child.id, child);
+          }
+          for (const t of members.values()) {
+            if (t.category === category || t.completed || t.archived) continue;
+            const after = taskUpdate.mergeTaskUpdate(t, { category }, { scope: 'occurrence', freshPinnedOrder: 0, dayResetTime: useSettingsStore.getState().dayResetTime });
+            db.dbUpdateTask(after);
+            moved.push({ before: t, after });
+          }
+        }
+      });
+      refresh();
+      return { stack: db.dbGetAllTaskGroups().find(g => g.id === id)!, moved };
+    },
+
+    deleteStack(id: string, cascade: boolean): DeletedStackSnapshot {
+      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
+      if (!group) throw new Error(`No stack with id ${id}.`);
+      const children = tasks().filter(t => t.groupId === id);
+      const doomed = new Set<string>();
+      if (cascade) {
+        const series = new Set<string>();
+        for (const member of visibility.groupRoster(children)) {
+          if (member.completed || member.archived || member.generatedKind) continue;
+          doomed.add(member.id);
+          if (member.seriesId) series.add(member.seriesId);
+        }
+        for (const child of children) {
+          if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived && !child.generatedKind) doomed.add(child.id);
+        }
+      }
+      const deleted = tasks().filter(t => doomed.has(t.id) || (t.parentId !== null && doomed.has(t.parentId)));
+      const unfiled = children.filter(t => !doomed.has(t.id));
+      db.dbTransaction(() => {
+        for (const t of children) {
+          if (doomed.has(t.id)) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+          else db.dbUpdateTask(taskUpdate.mergeTaskUpdate(t, { groupId: null }, { scope: 'occurrence', freshPinnedOrder: 0, dayResetTime: useSettingsStore.getState().dayResetTime }));
+        }
+        useTaskGroupStore.getState().removeGroupRow(id);
+      });
+      refresh();
+      return { stack: group, deleted, unfiledTaskIds: unfiled.map(t => t.id) };
+    },
+
+    renameCategory(name: string, newName: string): { from: string; to: string } {
+      const cats = useCategoryStore.getState();
+      const category = cats.categories.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (!category) throw new Error(`"${name}" isn't one of your categories. list_categories lists them.`);
+      const from = category.name;
+      const to = newName.trim();
+      if (!to) throw new Error('A category needs a name.');
+      if (to === from) throw new Error('That is already its name.');
+      if (cats.categories.some(c => c.id !== category.id && c.name.toLowerCase() === to.toLowerCase())) {
+        throw new Error(`There is already a category called "${to}". To merge the two, use delete_category with moveTo.`);
+      }
+      const rename = require('../../src/utils/categoryRename') as typeof import('../../src/utils/categoryRename'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { renameInRuleCategories } = require('../../src/utils/ruleCategory') as typeof import('../../src/utils/ruleCategory'); // eslint-disable-line @typescript-eslint/no-require-imports
+      db.dbTransaction(() => {
+        // The category row, every task, stack and project default naming it
+        // (dbRenameCategory), then everything else the app's rename reaches.
+        if (!cats.renameCategory(from, to)) throw new Error(`Could not rename "${from}".`);
+        for (const t of db.dbGetAllTasks()) {
+          const seriesDefaults = rename.renameInSeriesDefaults(t.seriesDefaults, from, to);
+          const followUpTaskDraft = rename.renameInFollowUpDraft(t.followUpTaskDraft, from, to);
+          if (seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) db.dbUpdateTask({ ...t, seriesDefaults, followUpTaskDraft });
+        }
+        const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const views = useSavedViewStore.getState();
+        views.initialize();
+        for (const v of views.views) {
+          const clauses = rename.renameInViewClauses(v.clauses, from, to);
+          if (clauses !== v.clauses) views.updateView(v.id, { clauses });
+        }
+        for (const template of db.dbGetAllTemplates()) {
+          if (!template.items.some(i => i.category === from)) continue;
+          db.dbUpdateTemplate({ ...template, items: template.items.map(i => (i.category === from ? { ...i, category: to } : i)) });
+        }
+        categoryStore.renameGeneratedCategorySettings(from, to);
+        const settings = useSettingsStore.getState();
+        if (settings.calendarEventCategory === from) settings.setCalendarEventCategory(to);
+        if (settings.healthCategory === from) settings.setHealthCategory(to);
+        if (settings.newTaskDefaults.category === from) settings.setNewTaskDefaults({ category: to });
+        const titleRules = rename.renameInTitleRules(settings.titleRules, from, to);
+        if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+        const weatherRules = renameInRuleCategories(settings.weatherRules, from, to);
+        if (weatherRules !== settings.weatherRules) settings.setWeatherRules(weatherRules);
+        const screenTimeRules = renameInRuleCategories(settings.screenTimeRules, from, to);
+        if (screenTimeRules !== settings.screenTimeRules) settings.setScreenTimeRules(screenTimeRules);
+        const healthRules = renameInRuleCategories(settings.healthRules, from, to);
+        if (healthRules !== settings.healthRules) settings.setHealthRules(healthRules);
+        const eventRules = renameInRuleCategories(settings.eventRules, from, to);
+        if (eventRules !== settings.eventRules) settings.setEventRules(eventRules);
+        const captures = rename.renameInReminderCaptures(settings.reminderCaptures, from, to);
+        if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
+        if (settings.collapsedCategories.includes(from)) settings.setCollapsedCategories(settings.collapsedCategories.map(c => (c === from ? to : c)));
+      });
+      refresh();
+      return { from, to };
+    },
+
+    updateCategorySettings(name: string, patch: CategorySettingsPatch): Category {
+      const cats = useCategoryStore.getState();
+      const category = cats.categories.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (!category) throw new Error(`"${name}" isn't one of your categories. list_categories lists them.`);
+      const n = category.name;
+      const errors: string[] = [];
+      const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+      if (patch.schedule) {
+        const { days, start, end } = patch.schedule;
+        if (days.length === 0 || days.some(d => !Number.isInteger(d) || d < 0 || d > 6)) errors.push('schedule.days are 0 (Sunday) to 6, at least one.');
+        if (!hhmm.test(start) || !hhmm.test(end)) errors.push('schedule.start and end are "HH:MM", 24-hour.');
+      }
+      if (patch.defaultTimeSegments && patch.defaultTimeSegments.some(seg => !['morning', 'afternoon', 'evening', 'night'].includes(seg))) {
+        errors.push('defaultTimeSegments are morning, afternoon, evening or night.');
+      }
+      if (errors.length > 0) throw new Error(errors.join(' '));
+      db.dbTransaction(() => {
+        if (patch.emoji !== undefined) cats.setCategoryEmoji(n, patch.emoji?.trim() || null);
+        if (patch.hideOnVacation !== undefined) cats.setCategoryHideOnVacation(n, patch.hideOnVacation);
+        if (patch.excludeFromSuggestions !== undefined) cats.setCategoryExcludeFromSuggestions(n, patch.excludeFromSuggestions);
+        if (patch.excludeFromNewTasksBanner !== undefined) cats.setCategoryExcludeFromNewTasksBanner(n, patch.excludeFromNewTasksBanner);
+        if (patch.defaultTimeSegments !== undefined) cats.setCategoryDefaultTimeSegments(n, patch.defaultTimeSegments);
+        if (patch.schedule === null) cats.removeCategorySchedule(n);
+        else if (patch.schedule) cats.setCategorySchedule(n, [...new Set(patch.schedule.days)].sort(), patch.schedule.start, patch.schedule.end);
+      });
+      refresh();
+      return useCategoryStore.getState().categories.find(c => c.id === category.id)!;
+    },
+
+    reorderCategories(names: string[]): string[] {
+      const cats = useCategoryStore.getState();
+      const current = [...cats.categories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name);
+      const resolved = names.map(name => {
+        const hit = current.find(c => c.toLowerCase() === name.trim().toLowerCase());
+        if (!hit) throw new Error(`"${name}" isn't one of your categories. list_categories lists them.`);
+        return hit;
+      });
+      const order = [...new Set(resolved), ...current.filter(c => !resolved.includes(c))];
+      cats.reorderCategories(order);
+      refresh();
+      return order;
+    },
+
+    deleteProject(id: string, cascade: boolean): DeletedProjectSnapshot {
+      const project = projects().find(p => p.id === id);
+      if (!project) throw new Error(`No project with id ${id}.`);
+      const members = tasks().filter(t => t.projectId === id);
+      const doomed = new Set(cascade ? members.filter(t => !t.generatedKind).map(t => t.id) : []);
+      const deleted = tasks().filter(t => doomed.has(t.id) || (t.parentId !== null && doomed.has(t.parentId)));
+      const unfiled = members.filter(t => !doomed.has(t.id) && !(t.parentId !== null && doomed.has(t.parentId)));
+      const homed = useTaskGroupStore.getState().groups.filter(g => g.projectId === id);
+      // The quiet-project review task names its project in generatedSourceId
+      // and carries no projectId, so the loops above never reach it; with the
+      // project gone there is nothing for it to be about (deleteProject's
+      // dropGeneratedTask).
+      const review = tasks().filter(t => t.generatedKind === 'projectReview' && t.generatedSourceId === id && !t.completed);
+      db.dbTransaction(() => {
+        for (const t of members) {
+          if (doomed.has(t.id)) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+        }
+        for (const t of unfiled) db.dbUpdateTask(taskUpdate.mergeTaskUpdate(t, { projectId: null }, { scope: 'occurrence', freshPinnedOrder: 0, dayResetTime: useSettingsStore.getState().dayResetTime }));
+        for (const g of homed) useTaskGroupStore.getState().updateGroup(g.id, { projectId: null });
+        for (const t of review) db.dbDeleteTask(t.id);
+        useProjectStore.getState().removeProjectRow(id);
+      });
+      refresh();
+      return { project, deleted, unfiledTaskIds: unfiled.filter(t => !t.parentId).map(t => t.id), unfiledStackIds: homed.map(g => g.id) };
+    },
+
+    projectCategories() {
+      return db.dbGetAllProjectCategories();
+    },
+
+    saveProjectCategory(name: string, change: { newName?: string; delete?: boolean }): { name: string | null; projectsAffected: number } {
+      const { useProjectCategoryStore } = require('../../src/store/useProjectCategoryStore') as typeof import('../../src/store/useProjectCategoryStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = useProjectCategoryStore.getState();
+      store.initialize();
+      const existing = store.getCategoryByName(name.trim());
+      if (change.delete) {
+        if (!existing) throw new Error(`No project category called "${name}".`);
+        const filed = projects().filter(p => p.category === existing.name);
+        db.dbTransaction(() => {
+          store.removeCategoryRow(existing.name);
+          for (const p of filed) useProjectStore.getState().updateProject(p.id, { category: null });
+        });
+        refresh();
+        return { name: null, projectsAffected: filed.length };
+      }
+      if (change.newName !== undefined) {
+        if (!existing) throw new Error(`No project category called "${name}".`);
+        const to = change.newName.trim();
+        if (!to) throw new Error('A project category needs a name.');
+        const filed = projects().filter(p => p.category === existing.name).length;
+        if (!store.renameCategory(existing.name, to)) throw new Error(`There is already a project category called "${to}".`);
+        refresh();
+        return { name: to, projectsAffected: filed };
+      }
+      if (!name.trim()) throw new Error('A project category needs a name.');
+      if (existing) throw new Error(`There is already a project category called "${existing.name}".`);
+      const made = store.addCategory(name.trim());
+      refresh();
+      return { name: made.name, projectsAffected: 0 };
+    },
+
+    reorderProjects(ids: string[], categories?: string[]): void {
+      const all = projects();
+      const unknown = ids.filter(pid => !all.some(p => p.id === pid));
+      if (unknown.length > 0) throw new Error(`No project with id ${unknown.join(', ')}.`);
+      let catOrder: string[] | null = null;
+      if (categories) {
+        const pool = db.dbGetAllProjectCategories();
+        catOrder = categories.map(name => {
+          const hit = pool.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+          if (!hit) throw new Error(`No project category called "${name}".`);
+          return hit.name;
+        });
+        catOrder = [...new Set(catOrder), ...pool.map(c => c.name).filter(n => !catOrder!.includes(n))];
+      }
+      db.dbTransaction(() => {
+        if (ids.length > 0) useProjectStore.getState().reorderProjects(ids);
+        if (catOrder) {
+          const { useProjectCategoryStore } = require('../../src/store/useProjectCategoryStore') as typeof import('../../src/store/useProjectCategoryStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+          useProjectCategoryStore.getState().initialize();
+          useProjectCategoryStore.getState().reorderCategories(catOrder);
+        }
+      });
+      refresh();
+    },
+
+    startFreshProject(id: string): { project: Project; tasks: Task[] } {
+      const source = projects().find(p => p.id === id);
+      if (!source) throw new Error(`No project with id ${id}.`);
+      const projectTemplate = require('../../src/utils/projectTemplate') as typeof import('../../src/utils/projectTemplate'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const groupsNow = useTaskGroupStore.getState().groups;
+      const blueprint = projectTemplate.projectBlueprint(id, tasks(), groupsNow);
+      const checklistSections = new Set(groupsNow.filter(g => g.checklist).map(g => g.id));
+      const made: Task[] = [];
+      let created: Project | undefined;
+      db.dbTransaction(() => {
+        const store = useProjectStore.getState();
+        created = store.createProject(source.title, { category: source.category, kind: source.kind });
+        // The settings the person chose carry over; its dates and its
+        // done-ness don't, since those were about the last time.
+        store.updateProject(created.id, {
+          notes: source.notes, defaultTaskCategory: source.defaultTaskCategory, taskDefaults: source.taskDefaults ?? null,
+          ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
+          autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
+          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked,
+        });
+        const sectionFor = new Map<string, string>();
+        for (const section of blueprint.sections) {
+          const copy = useTaskGroupStore.getState().createGroup(section.title, null, created.id);
+          if (checklistSections.has(section.id)) useTaskGroupStore.getState().updateGroup(copy.id, { checklist: true });
+          sectionFor.set(section.id, copy.id);
+        }
+        const copyOf = new Map<string, string>();
+        const childOrder = new Map<string, number>();
+        const pageOrder: string[] = [];
+        const today = dates.getLogicalToday();
+        let order = db.dbGetAllTasks().reduce((m, t) => Math.max(m, t.sortOrder), 0);
+        for (const { task, sectionId, subtasks } of blueprint.entries) {
+          const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
+          // Within a section the rows are numbered 1..n, as the app's
+          // reorderGroupChildren leaves them; a loose row takes the next slot.
+          const sortOrder = groupId ? (childOrder.set(groupId, (childOrder.get(groupId) ?? 0) + 1), childOrder.get(groupId)!) : ++order;
+          const copy = taskDraft.newTaskFromDraft(projectTemplate.freshCopyDraft(task, created.id, groupId, today), new Date().toISOString(), sortOrder, false);
+          db.dbInsertTask(copy);
+          made.push(copy);
+          copyOf.set(task.id, copy.id);
+          const slot = groupId ?? copy.id;
+          if (!pageOrder.includes(slot)) pageOrder.push(slot);
+          subtasks.forEach((title, i) => {
+            const sub = taskDraft.newTaskFromDraft({ title, parentId: copy.id }, new Date().toISOString(), i + 1, false);
+            db.dbInsertTask(sub);
+          });
+        }
+        // What each copy waits on, pointed at the copies; a blocker outside
+        // the project isn't carried, since it was about then.
+        for (const { task } of blueprint.entries) {
+          const copyId = copyOf.get(task.id)!;
+          const row = db.dbGetAllTasks().find(t => t.id === copyId)!;
+          const mapped = blocking.blockerIdsOf(task).map(b => copyOf.get(b)).filter((x): x is string => !!x);
+          const question = task.answerGate ? copyOf.get(task.answerGate.taskId) : undefined;
+          if (mapped.length === 0 && !question) continue;
+          db.dbUpdateTask({
+            ...row,
+            ...(mapped.length > 0 ? blocking.blockerFields(mapped) : {}),
+            ...(question ? { answerGate: { taskId: question, answers: task.answerGate!.answers } } : {}),
+          });
+        }
+        // The page order the source had, sections in place among the loose
+        // tasks (empty ones at the end), as the app's reorderProjectItems lays
+        // it: one slot space for tasks and stacks.
+        for (const sectionId of sectionFor.values()) if (!pageOrder.includes(sectionId)) pageOrder.push(sectionId);
+        const live = projectOrder.liveProjectSteps(created.id, db.dbGetAllTasks()).filter(t => !t.groupId);
+        const homed = useTaskGroupStore.getState().groups.filter(g => g.projectId === created!.id);
+        const updates = projectOrder.slotUpdates([...live, ...homed], pageOrder);
+        const taskSlots = updates.filter(u => live.some(t => t.id === u.id));
+        if (taskSlots.length > 0) db.dbBatchUpdateSortOrders(taskSlots);
+        for (const u of updates) if (homed.some(g => g.id === u.id)) useTaskGroupStore.getState().updateGroup(u.id, { sortOrder: u.sortOrder });
+      });
+      refresh();
+      return { project: projects().find(p => p.id === created!.id)!, tasks: made };
+    },
+
+    saveProjectAsTemplate(id: string, name?: string): TaskTemplate {
+      const project = projects().find(p => p.id === id);
+      if (!project) throw new Error(`No project with id ${id}.`);
+      const projectTemplate = require('../../src/utils/projectTemplate') as typeof import('../../src/utils/projectTemplate'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const draft = projectTemplate.templateFromProject(project, tasks(), useTaskGroupStore.getState().groups, useSettingsStore.getState().dayResetTime);
+      const existing = db.dbGetAllTemplates();
+      const templateName = (name ?? draft.name).trim();
+      if (!templateName) throw new Error('A template needs a name.');
+      if (existing.some(t => t.name.toLowerCase() === templateName.toLowerCase())) throw new Error(`There is already a template called "${templateName}". Pass name to call this one something else.`);
+      const template: TaskTemplate = {
+        id: generateId(),
+        name: templateName,
+        items: draft.items,
+        itemGroups: draft.itemGroups,
+        questions: [],
+        createdAt: new Date().toISOString(),
+        sortOrder: existing.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        category: draft.category,
+        applyContainer: draft.applyContainer,
+        schedule: null,
+        scheduleLastFiredKey: null,
+        anchorsAreAway: draft.anchorsAreAway,
+      };
+      db.dbInsertTemplate(template);
+      return template;
     },
 
     renameStack(id: string, title: string): TaskGroup {
@@ -4458,13 +6652,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     cookbooks: () => db.dbGetAllCookbooks(),
     mealPlan: (from: string, to: string) => db.dbGetMealPlanEntries(from, to),
 
-    planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null }): MealPlanEntry {
+    planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null; leftoverId?: string | null }): MealPlanEntry {
       const recipe = draft.recipeId ? db.dbGetAllRecipes().find(r => r.id === draft.recipeId) : undefined;
       if (draft.recipeId && !recipe) throw new Error(`No recipe with id ${draft.recipeId}.`);
-      const title = mealPlanUtils.cleanMealTitle(draft.title ?? recipe?.name ?? '');
+      // A leftover night is named by its container, as the fridge drag names it.
+      let leftover: Leftover | undefined;
+      if (draft.leftoverId) {
+        if (draft.recipeId) throw new Error('A meal is a recipe or a leftover, not both.');
+        leftover = db.dbGetAllLeftovers().find(l => l.id === draft.leftoverId);
+        if (!leftover) throw new Error(`No leftover with id ${draft.leftoverId}.`);
+        if (leftover.finishedAt) throw new Error(`The ${leftover.title} is finished, so there is none left to plan.`);
+      }
+      const title = mealPlanUtils.cleanMealTitle(leftover ? leftover.title : draft.title ?? recipe?.name ?? '');
       if (!title) throw new Error('A meal needs a title or a recipe.');
       const entry = mealPlanUtils.buildMealPlanEntry(
-        { date: draft.date, slot: draft.slot, recipeId: draft.recipeId ?? null, title },
+        { date: draft.date, slot: draft.slot, recipeId: draft.recipeId ?? null, leftoverId: leftover?.id ?? null, title },
         {
           id: generateId(),
           title,
@@ -4478,12 +6680,23 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return entry;
     },
 
-    updateMeal(id: string, patch: { date?: string; slot?: MealSlot; title?: string; scale?: number }): MealPlanEntry {
+    updateMeal(id: string, patch: MealPatch): MealPlanEntry {
       const entry = db.dbGetMealPlanEntry(id);
       if (!entry) throw new Error(`No planned meal with id ${id}.`);
       let next: MealPlanEntry = { ...entry };
 
-      if (patch.title !== undefined) {
+      if (patch.recipeId !== undefined) {
+        // A swap, through the row the app's "Replace" writes. Not for a
+        // leftover night: its container's use-up task is reconciled by the
+        // replace on the phone, so swap one there or plan a new meal.
+        if (entry.leftoverId) throw new Error('That meal is a leftover night. Remove it and plan the new meal, or change it in the app.');
+        const recipes = db.dbGetAllRecipes();
+        const to = patch.recipeId ? recipes.find(r => r.id === patch.recipeId) : undefined;
+        if (patch.recipeId && !to) throw new Error(`No recipe with id ${patch.recipeId}.`);
+        const title = mealPlanUtils.cleanMealTitle(to ? to.name : patch.title ?? '');
+        if (!title) throw new Error('A typed meal needs a title: give title with recipeId: null.');
+        next = mealPlanUtils.replacedMealEntry(entry, { recipeId: to?.id ?? null, title }, new Map(recipes.map(r => [r.id, r])), useSettingsStore.getState().householdServings);
+      } else if (patch.title !== undefined) {
         const gone = entry.recipeId ? !db.dbGetAllRecipes().some(r => r.id === entry.recipeId) : false;
         if (entry.leftoverId || (entry.recipeId && !gone)) {
           throw new Error('That meal\'s name comes from its recipe or leftover, so it is not renamed here. Move or remove it, or plan a new one.');
@@ -4494,8 +6707,35 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 } : { ...next, title: cleaned };
       }
 
+      if (patch.choices !== undefined) {
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has choices to make.');
+        const recipes = db.dbGetAllRecipes();
+        const recipe = recipes.find(r => r.id === next.recipeId);
+        if (!recipe) throw new Error('That meal\'s recipe is gone, so it has no choices.');
+        const byId = new Map(recipes.map(r => [r.id, r]));
+        const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date());
+        let chosen = [...next.recipeChoices];
+        // One at a time, since an answer can open or close a question: a
+        // group on a component only exists while that component is cooked.
+        for (const pick of patch.choices) {
+          const groups = components().recipeChoiceGroups(recipe, byId, { chosen, onHand });
+          const group = groups.find(g => g.label.trim().toLowerCase() === pick.group.trim().toLowerCase());
+          if (!group) {
+            throw new Error(`"${recipe.name}" has no choice called "${pick.group}"${groups.length ? ` (it asks: ${groups.map(g => g.label).join(', ')})` : ''}.`);
+          }
+          const option = group.options.find(o => o.name.trim().toLowerCase() === pick.option.trim().toLowerCase());
+          if (!option) throw new Error(`"${group.label}" is one of ${group.options.map(o => o.name).join(', ')}.`);
+          chosen = components().applyChoice(chosen, group, option.id);
+        }
+        next = { ...next, recipeChoices: chosen };
+      }
+
+      if (patch.shopTask !== undefined) next = { ...next, shopTask: patch.shopTask };
+      if (patch.thawTask !== undefined) next = { ...next, thawTask: patch.thawTask };
+      if (patch.logMeal !== undefined) next = { ...next, logMeal: patch.logMeal };
+
       if (patch.scale !== undefined) {
-        if (!entry.recipeId) throw new Error('Only a meal with a recipe has a scale.');
+        if (!next.recipeId) throw new Error('Only a meal with a recipe has a scale.');
         if (!Number.isFinite(patch.scale) || patch.scale <= 0) throw new Error('scale must be above zero (0.5 halves a recipe, 2 doubles it).');
         next = { ...next, recipeScale: patch.scale };
       }
@@ -4517,6 +6757,91 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return entry;
     },
 
+    setMealCooked(id: string, cooked: boolean): MealCooking | MealUncooking {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      if (!!entry.cookedAt === cooked) throw new Error(cooked ? 'That meal is already marked cooked.' : 'That meal is not marked cooked.');
+      return cooked ? cookMeal(id)! : uncookMeal(id)!;
+    },
+
+    saveMealAsRecipe(id: string): { recipe: Recipe; created: boolean; entry: MealPlanEntry } {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      if (entry.leftoverId) throw new Error('A leftover night is the container\'s, not a dish to save.');
+      const store = recipeStore();
+      // A meal whose recipe still resolves has nothing to save.
+      if (entry.recipeId && !mealPlanUtils.recipeIsGone(entry, store.getState())) throw new Error('That meal is already a saved recipe.');
+      const existing = mealPlanUtils.recipeNamedLike(entry.title, store.getState().recipes);
+      const recipe = existing ?? store.getState().addRecipe(entry.title);
+      if (!recipe) throw new Error(`"${entry.title}" cannot be a recipe name.`);
+      const recipes = store.getState().recipes;
+      const next = mealPlanUtils.replacedMealEntry(entry, { recipeId: recipe.id, title: recipe.name }, new Map(recipes.map(r => [r.id, r])), useSettingsStore.getState().householdServings);
+      db.dbUpdateMealPlanEntry(next);
+      refresh();
+      return { recipe, created: !existing, entry: next };
+    },
+
+    copyMealWeek(fromDay: string, toDay: string, slot?: MealSlot): MealPlanEntry[] {
+      const weekStart = (day: string) => {
+        const d = dates.dayKeyToDate(day);
+        const back = (d.getDay() - useSettingsStore.getState().weekStartsOn + 7) % 7;
+        return dates.dayKeyOf(addDays(d, -back));
+      };
+      const from = weekStart(fromDay);
+      const to = weekStart(toDay);
+      if (from === to) throw new Error('Those days are in the same week.');
+      const source = db.dbGetMealPlanEntries(from, mealPlanUtils.shiftDayKey(from, 6));
+      const target = db.dbGetMealPlanEntries(to, mealPlanUtils.shiftDayKey(to, 6));
+      const shift = differenceInCalendarDays(dates.dayKeyToDate(to), dates.dayKeyToDate(from));
+      let drafts;
+      if (slot) {
+        if (!mealPlanUtils.slotsToCopy(source, target).includes(slot)) {
+          throw new Error(target.some(e => e.slot === slot)
+            ? `The week of ${to} already has ${slot} planned, so there is nothing to copy into. Plan or move meals one at a time instead.`
+            : `The week of ${from} has no ${slot} to copy.`);
+        }
+        drafts = mealPlanUtils.slotCopyDrafts(source, slot, shift);
+      } else {
+        if (target.length > 0) throw new Error(`The week of ${to} already has meals planned. Copy one slot (slot) into it, or meals one at a time.`);
+        drafts = mealPlanUtils.weekCopyDrafts(source, shift);
+        if (drafts.length === 0) throw new Error(`The week of ${from} has nothing to copy.`);
+      }
+      const created = drafts.map(copiedMeal);
+      db.dbTransaction(() => created.forEach(e => db.dbInsertMealPlanEntry(e)));
+      return created;
+    },
+
+    copyMealTo(id: string, days: string[]): { copied: MealPlanEntry[]; skipped: string[] } {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      if (entry.leftoverId) throw new Error('One container cannot supply several meals, so a leftover night is not copied.');
+      const copied: MealPlanEntry[] = [];
+      const skipped: string[] = [];
+      for (const date of [...new Set(days)].filter(d => d !== entry.date).sort()) {
+        const day = db.dbGetMealPlanEntries(date, date);
+        const draft = mealPlanUtils.daysWithMeal(day, entry).has(date) ? null : mealPlanUtils.mealCopyDraft(entry, date);
+        if (!draft) {
+          skipped.push(date);
+          continue;
+        }
+        const row = copiedMeal({ ...draft, sortOrder: mealPlanUtils.nextSortOrder(day, date, draft.slot) });
+        db.dbInsertMealPlanEntry(row);
+        copied.push(row);
+      }
+      return { copied, skipped };
+    },
+
+    mealChoices(entry: MealPlanEntry): MealChoice[] {
+      if (!entry.recipeId) return [];
+      const recipes = db.dbGetAllRecipes();
+      const recipe = recipes.find(r => r.id === entry.recipeId);
+      if (!recipe) return [];
+      const onHand = grocerySuggest.onHandNameKeys(db.dbGetAllGroceryItems(), new Date());
+      return components()
+        .recipeChoiceGroups(recipe, new Map(recipes.map(r => [r.id, r])), { chosen: entry.recipeChoices, onHand })
+        .map(g => ({ group: g.label, options: g.options.map(o => o.name), chosen: g.active.name }));
+    },
+
     createPerson(fields: PersonFields): Person {
       if (!fields.name?.trim()) throw new Error('A person needs a name.');
       const { blankPerson } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
@@ -4530,10 +6855,103 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const existing = people().find(p => p.id === id);
       if (!existing) throw new Error(`No person with id ${id}.`);
       if (fields.name !== undefined && !fields.name.trim()) throw new Error('A person needs a name.');
-      const next = { ...existing, ...personPatch(fields) };
+      const patch = personPatch(fields);
+      // Archiving again does not re-stamp the day it was filed away.
+      if (fields.archived !== undefined && fields.archived === existing.archived) delete patch.archivedAt;
+      const next = { ...existing, ...patch };
       db.dbUpdatePerson(next);
       refresh();
       return next;
+    },
+
+    deletePerson(id: string): { person: Person; notes: PersonNote[] } {
+      const person = people().find(p => p.id === id);
+      if (!person) throw new Error(`No person with id ${id}.`);
+      const { usePersonStore } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      usePersonStore.getState().initialize();
+      usePersonNoteStore.getState().initialize();
+      const notes = usePersonNoteStore.getState().notes.filter(n => n.personId === id);
+      usePersonStore.getState().removePersonRow(id);
+      refresh();
+      return { person, notes };
+    },
+
+    reorderPeople(ids: string[]): void {
+      const all = [...people()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const unknown = ids.filter(pid => !all.some(p => p.id === pid));
+      if (unknown.length > 0) throw new Error(`No person with id ${unknown.join(', ')}.`);
+      const order = [...new Set(ids), ...all.map(p => p.id).filter(pid => !ids.includes(pid))];
+      db.dbBatchUpdatePersonSortOrders(order.map((pid, i) => ({ id: pid, sortOrder: i + 1 })));
+      refresh();
+    },
+
+    savePersonGroup(name: string, change: { newName?: string; delete?: boolean; catchUpSeparately?: boolean }): { group: PersonGroup | null; members: number } {
+      const { usePersonGroupStore } = require('../../src/store/usePersonGroupStore') as typeof import('../../src/store/usePersonGroupStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { usePersonStore } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      usePersonStore.getState().initialize();
+      const store = usePersonGroupStore.getState();
+      store.initialize();
+      const existing = store.groups.find(g => g.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? null;
+      const members = existing ? people().filter(p => p.groupId === existing.id).length : 0;
+      if (change.delete) {
+        if (!existing) throw new Error(`No group called "${name}".`);
+        store.removeGroupRow(existing.id);
+        refresh();
+        return { group: null, members };
+      }
+      let group = existing;
+      if (!group) {
+        if (change.newName !== undefined) throw new Error(`No group called "${name}" to rename.`);
+        if (!name.trim()) throw new Error('A group needs a name.');
+        group = store.createGroup(name.trim());
+      }
+      if (change.newName !== undefined) {
+        const to = change.newName.trim();
+        if (!to) throw new Error('A group needs a name.');
+        if (store.groups.some(g => g.id !== group!.id && g.name.trim().toLowerCase() === to.toLowerCase())) throw new Error(`There is already a group called "${to}".`);
+        store.updateGroup(group.id, { name: to });
+      }
+      if (change.catchUpSeparately !== undefined) store.updateGroup(group.id, { catchUpSeparately: change.catchUpSeparately });
+      refresh();
+      return { group: usePersonGroupStore.getState().groups.find(g => g.id === group!.id) ?? group, members };
+    },
+
+    addPersonNote(personId: string, kind: PersonNote['kind'], text: string, relevantOn: string | null = null): PersonNote {
+      if (!people().some(p => p.id === personId)) throw new Error(`No person with id ${personId}.`);
+      if (!['note', 'gift', 'food'].includes(kind)) throw new Error('kind is note, gift or food.');
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      usePersonNoteStore.getState().initialize();
+      const note = usePersonNoteStore.getState().addNote(personId, kind, text, relevantOn);
+      if (!note) throw new Error('A note needs some text.');
+      return note;
+    },
+
+    updatePersonNote(id: string, patch: { text?: string; kind?: PersonNote['kind']; relevantOn?: string | null; archived?: boolean }): PersonNote {
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = usePersonNoteStore.getState();
+      store.initialize();
+      const note = store.notes.find(n => n.id === id);
+      if (!note) throw new Error(`No note with id ${id}. get_person lists them.`);
+      if (patch.text !== undefined && !patch.text.trim()) throw new Error('A note needs some text. To remove it, use delete_person_note.');
+      if (patch.kind !== undefined && !['note', 'gift', 'food'].includes(patch.kind)) throw new Error('kind is note, gift or food.');
+      const { archived, ...rest } = patch;
+      store.updateNote(id, {
+        ...rest,
+        ...(rest.text !== undefined ? { text: rest.text.trim() } : {}),
+        ...(archived !== undefined ? { archivedAt: archived ? (note.archivedAt ?? new Date().toISOString()) : null } : {}),
+      });
+      return usePersonNoteStore.getState().notes.find(n => n.id === id)!;
+    },
+
+    deletePersonNote(id: string): PersonNote {
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = usePersonNoteStore.getState();
+      store.initialize();
+      const note = store.notes.find(n => n.id === id);
+      if (!note) throw new Error(`No note with id ${id}. get_person lists them.`);
+      store.removeNote(id);
+      return note;
     },
 
     people,

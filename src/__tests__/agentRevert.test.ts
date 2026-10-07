@@ -1,4 +1,4 @@
-import { agentRevertLabel, agentRevertPlan } from '../utils/agentRevert';
+import { agentRevertLabel, agentRevertPlan, deletedTaskRevert } from '../utils/agentRevert';
 import type { Task, UnattendedEntry } from '../types';
 
 const task = (over: Partial<Task> = {}): Task =>
@@ -12,6 +12,15 @@ const entry = (over: Partial<UnattendedEntry> = {}): UnattendedEntry => ({
 });
 
 describe('agentRevertPlan', () => {
+  it('restores a task the agent deleted, until the task exists again', () => {
+    const snapshot = { task: task(), subtasks: [task({ id: 's1', title: 'Find the card' })] };
+    const deleted = entry({ action: 'cleared', revert: deletedTaskRevert(snapshot) });
+    const plan = agentRevertPlan(deleted, null);
+    expect(plan).toEqual({ kind: 'restoreDeletedTask', snapshot });
+    expect(agentRevertLabel(plan)).toBe('Restore');
+    expect(agentRevertPlan(deleted, task())).toEqual({ kind: 'none', reason: 'Restored since' });
+  });
+
   it('restores the touched fields while the task is still how the agent left it', () => {
     const plan = agentRevertPlan(entry(), task({ tags: ['errand'] }));
     expect(plan).toEqual({ kind: 'restore', taskId: 't1', patch: { title: 'Call bank', tags: [] } });

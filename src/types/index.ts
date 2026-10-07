@@ -7481,6 +7481,30 @@ export interface CalendarRequest {
   /** ISO, when it left `pending`. Null while pending. */
   resolvedAt: string | null;
   createdAt: string;
+  /**
+   * What the request asks for. `create` writes a new event (the original and
+   * still the common case). `update` and `delete` change or remove the event
+   * an earlier `create` request wrote (`targetRequestId`), and only that one:
+   * an agent never touches an event the person made.
+   *
+   * An update or delete row carries a start and end at the epoch, already
+   * over, so a build from before these existed expires it as "already over"
+   * rather than reading it as an event to create. The new values ride in
+   * `changes` for the same reason.
+   */
+  action?: 'create' | 'update' | 'delete';
+  targetRequestId?: string | null;
+  changes?: CalendarRequestChanges | null;
+}
+
+/** What an `update` request changes on the event; absent keys stay as they are. */
+export interface CalendarRequestChanges {
+  title?: string;
+  startAt?: string;
+  endAt?: string;
+  allDay?: boolean;
+  location?: string | null;
+  notes?: string | null;
 }
 
 /**

@@ -7,12 +7,15 @@ import {
   dbResolveCalendarRequest,
 } from '../db/database';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { getCalendarPermission, saveEventDirect } from './calendarSync';
-import { readExternalEventId } from './calendarEventLink';
+import { deleteEventDirect, getCalendarPermission, saveEventDirect, updateEventDirect } from './calendarSync';
+import { eventsWithExternalId, readExternalEventId, requestEventMatch } from './calendarEventLink';
 import { isDemoModeActive } from './demoState';
 import {
   CALENDAR_REQUEST_PAST_REASON,
+  CALENDAR_CHANGE_NO_EVENT_REASON,
   CALENDAR_REQUEST_REFUSED_REASON,
+  changeRequestProblem,
+  eventFieldsForChange,
   eventFieldsForRequest,
   isCalendarRequestWriter,
   planCalendarRequestDrain,
@@ -76,7 +79,7 @@ async function drainOnce(): Promise<void> {
     });
   }
   if (plan.purge.length > 0) dbDeleteCalendarRequests(plan.purge);
-  if (plan.write.length === 0) return;
+  if (plan.write.length === 0 && plan.change.length === 0) return;
 
   if ((await getCalendarPermission()) !== 'granted') return;
 
@@ -112,6 +115,33 @@ async function drainOnce(): Promise<void> {
       failureReason: null,
       eventExternalId: externalId,
       resolvedAt: new Date().toISOString(),
+    });
+  }
+
+  // Changes to, and deletes of, an event an earlier request wrote. Only that
+  // event: it is found by the server id its own request recorded, and nothing
+  // the person made is ever reached from here.
+  for (const r of plan.change) {
+    if (!stillWriter()) return;
+    const current = dbGetCalendarRequest(r.id);
+    if (!current || current.status !== 'pending') continue;
+    const target = current.targetRequestId ? dbGetCalendarRequest(current.targetRequestId) : null;
+    const fail = (reason: string) => dbResolveCalendarRequest(current.id, {
+      status: 'failed', failureReason: reason, eventExternalId: null, resolvedAt: new Date().toISOString(),
+    });
+    const problem = changeRequestProblem(current, target);
+    if (problem) { fail(problem); continue; }
+    const calendarId = useSettingsStore.getState().calendarRequestCalendarId;
+    const eventId = requestEventMatch(await eventsWithExternalId(target!.eventExternalId!), calendarId);
+    if (isDemoModeActive()) return;
+    if (!eventId) { fail(CALENDAR_CHANGE_NO_EVENT_REASON); continue; }
+    const done = current.action === 'delete'
+      ? await deleteEventDirect(eventId)
+      : (await updateEventDirect(eventId, eventFieldsForChange(target!, current.changes!, calendarId))) !== null;
+    if (isDemoModeActive()) return;
+    if (!done) { fail(CALENDAR_REQUEST_REFUSED_REASON); continue; }
+    dbResolveCalendarRequest(current.id, {
+      status: 'written', failureReason: null, eventExternalId: target!.eventExternalId, resolvedAt: new Date().toISOString(),
     });
   }
 }

@@ -217,6 +217,26 @@ export interface TaskFieldsInput {
   /** Shown only if that task's question gets one of these answers; null removes it. */
   onlyIfAnswer?: { taskId: string; answers: string[] } | null;
   followUp?: FollowUpInput | null;
+  /** People the task is about or with (list_people ids). [] clears them. Checked by the replica. */
+  personIds?: string[];
+  linkUrl?: string | null;
+  phoneNumber?: string | null;
+  emailAddress?: string | null;
+  location?: string | null;
+  /** Hidden, streak kept, while vacation mode is on. */
+  vacationPause?: boolean;
+  /** Completing it also records a dose of this medicine, in get_task's own shape. null stops it. */
+  medication?: { name: string; amount?: number | null; unit?: string | null } | null;
+  /** A deadline worked out from the date on every occurrence, in get_task's own shape. null drops the rule. */
+  deadlineRule?: DeadlineRule | null;
+  /** A reminder placed by rule, in get_task's own shape, plus the time of day for an offset. null drops the rule. */
+  reminderRule?: ReminderRuleInput | null;
+}
+
+/** `ReminderRule` as written: an offset needs a time of day, which the read shape carries in `reminderTime`. */
+export interface ReminderRuleInput extends ReminderRule {
+  /** HH:MM, with daysBeforeDate. Defaults to the time of the reminder the task already has. */
+  at?: string;
 }
 
 export interface TaskFieldsDeps {
@@ -683,6 +703,72 @@ export function taskFieldsPatch(
         patch.weatherWait = input.weatherWait;
       }
     }
+  }
+
+  // ---- who, where, how to reach --------------------------------------------
+  // Stored as typed, as the editor stores them (see Task.phoneNumber); a blank
+  // string is the field cleared, since the row draws a button for anything set.
+  for (const key of ['linkUrl', 'phoneNumber', 'emailAddress', 'location'] as const) {
+    const v = input[key];
+    if (v === undefined) continue;
+    patch[key] = v === null || !v.trim() ? null : v.trim();
+  }
+  if (input.personIds !== undefined) patch.personIds = [...new Set(input.personIds.filter(id => typeof id === 'string' && id))];
+  if (input.vacationPause !== undefined) {
+    if (context.isSubtask && input.vacationPause) errors.push('vacationPause is set on the task a checklist item belongs to, not on the item.');
+    else patch.vacationPause = input.vacationPause;
+  }
+  if (input.medication !== undefined) {
+    const m = input.medication;
+    const name = m?.name?.trim() || null;
+    if (m && !name) errors.push('medication needs the medicine\'s name.');
+    else if (name && context.isSubtask) errors.push('medication goes on a top-level task, not a checklist item.');
+    else if (m && m.amount != null && !(typeof m.amount === 'number' && m.amount > 0)) errors.push('medication.amount must be a positive number.');
+    else {
+      patch.medicationName = name;
+      patch.medicationAmount = name ? m?.amount ?? null : null;
+      patch.medicationUnit = name ? m?.unit?.trim() || null : null;
+    }
+  }
+
+  // ---- deadline and reminder rules -----------------------------------------
+  // The rule fields only; the date each one lands on is worked out by the
+  // replica, which can read the date the task ends up with. Writing a fixed
+  // deadline or reminder (above) drops the rule, as the editor's "Fixed date"
+  // does, unless this same call sets one.
+  if (input.deadlineRule !== undefined) {
+    const r = input.deadlineRule;
+    if (r === null) Object.assign(patch, { deadlineOffsetDays: null, deadlineMonthDay: null, ...(input.deadline === undefined ? { deadline: null } : {}) });
+    else {
+      const given = [r.daysBeforeDate, r.daysAfterDate, r.dayOfMonth].filter(v => v !== undefined).length;
+      if (given !== 1) errors.push('deadlineRule takes one of daysBeforeDate, daysAfterDate or dayOfMonth.');
+      else if (r.dayOfMonth !== undefined) {
+        const day = r.dayOfMonth === 'last' ? -1 : r.dayOfMonth;
+        if (recurrence !== 'monthly') errors.push('deadlineRule.dayOfMonth is for a task that repeats monthly; use daysBeforeDate or daysAfterDate.');
+        else if (!(day === -1 || inRange(day, [1, 31]))) errors.push('deadlineRule.dayOfMonth is 1 to 31, or "last".');
+        else Object.assign(patch, { deadlineOffsetDays: null, deadlineMonthDay: day });
+      } else {
+        const days = r.daysBeforeDate ?? -(r.daysAfterDate as number);
+        if (!inRange(Math.abs(days), [1, 365])) errors.push('deadlineRule days are 1 to 365. A deadline on the date itself is just the date.');
+        else Object.assign(patch, { deadlineOffsetDays: days, deadlineMonthDay: null });
+      }
+    }
+  }
+  if (input.reminderRule !== undefined) {
+    const r = input.reminderRule;
+    if (r === null) {
+      Object.assign(patch, { reminderOffsetDays: null, reminderTracksVisibility: false, ...(input.reminderTime === undefined ? { reminderTime: null } : {}) });
+    } else if (r.whenItSurfaces && r.daysBeforeDate !== undefined) {
+      errors.push('reminderRule takes daysBeforeDate or whenItSurfaces, not both.');
+    } else if (r.whenItSurfaces) {
+      Object.assign(patch, { reminderOffsetDays: null, reminderTracksVisibility: true });
+    } else if (r.daysBeforeDate !== undefined) {
+      if (!inRange(r.daysBeforeDate, [0, 365])) errors.push('reminderRule.daysBeforeDate is 0 (the day itself) to 365.');
+      else if (r.at !== undefined && !HHMM.test(r.at)) errors.push('reminderRule.at is "HH:MM", 24-hour.');
+      else Object.assign(patch, { reminderOffsetDays: r.daysBeforeDate, reminderTracksVisibility: false });
+    } else errors.push('reminderRule takes daysBeforeDate or whenItSurfaces: true.');
+  } else if (input.reminderTime !== undefined && current && (current.reminderOffsetDays != null || current.reminderTracksVisibility)) {
+    Object.assign(patch, { reminderOffsetDays: null, reminderTracksVisibility: false });
   }
 
   // ---- blockers -------------------------------------------------------------

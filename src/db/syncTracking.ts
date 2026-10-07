@@ -459,6 +459,60 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // calendarReviewLastDayKey is deliberately not here — state, not a
   // preference, like mealPlanNudgeLastFiredWeekKey beside it.
   'calendarReviewTasks',
+  // Each generator's "File them under" and its own settings. These were
+  // missing from the allowlist, the same gap as mealSlotsEnabled above: every
+  // one is a preference the person set in Settings, so a category picked for
+  // birthday tasks on one device left the other filing them under the
+  // default, and an agent's set_automation category never reached the phone
+  // at all. The per-day marks and handled-event records beside them
+  // (…LastDayKey, …Handled, …DeclinedDayKey) are state and stay off.
+  'birthdayTaskCategory',
+  'birthdayLeadDays',
+  'birthdayGiftTaskCategory',
+  'birthdayGiftLeadDays',
+  'bookEventTaskCategory',
+  'calendarReviewTaskCategory',
+  'calendarReviewTimeSegment',
+  'dreamLogTaskCategory',
+  'eventTaskCategory',
+  'healthCategory',
+  'healthTaskCategory',
+  'journalLogTaskCategory',
+  'journalLogTimeSegments',
+  'mealLogNudgeTaskCategory',
+  'mealPlanNudgeIgnoresVacation',
+  'mealShortfallTaskCategory',
+  'mealShortfallLeadDays',
+  'mealThawTaskCategory',
+  'moodLogTaskCategory',
+  'moodLogTimeSegments',
+  'moodNudgeTaskCategory',
+  'moodNudgeAfterDays',
+  'pantryReviewTaskCategory',
+  'reachOutTaskCategory',
+  'screenTimeTaskCategory',
+  'snackNudgeTaskCategory',
+  'snackNudgeFromHour',
+  'snackNudgeSharePercent',
+  'supplyReorderTaskCategory',
+  'travelTaskCategory',
+  'travelLeadMinutes',
+  'travelMode',
+  'useUpTaskCap',
+  'waitingFollowUpTaskCategory',
+  'waterShortfallTaskCategory',
+  'weatherTaskCategory',
+  'weekendNudgeTaskCategory',
+  'weekendNudgeLeadDays',
+  'weekendNudgePlanThreshold',
+  'weighInTaskCategory',
+  'weighInEveryDays',
+  // The food log's targets and the unit water is counted in. Preferences, and
+  // the figures a day's totals are read against; the targets travel with the
+  // health record (HEALTH_SYNC_SETTING_KEYS), since a calorie target says
+  // something about a body.
+  'nutritionTargets',
+  'waterUnit',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
@@ -589,7 +643,7 @@ export function isSyncedSettingKey(key: string): boolean {
  * a peer on an older build that still sends them does no harm.
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
-export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived'];
+export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived', 'nutritionTargets'];
 
 /**
  * The journal and the dream log: withheld from iCloud with the health record,
