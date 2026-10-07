@@ -894,7 +894,7 @@ and Health sections, new-task defaults, every kind of rule and reminder capture.
 category already has is refused with a pointer to `delete_category`'s `moveTo`, since that is a merge.
 
 `update_project` now takes the rest of the project editor: a pause (`pausedUntil`, a day key after
-today) or Planning (`planning`, the same pause with no day, which `create_project` takes too and the
+today) or Planning (`planning`, the same pause with no day, which `create_project` and `apply_template` take too and the
 serializer reports by name rather than as its sentinel day), `inOrder`, `ongoing`, people, links, and the nudge settings. Every one is in
 `PROJECT_REVERT_FIELDS`, so an edit is undoable from Activity like the older fields. `completed: true`
 with `archiveRemaining` archives what is left, each through `archive_task`'s own write. `delete_project`

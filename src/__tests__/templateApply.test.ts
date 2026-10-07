@@ -175,6 +175,16 @@ describe('applyTemplateRun', () => {
       expect(calls.createProject).toEqual([{ title: 'Lisbon', options: {} }]);
     });
 
+    it('creates the run project in Planning when asked, and ignores the ask with no project to create', () => {
+      const tpl = makeTemplate({ items: [item('a', 'Invite')], applyContainer: 'project' });
+      const { sink, calls } = makeSink();
+      applyTemplateRun(tpl, byId(tpl), select('a'), { start: null, end: null }, { runName: 'Party', planning: true }, sink);
+      expect(calls.createProject).toEqual([{ title: 'Party', options: { deadline: null, planning: true } }]);
+      const loose = makeSink();
+      applyTemplateRun(tpl, byId(tpl), select('a'), { start: null, end: null }, { planning: true }, loose.sink);
+      expect(loose.calls.createProject).toEqual([]);
+    });
+
     it('makes a task run one parent with every item as its subtask, stubs flattened onto the parent', () => {
       const tpl = makeTemplate({
         items: [

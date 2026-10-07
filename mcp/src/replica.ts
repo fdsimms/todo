@@ -456,6 +456,8 @@ export interface TemplateRun {
   leaveOut?: string[];
   /** Run into this existing project instead of the template's own container. */
   projectId?: string;
+  /** Create the run's project in Planning. Only a run that creates a project reads it. */
+  planning?: boolean;
 }
 
 export interface TemplateRunResult {
@@ -4406,6 +4408,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         placeholders,
         answers,
         targetProjectId: run.projectId,
+        planning: run.planning === true,
       }, c => { container = c; });
 
       // Why each offered item is off, in the order the apply sheet would ask.

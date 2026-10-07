@@ -2070,6 +2070,7 @@ function registerWriteTools(
       include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item). A nested template\'s own item id switches on everything inside it.'),
       leaveOut: z.array(z.string()).optional().describe('Item ids to switch off. A nested template\'s own item id switches off everything inside it.'),
       projectId: z.string().optional().describe('An existing project to put the tasks in.'),
+      planning: z.boolean().optional().describe('Create the run\'s project in Planning, its tasks held off every list until it is marked ready. Only for a named run whose container is a project.'),
     },
     async ({ template, ...input }) => {
       try {

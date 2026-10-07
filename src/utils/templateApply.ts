@@ -59,6 +59,11 @@ export interface TemplateRunOptions {
    * 'task' container is untouched by the cap.
    */
   targetProjectId?: string;
+  /**
+   * Create the run's project in Planning (PLANNING_PAUSE_KEY), its tasks held
+   * back until it's marked ready. Only a run that creates a project reads it.
+   */
+  planning?: boolean;
 }
 
 export type RunDraft = ReturnType<typeof buildDraftsFromTemplateTree>[number];
@@ -75,7 +80,7 @@ export interface TemplateRunSink {
   createStack(title: string, category: string | null): { id: string };
   /** A section of a run: its members are filed under it with the category they carry. */
   groupTasks(taskIds: string[], title: string, category: string | null): { id: string };
-  createProject(title: string, options: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'deadline'>>): { id: string };
+  createProject(title: string, options: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'deadline'>> & { planning?: boolean }): { id: string };
   getProject(id: string): Pick<Project, 'awayStart' | 'deadline'> | undefined;
   updateProject(id: string, patch: Partial<Pick<Project, 'awayStart' | 'awayEnd' | 'deadline'>>): void;
   /** A section that lands in a project is homed on its page, and a checklist if it was saved as one. */
@@ -147,11 +152,14 @@ export function applyTemplateRun(
   // put in front of anybody packing. An end with no start is dropped rather than
   // stored, matching what `awaySpanOf` would read it as anyway.
   const runProject = (!options?.targetProjectId && container === 'project')
-    ? sink.createProject(runName, template.anchorsAreAway
-        ? (anchors.start
-            ? { awayStart: awayNoonIso(anchors.start), awayEnd: anchors.end ? awayNoonIso(anchors.end) : null }
-            : {})
-        : { deadline: anchors.end?.toISOString() ?? null })
+    ? sink.createProject(runName, {
+        ...(template.anchorsAreAway
+          ? (anchors.start
+              ? { awayStart: awayNoonIso(anchors.start), awayEnd: anchors.end ? awayNoonIso(anchors.end) : null }
+              : {})
+          : { deadline: anchors.end?.toISOString() ?? null }),
+        ...(options?.planning ? { planning: true } : {}),
+      })
     : null;
   const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 
