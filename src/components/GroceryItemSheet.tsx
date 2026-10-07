@@ -63,6 +63,7 @@ import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../
 import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { groceryNameKey } from '../utils/groceryParse';
+import { renameClash } from '../utils/groceryItemWrite';
 import { entryFor } from '../utils/groceryLists';
 import { SubstituteSheet } from './SubstituteSheet';
 import { featureHidden, groceryRowShown } from '../utils/simpleMode';
@@ -392,7 +393,7 @@ export function GroceryItemSheet({
     const trimmed = name.trim();
     if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return; }
     if (!renameItem(item.id, trimmed)) {
-      const collision = items.find(i => i.id !== item.id && i.nameKey === groceryNameKey(trimmed));
+      const collision = renameClash(items, item.id, trimmed);
       setNameError(
         collision ? `That's the same as ${collision.name} in your catalog.` : 'Another item already has that name.',
       );

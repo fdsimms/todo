@@ -2792,21 +2792,34 @@ export interface RepointSnapshot {
  * were left naming a deleted row. Reuses the fold's own reference map, so the
  * two merges can't disagree about what points at an item.
  */
-export function dbRepointItemReferences(fromId: string, intoId: string): RepointSnapshot {
+export function dbRepointItemReferences(
+  fromId: string,
+  intoId: string,
+  // Boxes the merge folded into one of the survivor's (a loser's box id →
+  // the survivor box that now stands for it). A food log entry or a saved
+  // meal naming the folded box otherwise points at a deleted row.
+  productRemap: ReadonlyMap<string, string> = new Map()
+): RepointSnapshot {
   const snapshot: RepointSnapshot = { rows: [], settings: [] };
   const tables = new Set(['food_logs', 'saved_meals']);
-  withTransaction(() => {
+  const repoint = (target: string, from: string, into: string) => {
     for (const ref of REFERENCES) {
-      if (ref.target !== 'grocery_items' || !tables.has(ref.table)) continue;
+      if (ref.target !== target || !tables.has(ref.table)) continue;
       const rows = ref.match === 'equals'
-        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [fromId])
-        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [fromId]);
+        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [from])
+        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [from]);
       for (const row of rows) {
-        const next = ref.rewrite(row, fromId, intoId);
+        const next = ref.rewrite(row, from, into);
         if (!next) continue;
         snapshot.rows.push({ table: ref.table, id: String(row.id), column: ref.column, before: row[ref.column] });
         db.runSync(`UPDATE "${ref.table}" SET "${ref.column}" = ? WHERE id = ?`, [next[ref.column], row.id]);
       }
+    }
+  };
+  withTransaction(() => {
+    repoint('grocery_items', fromId, intoId);
+    for (const [from, into] of productRemap) {
+      if (from !== into) repoint('grocery_item_products', from, into);
     }
     for (const setting of SETTING_REFERENCES) {
       if (setting.target !== 'grocery_items') continue;
@@ -2823,7 +2836,10 @@ export function dbRepointItemReferences(fromId: string, intoId: string): Repoint
 
 export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
   withTransaction(() => {
-    for (const r of snapshot.rows) {
+    // Newest first: a row rewritten twice (a saved meal naming both the item
+    // and one of its boxes) recorded its intermediate value the second time,
+    // and only the first record holds what it was before the merge.
+    for (const r of [...snapshot.rows].reverse()) {
       db.runSync(`UPDATE "${r.table}" SET "${r.column}" = ? WHERE id = ?`, [r.before, r.id]);
     }
     for (const s of snapshot.settings) dbSetSetting(s.key, s.before);

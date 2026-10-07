@@ -1322,6 +1322,18 @@ describe('renameItem', () => {
     expect(useGroceryStore.getState().items[0].nameFromScan).toBe(false);
   });
 
+  it('refuses a rename onto another row\'s plural', () => {
+    // An add would resolve "Apples" to the Apple row; a rename mustn't mint
+    // the near-duplicate the add path never would.
+    const apple = makeItem({ name: 'Apple' });
+    const pear = makeItem({ name: 'Pear' });
+    seed([apple, pear]);
+
+    expect(useGroceryStore.getState().renameItem(pear.id, 'Apples')).toBe(false);
+    // Its own plural is not a clash.
+    expect(useGroceryStore.getState().renameItem(pear.id, 'Pears')).toBe(true);
+  });
+
   it('refuses a collision rather than merging two catalog rows', () => {
     // Merging means picking whose purchaseCount survives, and there's no right answer.
     const milk = makeItem({ name: 'Milk' });
@@ -3493,6 +3505,44 @@ describe('renameItem keeps recipe ingredients in step', () => {
     // The label the recipe was written with is untouched — only the bridge moved.
     expect(ingredients[0].name).toBe('Tomatos');
     expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('undoes a rename without moving lines that already used the new name', () => {
+    // Renaming back would remap every "peanut butter" line, including the one
+    // that was always peanut butter. Undo puts back exactly what moved.
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1', name: 'Toast', nameKey: 'toast', notes: '', sourceUrl: null, servings: null,
+      ingredients: [
+        { id: 'i1', name: 'Butter', nameKey: 'butter', quantity: '', aisle: null },
+        { id: 'i2', name: 'Peanut butter', nameKey: 'peanut butter', quantity: '', aisle: null },
+      ],
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+    const butter = makeItem({ name: 'Butter' });
+    seed([butter]);
+
+    useGroceryStore.getState().renameItem(butter.id, 'Peanut butter');
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items[0]).toMatchObject({ name: 'Butter', nameKey: 'butter' });
+    const keys = useRecipeStore.getState().recipeById('r1')!.ingredients.map(i => i.nameKey);
+    expect(keys).toEqual(['butter', 'peanut butter']);
+  });
+
+  it('moves a line that reached the row by the other plural', () => {
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1', name: 'Salad', nameKey: 'salad', notes: '', sourceUrl: null, servings: null,
+      ingredients: [{ id: 'i1', name: 'Tomato', nameKey: 'tomato', quantity: '1', aisle: null }],
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+    const tomatoes = makeItem({ name: 'Tomatoes' });
+    seed([tomatoes]);
+
+    useGroceryStore.getState().renameItem(tomatoes.id, 'Plum tomatoes');
+
+    expect(useRecipeStore.getState().recipeById('r1')!.ingredients[0].nameKey).toBe('plum tomatoes');
   });
 
   it('writes nothing when no recipe referenced the old key', () => {

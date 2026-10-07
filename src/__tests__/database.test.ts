@@ -3215,6 +3215,18 @@ describe('grocery items', () => {
     expect(items()).toEqual([{ id: 'f1', item_id: 'loser' }, { id: 'f2', item_id: 'winner' }]);
   });
 
+  it('repoints a food log entry naming a box the merge folded, and puts it back on undo', () => {
+    mockRawDb.exec('DELETE FROM food_logs');
+    mockRawDb.prepare(
+      "INSERT INTO food_logs (id, day_key, at_iso, label, item_id, product_id, nutrition, created_at) VALUES ('f1', '2026-03-01', '2026-03-01T12:00:00.000Z', 'x', 'loser', 'box-l', '{}', '2026-03-01')"
+    ).run();
+    const snap = dbRepointItemReferences('loser', 'winner', new Map([['box-l', 'box-w'], ['box-kept', 'box-kept']]));
+    const row = () => mockRawDb.prepare('SELECT item_id, product_id FROM food_logs').get();
+    expect(row()).toEqual({ item_id: 'winner', product_id: 'box-w' });
+    dbRestoreRepoint(snap);
+    expect(row()).toEqual({ item_id: 'loser', product_id: 'box-l' });
+  });
+
   it('deletes', () => {
     insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     dbDeleteGroceryItem('g1');

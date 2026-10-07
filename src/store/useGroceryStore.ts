@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
 import {
   type DeletedItemSnapshot,
@@ -15,6 +15,7 @@ import {
   clearOtherStandingLinks,
   subLinkRows,
   chosenOptionRows,
+  mergedItemRow,
 } from '../utils/groceryItemWrite';
 import {
   dbGetAllGroceryItems,
@@ -2553,6 +2554,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const renamed = renameRows(get().items, id, name);
     if ('refusal' in renamed) return false;
     const { item: updated, repointed, oldKey, key } = renamed;
+    // The undo snapshot, as mergeItems takes one: the rows themselves, and the
+    // recipes whose lines the remap below is about to rewrite. Restoring those
+    // rather than renaming back is the point, since renaming back remaps every
+    // line holding the new key, including ones that used it before ("Butter"
+    // to "Peanut butter" and back moved real peanut butter lines to Butter).
+    const before = get().items.find(i => i.id === id)!;
+    const beforeRepointed = get().items.filter(i => repointed.some(r => r.id === i.id));
+    const beforeOverrides = get().aisleOverrides;
+    // Every key the recipes reached this row by: its own, and any other
+    // spelling the plural rule resolved to it ("1 tomato" on a Tomatoes row)
+    // while no row of that spelling exists. A remap of the exact key alone
+    // left those lines stranded, and the next add from the recipe made a row.
+    const itemsBefore = get().items;
+    const recipeKeys = key === oldKey ? [] : [...new Set(
+      useRecipeStore.getState().recipes.flatMap(r => r.ingredients.map(i => i.nameKey))
+    )].filter(k => k === oldKey || catalogItemForKey(k, itemsBefore)?.id === id);
+    const beforeRecipes = useRecipeStore.getState().recipes
+      .filter(r => r.ingredients.some(i => recipeKeys.includes(i.nameKey)));
     dbUpdateGroceryItem(updated);
     const repointedVarieties = new Map<string, GroceryItem>();
     for (const next of repointed) {
@@ -2571,11 +2590,41 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // matching. Reached through the store rather than the rows because the key
     // lives inside a JSON blob; remapIngredientKey is a no-op when nothing
     // referenced the old spelling.
-    useRecipeStore.getState().remapIngredientKey(item.nameKey, key);
+    for (const from of recipeKeys) useRecipeStore.getState().remapIngredientKey(from, key);
     set(s => ({
       items: s.items.map(i => (i.id === id ? updated : repointedVarieties.get(i.id) ?? i)),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
+    if (before.name !== updated.name) {
+      get().setLastAction({
+        label: `Renamed "${before.name}" to "${updated.name}"`,
+        redo: () => { get().renameItem(id, name); },
+        undo: () => {
+          // Only the fields a rename writes, onto each row as it is now: a
+          // whole-row snapshot would also put back a check or a pantry answer
+          // made since.
+          const back = new Map<string, GroceryItem>();
+          for (const was of [before, ...beforeRepointed]) {
+            const now = get().items.find(i => i.id === was.id);
+            if (!now) continue;
+            back.set(was.id, {
+              ...now,
+              name: was.name,
+              nameKey: was.nameKey,
+              varietyOfKey: was.varietyOfKey,
+              nameFromScan: was.nameFromScan,
+            });
+          }
+          for (const row of back.values()) dbUpdateGroceryItem(row);
+          if (remembered) dbSetGroceryAisleOverrides(beforeOverrides);
+          useRecipeStore.getState().restoreRecipes(beforeRecipes);
+          set(s => ({
+            items: s.items.map(i => back.get(i.id) ?? i),
+            aisleOverrides: remembered ? beforeOverrides : s.aisleOverrides,
+          }));
+        },
+      });
+    }
     return true;
   },
 
@@ -2733,16 +2782,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ? null
         : inheritedVarietyOf;
 
+    // A price observation names the box it was paid for, and a box folded
+    // into one of the survivor's hands its id over.
+    const remapHistory = (history: readonly PriceObservation[]): PriceObservation[] =>
+      history.map(o =>
+        o.productId && productIdRemap.has(o.productId) ? { ...o, productId: productIdRemap.get(o.productId)! } : o
+      );
+    // Every field by its rule in ITEM_MERGE_RULES; the ones it marks `caller`
+    // are decided here, from the membership, boxes and varieties above.
+    const folded = mergedItemRow(intoItem, fromItem);
     const merged: GroceryItem = {
-      ...intoItem,
-      purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
-      lastAddedAt: laterOf(intoItem.lastAddedAt, fromItem.lastAddedAt),
-      lastPurchasedAt: laterOf(intoItem.lastPurchasedAt, fromItem.lastPurchasedAt),
-      // Not averaged: the two rows' gaps were measured against different
-      // purchase stamps. The surviving row's own figure, else the other's.
-      purchaseIntervalDays: intoItem.purchaseIntervalDays ?? fromItem.purchaseIntervalDays,
-      onHandUntil: laterOf(intoItem.onHandUntil, fromItem.onHandUntil),
-      isStaple: intoItem.isStaple || fromItem.isStaple,
+      ...folded,
+      priceHistory: remapHistory(folded.priceHistory),
       onList,
       checked: onList && (intoItem.checked || fromItem.checked),
       quantity,
@@ -2750,7 +2801,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       choiceGroup,
       preferredProductId: mergedPreferredProductId,
       varietyOfKey: mergedVarietyOfKey,
-      ...pickPriceFields(intoItem, fromItem),
     };
 
     // Variety declarations aimed at the loser's key follow the merge onto the
@@ -2782,7 +2832,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           lastPurchasedAt: laterOf(survivorLink.lastPurchasedAt, loserLink.lastPurchasedAt),
           // Neither side is dropped: both are prices actually paid for what is
           // now one item. The cap keeps the most recent of the two runs.
-          priceHistory: mergePriceHistories(survivorLink.priceHistory, loserLink.priceHistory),
+          priceHistory: remapHistory(mergePriceHistories(survivorLink.priceHistory, loserLink.priceHistory)),
           // A purchase on either side refutes an "unavailable" claim, same as
           // a fresh purchase already does to a single link.
           unavailableAt:
@@ -2803,6 +2853,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         mergedShopLinks.push({
           ...only,
           itemId: intoId,
+          priceHistory: remapHistory(only.priceHistory),
           productId: remapProductId(only.productId),
           unavailableProductIds: remapClaims(only.unavailableProductIds),
         });
@@ -2934,7 +2985,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       useTaskStore.getState().updateTask(taskId, { supplyGroceryItemId: intoId }, { skipPostponeCount: true });
     }
     // The rest of what named the loser lives in other stores' tables.
-    const repointed = dbRepointItemReferences(fromId, intoId);
+    const repointed = dbRepointItemReferences(fromId, intoId, productIdRemap);
     // Required lazily: the food log store reaches the Health bridge at import,
     // and this only runs when one of its rows actually changed.
     const reloadOtherStores = () => {
