@@ -4,7 +4,8 @@ import { parsePlaceResults, PLACE_QUERY_MIN_LENGTH, type PlaceResult } from '../
 
 /**
  * Places in Apple Maps matching what someone is typing into an event's
- * location, for the quick-add card's suggestions.
+ * location, for the quick-add card's suggestions and a person's Location field
+ * (`usePlaceSuggestions`).
  *
  * **It sends what is typed to Apple**, through MapKit's search
  * (`searchPlaces` in `todo-eventkit-bridge`). That needs no key, so "no key, no

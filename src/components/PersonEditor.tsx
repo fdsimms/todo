@@ -38,6 +38,9 @@ import { personHistory } from '../utils/personHistory';
 import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
+import { placeLocationText, placeSubtitle, type PlaceResult } from '../utils/places';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
   visible: boolean;
@@ -102,12 +105,22 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const [birthdayTaskOptOut, setBirthdayTaskOptOut] = useState(false);
   const [birthdayGiftTaskOptOut, setBirthdayGiftTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [faxNumber, setFaxNumber] = useState('');
+  // The notes field's own content height. The native multiline field was
+  // clipping long notes to a few lines, so the height is set from what the text
+  // measures instead of left to auto-grow.
+  const [notesHeight, setNotesHeight] = useState(0);
   const [email, setEmail] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [cadenceDays, setCadenceDays] = useState(0);
   const [askAbout, setAskAbout] = useState('');
   const [location, setLocation] = useState('');
+  // The text a tapped suggestion wrote, so the list stays closed until the
+  // field is edited again instead of searching for the address just chosen.
+  const [pickedLocation, setPickedLocation] = useState<string | null>(null);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
+  const placeSuggestions = usePlaceSuggestions(location, visible && location !== pickedLocation);
   const [showGroupEditor, setShowGroupEditor] = useState(false);
   const [showContactPicker, setShowContactPicker] = useState(false);
 
@@ -135,11 +148,13 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
     setBirthdayGiftTaskOptOut(person.birthdayGiftTaskOptOut);
     setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
+    setFaxNumber(formatPhoneInput(person.faxNumber ?? ''));
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
     setCadenceDays(person.cadenceDays);
     setAskAbout(person.askAbout);
     setLocation(person.location ?? '');
+    setPickedLocation(person.location ?? null);
     setShowBirthdayPicker(false);
     setShowContactPicker(false);
   }, [person, visible]);
@@ -167,6 +182,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       birthdayTaskOptOut,
       birthdayGiftTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
+      faxNumber: faxNumber.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
       cadenceDays: kind === 'individual' ? cadenceDays : 0,
@@ -291,14 +307,19 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         placeholderTextColor={colors.textTertiary}
         maxLength={TITLE_MAX_LENGTH}
       />
-      <TextField
-        style={styles.notesInput}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Notes"
-        placeholderTextColor={colors.textTertiary}
-        multiline
-      />
+      <View style={styles.notesCard}>
+        <TextField
+          style={[styles.notesInput, { height: Math.max(styles.notesInput.minHeight, notesHeight) }]}
+          value={notes}
+          onChangeText={setNotes}
+          onContentSizeChange={e => setNotesHeight(Math.ceil(e.nativeEvent.contentSize.height))}
+          placeholder="Notes"
+          placeholderTextColor={colors.textTertiary}
+          multiline
+          scrollEnabled={false}
+          textAlignVertical="top"
+        />
+      </View>
 
       <View style={styles.sectionCard}>
         <SegmentedControl
@@ -312,6 +333,8 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         />
       </View>
 
+      {kind === 'individual' && (
+      <>
       <Text style={styles.groupLabel}>BIRTHDAY</Text>
       <View style={styles.sectionCard}>
         <EditorRow
@@ -362,8 +385,6 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         )}
       </View>
 
-      {kind === 'individual' && (
-      <>
       <Text style={styles.groupLabel}>KEEPING IN TOUCH</Text>
       <View style={styles.sectionCard}>
         <View style={styles.optionRow}>
@@ -467,6 +488,44 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           />
         </View>
       </View>
+      {placeSuggestions.results.length > 0 && (
+        <View style={[styles.sectionCard, styles.placeList]}>
+          {placeSuggestions.results.map((place: PlaceResult, index) => {
+            const subtitle = placeSubtitle(place);
+            return (
+              <TouchableOpacity
+                key={`${place.latitude},${place.longitude},${index}`}
+                style={[styles.placeRow, index > 0 && styles.placeRowRuled]}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  const text = placeLocationText(place);
+                  setLocation(text);
+                  setPickedLocation(text);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${placeLocationText(place)}`}
+              >
+                <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
+                {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {!placeSuggestions.enabled && placeSuggestions.wanted && (
+        <View style={styles.placeOffer}>
+          <InlineAction
+            icon="search-outline"
+            label="Suggest places"
+            variant="neutral"
+            onPress={() => setPlaceSuggestionsEnabled(true)}
+            accessibilityLabel="Turn on place suggestions from Apple Maps"
+          />
+          <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+        </View>
+      )}
       <Text style={styles.sectionFooter}>
         Where they live. Used to find them when you're planning a trip somewhere.
       </Text>
@@ -482,6 +541,19 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             // Task.phoneNumber documents: there is no canonical dial string
             // without a country the app never asks for.
             onChangeText={text => setPhoneNumber(formatPhoneInput(text))}
+            placeholder="e.g. 555 123 4567"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="phone-pad"
+            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+          />
+        </View>
+        <View style={styles.sep} />
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel}>Fax</Text>
+          <TextField
+            style={styles.fieldInput}
+            value={faxNumber}
+            onChangeText={text => setFaxNumber(formatPhoneInput(text))}
             placeholder="e.g. 555 123 4567"
             placeholderTextColor={colors.textTertiary}
             keyboardType="phone-pad"
@@ -578,9 +650,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.text, fontSize: font.xl, fontWeight: fontWeight.medium,
     paddingVertical: spacing.sm, minHeight: 44,
   },
+  notesCard: {
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
+    marginBottom: spacing.md,
+  },
   notesInput: {
-    color: colors.textSecondary, fontSize: font.md,
-    paddingBottom: spacing.lg, minHeight: 44,
+    color: colors.text, fontSize: font.md,
+    padding: 0, minHeight: 120,
     // No lineHeight on a TextInput — see the note in ProjectEditor's styles.
   },
   // textSecondary rather than textTertiary: these are the app's repeated
@@ -625,6 +702,13 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.md,
   },
   offerText: { flex: 1, color: colors.accent, fontSize: font.xs, lineHeight: 17 },
+  placeList: { marginTop: spacing.sm },
+  placeRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.xxs },
+  placeRowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  placeName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+  placeAddress: { color: colors.textSecondary, fontSize: font.xs },
+  placeOffer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  placeOfferText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   fieldInput: {
     flex: 1, color: colors.text, fontSize: font.md, textAlign: 'right',
     // A fixed height rather than a lineHeight keeps the row from resizing as

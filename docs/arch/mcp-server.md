@@ -1076,7 +1076,7 @@ A meal already marked cooked is not removable here, since it is history behind t
 ### People: who someone is, never how the friendship stands
 
 `create_person` and `update_person` write identity and contact details (name, nickname, kind, notes,
-what to ask about, birthday, phone, email, link). `docs/arch/people.md` is why the list stops there:
+what to ask about, birthday, phone, fax, email, link, location as free text). `docs/arch/people.md` is why the list stops there:
 **no cadence, no nudge opt-in, no group, no archive, no order.** Declaring a rhythm for someone is the
 user's own small act, and an agent doing it for them is the "make you declare a cadence" failure the
 doc opens with; a new person starts with none, as in the app (`blankPerson`). A birthday is checked

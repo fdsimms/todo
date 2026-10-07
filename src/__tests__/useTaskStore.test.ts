@@ -5242,7 +5242,7 @@ describe('checkReachOutTasks', () => {
     reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
-    location: null,
+    location: null, faxNumber: null,
     ...overrides,
   });
 
@@ -5349,7 +5349,7 @@ describe('checkWaitingFollowUpTasks', () => {
     reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
-    location: null,
+    location: null, faxNumber: null,
     ...overrides,
   });
 
@@ -5481,7 +5481,7 @@ describe('checkCalendarReviewTasks', () => {
     end: new Date(2026, 7, 26, 15, 0, 0).toISOString(),
     allDay: false,
     calendarId: 'cal-1',
-    location: null,
+    location: null, faxNumber: null,
     status: 'confirmed',
     availability: 'busy',
     ...overrides,
@@ -11483,7 +11483,7 @@ describe('pinnedTasks', () => {
         phoneNumber: null, email: null, linkUrl: null,
         cadenceDays: 30, nudgeOptIn: false, cadenceSetAt: null,
         reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
-        backfillDismissedFields: [], groupId: null, location: null,
+        backfillDismissedFields: [], groupId: null, location: null, faxNumber: null,
       }],
       initialized: true,
     });

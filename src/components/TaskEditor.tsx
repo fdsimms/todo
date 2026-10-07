@@ -124,6 +124,7 @@ import { CountStepper } from './CountStepper';
 import { MAX_ROTATION_PER_WEEK, rotationItemsFrom, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
+import { TitleSuggestionBanner } from './TitleSuggestionBanner';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
@@ -3128,35 +3129,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ],
           }]}
         >
-          <View style={styles.scheduleBannerPill}>
-            <PressableScale
-              style={[styles.scheduleBannerBtn, styles.scheduleBannerBtnJoined]}
-              onPress={applyParsedSchedule}
-            >
-              <Ionicons
-                name={
-                  activeParsedSchedule.schedule.recurrenceType !== 'none'
-                    ? 'repeat'
-                    : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
-                }
-                size={14}
-                color={colors.onAccent}
-              />
-              <Text style={styles.scheduleBannerText} numberOfLines={1}>
-                {describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}
-              </Text>
-              <View style={styles.scheduleBannerDot} />
-              <Text style={styles.scheduleBannerHint}>Tap to set</Text>
-            </PressableScale>
-            <View style={styles.scheduleBannerDivider} />
-            <PressableScale
-              style={styles.scheduleBannerDismiss}
-              onPress={dismissParsedSchedule}
-              accessibilityLabel="Not a date"
-            >
-              <Ionicons name="close" size={14} color={colors.onAccent} />
-            </PressableScale>
-          </View>
+          <TitleSuggestionBanner
+            icon={
+              activeParsedSchedule.schedule.recurrenceType !== 'none'
+                ? 'repeat'
+                : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
+            }
+            label={describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}
+            onApply={applyParsedSchedule}
+            onDismiss={dismissParsedSchedule}
+            dismissLabel="Not a date"
+          />
         </Animated.View>
       )}
 
@@ -3173,31 +3156,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ],
           }]}
         >
-          <View style={styles.scheduleBannerPill}>
-            <PressableScale
-              style={[styles.scheduleBannerBtn, styles.scheduleBannerBtnJoined]}
-              onPress={applyCategoryTagsBanner}
-            >
-              <Ionicons
-                name={activeCategoryTags.category ? 'pricetag-outline' : 'pricetags-outline'}
-                size={14}
-                color={colors.onAccent}
-              />
-              <Text style={styles.scheduleBannerText} numberOfLines={1}>
-                {categoryTagsLabel(activeCategoryTags, categories)}
-              </Text>
-              <View style={styles.scheduleBannerDot} />
-              <Text style={styles.scheduleBannerHint}>Tap to set</Text>
-            </PressableScale>
-            <View style={styles.scheduleBannerDivider} />
-            <PressableScale
-              style={styles.scheduleBannerDismiss}
-              onPress={dismissCategoryTagsBanner}
-              accessibilityLabel="Hide suggestion"
-            >
-              <Ionicons name="close" size={14} color={colors.onAccent} />
-            </PressableScale>
-          </View>
+          <TitleSuggestionBanner
+            icon={activeCategoryTags.category ? 'pricetag-outline' : 'pricetags-outline'}
+            label={categoryTagsLabel(activeCategoryTags, categories)}
+            onApply={applyCategoryTagsBanner}
+            onDismiss={dismissCategoryTagsBanner}
+            dismissLabel="Hide suggestion"
+          />
         </Animated.View>
       )}
 
@@ -6983,17 +6948,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     marginBottom: spacing.sm,
     alignItems: 'flex-start',
   },
-  scheduleBannerPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    maxWidth: '100%',
-    // Backs the 1px divider between the button and the ✕: the row has no fill
-    // of its own, so the divider's translucent colour otherwise sat over the
-    // screen behind it and read as a gap in the pill (same fix as quick add's
-    // tooltipPillRow).
-    backgroundColor: colors.accentFill,
-    borderRadius: radius.md,
-  },
   mentionSuggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -7012,47 +6966,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
   },
-  // Overrides for the schedule pill's own button, joined to the ✕ on its
-  // right: square that side off and let the text give way to it instead of
-  // pushing it past the row's edge.
-  scheduleBannerBtnJoined: {
-    flexShrink: 1,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  scheduleBannerDismiss: {
-    flexShrink: 0,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: spacing.xsm,
-    borderTopRightRadius: radius.md,
-    borderBottomRightRadius: radius.md,
-    backgroundColor: colors.accentFill,
-  },
-  scheduleBannerDivider: {
-    width: 1,
-    alignSelf: 'stretch',
-    marginVertical: 7,
-    backgroundColor: colors.onAccent,
-    opacity: 0.25,
-  },
   scheduleBannerText: {
     color: colors.onAccent,
     fontSize: font.sm,
     fontWeight: '600',
     flexShrink: 1,
-  },
-  scheduleBannerDot: {
-    width: 3, height: 3, borderRadius: 1.5,
-    backgroundColor: colors.onAccent,
-    opacity: 0.6,
-  },
-  scheduleBannerHint: {
-    color: colors.onAccent,
-    fontSize: font.xs,
-    fontWeight: '500',
-    opacity: 0.75,
   },
   contactNudgeRow: {
     marginHorizontal: spacing.md,

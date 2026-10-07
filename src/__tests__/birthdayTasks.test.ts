@@ -49,7 +49,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,
-  location: null,
+  location: null, faxNumber: null,
   ...overrides,
 });
 
@@ -216,6 +216,10 @@ describe('who wants a task right now', () => {
 
   it('is still offering it on the day itself', () => {
     expect(wantedBirthdayTasks([person()], lead, noon(2026, 3, 14))).toHaveLength(1);
+  });
+
+  it('offers nothing for a business, even one with a birthday left on file', () => {
+    expect(wantedBirthdayTasks([person({ kind: 'business' })], lead, noon(2026, 3, 14))).toEqual([]);
   });
 
   it('stops the day after', () => {
