@@ -83,6 +83,7 @@ import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
 
 /**
  * Writing down something eaten.
@@ -1379,9 +1380,9 @@ export function FoodLogEntrySheet({
               const usingFoodUnitPills = picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
               const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
               return (
-                <View style={usingFoodUnitPills ? styles.inputRow : undefined}>
+                <View style={picked.kind === 'food' && foodUnitOptions.length > 0 ? styles.inputRow : undefined}>
                   <TextField
-                    style={usingFoodUnitPills ? styles.inputWithSuffix : styles.input}
+                    style={picked.kind === 'food' && foodUnitOptions.length > 0 ? styles.inputWithSuffix : styles.input}
                     value={usingFoodUnitPills ? amountNumber : amount}
                     onChangeText={text => {
                       if (usingFoodUnitPills) {
@@ -1422,62 +1423,40 @@ export function FoodLogEntrySheet({
                         : 'How much you ate'
                     }
                   />
-                  {/* The placeholder alone only names the unit before anything
-                      is typed — it's gone the moment a number is, which is
-                      exactly when a "servings" vs. "g" mix-up would matter.
-                      This sits outside the placeholder so it stays visible. */}
-                  {usingFoodUnitPills && selectedFoodUnit && (
-                    <Text style={styles.inputSuffix}>{selectedFoodUnit.label}</Text>
+                  {/* The unit lives in the chip rather than a row of pills:
+                      nearly every amount is a serving or grams, and the rest
+                      (volumes, nutrient amounts, "Something else") are one tap
+                      away in its menu. It stays beside the number once one is
+                      typed, which is when a "servings" vs. "g" mix-up matters. */}
+                  {picked.kind === 'food' && foodUnitOptions.length > 0 && (
+                    <UnitMenuChip
+                      name="FoodLogEntrySheet unit menu"
+                      options={foodUnitOptions}
+                      selectedKey={amountUnit}
+                      chipBackground={colors.bgTertiary}
+                      onSelect={key => {
+                        if (key === OTHER_UNIT_KEY) {
+                          // The escape hatch for a unit this food's own panel
+                          // doesn't state: swaps the number-only field back to
+                          // free text, so a novel amount can still be typed and,
+                          // if it names a unit the panel can't resolve, weighed
+                          // in via `weighable`.
+                          setAmountUnit(OTHER_UNIT_KEY);
+                          setAmount('');
+                          return;
+                        }
+                        const option = foodUnitOptions.find(o => o.key === key);
+                        // Picking "serving" with nothing typed means one serving.
+                        const number = key === 'serving' && !amountNumber.trim() ? '1' : amountNumber;
+                        setAmountUnit(key);
+                        setAmountNumber(number);
+                        setAmount(composeFoodAmount(number, option));
+                      }}
+                    />
                   )}
                 </View>
               );
             })()}
-            {picked.kind === 'food' && foodUnitOptions.length > 0 && (
-              <View style={styles.portionChips}>
-                {foodUnitOptions.map(option => {
-                  const on = amountUnit === option.key;
-                  return (
-                    <TouchableOpacity
-                      key={option.key}
-                      style={[styles.portionChip, on && styles.portionChipOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => {
-                        haptics.tap();
-                        // Picking "serving" with nothing typed means one serving.
-                        const number = option.key === 'serving' && !amountNumber.trim() ? '1' : amountNumber;
-                        setAmountUnit(option.key);
-                        setAmountNumber(number);
-                        setAmount(composeFoodAmount(number, option));
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                      accessibilityLabel={option.label}
-                    >
-                      <Text style={[styles.portionChipText, on && styles.portionChipTextOn]}>{option.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                {/* The escape hatch for a unit this food's own panel doesn't
-                    state: swaps the number-only field above back to free
-                    text, so a novel amount can still be typed and, if it
-                    names a unit the panel can't resolve, weighed in via
-                    `weighable` — the same offer this sheet already makes for
-                    any refused amount. */}
-                <TouchableOpacity
-                  key="other"
-                  style={[styles.portionChip, amountUnit === 'other' && styles.portionChipOn]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => { haptics.tap(); setAmountUnit('other'); setAmount(''); }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: amountUnit === 'other' }}
-                  accessibilityLabel="Something else"
-                >
-                  <Text style={[styles.portionChipText, amountUnit === 'other' && styles.portionChipTextOn]}>
-                    Something else
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
             <Text style={styles.hint}>
               {/* Says where a number nobody typed came from, and only while
                   the field still holds it. */}
@@ -1485,7 +1464,7 @@ export function FoodLogEntrySheet({
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
+                  ? 'Type the amount and pick its unit beside it. Anything else is refused rather than guessed at.'
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
@@ -1863,16 +1842,6 @@ function makeStyles(colors: Colors) {
     // Margin on both sides: the label above has none of its own below it, and
     // the amount field below has only spacing.xs of its own.
     measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },
-    portionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
-    portionChip: {
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      backgroundColor: colors.bgSecondary,
-    },
-    portionChipOn: { backgroundColor: colors.accentFill },
-    portionChipText: { color: colors.text, fontSize: font.sm },
-    portionChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
     input: {
       color: colors.text,
       fontSize: font.md,
@@ -1887,7 +1856,9 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.sm,
+      gap: spacing.sm,
       marginTop: spacing.xs,
     },
     inputWithSuffix: {
@@ -1895,11 +1866,6 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.sm,
       color: colors.text,
       fontSize: font.md,
-    },
-    inputSuffix: {
-      color: colors.textSecondary,
-      fontSize: font.md,
-      marginLeft: spacing.xs,
     },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },

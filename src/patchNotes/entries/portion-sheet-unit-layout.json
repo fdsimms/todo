@@ -1,4 +1,4 @@
 {
-  "message": "The How much? sheet is easier to read. Units like g and serving are separate from the by-nutrient options (cal, g protein), the unit no longer repeats beside the number, and the package shortcuts are labeled as a share of the package (Whole package, Half) instead of looking like more units",
+  "message": "Logging an amount is simpler. The unit now sits beside the number as a small chip that opens a menu (serving, g, oz, then amounts by nutrient, then Something else), replacing the long row of unit pills. When a package size is known, one button fills in the whole package",
   "date": "2026-10-07"
 }
