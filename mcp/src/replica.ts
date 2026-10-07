@@ -3501,11 +3501,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
 
       refresh();
-      // plan.wasOnList is "in any trolley", which reads a row on the Airbnb
-      // list as already added to the list at home.
-      const listId = opts?.listId ?? null;
-      const wasOnList = !plan.isNew && entries.some(e => e.itemId === plan.item.id && e.listId === listId);
-      return { item: plan.item, isNew: plan.isNew, wasOnList };
+      // Already per list: planGroceryAdd reads the entry on the list it adds to.
+      return { item: plan.item, isNew: plan.isNew, wasOnList: plan.wasOnList };
     },
 
     setGroceryChecked(id: string, checked: boolean, listId: string | null = null): GroceryItem {

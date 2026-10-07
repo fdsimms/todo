@@ -75,6 +75,23 @@ export function dayKeyToDate(key: string): Date {
 }
 
 /**
+ * A `Task.deadline` as the instant every reader expects: a bare `YYYY-MM-DD`
+ * becomes local noon on that day, anything else is returned as it came.
+ *
+ * Every deadline reader parses the field with `new Date`, which reads a bare
+ * day key as UTC midnight, the evening before anywhere west of UTC, so a use-up
+ * task showed "1d overdue" on its own last day. `newTaskFromDraft` and
+ * `mergeTaskUpdate` both pass the field through here, so a writer can't make
+ * that mistake.
+ */
+export function deadlineInstant(deadline: string | null): string | null {
+  if (deadline === null || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return deadline;
+  const d = dayKeyToDate(deadline);
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString();
+}
+
+/**
  * The logical-day-start instant for a *stored* date like a task's dueDate or
  * deferUntil — the calendar day the value represents, at the dayResetTime
  * clock time. Unlike getDayStart(), this never rolls the result back a day:

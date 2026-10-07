@@ -36,6 +36,7 @@ import {
   getReminderOffsetDate,
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
+  deadlineInstant,
 } from './dateUtils';
 import { carryClockTime } from './clockTime';
 import { getVisibleAt } from './visibilityUtils';
@@ -218,7 +219,7 @@ export function newTaskFromDraft(
     createdAt: now,
     seenAt: now,
     dueDate: draft.dueDate ?? null,
-    deadline: draft.deadline ?? null,
+    deadline: deadlineInstant(draft.deadline ?? null),
     deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
     deadlineMonthDay: draft.deadlineMonthDay ?? null,
     deferUntil: draft.deferUntil ?? null,
