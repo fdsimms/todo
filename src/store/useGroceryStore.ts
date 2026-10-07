@@ -14,6 +14,7 @@ import {
   shopLinkRow,
   clearOtherStandingLinks,
   subLinkRows,
+  chosenOptionRows,
 } from '../utils/groceryItemWrite';
 import {
   dbGetAllGroceryItems,
@@ -3879,14 +3880,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // on another list is a separate choice, still to be made there.
     const listId = get().activeListId;
     const entries = get().listEntries;
-    const entry = entryFor(entries, id, listId);
-    if (!entry?.choiceGroup) return;
-    const group = entry.choiceGroup;
+    const plan = chosenOptionRows(entries, get().items, id, listId);
+    if (!plan) return;
+    const entry = entryFor(entries, id, listId)!;
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const losers = entries.filter(
-      e => e.listId === listId && e.itemId !== id && e.choiceGroup === group
-    );
+    const losers = plan.remove;
     if (losers.length === 0) {
       get().clearChoice(id);
       return;
@@ -3902,12 +3901,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const beforeItems = get().items.filter(i => loserIds.has(i.id));
     // Same park shape removeFromList uses, recipe-owned quantity included: a
     // rejected "2 cups pears" must not hand that amount back on a later manual
-    // re-add.
-    const parked = beforeItems.map(i => ({
-      ...i,
-      quantity: i.quantityFromRecipe ? null : i.quantity,
-      quantityFromRecipe: false,
-    }));
+    // re-add. See chosenOptionRows.
+    const parked = plan.parked;
 
     for (const u of parked) dbUpdateGroceryItem(u);
     const byId = new Map(parked.map(u => [u.id, u]));
@@ -3915,7 +3910,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // The winner keeps its place and stops being an option; every other option
     // leaves this trolley.
     writeMembership({
-      upsert: [{ ...entry, choiceGroup: null }],
+      upsert: [plan.winner],
       remove: losers.map(e => ({ itemId: e.itemId, listId })),
     });
 

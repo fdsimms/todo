@@ -1513,6 +1513,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { completesMealSlot } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
 
   /**
+   * The app's resolveChoice: an option checked off on a list takes the rest of
+   * its either/or off that list. A no-op for a row that isn't an option.
+   */
+  const resolveChoiceOn = (itemId: string, listId: string | null): void => {
+    const plan = itemWrite.chosenOptionRows(db.dbGetAllGroceryListEntries(), db.dbGetAllGroceryItems(), itemId, listId);
+    if (!plan) return;
+    for (const row of plan.parked) db.dbUpdateGroceryItem(row);
+    for (const e of plan.remove) db.dbDeleteGroceryListEntry(e.itemId, e.listId);
+    db.dbSetGroceryListEntry(plan.winner);
+  };
+
+  /**
    * What reopening cannot undo from here. Each is state on the phone or in a
    * store this server has no copy of: a calendar event the completion logged, a
    * screen-time credit, and a meal marked cooked or logged by a meal task. The
@@ -3505,6 +3517,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!entry) throw new Error(`"${item.name}" is not on ${listId === null ? 'the home list' : 'that list'}, so there is nothing to check off.`);
 
       db.dbSetGroceryListEntry({ ...entry, checked });
+      // Checking one option of an either/or takes the others off this list,
+      // as the app's own tick does (resolveChoice).
+      if (checked) resolveChoiceOn(id, listId);
       refresh();
       return db.dbGetAllGroceryItems().find(i => i.id === id)!;
     },
@@ -3795,6 +3810,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             db.dbSetGroceryListEntry(entry
               ? { ...entry, checked: true }
               : { itemId: item.id, listId: input.listId, checked: true, choiceGroup: null, addedAt: nowIso, sortOrder: groceryLists.nextListSortOrder(entries, input.listId) });
+            resolveChoiceOn(item.id, input.listId);
             if (line.priceMinor !== undefined && line.priceMinor !== null) priceById[item.id] = line.priceMinor;
             if (line.frozen) frozen.add(item.id);
           } else {
@@ -3822,7 +3838,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
                 item = f;
               }
             }
-            if (line.priceMinor !== undefined) {
+            // Null is "the line has no price" (the tool's own schema), not
+            // "clear the stored one", which is what pricedRows does with it.
+            if (line.priceMinor !== undefined && line.priceMinor !== null) {
               const link = input.shopId ? db.dbGetAllItemShopLinks().find(l => l.itemId === item.id && l.shopId === input.shopId) : undefined;
               const rows = itemWrite.pricedRows(item, link, line.priceMinor, nowIso);
               db.dbUpdateGroceryItem(rows.item);

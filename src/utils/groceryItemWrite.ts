@@ -317,6 +317,36 @@ export interface FinishShoppingPlan {
 }
 
 /**
+ * Checking off one option of an either/or ("apples or pears"): the winner
+ * stops being an option and every other option in the same group on the same
+ * list leaves that list, parked off it rather than deleted. A recipe-owned
+ * quantity on a parked row is cleared, the same park shape removeFromList uses,
+ * so a rejected "2 cups pears" doesn't come back on a later re-add.
+ *
+ * Null when the row isn't an option on that list. An empty `remove` means the
+ * group had no other members left, and the winner simply stops being one.
+ * Shared by `useGroceryStore.resolveChoice` and the MCP replica, whose
+ * check-off used to tick an option and leave the rest of its group listed.
+ */
+export function chosenOptionRows(
+  entries: readonly GroceryListEntry[],
+  items: readonly GroceryItem[],
+  itemId: string,
+  listId: string | null
+): { winner: GroceryListEntry; remove: GroceryListEntry[]; parked: GroceryItem[] } | null {
+  const entry = entries.find(e => e.itemId === itemId && e.listId === listId);
+  if (!entry?.choiceGroup) return null;
+  const remove = entries.filter(
+    e => e.listId === listId && e.itemId !== itemId && e.choiceGroup === entry.choiceGroup
+  );
+  const removed = new Set(remove.map(e => e.itemId));
+  const parked = items
+    .filter(i => removed.has(i.id))
+    .map(i => ({ ...i, quantity: i.quantityFromRecipe ? null : i.quantity, quantityFromRecipe: false }));
+  return { winner: { ...entry, choiceGroup: null }, remove, parked };
+}
+
+/**
  * What finishing a list records. **An away trip records nothing**: no store, no
  * use-by day, no prices (see `GroceryList`). A store deleted since it was
  * chosen is dropped rather than written as a link nothing can resolve.
