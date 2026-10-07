@@ -3180,12 +3180,37 @@ describe('grocery items', () => {
   it('updates in place', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
     insertListedGroceryItem(item);
-    dbUpdateGroceryItem({ ...item, aisle: 'Dairy & Eggs', quantity: '1 gal', checked: true });
+    dbUpdateGroceryItem({ ...item, aisle: 'Dairy & Eggs', quantity: '1 gal' });
 
     const [after] = dbGetAllGroceryItems();
     expect(after.aisle).toBe('Dairy & Eggs');
     expect(after.quantity).toBe('1 gal');
-    expect(after.checked).toBe(true);
+  });
+
+  // The four mirror columns follow the entries alone, so an undo writing back
+  // a snapshot taken before a tick can't untick a row the entry says is
+  // checked, or put a row back "on the list" with no entry.
+  it('leaves the list mirror columns to the entries', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    insertListedGroceryItem(item);
+    dbUpdateGroceryItem({ ...item, onList: false, checked: true, choiceGroup: 'g', sortOrder: 99 });
+
+    const [after] = dbGetAllGroceryItems();
+    expect(after).toMatchObject({ onList: true, checked: false, choiceGroup: null });
+    expect(after.sortOrder).not.toBe(99);
+  });
+
+  it('keeps the row\'s sync stamp when a check only moves the mirror', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    insertListedGroceryItem(item);
+    mockRawDb.prepare("UPDATE grocery_items SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'g1'").run();
+    const [entry] = dbGetAllGroceryListEntries();
+
+    dbSetGroceryListEntry({ ...entry, checked: true });
+
+    expect(dbGetAllGroceryItems()[0].checked).toBe(true);
+    const stamp = mockRawDb.prepare("SELECT updated_at FROM grocery_items WHERE id = 'g1'").get();
+    expect(stamp).toEqual({ updated_at: '2026-01-01T00:00:00.000Z' });
   });
 
   // Only the finish-trip write used to set price_history, so writing back a

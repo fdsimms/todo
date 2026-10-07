@@ -2948,7 +2948,9 @@ function insertRowStampNow(name: string, row: BackupRow): void {
 function afterFold(name: string, id: string): void {
   // The item's on-list columns mirror its home-list entry, which the fold may
   // just have merged or moved onto it.
-  if (name === 'grocery_items') dbSyncGroceryHomeColumns(id);
+  // Restamped where it corrects anything, so the fix travels back (the
+  // resync's rule, not the local write's).
+  if (name === 'grocery_items') resyncGroceryHomeColumns(id);
 }
 
 /**
@@ -4866,12 +4868,19 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
   );
 }
 
+/**
+ * Every column of a catalog row **except the four that mirror its list
+ * entries** (`on_list`, `checked`, `sort_order`, `choice_group`), which only
+ * `dbSyncGroceryHomeColumns` writes. A row snapshotted for an undo carries the
+ * mirror as it stood then, and writing it back here restored a check or a
+ * list membership that had changed since, with the entry saying otherwise.
+ */
 export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
-       name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
-       sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
+       name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, in_catalog=?,
+       purchase_count=?, last_added_at=?, last_purchased_at=?,
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, is_staple=?,
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
@@ -4880,12 +4889,12 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
+      1,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null, item.isStaple ? 1 : 0,
+      item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.pantryCheckDeclinedAt ?? null, item.pantryReviewedAt ?? null,
@@ -5316,8 +5325,9 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * Copies the home entry back onto grocery_items' own four membership columns,
  * or clears them when there is no home entry.
  *
- * **The single writer of those columns**, which is what stops the mirror
- * drifting from the table it mirrors — every membership write above ends here.
+ * **The single writer of those columns** (`dbUpdateGroceryItem` leaves them
+ * out), which is what stops the mirror drifting from the table it mirrors —
+ * every membership write above ends here.
  * They exist at all because they are what every reader written before separate
  * lists means by "on the list", and the home list is the one they meant.
  *
@@ -5325,9 +5335,52 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * see GroceryItem.onList. It has to be, because the sweep in `clearList` and the
  * catalog prune both read it to decide whether a row is unused, and a row on the
  * Airbnb list is not unused.
+ *
+ * **Writes only when the columns are wrong, and keeps the row's sync stamp.**
+ * Any UPDATE restamps a row as a local change, and the stamp decides which
+ * copy wins against a peer's. The tick itself lives on the entry, which syncs
+ * on its own, and a peer rebuilds these columns from the entries as they land
+ * (`resyncGroceryHomeColumns`), so the item row has nothing new to send. A
+ * restamp here made every check-off, every Reminders mirror pass and every
+ * finished trip read as an edit of the whole item, and a phone's stale copy of
+ * Milk then beat the note just written to it on the iPad.
  */
 export function dbSyncGroceryHomeColumns(itemId: string): void {
-  const cols = homeColumnsFor(itemId);
+  const stored = storedHomeColumns(itemId);
+  if (!stored) return;
+  const want = homeColumnsFor(itemId);
+  if (sameHomeColumns(stored, want)) return;
+  writeHomeColumns(itemId, want);
+  db.runSync('UPDATE grocery_items SET updated_at = ? WHERE id = ?', [stored.updated_at, itemId]);
+}
+
+function storedHomeColumns(
+  itemId: string
+): (HomeColumns & { updated_at: string | null }) | null {
+  const row = db.getFirstSync<{
+    on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null;
+    updated_at: string | null;
+  }>(
+    'SELECT on_list, checked, sort_order, choice_group, updated_at FROM grocery_items WHERE id = ?',
+    [itemId]
+  );
+  if (!row) return null;
+  return {
+    on_list: row.on_list ? 1 : 0,
+    checked: row.checked ? 1 : 0,
+    sort_order: row.sort_order ?? 0,
+    choice_group: row.choice_group ?? null,
+    updated_at: row.updated_at,
+  };
+}
+
+function sameHomeColumns(a: HomeColumns, b: HomeColumns): boolean {
+  return a.on_list === b.on_list && a.checked === b.checked
+    && a.sort_order === b.sort_order && a.choice_group === b.choice_group;
+}
+
+/** The write itself, which restamps the row like any UPDATE. */
+function writeHomeColumns(itemId: string, cols: HomeColumns): void {
   db.runSync(
     'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
     [cols.on_list, cols.checked, cols.sort_order, cols.choice_group, itemId]
@@ -5373,21 +5426,12 @@ function homeColumnsFor(itemId: string): HomeColumns {
  * recomputes them from the same entries, finds them right and writes nothing.
  */
 function resyncGroceryHomeColumns(itemId: string): void {
-  const stored = db.getFirstSync<{ on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null }>(
-    'SELECT on_list, checked, sort_order, choice_group FROM grocery_items WHERE id = ?',
-    [itemId]
-  );
+  const stored = storedHomeColumns(itemId);
   if (!stored) return;
   const want = homeColumnsFor(itemId);
-  if (
-    (stored.on_list ? 1 : 0) === want.on_list &&
-    (stored.checked ? 1 : 0) === want.checked &&
-    (stored.sort_order ?? 0) === want.sort_order &&
-    (stored.choice_group ?? null) === want.choice_group
-  ) {
-    return;
-  }
-  dbSyncGroceryHomeColumns(itemId);
+  if (sameHomeColumns(stored, want)) return;
+  // Restamped, unlike the local write: the correction has to travel back.
+  writeHomeColumns(itemId, want);
 }
 
 // ─── Grocery lists ──────────────────────────────────────────────────────────

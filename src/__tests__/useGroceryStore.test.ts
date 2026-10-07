@@ -4569,6 +4569,20 @@ describe('setOnHandUntil', () => {
 });
 
 describe('markOutOfMany', () => {
+  it('undoes the mark without undoing a tick made since', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, onHandUntil: '2099-01-01T00:00:00.000Z' });
+    seed([milk]);
+    useGroceryStore.getState().markOutOfMany([milk.id]);
+    const undo = useGroceryStore.getState().lastAction!.undo;
+    useGroceryStore.getState().toggleChecked(milk.id);
+
+    undo();
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after.onHandUntil).toBe('2099-01-01T00:00:00.000Z');
+    expect(after.checked).toBe(true);
+  });
+
   it('writes the same assertion the item sheet writes, to every row named', () => {
     const soy = makeItem({ name: 'Soy sauce', onHandUntil: '2026-08-21T00:00:00.000Z' });
     const cumin = makeItem({ name: 'Cumin' });

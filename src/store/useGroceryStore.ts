@@ -338,6 +338,32 @@ function laterOf(a: string | null, b: string | null): string | null {
   return a > b ? a : b;
 }
 
+/**
+ * A row put back from an undo snapshot, keeping the membership columns it has
+ * now. Those four mirror the list entries, which `writeMembership` keeps in
+ * step in memory; the snapshot's copy is from before the action and would
+ * undo a tick made since (`dbUpdateGroceryItem` leaves them alone on disk
+ * for the same reason).
+ */
+function restoredRows(
+  items: readonly GroceryItem[],
+  snapshots: ReadonlyMap<string, GroceryItem>
+): GroceryItem[] {
+  return items.map(i => {
+    const back = snapshots.get(i.id);
+    if (!back) return i;
+    // Off every list there's no entry for the slot to mirror, so the
+    // snapshot's own value stands.
+    return {
+      ...back,
+      onList: i.onList,
+      checked: i.checked,
+      sortOrder: i.onList ? i.sortOrder : back.sortOrder,
+      choiceGroup: i.choiceGroup,
+    };
+  });
+}
+
 /** The three price fields, moved as a group from whichever side was priced more recently — never averaged. */
 function pickPriceFields<
   T extends { lastPriceMinor: number | null; lastPricedAt: string | null; lastPriceQuantity: string | null },
@@ -1855,8 +1881,13 @@ function writeMembership(changes: {
   const upsert = changes.upsert ?? [];
   const remove = changes.remove ?? [];
   if (upsert.length === 0 && remove.length === 0) return;
-  for (const entry of upsert) dbSetGroceryListEntry(entry);
-  for (const { itemId, listId } of remove) dbDeleteGroceryListEntry(itemId, listId);
+  // One commit for the lot: a "Check all" over fifty rows was fifty
+  // autocommits of an upsert, two reads and the mirror write each. Joins the
+  // caller's transaction when there is one.
+  dbTransaction(() => {
+    for (const entry of upsert) dbSetGroceryListEntry(entry);
+    for (const { itemId, listId } of remove) dbDeleteGroceryListEntry(itemId, listId);
+  });
   useGroceryStore.setState(s => {
     const dropped = new Set(remove.map(r => entryKey(r.itemId, r.listId)));
     const replaced = new Set(upsert.map(e => entryKey(e.itemId, e.listId)));
@@ -3350,7 +3381,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // pantry, and undoing that is the answer "it didn't" — leaving it up
         // would ask how something went that is, as of now, still there.
         set(s => ({
-          items: s.items.map(i => originalById.get(i.id) ?? i),
+          items: restoredRows(s.items, originalById),
           itemProducts: [
             ...s.itemProducts,
             ...thawedPortions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
@@ -3528,7 +3559,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         undo: () => {
           for (const b of revertRows) dbUpdateGroceryItem(b);
           const revertById = new Map(revertRows.map(b => [b.id, b]));
-          set(s => ({ items: s.items.map(i => revertById.get(i.id) ?? i) }));
+          set(s => ({ items: restoredRows(s.items, revertById) }));
           // Back on the home list with the tick and slot it had, and each task
           // re-derived against the row as it now stands again.
           writeMembership({ upsert: removedEntries });
@@ -4573,7 +4604,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           dbSetLastShopId(beforeLastShopId);
         }
         set(s => ({
-          items: s.items.map(i => byId.get(i.id) ?? i),
+          items: restoredRows(s.items, byId),
           itemProducts: s.itemProducts.map(p => beforeProducts.get(p.id) ?? p),
           itemShops: shop
             ? [
@@ -4745,7 +4776,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     const updated = new Map(updates.map(u => [u.id, u]));
     set(s => ({
-      items: s.items.map(i => updated.get(i.id) ?? i),
+      // Only the aisle onto the row as it is now: the copies in `updates` were
+      // taken before writeMembership above moved their slots.
+      items: s.items.map(i => {
+        const u = updated.get(i.id);
+        return u ? { ...i, aisle: u.aisle } : i;
+      }),
       // Every aisle here came off a header that was already on screen, so this
       // is belt and braces — but normalizing is what setAisleMany does, and an
       // aisle missing from the order renders its section unplaced.
@@ -5440,7 +5476,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         for (const row of before) dbUpdateGroceryItem(row);
         const byId = new Map(before.map(i => [i.id, i]));
         set(s => ({
-          items: s.items.map(i => byId.get(i.id) ?? i),
+          items: restoredRows(s.items, byId),
           cartHoldIds: s.cartHoldIds.filter(x => x !== item.id && x !== sub.id),
         }));
       },
