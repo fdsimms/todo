@@ -6510,7 +6510,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const existing = liveGeneratedTask(tasks, 'weather', sourceId);
       if (considered && !existing) return;
       const category = ruleCategoryFor(rule, settings.weatherTaskCategory);
-      if (!ruleMatchesToday(rule, dayConditions)) return;
+      // A row this rule already wrote that the forecast no longer backs goes,
+      // rather than staying as it was written. Last evening's "cold 5am to 8am
+      // tomorrow" is today's row once the day arrives, and if today's summary
+      // doesn't include the cold (or the window has passed) nothing else would
+      // ever correct or remove it. `dropGeneratedTask` writes no opt-out, so
+      // the rule is not marked as declined for a reason that reverses itself.
+      if (!ruleMatchesToday(rule, dayConditions)) {
+        if (existing) dropGeneratedTask('weather', sourceId);
+        return;
+      }
 
       // What the day-level code already established, placed in the day: the
       // rule fired because it is rainy *today*, and this is the hour that
@@ -6520,7 +6529,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // where a window is the entire reason to speak up early and there is
       // nothing worth writing without one.
       const window = weatherWindowFor(hours, rule.condition, fromHour);
-      if (tomorrow && !window) return;
+      // Hours exist but none of the condition's runs is still ahead: the
+      // weather has already happened, so a row for it is a chore about nothing.
+      const windowPassed = !window && !tomorrow && !!hours && hours.length > 0
+        && hours.some(h => classifyWeather(h.weatherCode, h.tempF).includes(rule.condition));
+      if (existing && windowPassed) {
+        dropGeneratedTask('weather', sourceId);
+        return;
+      }
+      if (tomorrow && !window) {
+        if (existing) dropGeneratedTask('weather', sourceId);
+        return;
+      }
       const title = weatherTaskTitle(rule.title, window ? describeWeatherWindow(rule.condition, window, tomorrow) : null);
 
       reconcileGeneratedTask({
