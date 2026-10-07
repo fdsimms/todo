@@ -39,7 +39,6 @@ import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutT
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
-import { InlineAction } from './InlineAction';
 import { placeLocationText, placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
 
