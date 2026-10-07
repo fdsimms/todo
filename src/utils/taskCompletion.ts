@@ -407,7 +407,7 @@ export function buildCompletion(
     // catchUp: this is placing a real row, and a successor dated before
     // today is one the user has to complete again to get rid of. See
     // getNextDueDate.
-    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true, completedAt }) : null;
+    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true, completedAt, coversCompletionDay: !missed }) : null;
     // Skip the spawn only when we actually consulted the schedule and it
     // says the series has ended — a mid-chain step never consults it, so
     // it always spawns regardless of recurrenceEndDate/recurrenceCount.

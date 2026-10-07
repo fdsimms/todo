@@ -1248,6 +1248,25 @@ describe('getNextDueDate', () => {
     expect(getNextDueDate(afterCompletion(), '00:00', { completedAt, catchUp: true })!.toDateString()).toBe('Tue Jun 10 2025');
   });
 
+  it('lets a completion cover the day it happened on', () => {
+    // Yesterday's daily occurrence finished today: today's is done too, so the
+    // successor is tomorrow rather than a row that reappears at once.
+    const task = afterCompletion({ recurrenceFromCompletion: false });
+    const completedAt = new Date(2025, 5, 10, 22, 0, 0);
+    expect(getNextDueDate(task, '00:00', { completedAt, catchUp: true })!.toDateString()).toBe('Tue Jun 10 2025');
+    expect(
+      getNextDueDate(task, '00:00', { completedAt, catchUp: true, coversCompletionDay: true })!.toDateString(),
+    ).toBe('Wed Jun 11 2025');
+  });
+
+  it('does not push an hourly rule past the day it was logged', () => {
+    const task = afterCompletion({ recurrenceType: 'hours', recurrenceInterval: 4 });
+    const completedAt = new Date(2025, 5, 10, 8, 0, 0);
+    expect(
+      getNextDueDate(task, '00:00', { completedAt, catchUp: true, coversCompletionDay: true })!.toDateString(),
+    ).toBe(getNextDueDate(task, '00:00', { completedAt, catchUp: true })!.toDateString());
+  });
+
   it('leaves a fixed schedule on its own grid', () => {
     const completedAt = new Date(2025, 5, 7, 22, 0, 0);
     const task = afterCompletion({ recurrenceFromCompletion: false });

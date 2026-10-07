@@ -680,10 +680,11 @@ describe('completeTask: catching an overdue recurrence up', () => {
     jest.useRealTimers();
   });
 
-  it('lands the successor on today rather than five weeks in the past', () => {
+  it('lands the successor after today rather than five weeks in the past', () => {
     // Before this, finishing a weekly task five weeks late spawned one dated
     // four weeks ago: the row came back overdue and had to be completed five
-    // more times to work its way back to the present.
+    // more times to work its way back to the present. Today's own Tuesday is
+    // covered by the completion, so the next one is a week out.
     useTaskStore.setState({
       tasks: [makeTask({
         id: 'bins',
@@ -694,7 +695,24 @@ describe('completeTask: catching an overdue recurrence up', () => {
     });
     useTaskStore.getState().completeTask('bins');
     const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
-    expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+    expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 17 2025');
+  });
+
+  it('does not bring a daily task back on the day it was finished a day late', () => {
+    // Yesterday's occurrence finished today covers today as well. Otherwise
+    // the successor reappears at once and a one-tap-a-day habit stays a day
+    // behind for ever.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'mag',
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(), // yesterday
+      })],
+    });
+    useTaskStore.getState().completeTask('mag');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
   });
 
   it('stays on the rule\'s own grid rather than snapping to today', () => {
@@ -16474,12 +16492,17 @@ describe('completeTask: followUp task every Nth completion', () => {
   });
 
   it('counts completions up without adding anything before the Nth', () => {
+    // A day per completion: a completion covers its own day, so the next
+    // occurrence isn't due until the clock moves on.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
     useTaskStore.setState({ tasks: [practice()] });
 
     let live = completeOccurrence('practice');
     expect(live.followUpTaskTally).toBe(1);
     expect(followUps()).toHaveLength(0);
 
+    jest.setSystemTime(new Date(2025, 5, 11, 10, 0, 0));
     live = completeOccurrence(live.id);
     expect(live.followUpTaskTally).toBe(2);
     expect(followUps()).toHaveLength(0);
