@@ -240,7 +240,9 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                   <Text style={styles.unitText}>% of the meal</Text>
                 )}
               </View>
-              <View style={styles.shareRow}>
+              {/* With a weight to type against, the shares only repeat the
+                  field in fractions of a mix nobody portions that way. */}
+              {!wholeGrams && <View style={styles.shareRow}>
                 {ESTIMATE_AMOUNTS.map(a => {
                   const on = chosen !== null && typed === null && Math.abs(chosen - a.value) < 1e-9;
                   return (
@@ -257,7 +259,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </View>}
               {typed !== null && typedFactor === null && typed.trim() !== '' && (
                 <Text style={styles.error}>{amountRefusal(unit, wholeGrams)}</Text>
               )}
@@ -278,7 +280,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
           <Text style={styles.hint}>
             {counted
               ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing new is guessed. Setting it back to ${formatQuantityAmount(counted.count, counted.decimal)} puts them back.`
-              : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing new is guessed. All puts them back.`}
+              : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing new is guessed. ${wholeGrams ? `Entering ${Math.round(wholeGrams * 10) / 10} g puts them back.` : 'All puts them back.'}`}
           </Text>
         </View>
       </View>
