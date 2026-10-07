@@ -1,13 +1,47 @@
-import React, { useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, type Colors } from '../theme';
+import { spacing, radius, animation, type Colors } from '../theme';
 import { SpotlightScrim } from './SpotlightOverlay';
+import { AnimatedCollapsible } from './AnimatedCollapsible';
 
 /** Inner padding of the tray, and so the inset of everything inside it. */
 export const TRAY_PAD = spacing.sm;
 
+/**
+ * How far the card edges under a collapsed stack reach below its header (see
+ * TaskGroupHeader). The tray grows by this much as it collapses, so the edges
+ * have room of their own rather than drawing over the next row.
+ */
+export const STACK_EDGE_DEPTH = spacing.smd;
+
+/**
+ * 0 while the tray is open, 1 once it has folded down to a deck. Read by the
+ * header, which draws the deck itself: the tray only fades out its own surface
+ * and makes room for the edges.
+ */
+const TrayFoldContext = createContext<SharedValue<number> | null>(null);
+
+/** The tray's fold progress, or null outside a tray. */
+export function useTrayFold(): SharedValue<number> | null {
+  return useContext(TrayFoldContext);
+}
+
 interface Props {
+  /**
+   * Whether the stack is folded to its header. Pass what the header's chevron
+   * shows (its `expanded` prop, or `!group.collapsed`), not what the body is
+   * doing: a drag folds the body for a moment without collapsing the stack.
+   * Omitted (a tray with no stack header, like Stuck's), it never folds.
+   */
+  collapsed?: boolean;
   children: React.ReactNode;
 }
 
@@ -33,12 +67,32 @@ interface Props {
  * rows drop their own horizontal margins so this padding is the only inset
  * they get (which incidentally hands them back the width the old 56pt
  * text-alignment indent was eating).
+ *
+ * **Collapsed, the tray gets out of the way and the header becomes a deck.**
+ * A tray folded down to its header was a grey band sitting right on top of the
+ * next card, which is exactly what a section header looks like, so a collapsed
+ * stack read as the heading of the loose tasks below it. Folded, the surface
+ * fades out, the header turns into a card with two card edges showing under it
+ * (TaskGroupHeader draws them), and this view grows by `STACK_EDGE_DEPTH` to
+ * hold them. Both run on AnimatedCollapsible's clock, so the deck forms as the
+ * rows fold away under it.
  */
-export function TaskGroupTray({ children }: Props) {
+export function TaskGroupTray({ collapsed = false, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fold = useSharedValue(collapsed ? 1 : 0);
+
+  useEffect(() => {
+    fold.value = withTiming(collapsed ? 1 : 0, {
+      duration: animation.duration.normal,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  }, [collapsed, fold]);
+
+  const surfaceStyle = useAnimatedStyle(() => ({ opacity: 1 - fold.value }));
 
   return (
+    <TrayFoldContext.Provider value={fold}>
     <View style={styles.tray}>
       {/* Drawn *under* the children, so it dims only the tray surface they
           don't cover — its padding and the gaps between the cards. The header
@@ -50,13 +104,19 @@ export function TaskGroupTray({ children }: Props) {
           A separate clipped view rather than `overflow: hidden` on the tray
           itself — the tray can't clip its own children, since TaskGroupBody's
           drag-out lets a child's floating card cross the tray's edge on its
-          way out of the stack (see the `dragging` prop there). This layer only
-          rounds the scrim's own corners to match. */}
-      <View style={styles.scrimClip} pointerEvents="none">
+          way out of the stack (see the `dragging` prop there). This layer
+          carries the tray's colour and rounds the scrim's corners to match,
+          and fades out with both when the stack folds, since the page under
+          a folded stack is dimmed already. */}
+      <Reanimated.View style={[styles.surface, surfaceStyle]} pointerEvents="none">
         <SpotlightScrim />
-      </View>
+      </Reanimated.View>
       {children}
+      <AnimatedCollapsible expanded={collapsed}>
+        <View style={styles.edgeRoom} />
+      </AnimatedCollapsible>
     </View>
+    </TrayFoldContext.Provider>
   );
 }
 
@@ -70,12 +130,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // TaskGroupBody, where AnimatedCollapsible takes them away with the rest
     // of the body. Put them here and a collapsed stack keeps a band of empty
     // tray under its header.
-    borderRadius: radius.lg,
-    backgroundColor: colors.bgSunken,
   },
-  scrimClip: {
+  // The tray's own colour lives on this layer rather than on the tray, so it
+  // can fade out as the stack folds into a deck.
+  surface: {
     ...StyleSheet.absoluteFill,
     borderRadius: radius.lg,
     overflow: 'hidden',
+    backgroundColor: colors.bgSunken,
+  },
+  edgeRoom: {
+    height: STACK_EDGE_DEPTH,
   },
 });

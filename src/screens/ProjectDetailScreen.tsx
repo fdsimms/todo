@@ -2125,7 +2125,7 @@ export function ProjectDetailScreen() {
                 return (
                   <FabDropZone zone={zone}>
                   <GroupDropTargetRow channel={fabIntentChannel} groupId={group.id} dragTarget={joinTargetChannel}>
-                  <TaskGroupTray>
+                  <TaskGroupTray collapsed={!stackExpanded}>
                     <TaskGroupHeader
                       selectionMode={selectionMode}
                       group={group}
