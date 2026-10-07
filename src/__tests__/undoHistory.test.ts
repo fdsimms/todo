@@ -3,6 +3,7 @@ import {
   UndoableAction,
   freshest,
   isReplaying,
+  offersOnUndoBar,
   popEntry,
   pushEntry,
   redoIsCurrent,
@@ -124,5 +125,25 @@ describe('withReplay', () => {
   it('releases the guard when the closure throws', () => {
     expect(() => withReplay(() => { throw new Error('undo blew up'); })).toThrow('undo blew up');
     expect(isReplaying()).toBe(false);
+  });
+});
+
+describe('offersOnUndoBar', () => {
+  const plain = act('Task rescheduled', 1);
+  const destructive: UndoableAction = { ...act('Task deleted', 2), destructive: true };
+
+  it('offers only destructive entries ordinarily', () => {
+    expect(offersOnUndoBar(destructive, false)).toBe(true);
+    expect(offersOnUndoBar(plain, false)).toBe(false);
+  });
+
+  it('offers every entry when there is no shake to fall back on', () => {
+    expect(offersOnUndoBar(plain, true)).toBe(true);
+    expect(offersOnUndoBar(destructive, true)).toBe(true);
+  });
+
+  it('never offers an empty slot', () => {
+    expect(offersOnUndoBar(null, true)).toBe(false);
+    expect(offersOnUndoBar(null, false)).toBe(false);
   });
 });

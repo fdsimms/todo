@@ -102,6 +102,7 @@ import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallT
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
+import { SwipeActionsMenu } from './SwipeActionsMenu';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
@@ -1113,6 +1114,13 @@ export const TaskItem = React.memo(function TaskItem({
   const [completionMenuAnchor, setCompletionMenuAnchor] = useState<CardAnchor | null>(null);
   const [showCompletionMenu, setShowCompletionMenu] = useState(false);
   const mountCompletionMenu = useSheetMount(showCompletionMenu);
+  // iPhone Mirroring: a "…" button offering what the row's swipes do, since
+  // a swipe from a Mac is a click-drag nobody would think to try. Anchored
+  // where it was clicked, like the completion menu above.
+  const mirroringMode = useSettingsStore(s => s.mirroringMode);
+  const [swipeMenuAnchor, setSwipeMenuAnchor] = useState<CardAnchor | null>(null);
+  const [showSwipeMenu, setShowSwipeMenu] = useState(false);
+  const mountSwipeMenu = useSheetMount(showSwipeMenu);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // One reading per render rather than one per helper, so the chip, the
   // over-commitment test and the sheet can't land on different sides of a
@@ -1166,6 +1174,21 @@ export const TaskItem = React.memo(function TaskItem({
   // renaming, adding subtasks); the checkbox, the meta chips and the link
   // button are untouched, because those are how a notice is read and answered.
   const notice = isNoticeTask(task);
+
+  // The row's swipe actions, decided once so SwipeableRow and the iPhone
+  // Mirroring menu (SwipeActionsMenu) offer exactly the same ones.
+  // No reschedule on a notice: there's nothing a later date would mean for
+  // it, and the button that opens the same picker is gone from its panel for
+  // that reason. A list item has no date to move, and deleting is what a list
+  // is swiped for (deleteTask raises the Undo bar; see SwipeableRow's
+  // deleteAction for why this is the one destructive swipe). No select unless
+  // the screen can actually bulk-select: a list without a bulk bar (Demo, say)
+  // would otherwise offer an action whose handler is a no-op.
+  const swipeWhen = notice || listRow ? undefined : () => setShowWhenPicker(true);
+  const swipeDelete = swipeDeletes && !notice
+    ? () => { animateLayout(); deleteTask(task.id); }
+    : undefined;
+  const swipeSelect = onSwipeSelect ? () => onSwipeSelect(task.id) : undefined;
 
   // ==== a phrase found in the title being renamed ====
   // The same offer the task editor makes: "pay rent tmrw #home" renamed in the
@@ -3544,6 +3567,23 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && mirroringMode && !spotlightDisabled &&
+        (swipeWhen || swipeDelete || swipeSelect) && (
+        <TouchableOpacity
+          onPress={e => {
+            haptics.tap();
+            setSwipeMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            setShowSwipeMenu(true);
+          }}
+          hitSlop={8}
+          style={styles.pinBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`More actions for ${task.title}`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
+
       {/* Takes the slot the row's action buttons vacate on entering selection
           mode, so nothing else has to move aside for it — and it mounts and
           unmounts in the same commit they do, which is what gives it its fade
@@ -4422,22 +4462,18 @@ export const TaskItem = React.memo(function TaskItem({
               accent panel whose handler is a no-op. */}
           <SwipeableRow
             enabled={!selectionMode && !spotlightDisabled}
-            selectAction={onSwipeSelect ? {
-              onSelect: () => onSwipeSelect(task.id),
+            // The three actions and their conditions are decided once, at
+            // `swipeWhen`, so the iPhone Mirroring menu offers the same set.
+            selectAction={swipeSelect ? {
+              onSelect: swipeSelect,
               accessibilityLabel: `Select ${task.title}`,
             } : undefined}
-            // No reschedule panel on a notice: there's nothing a later date
-            // would mean for it, and the button that opens the same picker
-            // is gone from its panel for that reason (see `notice`).
-            whenAction={notice || listRow ? undefined : {
-              onAction: () => setShowWhenPicker(true),
+            whenAction={swipeWhen ? {
+              onAction: swipeWhen,
               accessibilityLabel: `Reschedule ${task.title}`,
-            }}
-            // A list item has no date to move, and deleting is what a list is
-            // swiped for. deleteTask raises the Undo bar. See SwipeableRow's
-            // deleteAction for why this is the one destructive swipe.
-            deleteAction={swipeDeletes && !notice ? {
-              onDelete: () => { animateLayout(); deleteTask(task.id); },
+            } : undefined}
+            deleteAction={swipeDelete ? {
+              onDelete: swipeDelete,
               accessibilityLabel: `Delete ${task.title}`,
             } : undefined}
           >
@@ -4494,6 +4530,16 @@ export const TaskItem = React.memo(function TaskItem({
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
           onMiss={completionMenuRepeats ? () => { markMissed(task.id); afterCompletionMenuChoice(); } : undefined}
           onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
+        />
+      )}
+      {mountSwipeMenu && (
+        <SwipeActionsMenu
+          visible={showSwipeMenu}
+          anchor={swipeMenuAnchor}
+          onClose={() => setShowSwipeMenu(false)}
+          onWhen={swipeWhen}
+          onSelect={swipeSelect}
+          onDelete={swipeDelete}
         />
       )}
       {mountWhenPicker && (

@@ -600,6 +600,16 @@ interface SettingsStore {
    */
   hideHelpText: boolean;
   /**
+   * Whether the app is being used through iPhone Mirroring on a Mac, where a
+   * pointer stands in for a finger and the phone can't be shaken. On, every
+   * task row gets a "…" button offering what its swipes do, and the UndoBar
+   * offers every undoable action rather than only the destructive ones, since
+   * shake-to-undo (the route to the rest) is out of reach. Off by default and
+   * device-local: it describes how this phone is being held, not a preference
+   * another device should inherit.
+   */
+  mirroringMode: boolean;
+  /**
    * Whether a tip may surface itself as a banner on a hub screen (`TipHost`).
    * Off means the app never volunteers one; the Tips screen still lists every
    * one of them, since turning off interruptions isn't the same as saying you
@@ -1861,6 +1871,7 @@ interface SettingsStore {
   setSimpleTaskForm: (on: boolean) => void;
   setSimpleMode: (on: boolean) => void;
   setHideHelpText: (on: boolean) => void;
+  setMirroringMode: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
   /**
    * Records a tip as promoted, which spends that logical day's one slot.
@@ -2133,6 +2144,7 @@ const DEFAULT_SETTINGS = {
   simpleTaskForm: false,
   simpleMode: false,
   hideHelpText: false,
+  mirroringMode: false,
   // Only the on/off switch is a default. seenTips and lastTipShown are
   // progress, and are cleared by resetTips rather than by a settings reset —
   // see their notes on the interface above.
@@ -2566,6 +2578,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   simpleTaskForm: false,
   simpleMode: false,
   hideHelpText: false,
+  mirroringMode: false,
   tipsEnabled: true,
   seenTips: [],
   lastTipShown: null,
@@ -2863,6 +2876,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
+    const mirroringMode = dbGetSetting('mirroringMode') === 'true';
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
@@ -3453,6 +3467,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealsOnToday,
       mealThawTaskCategory,
       mealThawTasks,
+      mirroringMode,
       moodLogLastDayKey,
       moodLogTaskCategory,
       moodLogTasks,
@@ -4559,6 +4574,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHideHelpText(on: boolean) {
     dbSetSetting('hideHelpText', on ? 'true' : 'false');
     set({ hideHelpText: on });
+  },
+
+  setMirroringMode(on: boolean) {
+    dbSetSetting('mirroringMode', on ? 'true' : 'false');
+    set({ mirroringMode: on });
   },
 
   setTipsEnabled(on: boolean) {

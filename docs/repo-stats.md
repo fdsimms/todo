@@ -10,7 +10,7 @@ them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (9.7k), `db/database.ts` (8.0k), `types/index.ts` (7.7k),
 `components/TaskEditor.tsx` (7.4k), `mcp/src/replica.ts` (7.1k),
-`store/useGroceryStore.ts` (5.5k), `components/TaskItem.tsx` (5.4k),
+`components/TaskItem.tsx` (5.5k), `store/useGroceryStore.ts` (5.5k),
 `utils/demoSeed.ts` (5.4k), `screens/TodayScreen.tsx` (5.4k),
 `store/useSettingsStore.ts` (5.3k).
 

@@ -1472,6 +1472,29 @@ describe('shakeToUndoEnabled', () => {
   });
 });
 
+describe('mirroringMode', () => {
+  // Off by default: it changes how rows and the UndoBar look, so an install
+  // upgrading into it must see nothing new until someone turns it on.
+  it('defaults to off, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mirroringMode).toBe(false);
+  });
+
+  it('only turns on for an explicit "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mirroringMode' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mirroringMode).toBe(true);
+  });
+
+  it('round-trips through setMirroringMode', () => {
+    useSettingsStore.getState().setMirroringMode(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('mirroringMode', 'true');
+    expect(useSettingsStore.getState().mirroringMode).toBe(true);
+  });
+});
+
 describe('beatSoundEnabled', () => {
   // Off by default, unlike haptics: the sound is an opt-in on top of the beat's
   // haptic, and an install predating it never had one.

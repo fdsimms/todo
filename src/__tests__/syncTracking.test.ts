@@ -93,6 +93,7 @@ describe('table definitions', () => {
       'remindersImportListId',
       'dailyAgendaEnabled',   // shared, every reminder would fire twice
       'hapticsEnabled',       // a Mac has no haptics
+      'mirroringMode',        // how one phone is being driven
       'grocery_trip_shop_id', // what one device is doing right now
     ]) {
       expect(isSyncedSettingKey(key)).toBe(false);
