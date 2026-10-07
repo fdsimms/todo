@@ -19,6 +19,9 @@ const SWIFT_FILES = [
   'TodoWidgetData.swift',
   'WidgetShared.swift',
   'WidgetConfigIntents.swift',
+  // The background checkboxes (task and grocery). Widget-only on purpose; see
+  // the file's header for why these don't join CompleteTaskIntent below.
+  'WidgetQuietIntents.swift',
   'TodoTodayWidget.swift',
   'TodoGroceryWidget.swift',
   'TodoKitchenWidget.swift',

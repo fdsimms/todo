@@ -949,6 +949,26 @@ export function completeTask(
 }
 
 /**
+ * Close a task as done by somebody else. The person has to have said so: it
+ * leaves no coins and no streak change, so claiming it on their behalf would
+ * quietly write a record of something nobody told you about.
+ */
+export function markDoneByOther(replica: Replica, id: string): CompleteTaskResult {
+  const result = replica.markDoneByOther(id);
+  const spawned = ['Recorded as done by someone else: no coins, and its streak was left as it was.'];
+  if (result.nextTask) {
+    const when = result.nextTask.dueDate ? `due ${replica.dayKeyOf(result.nextTask.dueDate)}` : 'with no date';
+    spawned.push(`The next occurrence was created, ${when}.`);
+  }
+  return {
+    completed: serializeTasks(replica, [result.completed])[0],
+    spawned,
+    nextTask: result.nextTask ? serializeTasks(replica, [result.nextTask])[0] : null,
+    loggedDose: false,
+  };
+}
+
+/**
  * Move a task to a date, or clear its date.
  *
  * The result is the whole task because the field that changed is not

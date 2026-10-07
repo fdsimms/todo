@@ -58,6 +58,7 @@ import {
   updateTemplate,
   templateLibraryCheck,
   completeTask,
+  markDoneByOther,
   updateAnswer,
   deferTask,
   archiveTask,
@@ -2115,6 +2116,20 @@ function registerWriteTools(
         return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'mark_done_by_other',
+    "Close a task as done by somebody else (a partner did the dishes). Only when the person says so. The occurrence is completed and a repeating task's next one is created, but it earns no coins, its streak is neither advanced nor broken, and no dose is logged. Works on a one-off task too. It shows as done by someone else in the Logbook and is left out of the person's own stats. A task that is not due yet is refused. reopen_task puts it back.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => markDoneByOther(replica, id));
+        return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not mark the task done by someone else.' });
       }
     }
   );

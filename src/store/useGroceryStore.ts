@@ -1043,8 +1043,16 @@ interface GroceryStore extends UndoHistoryActions {
    * tap). The supply sweep passes `null`, the home list: a supply is restocked
    * from a home trip, and joining an away list it would be flagged low, never
    * restocked there, and never offered to the home list afterwards.
+   *
+   * `addToList` overrides the "Running low adds to the list" setting, which is
+   * what an omitted value reads. Only a caller that is itself a request to
+   * reorder passes `true`.
    */
-  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean; listId?: string | null }) => void;
+  setRunningLow: (
+    id: string,
+    low: boolean,
+    opts?: { registerUndo?: boolean; listId?: string | null; addToList?: boolean }
+  ) => void;
   /**
    * One card's answer in the pantry review deck (see
    * `src/utils/pantryReview.ts`).
@@ -3347,16 +3355,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Already in the trolley you're looking at is what makes this a no-op on
     // the list, not being in some other one — a staple you're nearly out of at
     // home is worth adding to the Airbnb list too.
+    // The setting governs a mark someone makes by hand; a caller that is a
+    // request to reorder (the supply sweep) says `addToList: true` itself.
+    const adds = opts.addToList ?? useSettingsStore.getState().runningLowAddsToList;
     const wasOnList = entryFor(get().listEntries, id, listId) !== null;
     const now = new Date().toISOString();
-    const updated = runningLowRow(item, low, wasOnList, now);
+    // Not adding reads as "already on the list" to the row rule, so
+    // `lastAddedAt` stays as it was.
+    const updated = runningLowRow(item, low, wasOnList || !adds, now);
     if (!updated) return;
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    const joins = low && adds && !wasOnList;
     // One direction only — see the note on the interface above. Onto the list
     // you're looking at, same rule as every other add.
-    if (low && !wasOnList) joinList(id, listId, now);
-    if (low && !wasOnList && opts.registerUndo !== false) {
+    if (joins) joinList(id, listId, now);
+    if (joins && opts.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${updated.name}" to the list`,
         undo: () => {

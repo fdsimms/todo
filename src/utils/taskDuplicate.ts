@@ -15,6 +15,7 @@ export function duplicateRows(
     completed: false,
     completedAt: null,
     missedAt: null,
+    doneByOtherAt: null,
     // A copy is the user's own doing, whatever put the date on the original.
     autoScheduledAt: null,
     createdAt: now,

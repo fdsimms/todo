@@ -54,6 +54,8 @@ export function KitchenSettings() {
   const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
   const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
+  const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
+  const setRunningLowAddsToList = useSettingsStore(s => s.setRunningLowAddsToList);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
   const setTripLiveActivity = useSettingsStore(s => s.setTripLiveActivity);
@@ -214,6 +216,22 @@ export function KitchenSettings() {
           />
         </SettingsSection>
       )}
+
+      <SettingsSection
+        label="Pantry"
+        footer="Running low lasts up to two weeks, sooner for something you buy often. After that it stops counting as on hand, and if pantry checks are on you're asked whether you still have it."
+      >
+        <SettingsRow
+          entryId="runningLowAddsToList"
+          icon="cart-outline"
+          iconColor={runningLowAddsToList ? colors.accent : undefined}
+          label="Running low adds to the list"
+          hint="When you mark an item as running low, also put it on the grocery list. Off keeps it as a note in the pantry only."
+          toggle={runningLowAddsToList}
+          onPress={() => setRunningLowAddsToList(!runningLowAddsToList)}
+          accessibilityLabel="Running low adds to the list"
+        />
+      </SettingsSection>
 
       <SettingsSection
         label="Recipe & grocery amounts"

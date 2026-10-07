@@ -35,6 +35,20 @@ export function isMissed(task: Task): boolean {
 }
 
 export function isRealCompletion(task: Task): boolean {
+  return task.completed && !task.missedAt && !task.doneByOtherAt;
+}
+
+/** Whether a row is a completion somebody else made (`Task.doneByOtherAt`). */
+export function isDoneByOther(task: Task): boolean {
+  return !!task.doneByOtherAt;
+}
+
+/**
+ * The work got done, by whoever: a completion or one marked done by someone
+ * else, but never a miss. What a project's progress counts, where
+ * `isRealCompletion` (did *you* do it) would leave the project short.
+ */
+export function isResolvedAsDone(task: Task): boolean {
   return task.completed && !task.missedAt;
 }
 

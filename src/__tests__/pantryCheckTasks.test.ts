@@ -111,6 +111,16 @@ describe('pantryCheckLapse', () => {
     expect(pantryCheckLapse(item, NOW)).toBeCloseTo(3, 5);
   });
 
+  it('asks about a lapsed "Running low" mark with no purchase history at all', () => {
+    const item = makeItem({ name: 'Tahini', purchaseCount: 0, lastPurchasedAt: null, runningLowAt: daysAgo(18) });
+    expect(pantryCheckLapse(item, NOW)).toBeCloseTo(4, 5);
+  });
+
+  it('stays quiet while the mark is still believed, and while the row is on the list', () => {
+    expect(pantryCheckLapse(makeItem({ name: 'Tahini', runningLowAt: daysAgo(5) }), NOW)).toBeNull();
+    expect(pantryCheckLapse(makeItem({ name: 'Tahini', runningLowAt: daysAgo(18), onList: true }), NOW)).toBeNull();
+  });
+
   it('stays quiet below the cadence gate, however long ago the purchase was', () => {
     // Two purchases is a window nobody knows — a flat fortnight standing in for
     // a cadence — and asking off the back of a made-up number is how a
@@ -183,6 +193,14 @@ describe('wantedPantryChecks', () => {
     expect(wantedPantryChecks([item], [], NOW)).toEqual([
       { itemId: item.id, title: 'Check if you still have Flour', lapsedDays: expect.any(Number) },
     ]);
+  });
+
+  it('asks once about a lapsed "Running low" mark, and not again after it is answered', () => {
+    const item = makeItem({ name: 'Tahini', purchaseCount: 0, lastPurchasedAt: null, runningLowAt: daysAgo(18) });
+    expect(wantedPantryChecks([item], [], NOW).map(w => w.itemId)).toEqual([item.id]);
+    // Swiped away after the mark was set: the question has had its answer.
+    const declined = { ...item, pantryCheckDeclinedAt: daysAgo(1) };
+    expect(wantedPantryChecks([declined], [], NOW)).toEqual([]);
   });
 
   it('drops a lapse that has gone stale', () => {

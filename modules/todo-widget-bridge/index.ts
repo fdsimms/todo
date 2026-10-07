@@ -23,6 +23,10 @@ interface TodoWidgetBridgeNativeModule {
   // string rather than an array because each entry is a record; read-and-clear,
   // same as the drains above — see src/utils/widgetSync.ts.
   drainPendingDisposals(): Promise<string>;
+  // Taps the widget applied without opening the app: CompleteTaskQuietlyIntent
+  // and CheckGroceryItemIntent (targets/todo-widget/WidgetQuietIntents.swift).
+  // A JSON string of records, read-and-clear — see src/utils/widgetQuietTaps.ts.
+  drainQuietTaps(): Promise<string>;
   // See src/utils/liveActivity.ts for the JSON shape (TimerRun[]) and the
   // reconciliation this drives.
   syncTimerLiveActivities(jsonString: string): Promise<boolean>;
@@ -62,6 +66,10 @@ export function writePantryIndex(jsonString: string): Promise<boolean> {
 
 export function drainPendingDisposals(): Promise<string> {
   return TodoWidgetBridge.drainPendingDisposals();
+}
+
+export function drainQuietWidgetTaps(): Promise<string> {
+  return TodoWidgetBridge.drainQuietTaps();
 }
 
 export function syncTimerLiveActivities(jsonString: string): Promise<boolean> {

@@ -145,6 +145,7 @@ beforeEach(() => {
   (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id));
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
+    lastAction: null, undoStack: [], redoStack: [],
   });
 });
 
@@ -544,6 +545,121 @@ describe('addEntry', () => {
 
   it('keeps none when the draft carries none, which is every linked food', () => {
     expect(state().addEntry(draft())!.sourcePanel).toBeNull();
+  });
+});
+
+describe('addEntry undo', () => {
+  it('registers an undo that removes the entry, and a redo that logs it again', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft({ label: 'Porridge' }))!;
+    const action = state().lastAction;
+    expect(action?.label).toBe('Logged "Porridge"');
+    expect(action?.destructive).toBeUndefined();
+
+    state().undoLastAction();
+    expect(dbDeleteFoodLogEntry).toHaveBeenCalledWith(entry.id);
+    expect(state().entries.find(e => e.id === entry.id)).toBeUndefined();
+    // Replaying the undo must not file an entry describing itself.
+    expect(state().undoStack).toHaveLength(0);
+    expect(state().redoStack).toHaveLength(1);
+
+    state().redoLastUndone();
+    expect(state().entries.map(e => e.label)).toEqual(['Porridge']);
+    expect(state().undoStack).toHaveLength(1);
+    expect(state().redoStack).toHaveLength(0);
+  });
+
+  it('files nothing when the entry is refused', () => {
+    expect(state().addEntry(draft({ label: '   ' }))).toBeNull();
+    expect(state().undoStack).toHaveLength(0);
+  });
+
+  it('moveEntry files one undo for the pair, and undoing it restores the original row', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const original = state().addEntry(draft())!;
+    state().setLastAction(null);
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id) ?? (id === original.id ? original : null));
+    const moved = state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0))!;
+    expect(state().undoStack).toHaveLength(1);
+    expect(state().lastAction?.label).toBe('Moved "Porridge"');
+
+    // The mock database keeps rows a real delete would drop.
+    mockRows.length = 0;
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id));
+    state().undoLastAction();
+    const ids = state().entries.map(e => e.id);
+    expect(ids).toContain(original.id);
+    expect(ids).not.toContain(moved.id);
+  });
+});
+
+describe('removeEntry undo', () => {
+  it('registers a destructive undo that puts the row back under its id', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft())!;
+    state().setLastAction(null);
+    state().removeEntry(entry.id);
+    expect(state().lastAction?.destructive).toBe(true);
+    expect(state().lastAction?.label).toBe('Deleted "Porridge"');
+    expect(state().entries).toHaveLength(0);
+
+    // The mock database keeps rows, so drop it as the real delete would.
+    mockRows.length = 0;
+    state().undoLastAction();
+    expect(state().entries.map(e => e.id)).toEqual([entry.id]);
+    expect(state().entries[0].healthSampleIds).toEqual([]);
+    expect(state().totalCount).toBe(1);
+  });
+
+  it('removeEntries files one entry for the batch', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A' }))!;
+    const b = state().addEntry(draft({ label: 'B' }))!;
+    state().setLastAction(null);
+    state().removeEntries([a.id, b.id]);
+    expect(state().undoStack).toHaveLength(1);
+    expect(state().lastAction?.label).toBe('2 entries deleted');
+    mockRows.length = 0;
+    state().undoLastAction();
+    expect(state().entries.map(e => e.id).sort()).toEqual([a.id, b.id].sort());
+  });
+});
+
+describe('edit undo', () => {
+  it('reviseEntry undo puts the earlier figures back', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft({ label: 'Porridge' }))!;
+    state().setLastAction(null);
+    state().reviseEntry(entry.id, { label: 'Oatmeal' });
+    expect(state().entries[0].label).toBe('Oatmeal');
+    expect(state().lastAction?.label).toBe('Edited "Porridge"');
+    state().undoLastAction();
+    expect(state().entries[0].label).toBe('Porridge');
+    state().redoLastUndone();
+    expect(state().entries[0].label).toBe('Oatmeal');
+  });
+
+  it('moveEntries undo returns each entry to its own slot', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ slot: 'breakfast' }))!;
+    const b = state().addEntry(draft({ slot: 'lunch' }))!;
+    state().setLastAction(null);
+    state().moveEntries([a.id, b.id], 'dinner');
+    state().undoLastAction();
+    const slot = (id: string) => state().entries.find(e => e.id === id)?.slot;
+    expect(slot(a.id)).toBe('breakfast');
+    expect(slot(b.id)).toBe('lunch');
+  });
+
+  it('reorderEntries undo restores the earlier placement', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft())!;
+    state().setLastAction(null);
+    const before = state().entries[0];
+    state().reorderEntries([{ id: a.id, slot: 'dinner', sortOrder: 9 }]);
+    state().undoLastAction();
+    expect(state().entries[0].slot).toBe(before.slot);
+    expect(state().entries[0].sortOrder).toBe(before.sortOrder);
   });
 });
 

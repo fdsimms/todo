@@ -924,6 +924,10 @@ app's own passes (the sweeps, the rollover) still never charge anything.
 - **Refused rather than half-done.** A habit with a penalty (a slip also charges an app block, which only the phone can set), a one-off
   task or a not-yet-due repeat for `mark_missed` (the app silently skips it), and anything while
   rewards are switched off.
+- **`mark_done_by_other` is the same walk with `byOther: true`**, in `tools.ts` rather than
+  `rewardTools.ts` since it moves no coins: it completes the occurrence (and a one-off), writes no
+  coin entry, logs no dose and leaves the streak alone, stamping `Task.doneByOtherAt`. It asks no
+  question, because nobody here did the thing the question is about.
 - **Undo is the paired tool.** `unclaim_reward` takes a claim back by the id `claim_reward` returned,
   `reopen_task` takes back a miss and its coins, `undo_slip` a slip. `withdraw` of a bounty is not
   reversible for that occurrence, as in the app.

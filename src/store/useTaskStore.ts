@@ -1628,6 +1628,8 @@ interface TaskStore extends UndoHistoryActions {
     /** Why that answer, and what would reopen it. See CompletionOptions.deliverableReasoning. */
     deliverableReasoning?: DeliverableReasoning;
     neutral?: boolean;
+    /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
+    byOther?: boolean;
     completedAt?: string;
     logEarly?: boolean;
     /**
@@ -3380,7 +3382,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   completeTask(id, options) {
     const missed = options?.missed ?? false;
-    const neutral = options?.neutral ?? false;
+    const byOther = options?.byOther ?? false;
+    const neutral = (options?.neutral ?? false) || byOther;
     // The row's animation is over whatever this call decides, so release it
     // from the collapse batch before the guards below — a completion that
     // turns out to be a no-op would otherwise hold the batch down for good.
@@ -3805,7 +3808,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // their own: ready now, but an undated task goes nowhere by itself, so
     // nothing on screen would say so. ReadyOfferBar offers them a day. Not for
     // a miss or an unattended completion, which nobody is watching.
-    if (!missed && !neutral) {
+    if (!missed && (!neutral || byOther)) {
       const freed = get().tasks.filter(t =>
         !t.completed && !t.archived && !t.parentId &&
         (blockerIdsOf(t).includes(id) || t.answerGate?.taskId === id) &&
@@ -4574,6 +4577,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         completed: false,
         completedAt: null,
         missedAt: null,
+        doneByOtherAt: null,
         // Same as completeTask's successor: the stamp is per-occurrence, and
         // carrying it would leave this row unable to be charged at all.
         penaltyFiredAt: null,
@@ -6200,7 +6204,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // The active list may be an away one (checkAwayGroceryList switches to
       // it), and a supply flagged low there is never restocked by that trip
       // and, already flagged, never reaches the home list after it.
-      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null }));
+      // addToList: true — a supply running low is a request to reorder, so the
+      // person's "Running low adds to the list" choice about their own taps
+      // doesn't apply.
+      lowIds.forEach(itemId =>
+        grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null, addToList: true })
+      );
     }
 
     if (!settings.supplyReorderTasks) return;

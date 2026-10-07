@@ -775,6 +775,11 @@ interface SettingsStore {
   // known items missing from the list (see #1481), so this is a toggle for
   // someone who never shops from a recipe, not a fix for a bad default.
   restockOfferEnabled: boolean;
+  // Whether marking an item "Running low" by hand also puts it on the grocery list.
+  // Defaults on, which is how the mark has always behaved; off makes it a note
+  // about the pantry only. The supply sweep and a purchase ignore it, since a
+  // supply running low is a request to reorder. See `setRunningLow`.
+  runningLowAddsToList: boolean;
   // Whether a scanned barcode may be looked up against Open Food Facts to find
   // out what it is — see src/services/productLookup.ts.
   //
@@ -1809,6 +1814,7 @@ interface SettingsStore {
   setMealSlotStepEstimate: (stepId: string, minutes: number) => void;
   setCookRecapEnabled: (on: boolean) => void;
   setRestockOfferEnabled: (on: boolean) => void;
+  setRunningLowAddsToList: (on: boolean) => void;
   setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
@@ -2149,6 +2155,7 @@ const DEFAULT_SETTINGS = {
   mealSlotTasksWrittenThroughDayKey: null,
   cookRecapEnabled: true,
   restockOfferEnabled: true,
+  runningLowAddsToList: true,
   productLookupEnabled: true,
   onDeviceAiEnabled: true,
   groceryUseUpTasks: false,
@@ -2582,6 +2589,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealSlotStepEstimates: {},
   cookRecapEnabled: true,
   restockOfferEnabled: true,
+  runningLowAddsToList: true,
   productLookupEnabled: true,
   onDeviceAiEnabled: true,
   groceryUseUpTasks: false,
@@ -2915,6 +2923,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Both default on, same reading as mealCookTasks above.
     const cookRecapEnabled = dbGetSetting('cookRecapEnabled') !== 'false';
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
+    const runningLowAddsToList = dbGetSetting('runningLowAddsToList') !== 'false';
     // Reads `!== 'false'` like the booleans above it, so an install that
     // predates this setting gets the default without a migration.
     const productLookupEnabled = dbGetSetting('productLookupEnabled') !== 'false';
@@ -3493,6 +3502,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       rewardGoalId,
       rewardListProjectId,
       rewardsEnabled,
+      runningLowAddsToList,
       screenTimeRules,
       screenTimeTaskCategory,
       screenTimeTasks,
@@ -4726,6 +4736,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setRestockOfferEnabled(on: boolean) {
     dbSetSetting('restockOfferEnabled', on ? 'true' : 'false');
     set({ restockOfferEnabled: on });
+  },
+
+  // Read live by `setRunningLow` on each mark, so a change applies to the next
+  // tap and never touches a row already marked.
+  setRunningLowAddsToList(on: boolean) {
+    dbSetSetting('runningLowAddsToList', on ? 'true' : 'false');
+    set({ runningLowAddsToList: on });
   },
 
   // Switching this off leaves the gtin_lookups cache alone rather than clearing

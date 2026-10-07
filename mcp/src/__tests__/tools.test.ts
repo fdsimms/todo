@@ -252,6 +252,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     postBounty: () => { throw new Error('not stubbed'); },
     withdrawBounty: () => { throw new Error('not stubbed'); },
     markMissed: () => { throw new Error('not stubbed'); },
+    markDoneByOther: () => { throw new Error('not stubbed'); },
     logSlip: () => { throw new Error('not stubbed'); },
     undoSlip: () => { throw new Error('not stubbed'); },
     recipes: () => [],

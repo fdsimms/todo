@@ -109,6 +109,10 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   pin execution to `.main` explicitly, but referencing it at all needs the EAS build image to carry
   the iOS 27 SDK, even behind `@available` (that guard controls when code *runs*, not whether the
   compiler's SDK has the symbol). Check the image's Xcode version before adding it.
+  The converse holds too: an intent that only queues work and never opens the app belongs in the
+  widget target alone. `CompleteTaskQuietlyIntent` and `CheckGroceryItemIntent`
+  (`targets/todo-widget/WidgetQuietIntents.swift`) are that case, and are listed in `SWIFT_FILES`,
+  not `SHARED_SWIFT_FILES`.
 - **The custom shield screen is two targets, not one, and the layout is not yours.** A
   `ShieldConfigurationDataSource` (`ManagedSettingsUI`) draws the screen and is *never told
   about a tap*; `ShieldAction` only ever reaches a `ShieldActionDelegate` (`ManagedSettings`),

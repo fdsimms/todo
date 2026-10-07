@@ -1,5 +1,6 @@
 import {
   buildUpcomingEvents,
+  buildUpcomingTasks,
   buildGroceries,
   buildKitchen,
   buildMeals,
@@ -97,6 +98,8 @@ const snapshotInput = (overrides: Partial<Parameters<typeof buildWidgetSnapshot>
   kitchen: null,
   events: null as readonly BusyEvent[] | null,
   dayEnd: new Date(2026, 7, 7),
+  upcoming: [] as { task: Task; visibleAt: Date }[],
+  mealLogPrompt: true,
   ...overrides,
 });
 
@@ -124,6 +127,16 @@ describe('toWidgetTask', () => {
 
   it('leaves targetCount null on an ordinary task', () => {
     expect(toWidgetTask(makeTask()).targetCount).toBeNull();
+  });
+
+  it('carries the reminder as a stamp for the widget to format', () => {
+    const reminderTime = new Date(2026, 7, 6, 17).toISOString();
+    expect(toWidgetTask(makeTask({ reminderTime })).reminderTime).toBe(reminderTime);
+  });
+
+  it('marks the rows whose checkbox has to open the app', () => {
+    expect(toWidgetTask(makeTask()).needsApp).toBe(false);
+    expect(toWidgetTask(makeTask({ deliverableKind: 'text' })).needsApp).toBe(true);
   });
 
   describe('eventTitle', () => {
@@ -180,6 +193,20 @@ describe('buildGroceries', () => {
     );
     expect(built.lists[0].remaining).toBe(1);
     expect(built.lists[0].items).toEqual(['Milk']);
+  });
+
+  it('gives the widget each row with its id, flagging either/or rows it must not tick', () => {
+    const built = buildGroceries(
+      groceryInput({
+        items: [makeItem(), makeItem({ id: 'i2', name: 'Pears', sortOrder: 1 })],
+        listEntries: [makeEntry(), makeEntry({ itemId: 'i2', sortOrder: 1, choiceGroup: 'fruit' })],
+      }),
+      NOW
+    );
+    expect(built.lists[0].rows).toEqual([
+      { id: 'i1', name: 'Milk', choice: false },
+      { id: 'i2', name: 'Pears', choice: true },
+    ]);
   });
 
   it('reports a live trip as a name and the raw stamp, leaving the minutes to Swift', () => {
@@ -342,5 +369,47 @@ describe('buildUpcomingEvents', () => {
   it('is null in the snapshot when there is no trustworthy read, and empty when the day is done', () => {
     expect(buildWidgetSnapshot(snapshotInput()).upcomingEvents).toBeNull();
     expect(buildWidgetSnapshot(snapshotInput({ events: [] })).upcomingEvents).toEqual([]);
+  });
+});
+
+describe('buildUpcomingTasks', () => {
+  const staleAfter = new Date(2026, 7, 8); // the end of tomorrow
+  const at = (day: number, h: number) => new Date(2026, 7, day, h);
+
+  it('carries what surfaces before the snapshot goes stale, soonest first, with its moment', () => {
+    const result = buildUpcomingTasks(
+      [
+        { task: makeTask({ id: 'tomorrow' }), visibleAt: at(7, 0) },
+        { task: makeTask({ id: 'afternoon' }), visibleAt: at(6, 15) },
+        { task: makeTask({ id: 'next-week' }), visibleAt: at(13, 0) },
+      ],
+      NOW,
+      staleAfter,
+    );
+    expect(result.map(t => t.id)).toEqual(['afternoon', 'tomorrow']);
+    expect(result[0].visibleAt).toBe(at(6, 15).toISOString());
+  });
+
+  it("drops a task getVisibleAt had no moment for, which it answers as now", () => {
+    const result = buildUpcomingTasks([{ task: makeTask(), visibleAt: new Date(NOW) }], NOW, staleAfter);
+    expect(result).toEqual([]);
+  });
+
+  it('filters the rows the widget cannot honour, as the visible list does', () => {
+    const result = buildUpcomingTasks(
+      [{ task: makeTask({ polarity: 'negative' }), visibleAt: at(6, 15) }],
+      NOW,
+      staleAfter,
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('puts the day boundary and the stale point in the snapshot', () => {
+    const snapshot = buildWidgetSnapshot(
+      snapshotInput({ upcoming: [{ task: makeTask({ id: 'later' }), visibleAt: at(6, 15) }] })
+    );
+    expect(snapshot.upcomingTasks.map(t => t.id)).toEqual(['later']);
+    expect(snapshot.nextDayStart).toBe(new Date(2026, 7, 7).toISOString());
+    expect(snapshot.staleAfter).toBe(staleAfter.toISOString());
   });
 });
