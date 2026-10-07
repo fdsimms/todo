@@ -6,6 +6,7 @@ import {
   helpingAgain,
   rankByRecency,
   recentUnlinkedHelpings,
+  usualForSlot,
 } from '../utils/foodLogRecents';
 import type { FoodLogEntry } from '../types';
 
@@ -260,5 +261,49 @@ describe('helpingAgain', () => {
 
   it('keeps none when the earlier entry kept none', () => {
     expect(helpingAgain(entry({ label: 'Pad thai' })).sourcePanel).toBeNull();
+  });
+});
+
+describe('usualForSlot', () => {
+  const rows = [{ key: 'i:bread' }, { key: 'i:yogurt' }, { key: 'i:soup' }, { key: 'r:sandwich' }];
+
+  it('offers what was eaten at this meal at least twice, most often first', () => {
+    const log = [
+      entry({ slot: 'breakfast', itemId: 'yogurt' }),
+      entry({ slot: 'breakfast', itemId: 'yogurt' }),
+      entry({ slot: 'breakfast', itemId: 'yogurt' }),
+      entry({ slot: 'breakfast', itemId: 'bread' }),
+      entry({ slot: 'breakfast', itemId: 'bread' }),
+    ];
+    expect(usualForSlot(rows, log, 'breakfast').map(r => r.key)).toEqual(['i:yogurt', 'i:bread']);
+  });
+
+  it('leaves out a row eaten only once at this meal', () => {
+    const log = [entry({ slot: 'lunch', itemId: 'soup' })];
+    expect(usualForSlot(rows, log, 'lunch')).toEqual([]);
+  });
+
+  it('counts only entries filed under this meal', () => {
+    const log = [
+      entry({ slot: 'dinner', recipeId: 'sandwich' }),
+      entry({ slot: 'dinner', recipeId: 'sandwich' }),
+      entry({ slot: 'lunch', recipeId: 'sandwich' }),
+    ];
+    expect(usualForSlot(rows, log, 'lunch')).toEqual([]);
+    expect(usualForSlot(rows, log, 'dinner').map(r => r.key)).toEqual(['r:sandwich']);
+  });
+
+  it('offers nothing for no meal, and stops at the limit', () => {
+    const log = ['bread', 'yogurt', 'soup'].flatMap(id => [
+      entry({ slot: 'snack', itemId: id }),
+      entry({ slot: 'snack', itemId: id }),
+    ]);
+    expect(usualForSlot(rows, log, null)).toEqual([]);
+    expect(usualForSlot(rows, log, 'snack', 2)).toHaveLength(2);
+  });
+
+  it('ignores a food logged under no row', () => {
+    const log = [entry({ slot: 'breakfast' }), entry({ slot: 'breakfast' })];
+    expect(usualForSlot(rows, log, 'breakfast')).toEqual([]);
   });
 });

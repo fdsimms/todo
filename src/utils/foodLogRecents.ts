@@ -146,6 +146,38 @@ export function rankByRecency<T extends { key: string }>(
   return [...eaten, ...rest];
 }
 
+/** How many rows the picker offers as a meal's usual foods, at most. */
+export const USUAL_FOR_SLOT_LIMIT = 3;
+
+/**
+ * The rows somebody keeps eating at this meal, for the picker to put in front
+ * before anything is typed: the yogurt every breakfast, the sandwich most
+ * lunches.
+ *
+ * **Counted within the meal, and only from twice.** Recency across the whole
+ * log already orders the list; this answers the narrower question of what this
+ * meal usually is, so an entry filed under another meal (or none) counts for
+ * nothing here, and a row eaten once at lunch is a thing that happened rather
+ * than a habit worth a section of its own. Same id-only counting as
+ * `foodLogRecency`, for the reason given at the top of this file.
+ *
+ * Ordered by how often, then how recently, and the candidates' own order
+ * breaks a full tie, the same promote-not-sort rule `rankByRecency` keeps.
+ */
+export function usualForSlot<T extends { key: string }>(
+  candidates: readonly T[],
+  entries: readonly FoodLogEntry[],
+  slot: FoodLogEntry['slot'],
+  limit = USUAL_FOR_SLOT_LIMIT,
+): T[] {
+  if (!slot) return [];
+  const inSlot = foodLogRecency(entries.filter(e => e.slot === slot));
+  const habitual = new Map([...inSlot].filter(([, seen]) => seen.count >= 2));
+  return rankByRecency(candidates, habitual)
+    .filter(c => habitual.has(c.key))
+    .slice(0, limit);
+}
+
 /** How many earlier helpings the picker offers at once, above the list proper. */
 export const RECENT_HELPING_LIMIT = 3;
 

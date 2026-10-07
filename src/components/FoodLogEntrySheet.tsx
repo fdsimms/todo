@@ -18,6 +18,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -68,6 +69,7 @@ import {
   helpingAgain,
   rankByRecency,
   recentUnlinkedHelpings,
+  usualForSlot,
 } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
@@ -753,15 +755,24 @@ export function FoodLogEntrySheet({
     setAmountNumber(parsed?.number ?? '');
   }, [visible, editing, candidates]);
 
+  // What this meal usually is, put in front before anything is typed
+  // (`usualForSlot`). Once typing starts the search decides, so it goes.
+  const usual = useMemo(
+    () => (editing || query.trim() ? [] : usualForSlot(candidates, recentLog, chosenSlot)),
+    [editing, query, candidates, recentLog, chosenSlot],
+  );
+
   const results = useMemo(() => {
     const key = groceryNameKey(query);
     // Ranked before the cap, not after, which is the whole point: a food eaten
     // every morning was landing below forty things bought once and being cut
     // off by the slice, so the list promised what it could not be searched for.
     const ranked = rankByRecency(candidates, recency);
-    if (!key) return ranked.slice(0, 40);
+    // A row already offered as this meal's usual isn't offered twice.
+    const shown = new Set(usual.map(c => c.key));
+    if (!key) return ranked.filter(c => !shown.has(c.key)).slice(0, 40);
     return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
-  }, [candidates, query, recency]);
+  }, [candidates, query, recency, usual]);
 
   // Earlier helpings of foods with no row (an estimate, a database food nobody
   // filed), offered above the list to log again as they were, since the list
@@ -1379,6 +1390,21 @@ export function FoodLogEntrySheet({
     </View>
   ) : null;
 
+  // This meal's usual foods, above the earlier helpings and the list. Rows
+  // like the list's own, since that's what they are.
+  const usualBlock = usual.length > 0 && chosenSlot ? (
+    <View style={helpings.length > 0 ? styles.usualGap : undefined}>
+      <Text style={[styles.label, styles.helpingsLabel]}>
+        {`YOUR USUAL ${MEAL_SLOT_LABELS[chosenSlot].toUpperCase()}`}
+      </Text>
+      {usual.map(item => <React.Fragment key={item.key}>{renderRow({ item })}</React.Fragment>)}
+      {/* The helpings block labels the list when it is there; with none, this does. */}
+      {helpings.length === 0 && results.length > 0 && (
+        <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
   // What the two lookup buttons answer, at the top of the list: the estimate
   // first, since it is about everything typed, then the database's matches.
   const dbRows = dbShowAll ? db.ranked : db.ranked.slice(0, DB_ROWS_SHOWN);
@@ -1816,6 +1842,18 @@ export function FoodLogEntrySheet({
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
               />
+              {/* In the field rather than in a row of its own: a packet in hand
+                  is most often reached for after a search has come up empty,
+                  and this is where the eye already is. */}
+              {!!onScan && (
+                <PressableScale
+                  style={styles.scanButton}
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                  accessibilityLabel="Scan a barcode"
+                >
+                  <Ionicons name="barcode-outline" size={iconSize.sm} color={colors.accentText} />
+                </PressableScale>
+              )}
             </View>
             {/* The two ways past what this app already has figures for, both
                 acting on the field above and both answered in the list below
@@ -1851,44 +1889,8 @@ export function FoodLogEntrySheet({
                 />
               )}
             </View>
-            {/* Hidden for a caller answering one specific food (a correction,
-                a seeded dish, an already-known meal), same as this sheet's
-                other one-off affordances above. */}
-            {!!allowBurst && !editing && (
-              <View style={styles.burstRow}>
-                <TouchableOpacity
-                  style={[styles.keepOpenChip, keepOpenAfterFoodLog && styles.keepOpenChipOn]}
-                  onPress={() => { haptics.tap(); setKeepOpenAfterFoodLog(!keepOpenAfterFoodLog); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: keepOpenAfterFoodLog }}
-                  accessibilityLabel="Add another"
-                >
-                  <Ionicons
-                    name={keepOpenAfterFoodLog ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={15}
-                    color={keepOpenAfterFoodLog ? colors.accent : colors.textSecondary}
-                  />
-                  <Text style={[styles.keepOpenText, keepOpenAfterFoodLog && styles.keepOpenTextOn]}>
-                    Add another
-                  </Text>
-                </TouchableOpacity>
-                {burstAdded.length > 0 && (
-                  <Text style={styles.burstCount}>
-                    {burstAdded.length} added
-                  </Text>
-                )}
-              </View>
-            )}
-            {(!!onScan || !!onSavedMeal) && (
+            {!!onSavedMeal && (
             <View style={styles.actionRow}>
-              {!!onScan && (
-                <InlineAction
-                  label="Scan a barcode"
-                  icon="barcode-outline"
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
-                />
-              )}
               {!!onSavedMeal && (
                 <InlineAction
                   label="Log a saved meal"
@@ -1927,14 +1929,16 @@ export function FoodLogEntrySheet({
               ListHeaderComponent={
                 <>
                   {lookupBlock}
+                  {usualBlock}
                   {helpingsAfterResults ? null : helpingsBlock}
                 </>
               }
               ListFooterComponent={helpingsAfterResults ? helpingsBlock : null}
-              // Not under an open estimate or database section: those are the
+              // Not under an open estimate or database section, or this meal's
+              // usual foods: those are the
               // answer to "no matching food", and a full-height empty state
               // under them would say there was nothing while showing something.
-              ListEmptyComponent={lookupBlock ? null : (
+              ListEmptyComponent={lookupBlock || usualBlock ? null : (
                 <EmptyState
                   icon="nutrition-outline"
                   // Said about the catalog when logged-before rows are showing
@@ -1962,6 +1966,27 @@ export function FoodLogEntrySheet({
                 />
               )}
             />
+            {/* Hidden for a caller answering one specific food (a correction,
+                a seeded dish, an already-known meal), same as this sheet's
+                other one-off affordances above. At the foot of the sheet
+                rather than among the ways to find a food, because it isn't
+                one: it says what happens after a save. */}
+            {!!allowBurst && !editing && (
+              <View style={styles.burstFooter}>
+                <Text style={styles.burstLabel}>Log several</Text>
+                {burstAdded.length > 0 && (
+                  <Text style={styles.burstCount}>
+                    {burstAdded.length} added
+                  </Text>
+                )}
+                <Switch
+                  value={keepOpenAfterFoodLog}
+                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
+                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                  accessibilityLabel="Log several. Keep this open after each food"
+                />
+              </View>
+            )}
           </>
         )}
       </View>
@@ -2150,35 +2175,29 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
     },
     searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
-    // Same shape as QuickAddModal's own burst row: the chip toggles the
-    // setting directly (no local on/off state of its own), and the count
-    // beside it only appears once there's something to count.
-    burstRow: {
+    // The "Log several" switch, a bar across the foot of the search half.
+    burstFooter: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.md,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.smd,
+      paddingBottom: spacing.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.bgSecondary,
     },
-    keepOpenChip: {
-      flexDirection: 'row',
+    burstLabel: { flex: 1, color: colors.text, fontSize: font.md },
+    scanButton: {
+      width: 34,
+      height: 34,
+      borderRadius: radius.sm,
       alignItems: 'center',
-      gap: spacing.xs,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: radius.md,
-      backgroundColor: colors.bgTertiary,
-    },
-    keepOpenChipOn: {
-      backgroundColor: colors.accent + '22',
-    },
-    keepOpenText: {
-      color: colors.textSecondary,
-      fontSize: font.sm,
-    },
-    keepOpenTextOn: {
-      color: colors.accent,
-      fontWeight: fontWeight.semibold,
+      justifyContent: 'center',
+      // Taken back out of the field's own padding so it doesn't make the
+      // field taller than it is without it.
+      marginVertical: -spacing.xs,
+      backgroundColor: colors.accentSubtle,
     },
     burstCount: {
       color: colors.textSecondary,
@@ -2227,6 +2246,9 @@ function makeStyles(colors: Colors) {
     // The estimate and the database matches, above the list's own rows, with
     // a block gap between them and before what follows.
     lookupBlock: { gap: spacing.md, marginBottom: spacing.md },
+    // Rows keep spacing.sm below themselves; this makes it a block gap before
+    // the helpings' own label, which has none above it.
+    usualGap: { marginBottom: spacing.sm },
     lookupHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
     lookupTitle: { flex: 1 },
     lookupClose: { padding: spacing.xxs },
