@@ -91,6 +91,11 @@ describe('eventIsTravelEligible', () => {
     expect(eventIsTravelEligible(event({ allDay: true }), NOW)).toBe(false);
   });
 
+  it('refuses an event carrying a video-call link even with a real room as its location', () => {
+    expect(eventIsTravelEligible(event({ location: 'NYC HQ-3-Phone Booth 20 (1)', videoCall: true }), NOW)).toBe(false);
+    expect(eventIsTravelEligible(event({ videoCall: false }), NOW)).toBe(true);
+  });
+
   it('refuses an event with no location', () => {
     expect(eventIsTravelEligible(event({ location: null }), NOW)).toBe(false);
   });
