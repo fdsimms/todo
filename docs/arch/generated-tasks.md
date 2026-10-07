@@ -551,6 +551,10 @@ one. Those three rules and the reasoning behind them are in
     - **"tomorrow" is the one word in the phrase that goes stale, and drift is what answers for
       it.** The title written the evening before reads "snow 7am to 11am tomorrow", and the
       correction pass rewrites it to "snow 7am to 11am" once that day is the one you are on.
+    - **A row the forecast no longer backs is dropped, not left as written.** If the day arrives
+      and the rule no longer matches, or its window has already passed, `applyRule` removes the row
+      through `dropGeneratedTask` (no opt-out). Returning early left last night's "tomorrow" row on
+      Today with nothing to correct or remove it.
   - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
     API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
     keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather

@@ -6402,6 +6402,48 @@ describe('checkWeatherTasks (day ahead)', () => {
     expect(weatherTasks()[0].title).toBe('Clear the drive (snow 7am to 11am)');
     jest.setSystemTime(EVENING);
   });
+
+  // Last night's row becomes today's, but today's summary no longer includes
+  // the weather it was written for. Nothing else would ever remove it, so it
+  // sat on Today still reading "tomorrow".
+  it('drops last night\'s row when that day arrives without the weather', () => {
+    useTaskStore.getState().checkWeatherTasks();
+    expect(weatherTasks()).toHaveLength(1);
+
+    jest.setSystemTime(new Date(2026, 7, 26, 6, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...snowyRule, lastFiredDayKey: TODAY_KEY, lastAheadDayKey: TOMORROW_KEY }] }),
+    );
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ todayWeatherCode: 0, todayHours: null, tomorrowHours: null }),
+      snapshotDayKey: TOMORROW_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+    jest.setSystemTime(EVENING);
+  });
+
+  it('drops last night\'s row once its window has already passed', () => {
+    useTaskStore.getState().checkWeatherTasks();
+    expect(weatherTasks()).toHaveLength(1);
+
+    // Snow was 7am to 11am; it is now 2pm on the 26th.
+    jest.setSystemTime(new Date(2026, 7, 26, 14, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ weatherRules: [{ ...snowyRule, lastFiredDayKey: TODAY_KEY, lastAheadDayKey: TOMORROW_KEY }] }),
+    );
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: snapshot({ todayWeatherCode: 71, todayHours: snowyMorning(), tomorrowHours: null }),
+      snapshotDayKey: TOMORROW_KEY,
+    });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    expect(weatherTasks()).toHaveLength(0);
+    jest.setSystemTime(EVENING);
+  });
 });
 
 // ─── checkMealPlanNudge ─────────────────────────────────────────────────────
