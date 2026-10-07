@@ -10,6 +10,7 @@ import {
   groupMentionTokens,
   tasksNaming,
   contactDetailsFor,
+  peoplePageLinkFor,
 } from '../utils/peopleRegistry';
 
 const person = (id: string, name: string, groupId: string | null = null): Person => ({
@@ -209,5 +210,26 @@ describe('contact details for a task row', () => {
     expect(contactDetailsFor(row(['gone']))).toEqual(none);
     expect(contactDetailsFor(row(['a']))).toEqual(none);
     expect(contactDetailsFor(null)).toEqual(none);
+  });
+});
+
+describe('the People page link for a task row', () => {
+  const row = (personIds: string[]) => ({ personIds });
+
+  it("opens the person's own page when a task names one person", () => {
+    registerPersonSource(() => [person('a', 'Kristen')]);
+    expect(peoplePageLinkFor(row(['a']))).toBe('dundundun://people?person=a');
+  });
+
+  it('opens the People screen when a task names several', () => {
+    registerPersonSource(() => [person('a', 'Kristen'), person('b', 'Sam')]);
+    expect(peoplePageLinkFor(row(['a', 'b']))).toBe('dundundun://people');
+  });
+
+  it('offers nothing for a task naming nobody, or only people who have gone', () => {
+    registerPersonSource(() => [person('a', 'Kristen')]);
+    expect(peoplePageLinkFor(row([]))).toBeNull();
+    expect(peoplePageLinkFor(row(['gone']))).toBeNull();
+    expect(peoplePageLinkFor(null)).toBeNull();
   });
 });

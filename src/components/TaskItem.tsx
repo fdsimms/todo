@@ -112,7 +112,7 @@ import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { liveBlockersOf } from '../utils/blocking';
 import { isDriftingTask } from '../utils/postpone';
 import { bountyCoinsFor, formatCoins, isBountyLive } from '../utils/rewards';
-import { resolvePerson, peopleOn, groupMentionTokens, contactDetailsFor } from '../utils/peopleRegistry';
+import { resolvePerson, peopleOn, groupMentionTokens, contactDetailsFor, peoplePageLinkFor } from '../utils/peopleRegistry';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from './HighlightedText';
@@ -390,8 +390,9 @@ export const TaskItem = React.memo(function TaskItem({
     deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
-  // The task's own link (or chain step's), else the one named person's.
-  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl;
+  // The task's own link (or chain step's), else the one named person's, else
+  // the People page for whoever the task names.
+  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl ?? peoplePageLinkFor(task);
   const handleOpenLink = async () => {
     const url = rowLink;
     if (!url) return;
