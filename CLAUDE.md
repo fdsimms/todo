@@ -27,6 +27,17 @@ When work depends on an unmerged PR, branch from that PR's branch but still open
 `main`, and say in its description which PR has to merge first (its diff shrinks to its own
 commits once that one lands).
 
+**One session's work is one PR when the pieces are likely to conflict.** Several PRs from one
+session that touch the same files, or the same regions of a shared file, merge in an order nobody
+controls, and every one after the first needs a conflict resolved (the three generated docs, a
+store's action list, `src/types/index.ts` and `docs/arch/` files are the usual collisions). Don't
+split a session's work across PRs for tidiness. Put related changes in one PR, as separate commits
+if the history is worth keeping. Split only when the pieces are independent: disjoint files, no
+shared generated-doc lines, and either one can merge first without touching the other. When you do
+split, branch each piece from `main`, never from a sibling's branch (see below), and say in each
+description that the others exist. If you're unsure whether two pieces will collide, assume they
+will and combine them.
+
 **Batch pushes instead of pushing after every individual fix.** This repo is private, on a
 plan with a fixed monthly GitHub Actions minutes allowance, and each push re-runs the whole
 `test.yml` pipeline. When several review comments or CI failures land close together (a batch
