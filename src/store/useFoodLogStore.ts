@@ -25,6 +25,11 @@ import { useSettingsStore } from './useSettingsStore';
 import { useHealthStore } from './useHealthStore';
 import { useTaskStore } from './useTaskStore';
 import { buildFoodLogEntry } from '../utils/foodLogEntry';
+import {
+  type UndoableAction,
+  type UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 /**
  * The food log — what was eaten, and when.
@@ -211,7 +216,11 @@ export interface FoodLogPlacement {
   sortOrder: number;
 }
 
-interface FoodLogStore {
+interface FoodLogStore extends UndoHistoryActions {
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
+  lastAction: UndoableAction | null;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
   /** Exactly the loaded window, oldest instant first. Never a superset. */
   entries: FoodLogEntry[];
   rangeStart: string | null;
@@ -294,7 +303,12 @@ interface FoodLogStore {
    * recorded at 12:30am with a 02:00 reset belongs to the evening it happened
    * in, not to the day that had barely started.
    */
-  addEntry: (draft: FoodLogDraft) => FoodLogEntry | null;
+  /**
+   * `undoable: false` is for a caller that is one step of a bigger action and
+   * files its own entry (or none): `moveEntry` removes a row and re-adds it, and
+   * an undo that deleted the re-added row would lose the meal outright.
+   */
+  addEntry: (draft: FoodLogDraft, opts?: { undoable?: boolean }) => FoodLogEntry | null;
   updateEntry: (id: string, patch: FoodLogPatch) => void;
   /**
    * Correct an entry, Health included.
@@ -330,7 +344,7 @@ interface FoodLogStore {
    * typo'd entry that cannot be unwritten from a medical record is the failure
    * the whole feature is arranged around.
    */
-  removeEntry: (id: string) => void;
+  removeEntry: (id: string, opts?: { undoable?: boolean }) => void;
   /** Forget several entries at once — the bulk bar's Delete. */
   removeEntries: (ids: string[]) => void;
   /** Re-slot several entries at once — the bulk bar's Move to meal. */
@@ -443,6 +457,56 @@ type FoodLogSet = (
  * what today's own total is, the same gate the Health re-read above it uses
  * and for the same reason.
  */
+/**
+ * Puts a row into whichever of the three loaded windows its day falls inside,
+ * and nothing else. Shared by `addEntry` and by undoing a delete, so a restored
+ * row lands exactly where a fresh one would.
+ */
+function insertIntoWindows(entry: FoodLogEntry, get: () => FoodLogStore, set: FoodLogSet): void {
+  const { rangeStart, rangeEnd, windowStart, windowEnd, insightStart, insightEnd } = get();
+  const byInstant = (a: FoodLogEntry, b: FoodLogEntry) => a.atISO.localeCompare(b.atISO);
+  if (rangeStart && rangeEnd && entry.dayKey >= rangeStart && entry.dayKey <= rangeEnd) {
+    set(s => ({ entries: [...s.entries, entry].sort(byInstant) }));
+  }
+  if (windowStart && windowEnd && entry.dayKey >= windowStart && entry.dayKey <= windowEnd) {
+    set(s => ({ windowEntries: [...s.windowEntries, entry].sort(byInstant) }));
+  }
+  if (insightStart && insightEnd && entry.dayKey >= insightStart && entry.dayKey <= insightEnd) {
+    set(s => ({ insightEntries: [...s.insightEntries, entry].sort(byInstant) }));
+  }
+}
+
+/**
+ * Undo of a delete: writes the rows back under their own ids.
+ *
+ * The samples a delete retracted from Health are gone, so the restored rows
+ * start with none and are written again, the same write `addEntry` makes. That
+ * is the one place Health is written outside add and revise, and it is the
+ * mirror of the retract the delete sent.
+ */
+function restoreEntries(rows: FoodLogEntry[], get: () => FoodLogStore, set: FoodLogSet): void {
+  for (const row of rows) {
+    if (dbGetFoodLogEntry(row.id)) continue;
+    const restored: FoodLogEntry = { ...row, healthSampleIds: [] };
+    dbInsertFoodLogEntry(restored);
+    set(s => ({ totalCount: s.totalCount + 1 }));
+    insertIntoWindows(restored, get, set);
+    void logFoodEntryToHealth(restored).then(result => recordHealthWrite(restored, result, set));
+  }
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  if (rows.some(r => r.dayKey === todayKey)) {
+    useTaskStore.getState().syncWaterQuotaTasks();
+    useTaskStore.getState().syncSnackNudgeTasks();
+  }
+}
+
+/** The fields `patch` names, as `entry` holds them now: what undoes the patch. */
+function priorFields(entry: FoodLogEntry, patch: FoodLogPatch): FoodLogPatch {
+  const before: Record<string, unknown> = {};
+  for (const key of Object.keys(patch)) before[key] = (entry as unknown as Record<string, unknown>)[key];
+  return before as FoodLogPatch;
+}
+
 function syncWaterQuotaTasksIfToday(dayKey: string): void {
   if (dayKey !== dayKeyOf(getCurrentDayStart())) return;
   useTaskStore.getState().syncWaterQuotaTasks();
@@ -578,6 +642,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   pendingMealLog: null,
   pendingManualMealLog: null,
   pendingHealthWriteRefusal: false,
+  lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
 
   initialize() {
     // The current logical day, because that is what a day view opens on and it
@@ -625,7 +693,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set({ insightEntries: entries, insightStart: startKey, insightEnd: endKey });
   },
 
-  addEntry(draft) {
+  addEntry(draft, opts) {
     // The row itself, and its refusals, are `buildFoodLogEntry`'s, which the
     // MCP server shares. Everything after the insert is this store's.
     const entry = buildFoodLogEntry(draft, dayKey => dbGetFoodLogEntries(dayKey, dayKey), generateId);
@@ -633,23 +701,9 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     dbInsertFoodLogEntry(entry);
     set(s => ({ totalCount: s.totalCount + 1 }));
 
-    // Only into the window on screen. An entry backdated outside it is stored
-    // and simply isn't in `entries`, which is the same contract the range read
-    // already keeps rather than a gap.
-    const { rangeStart, rangeEnd, windowStart, windowEnd, insightStart, insightEnd } = get();
-    const byInstant = (a: FoodLogEntry, b: FoodLogEntry) => a.atISO.localeCompare(b.atISO);
-    if (rangeStart && rangeEnd && entry.dayKey >= rangeStart && entry.dayKey <= rangeEnd) {
-      set(s => ({ entries: [...s.entries, entry].sort(byInstant) }));
-    }
-    // And into the wider windows on the same terms, so a section reading either
-    // of them doesn't disagree with the day view until the next time it's
-    // focused.
-    if (windowStart && windowEnd && entry.dayKey >= windowStart && entry.dayKey <= windowEnd) {
-      set(s => ({ windowEntries: [...s.windowEntries, entry].sort(byInstant) }));
-    }
-    if (insightStart && insightEnd && entry.dayKey >= insightStart && entry.dayKey <= insightEnd) {
-      set(s => ({ insightEntries: [...s.insightEntries, entry].sort(byInstant) }));
-    }
+    // Only into the windows on screen. An entry backdated outside them is
+    // stored and simply isn't loaded, the contract the range read already keeps.
+    insertIntoWindows(entry, get, set);
 
     // One of the two triggers, the other being `reviseEntry` correcting what
     // this one wrote. `logFoodEntryToHealth` is called from those two and from
@@ -666,6 +720,15 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // for the one outcome a person can act on — see `recordHealthWrite`.
     void logFoodEntryToHealth(entry).then(result => recordHealthWrite(entry, result, set));
     syncWaterQuotaTasksIfToday(entry.dayKey);
+
+    if (opts?.undoable !== false) {
+      get().setLastAction({
+        label: `Logged "${entry.label}"`,
+        // removeEntry also retracts what was written to Health.
+        undo: () => get().removeEntry(entry.id),
+        redo: () => { get().addEntry(draft); },
+      });
+    }
 
     return entry;
   },
@@ -699,6 +762,12 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     }));
     // Moving a row into a meal is the other way food lands in a slot.
     if (patch.slot !== undefined) useTaskStore.getState().syncLoggedMealSlotTasks();
+    const before = priorFields(entry, patch);
+    get().setLastAction({
+      label: `Edited "${entry.label}"`,
+      undo: () => get().updateEntry(id, before),
+      redo: () => get().updateEntry(id, patch),
+    });
   },
 
   reviseEntry(id, patch) {
@@ -714,6 +783,15 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // Cleared as the row is written rather than once the retract comes back,
     // so nothing is ever left pointing at samples already on their way out.
     if (rewrites) updated.healthSampleIds = [];
+
+    const before = priorFields(current, patch);
+    get().setLastAction({
+      label: `Edited "${current.label}"`,
+      // Through reviseEntry again, so Health is retracted and rewritten to the
+      // figures being restored rather than left stating the edit.
+      undo: () => get().reviseEntry(id, before),
+      redo: () => get().reviseEntry(id, patch),
+    });
 
     dbUpdateFoodLogEntry(updated);
     const swap = (e: FoodLogEntry) => (e.id === id ? updated : e);
@@ -810,7 +888,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set({ pendingHealthWriteRefusal: pending });
   },
 
-  removeEntry(id) {
+  removeEntry(id, opts) {
     // Read before the delete, since the ids (and the day) are on the row
     // that is about to go. A meal removed from the log has to be removed
     // from Health too: an entry logged against the wrong picker and left in
@@ -836,6 +914,14 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       totalCount: Math.max(0, s.totalCount - 1),
     }));
     if (removed) syncWaterQuotaTasksIfToday(removed.dayKey);
+    if (removed && opts?.undoable !== false) {
+      get().setLastAction({
+        label: `Deleted "${removed.label}"`,
+        destructive: true,
+        undo: () => restoreEntries([removed], get, set),
+        redo: () => get().removeEntry(id),
+      });
+    }
   },
 
   removeEntries(ids) {
@@ -861,11 +947,20 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       useTaskStore.getState().syncWaterQuotaTasks();
       useTaskStore.getState().syncSnackNudgeTasks();
     }
+    if (removed.length > 0) {
+      get().setLastAction({
+        label: removed.length === 1 ? `Deleted "${removed[0].label}"` : `${removed.length} entries deleted`,
+        destructive: true,
+        undo: () => restoreEntries(removed, get, set),
+        redo: () => get().removeEntries(ids),
+      });
+    }
   },
 
   moveEntries(ids, slot) {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
+    const priorSlots = get().entries.filter(e => idSet.has(e.id)).map(e => ({ id: e.id, slot: e.slot }));
     dbBulkSetFoodLogSlot(ids, slot);
     set(s => ({
       entries: s.entries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
@@ -875,10 +970,25 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       // slot can drop a day out of every mood pairing.
       insightEntries: s.insightEntries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
     }));
+    if (priorSlots.length > 0) {
+      get().setLastAction({
+        label: priorSlots.length === 1 ? 'Moved 1 entry' : `Moved ${priorSlots.length} entries`,
+        undo: () => {
+          const bySlot = new Map<MealSlot | null, string[]>();
+          for (const p of priorSlots) bySlot.set(p.slot, [...(bySlot.get(p.slot) ?? []), p.id]);
+          for (const [prior, group] of bySlot) get().moveEntries(group, prior);
+        },
+        redo: () => get().moveEntries(ids, slot),
+      });
+    }
   },
 
   reorderEntries(updates) {
     if (updates.length === 0) return;
+    const wanted = new Set(updates.map(u => u.id));
+    const prior: FoodLogPlacement[] = get().entries
+      .filter(e => wanted.has(e.id))
+      .map(e => ({ id: e.id, slot: e.slot, sortOrder: e.sortOrder }));
     dbBulkUpdateFoodLogPlacement(updates);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({
@@ -895,13 +1005,20 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
         return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
       }),
     }));
+    if (prior.length > 0) {
+      get().setLastAction({
+        label: 'Reordered meals',
+        undo: () => get().reorderEntries(prior),
+        redo: () => get().reorderEntries(updates),
+      });
+    }
   },
 
   moveEntry(id, at) {
     const current = dbGetFoodLogEntry(id);
     if (!current) return null;
-    get().removeEntry(id);
-    return get().addEntry({
+    get().removeEntry(id, { undoable: false });
+    const moved = get().addEntry({
       label: current.label,
       quantity: current.quantity,
       grams: current.grams,
@@ -914,7 +1031,20 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       productId: current.productId,
       mealPlanEntryId: current.mealPlanEntryId,
       at,
-    });
+    }, { undoable: false });
+    // One step for the pair. Undoing puts the original row back under its own
+    // id and drops the re-dated copy; redoing runs the move again from it.
+    if (moved) {
+      get().setLastAction({
+        label: `Moved "${current.label}"`,
+        undo: () => {
+          get().removeEntry(moved.id);
+          restoreEntries([current], get, set);
+        },
+        redo: () => { get().moveEntry(id, at); },
+      });
+    }
+    return moved;
   },
 
   duplicateEntry(id, at) {
