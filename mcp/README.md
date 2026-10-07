@@ -96,6 +96,10 @@ only the fallback until the first sync.
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
+| `list_cookbooks` / `get_cookbook_index` | The cookbooks, and the dishes one's index lists. |
+| `rename_cookbook` / `merge_cookbooks` | **Write.** Renames a cookbook on every recipe in it, or joins two copies of one book. |
+| `save_index_entry` / `delete_index_entry` / `recipe_from_index_entry` | **Write.** Adds, changes or removes a dish in a cookbook's index, or makes the saved recipe for one. |
+| `reorder_up_next` / `log_cook_time` | **Write.** Orders the Up next shelf; records how long cooking a recipe took. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
@@ -125,7 +129,11 @@ only the fallback until the first sync.
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
 | `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
-| `list_food_log` | Logged food over a day range, with summed nutrients. |
+| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. |
+| `list_saved_meals` | Foods the person logs together under one name. |
+| `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again. |
+| `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |
+| `set_nutrition_targets` | **Write.** The daily figures the food log reads totals against, only as the person gives them. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
@@ -143,7 +151,9 @@ only the fallback until the first sync.
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
-| `plan_meal` | **Write.** Puts a recipe, or just a title, on the meal plan. |
+| `plan_meal` | **Write.** Puts a recipe, a leftover, or just a title, on the meal plan. |
+| `set_meal_cooked` | **Write.** Marks a planned meal cooked (counting it, opening what it used and completing its task), or not. |
+| `save_meal_as_recipe` / `copy_meals` | **Write.** Saves a typed meal as a recipe; copies a week, a slot of a week, or one meal onto other days. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures). |
@@ -163,7 +173,7 @@ only the fallback until the first sync.
 | `delete_tag` | **Write.** Takes a tag off every task and out of the tag list. |
 | `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
-| `update_meal` | **Write.** Moves a planned meal, renames a free-text one, or sets a recipe's scale. |
+| `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, or sets its shopping, thaw and log answers. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
@@ -189,7 +199,7 @@ only the fallback until the first sync.
 | `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
 | `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. A habit with a penalty is refused. |
-| `update_recipe` | **Write.** Changes a recipe; ingredients and steps replace the whole list. |
+| `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
@@ -218,7 +228,8 @@ only the fallback until the first sync.
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
 | `answer_pantry_review` | **Write.** Records the person's answers (have, low, out) to `pantry_review` cards. |
 | `log_leftover` | **Write.** Logs a container of cooked food in the fridge or freezer. |
-| `update_leftover` | **Write.** Freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
+| `update_leftover` | **Write.** Renames, re-dates, weighs, freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
+| `split_leftover` / `delete_leftover` | **Write.** Splits a container across the freezer line, or deletes one logged by mistake. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no

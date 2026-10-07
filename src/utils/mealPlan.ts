@@ -9,7 +9,7 @@ import { cleanRecipeName, recipeByName, recipeNameKey } from './recipeUtils';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
 import type { MealPlanDraft } from '../store/useMealPlanStore';
-import { householdScale } from './recipeScale';
+import { householdScale, isUnscaled, rescaleForRecipe } from './recipeScale';
 
 /**
  * Everything decidable about a week plan, kept store-free and node-testable —
@@ -710,5 +710,44 @@ export function buildMealPlanEntry(draft: MealPlanDraft, ctx: MealPlanEntryConte
     // Nothing on the device yet. reconcileMealEvent below writes the id
     // back if a calendar is picked.
     calendarEventId: null,
+  };
+}
+
+/**
+ * A planned meal given something else to be: a recipe, or a typed title with
+ * no recipe. The row the meal plan store's `bulkReplaceItem` writes for each
+ * meal, lifted out so the MCP server's `update_meal` swaps a meal the same way.
+ * `title` is already cleaned.
+ *
+ * The choices and any leftover go, since they were answers about the old dish.
+ * The scale keeps the head count rather than the multiplier: the same recipe
+ * keeps its factor (converting through its own servings would only round a 1.5x
+ * of 3 to a different number); an as-written night names no head count, so the
+ * new recipe starts where planning it would have (#2910), the household size
+ * when one is set; otherwise the old factor is carried through both recipes'
+ * servings. `cookTask` is kept, so an explicit per-meal answer is not quietly
+ * undone by changing what is cooked.
+ */
+export function replacedMealEntry(
+  entry: MealPlanEntry,
+  replacement: { recipeId: string | null; title: string },
+  recipesById: ReadonlyMap<string, Recipe>,
+  householdServings: number,
+): MealPlanEntry {
+  const toRecipe = replacement.recipeId ? recipesById.get(replacement.recipeId) : undefined;
+  const toServings = toRecipe?.servings ?? null;
+  return {
+    ...entry,
+    recipeId: replacement.recipeId,
+    title: replacement.title,
+    recipeChoices: [],
+    leftoverId: null,
+    recipeScale: entry.recipeId === replacement.recipeId && entry.recipeId
+      ? entry.recipeScale
+      : isUnscaled(entry.recipeScale)
+        ? householdScale(householdServings, toServings, toRecipe?.servingsMax)
+        : entry.recipeId
+          ? rescaleForRecipe(entry.recipeScale, recipesById.get(entry.recipeId)?.servings, toServings)
+          : entry.recipeScale,
   };
 }

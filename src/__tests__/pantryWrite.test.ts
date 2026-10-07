@@ -9,6 +9,8 @@ import {
   leftoverFrozenRow,
   leftoverKeepDaysRow,
   leftoverReopenedRow,
+  leftoverSplitDraft,
+  leftoverStoredAtRow,
   markedOutRow,
   onHandRow,
   openedRow,
@@ -193,5 +195,18 @@ describe('leftovers', () => {
 
   it('keepDays counts from the day it was stored', () => {
     expect(leftoverKeepDaysRow(left, 5).keepUntil).not.toBe(left.keepUntil);
+  });
+
+  it('moving the stored day carries the keep-for window with it', () => {
+    const local: Leftover = { ...left, storedAt: new Date(2026, 7, 20, 12).toISOString(), keepUntil: '2026-08-23' };
+    const moved = leftoverStoredAtRow(local, new Date(2026, 7, 18, 19).toISOString());
+    expect(moved.keepUntil).toBe('2026-08-21');
+  });
+
+  it('a split logs the other side of the freezer line, put away when the original was', () => {
+    const local: Leftover = { ...left, storedAt: new Date(2026, 7, 20, 12).toISOString(), keepUntil: '2026-08-23' };
+    expect(leftoverSplitDraft(local)).toMatchObject({ title: 'Chili', storedAt: local.storedAt, keepDays: 3, frozen: true });
+    expect(leftoverSplitDraft({ ...local, frozenAt: local.storedAt })?.frozen).toBe(false);
+    expect(leftoverSplitDraft({ ...local, finishedAt: local.storedAt, outcome: 'eaten' })).toBeNull();
   });
 });

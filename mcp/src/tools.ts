@@ -656,6 +656,8 @@ export interface FoodLogResult {
    * none.
    */
   produce: { dayKey: string; vegetable: number; fruit: number; unmeasured: number }[];
+  /** The daily targets the person set, by nutrient. Nothing here is a recommendation. */
+  targets: Record<string, number>;
 }
 
 export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLogResult {
@@ -688,6 +690,8 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       entries: totals.entries,
     },
     produce,
+    // The figures the person set to read a day's totals against; absent for a nutrient with none.
+    targets: replica.nutritionTargets(),
   };
 }
 

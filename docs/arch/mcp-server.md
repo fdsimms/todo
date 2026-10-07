@@ -1029,21 +1029,25 @@ for everything, which is adequate for a laptop and is not adequate for that.
 ### The pantry: the same row rules, and what stays on the phone
 
 `list_pantry`, `get_pantry_item`, `pantry_review`, `use_up_recipes`, `update_pantry_item`,
-`update_pantry_box`, `add_to_pantry`, `answer_pantry_review`, `log_leftover` and `update_leftover`
-(`mcp/src/pantryTools.ts`, over the `Replica` methods of the same names). `docs/arch/groceries.md`
+`update_pantry_box`, `add_to_pantry`, `answer_pantry_review`, `log_leftover`, `update_leftover`,
+`split_leftover` and `delete_leftover` (`mcp/src/pantryTools.ts`, over the `Replica` methods of the
+same names). `docs/arch/groceries.md`
 has the rules; two decisions are specific to the server.
 
 - **Every pantry write is `src/utils/pantryWrite.ts`, shared with the stores.** `useGroceryStore`
   cannot load in Node, and each of its pantry actions was a row transform fused to a `set()`, an
   undo and a use-up reconcile. The transform is lifted out the way `planGroceryAdd` was, and
   `setOnHandUntil`, `markOutOfMany`, `setFrozen`, `setOpened`, `answerPantryReview`, the box actions,
-  `freezePortion`, `addToPantry` and the leftover store's freeze, finish and reopen all call it. A
-  pantry rule fixed in one place is fixed for the phone and the server.
-- **The use-up task is not written here.** It goes through the task store, which is unreachable from
-  Node, so a change that would spawn or drop one leaves it to the phone's catch-up pass
-  (`reconcileAllUseUpTasks`), which converges from the rows alone. The same split `update_meal` makes
-  for a meal's cook task. `update_pantry_item`'s `useUpTask` sets the item's own flag, which that
-  pass then honors.
+  `freezePortion`, `addToPantry` and the leftover store's freeze, finish, reopen, re-dating
+  (`leftoverStoredAtRow`) and split (`leftoverSplitDraft`) all call it. A pantry rule fixed in one
+  place is fixed for the phone and the server.
+- **A use-up task is not written here, but one is taken away.** Writing one goes through the task
+  store, which is unreachable from Node, so a change that would spawn or re-date one leaves it to the
+  phone's catch-up pass (`reconcileAllUseUpTasks`), which converges from the rows. That pass only
+  visits a container that is still live, though, so it never removes the task of one that was
+  finished, frozen or deleted: the phone drops that in the same step (`dropLeftoverTask`), and the
+  server does too (`dropGeneratedRow`, no opt-out written). `update_pantry_item`'s `useUpTask` sets
+  the item's own flag, which the pass then honors.
 - **Reads are the app's readers.** `list_pantry` is `kitchenInventory` (so a row appears only when
   `probablyHaveReason` vouches for it), `pantry_review` is `buildPantryReviewDeck`, `use_up_recipes`
   is `useUpRecipes` over `useUpEntries`. `get_pantry_item` reports `unknown` where the app has no
@@ -1059,7 +1063,8 @@ has the rules; two decisions are specific to the server.
   its boxes and whether it was on the list, before and after (`agentPantryRevert.ts`), and Activity
   offers an undo only while the item still matches the "after" snapshot, the rule every other undo
   follows. The store side is `useGroceryStore.restorePantry` and `useLeftoverStore.restoreLeftover`.
-  A leftover the agent logged is removable while it is open, like a log entry; a new catalog row
+  A leftover the agent logged or split off is removable while it is open, like a log entry, and a
+  rename or weight is in the leftover snapshot (`LEFTOVER_REVERT_FIELDS`); a new catalog row
   from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
   list does.
 
@@ -1125,28 +1130,64 @@ is. Decisions specific to the server:
 conversation is otherwise uncorrectable: a wrong figure or a doubled dose stayed until somebody
 opened the app. Three rules:
 
-- **An entry never changes day.** `dayKey` is stamped with the instant, as in the app, so a wrong
-  date is delete-and-log-again. Mood and medication reuse the stores' own `updateLog`, which already
-  refuses re-dating.
+- **An entry is never re-dated in place.** `dayKey` is stamped with the instant, as in the app.
+  `move_food_entry` is the app's `moveEntry`: the row is deleted and the same food written again at
+  the new instant, with a new id. Mood and medication reuse the stores' own `updateLog`, which
+  already refuses re-dating.
 - **Food figures are restated only on an estimated entry.** A measured one (a scan, a database
   food) is re-measured against its own panel in the app, and a restated quantity there would
   disagree with the figures beside it. A rename or a slot change is always fine.
-- **An entry already written to Apple Health is refused for figure edits and delete.** The server
-  cannot reach HealthKit, so removing the row would strand the sample in somebody's medical record,
-  the case `docs/arch/health-data.md` is arranged around. The refusal says to do it in the app.
+- **An entry already written to Apple Health is refused for figure edits, a move and delete.** The
+  server cannot reach HealthKit, so removing the row would strand the sample in somebody's medical
+  record, the case `docs/arch/health-data.md` is arranged around. The refusal says to do it in the
+  app. Water is refused for a move or a copy too, since it is one entry a day that `log_water` steps.
 
 A mood check-in cannot be edited down to nothing (delete it), and a dose recorded by completing a
 task does not reopen the task: `reopen_task` takes both back.
 
+`duplicate_food_entry` is the app's `duplicateEntry` (a new meal, not tied to the planned one the
+original was), and saved meals (`list_saved_meals`, `save_meal_from_entries`, `log_saved_meal`,
+`delete_saved_meal`) write the rows `useSavedMealsStore` writes, a logged one being each food built
+through `buildFoodLogEntry`. Every new food row is flagged `healthWritePending`, as `log_food`'s is.
+`set_nutrition_targets` goes through the settings store's own setters and checks each figure against
+the Settings stepper's range (`NUTRITION_TARGET_RANGES`); `list_food_log` returns the targets. The
+tool says to set only figures the person gives, since the app ships with none and never suggests
+one. Its Activity entry is titled "Food log targets", not by the figures.
+
 ### Changing the meal plan
 
-`update_meal` moves a planned meal (another day or slot), renames a free-text one, or sets a
-recipe's scale; `remove_meal` takes it off. A meal backed by a recipe or a leftover keeps its name,
-as in the app. Both write only the entry row, like `plan_meal`: the slot's cook task and the
-calendar event are device work that catches up on the phone. **Marking a meal cooked is not
-exposed**, because the app's `setCooked` also opens pantry items, raises the cook recap and ticks
-the cook task, none of which a Node process can do, and a half-done "cooked" is worse than none.
-A meal already marked cooked is not removable here, since it is history behind the cooking stats.
+`update_meal` moves a planned meal (another day or slot), swaps what it is (another recipe, or a
+typed title), renames a typed one, sets a recipe's scale, answers its either/or questions by group
+and option name (`recipeChoiceGroups` and `applyChoice`, one answer at a time since an answer can
+open or close a question), and sets the per-meal answers for its shopping task, thaw task and log
+offer. A swap is the row the app's Replace writes (`replacedMealEntry`, lifted out of
+`bulkReplaceItem`), so the head count carries the way it does there. A leftover night is not swapped
+here, since the replace also reconciles its container's use-up task. Whether a meal gets a cook task
+stays on the phone: the app writes or removes that task as the answer changes, which is task-store
+work. `plan_meal` takes a `leftoverId` for a leftover night, titled by its container as the fridge
+drag titles one. `remove_meal` takes a meal off. These write only the entry row: the slot's task and
+the calendar event are device work that catches up on the phone. A meal already marked cooked is not
+removable here, since it is history behind the cooking stats.
+
+`set_meal_cooked` is the plan's checkbox, with the parts a Node process can do. Marking a meal cooked
+stamps it, counts the cooking on the recipe (`useRecipeStore.markCooked`), opens the packets it used
+(`cookedConsumption` and `cookOpenedIds`, lifted out of the meal plan store, with the same "only what
+the app already thinks you have" restraint) dated by `openedAtForCook`, and completes every remaining
+step of the meal's task through the server's own completion core. What the phone raises after a
+cooking (the recap asking what got used up, the leftovers question, the log offer) are sheets, and
+the tool says they were not asked. The other direction clears the stamp and reopens the step that
+finished the meal; the recipe's count and the opened packets stay, the app's rules. The phone does
+not re-tick a meal's task when a cooked meal arrives by sync, which is why the server completes it
+here rather than leaving it to catch up. The same pairing runs the other way: completing the last
+step of a meal's task here marks the meal cooked, as `completeTask` does on the phone, and
+`reopen_task` on that step points at `set_meal_cooked`.
+
+`save_meal_as_recipe` is the meal sheet's "Save as recipe" (the recipe already called that, else a
+new empty one). `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
+`mealCopyDraft`): a whole week only into a week with nothing planned, one slot only into a week
+without it (`slotsToCopy`), one meal onto other days skipping a day that already has it. Weeks are
+named by any day in them and start on the person's `weekStartsOn`. Each copied meal is its own
+Activity entry, so each can be taken back.
 
 ### People: who someone is, never how the friendship stands
 
@@ -1172,14 +1213,34 @@ notes (`deletedPersonRevert`) so Activity can restore both. History is still `ad
 
 ### Changing and deleting a recipe
 
-`update_recipe` changes scalar fields and replaces `ingredients` and `steps` as whole lists, using
-the same line parsing as `save_recipe` (so a line the app cannot read is counted, not silently
-kept). The recipe store's `renameRecipe` and `deleteRecipe` both end in the meal plan store, which a
-Node process cannot load, so the replica makes their writes itself: the renamed row, and the captured
-title on each meal planned from it. Everything that can refuse (a name clash in the same cookbook, a
-bad servings count) is checked before the first write, and the writes are one transaction.
-`delete_recipe` leaves planned meals as the app does (title kept, link gone) and reports how many;
-their Today tasks and events catch up on the phone. Moving a recipe between cookbooks stays in the app.
+`update_recipe` changes scalar fields and replaces `ingredients`, `steps`, `components` and
+`prepTasks` as whole lists, using the same line parsing as `save_recipe` (so a line the app cannot
+read is counted, not silently kept). A step whose text is unchanged keeps its id, so its timer, its
+note and the cook questions filed under it (`CookQuestion.stepId`) survive an edit to the steps
+around it. The wider fields (vote, Up next, author, page, yield, prep time, leftover keep days, a
+serving range) go through the recipe store's own setters, and `save_recipe` takes all of them too.
+Each is checked first against the range the editor allows (a step timer within `stepTimers.ts`'
+bounds, a prep task within `PREP_OFFSET_MIN`..`MAX`), and a component that would make a cycle is
+refused through `wouldCreateRecipeCycle`. An author on a recipe in a cookbook is refused: the book's
+author is mirrored onto it, and the store's `setAuthor` unlinks the book on a change, so
+`rename_cookbook` is the way to say it.
+
+`cookbook` on an edit moves the recipe (`linkCookbook`, which clears a page that belonged to the old
+book). A book is found by title ignoring case and author, since the store's `ensureCookbook` keys on
+both and would make a second copy of a book that has an author. The recipe store's `renameRecipe`
+and `deleteRecipe` both end in the meal plan store, which a Node process cannot load, so the replica
+makes their writes itself: the renamed row, and the captured title on each meal planned from it.
+Everything that can refuse (a name clash in the destination book, a bad value) is checked before the
+first write, and the writes are one transaction. `delete_recipe` leaves planned meals as the app does
+(title kept, link gone) and reports how many; their Today tasks and events catch up on the phone.
+
+Cookbooks are `list_cookbooks`, `rename_cookbook` and `merge_cookbooks` (the store's own, which
+re-mirror every recipe in the book), and an index is `get_cookbook_index`, `save_index_entry`,
+`delete_index_entry` and `recipe_from_index_entry`, the store's index actions with their refusals
+(a dish an index already lists). An index line is still not a recipe (`docs/arch/recipes.md`), which
+is why making one from it is its own tool. `reorder_up_next` orders the shelf and `log_cook_time`
+records a cook timed on the person's own clock, the timer's `applyMeasuredCookTime`. Deleting a
+cookbook stays in the app.
 
 ### Calendar events: a request the phone answers
 

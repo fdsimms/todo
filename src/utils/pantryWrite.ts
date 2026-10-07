@@ -28,7 +28,7 @@ import { aisleForName, placeAisle } from './groceryAisles';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import { catalogItemForKey } from './groceryPlural';
 import { newItemRow, nextSortOrder } from './groceryAdd';
-import { cleanLeftoverTitle, keepDaysBetween, keepUntilKeyFor } from './leftovers';
+import { cleanLeftoverTitle, isLiveLeftover, keepDaysBetween, keepUntilKeyFor } from './leftovers';
 import { clampCookedWeight } from './mealLog';
 
 /** The three columns that belong to one box of something, and end with it. */
@@ -373,6 +373,37 @@ export function leftoverReopenedRow(leftover: Leftover): Leftover | null {
 /** Keep it for this many days from the day it was stored. */
 export function leftoverKeepDaysRow(leftover: Leftover, days: number): Leftover {
   return { ...leftover, keepUntil: keepUntilKeyFor(leftover.storedAt, days) };
+}
+
+/**
+ * The "put away" instant moved, holding the keep-for window steady: the
+ * window is what the person set, so "actually I made this yesterday" carries
+ * the deadline back with it. Re-resolving from the old `keepUntil` instead
+ * would silently turn a 3-day window into a 2-day one; the absolute day is
+ * authoritative for reading, not for edits to the thing it was derived from.
+ */
+export function leftoverStoredAtRow(leftover: Leftover, storedAt: string): Leftover {
+  const days = keepDaysBetween(leftover.storedAt, leftover.keepUntil);
+  return { ...leftover, storedAt, keepUntil: keepUntilKeyFor(storedAt, days) };
+}
+
+/**
+ * The second container a split logs: the same dish and cooking, put away when
+ * the original was (the food is that old whichever half this is), with the
+ * same keep-for window, on the opposite side of the fridge/freezer line. Null
+ * for a container that is finished. Built as a draft for `newLeftoverRow`, so
+ * a split row is indistinguishable from one the "Both" log flow writes.
+ */
+export function leftoverSplitDraft(leftover: Leftover): LeftoverDraft | null {
+  if (!isLiveLeftover(leftover)) return null;
+  return {
+    title: leftover.title,
+    recipeId: leftover.recipeId,
+    sourceEntryId: leftover.sourceEntryId,
+    storedAt: leftover.storedAt,
+    keepDays: keepDaysBetween(leftover.storedAt, leftover.keepUntil),
+    frozen: !leftover.frozenAt,
+  };
 }
 
 export interface LeftoverDraft {

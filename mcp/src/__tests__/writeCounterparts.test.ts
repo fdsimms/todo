@@ -38,6 +38,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   // A water entry's figure is the stepper's own, not an estimate, so
   // update_food_entry will not restate it; the row is deleted and relogged.
   log_water: ['delete_food_entry'],
+  save_meal_from_entries: ['delete_saved_meal'],
+  log_saved_meal: ['update_food_entry', 'delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],
   log_journal_entry: ['update_journal_entry', 'delete_journal_entry'],
@@ -45,6 +47,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   request_calendar_event: ['cancel_calendar_request'],
   log_medication: ['update_medication_log', 'delete_medication_log'],
   plan_meal: ['update_meal', 'remove_meal'],
+  save_meal_as_recipe: ['update_meal', 'delete_recipe'],
   add_grocery_item: ['remove_from_grocery_list', 'check_off_grocery_item'],
   add_ingredients_to_list: ['remove_from_grocery_list', 'clear_grocery_list'],
   add_choice_to_list: ['settle_choice', 'remove_from_grocery_list'],
@@ -53,6 +56,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   create_grocery_list: ['rename_grocery_list', 'delete_grocery_list'],
   save_rule: ['delete_rule'],
   save_recipe: ['update_recipe', 'delete_recipe'],
+  save_index_entry: ['delete_index_entry'],
   add_person_history: ['reopen_task', 'archive_task'],
 };
 
@@ -63,6 +67,7 @@ const NO_COUNTERPART: Record<string, string> = {
   save_person_group: 'One tool adds, renames (newName) and deletes (delete: true) a person group, so it is its own correction.',
   save_project_category: 'One tool adds, renames (newName) and deletes (delete: true) a project category, so it is its own correction.',
   save_store: 'Adds and renames a store; update_store deletes one.',
+  log_cook_time: 'The app keeps a cook time the way the cook timer logs one, and has no way to take one back on the phone either; it is what the last time shows, so the next cook replaces it.',
   save_aisle: 'One tool adds, renames (newName) and deletes (delete: true) an aisle, so it is its own correction.',
 };
 

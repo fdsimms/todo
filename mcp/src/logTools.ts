@@ -16,8 +16,8 @@
  * Health from here, since a Node process has no HealthKit: the entry is flagged
  * (`healthWritePending`) and the phone writes it on its next foreground.
  */
-import { NUTRIENT_KEYS, type MealSlot, type NutrientKey } from '../../src/types';
-import type { RecipePatch, Replica } from './replica';
+import { NUTRIENT_KEYS, type FoodLogEntry, type MealSlot, type NutrientKey } from '../../src/types';
+import type { RecipeInput, RecipePatch, Replica } from './replica';
 import { getRecipe, type RecipeDetail } from './kitchenTools';
 // Pure over its arguments (types, the target ranges and the unit maths), so
 // safe to import for its value here; the replica loads the same module for the
@@ -39,18 +39,7 @@ export const NUTRIENT_KEY_LIST = NUTRIENT_KEYS as readonly NutrientKey[];
 // save_recipe
 // ---------------------------------------------------------------------------
 
-export interface SaveRecipeInput {
-  name: string;
-  cookbook?: string | null;
-  ingredients?: { text: string; section?: string | null; alternativeGroup?: string | null }[];
-  steps?: { text: string; section?: string | null }[];
-  servings?: number | null;
-  estimatedMinutes?: number | null;
-  mealType?: string | null;
-  tags?: string[];
-  sourceUrl?: string | null;
-  notes?: string;
-}
+export type SaveRecipeInput = RecipeInput;
 
 export function saveRecipe(replica: Replica, input: SaveRecipeInput): RecipeDetail & { ingredientsRead: number; ingredientsGiven: number } {
   const recipe = replica.createRecipe(input);
@@ -228,6 +217,51 @@ export function updateFoodEntry(
 export function deleteFoodEntry(replica: Replica, id: string) {
   const entry = replica.deleteFoodEntry(id);
   return { deleted: { id: entry.id, day: entry.dayKey, label: entry.label } };
+}
+
+function foodRow(e: FoodLogEntry) {
+  return { id: e.id, day: e.dayKey, at: e.atISO, label: e.label, quantity: e.quantity || undefined, slot: e.slot ?? undefined };
+}
+
+const NOT_IN_HEALTH_YET = 'It is not in Apple Health yet: the phone writes it there the next time the app is opened, if Health writing is on there.';
+
+export function moveFoodEntry(replica: Replica, id: string, at: string) {
+  const when = atFrom(at)!;
+  const { from, to } = replica.moveFoodEntry(id, when);
+  return { moved: foodRow(to), fromDay: from.dayKey, note: `It has a new id. ${NOT_IN_HEALTH_YET}` };
+}
+
+export function duplicateFoodEntry(replica: Replica, id: string, at: string | undefined) {
+  return { logged: foodRow(replica.duplicateFoodEntry(id, atFrom(at) ?? new Date())), note: NOT_IN_HEALTH_YET };
+}
+
+export function listSavedMeals(replica: Replica) {
+  return {
+    meals: replica.savedMeals().map(m => ({
+      id: m.id,
+      name: m.name,
+      foods: m.items.map(i => ({ label: i.label, ...(i.quantity ? { quantity: i.quantity } : {}) })),
+    })),
+  };
+}
+
+export function saveMealFromEntries(replica: Replica, name: string, entryIds: string[]) {
+  const meal = replica.saveMealFromEntries(name, entryIds);
+  return { saved: { id: meal.id, name: meal.name, foods: meal.items.map(i => i.label) } };
+}
+
+export function logSavedMeal(replica: Replica, id: string, slot: MealSlot | null | undefined, at: string | undefined) {
+  const entries = replica.logSavedMeal(id, slot ?? null, atFrom(at) ?? new Date());
+  return { logged: entries.map(foodRow), note: NOT_IN_HEALTH_YET };
+}
+
+export function deleteSavedMeal(replica: Replica, id: string) {
+  const meal = replica.deleteSavedMeal(id);
+  return { deleted: { id: meal.id, name: meal.name } };
+}
+
+export function setNutritionTargets(replica: Replica, targets: Record<string, number | null>) {
+  return { targets: replica.setNutritionTargets(targets as Partial<Record<NutrientKey, number | null>>) };
 }
 
 export function updateMoodLog(

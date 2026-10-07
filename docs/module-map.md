@@ -197,8 +197,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
 - `src/utils/mealLogCoverage.ts` — SlotCoverage, countsAsMealLog, loggedMealSlotKeys, mealDayCoverage, describeSlotLog, describeDayCoverage, unloggedPlannedSlots, describePlannedSlot
 - `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogRecord, isMealLogged, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
-- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +27 more
-- `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, PlannedCatalogIndex, +10 more
+- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +28 more
+- `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, PlannedCatalogIndex, +13 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
 - `src/utils/mealSlotTasks.ts` — MEAL_SLOT_SEGMENTS, mealSlotStepTimeSegments, MEAL_SLOT_TASK_DAYS, DEFAULT_MEAL_SLOTS_ENABLED, mealSlotSourceId, parseMealSlotSource, mealSlotOf, RECIPE_LINK_URL, recipeLinkUrl, mealSlotLinkUrl, +10 more
@@ -234,7 +234,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, describePantryDoubt, describePantryReviewDone
 - `src/utils/pantryReviewTasks.ts` — PANTRY_REVIEW_TITLE, PANTRY_REVIEW_LINK_URL, MIN_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_CADENCE_DAYS, pantryReviewDayKey, pantryReviewCadenceElapsed, wantsPantryReview, stalePantryReviewTasks
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
-- `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +14 more
+- `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, NUMBER_WORDS, NUMBER_WORD_ALT, parseCount, +3 more
 - `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +45 more
 - `src/utils/patchNotes.ts` — PatchNote

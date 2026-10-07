@@ -516,6 +516,44 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    moveFoodEntry(id, at) {
+      const result = replica.moveFoodEntry(id, at);
+      log({ action: 'moved', subject: 'food', title: result.to.label, taskId: null, recordId: result.to.id, note: `Move "${result.to.label}" in the food log from ${result.from.dayKey} to ${result.to.dayKey}` });
+      return result;
+    },
+
+    duplicateFoodEntry(id, at) {
+      const entry = replica.duplicateFoodEntry(id, at);
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      return entry;
+    },
+
+    saveMealFromEntries(name, entryIds) {
+      const meal = replica.saveMealFromEntries(name, entryIds);
+      log({ action: 'created', subject: 'food', title: meal.name, taskId: null, note: `Save "${meal.name}" as a meal of ${meal.items.length} foods, to log again in one tap` });
+      return meal;
+    },
+
+    logSavedMeal(id, slot, at) {
+      const entries = replica.logSavedMeal(id, slot, at);
+      for (const entry of entries) log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      return entries;
+    },
+
+    deleteSavedMeal(id) {
+      const meal = replica.deleteSavedMeal(id);
+      log({ action: 'cleared', subject: 'food', title: meal.name, taskId: null, note: `Delete the saved meal "${meal.name}". The food it logged before stays in the log.` });
+      return meal;
+    },
+
+    setNutritionTargets(changes) {
+      const targets = replica.setNutritionTargets(changes);
+      const said = Object.entries(changes).map(([k, v]) => (v === null ? `clear ${k}` : `${k} ${v}`)).join(', ');
+      // Titled by what it is rather than by the figures, which say something about a body.
+      log({ action: 'edited', subject: 'food', title: 'Food log targets', taskId: null, note: `Set the food log's daily targets: ${said}` });
+      return targets;
+    },
+
     updateMoodLog(id, patch) {
       const entry = replica.updateMoodLog(id, patch);
       log({ action: 'edited', subject: 'mood', title: entry.dayKey, taskId: null, note: `Correct the mood check-in from ${entry.dayKey}` });
@@ -566,6 +604,41 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const entry = replica.removeMeal(id);
       log({ action: 'cleared', subject: 'meal', title: entry.title, taskId: null, note: `Remove "${entry.title}" from ${entry.date}'s ${entry.slot}` });
       return entry;
+    },
+
+    setMealCooked(id, cooked) {
+      const result = replica.setMealCooked(id, cooked);
+      const title = result.entry.title;
+      if ('opened' in result) {
+        const parts = [
+          result.opened.length ? `marks ${result.opened.join(', ')} opened` : null,
+          result.tasksCompleted.length ? `completes ${result.tasksCompleted.map(t => `"${t}"`).join(', ')}` : null,
+        ].filter(Boolean);
+        log({ action: 'completed', subject: 'meal', title, taskId: null, note: `Mark "${title}" cooked${parts.length ? `; it ${parts.join(' and ')}` : ''}` });
+      } else {
+        log({ action: 'edited', subject: 'meal', title, taskId: null, note: `Mark "${title}" not cooked${result.tasksReopened.length ? `, reopening ${result.tasksReopened.map(t => `"${t}"`).join(', ')}` : ''}` });
+      }
+      return result;
+    },
+
+    saveMealAsRecipe(id) {
+      const result = replica.saveMealAsRecipe(id);
+      if (result.created) log({ action: 'created', subject: 'recipe', title: result.recipe.name, taskId: null });
+      log({ action: 'edited', subject: 'meal', title: result.entry.title, taskId: null, note: `Point the meal on ${result.entry.date} at the recipe "${result.recipe.name}"` });
+      return result;
+    },
+
+    copyMealWeek(fromDay, toDay, slot) {
+      const created = replica.copyMealWeek(fromDay, toDay, slot);
+      // One entry per meal, as planning one records, so each can be taken back on its own.
+      for (const entry of created) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      return created;
+    },
+
+    copyMealTo(id, dates) {
+      const result = replica.copyMealTo(id, dates);
+      for (const entry of result.copied) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      return result;
     },
 
     createPerson(fields) {
@@ -639,6 +712,51 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const result = replica.deleteRecipe(id);
       log({ action: 'cleared', subject: 'recipe', title: result.recipe.name, taskId: null, note: `Delete the recipe "${result.recipe.name}". It cannot be restored from here.` });
       return result;
+    },
+
+    renameCookbook(id, title, author) {
+      const before = replica.cookbookSummaries().find(c => c.id === id);
+      const book = replica.renameCookbook(id, title, author);
+      log({ action: 'edited', subject: 'recipe', title: book.title, taskId: null, note: `Rename the cookbook "${before?.title ?? book.title}" to "${book.title}"${book.author ? ` by ${book.author}` : ''}, on every recipe in it` });
+      return book;
+    },
+
+    mergeCookbooks(survivorId, loserId) {
+      const result = replica.mergeCookbooks(survivorId, loserId);
+      log({ action: 'edited', subject: 'recipe', title: result.survivor.title, taskId: null, count: result.recipesMoved, note: `Merge the cookbook "${result.merged.title}" into "${result.survivor.title}": its recipes and index move over, and "${result.merged.title}" is gone. It cannot be undone from here.` });
+      return result;
+    },
+
+    saveIndexEntry(input) {
+      const entry = replica.saveIndexEntry(input);
+      const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';
+      log({ action: input.id ? 'edited' : 'created', subject: 'recipe', title: entry.title, taskId: null, note: `${input.id ? 'Change' : 'Add'} "${entry.title}" in the index of ${book}` });
+      return entry;
+    },
+
+    deleteIndexEntry(id) {
+      const entry = replica.deleteIndexEntry(id);
+      const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';
+      log({ action: 'cleared', subject: 'recipe', title: entry.title, taskId: null, note: `Take "${entry.title}" out of the index of ${book}` });
+      return entry;
+    },
+
+    recipeFromIndexEntry(id) {
+      const result = replica.recipeFromIndexEntry(id);
+      if (result.created) log({ action: 'created', subject: 'recipe', title: result.recipe.name, taskId: null });
+      return result;
+    },
+
+    reorderUpNext(ids) {
+      const shelf = replica.reorderUpNext(ids);
+      log({ action: 'edited', subject: 'recipe', title: 'Up next', taskId: null, count: shelf.length, note: 'Reorder the Up next shelf' });
+      return shelf;
+    },
+
+    logCookTime(id, minutes) {
+      const recipe = replica.logCookTime(id, minutes);
+      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Log ${minutes} minutes of cooking for "${recipe.name}"` });
+      return recipe;
     },
 
     addGroceryItem(name, opts) {
@@ -892,6 +1010,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const prior = replica.leftovers().find(l => l.id === id);
       const row = replica.updateLeftover(id, change);
       log({ action: 'edited', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, revert: prior ? pantryRevertOf(leftoverSnapshot(prior), leftoverSnapshot(row)) : null, note: `Change the leftover "${row.title}"` });
+      return row;
+    },
+
+    splitLeftover(id) {
+      const result = replica.splitLeftover(id);
+      log({ action: 'created', subject: 'pantry', title: result.split.title, taskId: null, recordId: result.split.id, note: `Split "${result.original.title}", putting half ${result.split.frozenAt ? 'in the freezer' : 'in the fridge'}` });
+      return result;
+    },
+
+    deleteLeftover(id) {
+      const row = replica.deleteLeftover(id);
+      log({ action: 'cleared', subject: 'pantry', title: row.title, taskId: null, note: `Delete the leftover "${row.title}". It cannot be restored from here.` });
       return row;
     },
 

@@ -284,6 +284,8 @@ export interface SerializedLeftover {
   storedAt: string;
   frozen?: boolean;
   finished?: 'eaten' | 'tossed';
+  /** What it holds, in grams, when weighed. */
+  weightG?: number;
 }
 
 export function serializeLeftover(l: Leftover): SerializedLeftover {
@@ -294,6 +296,7 @@ export function serializeLeftover(l: Leftover): SerializedLeftover {
     storedAt: l.storedAt,
     ...(l.frozenAt ? { frozen: true } : {}),
     ...(l.finishedAt && l.outcome ? { finished: l.outcome } : {}),
+    ...(l.weightG ? { weightG: l.weightG } : {}),
   };
 }
 
@@ -345,6 +348,16 @@ export function answerPantryReview(replica: Replica, answers: { id: string; answ
 
 export function updateLeftover(replica: Replica, id: string, change: LeftoverChange): SerializedLeftover {
   return serializeLeftover(replica.updateLeftover(id, change));
+}
+
+export function splitLeftover(replica: Replica, id: string) {
+  const { original, split } = replica.splitLeftover(id);
+  return { original: serializeLeftover(original), split: serializeLeftover(split) };
+}
+
+export function deleteLeftover(replica: Replica, id: string) {
+  const row = replica.deleteLeftover(id);
+  return { deleted: { id: row.id, title: row.title } };
 }
 
 /** Log a container of cooked food, in the fridge or straight into the freezer. */

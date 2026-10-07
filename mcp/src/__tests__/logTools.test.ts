@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, logFood, logMedication, logMood, logWater, renameMoodTag, saveRecipe, setMedicationArchived, updateMoodLog } from '../logTools';
+import { atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -166,5 +166,47 @@ describe('archive_medication and rename_mood_tag', () => {
     logMood(replica, { mood: 4, contextTags: ['wrok', 'Gym'] });
     expect(renameMoodTag(replica, 'wrok', 'Work').checkIns).toBe(2);
     expect(() => renameMoodTag(replica, 'wrok', 'Work')).toThrow(/No check-in has the tag/);
+  });
+});
+
+describe('moving, copying and saving food', () => {
+  const all = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+
+  it('moves an entry to another day as a new row, and refuses one already in Apple Health', () => {
+    const logged = logFood(replica, { label: 'Soup', amounts: { calorieKcal: 300 }, at: '2030-03-10', apply: true });
+    const out = moveFoodEntry(replica, logged.id!, '2030-03-09');
+    expect(out).toMatchObject({ fromDay: '2030-03-10', moved: { day: '2030-03-09', label: 'Soup' } });
+    expect(all().map(e => e.id)).toEqual([out.moved.id]);
+    expect(all()[0].healthWritePending).toBe(true);
+
+    mockRaw.runSync(`UPDATE food_logs SET health_sample_ids = '["s1"]' WHERE id = ?`, [out.moved.id]);
+    replica.refresh();
+    expect(() => moveFoodEntry(replica, out.moved.id, '2030-03-11')).toThrow(/Apple Health/);
+  });
+
+  it('copies an entry and leaves the original, but not water', () => {
+    const logged = logFood(replica, { label: 'Oats', amounts: { calorieKcal: 200 }, at: '2030-03-10', apply: true });
+    duplicateFoodEntry(replica, logged.id!, '2030-03-11');
+    expect(all().map(e => e.dayKey).sort()).toEqual(['2030-03-10', '2030-03-11']);
+    const water = logWater(replica, { ml: 250, at: '2030-03-10' });
+    expect(() => duplicateFoodEntry(replica, water.id, '2030-03-11')).toThrow(/log_water/);
+  });
+
+  it('saves entries as a meal and logs it again in one go', () => {
+    const a = logFood(replica, { label: 'Toast', amounts: { calorieKcal: 150 }, at: '2030-03-10', apply: true });
+    const b = logFood(replica, { label: 'Eggs', amounts: { calorieKcal: 140 }, at: '2030-03-10', apply: true });
+    const { saved } = saveMealFromEntries(replica, 'Usual breakfast', [a.id!, b.id!]);
+    expect(listSavedMeals(replica).meals.find(m => m.id === saved.id)?.foods.map(f => f.label)).toEqual(['Toast', 'Eggs']);
+    const { logged } = logSavedMeal(replica, saved.id, 'breakfast', '2030-03-12');
+    expect(logged.map(e => [e.label, e.day, e.slot])).toEqual([['Toast', '2030-03-12', 'breakfast'], ['Eggs', '2030-03-12', 'breakfast']]);
+    deleteSavedMeal(replica, saved.id);
+    expect(listSavedMeals(replica).meals.find(m => m.id === saved.id)).toBeUndefined();
+  });
+
+  it('sets and clears targets within the Settings range', () => {
+    expect(setNutritionTargets(replica, { proteinG: 120, waterMl: 2500 }).targets).toMatchObject({ proteinG: 120, waterMl: 2500 });
+    expect(setNutritionTargets(replica, { proteinG: null }).targets.proteinG).toBeUndefined();
+    expect(() => setNutritionTargets(replica, { calorieKcal: 90000 })).toThrow(/from 0 to 6000/);
+    expect(() => setNutritionTargets(replica, { vibes: 3 })).toThrow(/not a nutrient/);
   });
 });

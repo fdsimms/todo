@@ -19,6 +19,7 @@ import {
   recipeIndex,
   recipeIsGone,
   recipeNamedLike,
+  replacedMealEntry,
   resolveBulkMoveTargets,
   selectTodayMealEntries,
   slotCopyDrafts,
@@ -929,5 +930,25 @@ describe('buildMealPlanEntry', () => {
     );
     expect(next.sortOrder).toBe(2);
     expect(next.recipeScale).toBe(2);
+  });
+});
+
+describe('replacedMealEntry', () => {
+  const withServings = (id: string, servings: number | null): Recipe => ({ ...recipe(id, id), servings });
+
+  it('drops the old dish\'s choices and leftover, and keeps the per-meal task answers', () => {
+    const e = entry('2026-03-02', 'dinner', { recipeId: 'a', recipeChoices: ['x'], leftoverId: 'l', cookTask: false });
+    const out = replacedMealEntry(e, { recipeId: 'b', title: 'B' }, new Map([['b', withServings('b', null)]]), 0);
+    expect(out).toMatchObject({ recipeId: 'b', title: 'B', recipeChoices: [], leftoverId: null, cookTask: false });
+  });
+
+  it('keeps the head count across recipes, and the factor for the same recipe', () => {
+    const recipes = new Map([['a', withServings('a', 4)], ['b', withServings('b', 2)]]);
+    const doubled = entry('2026-03-02', 'dinner', { recipeId: 'a', recipeScale: 2 });
+    expect(replacedMealEntry(doubled, { recipeId: 'b', title: 'B' }, recipes, 0).recipeScale).toBe(4);
+    expect(replacedMealEntry(doubled, { recipeId: 'a', title: 'A' }, recipes, 0).recipeScale).toBe(2);
+    // As written names no head count, so the new recipe starts at the household's.
+    const plain = entry('2026-03-02', 'dinner', { recipeId: 'a' });
+    expect(replacedMealEntry(plain, { recipeId: 'b', title: 'B' }, recipes, 4).recipeScale).toBe(2);
   });
 });
