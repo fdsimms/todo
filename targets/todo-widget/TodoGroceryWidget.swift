@@ -5,6 +5,9 @@ import AppIntents
 struct GroceryEntry: TimelineEntry {
     let date: Date
     let result: WidgetLoadResult
+    /// Rows ticked here that the app hasn't applied yet, keyed by
+    /// `QueuedQuietTaps.groceryKey`.
+    var queuedChecks: Set<String> = []
     let configuration: GroceryWidgetIntent
 }
 
@@ -14,12 +17,22 @@ struct GroceryProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: GroceryWidgetIntent, in context: Context) async -> GroceryEntry {
-        GroceryEntry(date: Date(), result: loadWidgetSnapshot(), configuration: configuration)
+        GroceryEntry(
+            date: Date(),
+            result: loadWidgetSnapshot(),
+            queuedChecks: QueuedQuietTaps.load().groceries,
+            configuration: configuration
+        )
     }
 
     func timeline(for configuration: GroceryWidgetIntent, in context: Context) async -> Timeline<GroceryEntry> {
         let result = loadWidgetSnapshot()
-        let entry = GroceryEntry(date: Date(), result: result, configuration: configuration)
+        let entry = GroceryEntry(
+            date: Date(),
+            result: result,
+            queuedChecks: QueuedQuietTaps.load().groceries,
+            configuration: configuration
+        )
         // A trip's elapsed minutes are the one thing here that moves without
         // the app touching anything, so a live trip asks for a tighter refresh
         // than the app's own reload-on-write would give it. Everything else
@@ -37,8 +50,18 @@ struct GroceryWidgetEntryView: View {
 
     private var groceries: WidgetGroceries? { entry.result.snapshot?.groceries }
     private var list: WidgetGroceryList? { groceries?.list(named: entry.configuration.listFilter) }
-    private var remaining: Int { list?.remaining ?? 0 }
-    private var items: [String] { list?.items ?? [] }
+    private var rows: [WidgetGroceryRow] { list?.rows ?? [] }
+
+    private func isQueued(_ row: WidgetGroceryRow) -> Bool {
+        guard row.canCheck else { return false }
+        return entry.queuedChecks.contains(QueuedQuietTaps.groceryKey(itemId: row.id, listId: list?.id))
+    }
+
+    /// Less the rows ticked here and not yet applied. Counted against the rows
+    /// on screen, the only ones the widget can tick.
+    private var remaining: Int {
+        max(0, (list?.remaining ?? 0) - rows.filter { isQueued($0) }.count)
+    }
 
     /// The shop being walked right now, with how long it has been going.
     ///
@@ -104,13 +127,13 @@ struct GroceryWidgetEntryView: View {
         let palette = WidgetPalette.forScheme(colorScheme)
         let perColumn = WidgetLayout.rowsPerColumn(for: family)
         let columns = family == .systemSmall ? 1 : 2
-        let shown = Array(items.prefix(perColumn * columns))
+        let shown = Array(rows.prefix(perColumn * columns))
         let header = WidgetHeaderView(
             palette: palette,
             symbolName: tripLine == nil ? "cart.fill" : "figure.walk",
             symbolColor: tripLine == nil ? palette.accent : palette.green,
             title: tripLine ?? (list?.name ?? "Groceries"),
-            countLabel: items.isEmpty ? nil : "\(remaining)",
+            countLabel: rows.isEmpty ? nil : "\(remaining)",
             // Straight to the list rather than to a composer: there is no
             // grocery equivalent of quick add behind a URL, and `finish=1`
             // would be a destructive thing to put one tap from a home screen.
@@ -141,21 +164,75 @@ struct GroceryWidgetEntryView: View {
         .widgetURL(groceriesURL)
     }
 
-    private func column(_ names: [String], palette: WidgetPalette, rowHeight: CGFloat) -> some View {
+    /// Rows drawn by position, not by `WidgetGroceryRow.id`: a snapshot from
+    /// before ids crossed gives every row the same empty one.
+    private func column(_ rows: [WidgetGroceryRow], palette: WidgetPalette, rowHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(names, id: \.self) { name in
-                WidgetTextRow(
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                GroceryRowView(
+                    row: row,
+                    listId: list?.id,
+                    isChecked: isQueued(row),
                     palette: palette,
-                    title: name,
-                    detail: nil,
-                    detailColor: nil,
-                    bulletColor: palette.separator,
                     height: rowHeight
                 )
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One unbought row. A checkbox puts it in the cart without opening the app
+/// (`CheckGroceryItemIntent`), on the list this widget shows; the app applies
+/// it the next time it comes forward. A row with nothing the widget can tick
+/// (one side of an either/or, or a snapshot with no ids) keeps the plain dot.
+struct GroceryRowView: View {
+    let row: WidgetGroceryRow
+    let listId: String?
+    let isChecked: Bool
+    let palette: WidgetPalette
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if row.canCheck {
+                Button(intent: CheckGroceryItemIntent(itemId: row.id, listId: listId)) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(palette.separator, lineWidth: 2)
+                        if isChecked {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(palette.done)
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(palette.onDone)
+                        }
+                    }
+                    .frame(width: 16, height: 16)
+                    // The same widened target as the Today widget's checkbox.
+                    .padding(.horizontal, 6)
+                    .frame(height: height)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Circle()
+                    .fill(palette.separator)
+                    .frame(width: 5, height: 5)
+                    // Centred in the checkbox column, so names line up.
+                    .frame(width: 28, height: height)
+            }
+            Text(row.name)
+                .font(.system(size: 12))
+                .foregroundColor(isChecked ? palette.textTertiary : palette.text)
+                .strikethrough(isChecked)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+            Spacer(minLength: 0)
+        }
+        .frame(height: height)
     }
 }
 

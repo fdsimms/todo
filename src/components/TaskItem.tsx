@@ -2272,8 +2272,19 @@ export const TaskItem = React.memo(function TaskItem({
   // that when Today mounts with this task still incomplete, the user sees
   // the same pop-checkmark-and-fade animation a real tap gets instead of the
   // row just silently vanishing.
+  //
+  // **A tap made somewhere else is this row's own tap, so it dispatches the way
+  // the checkbox's onPress does** (rotation → pick, target → one unit, else
+  // complete), never straight to handleComplete. The widget and a Live Activity
+  // both arrive here, and a handleComplete shortcut finishes a daily target's
+  // every remaining unit on one tap. The same split in the paths that can't
+  // reach a row goes through completionTapFor (TodayScreen's widget drain,
+  // widgetQuietTaps.ts).
   useEffect(() => {
-    if (autoComplete) handleComplete();
+    if (!autoComplete) return;
+    if (isRotation) handleRotationTap();
+    else if (showQuotaMeter) handleQuotaTap();
+    else handleComplete();
   }, [autoComplete]);
 
   // Takes back the beats handleComplete played, and nothing else — no store

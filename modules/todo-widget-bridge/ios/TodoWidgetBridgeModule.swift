@@ -31,6 +31,9 @@ private let sharedLinksFileName = "shared_recipe_links.json"
 // See src/utils/pantryIndex.ts for what goes in it and why.
 private let pantryIndexFileName = "siri_pantry_index.json"
 private let pendingDisposalsFileName = "pending_disposals.json"
+// Must match QuietTapQueue.fileName in targets/todo-widget/WidgetQuietIntents.swift
+// (a separate target, so the literal can't be shared).
+private let quietTapsFileName = "widget_quiet_taps.json"
 
 // Mirrors what MarkDisposedIntent queues and what processPendingDisposals()
 // in widgetSync.ts expects back. `id` is optional because the entity query can
@@ -268,6 +271,32 @@ public class TodoWidgetBridgeModule: Module {
         }
         guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
         json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
+    // Reads and clears the taps the widget applied without opening the app
+    // (CompleteTaskQuietlyIntent and CheckGroceryItemIntent). Handed back as
+    // the file's own text rather than decoded here: parseQuietTaps in
+    // src/utils/widgetQuietTaps.ts already drops anything malformed, and the
+    // file is deleted whether or not it parses, so a corrupt one can't wedge
+    // the drain on every launch.
+    AsyncFunction("drainQuietTaps") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(quietTapsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        json = String(data: data, encoding: .utf8) ?? "[]"
       }
       return json
     }

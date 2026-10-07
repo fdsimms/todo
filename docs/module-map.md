@@ -428,7 +428,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +13 more
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInDeclineHolds, weighInNotes
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
-- `src/utils/widgetSnapshot.ts` — WidgetTask, WidgetGroceryList, WidgetGroceries, WidgetMeal, WidgetKitchenItem, WidgetEvent, MAX_WIDGET_EVENTS, WidgetSnapshot, isWidgetWorthy, toWidgetTask, +7 more
+- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapAction, widgetTapNeedsApp, parseQuietTaps, planQuietTaps
+- `src/utils/widgetSnapshot.ts` — WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, WidgetEvent, MAX_WIDGET_EVENTS, WidgetSnapshot, +10 more
 - `src/utils/widgetSync.ts` — writeWidgetSnapshotNow, useWidgetSync
 
 ## `src/store`
