@@ -89,6 +89,37 @@ export function peopleOn(task: Pick<Task, 'personIds'>): Person[] {
 }
 
 /**
+ * The phone number and email a row's call/text/mail buttons should use: the
+ * task's own, else the one person it names.
+ *
+ * Generated tasks copy a person's contact details onto themselves, but a task
+ * written by hand ("Call @Dr. Kushman about the referral") only links the
+ * person, so its row had no button. Read at render rather than copied at
+ * creation, so it also covers tasks that already exist and follows a number
+ * edited on the person afterwards. **Only when the task names exactly one
+ * person**, the same bar `stampReachOut` applies: with several there is no way
+ * to say whose number a single button would dial. A field the task holds itself
+ * always wins.
+ */
+export function contactDetailsFor(
+  task: Pick<Task, 'personIds' | 'phoneNumber' | 'emailAddress'> | null | undefined,
+): { phoneNumber: string | null; emailAddress: string | null } {
+  if (!task) return { phoneNumber: null, emailAddress: null };
+  const own = {
+    phoneNumber: task.phoneNumber ?? null,
+    emailAddress: task.emailAddress ?? null,
+  };
+  if (own.phoneNumber && own.emailAddress) return own;
+  if (!task.personIds?.length) return own;
+  const named = peopleOn(task);
+  if (named.length !== 1) return own;
+  return {
+    phoneNumber: own.phoneNumber ?? named[0].phoneNumber ?? null,
+    emailAddress: own.emailAddress ?? named[0].email ?? null,
+  };
+}
+
+/**
  * Every live task naming this person, newest first — the raw material the
  * person's history is built from (#2045).
  *

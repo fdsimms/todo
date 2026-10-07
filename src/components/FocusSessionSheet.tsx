@@ -18,6 +18,7 @@ import {
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
+import { contactDetailsFor } from '../utils/peopleRegistry';
 import { mailtoUrl } from '../utils/email';
 import { displayTitleFor, isQuotaTask, isQuotaOnPace, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
@@ -159,8 +160,9 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       // silently ignore — no toast infra for this action
     }
   };
-  const callUrl = telUrl(currentTask?.phoneNumber);
-  const textUrl = smsUrl(currentTask?.phoneNumber);
+  const contact = contactDetailsFor(currentTask);
+  const callUrl = telUrl(contact.phoneNumber);
+  const textUrl = smsUrl(contact.phoneNumber);
   const handleCall = async () => {
     if (!callUrl) return;
     haptics.tap();
@@ -183,7 +185,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     if (!callUrl) return;
     haptics.tap();
     Alert.alert(
-      currentTask?.phoneNumber ?? '',
+      contact.phoneNumber ?? '',
       undefined,
       [
         { text: 'Call', onPress: handleCall },
@@ -192,7 +194,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       ],
     );
   };
-  const emailUrl = mailtoUrl(currentTask?.emailAddress);
+  const emailUrl = mailtoUrl(contact.emailAddress);
   const handleEmail = async () => {
     if (!emailUrl) return;
     haptics.tap();
@@ -476,7 +478,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Call or text ${currentTask.phoneNumber} for ${titleOf(step.taskId)}`}
+                  accessibilityLabel={`Call or text ${contact.phoneNumber} for ${titleOf(step.taskId)}`}
                 >
                   <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Call</Text>
@@ -488,7 +490,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   style={styles.contactBtn}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Email ${currentTask.emailAddress} for ${titleOf(step.taskId)}`}
+                  accessibilityLabel={`Email ${contact.emailAddress} for ${titleOf(step.taskId)}`}
                 >
                   <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Email</Text>
