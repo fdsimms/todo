@@ -1,4 +1,4 @@
-import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
+import { isTabFocused, shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
 
 describe('shouldFreezeTab', () => {
   it('never freezes the focused tab', () => {
@@ -23,5 +23,19 @@ describe('TAB_FREEZE_DELAY_MS', () => {
     // needs a second commit after the first. A freeze inside that window strands
     // the second one.
     expect(TAB_FREEZE_DELAY_MS).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe('isTabFocused', () => {
+  it("trusts the container over the tab navigator's stale getState", () => {
+    // navigateToTab('Rewards') from Today: the navigator still reports Today
+    // until its write-back lands, and nothing re-asks it afterwards.
+    expect(isTabFocused({ routeName: 'Rewards', containerTab: 'Rewards', navigatorFocused: false })).toBe(true);
+    expect(isTabFocused({ routeName: 'Today', containerTab: 'Rewards', navigatorFocused: true })).toBe(false);
+  });
+
+  it("falls back to the navigator's answer before the container is ready", () => {
+    expect(isTabFocused({ routeName: 'Today', containerTab: undefined, navigatorFocused: true })).toBe(true);
+    expect(isTabFocused({ routeName: 'Rewards', containerTab: undefined, navigatorFocused: false })).toBe(false);
   });
 });

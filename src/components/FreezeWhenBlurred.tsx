@@ -5,7 +5,8 @@ import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing } from '../theme';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
-import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
+import { isTabFocused, shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
+import { currentTabName, navigationRef } from '../navigation/navigationRef';
 
 /**
  * Stops a blurred tab from rendering, which `freezeOnBlur` cannot do here.
@@ -41,6 +42,10 @@ import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
  * `resetTo*`). The one that did not was the focus session's reconcile, now
  * `useFocusPlanReconcile` in App.tsx.
  */
+function subscribeContainerState(onChange: () => void): () => void {
+  return navigationRef.addListener('state', onChange);
+}
+
 // One wrapper per screen for the life of the app. The navigator takes a screen's
 // identity as its component, so a wrapper built on each render would remount it.
 const wrapped = new WeakMap<React.ComponentType<any>, React.ComponentType<any>>();
@@ -55,7 +60,11 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
     // The tab navigator's own state, not `useIsFocused`: that one is false for
     // a tab while a detail screen is pushed over it, and the native push needs
     // the tab underneath to stay drawn.
-    const focused = useNavigationState(state => state.routes[state.index]?.key === route.key);
+    const navigatorFocused = useNavigationState(state => state.routes[state.index]?.key === route.key);
+    // The container's answer, which a jump from outside the tab bar can't leave
+    // stale (see `isTabFocused`).
+    const containerTab = useSyncExternalStore(subscribeContainerState, currentTabName);
+    const focused = isTabFocused({ routeName: route.name, containerTab, navigatorFocused });
     const level = useContext(PresentationLevelContext);
     const sheetPresented = useSyncExternalStore(
       useCallback((onChange: () => void) => subscribePresentation(level, onChange), [level]),
