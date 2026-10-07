@@ -125,8 +125,8 @@ export function contactDetailsFor(
 /**
  * The People page link a row offers when it names anybody: that person's own
  * page for one, the whole People screen for several. Null when the task names
- * nobody who still exists. A last resort after the task's own link and the
- * named person's, so it never replaces a link somebody chose.
+ * nobody who still exists. The row draws it as its own button beside any link
+ * of the task's or the person's, so neither hides the other.
  */
 export function peoplePageLinkFor(task: Pick<Task, 'personIds'> | null | undefined): string | null {
   if (!task?.personIds?.length) return null;

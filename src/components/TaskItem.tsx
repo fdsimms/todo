@@ -390,11 +390,13 @@ export const TaskItem = React.memo(function TaskItem({
     deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
-  // The task's own link (or chain step's), else the one named person's, else
-  // the People page for whoever the task names.
-  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl ?? peoplePageLinkFor(task);
-  const handleOpenLink = async () => {
-    const url = rowLink;
+  // The task's own link (or chain step's), else the one named person's.
+  const rowLink = linkFor(task) ?? contactDetailsFor(task).linkUrl;
+  // The People page for whoever the task names. Its own button, so it is
+  // always reachable and never displaces a link somebody chose.
+  const peopleLink = peoplePageLinkFor(task);
+  const handleOpenLink = async (target: string | null = rowLink) => {
+    const url = target;
     if (!url) return;
     haptics.tap();
     // A link this app owns (dundundun://groceries) navigates in place. Going
@@ -3281,9 +3283,21 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && rowLink && (
+      {!selectionMode && showActions && peopleLink && (
         <TouchableOpacity
-          onPress={handleOpenLink}
+          onPress={() => handleOpenLink(peopleLink)}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Open people page for ${task.title}`}
+        >
+          <Ionicons name={linkIconFor(peopleLink) as never} size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && (
+        <TouchableOpacity
+          onPress={() => handleOpenLink()}
           hitSlop={8}
           style={styles.linkBtn}
           accessibilityRole="button"
