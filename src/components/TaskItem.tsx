@@ -2246,8 +2246,16 @@ export const TaskItem = React.memo(function TaskItem({
   // that when Today mounts with this task still incomplete, the user sees
   // the same pop-checkmark-and-fade animation a real tap gets instead of the
   // row just silently vanishing.
+  //
+  // Dispatched the way the checkbox's own onPress is, not straight to
+  // handleComplete: a daily target's widget tap is one unit, the same as a tap
+  // on its meter here. Sent to handleComplete it finished the whole target, so
+  // one glass logged from the home screen marked all eight drunk.
   useEffect(() => {
-    if (autoComplete) handleComplete();
+    if (!autoComplete) return;
+    if (isRotation) handleRotationTap();
+    else if (showQuotaMeter) handleQuotaTap();
+    else handleComplete();
   }, [autoComplete]);
 
   // Takes back the beats handleComplete played, and nothing else — no store

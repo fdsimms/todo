@@ -12,6 +12,8 @@ import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
 import { buildWidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
+import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
+import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
@@ -180,6 +182,18 @@ function widgetEvents(calendarReadEnabled: boolean): readonly BusyEvent[] | null
   return events.filter(e => !(hiddenEventKey(e) in hidden));
 }
 
+/**
+ * Every task on Later, with the moment it reaches Today (an on-pace target's
+ * next unit included — `getVisibleAt` already answers that). The pass is pinned
+ * to the snapshot's own `now`: a task with no moment to give comes back as
+ * `now`, and the builder drops exactly those, which a pass reading its own
+ * clock a millisecond later would let through as "surfacing any moment".
+ */
+function widgetUpcoming(deferred: readonly Task[], now: Date): { task: Task; visibleAt: Date }[] {
+  const pass = { ...beginVisibleAtPass(), now };
+  return deferred.map(task => ({ task, visibleAt: getVisibleAt(task, pass) }));
+}
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const now = new Date();
@@ -229,6 +243,7 @@ function writeSnapshotNow(): void {
         : null,
     events: widgetEvents(settings.calendarReadEnabled),
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
+    upcoming: widgetUpcoming(tasks.deferredTasks(), now),
   });
 
   writeToNativeBridge(JSON.stringify(snapshot));

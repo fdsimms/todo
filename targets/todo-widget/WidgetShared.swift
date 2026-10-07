@@ -353,11 +353,22 @@ func taskCountLabel(_ count: Int) -> String {
     count == 1 ? "1 task" : "\(count) tasks"
 }
 
-/// The trailing detail on a task row: a streak worth mentioning, or nothing.
-func taskRowDetail(_ task: WidgetTask) -> String? {
-    task.streakCount > 1 ? "\(task.streakCount)" : nil
+/// The trailing detail on a task row: a daily target's count ("3/8"), else a
+/// streak worth mentioning, else nothing.
+///
+/// The count comes first because a target's row is otherwise indistinguishable
+/// from a one-tap task, and a tap on it logs one unit rather than finishing it.
+/// `unitQueued` adds the tap the app hasn't applied yet, so the number moves
+/// the moment the checkbox is pressed, as the in-app meter does. A target of
+/// one has no count worth saying and keeps the streak.
+func taskRowDetail(_ task: WidgetTask, unitQueued: Bool = false) -> String? {
+    if let target = task.targetCount, target > 1 {
+        return "\(task.progressCount + (unitQueued ? 1 : 0))/\(target)"
+    }
+    return task.streakCount > 1 ? "\(task.streakCount)" : nil
 }
 
 func taskRowDetailSymbol(_ task: WidgetTask) -> String? {
-    task.streakCount > 1 ? "flame.fill" : nil
+    if let target = task.targetCount, target > 1 { return nil }
+    return task.streakCount > 1 ? "flame.fill" : nil
 }

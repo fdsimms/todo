@@ -37,10 +37,12 @@ struct WidgetTask: Codable, Identifiable {
     /// The calendar event a rule wrote this task for, when there is one. Only
     /// the title crosses; the row dims it after the task's own title.
     let eventTitle: String?
+    /// Set only on a row of `upcomingTasks`: when it reaches Today.
+    let visibleAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
-        case targetCount, progressCount, targetUnit, eventTitle
+        case targetCount, progressCount, targetUnit, eventTitle, visibleAt
     }
 
     init(from decoder: Decoder) throws {
@@ -57,7 +59,10 @@ struct WidgetTask: Codable, Identifiable {
         progressCount = try c.decodeIfPresent(Int.self, forKey: .progressCount) ?? 0
         targetUnit = try c.decodeIfPresent(String.self, forKey: .targetUnit)
         eventTitle = try c.decodeIfPresent(String.self, forKey: .eventTitle)
+        visibleAt = try c.decodeIfPresent(String.self, forKey: .visibleAt)
     }
+
+    var visibleAtDate: Date? { visibleAt.flatMap(isoDate) }
 
     /// Whether this row is a daily target with something worth drawing.
     var isTarget: Bool {
@@ -190,10 +195,20 @@ struct WidgetSnapshot: Codable {
     /// when this was written (switched off, a failed read, a background run),
     /// which shows nothing rather than "no meetings".
     let upcomingEvents: [WidgetEvent]?
+    /// Tasks that reach Today before `staleAfter`, each with its `visibleAt`.
+    /// What lets the timeline fold a 3 PM task in at 3 PM without the app.
+    let upcomingTasks: [WidgetTask]
+    /// When the next logical day starts (the user's own reset time, which this
+    /// extension can't read). Nil from a build predating it.
+    let nextDayStart: String?
+    /// When the task rows stop being trustworthy. Nil from a build predating
+    /// it, which never goes stale — the widget behaves as it always did.
+    let staleAfter: String?
 
     enum CodingKeys: String, CodingKey {
         case updatedAt, visibleTasks, pinnedTasks, categories, agenda, doneToday
         case groceries, meals, kitchen, upcomingEvents
+        case upcomingTasks, nextDayStart, staleAfter
     }
 
     init(from decoder: Decoder) throws {
@@ -208,6 +223,51 @@ struct WidgetSnapshot: Codable {
         meals = try c.decodeIfPresent([WidgetMeal].self, forKey: .meals) ?? []
         kitchen = try c.decodeIfPresent([WidgetKitchenItem].self, forKey: .kitchen) ?? []
         upcomingEvents = try c.decodeIfPresent([WidgetEvent].self, forKey: .upcomingEvents)
+        upcomingTasks = try c.decodeIfPresent([WidgetTask].self, forKey: .upcomingTasks) ?? []
+        nextDayStart = try c.decodeIfPresent(String.self, forKey: .nextDayStart)
+        staleAfter = try c.decodeIfPresent(String.self, forKey: .staleAfter)
+    }
+
+    // ==== Time passing without the app ====
+    //
+    // The snapshot is written at one moment and read at many. These answer
+    // "as of `date`", so each timeline entry draws the day as it stands at its
+    // own time rather than as it stood when the app last wrote.
+
+    /// Whether `date` is past the point these task rows can speak for.
+    func isStale(at date: Date) -> Bool {
+        guard let end = staleAfter.flatMap(isoDate) else { return false }
+        return date >= end
+    }
+
+    /// Whether `date` falls in a logical day after the one this was written in.
+    func isLaterDay(at date: Date) -> Bool {
+        guard let start = nextDayStart.flatMap(isoDate) else { return false }
+        return date >= start
+    }
+
+    /// Today's rows as of `date`: what was visible when written, then each
+    /// upcoming task whose moment has come, in the order they arrive.
+    func visibleTasks(at date: Date) -> [WidgetTask] {
+        visibleTasks + upcomingTasks.filter { ($0.visibleAtDate ?? .distantFuture) <= date }
+    }
+
+    /// The day's completions, which belong to the day they were counted on.
+    func doneToday(at date: Date) -> Int { isLaterDay(at: date) ? 0 : doneToday }
+
+    /// The agenda counts, or nil once they describe a day that has ended.
+    func agenda(at date: Date) -> WidgetAgenda? { isLaterDay(at: date) ? nil : agenda }
+
+    /// Every moment after `date` at which the Today widget draws something
+    /// different with no new write: a task arriving, a meeting starting (its
+    /// row moves on to the next), the day turning over, the snapshot going
+    /// stale. Sorted, without repeats.
+    func changeDates(after date: Date) -> [Date] {
+        var dates = upcomingTasks.compactMap(\.visibleAtDate)
+        dates += (upcomingEvents ?? []).compactMap(\.startDate)
+        if let start = nextDayStart.flatMap(isoDate) { dates.append(start) }
+        if let end = staleAfter.flatMap(isoDate) { dates.append(end) }
+        return Array(Set(dates.filter { $0 > date })).sorted()
     }
 
     /// The first of today's meetings that hasn't started by `date`. The

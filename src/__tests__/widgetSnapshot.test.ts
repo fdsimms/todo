@@ -1,5 +1,6 @@
 import {
   buildUpcomingEvents,
+  buildUpcomingTasks,
   buildGroceries,
   buildKitchen,
   buildMeals,
@@ -97,6 +98,7 @@ const snapshotInput = (overrides: Partial<Parameters<typeof buildWidgetSnapshot>
   kitchen: null,
   events: null as readonly BusyEvent[] | null,
   dayEnd: new Date(2026, 7, 7),
+  upcoming: [] as { task: Task; visibleAt: Date }[],
   ...overrides,
 });
 
@@ -342,5 +344,47 @@ describe('buildUpcomingEvents', () => {
   it('is null in the snapshot when there is no trustworthy read, and empty when the day is done', () => {
     expect(buildWidgetSnapshot(snapshotInput()).upcomingEvents).toBeNull();
     expect(buildWidgetSnapshot(snapshotInput({ events: [] })).upcomingEvents).toEqual([]);
+  });
+});
+
+describe('buildUpcomingTasks', () => {
+  const staleAfter = new Date(2026, 7, 8); // the end of tomorrow
+  const at = (day: number, h: number) => new Date(2026, 7, day, h);
+
+  it('carries what surfaces before the snapshot goes stale, soonest first, with its moment', () => {
+    const result = buildUpcomingTasks(
+      [
+        { task: makeTask({ id: 'tomorrow' }), visibleAt: at(7, 0) },
+        { task: makeTask({ id: 'afternoon' }), visibleAt: at(6, 15) },
+        { task: makeTask({ id: 'next-week' }), visibleAt: at(13, 0) },
+      ],
+      NOW,
+      staleAfter,
+    );
+    expect(result.map(t => t.id)).toEqual(['afternoon', 'tomorrow']);
+    expect(result[0].visibleAt).toBe(at(6, 15).toISOString());
+  });
+
+  it("drops a task getVisibleAt had no moment for, which it answers as now", () => {
+    const result = buildUpcomingTasks([{ task: makeTask(), visibleAt: new Date(NOW) }], NOW, staleAfter);
+    expect(result).toEqual([]);
+  });
+
+  it('filters the rows the widget cannot honour, as the visible list does', () => {
+    const result = buildUpcomingTasks(
+      [{ task: makeTask({ polarity: 'negative' }), visibleAt: at(6, 15) }],
+      NOW,
+      staleAfter,
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('puts the day boundary and the stale point in the snapshot', () => {
+    const snapshot = buildWidgetSnapshot(
+      snapshotInput({ upcoming: [{ task: makeTask({ id: 'later' }), visibleAt: at(6, 15) }] })
+    );
+    expect(snapshot.upcomingTasks.map(t => t.id)).toEqual(['later']);
+    expect(snapshot.nextDayStart).toBe(new Date(2026, 7, 7).toISOString());
+    expect(snapshot.staleAfter).toBe(staleAfter.toISOString());
   });
 });

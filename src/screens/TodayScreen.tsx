@@ -75,6 +75,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
+import { completionTapFor } from '../utils/completionTap';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
@@ -1092,6 +1093,14 @@ export function TodayScreen() {
         // rather than completing straight through it — a Live Activity's Done
         // button is a person finishing a task, and it's the one completion
         // path left that would drop an answer with nobody told.
+        // A target below its last unit logs one, as its own row's tap would;
+        // completing it outright would mark every remaining unit done at once.
+        // Ahead of the question for completionTapFor's own reason: a unit that
+        // doesn't finish the task has nothing to ask.
+        if (completionTapFor(task) === 'log-unit') {
+          useTaskStore.getState().logQuotaUnit(id);
+          return;
+        }
         if (asksOnCompletion(task)) {
           enqueue([id]);
           return;
