@@ -43,6 +43,7 @@ import {
   recallWeight,
   recalledHelping,
   describedEstimateFactor,
+  estimateWholeGrams,
   type RecallAmountAsk,
   type RecallChange,
   type RecalledCatalogFood,
@@ -608,9 +609,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   /** The stated weight of the whole an estimate describes, when it has one. */
   const wholeGramsOf = (staged: PendingRecallLog): number | null => {
-    if (staged.kind !== 'recall') return null;
-    const grams = wholeEstimate(staged.food)?.servingGrams;
-    return grams && grams > 0 ? grams : null;
+    return staged.kind === 'recall' ? estimateWholeGrams(staged.food) : null;
   };
 
   const askFor = (staged: PendingRecallLog): RecallAmountAsk => {
@@ -962,48 +961,66 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
         const fieldText = amount.typed ?? (amount.factor === null ? '' : amountText(amount.factor, amount.unit, wholeGrams));
         const typedBad = amount.typed !== null && amount.typed.trim() !== ''
           && factorFromTyped(amount.typed, amount.unit, wholeGrams) === null;
+        // With a weight to speak in, the amount is asked in grams first and the
+        // shares are the alternative; without one the shares are all there is.
+        const shares = (
+          // On a card of its own colour, so the track reads as a track rather
+          // than as the card it sits in.
+          <View style={styles.confirmTrackCard}>
+            <SegmentedControl
+              options={ESTIMATE_AMOUNT_OPTIONS}
+              value={amount.typed === null ? amount.factor : null}
+              onChange={factor => editPending({ factor, typed: null })}
+              columns={3}
+              label={`Amount of ${food.label} to log`}
+            />
+          </View>
+        );
+        const field = (
+          <View style={styles.confirmWeightRow}>
+            <Text style={styles.confirmWeightLabel}>{wholeGrams ? 'Amount to log' : 'Or enter an amount'}</Text>
+            <TextField
+              style={styles.confirmWeightInput}
+              value={fieldText}
+              onChangeText={text => editPending({ typed: text })}
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+              placeholder={amount.unit === 'grams' ? 'e.g. 30' : 'e.g. 50'}
+              placeholderTextColor={colors.textTertiary}
+              accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
+            />
+            {wholeGrams ? (
+              <SegmentedControl
+                options={UNIT_OPTIONS}
+                value={amount.unit}
+                onChange={unit => editPending({
+                  unit,
+                  // Keep the amount shown, restated in the new unit.
+                  factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
+                  typed: null,
+                })}
+                label="Unit"
+              />
+            ) : (
+              <Text style={styles.confirmWeightUnit}>%</Text>
+            )}
+          </View>
+        );
         return (
           <View style={styles.confirmMultiple}>
-            <Text style={styles.confirmMultipleLabel}>Amount to log</Text>
-            {/* On a card of its own colour, so the track reads as a track
-                rather than as the card it sits in. */}
-            <View style={styles.confirmTrackCard}>
-              <SegmentedControl
-                options={ESTIMATE_AMOUNT_OPTIONS}
-                value={amount.typed === null ? amount.factor : null}
-                onChange={factor => editPending({ factor, typed: null })}
-                columns={3}
-                label={`Amount of ${food.label} to log`}
-              />
-            </View>
-            <View style={styles.confirmWeightRow}>
-              <Text style={styles.confirmWeightLabel}>Or enter an amount</Text>
-              <TextField
-                style={styles.confirmWeightInput}
-                value={fieldText}
-                onChangeText={text => editPending({ typed: text })}
-                keyboardType="decimal-pad"
-                selectTextOnFocus
-                placeholder={amount.unit === 'grams' ? 'e.g. 30' : 'e.g. 50'}
-                placeholderTextColor={colors.textTertiary}
-                accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
-              />
-              {wholeGrams ? (
-                <SegmentedControl
-                  options={UNIT_OPTIONS}
-                  value={amount.unit}
-                  onChange={unit => editPending({
-                    unit,
-                    // Keep the amount shown, restated in the new unit.
-                    factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
-                    typed: null,
-                  })}
-                  label="Unit"
-                />
-              ) : (
-                <Text style={styles.confirmWeightUnit}>%</Text>
-              )}
-            </View>
+            {wholeGrams ? (
+              <>
+                {field}
+                <Text style={styles.confirmMultipleLabel}>Or choose a share</Text>
+                {shares}
+              </>
+            ) : (
+              <>
+                <Text style={styles.confirmMultipleLabel}>Amount to log</Text>
+                {shares}
+                {field}
+              </>
+            )}
             {typedBad && <Text style={styles.error}>{amountRefusal(amount.unit, wholeGrams)}</Text>}
           </View>
         );

@@ -145,6 +145,24 @@ export function describedGrams(description: string): string | null {
 }
 
 /**
+ * The weight of the whole an estimate describes: the one recorded for it, or
+ * else the one its confirmed words open with ("27 g (about 2 tablespoons)").
+ *
+ * An estimate's panel carries no weight on purpose (`estimateToPanel`), but a
+ * quantity that starts with grams is a weight the person confirmed, so the
+ * amount can be asked for in grams instead of percent of an amount shown.
+ */
+export function estimateWholeGrams(food: RecalledFood): number | null {
+  const whole = wholeEstimate(food);
+  if (!whole) return null;
+  if (whole.servingGrams && whole.servingGrams > 0) return whole.servingGrams;
+  const words = whole.servingText?.trim() ?? '';
+  const match = /^(\d+(?:\.\d+)?)\s*(?:g|grams?)\b/i.exec(words);
+  const grams = match ? parseFloat(match[1]) : 0;
+  return grams > 0 ? grams : null;
+}
+
+/**
  * A weight named in a description, as a multiple of the whole an estimate
  * described, or null when there is none to read.
  *
@@ -157,10 +175,10 @@ export function describedGrams(description: string): string | null {
  * nothing to compare 29 g to, so this says nothing and the row opens as logged.
  */
 export function describedEstimateFactor(food: RecalledFood, clause: string): number | null {
-  const whole = wholeEstimate(food);
   const typed = describedGrams(clause);
-  if (!whole || !typed || !whole.servingGrams || whole.servingGrams <= 0) return null;
-  const factor = parseFloat(typed) / whole.servingGrams;
+  const wholeG = estimateWholeGrams(food);
+  if (!typed || !wholeG) return null;
+  const factor = parseFloat(typed) / wholeG;
   return factor > 0 && factor <= MAX_ESTIMATE_MULTIPLE ? factor : null;
 }
 

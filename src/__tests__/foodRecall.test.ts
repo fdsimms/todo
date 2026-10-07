@@ -4,6 +4,7 @@ import {
   describeCatalogRecall,
   describeRecall,
   describedEstimateFactor,
+  estimateWholeGrams,
   describedGrams,
   descriptionClauses,
   rankRecallCandidates,
@@ -475,7 +476,7 @@ describe('logging a recalled food again (#2914)', () => {
       recordedAt: '2026-04-02T19:00:00.000Z',
     };
     const food = (nutrition: FoodNutrition = hummus) => recallFoods([entry({
-      label: 'Homemade hummus', quantity: '27 g', grams: nutrition.servingGrams, nutrition,
+      label: 'Homemade hummus', quantity: nutrition.servingText ?? '27 g', grams: nutrition.servingGrams, nutrition,
     })], 'hummus')[0];
 
     it('reads the weight as a multiple of the whole that recorded one', () => {
@@ -486,6 +487,13 @@ describe('logging a recalled food again (#2914)', () => {
     it('says nothing without a weight typed, or one recorded for the whole', () => {
       expect(describedEstimateFactor(food(), 'homemade hummus')).toBeNull();
       expect(describedEstimateFactor(food({ ...hummus, servingGrams: null }), '29g hummus')).toBeNull();
+    });
+
+    it('reads the weight a confirmed quantity opens with when none is recorded', () => {
+      const words = { ...hummus, servingGrams: null, servingText: '27 g (about 2 tablespoons)' };
+      expect(estimateWholeGrams(food(words))).toBe(27);
+      expect(describedEstimateFactor(food(words), '54g hummus')).toBe(2);
+      expect(estimateWholeGrams(food({ ...words, servingText: '2 tablespoons' }))).toBeNull();
     });
 
     it('says nothing past the largest multiple an estimate may take', () => {
