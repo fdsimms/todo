@@ -42,6 +42,8 @@ import {
   recallMeasuringPanel,
   recallWeight,
   recalledHelping,
+  describedEstimateFactor,
+  estimateWholeGrams,
   type RecallAmountAsk,
   type RecallChange,
   type RecalledCatalogFood,
@@ -607,9 +609,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   /** The stated weight of the whole an estimate describes, when it has one. */
   const wholeGramsOf = (staged: PendingRecallLog): number | null => {
-    if (staged.kind !== 'recall') return null;
-    const grams = wholeEstimate(staged.food)?.servingGrams;
-    return grams && grams > 0 ? grams : null;
+    return staged.kind === 'recall' ? estimateWholeGrams(staged.food) : null;
   };
 
   const askFor = (staged: PendingRecallLog): RecallAmountAsk => {
@@ -632,12 +632,20 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       ? staged.food.grams
       : helpingOf(staged.food)?.servingGrams ?? null;
     const weight = scaled?.grams != null ? String(scaled.grams) : (baseline != null ? String(baseline) : '');
+    // A weight typed with an estimate ("29g hummus") opens the amount in the
+    // estimate's own terms, the same way it does for a food weighed in grams.
+    const described = staged.kind === 'recall' && (ask.kind === 'count' || ask.kind === 'multiple')
+      ? describedEstimateFactor(staged.food, staged.clause)
+      : null;
+    const typedGrams = described !== null ? describedGrams(staged.clause)?.replace(/g$/, '') ?? null : null;
     return {
       weight,
       baseline,
-      count: ask.kind === 'count' ? ask.opensAt ?? ask.count.count : null,
+      count: ask.kind === 'count'
+        ? described !== null ? Math.round(ask.count.count * described * 100) / 100 : ask.opensAt ?? ask.count.count
+        : null,
       factor: ask.kind === 'multiple' ? ask.opensAt : null,
-      typed: null,
+      typed: ask.kind === 'multiple' ? typedGrams : null,
       unit: wholeGramsOf(staged) ? 'grams' : 'percent',
     };
   };
@@ -914,24 +922,29 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     switch (ask.kind) {
       case 'weight':
         return (
-          <View style={styles.confirmWeightRow}>
-            <Text style={styles.confirmWeightLabel}>Amount to log</Text>
-            <TextField
-              style={styles.confirmWeightInput}
-              value={amount.weight}
-              onChangeText={text => editPending({ weight: text })}
-              keyboardType="numeric"
-              placeholder="grams"
-              placeholderTextColor={colors.textTertiary}
-              accessibilityLabel={`Amount to log for ${food.label}, in grams`}
-            />
-            <Text style={styles.confirmWeightUnit}>g</Text>
+          <View>
+            <Text style={styles.confirmCaption}>HOW MUCH</Text>
+            <View style={styles.confirmInputRow}>
+              <TextField
+                style={styles.confirmInput}
+                value={amount.weight}
+                onChangeText={text => editPending({ weight: text })}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                placeholder="Amount"
+                placeholderTextColor={colors.textTertiary}
+                accessibilityLabel={`Amount to log for ${food.label}, in grams`}
+              />
+              <Text style={styles.confirmSuffix}>g</Text>
+            </View>
           </View>
         );
       case 'count': {
         const count = amount.count ?? ask.count.count;
         return (
-          <View style={styles.confirmWeightRow}>
+          <View>
+            <Text style={styles.confirmCaption}>HOW MUCH</Text>
+            <View style={styles.confirmWeightRow}>
             <Text style={styles.confirmWeightLabel}>Amount to log</Text>
             <CountStepper
               value={count}
@@ -945,6 +958,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
               style={styles.confirmStepper}
             />
             <Text style={styles.confirmWeightUnit}>{estimateCountNoun(ask.count, count)}</Text>
+            </View>
           </View>
         );
       }
@@ -953,11 +967,63 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
         const fieldText = amount.typed ?? (amount.factor === null ? '' : amountText(amount.factor, amount.unit, wholeGrams));
         const typedBad = amount.typed !== null && amount.typed.trim() !== ''
           && factorFromTyped(amount.typed, amount.unit, wholeGrams) === null;
+        if (wholeGrams) {
+          // Same shape as the food log's amount step: a number with its unit
+          // beside it, and the units as chips underneath.
+          return (
+            <View>
+              <Text style={styles.confirmCaption}>HOW MUCH</Text>
+              <View style={styles.confirmInputRow}>
+                <TextField
+                  style={styles.confirmInput}
+                  value={fieldText}
+                  onChangeText={text => editPending({ typed: text })}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  placeholder="Amount"
+                  placeholderTextColor={colors.textTertiary}
+                  accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
+                />
+                <Text style={styles.confirmSuffix}>{amount.unit === 'grams' ? 'g' : '%'}</Text>
+              </View>
+              <View style={styles.confirmChips}>
+                {UNIT_OPTIONS.map(option => {
+                  const on = amount.unit === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.confirmChip, on && styles.confirmChipOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        editPending({
+                          unit: option.value,
+                          // Keep the amount shown, restated in the new unit.
+                          factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
+                          typed: null,
+                        });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={option.accessibilityLabel}
+                    >
+                      <Text style={[styles.confirmChipText, on && styles.confirmChipTextOn]}>
+                        {option.value === 'grams' ? 'g' : '% of last'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {typedBad && <Text style={[styles.error, styles.confirmErrorGap]}>{amountRefusal(amount.unit, wholeGrams)}</Text>}
+            </View>
+          );
+        }
+        // With no weight to speak in, the shares and a percent are all there is.
         return (
           <View style={styles.confirmMultiple}>
-            <Text style={styles.confirmMultipleLabel}>Amount to log</Text>
-            {/* On a card of its own colour, so the track reads as a track
-                rather than as the card it sits in. */}
+            <Text style={styles.confirmCaption}>HOW MUCH</Text>
+            {/* On a card of its own colour, so the track reads as a track rather
+                than as the card it sits in. */}
             <View style={styles.confirmTrackCard}>
               <SegmentedControl
                 options={ESTIMATE_AMOUNT_OPTIONS}
@@ -967,33 +1033,18 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                 label={`Amount of ${food.label} to log`}
               />
             </View>
-            <View style={styles.confirmWeightRow}>
-              <Text style={styles.confirmWeightLabel}>Or enter an amount</Text>
+            <View style={styles.confirmInputRow}>
               <TextField
-                style={styles.confirmWeightInput}
+                style={styles.confirmInput}
                 value={fieldText}
                 onChangeText={text => editPending({ typed: text })}
                 keyboardType="decimal-pad"
                 selectTextOnFocus
-                placeholder={amount.unit === 'grams' ? 'e.g. 30' : 'e.g. 50'}
+                placeholder="Or enter a percent"
                 placeholderTextColor={colors.textTertiary}
-                accessibilityLabel={`Amount of ${food.label} to log, in ${amount.unit === 'grams' ? 'grams' : 'percent of the amount shown'}`}
+                accessibilityLabel={`Amount of ${food.label} to log, in percent of the amount shown`}
               />
-              {wholeGrams ? (
-                <SegmentedControl
-                  options={UNIT_OPTIONS}
-                  value={amount.unit}
-                  onChange={unit => editPending({
-                    unit,
-                    // Keep the amount shown, restated in the new unit.
-                    factor: amount.typed === null ? amount.factor : factorFromTyped(amount.typed, amount.unit, wholeGrams),
-                    typed: null,
-                  })}
-                  label="Unit"
-                />
-              ) : (
-                <Text style={styles.confirmWeightUnit}>%</Text>
-              )}
+              <Text style={styles.confirmSuffix}>%</Text>
             </View>
             {typedBad && <Text style={styles.error}>{amountRefusal(amount.unit, wholeGrams)}</Text>}
           </View>
@@ -1600,6 +1651,34 @@ function makeStyles(colors: Colors) {
     confirmMultiple: { gap: spacing.smd },
     confirmMultipleLabel: { color: colors.text, fontSize: font.sm },
     confirmTrackCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.xs },
+    confirmCaption: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
+    },
+    // The food log's amount field: a number with its unit beside it.
+    confirmInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+    },
+    confirmInput: { flex: 1, paddingVertical: spacing.sm, color: colors.text, fontSize: font.md },
+    confirmSuffix: { color: colors.textSecondary, fontSize: font.md, marginLeft: spacing.xs },
+    confirmChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
+    confirmChip: {
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+    },
+    confirmChipOn: { backgroundColor: colors.accentFill },
+    confirmChipText: { color: colors.text, fontSize: font.sm },
+    confirmChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
+    confirmErrorGap: { marginTop: spacing.sm },
     confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
     confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18 },
