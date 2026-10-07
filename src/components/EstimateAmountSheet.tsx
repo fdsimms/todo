@@ -16,6 +16,7 @@ import {
   estimateCount,
   estimateCountNoun,
   estimateCountQuestion,
+  estimateWholeGrams,
   wholeEstimate,
   type EstimateAmountPatch,
 } from '../utils/foodLog';
@@ -128,7 +129,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   const [typed, setTyped] = useState<string | null>(null);
   const [unit, setUnit] = useState<AmountUnit>('percent');
 
-  const wholeGrams = whole?.servingGrams && whole.servingGrams > 0 ? whole.servingGrams : null;
+  const wholeGrams = whole ? estimateWholeGrams(whole) : null;
 
   useEffect(() => {
     if (!visible) return;
