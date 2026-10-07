@@ -5,19 +5,24 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
-import { packageChoices, packageFractions, servingDescription } from '../utils/scanPortion';
-import { amountExample, amountHint, composeFoodAmount, foodUnitOptionsFor, scalePanelToAmount } from '../utils/foodLog';
+import { packageChoices, servingDescription } from '../utils/scanPortion';
+import {
+  amountExample,
+  amountHint,
+  composeFoodAmount,
+  foodUnitOptionsFor,
+  scalePanelToAmount,
+} from '../utils/foodLog';
 import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { haptics } from '../utils/haptics';
@@ -29,6 +34,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
 
 /** "1.5" not "1.5000000000000002", and "2" not "2.0". */
 function formatServings(n: number): string {
@@ -302,9 +308,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                   <Text style={styles.cardTitle}>{food.label}</Text>
                   {servingSize && <Text style={styles.servingSize}>{servingSize}</Text>}
                 </View>
-                <View style={usingPills ? styles.inputRow : undefined}>
+                <View style={styles.inputRow}>
                   <TextField
-                    style={usingPills ? styles.inputWithSuffix : styles.input}
+                    style={styles.inputInRow}
                     value={usingPills ? (amountNumbers[food.key] ?? '') : answer}
                     onChangeText={text => {
                       if (usingPills) {
@@ -318,104 +324,62 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     placeholderTextColor={colors.textTertiary}
                     keyboardType={usingPills ? 'decimal-pad' : 'default'}
                     // The number pad has no return key, so without this there is
-                    // no way off it — same accessory `FoodLogEntrySheet` wires up.
+                    // no way off it, same accessory `FoodLogEntrySheet` wires up.
                     inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
                     accessibilityLabel={`Amount of ${food.label}`}
                   />
-                  {/* The placeholder alone only names the unit before anything
-                      is typed — it's gone the moment a number is, which is
-                      exactly when a "servings" vs. "g" mix-up would matter.
-                      This sits outside the placeholder so it stays visible. */}
-                  {usingPills && selectedUnit && (
-                    <Text style={styles.inputSuffix}>{selectedUnit.label}</Text>
+                  {/* The unit lives in the chip rather than a row of pills:
+                      nearly every amount is a serving or grams, and the rest
+                      (volumes, nutrient amounts, "Something else") are one tap
+                      away in its menu. It stays beside the number once one is
+                      typed, which is when a "servings" vs. "g" mix-up matters. */}
+                  {unitOptions.length > 0 && (
+                    <UnitMenuChip
+                      name="ScanPortionSheet unit menu"
+                      options={unitOptions}
+                      selectedKey={selectedUnitKey}
+                      onSelect={key => {
+                        if (key === OTHER_UNIT_KEY) {
+                          // The escape hatch for a unit this food's own panel
+                          // doesn't cover: swaps the number-only field back to
+                          // free text, the same offer `FoodLogEntrySheet` makes.
+                          setAmountUnits(u => ({ ...u, [food.key]: OTHER_UNIT_KEY }));
+                          setAnswers(a => ({ ...a, [food.key]: '' }));
+                          return;
+                        }
+                        const option = unitOptions.find(o => o.key === key);
+                        // Picking "serving" with nothing typed means one serving.
+                        const typed = amountNumbers[food.key] ?? '';
+                        const number = key === 'serving' && !typed.trim() ? '1' : typed;
+                        setAmountUnits(u => ({ ...u, [food.key]: key }));
+                        setAmountNumbers(n => ({ ...n, [food.key]: number }));
+                        setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(number, option) }));
+                      }}
+                    />
                   )}
                 </View>
-                {unitOptions.length > 0 && (
-                  <View style={styles.choices}>
-                    {unitOptions.map(option => {
-                      const on = selectedUnitKey === option.key;
-                      return (
-                        <TouchableOpacity
-                          key={option.key}
-                          style={[styles.choice, on && styles.choiceOn]}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => {
-                            haptics.tap();
-                            // Picking "serving" with nothing typed means one serving.
-                            const typed = amountNumbers[food.key] ?? '';
-                            const number = option.key === 'serving' && !typed.trim() ? '1' : typed;
-                            setAmountUnits(u => ({ ...u, [food.key]: option.key }));
-                            setAmountNumbers(n => ({ ...n, [food.key]: number }));
-                            setAnswers(a => ({
-                              ...a,
-                              [food.key]: composeFoodAmount(number, option),
-                            }));
-                          }}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: on }}
-                          accessibilityLabel={option.label}
-                        >
-                          <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{option.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    {/* The escape hatch for a unit this food's own panel/table
-                        doesn't cover — swaps the number-only field back to
-                        free text, the same offer `FoodLogEntrySheet` makes. */}
-                    <TouchableOpacity
-                      key="other"
-                      style={[styles.choice, selectedUnitKey === 'other' && styles.choiceOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => {
-                        haptics.tap();
-                        setAmountUnits(u => ({ ...u, [food.key]: 'other' }));
-                        setAnswers(a => ({ ...a, [food.key]: '' }));
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: selectedUnitKey === 'other' }}
-                      accessibilityLabel="Something else"
-                    >
-                      <Text style={[styles.choiceText, selectedUnitKey === 'other' && styles.choiceTextOn]}>
-                        Something else
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
                 {/* What will actually resolve, said before it's typed rather
-                    than only after a refusal. */}
-                <Text style={styles.hint}>
-                  {usingPills ? 'Pick the unit for the amount you typed.' : amountHint(panel)}
-                </Text>
+                    than only after a refusal. Only for the free-text field:
+                    with a unit chosen there is nothing left to explain. */}
+                {!usingPills && <Text style={styles.hint}>{amountHint(panel)}</Text>}
                 {/* A shortcut that fills the field in rather than a second
                     answer beside it, so the field always shows what will be
-                    logged. Its count is worked out from the pack size, which
-                    is why it's worth a tap where one serving isn't. */}
+                    logged. Only the whole package: its serving count is worked
+                    out from the pack size rather than known, which is why it's
+                    worth a tap where typing 3.5 is not. */}
                 {wholePackage && (
-                  <View style={styles.choices}>
-                    {[wholePackage, ...packageFractions(wholePackage)].map(shortcut => {
-                      const count = formatServings(shortcut.servings);
-                      const on = selectedUnitKey === 'serving' && (amountNumbers[food.key] ?? '') === count;
-                      return (
-                        <TouchableOpacity
-                          key={shortcut.key}
-                          style={[styles.choice, on && styles.choiceOn]}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => {
-                            haptics.tap();
-                            const serving = unitOptions.find(o => o.key === 'serving');
-                            setAmountUnits(u => ({ ...u, [food.key]: 'serving' }));
-                            setAmountNumbers(n => ({ ...n, [food.key]: count }));
-                            setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(count, serving) }));
-                          }}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: on }}
-                          accessibilityLabel={shortcut.label}
-                        >
-                          <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{shortcut.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                  <InlineAction
+                    variant="neutral"
+                    label={`Use the whole package (${formatServings(wholePackage.servings)} servings)`}
+                    style={styles.packageAction}
+                    onPress={() => {
+                      const serving = unitOptions.find(o => o.key === 'serving');
+                      const count = formatServings(wholePackage.servings);
+                      setAmountUnits(u => ({ ...u, [food.key]: 'serving' }));
+                      setAmountNumbers(n => ({ ...n, [food.key]: count }));
+                      setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(count, serving) }));
+                    }}
+                  />
                 )}
                 {/* What the answer works out to, or why it doesn't. An amount
                     the food's own portion table can't measure is refused here
@@ -527,42 +491,22 @@ function makeStyles(colors: Colors) {
     pantryField: { marginTop: spacing.smd },
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     servingSize: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
-    choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-    choice: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.full,
-      backgroundColor: colors.bgTertiary,
-    },
-    choiceOn: { backgroundColor: colors.accent },
-    choiceText: { color: colors.text, fontSize: font.sm },
-    choiceTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
-    input: {
-      backgroundColor: colors.bgTertiary,
-      borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      color: colors.text,
-      fontSize: font.md,
-    },
     inputRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      gap: spacing.sm,
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
+      paddingLeft: spacing.md,
+      paddingRight: spacing.sm,
     },
-    inputWithSuffix: {
+    inputInRow: {
       flex: 1,
       paddingVertical: spacing.sm,
       color: colors.text,
       fontSize: font.md,
     },
-    inputSuffix: {
-      color: colors.textSecondary,
-      fontSize: font.md,
-      marginLeft: spacing.xs,
-    },
+    packageAction: { alignSelf: 'flex-start' },
     hint: { color: colors.textTertiary, fontSize: font.sm },
     outcome: { color: colors.textSecondary, fontSize: font.sm },
     outcomeRefused: { color: colors.textTertiary },

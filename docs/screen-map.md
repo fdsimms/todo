@@ -334,6 +334,7 @@ Where each component can appear.
 - `src/components/TripDatePrompt.tsx` — on app shell
 - `src/components/TripPlannerSheet.tsx` — on PeopleScreen
 - `src/components/UndoBar.tsx` — on app shell
+- `src/components/UnitMenuChip.tsx` — on FoodLogScreen, app shell
 - `src/components/UseUpResolveSheet.tsx` — on app shell
 - `src/components/WeatherRulesSheet.tsx` — on AutomationsScreen
 - `src/components/WeekdaySelector.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TemplateDetailScreen, +1 more
