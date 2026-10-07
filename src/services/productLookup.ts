@@ -1,5 +1,5 @@
 import { dbGetGtinLookup, dbSetGtinLookup } from '../db/database';
-import { isCacheEntryFresh, normalizeGtin } from '../utils/gtin';
+import { isCacheEntryFresh, isStoreInternalGtin, normalizeGtin } from '../utils/gtin';
 import { readFdcNutrition, readOffNutrition } from '../utils/nutritionParse';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from '../utils/demoState';
@@ -346,6 +346,10 @@ function sourcesFor(fdcApiKey: string, goUpcApiKey: string): SourceFetch[] {
  * added, for the same reason.
  */
 export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<ProductRecord | null> {
+  // A deli or by-weight label: the digits carry this package's price, so no
+  // database has it, and caching the miss would only fill the cache with one
+  // row per package. Not looked up, not remembered.
+  if (isStoreInternalGtin(gtin)) return null;
   const cached = dbGetGtinLookup(gtin);
   if (cached && isCacheEntryFresh(cached, now)) {
     if (!cached.found) return null;

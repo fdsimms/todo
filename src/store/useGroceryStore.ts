@@ -80,6 +80,7 @@ import {
 import { useRecipeStore } from './useRecipeStore';
 import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
+import { isStoreInternalGtin } from '../utils/gtin';
 import { useSettingsStore } from './useSettingsStore';
 import { useProjectStore } from './useProjectStore';
 import { awayListDriver, isProjectAwayNow } from '../utils/awayDates';
@@ -5171,6 +5172,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     for (const link of links) {
       if (!link.gtin || !items.some(i => i.id === link.itemId)) continue;
+      // A deli or by-weight label names one package at one store's prices,
+      // not a product: remembered, it would claim every later package
+      // printing the same digits elsewhere.
+      if (isStoreInternalGtin(link.gtin)) continue;
       // Found by the words the scan resolved to rather than by id, because the
       // caller knows which box it read and `addProduct` knows which one exists
       // — the same find-by-key `ensureProductFor` does one step earlier.

@@ -5,6 +5,8 @@ import {
   isCacheEntryFresh,
   isGtin,
   normalizeGtin,
+  expandUpcE,
+  isStoreInternalGtin,
 } from '../utils/gtin';
 
 describe('gtinCheckDigit', () => {
@@ -94,5 +96,39 @@ describe('isCacheEntryFresh', () => {
 
   it('treats an unreadable stamp as stale rather than trusting it', () => {
     expect(isCacheEntryFresh({ found: false, fetchedAt: 'not a date' }, now)).toBe(false);
+  });
+});
+
+describe('UPC-E', () => {
+  // A 12oz Coca-Cola can: UPC-E 04963406 is UPC-A 049000006346.
+  it('expands to the UPC-A it stands for', () => {
+    expect(expandUpcE('04963406')).toBe('00049000006346');
+    expect(normalizeGtin('04963406', 'upc_e')).toBe(normalizeGtin('049000006346'));
+  });
+
+  it('reads an 8-digit code that fails as GTIN-8 as UPC-E', () => {
+    expect(normalizeGtin('04963406')).toBe('00049000006346');
+  });
+
+  it('leaves a code that is a valid GTIN-8 as one, unless told it is UPC-E', () => {
+    expect(normalizeGtin('96385074')).toBe('00000096385074');
+  });
+
+  it('refuses a UPC-E whose check digit is wrong', () => {
+    expect(expandUpcE('04963407')).toBeNull();
+    expect(normalizeGtin('04963407', 'upc_e')).toBeNull();
+  });
+});
+
+describe('isStoreInternalGtin', () => {
+  it('is true for the price-embedded codes a deli or scale prints', () => {
+    expect(isStoreInternalGtin('00212345012345')).toBe(true); // UPC-A, number system 2
+    expect(isStoreInternalGtin('00412345678901')).toBe(true); // UPC-A, number system 4
+    expect(isStoreInternalGtin('02123456789012')).toBe(true); // EAN-13, prefix 21
+  });
+
+  it('is false for an ordinary product', () => {
+    expect(isStoreInternalGtin('00049000006346')).toBe(false);
+    expect(isStoreInternalGtin('05000112548167')).toBe(false);
   });
 });
