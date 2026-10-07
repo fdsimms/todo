@@ -12,6 +12,9 @@ import {
   plannedCatalogIndex,
   restockRows,
   consumedRows,
+  cookOpenedIds,
+  cookedConsumption,
+  openedAtForCook,
   groupBySourceRecipe,
   mealCreditIds,
   rowsLeftBehind,
@@ -489,7 +492,7 @@ describe('plannedIngredientsForRecipe', () => {
     const planned = plannedIngredientsForRecipe(oats, undefined, undefined, 1, swaps);
     expect(planned[0]).toMatchObject({ name: 'Oat milk', nameKey: 'oat milk', swappedFrom: 'Milk' });
 
-    const row = classifyPlanned(planned, [], new Date())[0];
+    const row = classifyPlanned(planned, [], new Date(), [], null, [])[0];
     expect(row).toMatchObject({ nameKey: 'oat milk', name: 'Oat milk', swappedFrom: 'Milk' });
   });
 
@@ -723,19 +726,19 @@ describe('classifyPlanned', () => {
 
     it('classifies exactly as building the lookups itself does', () => {
       expect(classifyPlanned(planned, catalog, now, [], null, [], plannedCatalogIndex(catalog)))
-        .toEqual(classifyPlanned(planned, catalog, now));
+        .toEqual(classifyPlanned(planned, catalog, now, [], null, []));
     });
 
     it('ignores an index built from some other catalog rather than answering from it', () => {
       const stale = plannedCatalogIndex([item({ name: 'Saffron', isStaple: true })]);
       expect(classifyPlanned(planned, catalog, now, [], null, [], stale))
-        .toEqual(classifyPlanned(planned, catalog, now));
+        .toEqual(classifyPlanned(planned, catalog, now, [], null, []));
     });
   });
 
   it('classifies a name with no catalog row as needToBuy', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
-    const rows = classifyPlanned(planned, [], now);
+    const rows = classifyPlanned(planned, [], now, [], null, []);
     expect(rows).toEqual([
       { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', known: false, reason: null, choiceGroup: null, swappedFrom: null, sourceRecipeId: null, sourceRecipeTitle: null },
     ]);
@@ -749,7 +752,7 @@ describe('classifyPlanned', () => {
     const planned = [
       { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
     ];
-    const row = classifyPlanned(planned, items, now)[0];
+    const row = classifyPlanned(planned, items, now, [], null, [])[0];
     expect(row.nameKey).toBe('serrano peppers');
     expect(row.name).toBe('Serrano peppers');
     expect(row.category).toBe('alreadyOnList');
@@ -764,7 +767,7 @@ describe('classifyPlanned', () => {
       { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
       { name: 'serrano peppers', nameKey: 'serrano peppers', quantity: '3', aisle: null, source: 'Thu Salsa' },
     ];
-    const rows = classifyPlanned(planned, items, now);
+    const rows = classifyPlanned(planned, items, now, [], null, []);
     expect(rows).toHaveLength(1);
     // Both meals credited to the one row. Re-filing appends, the same as the
     // variety pass beside it, so the order is the catalog key's group first.
@@ -779,7 +782,7 @@ describe('classifyPlanned', () => {
       { name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Chili' },
       { name: 'onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Thu Soup' },
     ];
-    const rows = classifyPlanned(planned, [], now);
+    const rows = classifyPlanned(planned, [], now, [], null, []);
     expect(rows).toHaveLength(1);
     expect(rows[0].sources).toEqual(expect.arrayContaining(['Tue Chili', 'Thu Soup']));
   });
@@ -792,7 +795,7 @@ describe('classifyPlanned', () => {
       { name: 'jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, source: 'Tue Tacos', choiceGroup: 'r-lunch:Pepper' },
       { name: 'jalapeño', nameKey: 'jalapeno', quantity: '1', aisle: null, source: 'Wed Chili', choiceGroup: null },
     ];
-    const rows = classifyPlanned(planned, [], now);
+    const rows = classifyPlanned(planned, [], now, [], null, []);
     expect(rows).toHaveLength(1);
     expect(rows[0].choiceGroup).toBeNull();
   });
@@ -801,14 +804,14 @@ describe('classifyPlanned', () => {
     const planned = [
       { name: 'jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, source: 'Tue Tacos', choiceGroup: 'r-lunch:Pepper' },
     ];
-    expect(classifyPlanned(planned, [], now)[0].choiceGroup).toBe('r-lunch:Pepper');
+    expect(classifyPlanned(planned, [], now, [], null, [])[0].choiceGroup).toBe('r-lunch:Pepper');
   });
 
   it('leaves a line alone when the catalog has nothing a plural apart', () => {
     const planned = [
       { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
     ];
-    const row = classifyPlanned(planned, [item({ name: 'Milk' })], now)[0];
+    const row = classifyPlanned(planned, [item({ name: 'Milk' })], now, [], null, [])[0];
     expect(row.nameKey).toBe('serrano pepper');
     expect(row.category).toBe('needToBuy');
   });
@@ -817,11 +820,11 @@ describe('classifyPlanned', () => {
     const planned = [
       { name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '', aisle: null, source: 'Tue Iced tea', optional: true },
     ];
-    const row = classifyPlanned(planned, [], now)[0];
+    const row = classifyPlanned(planned, [], now, [], null, [])[0];
     expect(row.optional).toBe(true);
 
     const plainRow = classifyPlanned(
-      [{ name: 'Tea bags', nameKey: 'tea bags', quantity: '4', aisle: null, source: 'Tue Iced tea' }], [], now
+      [{ name: 'Tea bags', nameKey: 'tea bags', quantity: '4', aisle: null, source: 'Tue Iced tea' }], [], now, [], null, []
     )[0];
     expect('optional' in plainRow).toBe(false);
   });
@@ -834,7 +837,7 @@ describe('classifyPlanned', () => {
       { name: 'Basil', nameKey: 'basil', quantity: '', aisle: null, source: 'Tue Pizza', optional: true },
       { name: 'Basil', nameKey: 'basil', quantity: '2 cups', aisle: null, source: 'Thu Pesto' },
     ];
-    const row = classifyPlanned(planned, [], now)[0];
+    const row = classifyPlanned(planned, [], now, [], null, [])[0];
     expect('optional' in row).toBe(false);
   });
 
@@ -845,7 +848,7 @@ describe('classifyPlanned', () => {
       lastPurchasedAt: new Date(2026, 7, 2).toISOString(), // 10 days before `now`
     })];
     const planned = [{ name: 'Milk', nameKey: 'milk', quantity: '', aisle: null, source: 'Thu Cereal' }];
-    const row = classifyPlanned(planned, items, now)[0];
+    const row = classifyPlanned(planned, items, now, [], null, [])[0];
     expect(row.category).toBe('probablyHave');
     expect(row.reason).toBe('bought 3× · last on Aug 2');
   });
@@ -874,7 +877,7 @@ describe('classifyPlanned', () => {
       const margarine = onHand('Margarine');
       const row = classifyPlanned(plannedButter, [butter, margarine], now, [
         sub(butter.id, margarine.id),
-      ])[0];
+      ], null, [])[0];
 
       expect(row.category).toBe('needToBuy');
       expect(row.reason).toBe('you have margarine');
@@ -886,7 +889,7 @@ describe('classifyPlanned', () => {
       const margarine = item({ name: 'Margarine', onList: false });
       const row = classifyPlanned(plannedButter, [butter, margarine], now, [
         sub(butter.id, margarine.id),
-      ])[0];
+      ], null, [])[0];
 
       expect(row.reason).toBeNull();
     });
@@ -901,7 +904,7 @@ describe('classifyPlanned', () => {
       ];
       const row = classifyPlanned(planned, [butter, margarine], now, [
         sub(butter.id, margarine.id),
-      ])[0];
+      ], null, [])[0];
 
       expect(row.category).toBe('needToBuy');
       expect(row.reason).toBeNull();
@@ -910,7 +913,7 @@ describe('classifyPlanned', () => {
       const mutual = classifyPlanned(planned, [butter, margarine], now, [
         sub(butter.id, margarine.id),
         sub(margarine.id, butter.id),
-      ])[0];
+      ], null, [])[0];
       expect(mutual.reason).toBe('you have butter');
     });
 
@@ -921,7 +924,7 @@ describe('classifyPlanned', () => {
       const margarine = onHand('Margarine');
       const row = classifyPlanned(plannedButter, [butter, margarine], now, [
         sub(butter.id, margarine.id),
-      ])[0];
+      ], null, [])[0];
 
       expect(row.category).toBe('probablyHave');
       expect(row.reason).toBe('marked as on hand');
@@ -931,7 +934,7 @@ describe('classifyPlanned', () => {
       const planned = [
         { name: 'Saffron', nameKey: 'saffron', quantity: '', aisle: null, source: 'Tue Paella' },
       ];
-      expect(classifyPlanned(planned, [], now, [])[0].reason).toBeNull();
+      expect(classifyPlanned(planned, [], now, [], null, [])[0].reason).toBeNull();
     });
 
     it('still offers the row on a restock', () => {
@@ -939,7 +942,7 @@ describe('classifyPlanned', () => {
       const margarine = onHand('Margarine');
       const rows = classifyPlanned(plannedButter, [butter, margarine], now, [
         sub(butter.id, margarine.id),
-      ]);
+      ], null, []);
       expect(restockRows(rows)).toHaveLength(1);
     });
   });
@@ -947,13 +950,13 @@ describe('classifyPlanned', () => {
   it('classifies a known catalog row that is off the list as needToBuy, not probablyHave', () => {
     const items = [item({ name: 'Flour', onList: false })];
     const planned = [{ name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('needToBuy');
+    expect(classifyPlanned(planned, items, now, [], null, [])[0].category).toBe('needToBuy');
   });
 
   it('classifies a staple, off the list, as staple — with no purchase history needed', () => {
     const items = [item({ name: 'Salt', onList: false, isStaple: true, purchaseCount: 0 })];
     const planned = [{ name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Ragù' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('staple');
+    expect(classifyPlanned(planned, items, now, [], null, [])[0].category).toBe('staple');
   });
 
   it('a staple still wins over the pantry guess', () => {
@@ -963,25 +966,25 @@ describe('classifyPlanned', () => {
       lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
     })];
     const planned = [{ name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Ragù' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('staple');
+    expect(classifyPlanned(planned, items, now, [], null, [])[0].category).toBe('staple');
   });
 
   it('an on-list staple still classifies by list state, not as a staple', () => {
     const items = [item({ name: 'Salt', onList: true, checked: false, isStaple: true })];
     const planned = [{ name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Ragù' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('alreadyOnList');
+    expect(classifyPlanned(planned, items, now, [], null, [])[0].category).toBe('alreadyOnList');
   });
 
   it('classifies an unchecked on-list row as alreadyOnList', () => {
     const items = [item({ name: 'Milk', onList: true, checked: false })];
     const planned = [{ name: 'Milk', nameKey: 'milk', quantity: '1 gal', aisle: null, source: 'Thu Cereal' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('alreadyOnList');
+    expect(classifyPlanned(planned, items, now, [], null, [])[0].category).toBe('alreadyOnList');
   });
 
   it('classifies a checked on-list row as inCart', () => {
     const items = [item({ name: 'Eggs', onList: true, checked: true })];
     const planned = [{ name: 'Eggs', nameKey: 'eggs', quantity: '12', aisle: null, source: 'Fri Omelette' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('inCart');
+    expect(classifyPlanned(planned, items, now, [], null, [])[0].category).toBe('inCart');
   });
 
   it('marks a row with a catalog row known, and one without unknown', () => {
@@ -990,7 +993,7 @@ describe('classifyPlanned', () => {
       { name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' },
       { name: 'Saffron', nameKey: 'saffron', quantity: '', aisle: null, source: 'Wed Bread' },
     ];
-    const rows = classifyPlanned(planned, items, now);
+    const rows = classifyPlanned(planned, items, now, [], null, []);
     expect(rows.find(r => r.nameKey === 'flour')!.known).toBe(true);
     expect(rows.find(r => r.nameKey === 'saffron')!.known).toBe(false);
   });
@@ -1001,7 +1004,7 @@ describe('classifyPlanned', () => {
       { name: 'onions', nameKey: 'onions', quantity: '1 bunch', aisle: null, source: 'Thu Curry' },
       { name: 'Onions', nameKey: 'onions', quantity: '3', aisle: null, source: 'Sat Soup' },
     ];
-    const rows = classifyPlanned(planned, [], now);
+    const rows = classifyPlanned(planned, [], now, [], null, []);
     expect(rows).toHaveLength(1);
     expect(rows[0].quantity).toBe('2 · 1 bunch · 3');
     expect(rows[0].sources).toEqual(['Tue Ragù', 'Thu Curry', 'Sat Soup']);
@@ -1011,7 +1014,7 @@ describe('classifyPlanned', () => {
     const planned = [
       { name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella', recipeId: 'r1', recipeTitle: 'Paella' },
     ];
-    const row = classifyPlanned(planned, [], now)[0];
+    const row = classifyPlanned(planned, [], now, [], null, [])[0];
     expect(row.sourceRecipeId).toBe('r1');
     expect(row.sourceRecipeTitle).toBe('Paella');
   });
@@ -1021,7 +1024,7 @@ describe('classifyPlanned', () => {
       { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: 'r1', recipeTitle: 'Ragù' },
       { name: 'Onions', nameKey: 'onions', quantity: '1', aisle: null, source: 'Thu Curry', recipeId: 'r2', recipeTitle: 'Curry' },
     ];
-    const row = classifyPlanned(planned, [], now)[0];
+    const row = classifyPlanned(planned, [], now, [], null, [])[0];
     expect(row.sourceRecipeId).toBeNull();
     expect(row.sourceRecipeTitle).toBeNull();
   });
@@ -1033,7 +1036,7 @@ describe('classifyPlanned', () => {
     ];
     // Force the nameKey to line up with the catalog row for this test.
     const withKey = [{ ...planned[0], nameKey: items[0].nameKey }];
-    expect(classifyPlanned(withKey, items, now)[0].name).toBe('Yellow Onions');
+    expect(classifyPlanned(withKey, items, now, [], null, [])[0].name).toBe('Yellow Onions');
   });
 
   it('falls back to the shortest source name when nothing is in the catalog', () => {
@@ -1041,7 +1044,7 @@ describe('classifyPlanned', () => {
       { name: 'Onion', nameKey: 'onion', quantity: '', aisle: null, source: 'Tue Ragù' },
       { name: 'Onions, diced', nameKey: 'onion', quantity: '', aisle: null, source: 'Thu Curry' },
     ];
-    expect(classifyPlanned(planned, [], now)[0].name).toBe('Onion');
+    expect(classifyPlanned(planned, [], now, [], null, [])[0].name).toBe('Onion');
   });
 
   it('carries an aisle hint from any source that has one', () => {
@@ -1049,7 +1052,7 @@ describe('classifyPlanned', () => {
       { name: 'Basil', nameKey: 'basil', quantity: '', aisle: null, source: 'Tue Ragù' },
       { name: 'Basil', nameKey: 'basil', quantity: '', aisle: 'Produce', source: 'Thu Curry' },
     ];
-    expect(classifyPlanned(planned, [], now)[0].aisle).toBe('Produce');
+    expect(classifyPlanned(planned, [], now, [], null, [])[0].aisle).toBe('Produce');
   });
 
   it('shows a source count rather than an empty pill when every source left quantity blank', () => {
@@ -1058,7 +1061,7 @@ describe('classifyPlanned', () => {
       { name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Thu Curry' },
       { name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Sat Soup' },
     ];
-    expect(classifyPlanned(planned, [], now)[0].quantity).toBe('×3');
+    expect(classifyPlanned(planned, [], now, [], null, [])[0].quantity).toBe('×3');
   });
 
   // A box (ItemProduct) frozen or marked "Got it" on its own keeps its item in
@@ -1082,7 +1085,7 @@ describe('classifyPlanned', () => {
 
       expect(classifyPlanned(plannedBeef, [beef], now, [], null, [frozen])[0].category).toBe('probablyHave');
       // Without the boxes it falls back to the item alone, which has nothing.
-      expect(classifyPlanned(plannedBeef, [beef], now)[0].category).toBe('needToBuy');
+      expect(classifyPlanned(plannedBeef, [beef], now, [], null, [])[0].category).toBe('needToBuy');
     });
 
     it('ignores another item\'s boxes', () => {
@@ -1114,7 +1117,7 @@ describe('classifyPlanned', () => {
 
     it('re-files a generic line under the variety the pantry vouches for', () => {
       const white = item({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: onHandDate });
-      const row = classifyPlanned(plannedOnion, [white], now)[0];
+      const row = classifyPlanned(plannedOnion, [white], now, [], null, [])[0];
 
       expect(row.nameKey).toBe('white onion');
       expect(row.name).toBe('White onion');
@@ -1126,7 +1129,7 @@ describe('classifyPlanned', () => {
 
     it('reads a variety already on the list as covering the ask', () => {
       const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: true });
-      const row = classifyPlanned(plannedOnion, [white], now)[0];
+      const row = classifyPlanned(plannedOnion, [white], now, [], null, [])[0];
       expect(row.category).toBe('alreadyOnList');
       expect(row.nameKey).toBe('white onion');
     });
@@ -1134,7 +1137,7 @@ describe('classifyPlanned', () => {
     it('lets an exact generic row that answers win outright', () => {
       const onion = item({ name: 'Onion', onHandUntil: onHandDate });
       const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: true });
-      const row = classifyPlanned(plannedOnion, [onion, white], now)[0];
+      const row = classifyPlanned(plannedOnion, [onion, white], now, [], null, [])[0];
       expect(row.nameKey).toBe('onion');
       expect(row.category).toBe('probablyHave');
       expect(row.swappedFrom).toBeNull();
@@ -1144,7 +1147,7 @@ describe('classifyPlanned', () => {
       // "White onions" can only offer "onions" as its generic, and "1 large
       // onion" is the same ask.
       const whites = item({ name: 'White onions', varietyOfKey: 'onions', onHandUntil: onHandDate });
-      const row = classifyPlanned(plannedOnion, [whites], now)[0];
+      const row = classifyPlanned(plannedOnion, [whites], now, [], null, [])[0];
       expect(row.nameKey).toBe('white onions');
       expect(row.category).toBe('probablyHave');
       expect(row.swappedFrom).toBe('onion');
@@ -1154,7 +1157,7 @@ describe('classifyPlanned', () => {
       // Declared, but the app has no reason to believe you have it — and a
       // generic "onion" is also the right thing to put in the trolley.
       const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: false });
-      const row = classifyPlanned(plannedOnion, [white], now)[0];
+      const row = classifyPlanned(plannedOnion, [white], now, [], null, [])[0];
       expect(row.nameKey).toBe('onion');
       expect(row.category).toBe('needToBuy');
     });
@@ -1165,7 +1168,7 @@ describe('classifyPlanned', () => {
         ...plannedOnion,
         { name: 'White onion', nameKey: 'white onion', quantity: '2', aisle: null, source: 'Thu Curry' },
       ];
-      const rows = classifyPlanned(planned, [white], now);
+      const rows = classifyPlanned(planned, [white], now, [], null, []);
       expect(rows).toHaveLength(1);
       expect(rows[0].sources).toEqual(['Thu Curry', 'Tue Ragù']);
       expect(rows[0].quantity).toBe('3');
@@ -1180,7 +1183,7 @@ describe('classifyPlanned', () => {
       const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: false });
       const away = new Map([[white.id, false]]);
 
-      const row = classifyPlanned(plannedOnion, [onion, white], now, [], away)[0];
+      const row = classifyPlanned(plannedOnion, [onion, white], now, [], away, [])[0];
       expect(row.nameKey).toBe('white onion');
       expect(row.category).toBe('alreadyOnList');
     });
@@ -1192,7 +1195,7 @@ describe('classifyPlanned', () => {
       const planned = [
         { name: 'red onion', nameKey: 'red onion', quantity: '1', aisle: null, source: 'Tue Ragù' },
       ];
-      const row = classifyPlanned(planned, [onion, white, red], now)[0];
+      const row = classifyPlanned(planned, [onion, white, red], now, [], null, [])[0];
 
       expect(row.category).toBe('needToBuy');
       expect(row.reason).toBe('you have onion or white onion');
@@ -1214,7 +1217,7 @@ describe('classifyPlanned', () => {
         ratioTo: null,
         standing: false,
       };
-      const row = classifyPlanned(planned, [white, red, shallot], now, [link])[0];
+      const row = classifyPlanned(planned, [white, red, shallot], now, [link], null, [])[0];
       expect(row.reason).toBe('you have shallot');
     });
   });
@@ -1263,7 +1266,7 @@ describe('restockRows', () => {
 
   it('keeps a known item that is off the list', () => {
     const items = [item({ name: 'Yukon Gold potatoes', onList: false })];
-    const rows = restockRows(classifyPlanned([planned('Yukon Gold potatoes')], items, now));
+    const rows = restockRows(classifyPlanned([planned('Yukon Gold potatoes')], items, now, [], null, []));
     expect(rows.map(r => r.name)).toEqual(['Yukon Gold potatoes']);
   });
 
@@ -1273,7 +1276,7 @@ describe('restockRows', () => {
     const rows = restockRows(classifyPlanned(
       [planned('ground black pepper'), planned('sea salt')],
       [],
-      now
+      now, [], null, []
     ));
     expect(rows).toEqual([]);
   });
@@ -1292,7 +1295,7 @@ describe('restockRows', () => {
     const rows = restockRows(classifyPlanned(
       [planned('Milk'), planned('Eggs'), planned('Salt'), planned('Butter')],
       items,
-      now
+      now, [], null, []
     ));
     expect(rows).toEqual([]);
   });
@@ -1306,7 +1309,7 @@ describe('restockRows', () => {
     const rows = restockRows(classifyPlanned(
       [planned('Yukon Gold potatoes'), planned('vegan butter'), planned('sea salt'), planned('garlic powder')],
       items,
-      now
+      now, [], null, []
     ));
     expect(rows.map(r => r.name).sort()).toEqual(['Yukon Gold potatoes', 'vegan butter']);
   });
@@ -1329,12 +1332,12 @@ describe('consumedRows', () => {
   });
 
   it('names what the app currently claims you have', () => {
-    const rows = consumedRows(classifyPlanned([planned('Butter')], [stocked('Butter')], now));
+    const rows = consumedRows(classifyPlanned([planned('Butter')], [stocked('Butter')], now, [], null, []));
     expect(rows.map(r => r.name)).toEqual(['Butter']);
   });
 
   it('carries probablyHaveReason so the sheet can say why it asked', () => {
-    const rows = consumedRows(classifyPlanned([planned('Butter')], [stocked('Butter')], now));
+    const rows = consumedRows(classifyPlanned([planned('Butter')], [stocked('Butter')], now, [], null, []));
     expect(rows[0].reason).toMatch(/bought 3×/);
   });
 
@@ -1346,18 +1349,18 @@ describe('consumedRows', () => {
       onList: false,
       onHandUntil: new Date(2026, 7, 20).toISOString(),
     });
-    const rows = consumedRows(classifyPlanned([planned('Soy sauce')], [asserted], now));
+    const rows = consumedRows(classifyPlanned([planned('Soy sauce')], [asserted], now, [], null, []));
     expect(rows.map(r => r.name)).toEqual(['Soy sauce']);
   });
 
   it('drops a name the app has never seen — it can only take away a claim it made', () => {
-    const rows = consumedRows(classifyPlanned([planned('gochujang')], [], now));
+    const rows = consumedRows(classifyPlanned([planned('gochujang')], [], now, [], null, []));
     expect(rows).toEqual([]);
   });
 
   it('drops a staple, which is a standing fact rather than a guess about this week', () => {
     const items = [item({ name: 'Salt', onList: false, isStaple: true })];
-    expect(consumedRows(classifyPlanned([planned('Salt')], items, now))).toEqual([]);
+    expect(consumedRows(classifyPlanned([planned('Salt')], items, now, [], null, []))).toEqual([]);
   });
 
   it('drops anything already being restocked', () => {
@@ -1365,7 +1368,7 @@ describe('consumedRows', () => {
       item({ name: 'Milk', onList: true, checked: false }),
       item({ name: 'Eggs', onList: true, checked: true }),
     ];
-    const rows = consumedRows(classifyPlanned([planned('Milk'), planned('Eggs')], items, now));
+    const rows = consumedRows(classifyPlanned([planned('Milk'), planned('Eggs')], items, now, [], null, []));
     expect(rows).toEqual([]);
   });
 
@@ -1378,7 +1381,7 @@ describe('consumedRows', () => {
       lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
       onHandUntil: new Date(0).toISOString(),
     });
-    expect(consumedRows(classifyPlanned([planned('Butter')], [out], now))).toEqual([]);
+    expect(consumedRows(classifyPlanned([planned('Butter')], [out], now, [], null, []))).toEqual([]);
   });
 
   it('is disjoint from restockRows, and the two cover every known line', () => {
@@ -1389,7 +1392,7 @@ describe('consumedRows', () => {
     const classified = classifyPlanned(
       [planned('Butter'), planned('Onions'), planned('gochujang')],
       items,
-      now
+      now, [], null, []
     );
     const consumed = consumedRows(classified).map(r => r.nameKey);
     const restock = restockRows(classified).map(r => r.nameKey);
@@ -1505,5 +1508,28 @@ describe('describeLeftBehind', () => {
     expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes')])).toBe('Tortillas, Salsa and Limes');
     expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes'), row('Cheese')]))
       .toBe('Tortillas, Salsa and 2 more');
+  });
+});
+
+describe('what a cooking opened', () => {
+  it('reads the lines the app already claims you have, through the meal\'s own recipe', () => {
+    const oil = item({ name: 'olive oil', lastPurchasedAt: new Date().toISOString(), purchaseCount: 3 });
+    const r = recipe('Pasta', [ing('olive oil'), ing('spaghetti')]);
+    const rows = cookedConsumption(entry('2026-03-02', r.id), [r], [oil], [], new Date(), []);
+    expect(rows.map(x => x.name)).toEqual(['olive oil']);
+    expect(cookedConsumption(entry('2026-03-02', null), [r], [oil], [], new Date(), [])).toEqual([]);
+  });
+
+  it('resolves rows back to catalog ids, leaving out one already open and one with no row', () => {
+    const oil = item({ name: 'olive oil' });
+    const salt = item({ name: 'salt', openedAt: '2026-01-01T00:00:00.000Z' });
+    const rows = [classifiedRow({ nameKey: oil.nameKey, name: 'olive oil' }), classifiedRow({ nameKey: salt.nameKey, name: 'salt' }), classifiedRow({ nameKey: 'saffron', name: 'saffron' })];
+    expect(cookOpenedIds(rows, [oil, salt])).toEqual([oil.id]);
+  });
+
+  it('dates the opening on a past meal\'s own day at noon, and now otherwise', () => {
+    const now = new Date(2026, 2, 5, 18);
+    expect(openedAtForCook({ date: '2026-03-02' }, '2026-03-05', now)).toEqual(new Date(2026, 2, 2, 12));
+    expect(openedAtForCook({ date: '2026-03-05' }, '2026-03-05', now)).toBe(now);
   });
 });

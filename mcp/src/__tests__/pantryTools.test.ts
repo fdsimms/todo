@@ -8,10 +8,12 @@ import { openReplica } from '../replica';
 import {
   addToPantry,
   answerPantryReview,
+  deleteLeftover,
   getPantryItem,
   listPantry,
   logLeftover,
   pantryReview,
+  splitLeftover,
   updateLeftover,
   updatePantryBox,
   updatePantryItem,
@@ -239,6 +241,51 @@ describe('the pantry tools', () => {
       expect(updateLeftover(replica, id, { finished: null }).finished).toBeUndefined();
       expect(listPantry(replica).entries.map(e => e.title)).toEqual(['Chili']);
     });
+
+    it('renames, weighs and re-dates a container, keeping its window', () => {
+      // Put away at noon on Jan 1, kept three days.
+      mockRaw.runSync(
+        "INSERT INTO leftovers (id, title, stored_at, keep_until, created_at) VALUES ('l2','Chili',?,?,?)",
+        [new Date(2030, 0, 1, 12).toISOString(), '2030-01-04', new Date().toISOString()],
+      );
+      replica.refresh();
+      const out = updateLeftover(replica, 'l2', { title: 'Turkey chili', weightG: 600 });
+      expect(out).toMatchObject({ title: 'Turkey chili', weightG: 600 });
+      const moved = updateLeftover(replica, 'l2', { storedAt: new Date(2029, 11, 30, 18) });
+      expect(moved).toMatchObject({ storedAt: new Date(2029, 11, 30, 18).toISOString(), keepUntil: '2030-01-02' });
+      expect(() => updateLeftover(replica, 'l2', { title: '  ' })).toThrow(/needs a name/);
+    });
+
+    it('takes a container\'s use-up task off Today when it is finished or deleted, as the phone does', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const database = require('../../../src/db/database') as typeof import('../../../src/db/database');
+      const useUp = (leftoverId: string) => {
+        const task = replica.createTask({ title: 'Use up Chili', category: 'Home' });
+        database.dbUpdateTask({ ...task, generatedKind: 'leftoverUseUp', generatedSourceId: leftoverId });
+        replica.refresh();
+        return task.id;
+      };
+      const id = insertLeftover();
+      const taskId = useUp(id);
+      updateLeftover(replica, id, { finished: 'eaten' });
+      expect(replica.tasks().some(t => t.id === taskId)).toBe(false);
+
+      const { split } = splitLeftover(replica, (updateLeftover(replica, id, { finished: null }), id));
+      const splitTask = useUp(split.id);
+      deleteLeftover(replica, split.id);
+      expect(replica.tasks().some(t => t.id === splitTask)).toBe(false);
+    });
+
+    it('splits a container across the freezer line, and deletes one', () => {
+      const id = insertLeftover();
+      const { original, split } = splitLeftover(replica, id);
+      expect(original.frozen).toBeUndefined();
+      expect(split).toMatchObject({ title: 'Chili', frozen: true, storedAt: original.storedAt });
+      deleteLeftover(replica, split.id);
+      expect(replica.leftovers().map(l => l.id)).toEqual([id]);
+      updateLeftover(replica, id, { finished: 'tossed' });
+      expect(() => splitLeftover(replica, id)).toThrow(/finished/);
+    });
   });
 
   it('records every pantry write in Activity under one subject, with the snapshot an undo reads', () => {
@@ -264,6 +311,8 @@ describe('pantry undo and log_leftover', () => {
 
   const stateOf = (r: ReturnType<typeof openReplica>) => ({
     project: () => null,
+    stack: () => null,
+    person: () => null,
     groceryHome: (id: string) => {
       const e = r.groceryListEntries().find(x => x.itemId === id && x.listId === null);
       return e ? { checked: e.checked } : null;

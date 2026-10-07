@@ -488,8 +488,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
    * makes it usable at all rather than a refinement — see `scannedGtinsRef`.
    */
   const handleBarcodeScanned = useCallback(
-    ({ data }: { data: string }) => {
-      const gtin = normalizeGtin(data);
+    // The type is what tells a UPC-E from an EAN-8; see normalizeGtin.
+    ({ data, type }: { data: string; type?: string }) => {
+      const gtin = normalizeGtin(data, type);
       // A code that fails its own check digit is a misread, and a misread that
       // reached the network would file somebody else's product in the pantry.
       if (!gtin) return;
@@ -1379,7 +1380,7 @@ function makeStyles(colors: Colors) {
       height: CHECK_SIZE,
       borderRadius: checkboxRadius(CHECK_SIZE),
       borderWidth: 1.5,
-      borderColor: colors.separator,
+      borderColor: colors.controlBorder,
       alignItems: 'center',
       justifyContent: 'center',
     },

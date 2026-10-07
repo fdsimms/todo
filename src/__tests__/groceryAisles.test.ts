@@ -39,6 +39,17 @@ describe('AISLE_LEXICON', () => {
 // ─── aisleForName ────────────────────────────────────────────────────────────
 
 describe('aisleForName', () => {
+  it('files anything named frozen in Frozen, ahead of its head noun', () => {
+    expect(aisleForName('frozen spinach')).toBe('Frozen');
+    expect(aisleForName('frozen chicken')).toBe('Frozen');
+    expect(aisleForName('frozen blueberries')).toBe('Frozen');
+  });
+
+  it('knows compounds whose last word is another aisle\'s food', () => {
+    expect(aisleForName('ginger ale')).toBe('Beverages');
+    expect(aisleForName('peanut butter cups')).toBe('Snacks');
+  });
+
   it('resolves an exact name', () => {
     expect(aisleForName('milk')).toBe('Dairy & Eggs');
     expect(aisleForName('Bananas')).toBe('Produce');

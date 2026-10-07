@@ -44,7 +44,7 @@ import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
-import { projectBlueprint } from '../utils/projectTemplate';
+import { freshCopyDraft, projectBlueprint } from '../utils/projectTemplate';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
@@ -375,6 +375,9 @@ import {
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM } from '../utils/clockTime';
+import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
+import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
+import { duplicateRows } from '../utils/taskDuplicate';
 import { useTransitStore } from './useTransitStore';
 import { travelOriginOfEvent, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
@@ -442,39 +445,9 @@ function chargePenaltyShield(until: Date, reason: string): void {
  * end of the block, and a credit that shortens the block without ending it has
  * not changed whose block it is.
  */
-/**
- * An occurrence's reminder moved onto a new due date: the same clock time on
- * the new day (or the same offset before it), or, for a reminder that tracks
- * visibility, the moment the moved row becomes visible. The rule
- * buildCompletion applies to a successor, for the two paths that re-date a row
- * outside a completion: skipping one, and a daily target's rollover.
- */
+/** `reminderOnto` (taskSkip.ts) against the logical day the app keeps. */
 function reminderOnto(effective: Task, due: Date, overrides: Partial<Task> = {}): Pick<Task, 'reminderTime' | 'reminderUtcOffsetMinutes'> {
-  if (!effective.reminderTime) {
-    return { reminderTime: effective.reminderTime, reminderUtcOffsetMinutes: effective.reminderUtcOffsetMinutes };
-  }
-  if (effective.reminderTracksVisibility) {
-    const next = getVisibleAt({ ...effective, ...overrides, dueDate: due.toISOString(), deferUntil: null });
-    return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
-  }
-  const original = new Date(effective.reminderTime);
-  const onto = effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due;
-  // The clock time on the new day's *logical* day (carryClockTime), not copied
-  // onto its calendar date: a 1 AM reminder sits at the end of its day under a
-  // 4 AM reset, and copied it landed a whole day early on every successor.
-  const next = carryClockTime(onto, original, useSettingsStore.getState().dayResetTime);
-  return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
-}
-
-/**
- * A relative deadline recomputed against a new due date, as buildCompletion
- * does for a successor. A fixed deadline is a one-off date, so it's returned
- * unchanged here: re-dating the same row doesn't make it stop applying.
- */
-function deadlineOnto(effective: Task, due: Date): string | null {
-  if (effective.deadlineOffsetDays !== null) return getDeadlineFromOffset(due, effective.deadlineOffsetDays).toISOString();
-  if (effective.deadlineMonthDay !== null) return getDeadlineFromMonthDay(due, effective.deadlineMonthDay).toISOString();
-  return effective.deadline;
+  return reminderOntoDay(effective, due, useSettingsStore.getState().dayResetTime, overrides);
 }
 
 /**
@@ -1155,12 +1128,6 @@ function reconcileTimeBlockEvent(task: Task, write?: ReconcileWrite): void {
     .catch(() => {});
 }
 
-// Identity of a date as the user picked it off a calendar — deliberately the
-// literal Y/M/D rather than getDayStart, since reconciling a series matches
-// rows against dates chosen in a date picker, where dayResetTime plays no part.
-function calendarDayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
 
 
 
@@ -1633,6 +1600,12 @@ interface TaskStore extends UndoHistoryActions {
    * must keep writing it.
    */
   deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean }) => void;
+  /**
+   * Put deleted rows back exactly as they were, with their reminders and
+   * deadline events: Activity's restore of a task an agent deleted
+   * (`DeletedTaskSnapshot`). A row that exists again is left alone.
+   */
+  restoreTasks: (rows: Task[]) => void;
   /**
    * `deliverableValue` records the answer a decision task was completed with
    * (see Task.deliverableKind). Omitting it completes with no answer, which
@@ -2956,140 +2929,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   applyTaskDates(taskId, dates, repeat) {
     const anchor = get().tasks.find(t => t.id === taskId);
     if (!anchor) return;
-
-    const sorted = [...dates].sort((a, b) => +a - +b);
-    const monthDays = repeat?.monthDays ?? [];
-    const repeatMonths = repeat?.repeatMonths ?? 1;
-
-    // One date or none isn't a series. If this task was in one, the rest of
-    // the set goes away and the row becomes an ordinary dated task again —
-    // except for its completed dates, which are history and stay put, just
-    // unfiled from a series that no longer exists.
-    if (sorted.length <= 1) {
-      if (!anchor.seriesId) {
-        get().updateTask(
-          taskId,
-          { dueDate: sorted[0]?.toISOString() ?? anchor.dueDate },
-          SKIP_POSTPONE,
-        );
-        return;
-      }
-      const others = get().seriesRowsOf(anchor.seriesId).filter(t => t.id !== taskId);
-      const dropped = others.filter(t => !t.completed && !t.archived);
-      const unfiled = others
-        .filter(t => t.completed || t.archived)
-        .map(t => ({ ...t, seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1 }));
-
-      dropped.forEach(t => {
-        dbDeleteSubtasks(t.id);
-        dbDeleteTask(t.id);
-        cancelTaskReminder(t.id);
-        cancelQuotaNudges(t.id);
-        if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
-      });
-      unfiled.forEach(dbUpdateTask);
-
-      const droppedIds = new Set(dropped.map(t => t.id));
-      const unfiledById = new Map(unfiled.map(t => [t.id, t]));
-      set(s => ({
-        tasks: s.tasks
-          .filter(t => !droppedIds.has(t.id) && !(t.parentId && droppedIds.has(t.parentId)))
-          .map(t => unfiledById.get(t.id) ?? t),
-      }));
-      get().updateTask(taskId, {
-        dueDate: sorted[0]?.toISOString() ?? anchor.dueDate,
-        seriesId: null,
-        seriesMonthDays: [],
-        seriesRepeatMonths: 1,
-      }, SKIP_POSTPONE);
-      return;
-    }
-
-    // Two or more dates: the anchor takes the series id, whether it's already
-    // in a series or is a plain task being given extra dates for the first
-    // time. It keeps its own date whenever that date survived the edit — the
-    // row the user has open shouldn't silently become a different date, and
-    // moving it would also make the reconcile below read it as dropped and
-    // delete it. Only a row whose date was edited away gets repointed.
-    const seriesId = anchor.seriesId ?? generateId();
-    const anchorDay = anchor.dueDate ? calendarDayKey(new Date(anchor.dueDate)) : null;
-    const anchorKept = anchorDay !== null && sorted.some(d => calendarDayKey(d) === anchorDay);
-    // Repointed onto a wanted date no other open row of the set already holds.
-    // Always taking the earliest could land it on a sibling's date, and the
-    // reconcile below then kept one and deleted the other: editing the 10th's
-    // dates to {15th, 20th} deleted the 15th that was already there, with its
-    // notes and subtasks.
-    const heldByOthers = new Set(
-      (anchor.seriesId ? get().seriesRowsOf(anchor.seriesId) : [])
-        .filter(t => t.id !== taskId && !t.completed && !t.archived && t.dueDate)
-        .map(t => calendarDayKey(new Date(t.dueDate!)))
-    );
-    const repointTo = sorted.find(d => !heldByOthers.has(calendarDayKey(d))) ?? sorted[0];
-    get().updateTask(taskId, {
-      dueDate: anchorKept ? anchor.dueDate : repointTo.toISOString(),
-      seriesId,
-      seriesMonthDays: monthDays,
-      seriesRepeatMonths: repeatMonths,
-      // The anchor gives up its recurrence rule along with the rows cloned
-      // from it — the dates are the schedule now (see NO_RECURRENCE).
-      ...NO_RECURRENCE,
-    }, SKIP_POSTPONE);
-
-    const rows = get().seriesRowsOf(seriesId);
-    if (rows.length === 0) return;
-
-    // New rows clone the row the user was actually editing, so a title or
-    // category changed in the same save reaches the dates added by it.
-    const template = rows.find(t => t.id === taskId) ?? rows.find(t => !t.completed) ?? rows[0];
-
-    // Completed rows hold their date permanently — they're a record of a day
-    // that happened, so they neither get rewritten nor count as a date the
-    // set still owes. Everything below reconciles the incomplete rows only.
-    //
-    // Archived rows are held the same way, and for a sharper reason: they used
-    // to count as live, so editing the dates deleted one outright when its date
-    // was dropped from the set — filed-away data destroyed by an unrelated
-    // edit. And when its date was *kept*, the archived row satisfied it, so the
-    // set ended up with nothing actionable on a day the user had just asked
-    // for. Excluded from `live` here, they're neither deleted nor counted, and
-    // a kept date gets a real row of its own alongside them.
-    const wanted = new Map(sorted.map(d => [calendarDayKey(d), d]));
-    // A row whose own date was dropped goes last, so if every wanted date was
-    // already held (see repointTo above) it's the one left over, not a sibling
-    // that still had its date.
-    const live = rows
-      .filter(t => !t.completed && !t.archived)
-      .sort((a, b) => (anchorKept ? 0 : Number(a.id === taskId) - Number(b.id === taskId)));
-
-    const kept: Task[] = [];
-    const removed: Task[] = [];
-    for (const row of live) {
-      const key = row.dueDate ? calendarDayKey(new Date(row.dueDate)) : null;
-      if (key !== null && wanted.has(key)) {
-        wanted.delete(key);
-        kept.push(row);
-      } else {
-        removed.push(row);
-      }
-    }
-
-    let order = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const added = Array.from(wanted.values())
-      .sort((a, b) => +a - +b)
-      .map(date => {
-        order += 1;
-        return { ...buildSeriesRow(template, date, seriesId, repeat), sortOrder: order };
-      });
-
-    // The repeat rule lives on every row of the set (they share one schedule),
-    // so a change to it has to reach the rows that already existed too.
-    const rewritten = [...kept, ...rows.filter(t => t.completed || t.archived)].map(t => ({
-      ...t,
-      seriesMonthDays: monthDays,
-      seriesRepeatMonths: repeatMonths,
-    }));
-
-    removed.forEach(t => {
+    // The rules are taskDates.ts's; this is the device half around them.
+    const step = datesAnchorStep(anchor, get().tasks, dates, repeat, generateId);
+    const dropRow = (t: Task) => {
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
       cancelTaskReminder(t.id);
@@ -3097,7 +2939,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
       if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
-    });
+    };
+
+    if (step.kind === 'plain') {
+      get().updateTask(taskId, step.patch, SKIP_POSTPONE);
+      return;
+    }
+    if (step.kind === 'dissolve') {
+      step.dropped.forEach(dropRow);
+      step.unfiled.forEach(dbUpdateTask);
+      const droppedIds = new Set(step.dropped.map(t => t.id));
+      const unfiledById = new Map(step.unfiled.map(t => [t.id, t]));
+      set(s => ({
+        tasks: s.tasks
+          .filter(t => !droppedIds.has(t.id) && !(t.parentId && droppedIds.has(t.parentId)))
+          .map(t => unfiledById.get(t.id) ?? t),
+      }));
+      get().updateTask(taskId, step.patch, SKIP_POSTPONE);
+      return;
+    }
+
+    get().updateTask(taskId, step.patch, SKIP_POSTPONE);
+    const { removed, added, rewritten } = datesReconcile(
+      get().seriesRowsOf(step.seriesId),
+      taskId,
+      step,
+      repeat,
+      get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0),
+    );
+
+    removed.forEach(dropRow);
     added.forEach(t => {
       dbInsertTask(t);
       scheduleTaskReminder(t);
@@ -3149,81 +3020,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const original = get().tasks.find(t => t.id === id);
     if (!original) return null;
 
-    const now = new Date().toISOString();
-    const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const resetForCopy = {
-      completed: false,
-      completedAt: null,
-      missedAt: null,
-      doneByOtherAt: null,
-      // A copy is the user's own doing, whatever put the date on the original.
-      autoScheduledAt: null,
-      createdAt: now,
-      seenAt: now,
-      pinned: false,
-      streakCount: 0,
-      streakDate: null,
-      previousStreakCount: 0,
-      previousStreakDate: null,
-      priorBestStreak: 0,
-      timerStartedAt: null,
-      actualMinutes: null,
-      // The duplicate keeps the duration but starts its countdown fresh. The
-      // health target is not reset alongside it, and neither is timedMinutes:
-      // the countdown's *progress* is what belongs to the original run, where
-      // the target is part of what the task is.
-      timerElapsedSeconds: 0,
-      // Same split as actualMinutes above: the copy still asks the question,
-      // it just hasn't been answered yet.
-      deliverableValue: null,
-      deliverableWhy: null,
-      deliverableRevisitIf: null,
-      previousOccurrenceId: null,
-      seriesId: null,
-      seriesMonthDays: [],
-      seriesRepeatMonths: 1,
-      seriesDefaults: null,
-      archived: false,
-      archivedAt: null,
-      chainIndex: 0, // a duplicate starts a chain fresh, not mid-way through the original
-      // Both, unlike a recurrence successor: a copy is a new task the user just
-      // made, so it has neither a history of being ducked nor a mute they set.
-      postponeCount: 0,
-      postponeMuted: false,
-      driftingSince: null,
-      bountyPushes: null,
-      // deadlineOnCalendar (the preference) carries via ...original, same as
-      // every other setting on the copy, but the device event does not —
-      // two tasks pointing at one event means editing either one's deadline
-      // silently drags the other's calendar entry with it. Nor its server id,
-      // which would let the copy find the original's event again (#2950).
-      calendarEventId: null,
-      calendarEventExternalId: null,
-      // logCompletionToCalendar carries via ...original the same way, but a
-      // copy is a fresh, uncompleted task — it hasn't logged anything yet.
-      completionCalendarEventId: null,
-      completionCalendarEventExternalId: null,
-      // Same reasoning, and the copy has no claim on the original's slot
-      // anyway — the block was time set aside for one piece of work.
-      timeBlockEventId: null,
-      timeBlockExternalId: null,
-    };
-    const copy: Task = {
-      ...original,
-      ...resetForCopy,
-      id: generateId(),
-      sortOrder: maxOrder + 1,
-    };
+    const { copy, subtaskCopies } = duplicateRows(original, get().subtasksOf(id), {
+      now: new Date().toISOString(),
+      sortOrder: get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+      newId: generateId,
+    });
     dbInsertTask(copy);
     scheduleTaskReminder(copy);
     reconcileDeadlineEvent(copy);
 
-    const subtaskCopies = get().subtasksOf(id).map(sub => ({
-      ...sub,
-      ...resetForCopy,
-      id: generateId(),
-      parentId: copy.id,
-    }));
     subtaskCopies.forEach(sub => {
       dbInsertTask(sub);
       scheduleTaskReminder(sub);
@@ -3531,6 +3336,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, null);
       },
     });
+  },
+
+  restoreTasks(rows) {
+    const present = new Set(get().tasks.map(t => t.id));
+    const back = rows.filter(t => !present.has(t.id));
+    if (back.length === 0) return;
+    back.forEach(t => {
+      dbInsertTask(t);
+      scheduleTaskReminder(t);
+      if (!t.parentId) {
+        scheduleQuotaNudges(t);
+        // The device event went with the delete; this writes a fresh one, as
+        // deleteTask's own undo does.
+        reconcileDeadlineEvent(t);
+      }
+    });
+    set(s => ({ tasks: [...s.tasks, ...back] }));
   },
 
   markMissed(id, options) {
@@ -5929,7 +5751,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const tasks = get().tasks;
     if (!creating && liveGeneratedTasksOfKind(tasks, 'pantryCheck').length === 0) return;
 
-    const { items, listEntries } = useGroceryStore.getState();
+    const { items, listEntries, itemProducts } = useGroceryStore.getState();
     // Every trolley, not just the one at home: a row already on the Airbnb list
     // is shopping you are on your way to do, so asking whether you still have it
     // is asking the wrong question. See pantryCheckLapse.
@@ -5953,7 +5775,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
-    const stale = stalePantryCheckTasks(tasks, items, now, listed);
+    const stale = stalePantryCheckTasks(tasks, items, now, itemProducts, listed);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
     if (!creating) return;
 
@@ -5966,7 +5788,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its item's lapse null, which is exactly what that pass tests.
     if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
 
-    const wanted = wantedPantryChecks(items, tasks, now, undefined, listed);
+    const wanted = wantedPantryChecks(items, tasks, now, itemProducts, undefined, listed);
     if (wanted.length === 0) return;
 
     ensureGeneratedTaskCategory('pantryCheck');
@@ -7696,97 +7518,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || task.recurrenceType === 'none') return;
-    // This rolls the row onto its next occurrence *in place* rather than
-    // spawning a fresh one, so it's the one other place (besides completeTask
-    // and rolloverQuotas) that has to apply a pending "this task only"
-    // edit's seriesDefaults revert itself — nothing else ever will for this
-    // row. Skipped without it, an occurrence-scoped content edit made just
-    // before a task expired (or was marked missed ahead of its day) never
-    // gets undone: the row that was supposed to carry it for one occurrence
-    // only just keeps rolling forward with it forever.
-    const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
-    const contentReset: Partial<Task> = {};
-    for (const key of CONTENT_FIELDS) captureField(contentReset, effective, key);
-    // Mirror completeTask's advancesBySchedule split: a mid-chain step never
-    // consults the recurrence schedule, so skipping one should only move the
-    // chain position — pushing dueDate/recurrenceCount here would burn a full
-    // cycle of the recurrence on a step that isn't scheduled at all.
-    const { dayResetTime } = useSettingsStore.getState();
-    // Same as completeTask's successor: the row stays pinned into its next
-    // occurrence only when the task asked for every occurrence to be, so a
-    // skip doesn't leave a pin on the block the user already cleared it from.
-    const pinReset: Partial<Task> = { pinned: !!task.pinEachOccurrence };
-    const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
-    const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
-    if (chainAdvances && !atChainEnd) {
-      // With per-step scheduling the step being skipped occupies a day of its
-      // own, so moving the position isn't enough — the date has to move with
-      // it or the next step stays parked on the day the skipped one had.
-      // recurrenceCount is left alone in both modes: skipping a step isn't
-      // skipping a cycle (same reasoning as completeTask's two flags).
-      if (!task.chainStepOnSchedule) {
-        get().updateTask(id, { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 });
-        return;
-      }
-      const stepDue = getNextDueDate(task, dayResetTime, { catchUp: true });
-      if (!stepDue) {
-        get().updateTask(id, { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 });
-        return;
-      }
-      // Same shape as completeTask's successor: see reminderOnto.
-      const stepReminder = reminderOnto(effective, stepDue, contentReset);
-      get().updateTask(id, {
-        ...contentReset,
-        ...pinReset,
-        chainIndex: task.chainIndex + 1,
-        dueDate: stepDue.toISOString(),
-        deferUntil: null,
-        ...stepReminder,
-        deadline: deadlineOnto(effective, stepDue),
-        // Named so updateTask doesn't re-derive it from the date this skip
-        // lands on: the app moving a row must never re-anchor the grid, or a
-        // task on the 31st skipped through February stays on the 28th.
-        recurrenceAnchorDay: task.recurrenceAnchorDay,
-        // Same as completeTask's successor: this step is landing on a new
-        // day, so it starts that day with no pushes against it yet — the
-        // count belongs to the occurrence that was skipped, not the one
-        // taking its place.
-        postponeCount: 0,
-        driftingSince: null,
-        bountyPushes: null,
-      }, SKIP_POSTPONE);
-      return;
-    }
-    // Same catchUp as completeTask's: skipping an occurrence that's a month
-    // overdue means the next one you'll actually do, not the one after the one
-    // you already missed. sweepExpiredTasks rolls expired occurrences forward
-    // through here, so an app left shut for a week lands them on today rather
-    // than on the day after they expired.
-    const nextDue = getNextDueDate(task, dayResetTime, { catchUp: true });
-    if (!nextDue) return;
-    const nextReminder = reminderOnto(effective, nextDue, contentReset);
-    const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
-    get().updateTask(id, {
-      ...contentReset,
-      ...pinReset,
-      dueDate: nextDue.toISOString(),
-      deferUntil: null,
-      ...nextReminder,
-      // A relative deadline follows the date, as it does on completion; see
-      // the chain-step branch above for the anchor day.
-      deadline: deadlineOnto(effective, nextDue),
-      recurrenceAnchorDay: task.recurrenceAnchorDay,
-      chainIndex: nextChainIndex,
-      recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
-      // Same as completeTask's successor: rolling forward to the next
-      // occurrence — whether the user chose to skip it or sweepExpiredTasks
-      // rolled it forward unattended — starts a fresh run with no pushes
-      // against it yet.
-      postponeCount: 0,
-      driftingSince: null,
-      bountyPushes: null,
-    }, SKIP_POSTPONE);
+    if (!task) return;
+    const patch = skipPatch(task, useSettingsStore.getState().dayResetTime);
+    if (patch) get().updateTask(id, patch, SKIP_POSTPONE);
   },
 
   postBounty(id) {
@@ -8507,10 +8241,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   // Members adopt the new stack's category as part of the same write that
-  // files them into it. Deliberately *not* wrapped in a dbTransaction:
-  // applyTemplate already calls this from inside one, and expo-sqlite's
-  // withTransactionSync can't nest — it would throw on device while the tests,
-  // which mock dbTransaction, stayed green.
+  // files them into it. Not wrapped in a dbTransaction of its own:
+  // applyTemplate already calls this from inside one.
   groupTasks(taskIds, title, category) {
     const group = useTaskGroupStore.getState().createGroup(title, category);
     // A stack holds a slot in the list order like a task does (see
@@ -8965,43 +8697,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const copyOf = new Map<string, string>();
       for (const { task, sectionId, subtasks } of blueprint.entries) {
         const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
-        const copy = get().addTask({
-          title: task.title,
-          notes: task.notes,
-          tags: task.tags,
-          category: task.category,
-          priority: task.priority,
-          effort: task.effort,
-          estimatedMinutes: task.estimatedMinutes,
-          timeSegments: task.timeSegments,
-          recurrenceType: task.recurrenceType,
-          recurrenceInterval: task.recurrenceInterval,
-          recurrenceDays: task.recurrenceDays,
-          recurrenceMonthDay: task.recurrenceMonthDay,
-          recurrenceMonth: task.recurrenceMonth,
-          recurrenceFromCompletion: task.recurrenceFromCompletion,
-          chainEnabled: task.chainEnabled,
-          chainItems: task.chainItems,
-          // The whole question, not just its kind: a guest's Yes/No/Maybe
-          // copied without its options asked in free text and fell out of
-          // the tally.
-          deliverableKind: task.deliverableKind,
-          deliverableOptions: task.deliverableOptions ?? [],
-          deliverableSetsAway: task.deliverableSetsAway ?? false,
-          windowStart: task.windowStart,
-          windowEnd: task.windowEnd,
-          linkUrl: task.linkUrl,
-          vacationPause: task.vacationPause,
-          excludeFromSuggestions: task.excludeFromSuggestions,
-          difficulty: task.difficulty ?? null,
-          pinEachOccurrence: task.pinEachOccurrence,
-          projectId: created.id,
-          groupId,
-          // Last time's dates belong to last time, so one-offs start undated.
-          // A repeating task starts today instead: undated, a project task is
-          // on no list, and Pull never offers a routine, so it was stranded.
-          dueDate: task.recurrenceType !== 'none' ? getLogicalToday().toISOString() : null,
-        }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        const copy = get().addTask(freshCopyDraft(task, created.id, groupId, getLogicalToday()), undefined, { skipTitleRules: true, skipCategoryDefault: true });
         copyOf.set(task.id, copy.id);
         subtasks.forEach(title => get().addSubtask(copy.id, title));
         if (groupId) {

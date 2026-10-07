@@ -102,9 +102,9 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
     }
   }, [onFound, onClose]);
 
-  const handleScan = useCallback((raw: string) => {
+  const handleScan = useCallback((raw: string, symbology?: string) => {
     if (lockedRef.current) return;
-    const gtin = normalizeGtin(raw);
+    const gtin = normalizeGtin(raw, symbology);
     // A code that fails its own check digit is a misread, and a misread that
     // reached the network would offer somebody else's product's figures.
     if (!gtin) return;
@@ -118,7 +118,8 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
     [handleScan],
   );
   const handleBarcodeScanned = useCallback(
-    ({ data }: { data: string }) => handleScan(data),
+    // The type is what tells a UPC-E from an EAN-8; see normalizeGtin.
+    ({ data, type }: { data: string; type?: string }) => handleScan(data, type),
     [handleScan],
   );
 

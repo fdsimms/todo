@@ -427,20 +427,20 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Truffle salt', purchaseCount: 2, createdAt: daysAgo(60), lastPurchasedAt: daysAgo(1),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 2× · last on Aug 6');
+    expect(probablyHaveReason(item, NOW, [])).toBe('bought 2× · last on Aug 6');
   });
 
   it('is null once the flat window has run out, below the cadence floor', () => {
     const item = makeItem({
       name: 'Truffle salt', purchaseCount: 2, createdAt: daysAgo(60), lastPurchasedAt: daysAgo(20),
     });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
   });
 
   // "once" rather than "1×", mirroring describeCookHistory.
   it('names a single purchase as "once"', () => {
     const item = makeItem({ name: 'Tahini', purchaseCount: 1, createdAt: daysAgo(3), lastPurchasedAt: daysAgo(3) });
-    expect(probablyHaveReason(item, NOW)).toBe('bought once · last on Aug 4');
+    expect(probablyHaveReason(item, NOW, [])).toBe('bought once · last on Aug 4');
   });
 
   it('gives a reason when the last purchase is still inside the item\'s own cadence', () => {
@@ -448,7 +448,7 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on Jul 28');
+    expect(probablyHaveReason(item, NOW, [])).toBe('bought 3× · last on Jul 28');
   });
 
   it('is null once the item is overdue by its own cadence — that is a guess it is gone', () => {
@@ -456,12 +456,12 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(40),
     });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
   });
 
   it('is null with no purchase recorded at all', () => {
     const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: null });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
   });
 
   // The invariant #1770 was about: a purchase must be readable *as* a
@@ -471,12 +471,12 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 4, createdAt: daysAgo(120), lastPurchasedAt: daysAgo(5), onHandUntil: null,
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 4× · last on Aug 2');
+    expect(probablyHaveReason(item, NOW, [])).toBe('bought 4× · last on Aug 2');
   });
 
   it('a future onHandUntil wins regardless of purchase history', () => {
     const item = makeItem({ name: 'Saffron', purchaseCount: 0, onHandUntil: daysAgo(-5) });
-    expect(probablyHaveReason(item, NOW)).toBe('marked as on hand');
+    expect(probablyHaveReason(item, NOW, [])).toBe('marked as on hand');
   });
 
   it('an "Out of it" suppresses what would otherwise be a true reading', () => {
@@ -484,7 +484,7 @@ describe('probablyHaveReason', () => {
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
       onHandUntil: OUT_OF_IT_UNTIL,
     });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
   });
 
   // #1770 — the distinction the old "any past stamp is a negative" rule
@@ -496,7 +496,7 @@ describe('probablyHaveReason', () => {
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
       onHandUntil: daysAgo(1),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on Jul 28');
+    expect(probablyHaveReason(item, NOW, [])).toBe('bought 3× · last on Jul 28');
   });
 
   it('a lapsed "Got it" still reads as nothing when the purchase is stale too', () => {
@@ -504,17 +504,17 @@ describe('probablyHaveReason', () => {
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(40),
       onHandUntil: daysAgo(1),
     });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
   });
 
   it('a staple reads as on hand with no purchases and no onHandUntil at all', () => {
     const item = makeItem({ name: 'Salt', purchaseCount: 0, isStaple: true });
-    expect(probablyHaveReason(item, NOW)).toBe('always have it');
+    expect(probablyHaveReason(item, NOW, [])).toBe('always have it');
   });
 
   it('a staple outranks even a past onHandUntil', () => {
     const item = makeItem({ name: 'Salt', isStaple: true, onHandUntil: daysAgo(1) });
-    expect(probablyHaveReason(item, NOW)).toBe('always have it');
+    expect(probablyHaveReason(item, NOW, [])).toBe('always have it');
   });
 });
 
@@ -551,7 +551,7 @@ describe('correctableHaveReason', () => {
   // the three are hand-typed — only on whether listing the item contradicts it.
   it('stays quiet for a staple, which is true because it gets restocked', () => {
     const item = makeItem({ name: 'Salt', isStaple: true });
-    expect(probablyHaveReason(item, NOW)).toBe('always have it');
+    expect(probablyHaveReason(item, NOW, [])).toBe('always have it');
     expect(correctableHaveReason(item, NOW)).toBeNull();
   });
 
@@ -565,7 +565,7 @@ describe('correctableHaveReason', () => {
 
   it('stays quiet when the answer has already been given as "running low"', () => {
     const item = makeItem({ name: 'Milk', runningLowAt: daysAgo(1) });
-    expect(probablyHaveReason(item, NOW)).toBe(RUNNING_LOW_REASON);
+    expect(probablyHaveReason(item, NOW, [])).toBe(RUNNING_LOW_REASON);
     expect(correctableHaveReason(item, NOW)).toBeNull();
   });
 
@@ -579,7 +579,7 @@ describe('correctableHaveReason', () => {
 
   it('stays quiet for a frozen row — buying more does not empty the freezer', () => {
     const item = makeItem({ name: 'Chicken', frozenAt: daysAgo(30) });
-    expect(probablyHaveReason(item, NOW)).toBe(FROZEN_REASON);
+    expect(probablyHaveReason(item, NOW, [])).toBe(FROZEN_REASON);
     expect(correctableHaveReason(item, NOW)).toBeNull();
   });
 
@@ -632,7 +632,7 @@ describe('pantryGuessLapsedDays', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
     });
-    expect(probablyHaveReason(item, NOW)).not.toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).not.toBeNull();
     expect(pantryGuessLapsedDays(item, NOW)).toBeNull();
   });
 
@@ -642,7 +642,7 @@ describe('pantryGuessLapsedDays', () => {
     });
     // The exact moment probablyHaveReason goes quiet — the state change nobody
     // can see, which is what pantryCheckTasks offers to ask about.
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
     expect(pantryGuessLapsedDays(item, NOW)).toBeCloseTo(4, 5);
   });
 
@@ -658,7 +658,7 @@ describe('pantryGuessLapsedDays', () => {
     // deliberately gated harder than probablyHaveReason is: the reading is
     // happy to guess, but asking the user about a guess is a different bar.
     const item = makeItem({ name: 'Saffron', purchaseCount: 2, lastPurchasedAt: daysAgo(200) });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
     expect(pantryGuessLapsedDays(item, NOW)).toBeNull();
   });
 
@@ -681,7 +681,7 @@ describe('pantryEntries', () => {
     });
     const out = makeItem({ name: 'Olive oil', onHandUntil: daysAgo(1) });
 
-    const entries = pantryEntries([guessed, marked, overdue, out], NOW);
+    const entries = pantryEntries([guessed, marked, overdue, out], NOW, []);
     expect(entries.map(e => e.item.name)).toEqual(['Milk', 'Rice']);
     expect(entries.map(e => e.reason)).toEqual(['bought 3× · last on Jul 28', 'marked as on hand']);
   });
@@ -691,14 +691,14 @@ describe('pantryEntries', () => {
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
     });
     const marked = makeItem({ name: 'Rice', onHandUntil: daysAgo(-5) });
-    const entries = pantryEntries([guessed, marked], NOW);
+    const entries = pantryEntries([guessed, marked], NOW, []);
     expect(entries.find(e => e.item.name === 'Milk')!.asserted).toBe(false);
     expect(entries.find(e => e.item.name === 'Rice')!.asserted).toBe(true);
   });
 
   it('keeps an item that is also on the list — the assertion outlives the add', () => {
     const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
-    expect(pantryEntries([item], NOW).map(e => e.item.name)).toEqual(['Rice']);
+    expect(pantryEntries([item], NOW, []).map(e => e.item.name)).toEqual(['Rice']);
   });
 });
 
@@ -707,11 +707,11 @@ describe('onHandNameKeys', () => {
     const tofu = makeItem({ name: 'Extra firm tofu', onHandUntil: daysAgo(-5) });
     const outOfIt = makeItem({ name: 'Firm tofu', onHandUntil: OUT_OF_IT_UNTIL });
     const neverBought = makeItem({ name: 'Silken tofu' });
-    expect(onHandNameKeys([tofu, outOfIt, neverBought], NOW)).toEqual(new Set(['extra firm tofu']));
+    expect(onHandNameKeys([tofu, outOfIt, neverBought], NOW, [])).toEqual(new Set(['extra firm tofu']));
   });
 
   it('is empty for an empty catalog', () => {
-    expect(onHandNameKeys([], NOW)).toEqual(new Set());
+    expect(onHandNameKeys([], NOW, [])).toEqual(new Set());
   });
 });
 
@@ -808,7 +808,7 @@ describe('pantryEntries with boxes', () => {
 
   it('behaves exactly as before when no boxes are passed', () => {
     const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) });
-    expect(pantryEntries([item], NOW)).toEqual(pantryEntries([item], NOW, []));
+    expect(pantryEntries([item], NOW, [])).toEqual(pantryEntries([item], NOW, []));
   });
 });
 
@@ -816,7 +816,7 @@ describe('probablyHaveReason with boxes', () => {
   it('keeps vouching for an item whose only live claim is a frozen box', () => {
     const item = makeItem({ name: 'Bread', purchaseCount: 3, createdAt: daysAgo(300), lastPurchasedAt: daysAgo(200) });
     const frozen = makeProduct({ itemId: item.id, frozenAt: daysAgo(150) });
-    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [])).toBeNull();
     expect(probablyHaveReason(item, NOW, [frozen])).toBe(FROZEN_REASON);
   });
 
@@ -922,12 +922,12 @@ describe('running low lapses', () => {
   it('holds for up to two weeks and then stops answering for the item', () => {
     const fresh = makeItem({ name: 'Rice', runningLowAt: daysAgo(13) });
     expect(isRunningLow(fresh, NOW)).toBe(true);
-    expect(probablyHaveReason(fresh, NOW)).toBe(RUNNING_LOW_REASON);
+    expect(probablyHaveReason(fresh, NOW, [])).toBe(RUNNING_LOW_REASON);
     expect(runningLowLapsedDays(fresh, NOW)).toBeNull();
 
     const stale = makeItem({ name: 'Rice', runningLowAt: daysAgo(16) });
     expect(isRunningLow(stale, NOW)).toBe(false);
-    expect(probablyHaveReason(stale, NOW)).toBeNull();
+    expect(probablyHaveReason(stale, NOW, [])).toBeNull();
     expect(runningLowLapsedDays(stale, NOW)).toBeCloseTo(2, 5);
   });
 
@@ -948,6 +948,6 @@ describe('running low lapses', () => {
     const item = makeItem({
       name: 'Rice', runningLowAt: daysAgo(30), onHandUntil: new Date(NOW.getTime() + 5 * 86_400_000).toISOString(),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('marked as on hand');
+    expect(probablyHaveReason(item, NOW, [])).toBe('marked as on hand');
   });
 });

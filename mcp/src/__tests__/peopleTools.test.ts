@@ -5,11 +5,21 @@
  */
 import { getPerson, listPeople, upcomingBirthdays, addPersonHistory } from '../peopleTools';
 import type { Replica } from '../replica';
+import type { ShimDatabase } from '../expoSqliteShim';
 import type { Person, Task } from '../../../src/types';
 
 const person = (over: Partial<Person> & { id: string; name: string }): Person =>
   ({ nickname: '', kind: 'individual', notes: '', askAbout: '', sortOrder: 0, archived: false, groupId: null,
      birthdayMonth: null, birthdayDay: null, phoneNumber: '', email: '', ...over }) as Person;
+
+let mockRaw: ShimDatabase;
+
+jest.mock('expo-sqlite', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { openShimDatabase } = require('../expoSqliteShim');
+  mockRaw = openShimDatabase(':memory:');
+  return { openDatabaseSync: () => mockRaw };
+});
 
 function stub(people: Person[], over: Partial<Replica> = {}): Replica {
   return {
@@ -67,7 +77,7 @@ describe('getPerson', () => {
         { id: '4', personId: 'b', kind: 'gift', text: 'Not theirs', sortOrder: 1, archivedAt: null },
       ] as never,
     });
-    expect(getPerson(r, 'a')).toMatchObject({ giftIdeas: ['Socks'], food: ['Vegetarian'], history: [] });
+    expect(getPerson(r, 'a')).toMatchObject({ giftIdeas: [{ id: '1', text: 'Socks' }], food: [{ id: '2', text: 'Vegetarian' }], history: [] });
     expect(getPerson(r, 'a')!.otherNotes).toBeUndefined();
     expect(getPerson(r, 'nope')).toBeNull();
   });
@@ -93,5 +103,45 @@ describe('addPersonHistory', () => {
     expect(add).toHaveBeenCalledWith(['a'], 'Lunch', new Date('2026-09-30T12:00:00'));
     expect(result.added).toEqual({ title: 'Lunch', date: '2026-09-30', people: ['Al'] });
     expect(() => addPersonHistory(r, { personIds: ['a'], title: 'x', date: 'whenever' })).toThrow(/ISO/);
+  });
+});
+
+describe('the people writes, against a real database', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { openReplica } = require('../replica') as typeof import('../replica');
+  const tools = require('../peopleTools') as typeof import('../peopleTools');
+  const { agentRecordPlan } = require('../../../src/utils/agentRecordRevert') as typeof import('../../../src/utils/agentRecordRevert');
+  const ledger = () => (require('../../../src/db/database') as typeof import('../../../src/db/database')).dbGetUnattendedLog();
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  let real: ReturnType<typeof openReplica>;
+  beforeAll(() => { real = openReplica(':memory:'); });
+
+  it('writes, edits and deletes a gift idea with ids get_person returns', () => {
+    const sam = tools.createPerson(real, { name: 'Sam' });
+    const gift = tools.addPersonNote(real, { personId: sam.id, kind: 'gift', text: 'Record player' });
+    expect(tools.getPerson(real, sam.id)!.giftIdeas).toEqual([{ id: gift.id, text: 'Record player' }]);
+    tools.updatePersonNote(real, gift.id, { text: 'A record player', about: '2026-12-20' });
+    expect(tools.getPerson(real, sam.id)!.giftIdeas).toEqual([{ id: gift.id, text: 'A record player', about: '2026-12-20' }]);
+    tools.updatePersonNote(real, gift.id, { archived: true });
+    expect(tools.getPerson(real, sam.id)!.giftIdeas).toBeUndefined();
+    tools.deletePersonNote(real, gift.id);
+    expect(() => tools.deletePersonNote(real, gift.id)).toThrow(/No note/);
+  });
+
+  it('files people in a group, archives and orders them, and deletes one restorably', () => {
+    const a = tools.createPerson(real, { name: 'Ana' });
+    const b = tools.createPerson(real, { name: 'Ben' });
+    const group = tools.savePersonGroup(real, { name: 'Family' }).group!;
+    tools.updatePerson(real, a.id, { groupId: group.id, birthdayTaskOptOut: true });
+    expect(tools.getPerson(real, a.id)).toMatchObject({ group: 'Family', noBirthdayTask: true });
+    expect(tools.reorderPeople(real, [b.id]).order[0].id).toBe(b.id);
+    tools.updatePerson(real, b.id, { archived: true });
+    expect(tools.listPeople(real).map(p => p.id)).not.toContain(b.id);
+
+    tools.addPersonNote(real, { personId: a.id, kind: 'food', text: 'No shellfish' });
+    expect(tools.deletePerson(real, a.id)).toMatchObject({ deleted: 'Ana', notesDeleted: 1 });
+    const entry = ledger().find(e => e.subject === 'person' && e.recordId === a.id)!;
+    expect(agentRecordPlan(entry, { person: () => null } as never).kind).toBe('restoreDeletedPerson');
+    expect(tools.savePersonGroup(real, { name: 'Family', delete: true }).group).toBeNull();
   });
 });

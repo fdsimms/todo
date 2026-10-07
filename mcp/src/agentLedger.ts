@@ -22,7 +22,8 @@
  */
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
-import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
+import { PROJECT_REVERT_FIELDS, deletedPersonRevert, deletedProjectRevert, deletedStackRevert } from '../../src/utils/agentRecordRevert';
+import { deletedTaskRevert } from '../../src/utils/agentRevert';
 import { catalogRevertOf, catalogSnapshot, deletedItemRevert } from '../../src/utils/agentCatalogRevert';
 import { leftoverSnapshot, pantryRevertOf, pantrySnapshot, type PantryItemSnapshot } from '../../src/utils/agentPantryRevert';
 
@@ -184,6 +185,76 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return task;
     },
 
+    // A delete carries the rows it took, so Activity can put them back
+    // (agentRevert.ts, `restoreDeletedTask`): the only undo a delete has.
+    deleteTask(id) {
+      const deleted = replica.deleteTask(id);
+      const items = deleted.subtasks.length;
+      log({
+        action: 'cleared', subject: 'task', title: deleted.task.title, taskId: id,
+        note: `Delete "${deleted.task.title}"${items > 0 ? ` and its ${items} checklist ${items === 1 ? 'item' : 'items'}` : ''}. It can be restored from Activity.`,
+        revert: deletedTaskRevert(deleted),
+      });
+      return deleted;
+    },
+
+    skipOccurrence(id) {
+      const before = snapshot(id);
+      const task = replica.skipOccurrence(id);
+      const when = task.dueDate ? `; the next is on ${replica.dayKeyOf(task.dueDate)}` : '';
+      log({ action: 'moved', subject: 'task', title: task.title, taskId: id, note: `Skip this occurrence of "${task.title}"${when}`, revert: before ? taskRevert(before, task) : null });
+      return task;
+    },
+
+    reorderTasks(scope, ids) {
+      const changed = replica.reorderTasks(scope, ids);
+      for (const { before, after } of changed) {
+        log({ action: 'moved', subject: 'task', title: after.title, taskId: after.id, note: `Move "${after.title}" in the order`, revert: taskRevert(before, after) });
+      }
+      return changed;
+    },
+
+    // The anchor is an edit, each date added a created row and each dropped
+    // one a delete with its snapshot, so undoing the call puts all of it back.
+    setTaskDates(id, dates, monthly) {
+      const before = snapshot(id);
+      const result = replica.setTaskDates(id, dates, monthly);
+      if (before) log({ action: 'edited', subject: 'task', title: result.task.title, taskId: id, revert: taskRevert(before, result.task) });
+      for (const task of result.added) {
+        log({ action: 'created', subject: 'task', title: task.title, taskId: task.id, note: `Add "${task.title}" on ${task.dueDate ? replica.dayKeyOf(task.dueDate) : 'no date'}` });
+      }
+      for (const task of result.removed) {
+        log({
+          action: 'cleared', subject: 'task', title: task.title, taskId: task.id,
+          note: `Delete the ${task.dueDate ? replica.dayKeyOf(task.dueDate) : 'undated'} date of "${task.title}"`,
+          revert: deletedTaskRevert({ task, subtasks: [] }),
+        });
+      }
+      return result;
+    },
+
+    duplicateTask(id) {
+      const copy = replica.duplicateTask(id);
+      log({ action: 'created', subject: 'task', title: copy.title, taskId: copy.id, note: `Make a copy of "${copy.title}"` });
+      return copy;
+    },
+
+    deleteTag(tag) {
+      const changed = replica.deleteTag(tag);
+      for (const { before, after } of changed) {
+        log({ action: 'edited', subject: 'task', title: after.title, taskId: after.id, note: `Remove the tag "${tag}" from "${after.title}"`, revert: taskRevert(before, after) });
+      }
+      if (changed.length === 0) log({ action: 'edited', subject: 'task', title: tag, taskId: null, note: `Delete the unused tag "${tag}"` });
+      return changed;
+    },
+
+    setCompletedAt(id, at) {
+      const before = snapshot(id);
+      const task = replica.setCompletedAt(id, at);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Change when "${task.title}" was done to ${replica.dayKeyOf(task.completedAt!)}`, revert: before ? taskRevert(before, task) : null });
+      return task;
+    },
+
     addProjectSteps(projectId, steps) {
       const created = replica.addProjectSteps(projectId, steps);
       for (const task of created) {
@@ -226,8 +297,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return project;
     },
 
-    createStack(title, category) {
-      const stack = replica.createStack(title, category);
+    createStack(title, category, projectId) {
+      const stack = replica.createStack(title, category, projectId);
       log({ action: 'created', subject: 'stack', title: stack.title, taskId: null });
       return stack;
     },
@@ -237,6 +308,86 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const stack = replica.renameStack(id, title);
       log({ action: 'edited', subject: 'stack', title: stack.title, taskId: null, note: `Rename the stack ${before ? `"${before.title}" ` : ''}to "${stack.title}"` });
       return stack;
+    },
+
+    // The stack's own fields are a record; each member it re-filed is a task
+    // edit with its way back.
+    updateStack(id, patch) {
+      const before = replica.stacks().find(g => g.id === id);
+      const result = replica.updateStack(id, patch);
+      const changes = Object.keys(patch).filter(k => k !== 'category').join(', ');
+      if (changes) log({ action: 'edited', subject: 'stack', title: result.stack.title, taskId: null, recordId: id, note: `Change the stack "${before?.title ?? result.stack.title}": ${changes}` });
+      for (const { before: b, after } of result.moved) {
+        log({ action: 'edited', subject: 'task', title: after.title, taskId: after.id, note: `Move "${after.title}" to the stack's category, ${after.category ?? 'none'}`, revert: taskRevert(b, after) });
+      }
+      return result;
+    },
+
+    deleteStack(id, cascade) {
+      const snapshot = replica.deleteStack(id, cascade);
+      const n = snapshot.deleted.filter(t => !t.parentId).length;
+      log({
+        action: 'cleared', subject: 'stack', title: snapshot.stack.title, taskId: null, recordId: id,
+        note: `Delete the stack "${snapshot.stack.title}"${n > 0 ? ` and ${n} ${n === 1 ? 'task' : 'tasks'} in it` : ''}${snapshot.unfiledTaskIds.length > 0 ? `, taking ${snapshot.unfiledTaskIds.length} out of it` : ''}. It can be restored from Activity.`,
+        revert: deletedStackRevert(snapshot),
+      });
+      return snapshot;
+    },
+
+    renameCategory(name, newName) {
+      const result = replica.renameCategory(name, newName);
+      log({ action: 'edited', subject: 'category', title: result.to, taskId: null, note: `Rename the category "${result.from}" to "${result.to}", everywhere it is used` });
+      return result;
+    },
+
+    updateCategorySettings(name, patch) {
+      const category = replica.updateCategorySettings(name, patch);
+      log({ action: 'edited', subject: 'category', title: category.name, taskId: null, note: `Change the category "${category.name}": ${Object.keys(patch).join(', ')}` });
+      return category;
+    },
+
+    reorderCategories(names) {
+      const order = replica.reorderCategories(names);
+      log({ action: 'moved', subject: 'category', title: 'Categories', taskId: null, note: `Put the categories in this order: ${order.join(', ')}` });
+      return order;
+    },
+
+    deleteProject(id, cascade) {
+      const snapshot = replica.deleteProject(id, cascade);
+      const n = snapshot.deleted.filter(t => !t.parentId).length;
+      log({
+        action: 'cleared', subject: 'project', title: snapshot.project.title, taskId: null, recordId: id,
+        note: `Delete the project "${snapshot.project.title}"${n > 0 ? ` and ${n} of its ${n === 1 ? 'task' : 'tasks'}` : ''}${snapshot.unfiledTaskIds.length > 0 ? `, leaving ${snapshot.unfiledTaskIds.length} ${snapshot.unfiledTaskIds.length === 1 ? 'task' : 'tasks'} in no project` : ''}. It can be restored from Activity.`,
+        revert: deletedProjectRevert(snapshot),
+      });
+      return snapshot;
+    },
+
+    saveProjectCategory(name, change) {
+      const result = replica.saveProjectCategory(name, change);
+      const note = change.delete
+        ? `Delete the project category "${name}"${result.projectsAffected > 0 ? `, leaving ${result.projectsAffected} ${result.projectsAffected === 1 ? 'project' : 'projects'} in none` : ''}`
+        : change.newName !== undefined ? `Rename the project category "${name}" to "${result.name}"` : `Add the project category "${result.name}"`;
+      log({ action: change.delete ? 'cleared' : change.newName !== undefined ? 'edited' : 'created', subject: 'project', title: result.name ?? name, taskId: null, note });
+      return result;
+    },
+
+    reorderProjects(ids, categories) {
+      replica.reorderProjects(ids, categories);
+      const parts = [ids.length > 0 ? `${ids.length} ${ids.length === 1 ? 'project' : 'projects'}` : null, categories?.length ? 'the project categories' : null].filter(Boolean);
+      log({ action: 'moved', subject: 'project', title: 'Projects', taskId: null, note: `Reorder ${parts.join(' and ')}` });
+    },
+
+    startFreshProject(id) {
+      const result = replica.startFreshProject(id);
+      log({ action: 'created', subject: 'project', title: result.project.title, taskId: null, recordId: result.project.id, count: 1 + result.tasks.length, note: `Start "${result.project.title}" fresh: a new project with its ${result.tasks.length} ${result.tasks.length === 1 ? 'task' : 'tasks'}, every date cleared` });
+      return result;
+    },
+
+    saveProjectAsTemplate(id, name) {
+      const template = replica.saveProjectAsTemplate(id, name);
+      log({ action: 'created', subject: 'template', title: template.name, taskId: null, note: `Save the project as the template "${template.name}" (${template.items.length} ${template.items.length === 1 ? 'task' : 'tasks'})` });
+      return template;
     },
 
     // An edit to the task, so the Activity screen can offer the way back: the
@@ -372,6 +523,44 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    moveFoodEntry(id, at) {
+      const result = replica.moveFoodEntry(id, at);
+      log({ action: 'moved', subject: 'food', title: result.to.label, taskId: null, recordId: result.to.id, note: `Move "${result.to.label}" in the food log from ${result.from.dayKey} to ${result.to.dayKey}` });
+      return result;
+    },
+
+    duplicateFoodEntry(id, at) {
+      const entry = replica.duplicateFoodEntry(id, at);
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      return entry;
+    },
+
+    saveMealFromEntries(name, entryIds) {
+      const meal = replica.saveMealFromEntries(name, entryIds);
+      log({ action: 'created', subject: 'food', title: meal.name, taskId: null, note: `Save "${meal.name}" as a meal of ${meal.items.length} foods, to log again in one tap` });
+      return meal;
+    },
+
+    logSavedMeal(id, slot, at) {
+      const entries = replica.logSavedMeal(id, slot, at);
+      for (const entry of entries) log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      return entries;
+    },
+
+    deleteSavedMeal(id) {
+      const meal = replica.deleteSavedMeal(id);
+      log({ action: 'cleared', subject: 'food', title: meal.name, taskId: null, note: `Delete the saved meal "${meal.name}". The food it logged before stays in the log.` });
+      return meal;
+    },
+
+    setNutritionTargets(changes) {
+      const targets = replica.setNutritionTargets(changes);
+      const said = Object.entries(changes).map(([k, v]) => (v === null ? `clear ${k}` : `${k} ${v}`)).join(', ');
+      // Titled by what it is rather than by the figures, which say something about a body.
+      log({ action: 'edited', subject: 'food', title: 'Food log targets', taskId: null, note: `Set the food log's daily targets: ${said}` });
+      return targets;
+    },
+
     updateMoodLog(id, patch) {
       const entry = replica.updateMoodLog(id, patch);
       log({ action: 'edited', subject: 'mood', title: entry.dayKey, taskId: null, note: `Correct the mood check-in from ${entry.dayKey}` });
@@ -382,6 +571,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const entry = replica.deleteMoodLog(id);
       log({ action: 'cleared', subject: 'mood', title: entry.dayKey, taskId: null, note: `Delete the mood check-in from ${entry.dayKey}` });
       return entry;
+    },
+
+    setMedicationArchived(name, archived) {
+      const spelled = replica.setMedicationArchived(name, archived);
+      log({ action: 'edited', subject: 'medication', title: 'Medication', taskId: null, note: archived ? `Archive a medicine: it leaves "what you take", and no dose is deleted` : 'Bring an archived medicine back' });
+      return spelled;
+    },
+
+    renameMoodTag(from, to) {
+      const count = replica.renameMoodTag(from, to);
+      log({ action: 'edited', subject: 'mood', title: 'Mood log', taskId: null, note: `Rename a context tag on ${count} mood ${count === 1 ? 'check-in' : 'check-ins'}` });
+      return count;
     },
 
     updateMedicationLog(id, patch) {
@@ -412,6 +613,41 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    setMealCooked(id, cooked) {
+      const result = replica.setMealCooked(id, cooked);
+      const title = result.entry.title;
+      if ('opened' in result) {
+        const parts = [
+          result.opened.length ? `marks ${result.opened.join(', ')} opened` : null,
+          result.tasksCompleted.length ? `completes ${result.tasksCompleted.map(t => `"${t}"`).join(', ')}` : null,
+        ].filter(Boolean);
+        log({ action: 'completed', subject: 'meal', title, taskId: null, note: `Mark "${title}" cooked${parts.length ? `; it ${parts.join(' and ')}` : ''}` });
+      } else {
+        log({ action: 'edited', subject: 'meal', title, taskId: null, note: `Mark "${title}" not cooked${result.tasksReopened.length ? `, reopening ${result.tasksReopened.map(t => `"${t}"`).join(', ')}` : ''}` });
+      }
+      return result;
+    },
+
+    saveMealAsRecipe(id) {
+      const result = replica.saveMealAsRecipe(id);
+      if (result.created) log({ action: 'created', subject: 'recipe', title: result.recipe.name, taskId: null });
+      log({ action: 'edited', subject: 'meal', title: result.entry.title, taskId: null, note: `Point the meal on ${result.entry.date} at the recipe "${result.recipe.name}"` });
+      return result;
+    },
+
+    copyMealWeek(fromDay, toDay, slot) {
+      const created = replica.copyMealWeek(fromDay, toDay, slot);
+      // One entry per meal, as planning one records, so each can be taken back on its own.
+      for (const entry of created) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      return created;
+    },
+
+    copyMealTo(id, dates) {
+      const result = replica.copyMealTo(id, dates);
+      for (const entry of result.copied) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      return result;
+    },
+
     createPerson(fields) {
       const person = replica.createPerson(fields);
       log({ action: 'created', subject: 'person', title: person.name, taskId: null, note: `Add ${person.name} to your people` });
@@ -424,6 +660,55 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return person;
     },
 
+    deletePerson(id) {
+      const deleted = replica.deletePerson(id);
+      const n = deleted.notes.length;
+      log({
+        action: 'cleared', subject: 'person', title: deleted.person.name, taskId: null, recordId: id,
+        note: `Delete ${deleted.person.name}${n > 0 ? ` and the ${n} ${n === 1 ? 'note' : 'notes'} about them` : ''}. Tasks naming them stay. It can be restored from Activity.`,
+        revert: deletedPersonRevert(deleted),
+      });
+      return deleted;
+    },
+
+    reorderPeople(ids) {
+      replica.reorderPeople(ids);
+      log({ action: 'moved', subject: 'person', title: 'People', taskId: null, note: `Reorder your people, starting with ${ids.length} named` });
+    },
+
+    savePersonGroup(name, change) {
+      const result = replica.savePersonGroup(name, change);
+      const note = change.delete
+        ? `Delete the group "${name}"${result.members > 0 ? `, leaving its ${result.members} ${result.members === 1 ? 'person' : 'people'} in no group` : ''}`
+        : change.newName !== undefined ? `Rename the group "${name}" to "${result.group?.name}"`
+          : `${result.members === 0 && change.catchUpSeparately === undefined ? 'Add' : 'Change'} the group "${result.group?.name ?? name}"`;
+      log({ action: change.delete ? 'cleared' : 'edited', subject: 'person', title: result.group?.name ?? name, taskId: null, note });
+      return result;
+    },
+
+    // Titled by the person, never by the note: a note is somebody's private
+    // detail, and the Activity list is about the app.
+    addPersonNote(personId, kind, text, relevantOn) {
+      const note = replica.addPersonNote(personId, kind, text, relevantOn);
+      const who = replica.people().find(p => p.id === personId)?.name ?? 'someone';
+      log({ action: 'created', subject: 'person', title: who, taskId: null, note: `Add a ${kind === 'gift' ? 'gift idea' : kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      return note;
+    },
+
+    updatePersonNote(id, patch) {
+      const note = replica.updatePersonNote(id, patch);
+      const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
+      log({ action: 'edited', subject: 'person', title: who, taskId: null, note: `Change a ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      return note;
+    },
+
+    deletePersonNote(id) {
+      const note = replica.deletePersonNote(id);
+      const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
+      log({ action: 'cleared', subject: 'person', title: who, taskId: null, note: `Delete a ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      return note;
+    },
+
     updateRecipe(id, patch) {
       const recipe = replica.updateRecipe(id, patch);
       log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${recipe.name}"` });
@@ -434,6 +719,57 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const result = replica.deleteRecipe(id);
       log({ action: 'cleared', subject: 'recipe', title: result.recipe.name, taskId: null, note: `Delete the recipe "${result.recipe.name}". It cannot be restored from here.` });
       return result;
+    },
+
+    renameCookbook(id, title, author) {
+      const before = replica.cookbookSummaries().find(c => c.id === id);
+      const book = replica.renameCookbook(id, title, author);
+      log({ action: 'edited', subject: 'recipe', title: book.title, taskId: null, note: `Rename the cookbook "${before?.title ?? book.title}" to "${book.title}"${book.author ? ` by ${book.author}` : ''}, on every recipe in it` });
+      return book;
+    },
+
+    mergeCookbooks(survivorId, loserId) {
+      const result = replica.mergeCookbooks(survivorId, loserId);
+      log({ action: 'edited', subject: 'recipe', title: result.survivor.title, taskId: null, count: result.recipesMoved, note: `Merge the cookbook "${result.merged.title}" into "${result.survivor.title}": its recipes and index move over, and "${result.merged.title}" is gone. It cannot be undone from here.` });
+      return result;
+    },
+
+    deleteCookbook(id) {
+      const result = replica.deleteCookbook(id);
+      log({ action: 'cleared', subject: 'recipe', title: result.cookbook.title, taskId: null, note: `Delete the cookbook "${result.cookbook.title}": its ${result.recipesUnlinked} recipes stay, no longer in a book, and its index of ${result.indexEntries} dishes goes. It cannot be restored from here.` });
+      return result;
+    },
+
+    saveIndexEntry(input) {
+      const entry = replica.saveIndexEntry(input);
+      const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';
+      log({ action: input.id ? 'edited' : 'created', subject: 'recipe', title: entry.title, taskId: null, note: `${input.id ? 'Change' : 'Add'} "${entry.title}" in the index of ${book}` });
+      return entry;
+    },
+
+    deleteIndexEntry(id) {
+      const entry = replica.deleteIndexEntry(id);
+      const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';
+      log({ action: 'cleared', subject: 'recipe', title: entry.title, taskId: null, note: `Take "${entry.title}" out of the index of ${book}` });
+      return entry;
+    },
+
+    recipeFromIndexEntry(id) {
+      const result = replica.recipeFromIndexEntry(id);
+      if (result.created) log({ action: 'created', subject: 'recipe', title: result.recipe.name, taskId: null });
+      return result;
+    },
+
+    reorderUpNext(ids) {
+      const shelf = replica.reorderUpNext(ids);
+      log({ action: 'edited', subject: 'recipe', title: 'Up next', taskId: null, count: shelf.length, note: 'Reorder the Up next shelf' });
+      return shelf;
+    },
+
+    logCookTime(id, minutes) {
+      const recipe = replica.logCookTime(id, minutes);
+      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Log ${minutes} minutes of cooking for "${recipe.name}"` });
+      return recipe;
     },
 
     addGroceryItem(name, opts) {
@@ -488,6 +824,117 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const shop = replica.saveShop(input);
       log({ action: input.id ? 'edited' : 'created', subject: 'catalog', title: shop.name, taskId: null, recordId: shop.id, note: input.id ? `Change the store "${shop.name}"` : `Add the store "${shop.name}"` });
       return shop;
+    },
+
+    // A row put on the list at home is a 'grocery' entry, undone by taking it
+    // back off; anything else is a 'catalog' record, as addGroceryItem does.
+    addPlannedToList(rows, listId) {
+      const result = replica.addPlannedToList(rows, listId);
+      for (const item of result.added) {
+        if (listId === null) log({ action: 'created', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
+        else log({ action: 'created', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `Put "${item.name}" on ${listLabel(listId)}` });
+      }
+      for (const item of result.toppedUp) {
+        log({ action: 'edited', subject: 'catalog', title: item.name, taskId: null, note: `Raise the amount of "${item.name}" on ${listLabel(listId)} to ${item.quantity}` });
+      }
+      return result;
+    },
+
+    addChoiceToList(options, listId) {
+      const added = replica.addChoiceToList(options, listId);
+      log({ action: 'created', subject: 'catalog', title: added.map(i => i.name).join(' or '), taskId: null, note: `Put "${added.map(i => i.name).join('" or "')}" on ${listLabel(listId)} as an either/or` });
+      return added;
+    },
+
+    settleChoice(itemId, listId, keepAll) {
+      const result = replica.settleChoice(itemId, listId, keepAll);
+      const note = keepAll
+        ? `Keep every option of the either/or on ${listLabel(listId)}: ${result.kept.map(i => i.name).join(', ')}`
+        : `Get "${result.kept[0]?.name}" and take ${result.removed.map(i => `"${i.name}"`).join(', ')} off ${listLabel(listId)}`;
+      log({ action: 'edited', subject: 'catalog', title: result.kept[0]?.name ?? 'Either/or', taskId: null, note });
+      return result;
+    },
+
+    swapForSubstitute(itemId, subItemId, listId) {
+      const result = replica.swapForSubstitute(itemId, subItemId, listId);
+      log({ action: 'edited', subject: 'catalog', title: result.added.name, taskId: null, note: `Swap "${result.removed.name}" for "${result.added.name}" on ${listLabel(listId)}` });
+      return result;
+    },
+
+    clearGroceryList(listId) {
+      const result = replica.clearGroceryList(listId);
+      log({
+        action: 'cleared', subject: 'catalog', title: 'Grocery list', taskId: null,
+        note: `Clear ${listLabel(listId)} (${result.cleared} ${result.cleared === 1 ? 'item' : 'items'})${result.deleted.length > 0 ? `, deleting ${result.deleted.length} with nothing recorded on ${result.deleted.length === 1 ? 'it' : 'them'}` : ''}. It cannot be restored from here.`,
+      });
+      return result;
+    },
+
+    setTrip(change) {
+      const trip = replica.setTrip(change);
+      const money = (m: number | null) => (m == null ? 'no budget' : `a budget of ${(m / 100).toFixed(2)}`);
+      const note = 'end' in change ? 'End the shopping trip'
+        : 'shopId' in change ? `Start a shopping trip at ${trip.shop?.name ?? 'the store'}, with ${money(trip.budgetMinor)}`
+          : `Set the trip's budget to ${money(trip.budgetMinor)}`;
+      log({ action: 'edited', subject: 'catalog', title: trip.shop?.name ?? 'Shopping trip', taskId: null, note });
+      return trip;
+    },
+
+    setItemUnavailable(itemId, shopId, unavailable, brandOnly) {
+      replica.setItemUnavailable(itemId, shopId, unavailable, brandOnly);
+      const item = replica.groceryItems().find(i => i.id === itemId);
+      const shop = replica.shops().find(sh => sh.id === shopId);
+      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'Item', taskId: null, note: `Mark ${brandOnly ? `the preferred brand of "${item?.name}"` : `"${item?.name}"`} ${unavailable ? 'unavailable' : 'available again'} at ${shop?.name ?? 'the store'}` });
+    },
+
+    setNutritionPanel(itemId, boxId, panel) {
+      replica.setNutritionPanel(itemId, boxId, panel);
+      const item = replica.groceryItems().find(i => i.id === itemId);
+      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'Item', taskId: null, note: `${panel ? 'Set' : 'Remove'} the nutrition panel of ${boxId ? 'a brand of ' : ''}"${item?.name}"` });
+    },
+
+    saveAisle(name, change) {
+      const result = replica.saveAisle(name, change);
+      const note = change.delete ? `Delete the aisle "${name}", moving ${result.itemsMoved} ${result.itemsMoved === 1 ? 'item' : 'items'} to Other`
+        : change.newName !== undefined ? `Rename the aisle "${name}" to "${result.aisle}"${result.itemsMoved ? `, refiling ${result.itemsMoved} ${result.itemsMoved === 1 ? 'item' : 'items'}` : ''}`
+          : change.nonFood !== undefined ? `Mark the aisle "${result.aisle}" as ${change.nonFood ? 'non-food' : 'food'}`
+            : `Add the aisle "${result.aisle}"`;
+      log({ action: change.delete ? 'cleared' : 'edited', subject: 'catalog', title: result.aisle ?? name, taskId: null, note });
+      return result;
+    },
+
+    reorderAisles(names) {
+      const order = replica.reorderAisles(names);
+      log({ action: 'moved', subject: 'catalog', title: 'Aisles', taskId: null, note: `Put the aisles in this order: ${order.join(', ')}` });
+      return order;
+    },
+
+    deleteShop(id) {
+      const shop = replica.deleteShop(id);
+      log({ action: 'cleared', subject: 'catalog', title: shop.name, taskId: null, recordId: id, note: `Delete the store "${shop.name}", with its item links, prices there and receipt names. It cannot be restored from here.` });
+      return shop;
+    },
+
+    updateShopSettings(id, patch) {
+      const shop = replica.updateShopSettings(id, patch);
+      log({ action: 'edited', subject: 'catalog', title: shop.name, taskId: null, recordId: id, note: `Change the store "${shop.name}": ${Object.keys(patch).join(', ')}` });
+      return shop;
+    },
+
+    reorderShops(ids) {
+      replica.reorderShops(ids);
+      log({ action: 'moved', subject: 'catalog', title: 'Stores', taskId: null, note: 'Reorder the stores' });
+    },
+
+    reorderGroceryLists(ids) {
+      replica.reorderGroceryLists(ids);
+      log({ action: 'moved', subject: 'catalog', title: 'Lists', taskId: null, note: 'Reorder the separate grocery lists' });
+    },
+
+    mergeGroceryItems(fromId, intoId) {
+      const result = replica.mergeGroceryItems(fromId, intoId);
+      log({ action: 'edited', subject: 'catalog', title: result.merged.name, taskId: null, note: `Merge "${result.from.name}" into "${result.merged.name}": its history, brands, store links, substitutes, receipt names and recipe lines move over, and "${result.from.name}" is gone. It cannot be undone from here.` });
+      return result;
     },
 
     deleteGroceryItem(id) {
@@ -576,6 +1023,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const prior = replica.leftovers().find(l => l.id === id);
       const row = replica.updateLeftover(id, change);
       log({ action: 'edited', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, revert: prior ? pantryRevertOf(leftoverSnapshot(prior), leftoverSnapshot(row)) : null, note: `Change the leftover "${row.title}"` });
+      return row;
+    },
+
+    splitLeftover(id) {
+      const result = replica.splitLeftover(id);
+      log({ action: 'created', subject: 'pantry', title: result.split.title, taskId: null, recordId: result.split.id, note: `Split "${result.original.title}", putting half ${result.split.frozenAt ? 'in the freezer' : 'in the fridge'}` });
+      return result;
+    },
+
+    deleteLeftover(id) {
+      const row = replica.deleteLeftover(id);
+      log({ action: 'cleared', subject: 'pantry', title: row.title, taskId: null, note: `Delete the leftover "${row.title}". It cannot be restored from here.` });
       return row;
     },
 
@@ -680,6 +1139,23 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return view;
     },
 
+    updateSavedView(id, patch, position) {
+      const before = replica.savedViews().find(v => v.id === id);
+      const view = replica.updateSavedView(id, patch, position);
+      const what = [...Object.keys(patch), ...(position !== undefined ? ['its place in the list'] : [])].join(', ');
+      log({ action: 'edited', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Change the saved view "${before?.name ?? view.name}": ${what}` });
+      return view;
+    },
+
+    applySettings(changes) {
+      const result = replica.applySettings(changes);
+      const show = (v: unknown) => (v === null || v === undefined ? 'none' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+      for (const { key, before, after } of result) {
+        log({ action: 'edited', subject: 'automation', title: key, taskId: null, note: `Change the setting ${key} from ${show(before)} to ${show(after)}` });
+      }
+      return result;
+    },
+
     setVacationMode(on, until) {
       const outcome = replica.setVacationMode(on, until);
       const day = until ? ` until ${replica.logicalDayKeyOf(until.toISOString())}` : '';
@@ -705,6 +1181,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     requestCalendarEvent(input) {
       const request = replica.requestCalendarEvent(input);
       log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id });
+      return request;
+    },
+
+    requestCalendarChange(targetId, change) {
+      const request = replica.requestCalendarChange(targetId, change);
+      const target = replica.calendarRequests().find(r => r.id === targetId);
+      log({
+        action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id,
+        note: 'delete' in change
+          ? `Ask the phone to remove "${target?.title ?? request.title}" from the calendar the next time it syncs`
+          : `Ask the phone to change "${target?.title ?? request.title}" on the calendar the next time it syncs`,
+      });
       return request;
     },
 

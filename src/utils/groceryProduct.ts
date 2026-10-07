@@ -103,7 +103,7 @@ export function describeCatalogItem(
 
   // The pantry's own words, verbatim — the same line the item sheet and a week
   // plan show. A second phrasing here is a second thing to keep true.
-  const pantry = probablyHaveReason(item, now);
+  const pantry = probablyHaveReason(item, now, products);
   if (pantry) parts.push(pantry);
   else if (item.purchaseCount > 0) {
     parts.push(`bought ${item.purchaseCount} ${item.purchaseCount === 1 ? 'time' : 'times'}`);

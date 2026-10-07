@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemSubLink } from '../types';
+import type { GroceryItem, ItemProduct, ItemSubLink } from '../types';
 import { parseQuantity, rationalToNumber, unitKey } from './quantity';
 import { scaleQuantity } from './recipeScale';
 import { unitFactor } from './unitConvert';
@@ -264,10 +264,11 @@ export function substitutesOnHand(
   itemId: string,
   links: readonly ItemSubLink[],
   items: readonly GroceryItem[],
-  now: Date
+  now: Date,
+  products: readonly ItemProduct[]
 ): Substitute[] {
   return substitutesFor(itemId, links, items).filter(
-    s => probablyHaveReason(s.item, now) !== null
+    s => probablyHaveReason(s.item, now, products) !== null
   );
 }
 

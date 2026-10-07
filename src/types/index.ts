@@ -2284,7 +2284,10 @@ export interface Task {
   seenAt: string | null; // last time the user interacted with this task; drives the "new" dot
 
   dueDate: string | null;
-  deadline: string | null;   // separate target date to hit; shown as a subtle countdown, doesn't affect scheduling/visibility
+  // A separate target date to hit; shown as a subtle countdown, doesn't affect
+  // scheduling/visibility. An instant, never a bare day key: readers parse it
+  // with `new Date`, and the write paths convert one (`deadlineInstant`).
+  deadline: string | null;
   // When set, `deadline` is derived as `dueDate` minus this many days instead of
   // a fixed date, and gets recomputed against the new dueDate every time a
   // recurring task spawns its next occurrence (see completeTask). Null means
@@ -7481,6 +7484,30 @@ export interface CalendarRequest {
   /** ISO, when it left `pending`. Null while pending. */
   resolvedAt: string | null;
   createdAt: string;
+  /**
+   * What the request asks for. `create` writes a new event (the original and
+   * still the common case). `update` and `delete` change or remove the event
+   * an earlier `create` request wrote (`targetRequestId`), and only that one:
+   * an agent never touches an event the person made.
+   *
+   * An update or delete row carries a start and end at the epoch, already
+   * over, so a build from before these existed expires it as "already over"
+   * rather than reading it as an event to create. The new values ride in
+   * `changes` for the same reason.
+   */
+  action?: 'create' | 'update' | 'delete';
+  targetRequestId?: string | null;
+  changes?: CalendarRequestChanges | null;
+}
+
+/** What an `update` request changes on the event; absent keys stay as they are. */
+export interface CalendarRequestChanges {
+  title?: string;
+  startAt?: string;
+  endAt?: string;
+  allDay?: boolean;
+  location?: string | null;
+  notes?: string | null;
 }
 
 /**

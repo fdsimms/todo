@@ -39,6 +39,7 @@ import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useTextScale } from '../hooks/useTextScale';
 
 interface Props {
   visible: boolean;
@@ -93,7 +94,8 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const { shadows } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
   const revertPantryAnswer = useGroceryStore(s => s.revertPantryAnswer);
@@ -373,7 +375,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
           <EmptyState
             icon="checkmark-done-outline"
             title="Nothing to check"
-            subtitle="The app isn't in any doubt about what's in the pantry right now."
+            subtitle="Nothing in the pantry needs checking right now."
           />
         ) : finished ? (
           <View style={styles.reviewWrap}>
@@ -670,13 +672,15 @@ function answerFor(dx: number, dy: number): PantryReviewAnswer | null {
 /**
  * Fixed so the stack behind the top card has something to sit against, and so
  * a long name can't resize the card mid-swipe. Tall enough for three lines of
- * name plus the reason and the doubt pill.
+ * name plus the reason and the doubt pill at the default text size, and
+ * scaled with the system's (`useTextScale`), or a larger setting pushes the
+ * pill out of the card.
  */
 const CARD_HEIGHT = 260;
 
 type Styles = ReturnType<typeof makeStyles>;
 
-const makeStyles = (colors: Colors) =>
+const makeStyles = (colors: Colors, textScaleFactor = 1) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
     header: {
@@ -750,13 +754,13 @@ const makeStyles = (colors: Colors) =>
     },
 
     stage: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.md },
-    deck: { height: CARD_HEIGHT },
+    deck: { height: Math.round(CARD_HEIGHT * textScaleFactor) },
     card: {
       position: 'absolute',
       left: 0,
       right: 0,
       top: 0,
-      height: CARD_HEIGHT,
+      height: Math.round(CARD_HEIGHT * textScaleFactor),
       borderRadius: radius.lg,
       backgroundColor: colors.bgSecondary,
       padding: spacing.lg,

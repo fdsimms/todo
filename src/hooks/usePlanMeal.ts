@@ -36,6 +36,7 @@ export function usePlanMeal() {
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const addTask = useTaskStore(s => s.addTask);
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
 
@@ -83,7 +84,7 @@ export function usePlanMeal() {
     // read (see ChoiceResolution.onHand).
     const drafts = prepTaskDraftsForMeal(
       recipe, recipesById, dayKeyToDate(entry.date),
-      { chosen: entry.recipeChoices, onHand: onHandNameKeys(groceryItems, new Date()) }
+      { chosen: entry.recipeChoices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }
     );
     if (drafts.length === 0) { onDone?.(); return; }
     const one = drafts.length === 1;
@@ -105,7 +106,7 @@ export function usePlanMeal() {
         },
       ]
     );
-  }, [recipesById, addTask, groceryItems]);
+  }, [recipesById, addTask, groceryItems, itemProducts]);
 
   /**
    * The same offer, over a batch planned in one sitting — RecipePickerSheet's

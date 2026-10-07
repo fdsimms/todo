@@ -1,6 +1,6 @@
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { cancelCalendarRequest, listCalendarRequests, parseCalendarRequest, requestCalendarEvent } from '../calendarTools';
+import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, parseCalendarRequest, requestCalendarEvent } from '../calendarTools';
 import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import { describeEffects } from '../confirmWrites';
 
@@ -134,5 +134,45 @@ describe('request_calendar_event', () => {
       'Ask the phone to add "Dentist" to the calendar the next time it syncs',
       'Cancel the request to add "Dentist" to the calendar',
     ]);
+  });
+});
+
+describe('change_calendar_event', () => {
+  const ahead = () => {
+    const d = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T10:00`;
+  };
+  const written = () => {
+    writerOn();
+    const { request } = requestCalendarEvent(replica, { title: 'Dentist', start: ahead() });
+    mockRaw.runSync("UPDATE calendar_requests SET status = 'written', event_external_id = 'ext-1' WHERE id = ?", [request.id]);
+    return request;
+  };
+
+  it('queues a change that an older build would expire rather than create', () => {
+    const target = written();
+    const { request } = changeCalendarEvent(replica, { requestId: target.id, title: 'Dentist (moved)' });
+    expect(request).toMatchObject({ change: 'update', changes: target.id, status: 'pending', title: 'Dentist (moved)' });
+    const row = replica.calendarRequests().find(r => r.id === request.id)!;
+    expect(new Date(row.endAt).getTime()).toBe(0);
+    expect(row.changes).toEqual({ title: 'Dentist (moved)' });
+  });
+
+  it('keeps the event\'s length when only the start moves, and queues a delete', () => {
+    const target = written();
+    const later = new Date(new Date(target.start).getTime() + 2 * 3600_000).toISOString();
+    changeCalendarEvent(replica, { requestId: target.id, start: later });
+    const row = replica.calendarRequests().filter(r => r.action === 'update').pop()!;
+    expect(new Date(row.changes!.endAt!).getTime() - new Date(row.changes!.startAt!).getTime()).toBe(new Date(target.end).getTime() - new Date(target.start).getTime());
+    expect(changeCalendarEvent(replica, { requestId: target.id, delete: true }).request.change).toBe('delete');
+  });
+
+  it('refuses a request whose event is not written, or not findable again', () => {
+    writerOn();
+    const { request } = requestCalendarEvent(replica, { title: 'Call', start: ahead() });
+    expect(() => changeCalendarEvent(replica, { requestId: request.id, title: 'x' })).toThrow(/not been added yet/);
+    mockRaw.runSync("UPDATE calendar_requests SET status = 'written' WHERE id = ?", [request.id]);
+    expect(() => changeCalendarEvent(replica, { requestId: request.id, title: 'x' })).toThrow(/cannot find it again/);
   });
 });

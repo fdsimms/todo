@@ -26,6 +26,29 @@ const make = (draft: Partial<TaskDraft>): Task =>
 
 const ctx: TaskUpdateContext = { scope: 'series', freshPinnedOrder: 7, dayResetTime: '00:00' };
 
+describe('a deadline written as a bare day', () => {
+  // Every reader parses Task.deadline with `new Date`, which reads a bare key
+  // as UTC midnight: the evening before, west of UTC. Both write paths turn one
+  // into local noon on that day, so no writer can repeat the leftover bug.
+  const atLocalNoon = (iso: string | null) => {
+    const d = new Date(iso!);
+    return [d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()];
+  };
+
+  it('is stored as local noon on that day when a task is created', () => {
+    expect(atLocalNoon(make({ deadline: '2026-10-09' }).deadline)).toEqual([2026, 9, 9, 12]);
+  });
+
+  it('is stored as local noon on that day when a task is edited', () => {
+    expect(atLocalNoon(mergeTaskUpdate(make({}), { deadline: '2026-10-09' }, ctx).deadline)).toEqual([2026, 9, 9, 12]);
+  });
+
+  it('leaves an instant, or no deadline, as it came', () => {
+    expect(make({ deadline: '2026-10-09T18:00:00.000Z' }).deadline).toBe('2026-10-09T18:00:00.000Z');
+    expect(mergeTaskUpdate(make({}), { deadline: null }, ctx).deadline).toBeNull();
+  });
+});
+
 describe('mergeTaskUpdate', () => {
   it('applies the patch and leaves the rest of the row alone', () => {
     const t = make({ notes: 'keep' });

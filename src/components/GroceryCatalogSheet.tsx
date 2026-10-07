@@ -527,7 +527,7 @@ function makeStyles(colors: Colors) {
       height: CHECKBOX_SIZE,
       borderRadius: checkboxRadius(CHECKBOX_SIZE),
       borderWidth: border.md,
-      borderColor: colors.separator,
+      borderColor: colors.controlBorder,
       alignItems: 'center',
       justifyContent: 'center',
     },

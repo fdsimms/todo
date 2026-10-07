@@ -85,7 +85,7 @@ interface Props {
  * least". The footnote under the list says so plainly, because a ranking that
  * looks authoritative is exactly the one worth undercutting — and the
  * correction flow below is where a hedge gets answered, by the only party who
- * can: "Actually, it has more" writes what the user knows, rather than the app
+ * can: "Mark more items it carries" writes what the user knows, rather than the app
  * inferring it.
  *
  * **One kind of line here does assert an absence**, and only because the user
@@ -619,7 +619,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                   shops, and the numbers above move the moment they are. */}
               {correctable && (
                 <InlineAction
-                  label="Actually, it has more"
+                  label="Mark more items it carries"
                   icon="pricetag-outline"
                   variant="neutral"
                   surface="page"

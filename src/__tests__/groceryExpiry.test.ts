@@ -151,6 +151,13 @@ describe('useUpTaskDrift', () => {
     expect(useUpTaskDrift(inStep, spinach, 1)).toBeNull();
   });
 
+  it('reads a deadline on the right day at another hour as unmoved', () => {
+    // Local noon after a trip across time zones is a different instant; the
+    // use-by day isn't, and re-dating here would undo a defer.
+    const elsewhere = new Date(2026, 7, 17, 8).toISOString();
+    expect(useUpTaskDrift({ ...inStep, deadline: elsewhere }, spinach, 1)).toBeNull();
+  });
+
   it('carries the task with a fresher purchase moving the use-by out', () => {
     const fresher = { ...spinach, expiresAt: '2026-08-24' };
     expect(useUpTaskDrift(inStep, fresher, 1)).toEqual({

@@ -211,6 +211,7 @@ export function SuggestMealsSheet({
   // disagreeing with itself on one row.
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const standingSwaps = useMemo(
     () => standingSwapMap(itemSubs, groceryItems),
     [itemSubs, groceryItems]
@@ -531,7 +532,7 @@ export function SuggestMealsSheet({
   const previewGroups = useMemo(() => {
     if (!previewRecipe) return [];
     // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
-    const onHand = onHandNameKeys(groceryItems, new Date());
+    const onHand = onHandNameKeys(groceryItems, new Date(), itemProducts);
     const flat = flattenRecipeIngredients(previewRecipe, recipesById, { onHand }, standingSwaps);
     const headings = ingredientHeadings(flat);
     const groups: { recipe: Recipe; items: { flat: FlatIngredient; section: string | null }[] }[] = [];
@@ -541,7 +542,7 @@ export function SuggestMealsSheet({
       group.items.push({ flat: item, section: headings[index].section });
     });
     return groups;
-  }, [previewRecipe, recipesById, standingSwaps, groceryItems]);
+  }, [previewRecipe, recipesById, standingSwaps, groceryItems, itemProducts]);
 
   const openPreview = (recipe: Recipe) => { haptics.tap(); setPreviewRecipe(recipe); };
 

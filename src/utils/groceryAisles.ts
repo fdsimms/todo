@@ -70,6 +70,7 @@ export const AISLE_LEXICON: Record<string, string> = {
   jalapeno: 'Produce',
   kale: 'Produce', kiwi: 'Produce', leek: 'Produce', leeks: 'Produce', lemon: 'Produce',
   lemons: 'Produce', lettuce: 'Produce', lime: 'Produce', limes: 'Produce',
+  'lemon juice': 'Produce', 'lime juice': 'Produce',
   mango: 'Produce', melon: 'Produce', mint: 'Produce', mushroom: 'Produce', mushrooms: 'Produce',
   nectarines: 'Produce', okra: 'Produce', onion: 'Produce', onions: 'Produce', orange: 'Produce',
   oranges: 'Produce', parsley: 'Produce', parsnip: 'Produce', peach: 'Produce',
@@ -209,8 +210,11 @@ export const AISLE_LEXICON: Record<string, string> = {
   'rice cakes': 'Snacks',
   'trail mix': 'Snacks',
   walnuts: 'Snacks',
+  // Compounds whose last word is some other aisle's food.
+  'peanut butter cups': 'Snacks', candy: 'Snacks',
 
   // ─── Beverages ───
+  'ginger ale': 'Beverages', 'root beer': 'Beverages',
   beer: 'Beverages', champagne: 'Beverages', 'coconut water': 'Beverages', coffee: 'Beverages',
   cola: 'Beverages', 'energy drink': 'Beverages', gatorade: 'Beverages',
   juice: 'Beverages', kombucha: 'Beverages', lemonade: 'Beverages',
@@ -290,6 +294,10 @@ export function aisleForName(name: string): string | null {
   if (exact) return exact;
 
   const tokens = key.split(' ');
+  // "frozen spinach", "frozen chicken": the one leading word that outranks the
+  // head noun, since it names where the thing is shelved rather than what it
+  // is. Without it the last-token rule sent both to the fresh aisles.
+  if (tokens.length > 1 && tokens[0] === 'frozen') return 'Frozen';
   if (tokens.length > 1) {
     const last = AISLE_LEXICON[tokens[tokens.length - 1]];
     if (last) return last;

@@ -192,7 +192,8 @@ export function familyOnHand(
   item: GroceryItem,
   byKey: ReadonlyMap<string, GroceryItem>,
   index: ReadonlyMap<string, GroceryItem[]>,
-  now: Date
+  now: Date,
+  products: readonly ItemProduct[]
 ): GroceryItem[] {
   if (!item.varietyOfKey || item.varietyOfKey === item.nameKey) return [];
   const family: GroceryItem[] = [];
@@ -207,7 +208,7 @@ export function familyOnHand(
   for (const sibling of index.get(item.varietyOfKey) ?? []) {
     if (sibling.id !== item.id && sibling.id !== parent?.id) family.push(sibling);
   }
-  return family.filter(member => probablyHaveReason(member, now) !== null);
+  return family.filter(member => probablyHaveReason(member, now, products) !== null);
 }
 
 /**

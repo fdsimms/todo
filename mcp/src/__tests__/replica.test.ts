@@ -1112,6 +1112,23 @@ describe('the replica', () => {
       expect(replica.setGroceryChecked(milk.id, false).checked).toBe(false);
     });
 
+    it('takes the other options of an either/or off the list when one is checked', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const db = require('../../../src/db/database');
+      const apples = replica.addGroceryItem('apples').item;
+      const pears = replica.addGroceryItem('pears').item;
+      for (const e of db.dbGetAllGroceryListEntries()) {
+        if (e.itemId === apples.id || e.itemId === pears.id) db.dbSetGroceryListEntry({ ...e, choiceGroup: 'fruit' });
+      }
+      replica.refresh();
+
+      replica.setGroceryChecked(apples.id, true);
+
+      const entries = db.dbGetAllGroceryListEntries();
+      expect(entries.find((e: { itemId: string }) => e.itemId === pears.id)).toBeUndefined();
+      expect(entries.find((e: { itemId: string }) => e.itemId === apples.id)).toMatchObject({ checked: true, choiceGroup: null });
+    });
+
     it('refuses to check off something that is not in the trolley', () => {
       const milk = replica.addGroceryItem('milk').item;
       replica.removeFromGroceryList(milk.id);

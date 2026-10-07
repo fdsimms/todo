@@ -26,6 +26,7 @@ export function agentUndoLabel(plan: AgentUndo): string | null {
     case 'delete':
     case 'uncomplete':
     case 'restore':
+    case 'restoreDeletedTask':
     case 'none':
       return agentRevertLabel(plan);
     default:

@@ -2,7 +2,8 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, GroceryListEntry, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
-import { probablyHaveReason } from './grocerySuggest';
+import { setHours } from 'date-fns/setHours';
+import { onHandNameKeys, probablyHaveReason } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { coveringVariety, describeFamilyOnHand, familyOnHand, varietyIndex } from './itemVarieties';
@@ -12,7 +13,7 @@ import {
   reachableRecipeIds,
   type ChoiceResolution,
 } from './recipeComponents';
-import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
+import { NO_STANDING_SWAPS, standingSwapMap, type StandingSwapMap } from './standingSwaps';
 import {
   formatQuantityAmount,
   inflectUnit,
@@ -546,11 +547,10 @@ export function classifyPlanned(
   now: Date,
   /**
    * The substitute links, for the "you have margarine" caption on a row you
-   * still need to buy. Optional and empty by default: with none linked there
-   * is nothing to say, which is also every caller's behaviour before this
-   * existed.
+   * still need to buy. Empty says nothing, which is what a reader with no use
+   * for the caption (a cook's recap) passes.
    */
-  itemSubs: readonly ItemSubLink[] = [],
+  itemSubs: readonly ItemSubLink[],
   /**
    * The trolley "already on the list" is about — the one being added to, as
    * `itemId → checked` (`trolleyStateFor` in `groceryLists.ts`).
@@ -565,17 +565,18 @@ export function classifyPlanned(
    * separate lists, and what the readers that aren't adding to a list (a cook's
    * recap, a pantry-readiness percentage) still mean.
    */
-  inTrolley: ReadonlyMap<string, boolean> | null = null,
+  inTrolley: ReadonlyMap<string, boolean> | null,
   /**
    * The items' boxes, so a packet frozen or marked "Got it" on its own counts as
    * having it here exactly as it does in the Pantry and in `onHandNameKeys`
    * (a box only ever adds an answer; see `probablyHaveReason`). Without them a
    * row whose one claim is a box fell back to the item's lapsed purchase window
    * and read as needToBuy, so the sheet ticked it and a shortfall task asked for
-   * it while the Pantry listed it in the freezer. Empty by default: the
-   * item-only read every caller had before boxes carried pantry state.
+   * it while the Pantry listed it in the freezer. Required for the reason
+   * `probablyHaveReason`'s is: the default let a cook's consumption and the
+   * recipe readiness score skip them.
    */
-  products: readonly ItemProduct[] = [],
+  products: readonly ItemProduct[],
   /**
    * The catalog-wide lookups, for a caller classifying many recipes against one
    * catalog (`countLikelyInPantryByRecipe`). Built from `items` when omitted,
@@ -683,8 +684,8 @@ export function classifyPlanned(
       // fallback, not a third voice: a substitute the user linked by hand
       // outranks a caption the family structure merely implies.
       if (match) {
-        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now))
-          ?? describeFamilyOnHand(familyOnHand(match, byKey, varieties, now));
+        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now, products))
+          ?? describeFamilyOnHand(familyOnHand(match, byKey, varieties, now, products));
       }
     }
 
@@ -803,6 +804,85 @@ export function restockRows(classified: readonly ClassifiedIngredient[]): Classi
  */
 export function consumedRows(classified: readonly ClassifiedIngredient[]): ClassifiedIngredient[] {
   return classified.filter(r => r.category === 'probablyHave');
+}
+
+// ─── What a cooking opened ───────────────────────────────────────────────
+
+/**
+ * What a just-cooked meal was made of, as far as the app can honestly claim:
+ * `consumedRows` over the meal's own recipe, resolved the way its shopping
+ * was. Empty for a free-text meal, which has no ingredients to say anything
+ * about. Shared by the meal plan store's `setCooked` and the MCP server's
+ * `set_meal_cooked`, so both open the same packets.
+ *
+ * Live choice resolution, not persisted, which matches `mealShortfallRows`: a
+ * cook marking this meal done consumes the alternative the shopping task asked
+ * them to buy (see ChoiceResolution.onHand). Swapped, because what a cook used
+ * up is what they actually cooked with, so a standing "oat milk for milk" asks
+ * after the oat milk.
+ */
+export function cookedConsumption(
+  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeScale'>,
+  recipes: readonly Recipe[],
+  items: readonly GroceryItem[],
+  itemSubs: readonly ItemSubLink[],
+  now: Date,
+  // The boxes, so the choice resolves to the option on hand the way the
+  // shortfall task's did, a frozen packet included.
+  products: readonly ItemProduct[],
+): ClassifiedIngredient[] {
+  if (!entry.recipeId) return [];
+  const recipe = recipes.find(r => r.id === entry.recipeId);
+  if (!recipe) return [];
+  const recipesById = new Map(recipes.map(r => [r.id, r]));
+  return consumedRows(
+    classifyPlanned(
+      plannedIngredientsForRecipe(
+        recipe,
+        recipesById,
+        { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, products) },
+        normalizeScale(entry.recipeScale),
+        standingSwapMap(itemSubs, items),
+      ),
+      items,
+      now,
+      [],
+      null,
+      products,
+    ),
+  );
+}
+
+/**
+ * The catalog rows a cooking opened: `cookedConsumption`'s lines resolved back
+ * to ids, the way CookRecapSheet does it, skipping a row already open (its
+ * `openedAt` is when it was first opened, and a second cook out of the same jar
+ * doesn't restart its clock). A key with no live row is dropped rather than
+ * minting one.
+ */
+export function cookOpenedIds(rows: readonly ClassifiedIngredient[], items: readonly GroceryItem[]): string[] {
+  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  return rows
+    .map(r => byKey.get(r.nameKey))
+    .filter((i): i is GroceryItem => !!i && !i.openedAt)
+    .map(i => i.id);
+}
+
+/**
+ * When a cooking opened what it opened: now, or the meal's own day once that
+ * day has passed.
+ *
+ * A Tuesday dinner is routinely ticked off on Thursday, from the plan or from
+ * a "Make X" task that sat on Today for two days, and `openedAt` re-dates a
+ * use-by day, so stamping the tap would hand the jar two days of shelf life it
+ * hasn't got. Every other pantry assertion stamps now because every other one
+ * is a statement about the present ("I'm out of it", "I have it"); this one is
+ * a statement about when something happened. Noon rather than midnight, as a
+ * day rather than a boundary. `todayKey` is the *logical* today, so a meal
+ * ticked off at 1am with a 2am reset is still that day's cooking.
+ */
+export function openedAtForCook(entry: Pick<MealPlanEntry, 'date'>, todayKey: string, now: Date): Date {
+  return entry.date < todayKey ? setHours(dayKeyToDate(entry.date), 12) : now;
 }
 
 // ─── What a removed meal left on the list (#2912) ──────────────────────────

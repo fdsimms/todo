@@ -1711,8 +1711,8 @@ export function MealPlanScreen() {
   // reading out from under them mid-flow. The week decides whether the shelf is
   // *offered* (canSuggestMeals), never what is on it.
   const mealSuggestions = useMemo(
-    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5, itemSubs),
-    [recipes, groceryItems, itemSubs]
+    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), itemProducts, 5, itemSubs),
+    [recipes, groceryItems, itemProducts, itemSubs]
   );
 
   // Recipes made often and made recently — the comfort-food half of the
@@ -1734,10 +1734,10 @@ export function MealPlanScreen() {
     const byId = recipeMap(recipes);
     const map = new Map<string, PantryCoverage>();
     for (const recipe of mealSuggestions) {
-      map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), byId, itemSubs));
+      map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), itemProducts, byId, itemSubs));
     }
     return map;
-  }, [mealSuggestions, recipes, groceryItems, itemSubs]);
+  }, [mealSuggestions, recipes, groceryItems, itemProducts, itemSubs]);
 
   // What the fridge can fill a night with, for the same sheet. Live containers
   // minus the ones this week already points at — the rule and its reasons live
@@ -1975,8 +1975,8 @@ export function MealPlanScreen() {
   // coverage floor) — the common case for a library that's only lightly
   // priced, same as a fresh install answering nothing at all.
   const weekCost = useMemo(
-    () => (range ? estimateWeekCost(entries, recipesById, groceryItems, range, standingSwaps) : null),
-    [entries, recipesById, groceryItems, range, standingSwaps]
+    () => (range ? estimateWeekCost(entries, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
+    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps]
   );
   // Null while too little of the week resolves to a panel to say anything, the
   // per-nutrient coverage floor in recipeNutrition.ts — the common case for a

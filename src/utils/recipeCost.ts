@@ -1,4 +1,4 @@
-import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
+import type { GroceryItem, ItemProduct, MealPlanEntry, Recipe } from '../types';
 import { comparableQuantity, describePriceAge, formatPrice } from './groceryPrice';
 import { measureLineAmount } from './ingredientGrams';
 import { parseQuantity } from './quantity';
@@ -207,10 +207,14 @@ export function estimateWeekCost(
   recipesById: ReadonlyMap<string, Recipe>,
   items: readonly GroceryItem[],
   range: { startKey: string; endKey: string },
+  // The boxes, so an either/or resolves to the option on hand the way the
+  // week's shopping read and weekNutrition resolve it, and the two figures
+  // price the same arm of a choice.
+  products: readonly ItemProduct[],
   swaps: StandingSwapMap = NO_STANDING_SWAPS
 ): CostEstimate | null {
   const planned = collectPlannedIngredients(
-    entries, recipesById, range, swaps, onHandNameKeys(items, new Date())
+    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products)
   );
   if (planned.length === 0) return null;
 

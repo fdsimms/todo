@@ -379,7 +379,7 @@ describe('estimateWeekCost', () => {
 
   it('is null when nothing in range resolves to a recipe', () => {
     const entries = [entry('2026-08-11', null)];
-    expect(estimateWeekCost(entries, new Map(), [], RANGE)).toBeNull();
+    expect(estimateWeekCost(entries, new Map(), [], RANGE, [])).toBeNull();
   });
 
   it('sums priced lines across the week\'s entries', () => {
@@ -394,7 +394,7 @@ describe('estimateWeekCost', () => {
       item({ name: 'Stock', lastPriceMinor: 400, lastPriceQuantity: '2 lb' }),
       item({ name: 'Flour', lastPriceMinor: 200, lastPriceQuantity: '2 lb' }),
     ];
-    const estimate = estimateWeekCost(entries, recipesById, catalog, RANGE);
+    const estimate = estimateWeekCost(entries, recipesById, catalog, RANGE, []);
     expect(estimate).toMatchObject({ priced: 2, total: 2 });
     expect(estimate!.totalMinor).toBe(300); // 200 + 100
   });
@@ -404,7 +404,7 @@ describe('estimateWeekCost', () => {
     const recipesById = new Map([[soup.id, soup]]);
     const entries = [entry('2026-08-10', soup.id, { recipeScale: 2 })];
     const catalog = [item({ name: 'Stock', lastPriceMinor: 400, lastPriceQuantity: '2 lb' })];
-    const estimate = estimateWeekCost(entries, recipesById, catalog, RANGE);
+    const estimate = estimateWeekCost(entries, recipesById, catalog, RANGE, []);
     expect(estimate!.totalMinor).toBe(400); // "2 lb" is the full purchase amount
   });
 
@@ -413,7 +413,7 @@ describe('estimateWeekCost', () => {
     const recipesById = new Map([[chili.id, chili]]);
     const catalog = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
     const at = (recipeScale: number) =>
-      estimateWeekCost([entry('2026-08-10', chili.id, { recipeScale })], recipesById, catalog, RANGE)!;
+      estimateWeekCost([entry('2026-08-10', chili.id, { recipeScale })], recipesById, catalog, RANGE, [])!;
     expect(at(1.5).totalMinor).toBe(180);
     expect(at(2).totalMinor).toBe(240);
   });
@@ -423,7 +423,7 @@ describe('estimateWeekCost', () => {
     const recipesById = new Map([[soup.id, soup]]);
     const entries = [entry('2026-08-10', soup.id, { cookedAt: localIso('2026-08-10T00:00') })];
     const catalog = [item({ name: 'Stock', lastPriceMinor: 400, lastPriceQuantity: '2 lb' })];
-    expect(estimateWeekCost(entries, recipesById, catalog, RANGE)).toBeNull();
+    expect(estimateWeekCost(entries, recipesById, catalog, RANGE, [])).toBeNull();
   });
 
   it('declines below the coverage floor across the week', () => {
@@ -435,7 +435,7 @@ describe('estimateWeekCost', () => {
     const recipesById = new Map([[dish.id, dish]]);
     const entries = [entry('2026-08-10', dish.id)];
     const catalog = [item({ name: 'Flour', lastPriceMinor: 200, lastPriceQuantity: '2 lb' })];
-    expect(estimateWeekCost(entries, recipesById, catalog, RANGE)).toBeNull();
+    expect(estimateWeekCost(entries, recipesById, catalog, RANGE, [])).toBeNull();
   });
 });
 

@@ -7,7 +7,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { createSavedView, deleteSavedView, getSavedView, listSavedViews } from '../savedViewTools';
+import { createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from '../savedViewTools';
 
 let mockRaw: ShimDatabase;
 
@@ -97,5 +97,15 @@ describe('the saved view tools', () => {
     expect(deleteSavedView(replica, 'errands').removed).toEqual(view);
     expect(listSavedViews(replica).views).toEqual([]);
     expect(() => deleteSavedView(replica, 'Errands')).toThrow(/There are none yet/);
+  });
+
+  it('edits a view by the rules a new one is checked by, and moves it in the list', () => {
+    createSavedView(replica, { name: 'Errands' });
+    const { view } = createSavedView(replica, { name: 'Around the house', clauses: [{ kind: 'category', values: ['Home'] }] });
+    const edited = updateSavedView(replica, view.id, { name: 'House', clauses: [{ kind: 'overdue', overdue: true }], position: 0 });
+    expect(edited.view.name).toBe('House');
+    expect(listSavedViews(replica).views.map(v => v.name)[0]).toBe('House');
+    expect(() => updateSavedView(replica, 'House', { name: 'errands' })).toThrow(/already a saved view called "Errands"/);
+    expect(() => updateSavedView(replica, 'House', { clauses: [{ kind: 'colour', values: ['red'] }] })).toThrow();
   });
 });

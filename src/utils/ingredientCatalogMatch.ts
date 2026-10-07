@@ -1,4 +1,5 @@
 import type { GroceryItem } from '../types';
+import { AISLE_LEXICON } from './groceryAisles';
 import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
 import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
 import { rankGrocerySuggestions } from './grocerySuggest';
@@ -218,13 +219,19 @@ function matchOne(
     reason,
   });
 
-  const shorter = suggestShorterCatalogName(name, new Set(byKey.keys()));
+  // A compound the aisle lexicon knows as a food in its own right ("peanut
+  // butter", "coconut milk", "garlic powder") is not a longer way of writing a
+  // shorter catalog name, so the two tiers that trim words off it stand down:
+  // they offered Butter, Milk and Garlic, and accepting rewrote the line.
+  const ownCompound = key.includes(' ') && AISLE_LEXICON[key] !== undefined;
+
+  const shorter = ownCompound ? null : suggestShorterCatalogName(name, new Set(byKey.keys()));
   if (shorter) {
     const item = byKey.get(groceryNameKey(shorter));
     if (item) return suggest(item, 'shorter');
   }
 
-  const prefix = longestPrefixItem(key, items);
+  const prefix = ownCompound ? null : longestPrefixItem(key, items);
   if (prefix) return suggest(prefix, 'prefix');
 
   // Two, so a tie can be *seen*. The autocomplete's sort falls through to name

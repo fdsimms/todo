@@ -714,35 +714,9 @@ describe('demo mode', () => {
   // this asserts is the *shape* the plan builder made of the two seeded tasks,
   // not just that a session exists, since a queue that produced one flat
   // stretch would demo none of it.
-  it('seeds a focus session in flight, with a split task and a break in it', () => {
+  it('starts no focus session on its own', () => {
     useDemoStore.getState().enterDemoMode();
-    const { session } = useFocusStore.getState();
-
-    expect(session).not.toBeNull();
-    expect(isFocusRunning(session!)).toBe(true);
-    expect(session!.stepIndex).toBe(0);
-
-    // The long task was cut into more than one stretch...
-    const split = session!.steps.filter(s => s.kind === 'work' && s.partCount > 1);
-    expect(split.length).toBeGreaterThan(1);
-    // ...and the rest rules put a break somewhere in the run.
-    expect(session!.steps.some(s => s.kind === 'rest')).toBe(true);
-    // Never on the end, whatever the queue was.
-    expect(session!.steps[session!.steps.length - 1].kind).toBe('work');
-
-    // Every stretch points at a task that is actually in the seeded list.
-    const ids = new Set(useTaskStore.getState().tasks.map(t => t.id));
-    for (const step of session!.steps) {
-      if (step.kind === 'work') expect(ids.has(step.taskId!)).toBe(true);
-    }
-
-    // The session's own task-details display (notes, link) has nothing to
-    // show unless the task the plan starts on actually carries one.
-    const byId = new Map(useTaskStore.getState().tasks.map(t => [t.id, t]));
-    const firstTask = byId.get(session!.steps[0].taskId!);
-    expect(firstTask?.notes).not.toBe('');
-    expect(firstTask?.linkUrl).not.toBeNull();
-
+    expect(useFocusStore.getState().session).toBeNull();
     useDemoStore.getState().exitDemoMode();
   });
 
@@ -2923,12 +2897,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const away = listEntries.filter(e => e.listId === airbnb!.id).map(e => e.itemId);
     expect(away.some(id => home.has(id))).toBe(true);
 
-    // And the trip survived being seeded around: setActiveList ends one, so
-    // the away list has to be built before startTrip.
-    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
+    // And no trip is started by entering demo mode.
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
   });
 
-  it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
+  it('seeds a grocery catalog bigger than the list, with no trip started', () => {
     const { items, itemShops, itemProducts, listEntries } = useGroceryStore.getState();
     // The home list — every count below is about the trolley the demo's own
     // trip is shopping, not about both lists at once.
@@ -3050,7 +3023,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // could only ever show corrections. A purchase is read back in its own
     // words now, and a row created this instant sits inside the flat window,
     // so the evidence line seeds like anything else.
-    const pantry = pantryEntries(items, new Date());
+    const pantry = pantryEntries(items, new Date(), []);
     expect(pantry.length).toBeGreaterThan(5);
     expect(pantry.some(e => e.asserted)).toBe(true);
     expect(pantry.some(e => !e.asserted && e.reason.startsWith('bought '))).toBe(true);
@@ -3059,17 +3032,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       items.some(i => !i.onList && i.purchaseCount === 0 && !i.lastAddedAt)
     ).toBe(true);
-    // Milk was priced the moment it went in the cart on today's trip — the
-    // trip price chip's "recorded" state. Bananas is checked but left
-    // unpriced, so the chip's other state (an unconfirmed "+ Price") has a
-    // seeded instance too.
-    const { tripShopId, tripStartedAt } = useGroceryStore.getState();
+    // Milk carries a price at the shop the seed names; Bananas is checked but
+    // left unpriced. No trip is running, so there is no trip clock to read.
     const milk = onList.find(i => i.name === 'Milk')!;
     const bananas = onList.find(i => i.name === 'Bananas')!;
     expect(milk.checked).toBe(true);
     expect(bananas.checked).toBe(true);
-    expect(pricedSince(milk, tripShopId, itemShops, tripStartedAt!)).toBe(true);
-    expect(pricedSince(bananas, tripShopId, itemShops, tripStartedAt!)).toBe(false);
   });
 
   it('seeds a recipe page waiting to be imported from the share sheet', () => {
@@ -3089,14 +3057,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useRecipeStore.getState().recipes.some(r => r.sourceUrl?.includes(label))).toBe(false);
   });
 
-  it('seeds a cooking step timer already counting down', () => {
-    // The footer stack in cook mode, the row's own controls and the Lock Screen
-    // activity are all invisible with an empty stack, so a demo without one
-    // reads as a build that can't hold a step timer at all.
+  it('seeds a paused cooking step timer, and starts no timer on its own', () => {
+    // The footer stack in cook mode and the row's own controls are invisible
+    // with an empty stack, so a demo without one reads as a build that can't
+    // hold a step timer at all. It is paused so entering demo mode starts no
+    // clock.
     const timers = useStepTimerStore.getState().timers;
     expect(timers.length).toBeGreaterThanOrEqual(1);
+    expect(timers.some(isStepTimerRunning)).toBe(false);
+    expect(useRecipeStore.getState().recipes.some(r => r.timerStartedAt)).toBe(false);
     const [timer] = timers;
-    expect(isStepTimerRunning(timer)).toBe(true);
     expect(stepTimerRemaining(timer)).toBeGreaterThan(0);
     // Attached to a step of a recipe that really has one, and named so the row
     // reads without resolving anything.
@@ -3172,7 +3142,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const plannedLine = planned.find(p => p.nameKey === optionalLine!.nameKey);
     expect(plannedLine?.optional).toBe(true);
 
-    const classified = classifyPlanned(planned, useGroceryStore.getState().items, new Date());
+    const classified = classifyPlanned(planned, useGroceryStore.getState().items, new Date(), [], null, []);
     const row = classified.find(r => r.nameKey === optionalLine!.nameKey);
     expect(row?.optional).toBe(true);
     expect(row?.category).toBe('needToBuy');
@@ -3286,7 +3256,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const row = classifyPlanned(
       [{ name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Ragù' }],
       items,
-      new Date()
+      new Date(), [], null, []
     )[0];
     expect(row.nameKey).toBe('white onion');
     expect(row.category).toBe('probablyHave');
@@ -3367,7 +3337,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       plannedIngredientsForRecipe(usesButter!, recipesById),
       items,
       new Date(),
-      itemSubs
+      itemSubs, null, []
     );
     const butterRow = rows.find(r => r.nameKey === 'butter')!;
 
@@ -3387,18 +3357,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       flattenRecipeIngredients(r, recipesById).some(f => f.ingredient.nameKey === 'butter')
     )!;
 
-    const count = countLikelyInPantry(usesButter, items, new Date(), recipesById, itemSubs);
+    const count = countLikelyInPantry(usesButter, items, new Date(), [], recipesById, itemSubs);
     expect(count?.viaSubstitute).toBeGreaterThanOrEqual(1);
 
-    const coverage = pantryCoverageForRecipe(usesButter, items, new Date(), recipesById, itemSubs);
+    const coverage = pantryCoverageForRecipe(usesButter, items, new Date(), [], recipesById, itemSubs);
     expect(coverage.viaSubstitute).toBeGreaterThanOrEqual(1);
     expect(describeRecipe(usesButter, count)).toContain('with a substitute');
     expect(describePantryCoverage(coverage)).toContain('with a substitute');
 
     // Never a free ride to a higher score than the same recipe would earn if
     // butter itself were genuinely fresh — the fully-stocked read still wins.
-    const scoreWithSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), recipesById, itemSubs);
-    const scoreWithoutSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), recipesById);
+    const scoreWithSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), [], recipesById, itemSubs);
+    const scoreWithoutSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), [], recipesById);
     expect(scoreWithSub).toBeGreaterThanOrEqual(scoreWithoutSub);
   });
 
@@ -3444,7 +3414,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const walk = shopWalkOrder(own[0].aisleOrder, aisleOrder);
     expect(walk.indexOf('Frozen')).toBe(walk.indexOf('Produce') + 1);
     expect(walk).not.toEqual(aisleOrder);
-    expect(useGroceryStore.getState().activeShop()?.id).toBe(own[0].id);
+    expect(useGroceryStore.getState().activeShop()).toBeNull();
 
     // A pile in "Other" the offline lexicon couldn't place, which is what the
     // "Sort N into aisles" action at the foot of the list is offered for. With
@@ -3646,12 +3616,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ]);
   });
 
-  it('seeds a trip in progress, with rows that have something to say about it', () => {
+  it('seeds rows that have something to say once a trip starts at Trader Joe\'s', () => {
     const { items, itemShops, shops, itemSubs, itemProducts } = useGroceryStore.getState();
 
-    // The banner, and the only state in which the list mentions stores at all.
-    const trip = useGroceryStore.getState().activeShop();
-    expect(trip).not.toBeNull();
+    // No trip is started by entering demo mode, so the markers are read
+    // against the shop a trip would be at.
+    expect(useGroceryStore.getState().activeShop()).toBeNull();
+    const trip = shops.find(s => s.name === "Trader Joe's");
+    expect(trip).toBeDefined();
 
     const markers = items
       .filter(i => i.onList)
@@ -3681,7 +3653,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     it('seeds a shelf substitute on the unavailable row, tappable to swap (#1567)', () => {
       const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
-      const trip = useGroceryStore.getState().activeShop()!;
+      const trip = shops.find(s => s.name === "Trader Joe's")!;
 
       const tortillas = items.find(i => i.name === 'Tortillas')!;
       const cornTortillas = items.find(i => i.nameKey === 'corn tortillas')!;
@@ -3749,9 +3721,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const byId = recipeMap(recipes);
 
     // Structured steps (Recipe.steps), including on the recipe that's mid-cook,
-    // so cook mode opens there with the timer already running.
+    // so cook mode opens there with a step timer waiting.
     expect(recipes.some(r => r.steps.length > 1)).toBe(true);
-    expect(recipes.some(r => r.steps.length > 0 && r.timerStartedAt)).toBe(true);
 
     // A recipe whose method is still a notes blob, which is what cook mode's
     // fallback reads — and it's a composed one, so the same cook also shows a
@@ -3860,7 +3831,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const upNext = useRecipeStore.getState().upNextRecipes();
     expect(upNext.map(r => r.name)).toEqual(['Weeknight vegetable soup', 'Brown sugar shortbread']);
     expect(upNext.every(r => r.cookCount === 0 && r.vote === null)).toBe(true);
-    expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
     expect(recipes.some(r => r.author && r.source)).toBe(true);
@@ -4130,7 +4100,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(oats.purchaseCount).toBeGreaterThanOrEqual(3);
     // And its guess has to have actually run out — an item still inside its
     // window is the state this feature has nothing to say about.
-    expect(probablyHaveReason(oats, new Date())).toBeNull();
+    expect(probablyHaveReason(oats, new Date(), [])).toBeNull();
 
     const check = tasks.find(t => t.generatedKind === 'pantryCheck');
     expect(check).toBeDefined();
@@ -4142,7 +4112,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     // And the real rule agrees, so the first foreground sweep doesn't clear the
     // seeded row as describing an item that wants nothing.
-    expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
+    expect(wantedPantryChecks(items, tasks, new Date(), []).map(w => w.itemId)).toContain(oats.id);
   });
 
   it('seeds the bulk form of the same question, and a deck with something in it', () => {
@@ -4962,7 +4932,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // The one pantry state that reaches into onList.
     expect(low.every(i => i.onList)).toBe(true);
     // Still had, which is the whole distinction from "Out of it".
-    expect(probablyHaveReason(low[0], new Date())).toBe('running low');
+    expect(probablyHaveReason(low[0], new Date(), [])).toBe('running low');
   });
 
   it('seeds a row with a record of going bad, and no banner up to say so', () => {
@@ -5093,7 +5063,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       const leftover = leftovers.find(l => l.id === task.generatedSourceId);
       expect(leftover).toBeDefined();
       expect(task.title).toBe(`Use up ${leftover!.title}`);
-      expect(task.deadline).toBe(leftover!.keepUntil);
+      expect(dayKeyOf(new Date(task.deadline!))).toBe(leftover!.keepUntil);
       // Same kitchen link shape the grocery use-up tasks carry, opening
       // straight to this leftover's own row.
       expect(task.linkUrl).toBe(`dundundun://kitchen?item=leftover-${leftover!.id}`);
@@ -5109,26 +5079,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const fresh = leftovers.find(l => isLiveLeftover(l) && freshnessOf(l) === 'fresh');
     expect(fresh).toBeDefined();
     expect(tasks.some(t => t.generatedSourceId === fresh!.id)).toBe(false);
-  });
-});
-
-describe('demo seed — the trip budget', () => {
-  beforeAll(freshDemo);
-
-  it('puts a budget on the running trip, so the total is compared to something', () => {
-    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
-    expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
-  });
-
-  it('leaves the cart part-priced, which is the state worth demonstrating', () => {
-    // Neither over nor fully priced, so the banner reports the total and the
-    // coverage and offers no verdict. That refusal is the feature.
-    const { items, listEntries, activeListId, tripBudgetMinor } = useGroceryStore.getState();
-    const cart = estimateCartTotal(itemsOnList(items, listEntries, activeListId));
-    expect(cart.priced).toBeGreaterThan(0);
-    expect(cart.priced).toBeLessThan(cart.total);
-    expect(cartBudgetStanding(cart, tripBudgetMinor)).toBeNull();
-    expect(describeCartTotal(cart, tripBudgetMinor, '$')).toContain('priced');
   });
 });
 

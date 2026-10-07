@@ -507,15 +507,23 @@ export function describeListEstimate(estimate: ListEstimate, symbol: string): st
  * empty trolley. A row left ticked from a shop nobody finished is still, on
  * any honest reading, in the cart.
  */
-export function estimateCartTotal(items: readonly GroceryItem[]): ListEstimate {
+export function estimateCartTotal(
+  items: readonly GroceryItem[],
+  // The store the trip is at, and the links holding each item's price there.
+  // A row priced at this store counts at that price (`lastPriceFor`), so a
+  // Costco price no longer pushes a Trader Joe's trolley "over budget".
+  shopId: string | null,
+  links: readonly ItemShopLink[]
+): ListEstimate {
   let totalMinor = 0;
   let priced = 0;
   let total = 0;
   for (const item of items) {
     if (!item.onList || !item.checked || item.isStaple) continue;
     total += 1;
-    if (item.lastPriceMinor === null) continue;
-    totalMinor += item.lastPriceMinor;
+    const price = lastPriceFor(item, shopId, links);
+    if (price === null) continue;
+    totalMinor += price;
     priced += 1;
   }
   return { totalMinor, priced, total };

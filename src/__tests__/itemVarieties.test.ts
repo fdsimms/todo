@@ -201,7 +201,7 @@ describe('familyOnHand', () => {
     const red = makeItem({ name: 'Red onion', varietyOfKey: 'onion' });
     const items = [onion, white, yellow, red];
 
-    const family = familyOnHand(red, byKeyOf(items), varietyIndex(items), NOW);
+    const family = familyOnHand(red, byKeyOf(items), varietyIndex(items), NOW, []);
     // The parent leads, then siblings; yellow drops out — nothing says you have it.
     expect(family).toEqual([onion, white]);
   });
@@ -211,8 +211,8 @@ describe('familyOnHand', () => {
     const white = makeItem({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: future(7) });
     const items = [onion, white];
 
-    expect(familyOnHand(onion, byKeyOf(items), varietyIndex(items), NOW)).toEqual([]);
-    expect(familyOnHand(white, byKeyOf(items), varietyIndex(items), NOW)).toEqual([onion]);
+    expect(familyOnHand(onion, byKeyOf(items), varietyIndex(items), NOW, [])).toEqual([]);
+    expect(familyOnHand(white, byKeyOf(items), varietyIndex(items), NOW, [])).toEqual([onion]);
   });
 
   it('finds the parent row and siblings spelled the other way (#2941)', () => {
@@ -220,7 +220,7 @@ describe('familyOnHand', () => {
     const white = makeItem({ name: 'White onions', varietyOfKey: 'onions', onHandUntil: future(7) });
     const red = makeItem({ name: 'Red onion', varietyOfKey: 'onion' });
     const items = [onion, white, red];
-    expect(familyOnHand(red, byKeyOf(items), varietyIndex(items), NOW)).toEqual([onion, white]);
+    expect(familyOnHand(red, byKeyOf(items), varietyIndex(items), NOW, [])).toEqual([onion, white]);
   });
 });
 

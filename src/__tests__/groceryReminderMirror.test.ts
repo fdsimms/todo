@@ -1,3 +1,4 @@
+import { parseGroceryInput } from '../utils/groceryParse';
 import {
   mirrorTitleFor,
   normalizeMirrorTitle,
@@ -35,6 +36,28 @@ describe('mirrorTitleFor', () => {
   it('is just the name when there is no amount', () => {
     expect(mirrorTitleFor({ name: 'milk', quantity: null })).toBe('milk');
     expect(mirrorTitleFor({ name: 'milk', quantity: '  ' })).toBe('milk');
+  });
+
+  it('writes a stored size the way it was typed, which reads back', () => {
+    // Stored as "3, large"; "3, large eggs" would read back as one name.
+    expect(mirrorTitleFor({ name: 'eggs', quantity: '3, large' })).toBe('3 large eggs');
+  });
+
+  it('falls back to parentheses for an amount that reads back nowhere else', () => {
+    expect(mirrorTitleFor({ name: 'eggs', quantity: 'about a dozen' })).toBe('eggs (about a dozen)');
+  });
+
+  it('writes every typed line as a title that reads back to the same row', () => {
+    // A title the mirror can't split is a reminder it can't match, and the
+    // next pass adds it as a new catalog row with a reminder of its own.
+    for (const typed of [
+      'milk x2', '12 eggs x2', '3 large eggs', '1 medium onion', '2 lb chicken thighs',
+      '2 14 oz cans black beans', 'eggs (dozen)', '1/4 cup tomato paste', 'bananas',
+    ]) {
+      const row = parseGroceryInput(typed);
+      const title = mirrorTitleFor(row);
+      expect(parseGroceryInput(title)).toEqual(row);
+    }
   });
 });
 

@@ -44,16 +44,22 @@ import type { OcrReceipt, OcrReceiptRow } from './receiptOcr';
  * loyalty and membership numbers, address and phone, cashier and register
  * numbers, surveys, coupons and discounts, bag fees and bottle deposits.
  */
+//
+// Words that are also in product names are matched as the phrase a register
+// prints instead ("bag fee", "round up", "item count"), since dropping a line
+// hides it from the person checking the result, which is the worse error:
+// "chip", "bag", "round", "count" and "store" alone threw away "CHOC CHIP
+// COOKIES", "10LB BAG POTATOES", "EYE ROUND ROAST" and "200 COUNT NAPKINS".
 const NON_ITEM_WORDS = [
   'subtotal', 'total', 'tax', 'vat', 'balance', 'due',
   'cash', 'change', 'tender', 'debit', 'credit', 'visa', 'mastercard', 'amex',
-  'discover', 'card', 'chip', 'contactless', 'account', 'auth', 'authorization',
+  'discover', 'card', 'contactless', 'account', 'auth', 'authorization',
   'approval', 'approved', 'ref', 'reference', 'terminal', 'merchant', 'trace',
   'loyalty', 'member', 'membership', 'rewards', 'points', 'savings', 'saved',
   'coupon', 'discount', 'promo', 'manager',
-  'bag', 'deposit', 'crv', 'donation', 'round',
-  'cashier', 'register', 'lane', 'store', 'tel', 'phone', 'survey', 'void',
-  'refund', 'return', 'items', 'qty', 'count',
+  'bag\\s*(?:fee|charge)', 'deposit', 'crv', 'donation', 'round\\s*up', 'roundup',
+  'cashier', 'register', 'lane', 'store\\s*(?:#|no\\b)', 'tel', 'phone', 'survey', 'void',
+  'refund', 'return', 'items', 'qty', 'item\\s*count',
 ] as const;
 
 const NON_ITEM = new RegExp(`\\b(${NON_ITEM_WORDS.join('|')})\\b`, 'i');
