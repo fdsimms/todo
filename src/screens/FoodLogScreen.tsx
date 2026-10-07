@@ -72,7 +72,7 @@ import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
-import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
+import { FoodLogEntrySheet, type FoodLogEntrySheetHandle } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
@@ -249,6 +249,8 @@ export function FoodLogScreen() {
    * route — see `FoodLogEntrySheet`'s `onEstimate`.
    */
   const [estimateSeed, setEstimateSeed] = useState('');
+  // The add sheet, so the describe sheet's log can apply "Add another" to it.
+  const addSheetRef = useRef<FoodLogEntrySheetHandle>(null);
   const [savedMealsOpen, setSavedMealsOpen] = useState(false);
   /**
    * The entry whose catalog row is being chosen, or null.
@@ -1353,6 +1355,7 @@ export function FoodLogScreen() {
       )}
 
       <FoodLogEntrySheet
+        ref={addSheetRef}
         visible={addOpen}
         slot={addingSlot}
         at={loggingAt}
@@ -1386,7 +1389,12 @@ export function FoodLogScreen() {
               at={loggingAt}
               initialDescription={estimateSeed}
               onClose={() => setEstimateOpen(false)}
-              onLogged={() => setAddOpen(false)}
+              // With "Add another" on, the add sheet takes the described food
+              // the same way it takes its own saves and stays open for the next
+              // one; otherwise it closes, as it always did.
+              onLogged={label => {
+                if (!addSheetRef.current?.keepOpenAfterLog(label)) setAddOpen(false);
+              }}
               onPickRecipe={recipeId => {
                 // Handed to the picker rather than logged here: a recipe is
                 // logged in servings, which is a question this sheet has not

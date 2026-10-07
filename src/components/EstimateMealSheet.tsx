@@ -202,13 +202,14 @@ interface Props {
   /** Offered instead of estimating, when the description names one. See the note above. */
   onPickRecipe: (recipeId: string) => void;
   /**
-   * Fired right before `onClose` on a successful Log, and only then — a
-   * caller that keeps its own "what did you eat?" sheet open underneath this
-   * one (rather than closing it to open this) uses this to close that sheet
-   * too, so a completed estimate doesn't reveal it again. Cancelling leaves
-   * it unfired, which is what lets that sheet stay in place.
+   * Fired right before `onClose` on a successful Log, and only then, with the
+   * label of what was logged — a caller that keeps its own "what did you eat?"
+   * sheet open underneath this one (rather than closing it to open this) uses
+   * this to either close that sheet, so a completed estimate doesn't reveal it
+   * again, or, with "Add another" on, stay open for the next food. Cancelling
+   * leaves it unfired, which is what lets that sheet stay in place.
    */
-  onLogged?: () => void;
+  onLogged?: (label: string) => void;
 }
 
 export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialDescription, onClose, onPickRecipe, onLogged }: Props) {
@@ -560,7 +561,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     if (!written) { haptics.error(); return; }
     haptics.success();
     Keyboard.dismiss();
-    onLogged?.();
+    onLogged?.(estimate.label);
     onClose();
   };
 
@@ -830,7 +831,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       return null;
     }
 
-    onLogged?.();
+    onLogged?.(staged.food.label);
     onClose();
     return null;
   };
