@@ -1,4 +1,4 @@
-import type { CalendarRequestStatus, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
+import type { CalendarRequestStatus, Person, PersonNote, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
 import { catalogRecordPlan, type CatalogRecordPlan, type CatalogRecordState } from './agentCatalogRevert';
 import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from './agentPantryRevert';
 
@@ -41,6 +41,7 @@ export const RULE_LIST_NAMES: readonly RuleListName[] = ['title', 'weather', 'ev
 export interface RecordState extends PantryRecordState, CatalogRecordState {
   project(id: string): Project | null;
   stack(id: string): TaskGroup | null;
+  person(id: string): Person | null;
   /** The item's entry on the list at home, or null when it is not on it. */
   groceryHome(itemId: string): { checked: boolean } | null;
   exists(subject: RecordLogSubject, id: string): boolean;
@@ -68,6 +69,16 @@ export interface DeletedStackSnapshot {
   unfiledTaskIds: string[];
 }
 
+/** A person an agent deleted, with the notes that went with them. */
+export interface DeletedPersonSnapshot {
+  person: Person;
+  notes: PersonNote[];
+}
+
+export function deletedPersonRevert(snapshot: DeletedPersonSnapshot): UnattendedRevert {
+  return { before: { deletedPerson: snapshot } as unknown as Record<string, unknown>, after: {} };
+}
+
 export function deletedProjectRevert(snapshot: DeletedProjectSnapshot): UnattendedRevert {
   return { before: { deletedProject: snapshot } as unknown as Record<string, unknown>, after: {} };
 }
@@ -80,6 +91,7 @@ export type AgentRecordPlan =
   | { kind: 'restoreProject'; id: string; patch: Record<string, unknown> }
   | { kind: 'restoreDeletedProject'; snapshot: DeletedProjectSnapshot }
   | { kind: 'restoreDeletedStack'; snapshot: DeletedStackSnapshot }
+  | { kind: 'restoreDeletedPerson'; snapshot: DeletedPersonSnapshot }
   | { kind: 'groceryRemove'; itemId: string }
   | { kind: 'groceryCheck'; itemId: string; checked: boolean }
   | { kind: 'removeRecord'; subject: RecordLogSubject; id: string }
@@ -185,6 +197,13 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       return NONE;
     }
 
+    case 'person': {
+      const revert = entry.revert;
+      if (!revert || !('deletedPerson' in revert.before)) return NONE;
+      const snapshot = revert.before.deletedPerson as DeletedPersonSnapshot;
+      return state.person(snapshot.person.id) ? { kind: 'none', reason: 'Restored since' } : { kind: 'restoreDeletedPerson', snapshot };
+    }
+
     case 'stack': {
       const revert = entry.revert;
       if (!revert || !('deletedStack' in revert.before)) return NONE;
@@ -222,6 +241,7 @@ export function agentRecordLabel(plan: AgentRecordPlan): string | null {
     case 'restoreDeletedItem':
     case 'restoreDeletedProject':
     case 'restoreDeletedStack':
+    case 'restoreDeletedPerson':
       return 'Restore';
     // Not "Cancel": the confirmation's own dismiss button already says that.
     case 'cancelCalendarRequest':

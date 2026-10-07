@@ -85,7 +85,7 @@ import { addProjectSteps, createProject, deleteProject, getProject, nextInProjec
 import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
-import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
+import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, reorderPeople, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_MIN_PUSHES, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
@@ -104,7 +104,7 @@ import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRec
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
-import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews } from './savedViewTools';
+import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
 import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
@@ -1519,7 +1519,7 @@ function registerWriteTools(
 
   server.tool(
     'create_saved_view',
-    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. Views are edited and reordered in the app.',
+    'Save a named lens over every open task, as the app\'s Saved Views screen does. Each clause is one the app stores and a task has to pass all of them: { kind: "category", values: [names] }, { kind: "tag", values: [tags] }, { kind: "project", values: [project ids] }, { kind: "priority", values: [0 to 4] }, { kind: "effort", values: [0 to 6] }, { kind: "maxMinutes", minutes: n }, { kind: "overdue", overdue: bool }, { kind: "hasReminder", hasReminder: bool }, { kind: "heldBack", heldBack: bool }, { kind: "undated", undated: bool }. One clause per kind; an empty values list matches everything. A name already in use, an unknown category or project, or a clause the app would not store is refused. update_saved_view edits and reorders one.',
     {
       name: z.string().min(1).max(80),
       icon: z.string().optional().describe('One of the app\'s view icons (the refusal lists them). Default bookmark-outline.'),
@@ -1538,6 +1538,33 @@ function registerWriteTools(
         return json(await withWrite(() => createSavedView(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the view.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_saved_view',
+    'Change a saved view: its name, icon, or its clauses (the whole set, in the shape create_saved_view takes, checked the same way), or move it in the list with position (0 is first).',
+    {
+      view: z.string().min(1).describe('The view\'s id or name.'),
+      name: z.string().min(1).max(80).optional(),
+      icon: z.string().optional(),
+      clauses: z.array(z.object({
+        kind: z.string(),
+        values: z.array(z.union([z.string(), z.number()])).optional(),
+        minutes: z.number().optional(),
+        overdue: z.boolean().optional(),
+        hasReminder: z.boolean().optional(),
+        heldBack: z.boolean().optional(),
+        undated: z.boolean().optional(),
+      })).optional(),
+      position: z.number().int().min(0).optional(),
+    },
+    async ({ view, ...input }) => {
+      try {
+        return json(await withWrite(() => updateSavedView(replica, view, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the view.' });
       }
     }
   );
@@ -2858,8 +2885,12 @@ function registerWriteTools(
     email: z.string().nullable().optional(),
     linkUrl: z.string().nullable().optional(),
     location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
+    groupId: z.string().nullable().optional().describe('The group they are listed under (save_person_group makes one), or null for none.'),
+    archived: z.boolean().optional().describe('Take them off the list but keep everything about them. false brings them back.'),
+    birthdayTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday task for them.'),
+    birthdayGiftTaskOptOut: z.boolean().optional().describe('true: the app writes no birthday gift task for them.'),
   };
-  const PEOPLE_RULE = ' Identity and contact details only: nothing here sets how often to reach out, turns on nudges, files someone into a group, archives or orders people, because the app never scores or ranks anyone and those are the person\'s own choices.';
+  const PEOPLE_RULE = ' Nothing here sets how often to reach out or turns on nudges for someone: the app never scores anyone, and a rhythm with someone is the person\'s own choice.';
 
   server.tool(
     'create_person',
@@ -2885,6 +2916,100 @@ function registerWriteTools(
         return json(withLink(person, LINKS?.person(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that person.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_person',
+    "Delete someone, as the app's delete does: the notes, gift ideas and food notes about them go too; tasks that name them stay and stop showing their name. Only when the person asks for a delete: update_person with archived: true keeps them. Restorable from Activity.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deletePerson(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that person.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_people',
+    'Put people in an order on the People screen: the ones named go first, the rest keep their order after them. Only on the person\'s say: the order is theirs.',
+    { ids: z.array(z.string().min(1)).min(1) },
+    async ({ ids }) => {
+      try {
+        return json(await withWrite(() => reorderPeople(replica, ids)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_person_group',
+    'Add a group to list people under ("Family", "Book club"), rename one (newName), delete one (its people are left in none), or set whether its members are caught up with one at a time (catchUpSeparately). File someone in a group with update_person\'s groupId.',
+    {
+      name: z.string().min(1),
+      newName: z.string().optional(),
+      delete: z.literal(true).optional(),
+      catchUpSeparately: z.boolean().optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => savePersonGroup(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the group.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_person_note',
+    'Write something down about someone: a gift idea (kind gift), a food note such as what they like or cannot eat (kind food), or anything else (kind note). about is the day a note is about ("starts the new job in September"), left out for one that is always true. Write only what the person told you.',
+    {
+      personId: z.string().min(1),
+      kind: z.enum(['note', 'gift', 'food']),
+      text: z.string().min(1),
+      about: z.string().nullable().optional().describe('YYYY-MM-DD.'),
+    },
+    async input => {
+      try {
+        return json(withLink(await withWrite(() => addPersonNote(replica, input)), LINKS?.person(input.personId)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_person_note',
+    'Change a note, gift idea or food note about someone (ids from get_person): its text, its kind, the day it is about, or archived: true to keep it but file it away (a gift already given).',
+    {
+      id: z.string().min(1),
+      text: z.string().optional(),
+      kind: z.enum(['note', 'gift', 'food']).optional(),
+      about: z.string().nullable().optional(),
+      archived: z.boolean().optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updatePersonNote(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_person_note',
+    'Delete a note, gift idea or food note about someone (ids from get_person).',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deletePersonNote(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the note.' });
       }
     }
   );

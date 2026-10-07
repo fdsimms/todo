@@ -1132,12 +1132,24 @@ A meal already marked cooked is not removable here, since it is history behind t
 ### People: who someone is, never how the friendship stands
 
 `create_person` and `update_person` write identity and contact details (name, nickname, kind, notes,
-what to ask about, birthday, phone, fax, email, link, location as free text). `docs/arch/people.md` is why the list stops there:
-**no cadence, no nudge opt-in, no group, no archive, no order.** Declaring a rhythm for someone is the
+what to ask about, birthday, phone, fax, email, link, location as free text), and the person's own
+filing: the group they are listed under, whether they are archived, and whether the app writes a
+birthday or a birthday-gift task for them (both opt-outs only ever quiet the app). `docs/arch/people.md`
+is why the list stops there: **no cadence and no nudge opt-in.** Declaring a rhythm for someone is the
 user's own small act, and an agent doing it for them is the "make you declare a cadence" failure the
 doc opens with; a new person starts with none, as in the app (`blankPerson`). A birthday is checked
 as a real month and day (29 Feb is allowed) with an optional year, and the year is never turned into
-an age. History is still `add_person_history`.
+an age. Groups, archive and order used to be left out with cadence; they are organizing a list, not a
+judgement about anyone, so they are in (`save_person_group`, `reorder_people`), and the tool text still
+says the order is the person's to choose.
+
+What is written about someone (`PersonNote`: a gift idea, a food note, or any other note, optionally
+about a day) is `add_person_note`, `update_person_note` and `delete_person_note`, through
+`usePersonNoteStore`. `get_person` returns each with its id, and each history entry with its task id, so
+a wrong one can be put right with the task tools. The Activity entry for a note is titled by the person,
+never by the note's text, for the reason a mood entry is titled by kind. `delete_person` is the app's
+delete (their notes go with them; tasks naming them stay), and its entry carries the person and their
+notes (`deletedPersonRevert`) so Activity can restore both. History is still `add_person_history`.
 
 ### Changing and deleting a recipe
 
@@ -1205,9 +1217,8 @@ Four areas had no MCP read or write, and the shape of each answer follows from w
   `create_saved_view` runs its clauses through `parseSavedViewClauses`, the tolerant parser the app
   uses, and then compares what survived with what was asked: a clause the parser would drop, a
   second clause of one kind, a category nobody has or a project id that is not theirs is refused
-  by name rather than stored as a view that means less than it was told to. There is deliberately
-  no update: a view owns no rows, so a wrong one is deleted and remade, and its name, icon and
-  clauses are edited in the app.
+  by name rather than stored as a view that means less than it was told to. `update_saved_view`
+  runs an edit through the same checks, and moves a view in the list.
 - **The vacation switch is the settings store's own setter**, so what `set_vacation_mode` does is
   what the Settings toggle does. The rule every off-path shares, that the protected streaks are
   forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out

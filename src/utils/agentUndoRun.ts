@@ -14,6 +14,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useMoodStore } from '../store/useMoodStore';
+import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -41,6 +43,7 @@ const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
 export function agentUndoReaders(): AgentUndoReaders {
   const record: RecordState = {
     stack: id => useTaskGroupStore.getState().getGroupById(id),
+    person: id => usePersonStore.getState().getPersonById(id),
     project: id => useProjectStore.getState().projects.find(p => p.id === id) ?? null,
     groceryHome: itemId => {
       const entry = entryFor(useGroceryStore.getState().listEntries, itemId, null);
@@ -112,6 +115,11 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
         const stack = useTaskGroupStore.getState().getGroupById(id);
         if (stack && stack.projectId === null) useTaskGroupStore.getState().updateGroup(id, { projectId: project.id });
       }
+      return;
+    }
+    case 'restoreDeletedPerson': {
+      usePersonStore.getState().restorePerson(plan.snapshot.person);
+      plan.snapshot.notes.forEach(n => usePersonNoteStore.getState().restoreNote(n));
       return;
     }
     case 'restoreDeletedStack': {

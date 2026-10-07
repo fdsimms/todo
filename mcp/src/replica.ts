@@ -374,6 +374,13 @@ export interface PersonFields {
   linkUrl?: string | null;
   /** Free text, like the app's own field; null clears it. */
   location?: string | null;
+  /** The group they are listed under (a person group's id), or null for none. */
+  groupId?: string | null;
+  /** Filed away: kept, out of the list. */
+  archived?: boolean;
+  /** Never write a birthday task, or a birthday gift task, for this person. */
+  birthdayTaskOptOut?: boolean;
+  birthdayGiftTaskOptOut?: boolean;
 }
 
 export interface FoodPatch {
@@ -888,6 +895,8 @@ export interface Replica {
   /** A view through `useSavedViewStore.createView`, which takes the next slot at the bottom of the list. The clauses are already checked. */
   createSavedView(name: string, icon: string, clauses: SavedViewClause[]): SavedView;
   deleteSavedView(id: string): SavedView;
+  /** Change a view's name, icon or clauses (already checked), and optionally move it to a place in the list (0 is first). */
+  updateSavedView(id: string, patch: { name?: string; icon?: string; clauses?: SavedViewClause[] }, position?: number): SavedView;
   /**
    * Vacation mode through the settings store's own setter, the way the
    * Settings toggle does it. On the way off the protected streaks are forgiven
@@ -1501,6 +1510,20 @@ export interface Replica {
    */
   createPerson(fields: PersonFields): Person;
   updatePerson(id: string, fields: PersonFields): Person;
+  /**
+   * Delete a person, as the app's delete: the notes written about them go with
+   * them (they are about somebody and mean nothing without them), and tasks
+   * naming them are kept. What it took comes back for the ledger.
+   */
+  deletePerson(id: string): { person: Person; notes: PersonNote[] };
+  /** Put people in this order: the named first, the rest after in their order. */
+  reorderPeople(ids: string[]): void;
+  /** Add, rename or delete a person group, or set whether its members are caught up with one at a time. */
+  savePersonGroup(name: string, change: { newName?: string; delete?: boolean; catchUpSeparately?: boolean }): { group: PersonGroup | null; members: number };
+  /** A note, a gift idea or a food note about someone, through `usePersonNoteStore.addNote`. */
+  addPersonNote(personId: string, kind: PersonNote['kind'], text: string, relevantOn?: string | null): PersonNote;
+  updatePersonNote(id: string, patch: { text?: string; kind?: PersonNote['kind']; relevantOn?: string | null; archived?: boolean }): PersonNote;
+  deletePersonNote(id: string): PersonNote;
 
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
@@ -1776,6 +1799,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.email !== undefined) out.email = f.email?.trim() || null;
     if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
     if (f.location !== undefined) out.location = f.location?.trim() || null;
+    if (f.groupId !== undefined) {
+      if (f.groupId !== null && !db.dbGetAllPersonGroups().some(g => g.id === f.groupId)) throw new Error(`No group with id ${f.groupId}. save_person_group makes one.`);
+      out.groupId = f.groupId;
+    }
+    if (f.archived !== undefined) {
+      out.archived = f.archived;
+      out.archivedAt = f.archived ? new Date().toISOString() : null;
+    }
+    if (f.birthdayTaskOptOut !== undefined) out.birthdayTaskOptOut = f.birthdayTaskOptOut;
+    if (f.birthdayGiftTaskOptOut !== undefined) out.birthdayGiftTaskOptOut = f.birthdayGiftTaskOptOut;
     if (f.birthday !== undefined) {
       if (f.birthday === null) {
         Object.assign(out, { birthdayMonth: null, birthdayDay: null, birthYear: null });
@@ -2767,6 +2800,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!view) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
       store.removeView(id);
       return view;
+    },
+    updateSavedView(id: string, patch: { name?: string; icon?: string; clauses?: SavedViewClause[] }, position?: number): SavedView {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore');
+      const store = useSavedViewStore.getState();
+      store.initialize();
+      if (!store.views.some(v => v.id === id)) throw new Error(`No saved view with id ${id}. list_saved_views names them.`);
+      if (Object.keys(patch).length > 0) store.updateView(id, patch);
+      if (position !== undefined) {
+        const others = useSavedViewStore.getState().views.map(v => v.id).filter(v => v !== id);
+        const at = Math.max(0, Math.min(others.length, Math.floor(position)));
+        store.reorderViews([...others.slice(0, at), id, ...others.slice(at)]);
+      }
+      return useSavedViewStore.getState().views.find(v => v.id === id)!;
     },
     setVacationMode(on: boolean, until?: Date | null): VacationSwitchOutcome {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -5260,10 +5307,103 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const existing = people().find(p => p.id === id);
       if (!existing) throw new Error(`No person with id ${id}.`);
       if (fields.name !== undefined && !fields.name.trim()) throw new Error('A person needs a name.');
-      const next = { ...existing, ...personPatch(fields) };
+      const patch = personPatch(fields);
+      // Archiving again does not re-stamp the day it was filed away.
+      if (fields.archived !== undefined && fields.archived === existing.archived) delete patch.archivedAt;
+      const next = { ...existing, ...patch };
       db.dbUpdatePerson(next);
       refresh();
       return next;
+    },
+
+    deletePerson(id: string): { person: Person; notes: PersonNote[] } {
+      const person = people().find(p => p.id === id);
+      if (!person) throw new Error(`No person with id ${id}.`);
+      const { usePersonStore } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      usePersonStore.getState().initialize();
+      usePersonNoteStore.getState().initialize();
+      const notes = usePersonNoteStore.getState().notes.filter(n => n.personId === id);
+      usePersonStore.getState().removePersonRow(id);
+      refresh();
+      return { person, notes };
+    },
+
+    reorderPeople(ids: string[]): void {
+      const all = [...people()].sort((a, b) => a.sortOrder - b.sortOrder);
+      const unknown = ids.filter(pid => !all.some(p => p.id === pid));
+      if (unknown.length > 0) throw new Error(`No person with id ${unknown.join(', ')}.`);
+      const order = [...new Set(ids), ...all.map(p => p.id).filter(pid => !ids.includes(pid))];
+      db.dbBatchUpdatePersonSortOrders(order.map((pid, i) => ({ id: pid, sortOrder: i + 1 })));
+      refresh();
+    },
+
+    savePersonGroup(name: string, change: { newName?: string; delete?: boolean; catchUpSeparately?: boolean }): { group: PersonGroup | null; members: number } {
+      const { usePersonGroupStore } = require('../../src/store/usePersonGroupStore') as typeof import('../../src/store/usePersonGroupStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { usePersonStore } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      usePersonStore.getState().initialize();
+      const store = usePersonGroupStore.getState();
+      store.initialize();
+      const existing = store.groups.find(g => g.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? null;
+      const members = existing ? people().filter(p => p.groupId === existing.id).length : 0;
+      if (change.delete) {
+        if (!existing) throw new Error(`No group called "${name}".`);
+        store.removeGroupRow(existing.id);
+        refresh();
+        return { group: null, members };
+      }
+      let group = existing;
+      if (!group) {
+        if (change.newName !== undefined) throw new Error(`No group called "${name}" to rename.`);
+        if (!name.trim()) throw new Error('A group needs a name.');
+        group = store.createGroup(name.trim());
+      }
+      if (change.newName !== undefined) {
+        const to = change.newName.trim();
+        if (!to) throw new Error('A group needs a name.');
+        if (store.groups.some(g => g.id !== group!.id && g.name.trim().toLowerCase() === to.toLowerCase())) throw new Error(`There is already a group called "${to}".`);
+        store.updateGroup(group.id, { name: to });
+      }
+      if (change.catchUpSeparately !== undefined) store.updateGroup(group.id, { catchUpSeparately: change.catchUpSeparately });
+      refresh();
+      return { group: usePersonGroupStore.getState().groups.find(g => g.id === group!.id) ?? group, members };
+    },
+
+    addPersonNote(personId: string, kind: PersonNote['kind'], text: string, relevantOn: string | null = null): PersonNote {
+      if (!people().some(p => p.id === personId)) throw new Error(`No person with id ${personId}.`);
+      if (!['note', 'gift', 'food'].includes(kind)) throw new Error('kind is note, gift or food.');
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      usePersonNoteStore.getState().initialize();
+      const note = usePersonNoteStore.getState().addNote(personId, kind, text, relevantOn);
+      if (!note) throw new Error('A note needs some text.');
+      return note;
+    },
+
+    updatePersonNote(id: string, patch: { text?: string; kind?: PersonNote['kind']; relevantOn?: string | null; archived?: boolean }): PersonNote {
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = usePersonNoteStore.getState();
+      store.initialize();
+      const note = store.notes.find(n => n.id === id);
+      if (!note) throw new Error(`No note with id ${id}. get_person lists them.`);
+      if (patch.text !== undefined && !patch.text.trim()) throw new Error('A note needs some text. To remove it, use delete_person_note.');
+      if (patch.kind !== undefined && !['note', 'gift', 'food'].includes(patch.kind)) throw new Error('kind is note, gift or food.');
+      const { archived, ...rest } = patch;
+      store.updateNote(id, {
+        ...rest,
+        ...(rest.text !== undefined ? { text: rest.text.trim() } : {}),
+        ...(archived !== undefined ? { archivedAt: archived ? (note.archivedAt ?? new Date().toISOString()) : null } : {}),
+      });
+      return usePersonNoteStore.getState().notes.find(n => n.id === id)!;
+    },
+
+    deletePersonNote(id: string): PersonNote {
+      const { usePersonNoteStore } = require('../../src/store/usePersonNoteStore') as typeof import('../../src/store/usePersonNoteStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = usePersonNoteStore.getState();
+      store.initialize();
+      const note = store.notes.find(n => n.id === id);
+      if (!note) throw new Error(`No note with id ${id}. get_person lists them.`);
+      store.removeNote(id);
+      return note;
     },
 
     people,

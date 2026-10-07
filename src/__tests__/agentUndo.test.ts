@@ -16,6 +16,7 @@ const entry = (over: Partial<UnattendedEntry> = {}): UnattendedEntry => ({
 const state = (over: Partial<RecordState> = {}): RecordState => ({
   project: () => null,
   stack: () => null,
+  person: () => null,
   groceryHome: () => null,
   groceryItem: () => null,
   itemBoxes: () => [],

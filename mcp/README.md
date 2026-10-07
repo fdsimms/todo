@@ -91,7 +91,7 @@ only the fallback until the first sync.
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
 | `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
-| `create_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. A view's clauses are edited in the app. |
+| `create_saved_view` / `update_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. An update can also move it in the list. |
 | `set_vacation_mode` | **Write.** Turn vacation mode on or off as the Settings switch does, optionally with the day it turns itself off. On hides every task marked for vacation pause and every hide-on-vacation category; off brings them back and forgives their streaks. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
@@ -113,7 +113,7 @@ only the fallback until the first sync.
 | `next_in_project` | The next unchecked checklist item in one project step (the first open step not waiting on anything, unless one is named), with how many items are checked. |
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
-| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history. |
+| `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, food notes and shared history, each with its id. |
 | `upcoming_birthdays` | Birthdays in the next N days, soonest first. |
 | `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
 | `grocery_setup` | The aisles, the stores (with receipt style) and the lists (home and separate), with item counts. |
@@ -162,7 +162,10 @@ only the fallback until the first sync.
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
 | `update_meal` | **Write.** Moves a planned meal, renames a free-text one, or sets a recipe's scale. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
-| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text). Never a cadence, nudge, group or order. |
+| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
+| `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
+| `reorder_people` / `save_person_group` | **Write.** The People screen's order, and its groups (add, rename, delete, catch up one at a time). |
+| `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas, food notes and other notes about someone, optionally about a day. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |

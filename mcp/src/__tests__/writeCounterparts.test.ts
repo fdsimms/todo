@@ -32,7 +32,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   create_reward: ['update_reward', 'delete_reward'],
   log_slip: ['undo_slip'],
   create_template: ['update_template', 'delete_template', 'reorder_templates'],
-  create_person: ['update_person'],
+  create_person: ['update_person', 'delete_person'],
+  add_person_note: ['update_person_note', 'delete_person_note'],
   log_food: ['update_food_entry', 'delete_food_entry'],
   // A water entry's figure is the stepper's own, not an estimate, so
   // update_food_entry will not restate it; the row is deleted and relogged.
@@ -40,9 +41,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],
   log_journal_entry: ['update_journal_entry', 'delete_journal_entry'],
-  // A view's name, icon and clauses are edited in the app; a wrong one is
-  // deleted and made again, which costs nothing since a view owns no rows.
-  create_saved_view: ['delete_saved_view'],
+  create_saved_view: ['update_saved_view', 'delete_saved_view'],
   request_calendar_event: ['cancel_calendar_request'],
   log_medication: ['update_medication_log', 'delete_medication_log'],
   plan_meal: ['update_meal', 'remove_meal'],
@@ -59,6 +58,7 @@ const COUNTERPARTS: Record<string, string[]> = {
 const NO_COUNTERPART: Record<string, string> = {
   plan_day: 'Proposes an order and writes nothing, so there is nothing to put right.',
   save_grocery_box: 'One tool adds, edits and deletes a box (boxId, delete: true), so it is its own correction.',
+  save_person_group: 'One tool adds, renames (newName) and deletes (delete: true) a person group, so it is its own correction.',
   save_project_category: 'One tool adds, renames (newName) and deletes (delete: true) a project category, so it is its own correction.',
   save_store: 'Adds and renames a store with the one tool; deleting a store rewrites its links and aliases, so that stays in the app.',
 };

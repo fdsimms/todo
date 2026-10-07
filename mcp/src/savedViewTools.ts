@@ -181,3 +181,36 @@ export function deleteSavedView(replica: Replica, ref: string): { removed: Saved
   replica.deleteSavedView(view.id);
   return { removed: before };
 }
+
+export interface UpdateSavedViewInput {
+  name?: string;
+  icon?: string;
+  /** The whole set, replacing what the view has. */
+  clauses?: unknown[];
+  /** Where it sits in the list, 0 for first. */
+  position?: number;
+}
+
+/**
+ * Change a view by the rules a new one is checked by: a name no other view has,
+ * an icon from the set, and clauses the app's parser keeps whole.
+ */
+export function updateSavedView(replica: Replica, ref: string, input: UpdateSavedViewInput): { view: SavedViewRow } {
+  const view = findView(replica, ref);
+  const patch: { name?: string; icon?: string; clauses?: ReturnType<typeof checkSavedViewClauses> } = {};
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) throw new Error('A saved view needs a name.');
+    const taken = replica.savedViews().find(v => v.id !== view.id && v.name.trim().toLowerCase() === name.toLowerCase());
+    if (taken) throw new Error(`There is already a saved view called "${taken.name}".`);
+    patch.name = name;
+  }
+  if (input.icon !== undefined) {
+    if (!SAVED_VIEW_ICONS.includes(input.icon)) throw new Error(`"${input.icon}" is not an icon a view can wear. The choices are ${SAVED_VIEW_ICONS.join(', ')}.`);
+    patch.icon = input.icon;
+  }
+  if (input.clauses !== undefined) patch.clauses = checkSavedViewClauses(replica, input.clauses);
+  if (Object.keys(patch).length === 0 && input.position === undefined) throw new Error('Nothing to change: give name, icon, clauses or position.');
+  const updated = replica.updateSavedView(view.id, patch, input.position);
+  return { view: row(replica, updated, projectNames(replica)) };
+}

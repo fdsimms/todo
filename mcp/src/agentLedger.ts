@@ -22,7 +22,7 @@
  */
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
-import { PROJECT_REVERT_FIELDS, deletedProjectRevert, deletedStackRevert } from '../../src/utils/agentRecordRevert';
+import { PROJECT_REVERT_FIELDS, deletedPersonRevert, deletedProjectRevert, deletedStackRevert } from '../../src/utils/agentRecordRevert';
 import { deletedTaskRevert } from '../../src/utils/agentRevert';
 import { catalogRevertOf, catalogSnapshot, deletedItemRevert } from '../../src/utils/agentCatalogRevert';
 import { leftoverSnapshot, pantryRevertOf, pantrySnapshot, type PantryItemSnapshot } from '../../src/utils/agentPantryRevert';
@@ -568,6 +568,55 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return person;
     },
 
+    deletePerson(id) {
+      const deleted = replica.deletePerson(id);
+      const n = deleted.notes.length;
+      log({
+        action: 'cleared', subject: 'person', title: deleted.person.name, taskId: null, recordId: id,
+        note: `Delete ${deleted.person.name}${n > 0 ? ` and the ${n} ${n === 1 ? 'note' : 'notes'} about them` : ''}. Tasks naming them stay. It can be restored from Activity.`,
+        revert: deletedPersonRevert(deleted),
+      });
+      return deleted;
+    },
+
+    reorderPeople(ids) {
+      replica.reorderPeople(ids);
+      log({ action: 'moved', subject: 'person', title: 'People', taskId: null, note: `Reorder your people, starting with ${ids.length} named` });
+    },
+
+    savePersonGroup(name, change) {
+      const result = replica.savePersonGroup(name, change);
+      const note = change.delete
+        ? `Delete the group "${name}"${result.members > 0 ? `, leaving its ${result.members} ${result.members === 1 ? 'person' : 'people'} in no group` : ''}`
+        : change.newName !== undefined ? `Rename the group "${name}" to "${result.group?.name}"`
+          : `${result.members === 0 && change.catchUpSeparately === undefined ? 'Add' : 'Change'} the group "${result.group?.name ?? name}"`;
+      log({ action: change.delete ? 'cleared' : 'edited', subject: 'person', title: result.group?.name ?? name, taskId: null, note });
+      return result;
+    },
+
+    // Titled by the person, never by the note: a note is somebody's private
+    // detail, and the Activity list is about the app.
+    addPersonNote(personId, kind, text, relevantOn) {
+      const note = replica.addPersonNote(personId, kind, text, relevantOn);
+      const who = replica.people().find(p => p.id === personId)?.name ?? 'someone';
+      log({ action: 'created', subject: 'person', title: who, taskId: null, note: `Add a ${kind === 'gift' ? 'gift idea' : kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      return note;
+    },
+
+    updatePersonNote(id, patch) {
+      const note = replica.updatePersonNote(id, patch);
+      const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
+      log({ action: 'edited', subject: 'person', title: who, taskId: null, note: `Change a ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      return note;
+    },
+
+    deletePersonNote(id) {
+      const note = replica.deletePersonNote(id);
+      const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
+      log({ action: 'cleared', subject: 'person', title: who, taskId: null, note: `Delete a ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      return note;
+    },
+
     updateRecipe(id, patch) {
       const recipe = replica.updateRecipe(id, patch);
       log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${recipe.name}"` });
@@ -821,6 +870,14 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     deleteSavedView(id) {
       const view = replica.deleteSavedView(id);
       log({ action: 'cleared', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Delete the saved view "${view.name}". It cannot be restored from here.` });
+      return view;
+    },
+
+    updateSavedView(id, patch, position) {
+      const before = replica.savedViews().find(v => v.id === id);
+      const view = replica.updateSavedView(id, patch, position);
+      const what = [...Object.keys(patch), ...(position !== undefined ? ['its place in the list'] : [])].join(', ');
+      log({ action: 'edited', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Change the saved view "${before?.name ?? view.name}": ${what}` });
       return view;
     },
 
