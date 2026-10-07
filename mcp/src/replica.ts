@@ -89,6 +89,7 @@ import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { DayProduce } from '../../src/utils/produceServings';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
+import type { DeletedTaskSnapshot } from '../../src/utils/agentRevert';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
@@ -97,6 +98,11 @@ import { deliverableRefusal } from './deliverableAsk';
 import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
 import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
+
+/** What `deleteTask` removed: the row and its checklist, as they were. */
+export type DeletedTask = DeletedTaskSnapshot;
+
+export type ReorderScope = { projectId: string } | { parentId: string } | { pinned: true };
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -1108,15 +1114,47 @@ export interface Replica {
 
   /**
    * Archive a task, or restore an archived one, as the app's own
-   * `archiveTask` / `unarchiveTask` do. This is the replica's only way to take
-   * a task back off every list: there is deliberately no delete, since an
-   * archived row can be restored in the app and a deleted one cannot.
+   * `archiveTask` / `unarchiveTask` do. `deleteTask` is the other way off every
+   * list; an archive is the one that keeps the row.
    *
    * Archiving unpins. Restoring breaks the streak (the gap is real) and folds
    * the run into `priorBestStreak`, as the app's resume does. A subtask is
    * refused: it goes with its parent.
    */
   setTaskArchived(id: string, archived: boolean): Task;
+  /**
+   * Delete a task with its checklist, or one checklist item, as the app's
+   * delete does. What was deleted comes back, so the ledger can keep it for a
+   * restore from Activity. A task the app generated is refused: deleting one in
+   * the app also tells its source not to make it again, which writes to rows
+   * this server cannot reach, and without that the phone would just recreate
+   * it. Deleting a timed stretch re-totals its parent's countdown.
+   */
+  deleteTask(id: string): DeletedTask;
+  /** Roll a repeating task onto its next occurrence with no completion: the app's "Skip" (`skipPatch`). */
+  skipOccurrence(id: string): Task;
+  /**
+   * Hand-order one list: a project's open steps (their slots in the one
+   * sortOrder space, `slotUpdates`), a task's checklist, or the Pinned block.
+   * The named rows go first in the order given and the rest keep their order
+   * after them. Returns the rows whose position changed, before and after.
+   */
+  reorderTasks(scope: ReorderScope, ids: string[]): { before: Task; after: Task }[];
+  /**
+   * Give a task a set of dates, or take it back to one, through the rules the
+   * editor's dates row uses (`taskDates.ts`). A set never repeats by rule, so
+   * forming one drops the task's repeat. `monthly` makes the set come round
+   * again each month on the same days.
+   */
+  setTaskDates(id: string, dates: Date[], monthly: boolean): { task: Task; added: Task[]; removed: Task[] };
+  /** A copy of a task and its checklist, as the app's Duplicate makes one (`duplicateRows`). */
+  duplicateTask(id: string): Task;
+  /** Take a tag off every task and out of the tag list. Returns each task it changed, before and after. */
+  deleteTag(tag: string): { before: Task; after: Task }[];
+  /** Correct when a completed task was done, as the Logbook's date edit does. */
+  setCompletedAt(id: string, at: Date): Task;
+  /** The tag list as the app keeps it: every tag in use and every one registered. */
+  tagList(): string[];
 
   /**
    * Put a name on the shopping list, exactly as typing it into the app would.
@@ -1507,6 +1545,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const grocerySuggest = require('../../src/utils/grocerySuggest') as typeof import('../../src/utils/grocerySuggest');
   const shelfLife = require('../../src/utils/groceryShelfLife') as typeof import('../../src/utils/groceryShelfLife');
   const groceryLists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists');
+  const taskSkip = require('../../src/utils/taskSkip') as typeof import('../../src/utils/taskSkip');
+  const taskDates = require('../../src/utils/taskDates') as typeof import('../../src/utils/taskDates');
+  const taskDuplicate = require('../../src/utils/taskDuplicate') as typeof import('../../src/utils/taskDuplicate');
+  const timerSegments = require('../../src/utils/timerSegments') as typeof import('../../src/utils/timerSegments');
+  const projectOrder = require('../../src/utils/projectOrder') as typeof import('../../src/utils/projectOrder');
   const { generateId } = require('../../src/utils/id') as IdModule;
   const { reopenedTask } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
   const { generatedSourceOf } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
@@ -2039,8 +2082,63 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (gate) patch.answerGate = { taskId: question.id, answers: gate };
       }
     }
+    if (patch.personIds !== undefined) {
+      const known = new Set(people().map(p => p.id));
+      const missing = patch.personIds.filter(id => !known.has(id));
+      if (missing.length > 0) errors.push(`personIds: no person with id ${missing.join(', ')}. list_people names them.`);
+    }
+    if (errors.length === 0) settleDateRules(input, patch, current, errors);
+    // A reminder is a wall-clock time by default (Task.reminderTimeAnchor), and
+    // the phone re-anchors it after a time zone change against the offset it
+    // was set under. Captured here as the editor captures it on save, or an
+    // agent's reminder stays on the old zone's clock after a flight.
+    if (patch.reminderTime !== undefined) patch.reminderUtcOffsetMinutes = patch.reminderTime ? new Date(patch.reminderTime).getTimezoneOffset() : null;
     if (errors.length > 0) throw new Error(errors.join(' '));
     return patch;
+  };
+
+  /**
+   * The date a deadline or reminder rule lands on, worked out the way the
+   * editor works it out on save: whenever the rule is written, or the date it
+   * counts from moves. Against the task as it will be, so a rule written with
+   * a new date in the same call counts from the new date.
+   */
+  const settleDateRules = (input: TaskFieldsInput, patch: Partial<Task>, current: Task | null, errors: string[]): void => {
+    const merged: Task = current
+      ? { ...current, ...patch }
+      : taskDraft.newTaskFromDraft({ title: input.title ?? 'task', ...patch } as Partial<TaskDraft>, new Date().toISOString(), 0, false);
+    const due = merged.dueDate ? new Date(merged.dueDate) : null;
+    const dateMoved = patch.dueDate !== undefined;
+
+    const deadlineRuled = merged.deadlineOffsetDays != null || merged.deadlineMonthDay != null;
+    if (deadlineRuled && (input.deadlineRule || dateMoved) && input.deadline === undefined) {
+      if (!due) errors.push('deadlineRule counts from the task\'s date, and it has none. Give dueDate too.');
+      else {
+        patch.deadline = (merged.deadlineOffsetDays != null
+          ? dates.getDeadlineFromOffset(due, merged.deadlineOffsetDays)
+          : dates.getDeadlineFromMonthDay(due, merged.deadlineMonthDay as number)).toISOString();
+      }
+    }
+
+    if (merged.reminderOffsetDays != null && (input.reminderRule || dateMoved)) {
+      const at = input.reminderRule?.at
+        ?? (merged.reminderTime ? (() => { const d = new Date(merged.reminderTime); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })() : null);
+      if (!due) errors.push('reminderRule.daysBeforeDate counts from the task\'s date, and it has none. Give dueDate too.');
+      else if (!at) errors.push('reminderRule.daysBeforeDate needs a time of day: give at, "HH:MM".');
+      else {
+        const when = dates.getReminderOffsetDate(due, merged.reminderOffsetDays);
+        const [h, m] = at.split(':').map(Number);
+        when.setHours(h, m, 0, 0);
+        patch.reminderTime = when.toISOString();
+      }
+    }
+
+    const surfacesFrom = patch.deferUntil !== undefined || patch.timeSegments !== undefined || dateMoved;
+    if (merged.reminderTracksVisibility && (input.reminderRule?.whenItSurfaces || surfacesFrom)) {
+      if (!merged.deferUntil && merged.timeSegments.length === 0) {
+        errors.push('reminderRule.whenItSurfaces rings when the task comes back into view, so it needs a deferUntil or a time of day (timeSegments) to come back from.');
+      } else patch.reminderTime = visibility.getVisibleAt(merged).toISOString();
+    }
   };
 
   // ==== rewards ====
@@ -3435,6 +3533,187 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbUpdateTask(updated);
       refresh();
       return updated;
+    },
+
+    deleteTask(id: string): DeletedTask {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.generatedKind) {
+        throw new Error(`"${task.title}" was written by the app (${task.generatedKind}). Deleting one in the app also tells its source not to make it again, which this server cannot do, so the phone would just add it back. Delete it in the app, or archive it with archive_task.`);
+      }
+      const subtasks = tasks().filter(t => t.parentId === id);
+      // A checklist item carrying a stretch of its parent's countdown is part
+      // of that countdown's length (timerSegments.ts), so the parent is
+      // re-totalled, as the app's deleteSubtask does. The last stretch going
+      // leaves the total where it was rather than clearing it.
+      const parent = task.parentId ? tasks().find(t => t.id === task.parentId) ?? null : null;
+      const retotal = parent !== null && parent.timedMinutes != null && timerSegments.segmentMinutesOf(task) !== null;
+      db.dbTransaction(() => {
+        db.dbDeleteSubtasks(id);
+        db.dbDeleteTask(id);
+        if (retotal) {
+          const total = timerSegments.apportionedMinutes(tasks().filter(t => t.parentId === parent!.id && t.id !== id));
+          if (total !== null) db.dbUpdateTask({ ...parent!, timedMinutes: total });
+        }
+      });
+      refresh();
+      return { task, subtasks };
+    },
+
+    skipOccurrence(id: string): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (task.completed || task.archived) throw new Error('Only an open task has an occurrence to skip.');
+      if (task.recurrenceType === 'none') throw new Error(`"${task.title}" doesn't repeat, so there is no next occurrence to skip to. Use defer_task to move it, or archive_task to put it away.`);
+      const patch = taskSkip.skipPatch(task, useSettingsStore.getState().dayResetTime);
+      if (!patch) throw new Error(`"${task.title}" has no occurrence after this one: its repeat has ended. Complete it or archive it instead.`);
+      const updated = taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
+    },
+
+    reorderTasks(scope: ReorderScope, ids: string[]): { before: Task; after: Task }[] {
+      const all = tasks();
+      const wanted = [...new Set(ids)];
+      let members: Task[];
+      let updates: { id: string; sortOrder?: number; pinnedOrder?: number }[];
+      const fullOrder = (current: Task[]): string[] => {
+        const unknown = wanted.filter(id => !current.some(t => t.id === id));
+        if (unknown.length > 0) throw new Error(`Not in that list: ${unknown.join(', ')}.`);
+        return [...wanted, ...current.map(t => t.id).filter(id => !wanted.includes(id))];
+      };
+      if ('projectId' in scope) {
+        if (!projects().some(p => p.id === scope.projectId)) throw new Error(`No project with id ${scope.projectId}.`);
+        // Slots, not 1..N: a project's tasks share the one sortOrder space with
+        // every loose task on Today (see projectOrder.slotUpdates).
+        members = projectOrder.liveProjectSteps(scope.projectId, all);
+        const order = fullOrder(members);
+        updates = projectOrder.slotUpdates(members, order);
+      } else if ('parentId' in scope) {
+        const parent = all.find(t => t.id === scope.parentId);
+        if (!parent) throw new Error(`No task with id ${scope.parentId}.`);
+        members = all.filter(t => t.parentId === scope.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+        updates = fullOrder(members).map((id, i) => ({ id, sortOrder: i + 1 }));
+      } else {
+        // The Pinned block's own number space (Task.pinnedOrder); 0 is "never
+        // ranked", which sorts by sortOrder, so the rest are ranked too.
+        members = all.filter(t => t.pinned && !t.completed && !t.archived && !t.parentId)
+          .sort((a, b) => (a.pinnedOrder || Infinity) - (b.pinnedOrder || Infinity) || a.sortOrder - b.sortOrder);
+        updates = fullOrder(members).map((id, i) => ({ id, pinnedOrder: i + 1 }));
+      }
+      const byId = new Map(members.map(t => [t.id, t]));
+      const changed = updates
+        .map(u => ({ before: byId.get(u.id)!, after: { ...byId.get(u.id)!, ...u } as Task }))
+        .filter(c => c.before.sortOrder !== c.after.sortOrder || c.before.pinnedOrder !== c.after.pinnedOrder);
+      db.dbTransaction(() => {
+        const sorts = changed.filter(c => c.before.sortOrder !== c.after.sortOrder).map(c => ({ id: c.after.id, sortOrder: c.after.sortOrder }));
+        const pins = changed.filter(c => c.before.pinnedOrder !== c.after.pinnedOrder).map(c => ({ id: c.after.id, pinnedOrder: c.after.pinnedOrder }));
+        if (sorts.length > 0) db.dbBatchUpdateSortOrders(sorts);
+        if (pins.length > 0) db.dbBatchUpdatePinnedOrders(pins);
+      });
+      refresh();
+      return changed.map(c => ({ before: c.before, after: tasks().find(t => t.id === c.after.id) ?? c.after }));
+    },
+
+    setTaskDates(id: string, wantedDates: Date[], monthly: boolean): { task: Task; added: Task[]; removed: Task[] } {
+      const anchor = tasks().find(t => t.id === id);
+      if (!anchor) throw new Error(`No task with id ${id}.`);
+      if (anchor.completed || anchor.archived) throw new Error('Only an open task can be given dates.');
+      if (anchor.parentId) throw new Error('A checklist item has no dates of its own.');
+      if (anchor.chainEnabled && anchor.chainItems.length > 1) throw new Error('A chain moves through its steps one at a time, so it cannot sit on several dates. Remove the chain first.');
+      const keys = new Set<string>();
+      const unique = wantedDates.filter(d => {
+        const key = taskDates.calendarDayKey(d);
+        if (keys.has(key)) return false;
+        keys.add(key);
+        return true;
+      });
+      const repeat = monthly && unique.length > 1 ? { monthDays: [...new Set(unique.map(d => d.getDate()))].sort((a, b) => a - b), repeatMonths: 1 } : undefined;
+      const merge = (task: Task, patch: Partial<Task>): Task => taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      const step = taskDates.datesAnchorStep(anchor, tasks(), unique, repeat, generateId);
+      const added: Task[] = [];
+      const removed: Task[] = [];
+      db.dbTransaction(() => {
+        if (step.kind === 'dissolve') {
+          for (const t of step.dropped) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+          for (const t of step.unfiled) db.dbUpdateTask(t);
+          removed.push(...step.dropped);
+        }
+        db.dbUpdateTask(merge(anchor, step.patch));
+        if (step.kind !== 'series') return;
+        const fresh = db.dbGetAllTasks();
+        const plan = taskDates.datesReconcile(
+          taskDates.seriesRows(fresh, step.seriesId), id, step, repeat,
+          fresh.reduce((m, t) => Math.max(m, t.sortOrder), 0),
+        );
+        for (const t of plan.removed) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+        for (const t of plan.added) db.dbInsertTask(t);
+        for (const t of plan.rewritten) db.dbUpdateTask(t);
+        removed.push(...plan.removed);
+        added.push(...plan.added);
+      });
+      refresh();
+      return { task: tasks().find(t => t.id === id)!, added, removed };
+    },
+
+    duplicateTask(id: string): Task {
+      const original = tasks().find(t => t.id === id);
+      if (!original) throw new Error(`No task with id ${id}.`);
+      if (original.parentId) throw new Error('A checklist item is copied with the task it belongs to. Duplicate that task, or add the item with create_task and parentId.');
+      const { copy, subtaskCopies } = taskDuplicate.duplicateRows(original, tasks().filter(t => t.parentId === id), {
+        now: new Date().toISOString(),
+        sortOrder: tasks().reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        newId: generateId,
+      });
+      db.dbTransaction(() => {
+        db.dbInsertTask(copy);
+        for (const sub of subtaskCopies) db.dbInsertTask(sub);
+      });
+      refresh();
+      return copy;
+    },
+
+    deleteTag(tag: string): { before: Task; after: Task }[] {
+      const name = tag.trim().toLowerCase();
+      const known = replica.tagList();
+      const match = known.find(t => t.toLowerCase() === name);
+      if (!match) throw new Error(`No tag "${tag}". The tags are: ${known.join(', ') || 'none yet'}.`);
+      const affected = tasks().filter(t => t.tags.includes(match));
+      db.dbTransaction(() => {
+        db.dbRemoveTagFromAllTasks(match);
+        db.dbRemoveFromTagRegistry(match);
+      });
+      refresh();
+      return affected.map(before => ({ before, after: tasks().find(t => t.id === before.id)! }));
+    },
+
+    setCompletedAt(id: string, at: Date): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!task.completed) throw new Error(`"${task.title}" isn't completed, so it has no completion date to change.`);
+      if (Number.isNaN(at.getTime())) throw new Error('That is not a date I can read.');
+      if (at.getTime() > Date.now()) throw new Error('A completion cannot be in the future.');
+      const updated = taskUpdate.mergeTaskUpdate(task, { completedAt: at.toISOString() }, {
+        scope: 'series',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
+    },
+
+    tagList(): string[] {
+      return [...new Set([...db.dbGetTagRegistry(), ...tasks().flatMap(t => t.tags)])].sort((a, b) => a.localeCompare(b));
     },
 
     addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome {

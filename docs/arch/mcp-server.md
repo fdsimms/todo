@@ -825,9 +825,9 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   something on the phone it cannot undo: a calendar event the completion logged, a screen-time
   credit, a meal marked cooked. The answer there is the app's Logbook, and saying so beats
   reopening a row and leaving the event behind.
-- **`archive_task`** is the undo, and **there is deliberately no delete**. An archived row can be
-  restored here or in the app; a deleted one cannot, and the model is the one deciding what to
-  remove. It is the app's own `archiveTask` / `unarchiveTask` (unpin; restoring breaks the streak).
+- **`archive_task`** is the gentle undo. It is the app's own `archiveTask` / `unarchiveTask` (unpin;
+  restoring breaks the streak), and `list_tasks` with `view: archived` lists what it put away.
+  `delete_task` exists too (below), for the person who asks for a delete.
 - **`get_project` lists `decisions`**: `projectDecisions`, the same read as the Decisions block
   on the project's page, so an answer given months ago can be read back without paging the
   Logbook. Each carries `why` and `revisitIf` where they were recorded with the answer
@@ -926,13 +926,44 @@ switch (`bakedFields`). Four things are not obvious from the code:
   parent's total has exactly two writers (`docs/arch/timed-tasks.md`), so this refuses rather than be a
   third. A health target is configuration only: a Node process cannot reach HealthKit, so the result
   never says whether it was reached.
-- **Gates, penalties and a task's medication are read-only.** `get_task` reports `gatesApps`, `penalty`
-  and `medication`; nothing here sets them. The first two block apps on the phone and the third makes a
-  completion write a dose, and an agent should not do either on a task nobody looked at. `create_template`
-  does not take `gatesApps` either, for the same reason.
+- **Gates and penalties are read-only.** `get_task` reports `gatesApps` and `penalty`; nothing here sets
+  them, because both block apps on the phone and an agent should not do that on a task nobody looked at.
+  `create_template` does not take `gatesApps` either, for the same reason. A task's `medication` is
+  writable: it only makes a completion record a dose, which is the app's own log and which `reopen_task`
+  takes back with the completion.
+- **The rest of the editor's fields are writable too**: the people a task is about (`personIds`, checked
+  against the person's own people), a link, phone, email and location, `vacationPause`, and a deadline or
+  reminder placed by rule (`deadlineRule`, `reminderRule`, in the shape `get_task` reads them). The date a
+  rule lands on is worked out in `settleDateRules` the way the editor works it out on save, whenever the rule
+  is written or the date it counts from moves. A `reminderTime` written here also records the zone offset it
+  was set under (`reminderUtcOffsetMinutes`), as the editor does, so the phone can keep it on the wall clock
+  after a flight.
 - **`taskFields.ts` copies the supply limits instead of importing them.** `supply.ts` reaches the
   settings store, and this module has to load before the SQLite shim is installed.
   `supply.test.ts` pins the copies to the app's.
+
+### Deleting, skipping, reordering, and a task's dates
+
+These are the task writes that are not a field edit (`mcp/src/taskTools.ts`). Each goes through a core
+the store also calls, lifted out for the purpose, so the tap and the tool cannot drift: `skipPatch`
+(`taskSkip.ts`) for `skip_occurrence`, `datesAnchorStep` and `datesReconcile` (`taskDates.ts`) for
+`set_task_dates`, `duplicateRows` (`taskDuplicate.ts`) for `duplicate_task`, and `slotUpdates` for a
+project's order in `reorder_tasks`.
+
+- **A delete keeps what it took.** `delete_task` used to be left out because a deleted row cannot be
+  restored and the model is the one deciding what goes. It is in now, for the person who asks, and the
+  ledger entry carries the row and its checklist (`deletedTaskRevert`), so Activity can put them back
+  (`restoreDeletedTask` in `agentRevert.ts`, the same shape as a deleted grocery item). The primer still
+  steers the model to `archive_task` unless the person asked for a delete.
+- **A task the app wrote is refused.** Deleting a generated task in the app also writes its source's
+  "never" (`writeGeneratedOptOut`), on rows in other stores this server cannot load. Without that the
+  phone's next reconcile would put the task straight back, so the tool says to delete it in the app or
+  archive it.
+- **A set of dates records each row it adds or drops.** The anchor is an edit, an added date is a created
+  row and a dropped one is a delete with its snapshot, so undoing the call in Activity undoes all of it.
+- **A reorder names one list** (a project's open steps, a task's checklist, or the Pinned block). The
+  rows named go first and the rest keep their order. A project's steps swap the slots they hold, since
+  `sortOrder` is one space shared with every loose task on Today.
 
 ### Writes have their own token
 

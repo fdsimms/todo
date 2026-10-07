@@ -69,6 +69,7 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
     case 'delete': useTaskStore.getState().deleteTask(plan.taskId); return;
     case 'uncomplete': useTaskStore.getState().uncompleteTask(plan.taskId); return;
     case 'restore': useTaskStore.getState().updateTask(plan.taskId, plan.patch); return;
+    case 'restoreDeletedTask': useTaskStore.getState().restoreTasks([plan.snapshot.task, ...plan.snapshot.subtasks]); return;
     case 'restoreProject':
       useProjectStore.getState().updateProject(plan.id, plan.patch as Parameters<ReturnType<typeof useProjectStore.getState>['updateProject']>[1]);
       return;

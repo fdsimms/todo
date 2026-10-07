@@ -303,6 +303,7 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     case 'delete': return { title: 'Remove this task?', message: `Claude added ${t}. Removing it deletes the task.`, destructive: true };
     case 'uncomplete': return { title: 'Reopen this task?', message: `Claude completed ${t}. Reopening it also removes the next occurrence it created, if any.`, destructive: false };
     case 'restore': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreDeletedTask': return { title: 'Restore this task?', message: `Claude deleted ${t}. This puts it back as it was, with its checklist.`, destructive: false };
     case 'restoreProject': return { title: 'Undo this change?', message: `Puts the project ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'restoreRules': return { title: 'Undo this change?', message: `Puts the ${entry.title.toLowerCase()} back the way they were before Claude changed them.`, destructive: false };
     case 'groceryRemove': return { title: 'Remove from the list?', message: `Claude added ${t} to the grocery list. This takes it back off.`, destructive: false };

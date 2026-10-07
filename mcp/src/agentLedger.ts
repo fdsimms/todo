@@ -23,6 +23,7 @@
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
 import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
+import { deletedTaskRevert } from '../../src/utils/agentRevert';
 import { catalogRevertOf, catalogSnapshot, deletedItemRevert } from '../../src/utils/agentCatalogRevert';
 import { leftoverSnapshot, pantryRevertOf, pantrySnapshot, type PantryItemSnapshot } from '../../src/utils/agentPantryRevert';
 
@@ -174,6 +175,76 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const before = snapshot(id);
       const task = replica.setTaskArchived(id, archived);
       if (before) log({ action: archived ? 'cleared' : 'edited', subject: 'task', title: task.title, taskId: id, revert: taskRevert(before, task) });
+      return task;
+    },
+
+    // A delete carries the rows it took, so Activity can put them back
+    // (agentRevert.ts, `restoreDeletedTask`): the only undo a delete has.
+    deleteTask(id) {
+      const deleted = replica.deleteTask(id);
+      const items = deleted.subtasks.length;
+      log({
+        action: 'cleared', subject: 'task', title: deleted.task.title, taskId: id,
+        note: `Delete "${deleted.task.title}"${items > 0 ? ` and its ${items} checklist ${items === 1 ? 'item' : 'items'}` : ''}. It can be restored from Activity.`,
+        revert: deletedTaskRevert(deleted),
+      });
+      return deleted;
+    },
+
+    skipOccurrence(id) {
+      const before = snapshot(id);
+      const task = replica.skipOccurrence(id);
+      const when = task.dueDate ? `; the next is on ${replica.dayKeyOf(task.dueDate)}` : '';
+      log({ action: 'moved', subject: 'task', title: task.title, taskId: id, note: `Skip this occurrence of "${task.title}"${when}`, revert: before ? taskRevert(before, task) : null });
+      return task;
+    },
+
+    reorderTasks(scope, ids) {
+      const changed = replica.reorderTasks(scope, ids);
+      for (const { before, after } of changed) {
+        log({ action: 'moved', subject: 'task', title: after.title, taskId: after.id, note: `Move "${after.title}" in the order`, revert: taskRevert(before, after) });
+      }
+      return changed;
+    },
+
+    // The anchor is an edit, each date added a created row and each dropped
+    // one a delete with its snapshot, so undoing the call puts all of it back.
+    setTaskDates(id, dates, monthly) {
+      const before = snapshot(id);
+      const result = replica.setTaskDates(id, dates, monthly);
+      if (before) log({ action: 'edited', subject: 'task', title: result.task.title, taskId: id, revert: taskRevert(before, result.task) });
+      for (const task of result.added) {
+        log({ action: 'created', subject: 'task', title: task.title, taskId: task.id, note: `Add "${task.title}" on ${task.dueDate ? replica.dayKeyOf(task.dueDate) : 'no date'}` });
+      }
+      for (const task of result.removed) {
+        log({
+          action: 'cleared', subject: 'task', title: task.title, taskId: task.id,
+          note: `Delete the ${task.dueDate ? replica.dayKeyOf(task.dueDate) : 'undated'} date of "${task.title}"`,
+          revert: deletedTaskRevert({ task, subtasks: [] }),
+        });
+      }
+      return result;
+    },
+
+    duplicateTask(id) {
+      const copy = replica.duplicateTask(id);
+      log({ action: 'created', subject: 'task', title: copy.title, taskId: copy.id, note: `Make a copy of "${copy.title}"` });
+      return copy;
+    },
+
+    deleteTag(tag) {
+      const changed = replica.deleteTag(tag);
+      for (const { before, after } of changed) {
+        log({ action: 'edited', subject: 'task', title: after.title, taskId: after.id, note: `Remove the tag "${tag}" from "${after.title}"`, revert: taskRevert(before, after) });
+      }
+      if (changed.length === 0) log({ action: 'edited', subject: 'task', title: tag, taskId: null, note: `Delete the unused tag "${tag}"` });
+      return changed;
+    },
+
+    setCompletedAt(id, at) {
+      const before = snapshot(id);
+      const task = replica.setCompletedAt(id, at);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Change when "${task.title}" was done to ${replica.dayKeyOf(task.completedAt!)}`, revert: before ? taskRevert(before, task) : null });
       return task;
     },
 

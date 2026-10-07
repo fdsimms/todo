@@ -106,6 +106,7 @@ import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from '
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -303,7 +304,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_tasks',
-    "Tasks in one of the app's own lenses: today (visible now), later (deferred or not yet due), unscheduled, inbox, or all.",
+    "Tasks in one of the app's own lenses: today (visible now), later (deferred or not yet due), unscheduled, inbox, all, or archived (put away with archive_task, as the Archived screen lists them; every other view leaves those out).",
     {
       view: z.enum(TASK_VIEWS).optional(),
       category: z.string().optional(),
@@ -1082,6 +1083,32 @@ const taskFieldsShape = {
     oneAtATime: z.boolean().optional().describe('Don\'t add another while the last one is still open.'),
   }).nullable().optional()
     .describe('Repeating tasks only: every Nth completion also adds a separate task, e.g. every 4th run, "Replace running shoes" or every 10th clean, "Deep clean the oven". Or with atEnd, adds it once when the repeat ends, e.g. after the last of 6 classes, "Sign up for the next session". null removes it.'),
+  personIds: z.array(z.string()).optional()
+    .describe('People the task is about or with, by id from list_people ("call Mum", "dinner with Sam"). It then shows on their page. [] clears them.'),
+  linkUrl: z.string().nullable().optional().describe('A web address or app link the task row opens. null clears it.'),
+  phoneNumber: z.string().nullable().optional().describe('A number the task row can call, as written. null clears it.'),
+  emailAddress: z.string().nullable().optional().describe('An address the task row can email. null clears it.'),
+  location: z.string().nullable().optional().describe('The place it happens, as free text. null clears it.'),
+  vacationPause: z.boolean().optional()
+    .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
+  medication: z.object({
+    name: z.string().describe('Use the spelling list_medication_logs already has.'),
+    amount: z.number().nullable().optional(),
+    unit: z.string().nullable().optional().describe('E.g. "mg".'),
+  }).nullable().optional()
+    .describe('Completing it also records a dose of this medicine in the medication log ("take vitamin D"). Undone with the completion by reopen_task. null stops it.'),
+  deadlineRule: z.object({
+    daysBeforeDate: z.number().int().optional(),
+    daysAfterDate: z.number().int().optional(),
+    dayOfMonth: z.union([z.number().int(), z.literal('last')]).optional().describe('Monthly repeats only: a day of the date\'s own month.'),
+  }).nullable().optional()
+    .describe('A deadline worked out from the date on every occurrence, instead of a fixed deadline: give one of the three. Needs a date. null drops the rule and the deadline.'),
+  reminderRule: z.object({
+    daysBeforeDate: z.number().int().optional().describe('0 for the day itself.'),
+    at: z.string().optional().describe('With daysBeforeDate: "HH:MM". Defaults to the time of the reminder it already has.'),
+    whenItSurfaces: z.literal(true).optional().describe('Remind the moment it comes back into view (off a defer, or when its time of day opens).'),
+  }).nullable().optional()
+    .describe('A reminder placed by rule on every occurrence instead of at a fixed time. A reminderTime given on its own replaces a rule. null drops the rule and the reminder.'),
 };
 
 function registerWriteTools(
@@ -1872,7 +1899,7 @@ function registerWriteTools(
 
   server.tool(
     'archive_task',
-    'Archive a task, taking it off every list and out of its project, or restore one with archived: false. This is how to undo a task you created by mistake: there is no delete, and an archived task can always be restored here or in the app. Archiving unpins it; restoring a repeating task starts its streak over, as the app does.',
+    'Archive a task, taking it off every list and out of its project, or restore one with archived: false. Prefer this to delete_task when the person only wants it out of the way: an archived task keeps its history and can always be restored here or in the app (list_tasks with view archived lists them). Archiving unpins it; restoring a repeating task starts its streak over, as the app does.',
     {
       id: z.string().min(1),
       archived: z.boolean().optional().describe('false restores an archived task. Defaults to true.'),
@@ -1882,6 +1909,113 @@ function registerWriteTools(
         return json(await withWrite(() => archiveTask(replica, id, archived ?? true)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not archive the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_task',
+    `Delete tasks for good, with their checklists, or single checklist items, as the app's delete does: gone from every list, the Logbook and Stats. Only when the person asks for a delete; archive_task is the gentler way to put something away. Up to ${MAX_DELETE} a call, so clearing old Logbook entries is one call. A task the app wrote itself (generatedBy on get_task) is refused: delete those in the app. Each deletion can be restored from the app's Activity screen.`,
+    {
+      ids: z.array(z.string().min(1)).min(1).describe('Task ids, or checklist item ids.'),
+    },
+    async ({ ids }) => {
+      try {
+        return json(await withWrite(() => deleteTasks(replica, ids)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete.' });
+      }
+    }
+  );
+
+  server.tool(
+    'skip_occurrence',
+    "Skip this occurrence of a repeating task: it moves to its next date with nothing completed, nothing marked missed and its streak untouched, as the app's Skip does. Use mark_missed when the person says they missed it, and defer_task to do it later instead.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(withLink(await withWrite(() => skipOccurrence(replica, id)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not skip it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_tasks',
+    "Put tasks in a hand-sorted order: a project's open steps (projectId), a task's checklist (parentId), or the Pinned block on Today (pinned: true). Name one list. The tasks named go first, in the order given, and the rest keep their order after them. A project's steps swap the places they already hold, so reordering a project does not move them on Today.",
+    {
+      projectId: z.string().optional(),
+      parentId: z.string().optional().describe('The task whose checklist to reorder.'),
+      pinned: z.literal(true).optional(),
+      ids: z.array(z.string().min(1)).min(1),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => reorderTasks(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_task_dates',
+    "Put one task on several dates (\"walk the dog on the 10th and the 15th\"), change that set of dates, or take it back to one. The task becomes one row per date, done separately; a set does not repeat by rule, so forming one drops any repeat on the task. monthly: true brings the same days round again each month once all of them are done. Dates already done stay as history. To move a single date, use defer_task.",
+    {
+      id: z.string().min(1),
+      dates: z.array(z.string()).min(1).describe('YYYY-MM-DD, the whole set as it should be.'),
+      monthly: z.boolean().optional(),
+    },
+    async ({ id, dates, monthly }) => {
+      try {
+        return json(withLink(await withWrite(() => setTaskDates(replica, id, dates, monthly ?? false)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not set the dates.' });
+      }
+    }
+  );
+
+  server.tool(
+    'duplicate_task',
+    "Copy a task with its checklist, as the app's Duplicate does: every setting comes along, and its progress (completion, streak, timer, answer) starts over. The copy is a new task you can then edit with update_task.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => duplicateTask(replica, id));
+        return json(withLink(result, LINKS?.task(result.task.id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not copy the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_tag',
+    'Delete a tag: take it off every task that has it and out of the tag list, as the Tags screen does. The tasks themselves stay. To take a tag off some tasks only, use batch_update_tasks with their tags.',
+    { tag: z.string().min(1) },
+    async ({ tag }) => {
+      try {
+        return json(await withWrite(() => deleteTag(replica, tag)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the tag.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_completion_date',
+    "Correct when a completed task was done (\"I actually did that yesterday\"), as the Logbook's date edit does. Moves it in the Logbook and Stats; the next occurrence of a repeating task stays where it is.",
+    {
+      id: z.string().min(1),
+      date: z.string().describe('YYYY-MM-DD (noon that day) or an ISO date-time. Not in the future.'),
+    },
+    async ({ id, date }) => {
+      try {
+        const at = /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? `${date.trim()}T12:00` : date;
+        return json(withLink(await withWrite(() => setCompletionDate(replica, id, at)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the date.' });
       }
     }
   );

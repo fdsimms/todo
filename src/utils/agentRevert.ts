@@ -1,4 +1,4 @@
-import type { Task, UnattendedEntry } from '../types';
+import type { Task, UnattendedEntry, UnattendedRevert } from '../types';
 
 /**
  * Whether, and how, an agent's write can be taken back from the Activity screen.
@@ -24,8 +24,23 @@ import type { Task, UnattendedEntry } from '../types';
  * `agentRecordPlan` (agentRecordRevert.ts), and `agentUndoPlan` (agentUndo.ts)
  * picks between them.
  */
+/**
+ * A task an agent deleted, with its checklist, as the rows were. The entry
+ * carries it (`deletedTaskRevert`) because nothing else is left to restore
+ * from: same shape as the grocery catalog's `DeletedItemSnapshot`.
+ */
+export interface DeletedTaskSnapshot {
+  task: Task;
+  subtasks: Task[];
+}
+
+export function deletedTaskRevert(snapshot: DeletedTaskSnapshot): UnattendedRevert {
+  return { before: { deletedTask: snapshot } as unknown as Record<string, unknown>, after: {} };
+}
+
 export type AgentRevertPlan =
   | { kind: 'delete'; taskId: string }
+  | { kind: 'restoreDeletedTask'; snapshot: DeletedTaskSnapshot }
   | { kind: 'restore'; taskId: string; patch: Partial<Task> }
   | { kind: 'uncomplete'; taskId: string }
   | { kind: 'none'; reason: string | null };
@@ -38,6 +53,12 @@ export function agentRevertPlan(entry: UnattendedEntry, task: Task | null): Agen
   // A person's history note is a task row the agent created, so it comes back out the same way.
   const aboutATask = entry.subject === 'task' || (entry.subject === 'person' && entry.action === 'created');
   if (entry.actor !== 'agent' || !aboutATask || !entry.taskId) return { kind: 'none', reason: null };
+  // A delete: the row is gone, and the entry holds what to put back. Offered
+  // until the task exists again, however it got there.
+  if (entry.revert && 'deletedTask' in entry.revert.before) {
+    if (task) return { kind: 'none', reason: 'Restored since' };
+    return { kind: 'restoreDeletedTask', snapshot: entry.revert.before.deletedTask as DeletedTaskSnapshot };
+  }
   if (!task) return { kind: 'none', reason: 'Since removed' };
 
   switch (entry.action) {
@@ -71,6 +92,7 @@ export function agentRevertLabel(plan: AgentRevertPlan): string | null {
     case 'delete': return 'Remove';
     case 'uncomplete': return 'Reopen';
     case 'restore': return 'Undo';
+    case 'restoreDeletedTask': return 'Restore';
     case 'none': return null;
   }
 }

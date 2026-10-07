@@ -48,7 +48,7 @@ import { localDateInput } from './timeZone';
 // value where awayDates, which reaches the settings store, is not.
 
 /** The four sub-views of TodayScreen, plus the everything case. */
-export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all'] as const;
+export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all', 'archived'] as const;
 export type TaskView = (typeof TASK_VIEWS)[number];
 
 /**
@@ -92,7 +92,8 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
     .filter(isTopLevel)
     // Archived is "out of every list" in the app (CLAUDE.md, "Projects"); an
     // open archived row would otherwise fall through the other lenses into later.
-    .filter(t => !t.archived)
+    // The archived view is the Archived screen, which lists only those.
+    .filter(t => (view === 'archived' ? t.archived : !t.archived))
     .filter(t => (input.includeCompleted ? true : !t.completed))
     .filter(t => (input.category ? t.category === input.category : true))
     .filter(t => (input.tag ? t.tags.includes(input.tag) : true))
@@ -123,6 +124,7 @@ function matchesView(replica: Replica, task: Task, view: TaskView): boolean {
     case 'inbox':
       return replica.isInbox(task);
     case 'all':
+    case 'archived':
       return true;
   }
 }
@@ -188,9 +190,9 @@ export interface GetTaskResult {
   /** A completion outside the task's own time window counts as done but does not extend the streak (`streakRequiresWindow`). */
   streakRequiresWindow?: true;
   /**
-   * Read-only, deliberately. Each of these changes something outside the task:
-   * a gate or penalty blocks apps on the phone, and a medication makes
-   * completing the task record a dose. Neither can be set from here.
+   * Read-only, deliberately: a gate or penalty blocks apps on the phone, so
+   * only the person sets one. (`medication` below is writable: it makes
+   * completing the task record a dose, which `reopen_task` takes back.)
    */
   gatesApps?: true;
   /** Failing this task blocks the apps the person picked in Settings. Read-only here: only the person sets or changes it. */
