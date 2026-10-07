@@ -2473,6 +2473,16 @@ function syncGatedReminders(questionId: string, tasks: Task[]): void {
   }
 }
 
+/**
+ * The redo half of an undo that restores whole task rows. Call it after the
+ * edit has been written: it captures the rows as the edit left them, and
+ * writes those back when the undo is itself undone.
+ */
+export function redoRestoringRows(ids: string[]): () => void {
+  const after = useTaskStore.getState().tasks.filter(t => ids.includes(t.id)).map(t => ({ ...t }));
+  return () => after.forEach(t => useTaskStore.getState().updateTask(t.id, t));
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -2501,6 +2511,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,
       undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+      redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
   },
   placeReadyTasks(date) {
@@ -2517,6 +2528,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: snapshots.length === 1 ? 'Task scheduled' : `${snapshots.length} tasks scheduled`,
       undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+      redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
   },
   ...undoHistoryActions(set, get),
@@ -3586,7 +3598,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         deliverableValue: options!.deliverableValue!.trim(),
         ...(reasoning ? { deliverableWhy: reasoning.why, deliverableRevisitIf: reasoning.revisitIf } : {}),
       }, { skipPostponeCount: true });
-      get().setLastAction({ label: `Answered ${options!.deliverableValue!.trim()}`, undo: () => get().updateTask(snapshot.id, snapshot) });
+      get().setLastAction({ label: `Answered ${options!.deliverableValue!.trim()}`, undo: () => get().updateTask(snapshot.id, snapshot), redo: redoRestoringRows([id]) });
       return;
     }
 
@@ -4244,6 +4256,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous, previousReasoning),
+      redo: () => get().setDeliverableValue(id, value, nextReasoning),
     });
     // An answered "Pick dates" edited later still speaks for the trip, the
     // same way completing it did: offered as a move, never written unasked.
@@ -4268,6 +4281,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().setLastAction({
         label: 'Logged',
         undo: () => get().undoSlip(id),
+        redo: () => get().logSlip(id),
       });
       return;
     }
@@ -4287,6 +4301,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: task.streakCount > 0 && updated.streakCount === 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
       undo: () => get().undoSlip(id),
+      redo: () => get().logSlip(id),
     });
   },
 
@@ -4397,6 +4412,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Logged',
       undo: () => get().unlogQuotaUnit(id),
+      redo: () => get().logQuotaUnit(id),
     });
     // See schedulePaceUnpin above — a pinned target that this unit just
     // caught up to pace unpins itself after a grace window, rather than
@@ -4462,6 +4478,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Logged',
       undo: () => get().unlogRotationUnit(id),
+      redo: () => get().logRotationUnit(id, itemId),
     });
     if (updated.pinned && isQuotaOnPace(updated)) {
       schedulePaceUnpin(id);
@@ -4943,6 +4960,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Started',
       undo: () => get().updateTask(id, before),
+      redo: redoRestoringRows([id]),
     });
   },
 
@@ -5038,6 +5056,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         tags: s.tags,
         linkUrl: s.linkUrl,
       })),
+      redo: redoRestoringRows(snapshots.map(s => s.id)),
     });
     return entries.length;
   },
@@ -7770,6 +7789,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Task archived',
       undo: () => get().updateTask(id, { archived: false, archivedAt: null, pinned }),
+      redo: redoRestoringRows([id]),
     });
   },
 
@@ -7793,6 +7813,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Task resumed',
       undo: () => get().updateTask(id, { archived: true, archivedAt, streakCount, streakDate, priorBestStreak }),
+      redo: redoRestoringRows([id]),
     });
   },
 
@@ -7994,6 +8015,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().setLastAction({
         label: snapshots.length === 1 ? 'Category changed' : `${snapshots.length} tasks recategorized`,
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+        redo: redoRestoringRows(snapshots.map(t => t.id)),
       });
     }
   },
