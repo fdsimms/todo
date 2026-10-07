@@ -870,10 +870,39 @@ so the finished occurrences behind a repeating task stay where they were.
 - **Taking a task out does not undo the category.** The old category isn't stored anywhere; the
   Activity screen's revert restores it, since the ledger entry is an ordinary task edit
   (`groupId`, `sortOrder`, `category`).
-- **The stack itself is logged as `subject: 'stack'`**, a record only like a project's.
-- **`rename_stack` renames and nothing else.** Deleting is a cascade decision (`deleteGroup`) the
-  model should not make, and changing the category would move every member, so those stay a tap in
-  the app. There is no reorder.
+- **The stack itself is logged as `subject: 'stack'`**, a record only like a project's, except a delete.
+- **`update_stack` changes the rest, as the editor's save does.** A new category re-files every open
+  member (the roster widened to a dated set's live rows, as `applyGroupCategory` does), and each move is
+  its own task edit in Activity with its way back. Finished occurrences keep theirs: they are history.
+  `projectId` makes a stack a section on that project's page and moves none of its members.
+- **`delete_stack` asks the cascade question out loud.** These used to stay a tap in the app because
+  the cascade is the person's decision; the tool now takes it as `deleteTasks`, defaulting to taking the
+  tasks out, and the description tells the model to ask. Finished occurrences are only taken out, as in
+  `deleteGroup`, and a task the app generated is never deleted. The entry carries the stack and the rows
+  it took (`deletedStackRevert`), so Activity can restore both.
+- **Reordering a stack** is `reorder_tasks` with `stackId`, in the stack's own 1..K space, finished
+  rows keeping their slots (`reorderSubset`).
+
+### Categories and projects: the editor's other half
+
+`update_category` renames a task category and sets its own fields (emoji, schedule, vacation,
+suggestions, the default time of day); `reorder_categories` orders Today's sections. A rename goes
+through `useCategoryStore.renameCategory` (which renames the column on tasks, stacks and project
+defaults in SQL) and then reaches everything else the app's `renameCategory` reaches: series defaults
+and follow-up drafts, saved views, template items, the generators' "File them under", the calendar
+and Health sections, new-task defaults, every kind of rule and reminder capture. A name another
+category already has is refused with a pointer to `delete_category`'s `moveTo`, since that is a merge.
+
+`update_project` now takes the rest of the project editor: a pause (`pausedUntil`, a day key after
+today), `inOrder`, `ongoing`, people, links, and the nudge settings. Every one is in
+`PROJECT_REVERT_FIELDS`, so an edit is undoable from Activity like the older fields. `completed: true`
+with `archiveRemaining` archives what is left, each through `archive_task`'s own write. `delete_project`
+takes the same cascade question as `delete_stack` (`deleteTasks`), unfiles the stacks homed on the page
+and drops the quiet-project review task that names it, and its entry carries everything it took
+(`deletedProjectRevert`). `start_fresh_project` and `save_project_as_template` are the editor's two
+"reuse" actions, through `projectBlueprint`, `freshCopyDraft` and `templateFromProject` in
+`projectTemplate.ts`, which the store also calls. Project categories (the Projects screen's sections)
+are `save_project_category` and `reorder_projects`.
 
 ### Rewards: Claude acts only on the person's word
 

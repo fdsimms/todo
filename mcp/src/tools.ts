@@ -440,6 +440,8 @@ export interface SerializedProject {
   title: string;
   notes?: string;
   deadline?: string;
+  /** The project category it is filed under on the Projects screen. */
+  category?: string;
   /** Members finished, by the app's own reckoning. */
   done: number;
   /** Members in total. One per *series*, not one per row. */
@@ -454,6 +456,13 @@ export interface SerializedCategory {
   openTasks: number;
   /** A few of them, so what belongs here can be judged from more than the name. */
   examples?: string[];
+  emoji?: string;
+  /** The days (0 = Sunday) and hours its tasks show, where it has a schedule. */
+  schedule?: { days: number[]; start: string | null; end: string | null };
+  hideOnVacation?: true;
+  excludeFromSuggestions?: true;
+  /** The time of day new tasks in it start in. */
+  defaultTimeSegments?: string[];
 }
 
 /**
@@ -466,7 +475,16 @@ export function listCategories(replica: Replica): SerializedCategory[] {
   return replica.categories().map(c => {
     const mine = open.filter(t => t.category === c.name);
     const examples = mine.slice(0, 3).map(t => replica.displayTitle(t));
-    return { name: c.name, openTasks: mine.length, ...(examples.length > 0 ? { examples } : {}) };
+    return {
+      name: c.name,
+      openTasks: mine.length,
+      ...(examples.length > 0 ? { examples } : {}),
+      ...(c.emoji ? { emoji: c.emoji } : {}),
+      ...(c.scheduleDays ? { schedule: { days: c.scheduleDays, start: c.scheduleStart, end: c.scheduleEnd } } : {}),
+      ...(c.hideOnVacation ? { hideOnVacation: true as const } : {}),
+      ...(c.excludeFromSuggestions ? { excludeFromSuggestions: true as const } : {}),
+      ...((c.defaultTimeSegments ?? []).length > 0 ? { defaultTimeSegments: c.defaultTimeSegments } : {}),
+    };
   });
 }
 
@@ -485,6 +503,7 @@ export function listProjects(replica: Replica): SerializedProject[] {
       title: p.title,
       notes: p.notes || undefined,
       deadline: p.deadline ?? undefined,
+      category: p.category ?? undefined,
       ...awayFields(replica, p),
       done,
       total,

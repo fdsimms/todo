@@ -1,4 +1,4 @@
-import type { CalendarRequestStatus, Project, UnattendedEntry } from '../types';
+import type { CalendarRequestStatus, Project, Task, TaskGroup, UnattendedEntry, UnattendedRevert } from '../types';
 import { catalogRecordPlan, type CatalogRecordPlan, type CatalogRecordState } from './agentCatalogRevert';
 import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from './agentPantryRevert';
 
@@ -40,6 +40,7 @@ export const RULE_LIST_NAMES: readonly RuleListName[] = ['title', 'weather', 'ev
 /** What the plan needs to know about the world, so it can be tested without a store. */
 export interface RecordState extends PantryRecordState, CatalogRecordState {
   project(id: string): Project | null;
+  stack(id: string): TaskGroup | null;
   /** The item's entry on the list at home, or null when it is not on it. */
   groceryHome(itemId: string): { checked: boolean } | null;
   exists(subject: RecordLogSubject, id: string): boolean;
@@ -49,8 +50,36 @@ export interface RecordState extends PantryRecordState, CatalogRecordState {
   calendarRequest(id: string): { status: CalendarRequestStatus } | null;
 }
 
+/**
+ * A project an agent deleted: the row, the tasks the delete took (subtasks
+ * included), and what it only unfiled, so a restore can put every one back.
+ */
+export interface DeletedProjectSnapshot {
+  project: Project;
+  deleted: Task[];
+  unfiledTaskIds: string[];
+  unfiledStackIds: string[];
+}
+
+/** A stack an agent deleted, on the same terms: the row, what it took, and what it only took out. */
+export interface DeletedStackSnapshot {
+  stack: TaskGroup;
+  deleted: Task[];
+  unfiledTaskIds: string[];
+}
+
+export function deletedProjectRevert(snapshot: DeletedProjectSnapshot): UnattendedRevert {
+  return { before: { deletedProject: snapshot } as unknown as Record<string, unknown>, after: {} };
+}
+
+export function deletedStackRevert(snapshot: DeletedStackSnapshot): UnattendedRevert {
+  return { before: { deletedStack: snapshot } as unknown as Record<string, unknown>, after: {} };
+}
+
 export type AgentRecordPlan =
   | { kind: 'restoreProject'; id: string; patch: Record<string, unknown> }
+  | { kind: 'restoreDeletedProject'; snapshot: DeletedProjectSnapshot }
+  | { kind: 'restoreDeletedStack'; snapshot: DeletedStackSnapshot }
   | { kind: 'groceryRemove'; itemId: string }
   | { kind: 'groceryCheck'; itemId: string; checked: boolean }
   | { kind: 'removeRecord'; subject: RecordLogSubject; id: string }
@@ -79,6 +108,10 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
   switch (entry.subject) {
     case 'project': {
       const revert = entry.revert;
+      if (revert && 'deletedProject' in revert.before) {
+        const snapshot = revert.before.deletedProject as DeletedProjectSnapshot;
+        return state.project(snapshot.project.id) ? { kind: 'none', reason: 'Restored since' } : { kind: 'restoreDeletedProject', snapshot };
+      }
       if (entry.action !== 'edited' || !revert || !id) return NONE;
       const project = state.project(id);
       if (!project) return { kind: 'none', reason: 'Since removed' };
@@ -152,6 +185,13 @@ export function agentRecordPlan(entry: UnattendedEntry, state: RecordState): Age
       return NONE;
     }
 
+    case 'stack': {
+      const revert = entry.revert;
+      if (!revert || !('deletedStack' in revert.before)) return NONE;
+      const snapshot = revert.before.deletedStack as DeletedStackSnapshot;
+      return state.stack(snapshot.stack.id) ? { kind: 'none', reason: 'Restored since' } : { kind: 'restoreDeletedStack', snapshot };
+    }
+
     case 'pantry':
       return pantryRecordPlan(entry, state);
 
@@ -180,6 +220,8 @@ export function agentRecordLabel(plan: AgentRecordPlan): string | null {
     case 'restoreCatalogItem':
       return 'Undo';
     case 'restoreDeletedItem':
+    case 'restoreDeletedProject':
+    case 'restoreDeletedStack':
       return 'Restore';
     // Not "Cancel": the confirmation's own dismiss button already says that.
     case 'cancelCalendarRequest':

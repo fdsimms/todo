@@ -22,7 +22,7 @@
  */
 import type { Task, UnattendedEntry, UnattendedRevert, UnattendedSubject } from '../../src/types';
 import type { Replica } from './replica';
-import { PROJECT_REVERT_FIELDS } from '../../src/utils/agentRecordRevert';
+import { PROJECT_REVERT_FIELDS, deletedProjectRevert, deletedStackRevert } from '../../src/utils/agentRecordRevert';
 import { deletedTaskRevert } from '../../src/utils/agentRevert';
 import { catalogRevertOf, catalogSnapshot, deletedItemRevert } from '../../src/utils/agentCatalogRevert';
 import { leftoverSnapshot, pantryRevertOf, pantrySnapshot, type PantryItemSnapshot } from '../../src/utils/agentPantryRevert';
@@ -290,8 +290,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return project;
     },
 
-    createStack(title, category) {
-      const stack = replica.createStack(title, category);
+    createStack(title, category, projectId) {
+      const stack = replica.createStack(title, category, projectId);
       log({ action: 'created', subject: 'stack', title: stack.title, taskId: null });
       return stack;
     },
@@ -301,6 +301,86 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const stack = replica.renameStack(id, title);
       log({ action: 'edited', subject: 'stack', title: stack.title, taskId: null, note: `Rename the stack ${before ? `"${before.title}" ` : ''}to "${stack.title}"` });
       return stack;
+    },
+
+    // The stack's own fields are a record; each member it re-filed is a task
+    // edit with its way back.
+    updateStack(id, patch) {
+      const before = replica.stacks().find(g => g.id === id);
+      const result = replica.updateStack(id, patch);
+      const changes = Object.keys(patch).filter(k => k !== 'category').join(', ');
+      if (changes) log({ action: 'edited', subject: 'stack', title: result.stack.title, taskId: null, recordId: id, note: `Change the stack "${before?.title ?? result.stack.title}": ${changes}` });
+      for (const { before: b, after } of result.moved) {
+        log({ action: 'edited', subject: 'task', title: after.title, taskId: after.id, note: `Move "${after.title}" to the stack's category, ${after.category ?? 'none'}`, revert: taskRevert(b, after) });
+      }
+      return result;
+    },
+
+    deleteStack(id, cascade) {
+      const snapshot = replica.deleteStack(id, cascade);
+      const n = snapshot.deleted.filter(t => !t.parentId).length;
+      log({
+        action: 'cleared', subject: 'stack', title: snapshot.stack.title, taskId: null, recordId: id,
+        note: `Delete the stack "${snapshot.stack.title}"${n > 0 ? ` and ${n} ${n === 1 ? 'task' : 'tasks'} in it` : ''}${snapshot.unfiledTaskIds.length > 0 ? `, taking ${snapshot.unfiledTaskIds.length} out of it` : ''}. It can be restored from Activity.`,
+        revert: deletedStackRevert(snapshot),
+      });
+      return snapshot;
+    },
+
+    renameCategory(name, newName) {
+      const result = replica.renameCategory(name, newName);
+      log({ action: 'edited', subject: 'category', title: result.to, taskId: null, note: `Rename the category "${result.from}" to "${result.to}", everywhere it is used` });
+      return result;
+    },
+
+    updateCategorySettings(name, patch) {
+      const category = replica.updateCategorySettings(name, patch);
+      log({ action: 'edited', subject: 'category', title: category.name, taskId: null, note: `Change the category "${category.name}": ${Object.keys(patch).join(', ')}` });
+      return category;
+    },
+
+    reorderCategories(names) {
+      const order = replica.reorderCategories(names);
+      log({ action: 'moved', subject: 'category', title: 'Categories', taskId: null, note: `Put the categories in this order: ${order.join(', ')}` });
+      return order;
+    },
+
+    deleteProject(id, cascade) {
+      const snapshot = replica.deleteProject(id, cascade);
+      const n = snapshot.deleted.filter(t => !t.parentId).length;
+      log({
+        action: 'cleared', subject: 'project', title: snapshot.project.title, taskId: null, recordId: id,
+        note: `Delete the project "${snapshot.project.title}"${n > 0 ? ` and ${n} of its ${n === 1 ? 'task' : 'tasks'}` : ''}${snapshot.unfiledTaskIds.length > 0 ? `, leaving ${snapshot.unfiledTaskIds.length} ${snapshot.unfiledTaskIds.length === 1 ? 'task' : 'tasks'} in no project` : ''}. It can be restored from Activity.`,
+        revert: deletedProjectRevert(snapshot),
+      });
+      return snapshot;
+    },
+
+    saveProjectCategory(name, change) {
+      const result = replica.saveProjectCategory(name, change);
+      const note = change.delete
+        ? `Delete the project category "${name}"${result.projectsAffected > 0 ? `, leaving ${result.projectsAffected} ${result.projectsAffected === 1 ? 'project' : 'projects'} in none` : ''}`
+        : change.newName !== undefined ? `Rename the project category "${name}" to "${result.name}"` : `Add the project category "${result.name}"`;
+      log({ action: change.delete ? 'cleared' : change.newName !== undefined ? 'edited' : 'created', subject: 'project', title: result.name ?? name, taskId: null, note });
+      return result;
+    },
+
+    reorderProjects(ids, categories) {
+      replica.reorderProjects(ids, categories);
+      const parts = [ids.length > 0 ? `${ids.length} ${ids.length === 1 ? 'project' : 'projects'}` : null, categories?.length ? 'the project categories' : null].filter(Boolean);
+      log({ action: 'moved', subject: 'project', title: 'Projects', taskId: null, note: `Reorder ${parts.join(' and ')}` });
+    },
+
+    startFreshProject(id) {
+      const result = replica.startFreshProject(id);
+      log({ action: 'created', subject: 'project', title: result.project.title, taskId: null, recordId: result.project.id, count: 1 + result.tasks.length, note: `Start "${result.project.title}" fresh: a new project with its ${result.tasks.length} ${result.tasks.length === 1 ? 'task' : 'tasks'}, every date cleared` });
+      return result;
+    },
+
+    saveProjectAsTemplate(id, name) {
+      const template = replica.saveProjectAsTemplate(id, name);
+      log({ action: 'created', subject: 'template', title: template.name, taskId: null, note: `Save the project as the template "${template.name}" (${template.items.length} ${template.items.length === 1 ? 'task' : 'tasks'})` });
+      return template;
     },
 
     // An edit to the task, so the Activity screen can offer the way back: the

@@ -79,9 +79,9 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
-import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
+import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
-import { addProjectSteps, createProject, getProject, nextInProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
+import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, reorderProjects, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, matchReceipt, renameGroceryList, resolveList, saveGroceryBox, saveStore, updateGroceryItem } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
@@ -98,7 +98,7 @@ import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
 import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
-import { deleteCategory } from './categoryTools';
+import { deleteCategory, reorderCategories, updateCategory } from './categoryTools';
 import { cancelCalendarRequest, listCalendarRequests, requestCalendarEvent } from './calendarTools';
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
@@ -1943,10 +1943,11 @@ function registerWriteTools(
 
   server.tool(
     'reorder_tasks',
-    "Put tasks in a hand-sorted order: a project's open steps (projectId), a task's checklist (parentId), or the Pinned block on Today (pinned: true). Name one list. The tasks named go first, in the order given, and the rest keep their order after them. A project's steps swap the places they already hold, so reordering a project does not move them on Today.",
+    "Put tasks in a hand-sorted order: a project's open steps (projectId), a task's checklist (parentId), a stack's tasks (stackId), or the Pinned block on Today (pinned: true). Name one list. The tasks named go first, in the order given, and the rest keep their order after them. A project's steps swap the places they already hold, so reordering a project does not move them on Today.",
     {
       projectId: z.string().optional(),
       parentId: z.string().optional().describe('The task whose checklist to reorder.'),
+      stackId: z.string().optional(),
       pinned: z.literal(true).optional(),
       ids: z.array(z.string().min(1)).min(1),
     },
@@ -2400,7 +2401,7 @@ function registerWriteTools(
 
   server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
+    'Change a project: rename it, edit its notes, deadline or event date, set or clear its away dates and destination, re-file it, pause it until a day, set who it is with, its links, whether its steps go in order and how it nudges, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task. The away dates are what the app\'s scheduled vacation mode and away grocery list run on, where the person has turned those on for the project (get_project shows pausesTasksWhileAway), so setting them is what schedules those.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
@@ -2423,10 +2424,21 @@ function registerWriteTools(
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
+      archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
+      pausedUntil: z.string().nullable().optional().describe('Pause it until a day (YYYY-MM-DD, after today): its tasks are held off every list until then, as "park the garden for winter". null resumes it now.'),
+      inOrder: z.boolean().optional().describe('Work the steps in page order: the app offers only the first open one.'),
+      ongoing: z.boolean().optional().describe('Never finished: finishing its last task does not offer to complete it.'),
+      personIds: z.array(z.string()).optional().describe('People it is with or for, by id from list_people. Replaces the list.'),
+      links: z.array(z.object({ label: z.string().optional(), url: z.string() })).optional().describe('Links kept with it (the booking, the shared doc), in order. Replaces the list; [] clears it.'),
+      nudgeCadenceDays: z.number().int().optional().describe('Days of quiet before the app offers its next task. 0 never offers.'),
+      autoSchedule: z.boolean().optional().describe('When it runs dry, date its next task automatically instead of offering it.'),
+      nudgeOptIn: z.boolean().optional().describe('false keeps it out of every nudge, the Pull from projects sheet included.'),
+      weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
+      showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
     },
-    async ({ id, moveTasks, moveTasksFrom, ...patch }) => {
+    async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {
-        return json(withLink(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom })), LINKS?.project(id)));
+        return json(withLink(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom, archiveRemaining })), LINKS?.project(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
       }
@@ -2440,6 +2452,7 @@ function registerWriteTools(
       title: z.string().min(1),
       category: z.string().nullable().optional().describe('A task category (from list_categories) the stack and its members are filed under. null makes a stack that leaves its members\' categories alone.'),
       taskIds: z.array(z.string().min(1)).optional().describe('Open top-level tasks to file in the new stack.'),
+      projectId: z.string().optional().describe('Make it a section on this project\'s page. Its tasks keep their own projects; file them in the project with update_task.'),
     },
     async input => {
       try {
@@ -2468,13 +2481,168 @@ function registerWriteTools(
 
   server.tool(
     'rename_stack',
-    "Rename a stack (ids from list_stacks). Only the title: its category and members are not touched. Deleting a stack, or changing its category, is left to the person in the app, since each decides what happens to every member.",
+    "Rename a stack (ids from list_stacks). Only the title: its category and members are not touched. update_stack changes the rest.",
     { id: z.string().min(1), title: z.string().min(1) },
     async ({ id, title }) => {
       try {
         return json(await withWrite(() => renameStack(replica, id, title)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not rename the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_stack',
+    "Change a stack, as its editor does: title, notes, tags, which project page shows it as a section (projectId), whether its tasks are ticked off as a checklist, or its category. A stack owns its members' category, so a new category re-files every open task in it (the result lists each move; finished ones keep theirs). To reorder its tasks use reorder_tasks with stackId.",
+    {
+      id: z.string().min(1),
+      title: z.string().optional(),
+      notes: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      category: z.string().nullable().optional().describe('A category from list_categories, or null for none.'),
+      projectId: z.string().nullable().optional().describe('The project whose page shows it as a section. Its tasks keep their own projects.'),
+      checklist: z.boolean().optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updateStack(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_stack',
+    "Delete a stack. Its tasks are taken out of it and keep their category, unless deleteTasks is true, which deletes its open tasks too (finished occurrences are only taken out: they are history). Ask the person which they want. Restorable from Activity.",
+    {
+      id: z.string().min(1),
+      deleteTasks: z.boolean().optional(),
+    },
+    async ({ id, deleteTasks }) => {
+      try {
+        return json(await withWrite(() => deleteStack(replica, id, deleteTasks ?? false)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_category',
+    "Rename a task category, change its settings, or both. A rename reaches everywhere it is named, as the app's rename does: its tasks and stacks, project defaults, saved views, templates, automations and rules. Settings: an emoji, a schedule (the days and hours its tasks show; null removes it), hiding it on vacation, leaving it out of suggestions and of the new-tasks banner, and the time of day new tasks in it start in. To merge two categories, use delete_category with moveTo.",
+    {
+      name: z.string().min(1).describe('The category, from list_categories.'),
+      newName: z.string().optional(),
+      emoji: z.string().nullable().optional(),
+      schedule: z.object({
+        days: z.array(z.number().int()).describe('0 = Sunday to 6 = Saturday.'),
+        start: z.string().describe('"HH:MM", 24-hour.'),
+        end: z.string().describe('"HH:MM", 24-hour.'),
+      }).nullable().optional(),
+      hideOnVacation: z.boolean().optional(),
+      excludeFromSuggestions: z.boolean().optional(),
+      excludeFromNewTasksBanner: z.boolean().optional(),
+      defaultTimeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => updateCategory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the category.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_categories',
+    "Put the task categories (Today's sections) in an order: the ones named go first, the rest keep their order after them.",
+    { names: z.array(z.string().min(1)).min(1) },
+    async ({ names }) => {
+      try {
+        return json(await withWrite(() => reorderCategories(replica, names)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder the categories.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_project',
+    "Delete a project. Its tasks are left in no project, unless deleteTasks is true, which deletes them too (a task the app wrote is only taken out). Stacks shown on its page stay, in no project. Only when the person asks for a delete: archiving (update_project archived: true) keeps it. Ask whether its tasks should go with it. Restorable from Activity.",
+    {
+      id: z.string().min(1),
+      deleteTasks: z.boolean().optional(),
+    },
+    async ({ id, deleteTasks }) => {
+      try {
+        return json(await withWrite(() => deleteProject(replica, id, deleteTasks ?? false)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_project_category',
+    "Add a project category (a section of the Projects screen, filed with update_project's category), rename one, or delete one (its projects are left in none).",
+    {
+      name: z.string().min(1),
+      newName: z.string().optional(),
+      delete: z.literal(true).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => saveProjectCategory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the project category.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reorder_projects',
+    'Put projects in an order on the Projects screen (ids: the ones named go first), and or the project categories (categories: by name).',
+    {
+      ids: z.array(z.string().min(1)).optional(),
+      categories: z.array(z.string().min(1)).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => reorderProjects(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reorder.' });
+      }
+    }
+  );
+
+  server.tool(
+    'start_fresh_project',
+    "Make a new copy of a project for doing it again (next year's party, the next trip), as the app's Start fresh does: the same tasks, checklists, sections, blockers and settings, every task open and every date cleared (a repeating task starts today). The original is left as it is.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => startFreshProject(replica, id));
+        return json(withLink(result, LINKS?.project(result.project.id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not copy the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_project_as_template',
+    "Save a project as a template, as the app's Save as template does: its tasks, checklists and sections, with each dated task placed as days from the project's own date (the trip's departure, the event date, or the deadline), so applying it later asks for one date.",
+    {
+      id: z.string().min(1),
+      name: z.string().optional().describe('Defaults to the project\'s title.'),
+    },
+    async ({ id, name }) => {
+      try {
+        return json(await withWrite(() => saveProjectAsTemplate(replica, id, name)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save the template.' });
       }
     }
   );

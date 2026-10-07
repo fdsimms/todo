@@ -316,6 +316,8 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
     case 'noteAdd': return { title: 'Restore this note?', message: `Puts the note ${t} back in Notes for Claude.`, destructive: false };
     case 'restorePantryItem': return { title: 'Undo this change?', message: `Puts ${t} in the pantry back the way it was before Claude changed it.`, destructive: false };
     case 'restoreCatalogItem': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
+    case 'restoreDeletedProject': return { title: 'Restore this project?', message: `Claude deleted the project ${t}. This puts it back with its tasks and sections.`, destructive: false };
+    case 'restoreDeletedStack': return { title: 'Restore this stack?', message: `Claude deleted the stack ${t}. This puts it back with its tasks.`, destructive: false };
     case 'restoreDeletedItem': return { title: 'Restore this item?', message: `Claude deleted ${t} from your grocery catalog. This puts it back with its aisle, brands, prices, stores, substitutes and receipt names.`, destructive: false };
     case 'restoreLeftover': return { title: 'Undo this change?', message: `Puts the leftover ${t} back the way it was before Claude changed it.`, destructive: false };
     case 'removeLeftover': return { title: 'Remove this leftover?', message: `Claude logged ${t}. Removing it deletes it, including anything you changed on it since.`, destructive: true };

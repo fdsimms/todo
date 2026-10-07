@@ -42,6 +42,7 @@ describe('the catalog tools', () => {
 
   const stateOf = (r: ReturnType<typeof openReplica>) => ({
     project: () => null,
+    stack: () => null,
     groceryHome: (id: string) => {
       const e = r.groceryListEntries().find(x => x.itemId === id && x.listId === null);
       return e ? { checked: e.checked } : null;

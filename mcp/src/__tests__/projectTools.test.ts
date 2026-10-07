@@ -1,6 +1,16 @@
 import { createProject, getProject, nextInProject, updateProject } from '../projectTools';
+import type { ShimDatabase } from '../expoSqliteShim';
 import type { Replica } from '../replica';
 import type { Project, Task } from '../../../src/types';
+
+let mockRaw: ShimDatabase;
+
+jest.mock('expo-sqlite', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { openShimDatabase } = require('../expoSqliteShim');
+  mockRaw = openShimDatabase(':memory:');
+  return { openDatabaseSync: () => mockRaw };
+});
 
 const task = (over: Partial<Task> & { id: string; title: string }): Task =>
   ({ notes: '', completed: false, completedAt: null, archived: false, category: null, tags: [], timeSegments: [], priority: 0,
@@ -199,5 +209,74 @@ describe('updateProject', () => {
       updateProject(later.replica, 'p1', {}, { moveTasksFrom: june });
       expect(moved).toHaveBeenLastCalledWith('p1', expect.any(Date), new Date(july));
     });
+  });
+});
+
+describe('the project writes, against a real database', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { openReplica } = require('../replica') as typeof import('../replica');
+  const tools = require('../projectTools') as typeof import('../projectTools');
+  const { agentRecordPlan } = require('../../../src/utils/agentRecordRevert') as typeof import('../../../src/utils/agentRecordRevert');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  let real: ReturnType<typeof openReplica>;
+  const raw = () => (require('../expoSqliteShim') as typeof import('../expoSqliteShim')) && mockRaw; // eslint-disable-line @typescript-eslint/no-require-imports
+  const ledger = () => (require('../../../src/db/database') as typeof import('../../../src/db/database')).dbGetUnattendedLog(); // eslint-disable-line @typescript-eslint/no-require-imports
+
+  beforeAll(() => {
+    real = openReplica(':memory:');
+    (require('../../../src/store/useCategoryStore') as typeof import('../../../src/store/useCategoryStore')).useCategoryStore.getState().addCategory('Home'); // eslint-disable-line @typescript-eslint/no-require-imports
+    real.refresh();
+  });
+
+  const plan = () => tools.createProject(real, { title: 'Party', steps: [{ title: 'Invite' }, { title: 'Cake' }], defaultTaskCategory: 'Home' } as never).project.id;
+
+  it('sets the editor\'s other fields, and reads them back', () => {
+    const id = plan();
+    raw().runSync("INSERT INTO people (id, name, created_at) VALUES ('pp', 'Ana', '2026-01-01T00:00:00.000Z')");
+    real.refresh();
+    const result = tools.updateProject(real, id, {
+      pausedUntil: '2099-01-01', inOrder: true, personIds: ['pp'], links: [{ url: 'https://example.com', label: 'Booking' }], nudgeCadenceDays: 14,
+    });
+    expect(result.project).toMatchObject({
+      pausedUntil: '2099-01-01', inOrder: true, people: [{ id: 'pp', name: 'Ana' }], links: [{ label: 'Booking', url: 'https://example.com' }],
+      nudge: expect.objectContaining({ cadenceDays: 14 }),
+    });
+    expect(() => tools.updateProject(real, id, { pausedUntil: '2001-01-01' })).toThrow(/after today/);
+  });
+
+  it('completes a project and archives what is left when asked', () => {
+    const id = plan();
+    const result = tools.updateProject(real, id, { completed: true }, { archiveRemaining: true });
+    expect(result.archivedRemaining).toBe(2);
+    expect(real.tasks().filter(t => t.projectId === id && !t.archived)).toHaveLength(0);
+  });
+
+  it('deletes a project, leaving or taking its tasks, restorable from Activity', () => {
+    const id = plan();
+    expect(tools.deleteProject(real, id)).toMatchObject({ tasksDeleted: 0, tasksLeftInNoProject: 2 });
+    const second = plan();
+    expect(tools.deleteProject(real, second, true).tasksDeleted).toBe(2);
+    const entry = ledger().find(e => e.subject === 'project' && e.recordId === second)!;
+    expect(agentRecordPlan(entry, { project: () => null } as never).kind).toBe('restoreDeletedProject');
+  });
+
+  it('starts a project fresh and saves one as a template', () => {
+    const id = plan();
+    const fresh = tools.startFreshProject(real, id);
+    expect(fresh.project.id).not.toBe(id);
+    expect(fresh.open.map(t => t.title)).toEqual(['Invite', 'Cake']);
+    const saved = tools.saveProjectAsTemplate(real, id, 'Party plan');
+    expect(saved.template).toMatchObject({ name: 'Party plan', items: 2 });
+    expect(() => tools.saveProjectAsTemplate(real, id, 'party plan')).toThrow(/already a template/);
+  });
+
+  it('adds, renames and deletes a project category, and reorders projects', () => {
+    expect(tools.saveProjectCategory(real, { name: 'Life' }).categories).toContain('Life');
+    expect(tools.saveProjectCategory(real, { name: 'Life', newName: 'Home life' }).name).toBe('Home life');
+    expect(tools.saveProjectCategory(real, { name: 'Home life', delete: true }).categories).not.toContain('Home life');
+    const a = plan();
+    const b = plan();
+    const order = tools.reorderProjects(real, { ids: [b, a] }).projects.map(p => p.id);
+    expect(order.indexOf(b)).toBeLessThan(order.indexOf(a));
   });
 });

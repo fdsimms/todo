@@ -1,6 +1,6 @@
 import { blockerIdsOf } from './blocking';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Project, Task, TaskGroup, TaskTemplate, TemplateAnchor, TemplateItem, TemplateItemGroup } from '../types';
+import type { Project, Task, TaskDraft, TaskGroup, TaskTemplate, TemplateAnchor, TemplateItem, TemplateItemGroup } from '../types';
 import { generateId } from './id';
 import { getTaskDayStart } from './dateUtils';
 import { normalizeTemplateItem } from './templateUtils';
@@ -105,6 +105,51 @@ export function projectBlueprint(
 
 /** What a template made from a project holds, short of its id and place in the list. */
 export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGroups' | 'applyContainer' | 'anchorsAreAway' | 'category'>;
+
+/**
+ * A task as "Start fresh" copies it into the new project: what the person
+ * wrote, with every date and every piece of progress left behind. The store
+ * and the MCP server's `start_fresh_project` both build their copies here.
+ */
+export function freshCopyDraft(task: Task, projectId: string, groupId: string | null, today: Date): Partial<TaskDraft> {
+  return {
+    title: task.title,
+    notes: task.notes,
+    tags: task.tags,
+    category: task.category,
+    priority: task.priority,
+    effort: task.effort,
+    estimatedMinutes: task.estimatedMinutes,
+    timeSegments: task.timeSegments,
+    recurrenceType: task.recurrenceType,
+    recurrenceInterval: task.recurrenceInterval,
+    recurrenceDays: task.recurrenceDays,
+    recurrenceMonthDay: task.recurrenceMonthDay,
+    recurrenceMonth: task.recurrenceMonth,
+    recurrenceFromCompletion: task.recurrenceFromCompletion,
+    chainEnabled: task.chainEnabled,
+    chainItems: task.chainItems,
+    // The whole question, not just its kind: a guest's Yes/No/Maybe
+    // copied without its options asked in free text and fell out of
+    // the tally.
+    deliverableKind: task.deliverableKind,
+    deliverableOptions: task.deliverableOptions ?? [],
+    deliverableSetsAway: task.deliverableSetsAway ?? false,
+    windowStart: task.windowStart,
+    windowEnd: task.windowEnd,
+    linkUrl: task.linkUrl,
+    vacationPause: task.vacationPause,
+    excludeFromSuggestions: task.excludeFromSuggestions,
+    difficulty: task.difficulty ?? null,
+    pinEachOccurrence: task.pinEachOccurrence,
+    projectId,
+    groupId,
+    // Last time's dates belong to last time, so one-offs start undated.
+    // A repeating task starts today instead: undated, a project task is
+    // on no list, and Pull never offers a routine, so it was stranded.
+    dueDate: task.recurrenceType !== 'none' ? today.toISOString() : null,
+  };
+}
 
 /**
  * A template that recreates this project: its tasks and sections, and each

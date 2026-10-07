@@ -16,6 +16,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { dbGetCalendarRequest, dbResolveCalendarRequest } from '../db/database';
 import { addAgentNote, readAgentNotes, removeAgentNote, writeAgentNotes } from './agentNotes';
@@ -39,6 +40,7 @@ const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
 /** The world as the stores hold it right now. Read at call time, never cached, so a batch re-reads between steps. */
 export function agentUndoReaders(): AgentUndoReaders {
   const record: RecordState = {
+    stack: id => useTaskGroupStore.getState().getGroupById(id),
     project: id => useProjectStore.getState().projects.find(p => p.id === id) ?? null,
     groceryHome: itemId => {
       const entry = entryFor(useGroceryStore.getState().listEntries, itemId, null);
@@ -97,6 +99,31 @@ export function applyAgentUndo(plan: AgentUndoAction): void {
       return;
     case 'restoreCatalogItem': useGroceryStore.getState().restoreCatalogItem(plan.itemId, plan.patch, plan.nameKey, plan.aisleOverride); return;
     case 'restoreDeletedItem': useGroceryStore.getState().restoreDeletedItem(plan.snapshot); return;
+    case 'restoreDeletedProject': {
+      const { project, deleted, unfiledTaskIds, unfiledStackIds } = plan.snapshot;
+      useProjectStore.getState().restoreProject(project);
+      useTaskStore.getState().restoreTasks(deleted);
+      // Only what is still loose: a task filed somewhere else since stays there.
+      for (const id of unfiledTaskIds) {
+        const task = useTaskStore.getState().tasks.find(t => t.id === id);
+        if (task && task.projectId === null) useTaskStore.getState().updateTask(id, { projectId: project.id });
+      }
+      for (const id of unfiledStackIds) {
+        const stack = useTaskGroupStore.getState().getGroupById(id);
+        if (stack && stack.projectId === null) useTaskGroupStore.getState().updateGroup(id, { projectId: project.id });
+      }
+      return;
+    }
+    case 'restoreDeletedStack': {
+      const { stack, deleted, unfiledTaskIds } = plan.snapshot;
+      useTaskGroupStore.getState().restoreGroup(stack);
+      useTaskStore.getState().restoreTasks(deleted);
+      for (const id of unfiledTaskIds) {
+        const task = useTaskStore.getState().tasks.find(t => t.id === id);
+        if (task && task.groupId === null && !task.completed) useTaskStore.getState().updateTask(id, { groupId: stack.id });
+      }
+      return;
+    }
     case 'restoreLeftover': useLeftoverStore.getState().restoreLeftover(plan.id, plan.patch); return;
     case 'removeLeftover': useLeftoverStore.getState().deleteLeftover(plan.id); return;
     case 'noteRemove': {

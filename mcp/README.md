@@ -137,7 +137,7 @@ only the fallback until the first sync.
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits, the people it is about, a link, phone, email and location, vacation pause, a medication its completion records, and a deadline or reminder placed by rule. |
 | `update_task` | **Write.** Edits a task by the app's own rules (`src/utils/taskUpdate.ts`), including the "this and later dates" fan-out on a dated series. A fixed deadline replaces a deadline rule and the result says so; a target on a task that follows the water goal is refused. |
 | `create_project` | **Write.** A project and its whole plan in one transaction: steps, their checklists, and which steps wait on which. |
-| `update_project` | **Write.** Rename, re-date, re-file, complete or archive a project, set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on), or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). Its existing tasks are untouched. |
+| `update_project` | **Write.** Rename, re-date, re-file, complete (optionally archiving what is left) or archive a project, pause it until a day, set its people, links, step order and nudge settings, set or clear its away dates and destination (what scheduled vacation mode and the away grocery list run on), or set the priority, difficulty and estimate its new tasks start with (`taskDefaults`). |
 | `list_stacks` | Stacks and the open tasks in each, in order. A task's `stackId` says which one it is in. |
 | `create_stack` | **Write.** A new stack, optionally with its first tasks. Its category is settled before anything is written, because it is imposed on every member. |
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
@@ -165,6 +165,14 @@ only the fallback until the first sync.
 | `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details (phone, fax, email, link), location (free text). Never a cadence, nudge, group or order. |
 | `update_person` | **Write.** Changes those same fields on a person. |
 | `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
+| `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |
+| `delete_stack` | **Write.** Deletes a stack, taking its tasks out of it, or with `deleteTasks` deleting its open tasks too. Restorable from Activity. |
+| `update_category` | **Write.** Renames a task category everywhere it is named, or sets its emoji, schedule, vacation and suggestion settings and default time of day. |
+| `reorder_categories` | **Write.** Orders Today's category sections. |
+| `delete_project` | **Write.** Deletes a project, leaving its tasks in no project, or with `deleteTasks` deleting them. Restorable from Activity. |
+| `save_project_category` / `reorder_projects` | **Write.** The Projects screen's sections: add, rename or delete one; order the projects and the sections. |
+| `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
+| `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
 | `create_reward` | **Write.** Adds a reward at a cost in coins. Refused while rewards are off. |
 | `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |

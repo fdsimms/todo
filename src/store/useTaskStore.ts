@@ -44,7 +44,7 @@ import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
-import { projectBlueprint } from '../utils/projectTemplate';
+import { freshCopyDraft, projectBlueprint } from '../utils/projectTemplate';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
@@ -8670,43 +8670,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const copyOf = new Map<string, string>();
       for (const { task, sectionId, subtasks } of blueprint.entries) {
         const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
-        const copy = get().addTask({
-          title: task.title,
-          notes: task.notes,
-          tags: task.tags,
-          category: task.category,
-          priority: task.priority,
-          effort: task.effort,
-          estimatedMinutes: task.estimatedMinutes,
-          timeSegments: task.timeSegments,
-          recurrenceType: task.recurrenceType,
-          recurrenceInterval: task.recurrenceInterval,
-          recurrenceDays: task.recurrenceDays,
-          recurrenceMonthDay: task.recurrenceMonthDay,
-          recurrenceMonth: task.recurrenceMonth,
-          recurrenceFromCompletion: task.recurrenceFromCompletion,
-          chainEnabled: task.chainEnabled,
-          chainItems: task.chainItems,
-          // The whole question, not just its kind: a guest's Yes/No/Maybe
-          // copied without its options asked in free text and fell out of
-          // the tally.
-          deliverableKind: task.deliverableKind,
-          deliverableOptions: task.deliverableOptions ?? [],
-          deliverableSetsAway: task.deliverableSetsAway ?? false,
-          windowStart: task.windowStart,
-          windowEnd: task.windowEnd,
-          linkUrl: task.linkUrl,
-          vacationPause: task.vacationPause,
-          excludeFromSuggestions: task.excludeFromSuggestions,
-          difficulty: task.difficulty ?? null,
-          pinEachOccurrence: task.pinEachOccurrence,
-          projectId: created.id,
-          groupId,
-          // Last time's dates belong to last time, so one-offs start undated.
-          // A repeating task starts today instead: undated, a project task is
-          // on no list, and Pull never offers a routine, so it was stranded.
-          dueDate: task.recurrenceType !== 'none' ? getLogicalToday().toISOString() : null,
-        }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        const copy = get().addTask(freshCopyDraft(task, created.id, groupId, getLogicalToday()), undefined, { skipTitleRules: true, skipCategoryDefault: true });
         copyOf.set(task.id, copy.id);
         subtasks.forEach(title => get().addSubtask(copy.id, title));
         if (groupId) {

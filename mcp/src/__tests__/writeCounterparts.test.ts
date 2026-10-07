@@ -23,11 +23,12 @@ const CREATING = /^(create|log|save|plan|add)_|^quick_add$/;
 
 /** A creating tool, and the tools that put right what it made. */
 const COUNTERPARTS: Record<string, string[]> = {
-  create_task: ['update_task', 'archive_task', 'reopen_task'],
+  create_task: ['update_task', 'archive_task', 'reopen_task', 'delete_task'],
   quick_add: ['update_task', 'archive_task'],
   add_project_steps: ['update_task', 'archive_task'],
-  create_project: ['update_project', 'update_task'],
-  create_stack: ['rename_stack', 'assign_to_stack'],
+  create_project: ['update_project', 'update_task', 'delete_project'],
+  create_stack: ['rename_stack', 'update_stack', 'assign_to_stack', 'delete_stack'],
+  save_project_as_template: ['update_template', 'delete_template'],
   create_reward: ['update_reward', 'delete_reward'],
   log_slip: ['undo_slip'],
   create_template: ['update_template', 'delete_template', 'reorder_templates'],
@@ -58,6 +59,7 @@ const COUNTERPARTS: Record<string, string[]> = {
 const NO_COUNTERPART: Record<string, string> = {
   plan_day: 'Proposes an order and writes nothing, so there is nothing to put right.',
   save_grocery_box: 'One tool adds, edits and deletes a box (boxId, delete: true), so it is its own correction.',
+  save_project_category: 'One tool adds, renames (newName) and deletes (delete: true) a project category, so it is its own correction.',
   save_store: 'Adds and renames a store with the one tool; deleting a store rewrites its links and aliases, so that stays in the app.',
 };
 

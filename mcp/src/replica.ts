@@ -80,6 +80,7 @@ import type {
   Task,
   TaskDraft,
   TaskGroup,
+  TimeOfDay,
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -90,6 +91,7 @@ import type { DayProduce } from '../../src/utils/produceServings';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
 import type { DeletedTaskSnapshot } from '../../src/utils/agentRevert';
+import type { DeletedProjectSnapshot, DeletedStackSnapshot } from '../../src/utils/agentRecordRevert';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
@@ -102,7 +104,26 @@ import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agent
 /** What `deleteTask` removed: the row and its checklist, as they were. */
 export type DeletedTask = DeletedTaskSnapshot;
 
-export type ReorderScope = { projectId: string } | { parentId: string } | { pinned: true };
+export type ReorderScope = { projectId: string } | { parentId: string } | { stackId: string } | { pinned: true };
+
+export interface StackPatch {
+  title?: string;
+  notes?: string;
+  tags?: string[];
+  category?: string | null;
+  projectId?: string | null;
+  checklist?: boolean;
+}
+
+export interface CategorySettingsPatch {
+  emoji?: string | null;
+  hideOnVacation?: boolean;
+  excludeFromSuggestions?: boolean;
+  excludeFromNewTasksBanner?: boolean;
+  defaultTimeSegments?: TimeOfDay[];
+  /** Days (0 = Sunday) and "HH:MM" bounds the category is active; null removes the schedule. */
+  schedule?: { days: number[]; start: string; end: string } | null;
+}
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -626,6 +647,26 @@ export interface ProjectPatch {
   awayEnd?: string | null;
   /** Free text, where the trip is going. Needs a span to belong to. */
   destination?: string | null;
+  /** The day (YYYY-MM-DD) a paused project comes back; its tasks are held until then. null resumes it. */
+  pausedUntil?: string | null;
+  /** Work the steps in page order: Pull and auto-schedule offer only the first open one. */
+  inOrder?: boolean;
+  /** Never finished on its own: the last task being done doesn't offer to complete it. */
+  ongoing?: boolean;
+  /** People the project is with or for (list_people ids). Checked here. */
+  personIds?: string[];
+  /** Links kept with the project, in order. Replaces the list. */
+  links?: { label?: string; url: string }[];
+  /** Days of quiet before it offers its next task; 0 never offers. */
+  nudgeCadenceDays?: number;
+  /** Date its next task automatically when it runs dry, instead of offering it. */
+  autoSchedule?: boolean;
+  /** False keeps it out of every nudge, the Pull sheet included. */
+  nudgeOptIn?: boolean;
+  /** Somewhere the weekend nudge looks when a weekend is bare. */
+  weekendSource?: boolean;
+  /** On a list: checked items stay on the page instead of folding away. */
+  showChecked?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -1303,13 +1344,46 @@ export interface Replica {
    * own. `category` is where it renders on Today; null leaves a stack that
    * files its members under nothing in particular.
    */
-  createStack(title: string, category: string | null): TaskGroup;
-  /**
-   * Rename a stack. Only the title: changing its category would move every
-   * member, and deleting one is a cascade decision (`deleteGroup`) for the
-   * person, so neither is here.
-   */
+  createStack(title: string, category: string | null, projectId?: string | null): TaskGroup;
+  /** Rename a stack. Its category and members are untouched. */
   renameStack(id: string, title: string): TaskGroup;
+  /**
+   * Change a stack as its editor does. A new category re-files every live
+   * member with it, as the editor's save does (`applyGroupCategory`): the stack
+   * owns its members' category. `projectId` is only which project page shows
+   * it as a section; members keep their own projects.
+   */
+  updateStack(id: string, patch: StackPatch): { stack: TaskGroup; moved: { before: Task; after: Task }[] };
+  /**
+   * Delete a stack, as the app's `deleteGroup`: its live members are taken out
+   * of it, or with `cascade` deleted (a dated set's other dates with them), and
+   * its finished occurrences are only taken out, since they are history. A
+   * member the app generated is taken out rather than deleted, for the reason
+   * `deleteTask` gives.
+   */
+  deleteStack(id: string, cascade: boolean): DeletedStackSnapshot;
+  /** Rename a task category everywhere it is named, as the app's rename does. */
+  renameCategory(name: string, newName: string): { from: string; to: string };
+  /** A task category's own settings: emoji, schedule, vacation, suggestions, default time of day. */
+  updateCategorySettings(name: string, patch: CategorySettingsPatch): Category;
+  /** Put the categories (Today's sections) in this order: the named first, the rest after in their order. */
+  reorderCategories(names: string[]): string[];
+  /**
+   * Delete a project, as the app's `deleteProject`: its tasks are unfiled, or
+   * with `cascade` deleted (a task the app generated is unfiled instead), and
+   * the stacks homed on it are unfiled. What it took comes back for the ledger.
+   */
+  deleteProject(id: string, cascade: boolean): DeletedProjectSnapshot;
+  /** The project categories (sections of the Projects screen), in order. */
+  projectCategories(): { id: string; name: string; sortOrder: number }[];
+  /** Add, rename or delete a project category. Deleting leaves its projects with none. */
+  saveProjectCategory(name: string, change: { newName?: string; delete?: boolean }): { name: string | null; projectsAffected: number };
+  /** Projects in this order (the named first), and optionally the project categories too. */
+  reorderProjects(ids: string[], categories?: string[]): void;
+  /** A new project with this one's tasks and sections, every date cleared and every task open: the app's Start fresh. */
+  startFreshProject(id: string): { project: Project; tasks: Task[] };
+  /** A template that recreates this project, as the app's Save as template (`templateFromProject`). */
+  saveProjectAsTemplate(id: string, name?: string): TaskTemplate;
   /**
    * File a task in a stack, or take it out with a null `stackId`: the app's
    * `addExistingToGroup` / `removeFromGroup`, one task row at a time.
@@ -3599,6 +3673,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!parent) throw new Error(`No task with id ${scope.parentId}.`);
         members = all.filter(t => t.parentId === scope.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
         updates = fullOrder(members).map((id, i) => ({ id, sortOrder: i + 1 }));
+      } else if ('stackId' in scope) {
+        if (!db.dbGetAllTaskGroups().some(g => g.id === scope.stackId)) throw new Error(`No stack with id ${scope.stackId}.`);
+        // A stack's own 1..K space. Finished rows keep their slots
+        // (reorderSubset), as the app's drag over the members on screen does.
+        const children = all.filter(t => t.groupId === scope.stackId).sort((a, b) => a.sortOrder - b.sortOrder);
+        members = children;
+        const live = children.filter(t => !t.completed && !t.archived);
+        const liveOrder = fullOrder(live);
+        const { reorderSubset } = require('../../src/utils/reorder') as typeof import('../../src/utils/reorder'); // eslint-disable-line @typescript-eslint/no-require-imports
+        updates = reorderSubset(children.map(t => t.id), liveOrder).map((id, i) => ({ id, sortOrder: i + 1 }));
       } else {
         // The Pinned block's own number space (Task.pinnedOrder); 0 is "never
         // ranked", which sorts by sortOrder, so the rest are ranked too.
@@ -4473,7 +4557,33 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (destination !== undefined) away.destination = destination === null || !destination.trim() ? null : destination.trim();
         }
       }
-      const fields = { ...contentRest, ...away };
+      const { personIds, links, pausedUntil, nudgeCadenceDays, ...plain } = contentRest as typeof contentRest & Pick<ProjectPatch, 'personIds' | 'links' | 'pausedUntil' | 'nudgeCadenceDays'>;
+      const extra: Partial<Pick<Project, 'personIds' | 'links' | 'pausedUntil' | 'nudgeCadenceDays'>> = {};
+      if (personIds !== undefined) {
+        const known = new Set(people().map(p => p.id));
+        const missing = personIds.filter(pid => !known.has(pid));
+        if (missing.length > 0) throw new Error(`personIds: no person with id ${missing.join(', ')}. list_people names them.`);
+        extra.personIds = [...new Set(personIds)];
+      }
+      if (links !== undefined) {
+        const bad = links.find(l => !l.url?.trim());
+        if (bad) throw new Error('Each link needs a url.');
+        extra.links = links.map(l => ({ id: generateId(), label: l.label?.trim() || l.url.trim(), url: l.url.trim() }));
+      }
+      if (pausedUntil !== undefined) {
+        if (pausedUntil === null) extra.pausedUntil = null;
+        else {
+          const key = /^\d{4}-\d{2}-\d{2}$/.exec(pausedUntil.trim())?.[0];
+          if (!key) throw new Error('pausedUntil is the day it comes back, YYYY-MM-DD.');
+          if (key <= dates.getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime)) throw new Error('pausedUntil has to be a day after today. To resume it now, pass null.');
+          extra.pausedUntil = key;
+        }
+      }
+      if (nudgeCadenceDays !== undefined) {
+        if (!Number.isInteger(nudgeCadenceDays) || nudgeCadenceDays < 0 || nudgeCadenceDays > 365) throw new Error('nudgeCadenceDays is a whole number of days, 0 (never offer) to 365.');
+        extra.nudgeCadenceDays = nudgeCadenceDays;
+      }
+      const fields = { ...plain, ...extra, ...away };
       db.dbTransaction(() => {
         ensureCategory(fields.defaultTaskCategory);
         if (Object.keys(fields).length > 0) {
@@ -4490,16 +4600,373 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return db.dbGetAllTaskGroups();
     },
 
-    createStack(title: string, category: string | null): TaskGroup {
+    createStack(title: string, category: string | null, projectId: string | null = null): TaskGroup {
       const name = title.trim();
       if (!name) throw new Error('A stack needs a title.');
+      if (projectId && !projects().some(p => p.id === projectId)) throw new Error(`No project with id ${projectId}.`);
       let group: TaskGroup | undefined;
       db.dbTransaction(() => {
         ensureCategory(category);
-        group = useTaskGroupStore.getState().createGroup(name, category);
+        group = useTaskGroupStore.getState().createGroup(name, category, projectId);
       });
       refresh();
       return group!;
+    },
+
+    updateStack(id: string, patch: StackPatch): { stack: TaskGroup; moved: { before: Task; after: Task }[] } {
+      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
+      if (!group) throw new Error(`No stack with id ${id}.`);
+      if (patch.title !== undefined && !patch.title.trim()) throw new Error('A stack needs a title.');
+      if (patch.projectId && !projects().some(p => p.id === patch.projectId)) throw new Error(`No project with id ${patch.projectId}.`);
+      const errors: string[] = [];
+      const category = typeof patch.category === 'string' ? categoryNamed(patch.category, false, errors) : patch.category;
+      if (errors.length > 0) throw new Error(errors.join(' '));
+      const { title, category: _c, tags, ...rest } = patch;
+      const moved: { before: Task; after: Task }[] = [];
+      db.dbTransaction(() => {
+        useTaskGroupStore.getState().updateGroup(id, {
+          ...rest,
+          ...(title !== undefined ? { title: title.trim() } : {}),
+          ...(tags !== undefined ? { tags: [...new Set(tags.map(t => t.trim().toLowerCase()).filter(Boolean))] } : {}),
+          ...(category !== undefined ? { category } : {}),
+        });
+        if (category !== undefined && category !== group.category) {
+          // applyGroupCategory: the roster, widened to the live rows of any
+          // dated set in it, and never a finished row (history keeps its category).
+          const children = tasks().filter(t => t.groupId === id);
+          const roster = visibility.groupRoster(children);
+          const series = new Set(roster.map(t => t.seriesId).filter((x): x is string => x != null));
+          const members = new Map(roster.map(t => [t.id, t]));
+          for (const child of children) {
+            if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived) members.set(child.id, child);
+          }
+          for (const t of members.values()) {
+            if (t.category === category || t.completed || t.archived) continue;
+            const after = taskUpdate.mergeTaskUpdate(t, { category }, { scope: 'occurrence', freshPinnedOrder: 0, dayResetTime: useSettingsStore.getState().dayResetTime });
+            db.dbUpdateTask(after);
+            moved.push({ before: t, after });
+          }
+        }
+      });
+      refresh();
+      return { stack: db.dbGetAllTaskGroups().find(g => g.id === id)!, moved };
+    },
+
+    deleteStack(id: string, cascade: boolean): DeletedStackSnapshot {
+      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
+      if (!group) throw new Error(`No stack with id ${id}.`);
+      const children = tasks().filter(t => t.groupId === id);
+      const doomed = new Set<string>();
+      if (cascade) {
+        const series = new Set<string>();
+        for (const member of visibility.groupRoster(children)) {
+          if (member.completed || member.archived || member.generatedKind) continue;
+          doomed.add(member.id);
+          if (member.seriesId) series.add(member.seriesId);
+        }
+        for (const child of children) {
+          if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived && !child.generatedKind) doomed.add(child.id);
+        }
+      }
+      const deleted = tasks().filter(t => doomed.has(t.id) || (t.parentId !== null && doomed.has(t.parentId)));
+      const unfiled = children.filter(t => !doomed.has(t.id));
+      db.dbTransaction(() => {
+        for (const t of children) {
+          if (doomed.has(t.id)) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+          else db.dbUpdateTask(taskUpdate.mergeTaskUpdate(t, { groupId: null }, { scope: 'occurrence', freshPinnedOrder: 0, dayResetTime: useSettingsStore.getState().dayResetTime }));
+        }
+        useTaskGroupStore.getState().removeGroupRow(id);
+      });
+      refresh();
+      return { stack: group, deleted, unfiledTaskIds: unfiled.map(t => t.id) };
+    },
+
+    renameCategory(name: string, newName: string): { from: string; to: string } {
+      const cats = useCategoryStore.getState();
+      const category = cats.categories.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (!category) throw new Error(`"${name}" isn't one of your categories. list_categories lists them.`);
+      const from = category.name;
+      const to = newName.trim();
+      if (!to) throw new Error('A category needs a name.');
+      if (to === from) throw new Error('That is already its name.');
+      if (cats.categories.some(c => c.id !== category.id && c.name.toLowerCase() === to.toLowerCase())) {
+        throw new Error(`There is already a category called "${to}". To merge the two, use delete_category with moveTo.`);
+      }
+      const rename = require('../../src/utils/categoryRename') as typeof import('../../src/utils/categoryRename'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { renameInRuleCategories } = require('../../src/utils/ruleCategory') as typeof import('../../src/utils/ruleCategory'); // eslint-disable-line @typescript-eslint/no-require-imports
+      db.dbTransaction(() => {
+        // The category row, every task, stack and project default naming it
+        // (dbRenameCategory), then everything else the app's rename reaches.
+        if (!cats.renameCategory(from, to)) throw new Error(`Could not rename "${from}".`);
+        for (const t of db.dbGetAllTasks()) {
+          const seriesDefaults = rename.renameInSeriesDefaults(t.seriesDefaults, from, to);
+          const followUpTaskDraft = rename.renameInFollowUpDraft(t.followUpTaskDraft, from, to);
+          if (seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) db.dbUpdateTask({ ...t, seriesDefaults, followUpTaskDraft });
+        }
+        const { useSavedViewStore } = require('../../src/store/useSavedViewStore') as typeof import('../../src/store/useSavedViewStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const views = useSavedViewStore.getState();
+        views.initialize();
+        for (const v of views.views) {
+          const clauses = rename.renameInViewClauses(v.clauses, from, to);
+          if (clauses !== v.clauses) views.updateView(v.id, { clauses });
+        }
+        for (const template of db.dbGetAllTemplates()) {
+          if (!template.items.some(i => i.category === from)) continue;
+          db.dbUpdateTemplate({ ...template, items: template.items.map(i => (i.category === from ? { ...i, category: to } : i)) });
+        }
+        categoryStore.renameGeneratedCategorySettings(from, to);
+        const settings = useSettingsStore.getState();
+        if (settings.calendarEventCategory === from) settings.setCalendarEventCategory(to);
+        if (settings.healthCategory === from) settings.setHealthCategory(to);
+        if (settings.newTaskDefaults.category === from) settings.setNewTaskDefaults({ category: to });
+        const titleRules = rename.renameInTitleRules(settings.titleRules, from, to);
+        if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+        const weatherRules = renameInRuleCategories(settings.weatherRules, from, to);
+        if (weatherRules !== settings.weatherRules) settings.setWeatherRules(weatherRules);
+        const screenTimeRules = renameInRuleCategories(settings.screenTimeRules, from, to);
+        if (screenTimeRules !== settings.screenTimeRules) settings.setScreenTimeRules(screenTimeRules);
+        const healthRules = renameInRuleCategories(settings.healthRules, from, to);
+        if (healthRules !== settings.healthRules) settings.setHealthRules(healthRules);
+        const eventRules = renameInRuleCategories(settings.eventRules, from, to);
+        if (eventRules !== settings.eventRules) settings.setEventRules(eventRules);
+        const captures = rename.renameInReminderCaptures(settings.reminderCaptures, from, to);
+        if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
+        if (settings.collapsedCategories.includes(from)) settings.setCollapsedCategories(settings.collapsedCategories.map(c => (c === from ? to : c)));
+      });
+      refresh();
+      return { from, to };
+    },
+
+    updateCategorySettings(name: string, patch: CategorySettingsPatch): Category {
+      const cats = useCategoryStore.getState();
+      const category = cats.categories.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (!category) throw new Error(`"${name}" isn't one of your categories. list_categories lists them.`);
+      const n = category.name;
+      const errors: string[] = [];
+      const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+      if (patch.schedule) {
+        const { days, start, end } = patch.schedule;
+        if (days.length === 0 || days.some(d => !Number.isInteger(d) || d < 0 || d > 6)) errors.push('schedule.days are 0 (Sunday) to 6, at least one.');
+        if (!hhmm.test(start) || !hhmm.test(end)) errors.push('schedule.start and end are "HH:MM", 24-hour.');
+      }
+      if (patch.defaultTimeSegments && patch.defaultTimeSegments.some(seg => !['morning', 'afternoon', 'evening', 'night'].includes(seg))) {
+        errors.push('defaultTimeSegments are morning, afternoon, evening or night.');
+      }
+      if (errors.length > 0) throw new Error(errors.join(' '));
+      db.dbTransaction(() => {
+        if (patch.emoji !== undefined) cats.setCategoryEmoji(n, patch.emoji?.trim() || null);
+        if (patch.hideOnVacation !== undefined) cats.setCategoryHideOnVacation(n, patch.hideOnVacation);
+        if (patch.excludeFromSuggestions !== undefined) cats.setCategoryExcludeFromSuggestions(n, patch.excludeFromSuggestions);
+        if (patch.excludeFromNewTasksBanner !== undefined) cats.setCategoryExcludeFromNewTasksBanner(n, patch.excludeFromNewTasksBanner);
+        if (patch.defaultTimeSegments !== undefined) cats.setCategoryDefaultTimeSegments(n, patch.defaultTimeSegments);
+        if (patch.schedule === null) cats.removeCategorySchedule(n);
+        else if (patch.schedule) cats.setCategorySchedule(n, [...new Set(patch.schedule.days)].sort(), patch.schedule.start, patch.schedule.end);
+      });
+      refresh();
+      return useCategoryStore.getState().categories.find(c => c.id === category.id)!;
+    },
+
+    reorderCategories(names: string[]): string[] {
+      const cats = useCategoryStore.getState();
+      const current = [...cats.categories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name);
+      const resolved = names.map(name => {
+        const hit = current.find(c => c.toLowerCase() === name.trim().toLowerCase());
+        if (!hit) throw new Error(`"${name}" isn't one of your categories. list_categories lists them.`);
+        return hit;
+      });
+      const order = [...new Set(resolved), ...current.filter(c => !resolved.includes(c))];
+      cats.reorderCategories(order);
+      refresh();
+      return order;
+    },
+
+    deleteProject(id: string, cascade: boolean): DeletedProjectSnapshot {
+      const project = projects().find(p => p.id === id);
+      if (!project) throw new Error(`No project with id ${id}.`);
+      const members = tasks().filter(t => t.projectId === id);
+      const doomed = new Set(cascade ? members.filter(t => !t.generatedKind).map(t => t.id) : []);
+      const deleted = tasks().filter(t => doomed.has(t.id) || (t.parentId !== null && doomed.has(t.parentId)));
+      const unfiled = members.filter(t => !doomed.has(t.id) && !(t.parentId !== null && doomed.has(t.parentId)));
+      const homed = useTaskGroupStore.getState().groups.filter(g => g.projectId === id);
+      // The quiet-project review task names its project in generatedSourceId
+      // and carries no projectId, so the loops above never reach it; with the
+      // project gone there is nothing for it to be about (deleteProject's
+      // dropGeneratedTask).
+      const review = tasks().filter(t => t.generatedKind === 'projectReview' && t.generatedSourceId === id && !t.completed);
+      db.dbTransaction(() => {
+        for (const t of members) {
+          if (doomed.has(t.id)) { db.dbDeleteSubtasks(t.id); db.dbDeleteTask(t.id); }
+        }
+        for (const t of unfiled) db.dbUpdateTask(taskUpdate.mergeTaskUpdate(t, { projectId: null }, { scope: 'occurrence', freshPinnedOrder: 0, dayResetTime: useSettingsStore.getState().dayResetTime }));
+        for (const g of homed) useTaskGroupStore.getState().updateGroup(g.id, { projectId: null });
+        for (const t of review) db.dbDeleteTask(t.id);
+        useProjectStore.getState().removeProjectRow(id);
+      });
+      refresh();
+      return { project, deleted, unfiledTaskIds: unfiled.filter(t => !t.parentId).map(t => t.id), unfiledStackIds: homed.map(g => g.id) };
+    },
+
+    projectCategories() {
+      return db.dbGetAllProjectCategories();
+    },
+
+    saveProjectCategory(name: string, change: { newName?: string; delete?: boolean }): { name: string | null; projectsAffected: number } {
+      const { useProjectCategoryStore } = require('../../src/store/useProjectCategoryStore') as typeof import('../../src/store/useProjectCategoryStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const store = useProjectCategoryStore.getState();
+      store.initialize();
+      const existing = store.getCategoryByName(name.trim());
+      if (change.delete) {
+        if (!existing) throw new Error(`No project category called "${name}".`);
+        const filed = projects().filter(p => p.category === existing.name);
+        db.dbTransaction(() => {
+          store.removeCategoryRow(existing.name);
+          for (const p of filed) useProjectStore.getState().updateProject(p.id, { category: null });
+        });
+        refresh();
+        return { name: null, projectsAffected: filed.length };
+      }
+      if (change.newName !== undefined) {
+        if (!existing) throw new Error(`No project category called "${name}".`);
+        const to = change.newName.trim();
+        if (!to) throw new Error('A project category needs a name.');
+        const filed = projects().filter(p => p.category === existing.name).length;
+        if (!store.renameCategory(existing.name, to)) throw new Error(`There is already a project category called "${to}".`);
+        refresh();
+        return { name: to, projectsAffected: filed };
+      }
+      if (!name.trim()) throw new Error('A project category needs a name.');
+      if (existing) throw new Error(`There is already a project category called "${existing.name}".`);
+      const made = store.addCategory(name.trim());
+      refresh();
+      return { name: made.name, projectsAffected: 0 };
+    },
+
+    reorderProjects(ids: string[], categories?: string[]): void {
+      const all = projects();
+      const unknown = ids.filter(pid => !all.some(p => p.id === pid));
+      if (unknown.length > 0) throw new Error(`No project with id ${unknown.join(', ')}.`);
+      let catOrder: string[] | null = null;
+      if (categories) {
+        const pool = db.dbGetAllProjectCategories();
+        catOrder = categories.map(name => {
+          const hit = pool.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+          if (!hit) throw new Error(`No project category called "${name}".`);
+          return hit.name;
+        });
+        catOrder = [...new Set(catOrder), ...pool.map(c => c.name).filter(n => !catOrder!.includes(n))];
+      }
+      db.dbTransaction(() => {
+        if (ids.length > 0) useProjectStore.getState().reorderProjects(ids);
+        if (catOrder) {
+          const { useProjectCategoryStore } = require('../../src/store/useProjectCategoryStore') as typeof import('../../src/store/useProjectCategoryStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+          useProjectCategoryStore.getState().initialize();
+          useProjectCategoryStore.getState().reorderCategories(catOrder);
+        }
+      });
+      refresh();
+    },
+
+    startFreshProject(id: string): { project: Project; tasks: Task[] } {
+      const source = projects().find(p => p.id === id);
+      if (!source) throw new Error(`No project with id ${id}.`);
+      const projectTemplate = require('../../src/utils/projectTemplate') as typeof import('../../src/utils/projectTemplate'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const groupsNow = useTaskGroupStore.getState().groups;
+      const blueprint = projectTemplate.projectBlueprint(id, tasks(), groupsNow);
+      const checklistSections = new Set(groupsNow.filter(g => g.checklist).map(g => g.id));
+      const made: Task[] = [];
+      let created: Project | undefined;
+      db.dbTransaction(() => {
+        const store = useProjectStore.getState();
+        created = store.createProject(source.title, { category: source.category, kind: source.kind });
+        // The settings the person chose carry over; its dates and its
+        // done-ness don't, since those were about the last time.
+        store.updateProject(created.id, {
+          notes: source.notes, defaultTaskCategory: source.defaultTaskCategory, taskDefaults: source.taskDefaults ?? null,
+          ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
+          autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
+          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked,
+        });
+        const sectionFor = new Map<string, string>();
+        for (const section of blueprint.sections) {
+          const copy = useTaskGroupStore.getState().createGroup(section.title, null, created.id);
+          if (checklistSections.has(section.id)) useTaskGroupStore.getState().updateGroup(copy.id, { checklist: true });
+          sectionFor.set(section.id, copy.id);
+        }
+        const copyOf = new Map<string, string>();
+        const childOrder = new Map<string, number>();
+        const pageOrder: string[] = [];
+        const today = dates.getLogicalToday();
+        let order = db.dbGetAllTasks().reduce((m, t) => Math.max(m, t.sortOrder), 0);
+        for (const { task, sectionId, subtasks } of blueprint.entries) {
+          const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
+          // Within a section the rows are numbered 1..n, as the app's
+          // reorderGroupChildren leaves them; a loose row takes the next slot.
+          const sortOrder = groupId ? (childOrder.set(groupId, (childOrder.get(groupId) ?? 0) + 1), childOrder.get(groupId)!) : ++order;
+          const copy = taskDraft.newTaskFromDraft(projectTemplate.freshCopyDraft(task, created.id, groupId, today), new Date().toISOString(), sortOrder, false);
+          db.dbInsertTask(copy);
+          made.push(copy);
+          copyOf.set(task.id, copy.id);
+          const slot = groupId ?? copy.id;
+          if (!pageOrder.includes(slot)) pageOrder.push(slot);
+          subtasks.forEach((title, i) => {
+            const sub = taskDraft.newTaskFromDraft({ title, parentId: copy.id }, new Date().toISOString(), i + 1, false);
+            db.dbInsertTask(sub);
+          });
+        }
+        // What each copy waits on, pointed at the copies; a blocker outside
+        // the project isn't carried, since it was about then.
+        for (const { task } of blueprint.entries) {
+          const copyId = copyOf.get(task.id)!;
+          const row = db.dbGetAllTasks().find(t => t.id === copyId)!;
+          const mapped = blocking.blockerIdsOf(task).map(b => copyOf.get(b)).filter((x): x is string => !!x);
+          const question = task.answerGate ? copyOf.get(task.answerGate.taskId) : undefined;
+          if (mapped.length === 0 && !question) continue;
+          db.dbUpdateTask({
+            ...row,
+            ...(mapped.length > 0 ? blocking.blockerFields(mapped) : {}),
+            ...(question ? { answerGate: { taskId: question, answers: task.answerGate!.answers } } : {}),
+          });
+        }
+        // The page order the source had, sections in place among the loose
+        // tasks (empty ones at the end), as the app's reorderProjectItems lays
+        // it: one slot space for tasks and stacks.
+        for (const sectionId of sectionFor.values()) if (!pageOrder.includes(sectionId)) pageOrder.push(sectionId);
+        const live = projectOrder.liveProjectSteps(created.id, db.dbGetAllTasks()).filter(t => !t.groupId);
+        const homed = useTaskGroupStore.getState().groups.filter(g => g.projectId === created!.id);
+        const updates = projectOrder.slotUpdates([...live, ...homed], pageOrder);
+        const taskSlots = updates.filter(u => live.some(t => t.id === u.id));
+        if (taskSlots.length > 0) db.dbBatchUpdateSortOrders(taskSlots);
+        for (const u of updates) if (homed.some(g => g.id === u.id)) useTaskGroupStore.getState().updateGroup(u.id, { sortOrder: u.sortOrder });
+      });
+      refresh();
+      return { project: projects().find(p => p.id === created!.id)!, tasks: made };
+    },
+
+    saveProjectAsTemplate(id: string, name?: string): TaskTemplate {
+      const project = projects().find(p => p.id === id);
+      if (!project) throw new Error(`No project with id ${id}.`);
+      const projectTemplate = require('../../src/utils/projectTemplate') as typeof import('../../src/utils/projectTemplate'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const draft = projectTemplate.templateFromProject(project, tasks(), useTaskGroupStore.getState().groups, useSettingsStore.getState().dayResetTime);
+      const existing = db.dbGetAllTemplates();
+      const templateName = (name ?? draft.name).trim();
+      if (!templateName) throw new Error('A template needs a name.');
+      if (existing.some(t => t.name.toLowerCase() === templateName.toLowerCase())) throw new Error(`There is already a template called "${templateName}". Pass name to call this one something else.`);
+      const template: TaskTemplate = {
+        id: generateId(),
+        name: templateName,
+        items: draft.items,
+        itemGroups: draft.itemGroups,
+        questions: [],
+        createdAt: new Date().toISOString(),
+        sortOrder: existing.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+        category: draft.category,
+        applyContainer: draft.applyContainer,
+        schedule: null,
+        scheduleLastFiredKey: null,
+        anchorsAreAway: draft.anchorsAreAway,
+      };
+      db.dbInsertTemplate(template);
+      return template;
     },
 
     renameStack(id: string, title: string): TaskGroup {

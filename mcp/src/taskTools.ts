@@ -64,23 +64,27 @@ export function skipOccurrence(replica: Replica, id: string): { task: Serialized
 export interface ReorderInput {
   projectId?: string;
   parentId?: string;
+  stackId?: string;
   pinned?: boolean;
   ids: string[];
 }
 
 export function reorderTasks(replica: Replica, input: ReorderInput): { order: { id: string; title: string }[]; moved: number } {
-  const given = [input.projectId !== undefined, input.parentId !== undefined, input.pinned === true].filter(Boolean).length;
-  if (given !== 1) throw new Error('Name one list to reorder: projectId, parentId (a task\'s checklist) or pinned: true.');
+  const given = [input.projectId !== undefined, input.parentId !== undefined, input.stackId !== undefined, input.pinned === true].filter(Boolean).length;
+  if (given !== 1) throw new Error('Name one list to reorder: projectId, parentId (a task\'s checklist), stackId or pinned: true.');
   if (input.ids.length === 0) throw new Error('ids: name the tasks to put first, in order.');
   const scope: ReorderScope = input.projectId !== undefined
     ? { projectId: input.projectId }
-    : input.parentId !== undefined ? { parentId: input.parentId } : { pinned: true };
+    : input.parentId !== undefined ? { parentId: input.parentId }
+      : input.stackId !== undefined ? { stackId: input.stackId } : { pinned: true };
   const changed = replica.reorderTasks(scope, input.ids);
   const all = replica.tasks();
   const order = 'projectId' in scope
     ? all.filter(t => t.projectId === scope.projectId && !t.parentId && !t.completed && !t.archived).sort((a, b) => a.sortOrder - b.sortOrder)
     : 'parentId' in scope
       ? all.filter(t => t.parentId === scope.parentId).sort((a, b) => a.sortOrder - b.sortOrder)
+      : 'stackId' in scope
+        ? all.filter(t => t.groupId === scope.stackId && !t.completed && !t.archived).sort((a, b) => a.sortOrder - b.sortOrder)
       : all.filter(t => t.pinned && !t.completed && !t.archived && !t.parentId).sort((a, b) => a.pinnedOrder - b.pinnedOrder);
   return { order: order.map(t => ({ id: t.id, title: t.title })), moved: changed.length };
 }
