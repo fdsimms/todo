@@ -18,6 +18,7 @@ import {
   foodLogSections,
   foodLogTotals,
   foodUnitOptionsFor,
+  isNutrientUnitOption,
   isBeverageName,
   logInstantFor,
   matchMealPlanEntry,
@@ -1233,6 +1234,12 @@ describe('foodUnitOptionsFor', () => {
     expect(options.find(o => o.key === 'kj')).toBeUndefined();
     expect(options.find(o => o.key === 'protein')).toBeDefined();
     expect(options.find(o => o.key === 'fat')).toBeUndefined();
+  });
+
+  it('tells a nutrient amount apart from a unit of the food', () => {
+    const options = foodUnitOptionsFor(panel({ amounts: { calorieKcal: 100, proteinG: 3 } }));
+    expect(options.filter(isNutrientUnitOption).map(o => o.key)).toEqual(['cal', 'kj', 'protein']);
+    expect(isNutrientUnitOption(options.find(o => o.key === 'g')!)).toBe(false);
   });
 
   it('does not duplicate a volume unit the panel already states as a portion', () => {

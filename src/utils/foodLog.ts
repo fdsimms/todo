@@ -496,6 +496,11 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   return out;
 }
 
+/** Whether a unit option is "a quantity of one nutrient" (cal, g protein) rather than a unit of the food. */
+export function isNutrientUnitOption(option: FoodUnitOption): boolean {
+  return NUTRIENT_UNIT_OPTIONS.some(n => n.key === option.key);
+}
+
 /** A typed number for a pill, turned into the amount text the rest of the sheet reads. */
 export function composeFoodAmount(numberText: string, unit: FoodUnitOption | undefined): string {
   const n = numberText.trim();
