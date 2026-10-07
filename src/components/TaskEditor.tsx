@@ -1760,6 +1760,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         // Last of all, so it replaces the narrower undo addExistingToGroup
         // registers for itself — this snapshot puts the whole task back,
         // stack membership and category included.
+        // Read after every write above, so redo puts back what the save left.
+        const saved = useTaskStore.getState().tasks.find(t => t.id === snapshot.id);
         setLastAction({
           label: 'Edit saved',
           undo: () => {
@@ -1768,6 +1770,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             // so putting the set back is the same call that changed it.
             setBlockedTasks(snapshot.id, blocksBefore);
           },
+          // Without one, undoing an edit clears the redo stack (see
+          // UndoableAction.redo): a kind change, say, could not be put back.
+          redo: saved
+            ? () => {
+                updateTask(saved.id, { ...saved });
+                setBlockedTasks(saved.id, blocksIds);
+              }
+            : undefined,
         });
       } else {
         animateLayout();
