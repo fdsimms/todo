@@ -844,6 +844,11 @@ system contact book already has it.
   narrow that set locally, with no `MIN_CONTACT_QUERY_LENGTH` floor: it is
   already small and already curated, so narrowing it to one letter is filtering
   a list the user wrote, not opening one they didn't.
+- **An existing person can be filled in after the fact** (`fillingPersonId` on the
+  picker, `fillFromContactPatch`, from the person editor). It is still a copy:
+  it writes only fields the person has empty, never the name, and takes the
+  birthday as a whole. The person is left out of the duplicate check so they
+  don't hide their own contact, and the sheet closes after one pick.
 - **One tap adds one person and the sheet stays open**, so a run of three is
   three taps without the picker ever becoming a checklist of everybody.
 - **The month arrives 0-indexed.** The native module follows the JS `Date`

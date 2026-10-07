@@ -105,7 +105,7 @@ Where each component can appear.
 - `src/components/CollapsibleField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, GroceryScreen, KitchenScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RemindersScreen, SavedViewDetailScreen, SavedViewsScreen, +8 more
 - `src/components/CompletionCollapse.tsx` — on TodayScreen
 - `src/components/ComponentChoiceSheet.tsx` — on RecipeDetailScreen
-- `src/components/ContactPickerSheet.tsx` — on PeopleScreen
+- `src/components/ContactPickerSheet.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/ContrastBars.tsx` — on MoodScreen, SymptomDetailScreen
 - `src/components/CookModeSheet.tsx` — on RecipeDetailScreen
 - `src/components/CookRecap.tsx` — on app shell

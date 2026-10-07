@@ -278,3 +278,30 @@ export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDr
     birthYear: candidate.birthYear,
   };
 }
+
+/**
+ * What picking a contact for a person who already exists writes onto them.
+ *
+ * **Only fields the person has nothing in.** Filling in is not overwriting: a
+ * phone number or birthday somebody typed is the more deliberate answer than a
+ * stale contact card, and a fill that quietly replaced it would be the one
+ * answer this feature can't give. The name is never touched either, since the
+ * person is already who they are on this side. A birthday moves as a whole
+ * (month, day and year together) and only when the person has no month/day at
+ * all, so a contact's year can't end up beside somebody else's date.
+ */
+export function fillFromContactPatch(
+  current: Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear'>,
+  draft: ContactPersonDraft
+): Partial<Pick<Person, 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear'>> {
+  const patch: ReturnType<typeof fillFromContactPatch> = {};
+  if (!current.phoneNumber?.trim() && draft.phoneNumber) patch.phoneNumber = draft.phoneNumber;
+  if (!current.email?.trim() && draft.email) patch.email = draft.email;
+  const hasBirthday = current.birthdayMonth !== null && current.birthdayDay !== null;
+  if (!hasBirthday && draft.birthdayMonth !== null && draft.birthdayDay !== null) {
+    patch.birthdayMonth = draft.birthdayMonth;
+    patch.birthdayDay = draft.birthdayDay;
+    patch.birthYear = draft.birthYear;
+  }
+  return patch;
+}

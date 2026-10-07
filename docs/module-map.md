@@ -82,7 +82,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion
 - `src/utils/confirmDelete.ts` — confirmDelete
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
-- `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +3 more
+- `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +4 more
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer

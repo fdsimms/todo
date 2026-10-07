@@ -6,6 +6,9 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { PersonGroupEditor } from './PersonGroupEditor';
+import { ContactPickerSheet } from './ContactPickerSheet';
+import { InlineAction } from './InlineAction';
+import { fillFromContactPatch } from '../utils/contactsImport';
 import { BirthdayPicker } from './BirthdayPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
@@ -106,6 +109,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   const [askAbout, setAskAbout] = useState('');
   const [location, setLocation] = useState('');
   const [showGroupEditor, setShowGroupEditor] = useState(false);
+  const [showContactPicker, setShowContactPicker] = useState(false);
 
   const group = usePersonGroupStore(s => (person?.groupId ? s.groups.find(g => g.id === person.groupId) ?? null : null));
 
@@ -137,6 +141,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     setAskAbout(person.askAbout);
     setLocation(person.location ?? '');
     setShowBirthdayPicker(false);
+    setShowContactPicker(false);
   }, [person, visible]);
 
   if (!person) return null;
@@ -245,6 +250,26 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
               setShowBirthdayPicker(false);
             }}
             onCancel={() => setShowBirthdayPicker(false)}
+          />
+          <ContactPickerSheet
+            visible={showContactPicker}
+            fillingPersonId={person.id}
+            // Into the form's own state like every other field here, so it is
+            // saved by Done and can be undone by editing it back.
+            onPick={draft => {
+              const patch = fillFromContactPatch(
+                { phoneNumber: phoneNumber.trim() || null, email: email.trim() || null, birthdayMonth, birthdayDay, birthYear },
+                draft
+              );
+              if (patch.phoneNumber) setPhoneNumber(formatPhoneInput(patch.phoneNumber));
+              if (patch.email) setEmail(patch.email);
+              if (patch.birthdayMonth != null && patch.birthdayDay != null) {
+                setBirthdayMonth(patch.birthdayMonth);
+                setBirthdayDay(patch.birthdayDay);
+                setBirthYear(patch.birthYear ?? null);
+              }
+            }}
+            onClose={() => setShowContactPicker(false)}
           />
           <PersonGroupEditor
             visible={showGroupEditor}
@@ -489,8 +514,18 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           />
         </View>
       </View>
+      <View style={styles.fillRow}>
+        <InlineAction
+          label="Fill from Contacts"
+          icon="person-circle-outline"
+          variant="neutral"
+          surface="page"
+          onPress={() => setShowContactPicker(true)}
+          accessibilityLabel="Fill phone, email and birthday from Contacts"
+        />
+      </View>
       <Text style={styles.sectionFooter}>
-        A birthday task carries their number, so you can call or text from the task itself.
+        A birthday task carries their number, so you can call or text from the task itself. Filling from Contacts only fills fields that are empty.
       </Text>
 
       <Text style={styles.groupLabel}>MORE</Text>
@@ -537,6 +572,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   scroll: { flex: 1 },
+  fillRow: { flexDirection: 'row', marginTop: spacing.sm },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: fontWeight.medium,
