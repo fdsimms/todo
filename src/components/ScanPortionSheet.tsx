@@ -100,11 +100,12 @@ interface Props {
   mealPlanEntryId?: string | null;
   onClose: () => void;
   /**
-   * Fired right before `onClose` on a successful Log, and only then — see
-   * `EstimateMealSheet`'s own `onLogged` for why this is a separate prop
-   * from `onClose` rather than one more thing `onClose` means.
+   * Fired right before `onClose` on a successful Log, and only then, with the
+   * label of each food that was logged — see `EstimateMealSheet`'s own
+   * `onLogged` for why this is a separate prop from `onClose` rather than one
+   * more thing `onClose` means.
    */
-  onLogged?: () => void;
+  onLogged?: (labels: string[]) => void;
 }
 
 export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, onClose, onLogged }: Props) {
@@ -212,9 +213,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   };
 
   const handleLog = () => {
+    const logged: string[] = [];
     for (const food of loggable) {
       const answer = resolved.get(food.key);
       if (!answer) continue;
+      logged.push(food.label);
       // `addEntry` refuses a draft with no label or no figures; neither can
       // happen for a resolved card, and a silent skip is still the right
       // answer for the row rather than abandoning the rest of the batch.
@@ -234,7 +237,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     }
     haptics.success();
     Keyboard.dismiss();
-    onLogged?.();
+    onLogged?.(logged);
     onClose();
   };
 
