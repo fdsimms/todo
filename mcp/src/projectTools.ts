@@ -49,6 +49,19 @@ export interface SerializedProjectDetail {
   destination?: string;
   /** The person asked for vacation mode to turn itself on for this trip (`awayPauses`). */
   pausesTasksWhileAway?: true;
+  /** Paused until this day (YYYY-MM-DD): its tasks are held off every list until then. */
+  pausedUntil?: string;
+  /** Its steps are worked in page order. */
+  inOrder?: true;
+  /** Never finished on its own. */
+  ongoing?: true;
+  /** Who it is with or for. */
+  people?: { id: string; name: string }[];
+  links?: { label: string; url: string }[];
+  /** How it nudges: days of quiet before it offers a task (0 never), whether it dates one itself, and whether it nudges at all. */
+  nudge?: { cadenceDays: number; autoSchedule: boolean; optIn: boolean; weekendSource: boolean };
+  /** On a list: checked items stay on the page. */
+  showChecked?: true;
   /** Members finished and in total, by the app's own reckoning (see list_projects). */
   done: number;
   total: number;
@@ -108,6 +121,15 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     ...(p.archived ? { archived: true } : {}),
     ...awayFields(replica, p),
     ...(p.awayPauses && p.awayStart ? { pausesTasksWhileAway: true as const } : {}),
+    ...(p.pausedUntil ? { pausedUntil: p.pausedUntil } : {}),
+    ...(p.inOrder ? { inOrder: true as const } : {}),
+    ...(p.ongoing ? { ongoing: true as const } : {}),
+    ...((p.personIds ?? []).length > 0
+      ? { people: p.personIds.flatMap(pid => { const person = replica.people().find(x => x.id === pid); return person ? [{ id: pid, name: person.name }] : []; }) }
+      : {}),
+    ...((p.links ?? []).length > 0 ? { links: p.links.map(l => ({ label: l.label, url: l.url })) } : {}),
+    nudge: { cadenceDays: p.nudgeCadenceDays, autoSchedule: p.autoSchedule, optIn: p.nudgeOptIn, weekendSource: p.weekendSource },
+    ...(p.showChecked ? { showChecked: true as const } : {}),
     done,
     total,
   };
@@ -259,8 +281,8 @@ export function updateProject(
   replica: Replica,
   id: string,
   patch: ProjectPatch,
-  opts: { moveTasks?: boolean; moveTasksFrom?: string } = {},
-): GetProjectResult & { eventMove?: EventMoveResult; awayNote?: string } {
+  opts: { moveTasks?: boolean; moveTasksFrom?: string; archiveRemaining?: boolean } = {},
+): GetProjectResult & { eventMove?: EventMoveResult; awayNote?: string; archivedRemaining?: number } {
   const moveLater = opts.moveTasksFrom !== undefined;
   if (Object.keys(patch).length === 0 && !moveLater) throw new Error('Nothing to change: name at least one field.');
   const before = replica.projects().find(p => p.id === id);
@@ -272,11 +294,23 @@ export function updateProject(
     prior = eventNoonIso(opts.moveTasksFrom!);
     if (!prior) throw new Error(`moveTasksFrom: "${opts.moveTasksFrom}" is not a date I can read.`);
   }
+  // Finishing a project can archive what is left in it, as the app asks when
+  // it is completed with tasks still open. Each through archive_task's own
+  // write, so each is in Activity with its way back.
+  let archivedRemaining = 0;
+  if (opts.archiveRemaining) {
+    if (patch.completed !== true) throw new Error('archiveRemaining goes with completed: true.');
+    for (const t of replica.tasks().filter(x => x.projectId === id && !x.parentId && !x.completed && !x.archived)) {
+      replica.setTaskArchived(t.id, true);
+      archivedRemaining += 1;
+    }
+  }
   // A bare deadline is a local day, as every date a tool writes is (localDateInput).
   const dated = patch.deadline ? { ...patch, deadline: localDateInput(patch.deadline) } : patch;
   const project = Object.keys(dated).length > 0 ? replica.updateProject(id, dated) : before;
   const next = project.eventDate ?? null;
-  const result: GetProjectResult & { awayNote?: string } = getProject(replica, id)!;
+  const result: GetProjectResult & { awayNote?: string; archivedRemaining?: number } = getProject(replica, id)!;
+  if (archivedRemaining > 0) result.archivedRemaining = archivedRemaining;
   // The two things the replica does to the span beyond what was asked, said
   // here so the caller does not have to diff the project to find them.
   if (patch.awayStart !== undefined && patch.awayEnd === undefined && before.awayEnd && project.awayEnd && project.awayEnd !== before.awayEnd) {
@@ -319,5 +353,51 @@ export function updateProject(
         ? { notMoved: move.skipped.map(s => ({ id: s.task.id, title: replica.displayTitle(s.task), reason: s.reason })) }
         : {}),
     },
+  };
+}
+
+export interface DeleteProjectResult {
+  deleted: string;
+  tasksDeleted: number;
+  tasksLeftInNoProject: number;
+  note: string;
+}
+
+/** Delete a project, leaving its tasks in no project, or with `deleteTasks` deleting them. */
+export function deleteProject(replica: Replica, id: string, deleteTasks = false): DeleteProjectResult {
+  const snapshot = replica.deleteProject(id, deleteTasks);
+  return {
+    deleted: snapshot.project.title,
+    tasksDeleted: snapshot.deleted.filter(t => !t.parentId).length,
+    tasksLeftInNoProject: snapshot.unfiledTaskIds.length,
+    note: 'Deleted, not archived. It can be restored from the app\'s Activity screen, with its tasks and sections. update_project with archived: true is the gentler way to put a project away.',
+  };
+}
+
+export function saveProjectCategory(replica: Replica, input: { name: string; newName?: string; delete?: boolean }) {
+  if (input.newName !== undefined && input.delete) throw new Error('Rename or delete, not both.');
+  const result = replica.saveProjectCategory(input.name, { newName: input.newName, delete: input.delete });
+  return { ...result, categories: replica.projectCategories().map(c => c.name) };
+}
+
+export function reorderProjects(replica: Replica, input: { ids?: string[]; categories?: string[] }) {
+  if (!input.ids?.length && !input.categories?.length) throw new Error('Give ids (projects to put first) or categories (project categories to put first).');
+  replica.reorderProjects(input.ids ?? [], input.categories);
+  return {
+    projects: replica.projects().filter(p => !p.archived).sort((a, b) => a.sortOrder - b.sortOrder).map(p => ({ id: p.id, title: p.title })),
+    categories: replica.projectCategories().map(c => c.name),
+  };
+}
+
+/** A fresh copy of a project, every date cleared and every task open. */
+export function startFreshProject(replica: Replica, id: string): GetProjectResult {
+  return getProject(replica, replica.startFreshProject(id).project.id)!;
+}
+
+export function saveProjectAsTemplate(replica: Replica, id: string, name?: string) {
+  const template = replica.saveProjectAsTemplate(id, name);
+  return {
+    template: { id: template.id, name: template.name, items: template.items.length, groups: template.itemGroups.length },
+    note: 'A template, applied whenever the person wants with apply_template. Each dated task is placed as days from the project\'s own date, so applying it asks for one date.',
   };
 }

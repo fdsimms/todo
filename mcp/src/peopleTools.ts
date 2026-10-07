@@ -74,12 +74,27 @@ export interface PersonDetail extends SerializedPerson {
   email?: string;
   /** Where they live, as the free text the user (or Claude) wrote. */
   location?: string;
-  /** What they did together, newest first, capped at HISTORY_LIMIT. */
-  history: { title: string; date: string }[];
-  giftIdeas?: string[];
+  /**
+   * What they did together, newest first, capped at HISTORY_LIMIT. Each is a
+   * completed task (`id`), so a wrong one is corrected with set_completion_date,
+   * update_task or reopen_task.
+   */
+  history: { id: string; title: string; date: string }[];
+  /** Each note with its id, for update_person_note and delete_person_note. `about` is the day a dated note is about. */
+  giftIdeas?: PersonNoteRow[];
   /** Food notes: what they like, can't eat, or are allergic to. */
-  food?: string[];
-  otherNotes?: string[];
+  food?: PersonNoteRow[];
+  otherNotes?: PersonNoteRow[];
+  archived?: true;
+  /** They get no birthday task, or no birthday gift task, from the app. */
+  noBirthdayTask?: true;
+  noBirthdayGiftTask?: true;
+}
+
+export interface PersonNoteRow {
+  id: string;
+  text: string;
+  about?: string;
 }
 
 export function getPerson(replica: Replica, id: string): PersonDetail | null {
@@ -90,7 +105,9 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     .personNotes()
     .filter(n => n.personId === id && !n.archivedAt)
     .sort((a, b) => a.sortOrder - b.sortOrder);
-  const ofKind = (kind: string) => notes.filter(n => n.kind === kind).map(n => n.text);
+  const ofKind = (kind: string): PersonNoteRow[] => notes
+    .filter(n => n.kind === kind)
+    .map(n => ({ id: n.id, text: n.text, ...(n.relevantOn ? { about: dayKey(new Date(n.relevantOn)) } : {}) }));
   const gifts = ofKind('gift');
   const food = ofKind('food');
   const other = ofKind('note');
@@ -103,10 +120,13 @@ export function getPerson(replica: Replica, id: string): PersonDetail | null {
     history: replica
       .personHistory(id)
       .slice(0, HISTORY_LIMIT)
-      .map(e => ({ title: e.title, date: dayKey(new Date(e.at)) })),
+      .map(e => ({ id: e.taskId, title: e.title, date: dayKey(new Date(e.at)) })),
     ...(gifts.length > 0 ? { giftIdeas: gifts } : {}),
     ...(food.length > 0 ? { food } : {}),
     ...(other.length > 0 ? { otherNotes: other } : {}),
+    ...(p.archived ? { archived: true as const } : {}),
+    ...(p.birthdayTaskOptOut ? { noBirthdayTask: true as const } : {}),
+    ...(p.birthdayGiftTaskOptOut ? { noBirthdayGiftTask: true as const } : {}),
   };
 }
 
@@ -160,4 +180,56 @@ export function createPerson(replica: Replica, fields: PersonFields): Serialized
 export function updatePerson(replica: Replica, id: string, fields: PersonFields): SerializedPerson {
   const person = replica.updatePerson(id, fields);
   return serializePerson(replica, person, new Map(replica.personGroups().map(g => [g.id, g.name])));
+}
+
+/** Delete a person. See `Replica.deletePerson`. */
+export function deletePerson(replica: Replica, id: string): { deleted: string; notesDeleted: number; note: string } {
+  const { person, notes } = replica.deletePerson(id);
+  return {
+    deleted: person.name,
+    notesDeleted: notes.length,
+    note: 'What was written about them went with them; tasks that name them stay. Restorable from the app\'s Activity screen. update_person with archived: true is the gentler way to take someone off the list.',
+  };
+}
+
+export function reorderPeople(replica: Replica, ids: string[]): { order: { id: string; name: string }[] } {
+  if (ids.length === 0) throw new Error('Name the people to put first, in order.');
+  replica.reorderPeople(ids);
+  return { order: replica.people().filter(p => !p.archived).sort((a, b) => a.sortOrder - b.sortOrder).map(p => ({ id: p.id, name: p.name })) };
+}
+
+export function savePersonGroup(replica: Replica, input: { name: string; newName?: string; delete?: boolean; catchUpSeparately?: boolean }) {
+  if (input.delete && (input.newName !== undefined || input.catchUpSeparately !== undefined)) throw new Error('A delete takes nothing else.');
+  const result = replica.savePersonGroup(input.name, { newName: input.newName, delete: input.delete, catchUpSeparately: input.catchUpSeparately });
+  return {
+    group: result.group ? { id: result.group.id, name: result.group.name, catchUpSeparately: result.group.catchUpSeparately } : null,
+    members: result.members,
+    groups: replica.personGroups().map(g => ({ id: g.id, name: g.name })),
+  };
+}
+
+const NOTE_KINDS = ['note', 'gift', 'food'] as const;
+export type NoteKind = (typeof NOTE_KINDS)[number];
+
+function aboutIso(about: string | null | undefined): string | null | undefined {
+  if (about === undefined || about === null) return about;
+  const at = new Date(localDateInput(about.trim()));
+  if (Number.isNaN(at.getTime())) throw new Error(`about: "${about}" is not a date I can read. Use YYYY-MM-DD.`);
+  return at.toISOString();
+}
+
+export function addPersonNote(replica: Replica, input: { personId: string; kind: NoteKind; text: string; about?: string | null }): PersonNoteRow {
+  const note = replica.addPersonNote(input.personId, input.kind, input.text, aboutIso(input.about) ?? null);
+  return { id: note.id, text: note.text, ...(note.relevantOn ? { about: dayKey(new Date(note.relevantOn)) } : {}) };
+}
+
+export function updatePersonNote(replica: Replica, id: string, input: { text?: string; kind?: NoteKind; about?: string | null; archived?: boolean }): PersonNoteRow {
+  const { about, ...rest } = input;
+  if (Object.keys(input).length === 0) throw new Error('Nothing to change: give text, kind, about or archived.');
+  const note = replica.updatePersonNote(id, { ...rest, ...(about !== undefined ? { relevantOn: aboutIso(about) ?? null } : {}) });
+  return { id: note.id, text: note.text, ...(note.relevantOn ? { about: dayKey(new Date(note.relevantOn)) } : {}) };
+}
+
+export function deletePersonNote(replica: Replica, id: string): { deleted: string } {
+  return { deleted: replica.deletePersonNote(id).text };
 }

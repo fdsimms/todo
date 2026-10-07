@@ -20,7 +20,21 @@ import {
   saveGroceryBox,
   saveStore,
   updateGroceryItem,
+  addIngredientsToList,
+  addChoiceToList,
+  settleChoice,
+  swapForSubstitute,
+  clearGroceryList,
+  setShoppingTrip,
+  markUnavailable,
+  setNutritionPanel,
+  saveAisle,
+  reorderAisles,
+  updateStore,
+  reorderGroceryPlaces,
+  mergeGroceryItems,
 } from '../groceryTools';
+import { saveRecipe } from '../logTools';
 import { addGroceryItem, listGroceryItems } from '../tools';
 import { getPantryItem } from '../pantryTools';
 
@@ -42,6 +56,8 @@ describe('the catalog tools', () => {
 
   const stateOf = (r: ReturnType<typeof openReplica>) => ({
     project: () => null,
+    stack: () => null,
+    person: () => null,
     groceryHome: (id: string) => {
       const e = r.groceryListEntries().find(x => x.itemId === id && x.listId === null);
       return e ? { checked: e.checked } : null;
@@ -343,6 +359,103 @@ describe('the catalog tools', () => {
       expect(() => importReceipt(replica, { lines: [{ label: 'WHAT' }] })).toThrow(/needs an itemId or a name/);
       expect(() => importReceipt(replica, { lines: [] })).toThrow(/at least one/);
       expect(replica.groceryItems()).toEqual([]);
+    });
+  });
+
+  describe('the list and its structure', () => {
+    const onHome = () => replica.groceryListEntries().filter(e => e.listId === null).map(e => replica.groceryItems().find(i => i.id === e.itemId)!.name.toLowerCase());
+
+    it('adds a recipe\'s ingredients, skipping one already in the cart', () => {
+      const recipe = saveRecipe(replica, { name: 'Soup', ingredients: [{ text: '2 onions' }, { text: '1 cup lentils' }] });
+      const first = addIngredientsToList(replica, { recipeId: recipe.id });
+      expect(first.added.map(n => n.toLowerCase()).sort()).toEqual(expect.arrayContaining([expect.stringMatching(/onion/), expect.stringMatching(/lentil/)]));
+      const onion = replica.groceryItems().find(i => /onion/i.test(i.name))!;
+      replica.setGroceryChecked(onion.id, true, null);
+      const again = addIngredientsToList(replica, { recipeId: recipe.id });
+      expect(again.added).toEqual([]);
+      expect(again.inCart.concat(again.leftOff.filter(l => l.why === 'already in the cart').map(l => l.name)).join(' ')).toMatch(/onion/i);
+      expect(() => addIngredientsToList(replica, { recipeId: recipe.id, include: ['saffron'] })).toThrow(/Not among the ingredients/);
+    });
+
+    it('adds an either/or, and settles it by keeping one', () => {
+      addChoiceToList(replica, { options: [{ name: 'butter' }, { name: 'margarine' }] });
+      expect(onHome().sort()).toEqual(['butter', 'margarine']);
+      expect(settleChoice(replica, { item: 'butter' })).toEqual({ kept: ['butter'], removed: ['margarine'] });
+      expect(onHome()).toEqual(['butter']);
+      expect(() => settleChoice(replica, { item: 'butter' })).toThrow(/not one of an either\/or/);
+    });
+
+    it('swaps an item for its substitute and clears the list', () => {
+      addGroceryItem(replica, 'margarine');
+      replica.removeFromGroceryList(idOf('margarine'), null);
+      addGroceryItem(replica, 'butter');
+      updateGroceryItem(replica, { name: 'butter', addSubstitutes: [{ name: 'margarine' }] });
+      expect(swapForSubstitute(replica, { item: 'butter', substitute: 'margarine' })).toMatchObject({ removed: 'butter', added: 'margarine' });
+      expect(onHome()).toEqual(['margarine']);
+      expect(clearGroceryList(replica, {}).cleared).toBe(1);
+      expect(onHome()).toEqual([]);
+    });
+
+    it('starts a trip with a budget, changes it and ends it', () => {
+      saveStore(replica, { name: 'Safeway' });
+      expect(setShoppingTrip(replica, { store: 'Safeway', budget: 80 }).trip).toMatchObject({ store: 'Safeway', budget: 80 });
+      expect(grocerySetup(replica).trip).toMatchObject({ store: 'Safeway', budgetMinor: 8000 });
+      expect(setShoppingTrip(replica, { budget: null }).trip).not.toHaveProperty('budget');
+      expect(setShoppingTrip(replica, { end: true }).trip).toBeNull();
+      expect(() => setShoppingTrip(replica, { budget: 10 })).toThrow(/No trip/);
+    });
+
+    it('marks an item unavailable at a store, and takes it back', () => {
+      saveStore(replica, { name: 'Safeway' });
+      addGroceryItem(replica, 'tahini');
+      markUnavailable(replica, { item: 'tahini', store: 'Safeway' });
+      expect(getGroceryItem(replica, { name: 'tahini' }).stores[0]).toMatchObject({ name: 'Safeway', unavailable: true });
+      markUnavailable(replica, { item: 'tahini', store: 'Safeway', unavailable: false });
+      expect(getGroceryItem(replica, { name: 'tahini' }).stores[0]?.unavailable).toBeUndefined();
+    });
+
+    it('sets and removes a nutrition panel, refusing a nutrient the app does not keep', () => {
+      addGroceryItem(replica, 'oats');
+      expect(setNutritionPanel(replica, { item: 'oats', panel: { basis: 'per100g', amounts: { calorieKcal: 379, proteinG: 13 } } }).panel).toMatch(/379 cal/);
+      expect(replica.groceryItems().find(i => i.id === idOf('oats'))!.nutrition).toMatchObject({ source: 'manual', basis: 'per100g' });
+      expect(() => setNutritionPanel(replica, { item: 'oats', panel: { basis: 'per100g', amounts: { vibes: 3 } } })).toThrow(/isn't a nutrient/);
+      setNutritionPanel(replica, { item: 'oats', panel: null });
+      expect(replica.groceryItems().find(i => i.id === idOf('oats'))!.nutrition).toBeNull();
+    });
+
+    it('adds, renames, marks non-food, orders and deletes an aisle, refiling its items', () => {
+      expect(saveAisle(replica, { name: 'Bulk bins' }).aisles).toContain('Bulk bins');
+      addGroceryItem(replica, 'quinoa');
+      updateGroceryItem(replica, { name: 'quinoa', aisle: 'Bulk bins' });
+      expect(saveAisle(replica, { name: 'bulk bins', newName: 'Bulk' }).itemsMoved).toBe(1);
+      expect(replica.groceryItems().find(i => i.id === idOf('quinoa'))!.aisle).toBe('Bulk');
+      expect(reorderAisles(replica, ['Bulk']).aisles[0]).toBe('Bulk');
+      saveAisle(replica, { name: 'Bulk', nonFood: true });
+      expect(grocerySetup(replica).nonFoodAisles).toEqual(['Bulk']);
+      saveAisle(replica, { name: 'Bulk', delete: true });
+      expect(replica.groceryItems().find(i => i.id === idOf('quinoa'))!.aisle).toBe('Other');
+      expect(() => saveAisle(replica, { name: 'Other', delete: true })).toThrow(/cannot be deleted/);
+    });
+
+    it('sets a store\'s own settings, orders stores, and deletes one', () => {
+      saveStore(replica, { name: 'Safeway' });
+      saveStore(replica, { name: 'Costco' });
+      expect(updateStore(replica, { store: 'Costco', excludeFromSuggestions: true }).store).toMatchObject({ excludedFromSuggestions: true });
+      expect(reorderGroceryPlaces(replica, { stores: ['Costco'] }).stores[0].name).toBe('Costco');
+      expect(updateStore(replica, { store: 'Costco', delete: true }).deleted).toBe('Costco');
+      expect(grocerySetup(replica).stores.map(st => st.name)).toEqual(['Safeway']);
+    });
+
+    it('merges two items into one, moving its list place and recipe lines', () => {
+      addGroceryItem(replica, 'cilantro');
+      addGroceryItem(replica, 'coriander');
+      replica.removeFromGroceryList(idOf('coriander'), null);
+      saveRecipe(replica, { name: 'Salsa', ingredients: [{ text: '1 bunch cilantro' }] });
+      const result = mergeGroceryItems(replica, { from: 'cilantro', into: 'coriander' });
+      expect(result.gone.toLowerCase()).toBe('cilantro');
+      expect(replica.groceryItems().some(i => i.name.toLowerCase() === 'cilantro')).toBe(false);
+      expect(onHome()).toEqual(['coriander']);
+      expect(replica.recipes().find(r => r.name === 'Salsa')!.ingredients[0].nameKey).toBe(replica.groceryItems().find(i => i.name.toLowerCase() === 'coriander')!.nameKey);
     });
   });
 });

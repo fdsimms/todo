@@ -28,6 +28,8 @@ import type {
   Replica,
 } from './replica';
 import { findPantryItem } from './pantryTools';
+import { NUTRIENT_KEYS } from '../../src/types';
+import { describeFoodPanel } from '../../src/utils/foodNutrition';
 
 const HOME = 'home';
 
@@ -67,8 +69,15 @@ function itemByIdOrName(replica: Replica, ref: string): GroceryItem {
 
 export interface GrocerySetup {
   aisles: string[];
-  stores: { id: string; name: string; receiptStyle: ReceiptStyle; itemsLinked: number }[];
+  /** Aisles marked non-food (cleaning, toiletries): left out of the pantry and nutrition. */
+  nonFoodAisles?: string[];
+  stores: {
+    id: string; name: string; receiptStyle: ReceiptStyle; itemsLinked: number;
+    excludedFromSuggestions?: true; aisles?: string[]; aisleOrder?: string[];
+  }[];
   lists: { id: string | null; name: string; items: number; checked: number }[];
+  /** The shopping trip in progress, if any. */
+  trip?: { store: string; startedAt: string; budgetMinor?: number };
   note: string;
 }
 
@@ -78,11 +87,21 @@ export function grocerySetup(replica: Replica): GrocerySetup {
   const count = (listId: string | null) => entries.filter(e => e.listId === listId);
   return {
     aisles: replica.aisleNames(),
-    stores: replica.shops().map(s => ({ id: s.id, name: s.name, receiptStyle: s.receiptStyle, itemsLinked: links.filter(l => l.shopId === s.id).length })),
+    ...(replica.nonFoodAisles().length > 0 ? { nonFoodAisles: replica.nonFoodAisles() } : {}),
+    stores: replica.shops().map(s => ({
+      id: s.id, name: s.name, receiptStyle: s.receiptStyle, itemsLinked: links.filter(l => l.shopId === s.id).length,
+      ...(s.excludeFromSuggestions ? { excludedFromSuggestions: true as const } : {}),
+      ...(s.aisles ? { aisles: s.aisles } : {}),
+      ...(s.aisleOrder ? { aisleOrder: s.aisleOrder } : {}),
+    })),
     lists: [
       { id: null, name: replica.lib().groceryLists.HOME_LIST_NAME, items: count(null).length, checked: count(null).filter(e => e.checked).length },
       ...replica.groceryLists().map(l => ({ id: l.id, name: l.name, items: count(l.id).length, checked: count(l.id).filter(e => e.checked).length })),
     ],
+    ...(() => {
+      const trip = replica.activeTrip();
+      return trip ? { trip: { store: trip.shop.name, startedAt: trip.startedAt, ...(trip.budgetMinor != null ? { budgetMinor: trip.budgetMinor } : {}) } } : {};
+    })(),
     note: 'List id null is the list at home; tools take it as "home". A separate list is for a trip away.',
   };
 }
@@ -392,5 +411,212 @@ export function importReceipt(replica: Replica, input: ImportReceiptInput): Rece
       : outcome.away
         ? 'Separate list: the lines left the list and nothing else was recorded.'
         : 'Recorded as a trip. Receipt names were remembered for this store, so the next receipt matches them first.',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The list: ingredients, either/or, swaps, clearing, the trip
+// ---------------------------------------------------------------------------
+
+export interface AddIngredientsInput {
+  /** A recipe, or leave out for the meal plan between from and to. */
+  recipeId?: string;
+  scale?: number;
+  /** YYYY-MM-DD; default today. */
+  from?: string;
+  /** YYYY-MM-DD; default six days after from. */
+  to?: string;
+  list?: string;
+  /** Names of rows to add beyond the default (rows thought to be on hand, staples, optional ones). */
+  include?: string[];
+  /** Names of rows the default would add, to leave off. */
+  exclude?: string[];
+}
+
+/**
+ * A recipe's ingredients, or the planned meals', onto a list as the app's two
+ * sheets add them. Rows the app thinks are needed go on, the rest wait to be
+ * asked for by name, and what is already in the cart is skipped.
+ */
+export function addIngredientsToList(replica: Replica, input: AddIngredientsInput) {
+  const list = resolveList(replica, input.list);
+  const listId = list?.id ?? null;
+  if (input.scale !== undefined && !(input.scale > 0)) throw new Error('scale must be above zero (0.5 halves a recipe, 2 doubles it).');
+  const from = input.from ?? replica.todayKey();
+  const to = input.to ?? replica.shiftDayKey(from, 6);
+  if (!input.recipeId && to < from) throw new Error('to is before from.');
+  const rows = replica.plannedIngredients(input.recipeId ? { recipeId: input.recipeId, scale: input.scale } : { from, to }, listId);
+  const named = (names: string[] | undefined) => new Set((names ?? []).map(n => replica.lib().groceryParse.groceryNameKey(n)));
+  const include = named(input.include);
+  const exclude = named(input.exclude);
+  const unknown = [...include, ...exclude].filter(k => !rows.some(r => r.nameKey === k));
+  if (unknown.length > 0) throw new Error(`Not among the ingredients: ${unknown.join(', ')}. Preview to see the rows.`);
+  const chosen = rows.filter(r => r.category !== 'inCart' && !exclude.has(r.nameKey) && ((r.category === 'needToBuy' && !r.optional) || include.has(r.nameKey)));
+  const result = replica.addPlannedToList(chosen.map(r => ({
+    name: r.name, quantity: r.quantity || null, aisle: r.aisle,
+    sourceRecipeId: r.sourceRecipeId ?? null, sourceRecipeTitle: r.sourceRecipeTitle ?? null, choiceGroup: r.choiceGroup,
+  })), listId);
+  const left = rows.filter(r => !chosen.includes(r));
+  return {
+    list: list?.name ?? 'home',
+    added: result.added.map(i => i.name),
+    alreadyOnList: result.alreadyOnList.map(i => i.name),
+    toppedUp: result.toppedUp.map(i => `${i.name}: ${i.quantity}`),
+    inCart: result.skippedInCart.map(i => i.name),
+    leftOff: left.map(r => ({ name: r.name, why: r.category === 'inCart' ? 'already in the cart' : exclude.has(r.nameKey) ? 'left off' : r.optional ? 'optional in the recipe' : r.category === 'staple' ? 'a staple you keep' : r.category === 'probablyHave' ? `probably have it${r.reason ? ` (${r.reason})` : ''}` : r.category === 'alreadyOnList' ? 'already on the list' : r.category })),
+    note: 'Rows the app thinks are on hand, staples and optional ones are left off; ask the person, and pass include with their names to add them.',
+  };
+}
+
+export function addChoiceToList(replica: Replica, input: { options: { name: string; quantity?: string | null }[]; list?: string }) {
+  const list = resolveList(replica, input.list);
+  const added = replica.addChoiceToList(input.options, list?.id ?? null);
+  return { list: list?.name ?? 'home', options: added.map(i => i.name), note: 'Checking one off in the app takes the others off the list. settle_choice decides it from here.' };
+}
+
+export function settleChoice(replica: Replica, input: { item: string; keepAll?: boolean; list?: string }) {
+  const list = resolveList(replica, input.list);
+  const item = itemByIdOrName(replica, input.item);
+  const result = replica.settleChoice(item.id, list?.id ?? null, input.keepAll ?? false);
+  return { kept: result.kept.map(i => i.name), removed: result.removed.map(i => i.name) };
+}
+
+export function swapForSubstitute(replica: Replica, input: { item: string; substitute: string; list?: string }) {
+  const list = resolveList(replica, input.list);
+  const item = itemByIdOrName(replica, input.item);
+  const sub = itemByIdOrName(replica, input.substitute);
+  const result = replica.swapForSubstitute(item.id, sub.id, list?.id ?? null);
+  return { removed: result.removed.name, added: result.added.name, ...(result.added.quantity ? { quantity: result.added.quantity } : {}) };
+}
+
+export function clearGroceryList(replica: Replica, input: { list?: string }) {
+  const list = resolveList(replica, input.list);
+  const result = replica.clearGroceryList(list?.id ?? null);
+  return {
+    list: list?.name ?? 'home',
+    cleared: result.cleared,
+    deletedFromCatalog: result.deleted,
+    note: 'Everything came off the list. Items with history stay in the catalog; ones with nothing recorded were deleted, as the app does. Any shopping trip was ended.',
+  };
+}
+
+export function setShoppingTrip(replica: Replica, input: { store?: string; budget?: number | null; end?: boolean }) {
+  const given = [input.store !== undefined, input.end === true].filter(Boolean).length;
+  if (given > 1) throw new Error('Start a trip (store) or end one, not both.');
+  const minor = input.budget === undefined || input.budget === null ? input.budget : Math.round(input.budget * 100);
+  let trip;
+  if (input.end) trip = replica.setTrip({ end: true });
+  else if (input.store !== undefined) {
+    const shop = resolveShop(replica, input.store);
+    if (!shop) throw new Error('Name a store from grocery_setup.');
+    trip = replica.setTrip(minor === undefined ? { shopId: shop.id } : { shopId: shop.id, budgetMinor: minor });
+  } else if (minor !== undefined) trip = replica.setTrip({ budgetMinor: minor });
+  else throw new Error('Give store to start a trip, budget to change its budget, or end: true.');
+  return {
+    trip: trip.shop ? { store: trip.shop.name, startedAt: trip.startedAt, ...(trip.budgetMinor != null ? { budget: trip.budgetMinor / 100 } : {}) } : null,
+    note: 'The phone shows the trip (and its reminder to finish it) the next time it syncs. finish_grocery_trip records what was bought.',
+  };
+}
+
+export function markUnavailable(replica: Replica, input: { item: string; store: string; unavailable?: boolean; brandOnly?: boolean }) {
+  const item = itemByIdOrName(replica, input.item);
+  const shop = resolveShop(replica, input.store);
+  if (!shop) throw new Error('Name a store from grocery_setup.');
+  const unavailable = input.unavailable ?? true;
+  if (!unavailable && !input.brandOnly && !replica.itemShopLinks().some(l => l.itemId === item.id && l.shopId === shop.id && l.unavailableAt)) {
+    throw new Error(`"${item.name}" isn't marked unavailable at ${shop.name}.`);
+  }
+  replica.setItemUnavailable(item.id, shop.id, unavailable, input.brandOnly ?? false);
+  return { item: item.name, store: shop.name, unavailable, brandOnly: input.brandOnly ?? false };
+}
+
+export interface NutritionPanelInput {
+  basis: 'per100g' | 'per100ml' | 'perServing';
+  amounts: Record<string, number>;
+  servingGrams?: number | null;
+  servingText?: string | null;
+  /** True when these are your estimate rather than read off a label. */
+  estimated?: boolean;
+}
+
+export function setNutritionPanel(replica: Replica, input: { item: string; boxId?: string; panel: NutritionPanelInput | null }) {
+  const item = itemByIdOrName(replica, input.item);
+  let panel = null;
+  if (input.panel) {
+    const keys = NUTRIENT_KEYS as readonly string[];
+    const amounts: Record<string, number> = {};
+    for (const [k, v] of Object.entries(input.panel.amounts)) {
+      if (!keys.includes(k)) throw new Error(`"${k}" isn't a nutrient the app keeps. They are ${keys.join(', ')}.`);
+      if (typeof v !== 'number' || !(v >= 0)) throw new Error(`${k} must be a number, 0 or more.`);
+      amounts[k] = v;
+    }
+    if (Object.keys(amounts).length === 0) throw new Error('A panel needs at least one figure. Absent is unknown, not zero, so leave out what the label does not say.');
+    const box = input.boxId ? replica.itemProducts().find(p => p.id === input.boxId) : null;
+    const previous = (input.boxId ? box?.nutrition : item.nutrition) ?? null;
+    panel = {
+      basis: input.panel.basis,
+      servingGrams: input.panel.servingGrams && input.panel.servingGrams > 0 ? input.panel.servingGrams : null,
+      servingText: input.panel.servingText?.trim() || null,
+      amounts,
+      source: input.panel.estimated ? 'estimated' as const : 'manual' as const,
+      sourceId: null,
+      portions: previous?.portions ?? [],
+      recordedAt: new Date().toISOString(),
+    };
+  }
+  replica.setNutritionPanel(item.id, input.boxId ?? null, panel);
+  return { item: item.name, ...(input.boxId ? { boxId: input.boxId } : {}), panel: panel ? describeFoodPanel(panel) : null };
+}
+
+// ---------------------------------------------------------------------------
+// Aisles and stores
+// ---------------------------------------------------------------------------
+
+export function saveAisle(replica: Replica, input: { name: string; newName?: string; delete?: boolean; nonFood?: boolean }) {
+  if (input.delete && (input.newName !== undefined || input.nonFood !== undefined)) throw new Error('A delete takes nothing else.');
+  const result = replica.saveAisle(input.name, { newName: input.newName, delete: input.delete, nonFood: input.nonFood });
+  return { ...result, aisles: replica.aisleNames() };
+}
+
+export function reorderAisles(replica: Replica, names: string[]) {
+  if (names.length === 0) throw new Error('Name the aisles to put first, in walk order.');
+  return { aisles: replica.reorderAisles(names) };
+}
+
+export function updateStore(replica: Replica, input: { store: string; delete?: boolean; excludeFromSuggestions?: boolean; aisles?: string[] | null; aisleOrder?: string[] | null }) {
+  const shop = resolveShop(replica, input.store);
+  if (!shop) throw new Error(`No store "${input.store}". grocery_setup lists them.`);
+  const { store: _s, delete: del, ...patch } = input;
+  if (del) {
+    if (Object.keys(patch).length > 0) throw new Error('A delete takes nothing else.');
+    replica.deleteShop(shop.id);
+    return { deleted: shop.name, note: 'Its item links, the prices recorded there and its receipt names went with it. The items stay in the catalog.' };
+  }
+  if (Object.keys(patch).length === 0) throw new Error('Nothing to change: give delete, excludeFromSuggestions, aisles or aisleOrder.');
+  const updated = replica.updateShopSettings(shop.id, patch);
+  return { store: { id: updated.id, name: updated.name, ...(updated.excludeFromSuggestions ? { excludedFromSuggestions: true } : {}), ...(updated.aisles ? { aisles: updated.aisles } : {}), ...(updated.aisleOrder ? { aisleOrder: updated.aisleOrder } : {}) } };
+}
+
+export function reorderGroceryPlaces(replica: Replica, input: { stores?: string[]; lists?: string[] }) {
+  if (!input.stores?.length && !input.lists?.length) throw new Error('Give stores or lists to put first.');
+  if (input.stores?.length) {
+    const ids = input.stores.map(ref => { const sh = resolveShop(replica, ref); if (!sh) throw new Error(`No store "${ref}".`); return sh.id; });
+    replica.reorderShops(ids);
+  }
+  if (input.lists?.length) {
+    const ids = input.lists.map(ref => { const l = resolveList(replica, ref); if (!l) throw new Error('The list at home has no place in the order; name separate lists.'); return l.id; });
+    replica.reorderGroceryLists(ids);
+  }
+  return grocerySetup(replica);
+}
+
+export function mergeGroceryItems(replica: Replica, input: { from: string; into: string }) {
+  const from = itemByIdOrName(replica, input.from);
+  const into = itemByIdOrName(replica, input.into);
+  const result = replica.mergeGroceryItems(from.id, into.id);
+  return {
+    merged: getGroceryItem(replica, { id: result.merged.id }),
+    gone: result.from.name,
+    note: `"${result.from.name}" is now part of "${result.merged.name}": its purchase history, brands, store links and prices, substitutes, receipt names, list entries and recipe lines moved over. This cannot be undone from Activity.`,
   };
 }

@@ -10,13 +10,11 @@ import {
   dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { leftoverFinishedRow, leftoverFrozenRow, leftoverKeepDaysRow, leftoverReopenedRow, newLeftoverRow, type LeftoverDraft } from '../utils/pantryWrite';
+import { leftoverFinishedRow, leftoverFrozenRow, leftoverKeepDaysRow, leftoverReopenedRow, leftoverSplitDraft, leftoverStoredAtRow, newLeftoverRow, type LeftoverDraft } from '../utils/pantryWrite';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import {
   cleanLeftoverTitle,
   isLiveLeftover,
-  keepDaysBetween,
-  keepUntilKeyFor,
   leftoverPurgeCutoff,
   sortLeftovers,
 } from '../utils/leftovers';
@@ -322,14 +320,8 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   setStoredAt(id, storedAt) {
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover) return;
-    // The keep-for *window* is what the user set, so correcting "actually I
-    // made this yesterday" has to carry the deadline back with it. Re-resolving
-    // from the old keepUntil instead would silently turn a 3-day window into a
-    // 2-day one, which is the kind of drift storing an absolute day was meant
-    // to avoid — the absolute day is authoritative for reading, not for edits
-    // to the thing it was derived from.
-    const days = keepDaysBetween(leftover.storedAt, leftover.keepUntil);
-    const updated = { ...leftover, storedAt, keepUntil: keepUntilKeyFor(storedAt, days) };
+    // Carries the deadline back with it: see leftoverStoredAtRow.
+    const updated = leftoverStoredAtRow(leftover, storedAt);
     save(set, updated);
     reconcileLeftoverTask(updated);
   },
@@ -359,18 +351,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
 
   splitLeftover(id) {
     const leftover = get().leftovers.find(l => l.id === id);
-    if (!leftover || !isLiveLeftover(leftover)) return null;
-    return get().logLeftover({
-      title: leftover.title,
-      recipeId: leftover.recipeId,
-      sourceEntryId: leftover.sourceEntryId,
-      // The original's own put-away instant, not now — see this action's own
-      // doc comment on the store interface.
-      storedAt: leftover.storedAt,
-      keepDays: keepDaysBetween(leftover.storedAt, leftover.keepUntil),
-      // The opposite side from where the original already is.
-      frozen: !leftover.frozenAt,
-    });
+    if (!leftover) return null;
+    // The original's own put-away instant and window, on the other side of
+    // the freezer line: see leftoverSplitDraft.
+    const draft = leftoverSplitDraft(leftover);
+    return draft ? get().logLeftover(draft) : null;
   },
 
   setLeftoverWeight(id, grams) {

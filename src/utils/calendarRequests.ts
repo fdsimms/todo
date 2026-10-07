@@ -1,4 +1,4 @@
-import type { CalendarRequest } from '../types';
+import type { CalendarRequest, CalendarRequestChanges } from '../types';
 import type { EventSaveFields } from './calendarSync';
 
 /**
@@ -30,6 +30,8 @@ export function isCalendarRequestWriter(writerId: string | null | undefined, sel
 export interface CalendarRequestDrainPlan {
   /** Pending and still ahead: write these. */
   write: CalendarRequest[];
+  /** Pending changes to, or deletes of, an event an earlier request wrote. */
+  change: CalendarRequest[];
   /** Pending but already over: fail these rather than writing an event into the past. */
   expire: CalendarRequest[];
   /** Answered long enough ago that nobody is waiting on the outcome. */
@@ -43,9 +45,16 @@ export interface CalendarRequestDrainPlan {
  * the requester tell that apart from a request still waiting.
  */
 export function planCalendarRequestDrain(requests: readonly CalendarRequest[], now: Date): CalendarRequestDrainPlan {
-  const plan: CalendarRequestDrainPlan = { write: [], expire: [], purge: [] };
+  const plan: CalendarRequestDrainPlan = { write: [], change: [], expire: [], purge: [] };
   const purgeBefore = now.getTime() - CALENDAR_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   for (const r of requests) {
+    // Before the expiry check: an update or delete carries an epoch start and
+    // end on purpose (see CalendarRequest.action), so an older build expires it
+    // rather than creating an event from it.
+    if (r.status === 'pending' && (r.action === 'update' || r.action === 'delete')) {
+      plan.change.push(r);
+      continue;
+    }
     if (r.status === 'pending') {
       const end = new Date(r.endAt).getTime();
       if (Number.isNaN(end) || end <= now.getTime()) plan.expire.push(r);
@@ -69,4 +78,31 @@ export function eventFieldsForRequest(r: CalendarRequest, calendarId: string | n
     ...(r.notes ? { notes: r.notes } : {}),
     calendarId,
   };
+}
+
+/** What a change request says when the event it is about can't be acted on. */
+export const CALENDAR_CHANGE_NO_EVENT_REASON = 'The event it changes was never written, or can no longer be found.';
+
+/**
+ * Why a change request can't run, or null when it can: the request it targets
+ * has to have written its event and still know the event's server id. The
+ * event itself is looked up separately, on the device.
+ */
+export function changeRequestProblem(change: CalendarRequest, target: CalendarRequest | null): string | null {
+  if (!target || (target.action ?? 'create') !== 'create') return CALENDAR_CHANGE_NO_EVENT_REASON;
+  if (target.status !== 'written' || !target.eventExternalId) return CALENDAR_CHANGE_NO_EVENT_REASON;
+  return change.action === 'update' && !change.changes ? 'It named nothing to change.' : null;
+}
+
+/** The fields an update writes: the target request's own, with the change laid over them. */
+export function eventFieldsForChange(target: CalendarRequest, changes: CalendarRequestChanges, calendarId: string | null): EventSaveFields {
+  return eventFieldsForRequest({
+    ...target,
+    ...(changes.title !== undefined ? { title: changes.title } : {}),
+    ...(changes.startAt !== undefined ? { startAt: changes.startAt } : {}),
+    ...(changes.endAt !== undefined ? { endAt: changes.endAt } : {}),
+    ...(changes.allDay !== undefined ? { allDay: changes.allDay } : {}),
+    ...(changes.location !== undefined ? { location: changes.location } : {}),
+    ...(changes.notes !== undefined ? { notes: changes.notes } : {}),
+  }, calendarId);
 }

@@ -12,6 +12,9 @@ import {
   plannedCatalogIndex,
   restockRows,
   consumedRows,
+  cookOpenedIds,
+  cookedConsumption,
+  openedAtForCook,
   groupBySourceRecipe,
   mealCreditIds,
   rowsLeftBehind,
@@ -1505,5 +1508,28 @@ describe('describeLeftBehind', () => {
     expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes')])).toBe('Tortillas, Salsa and Limes');
     expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes'), row('Cheese')]))
       .toBe('Tortillas, Salsa and 2 more');
+  });
+});
+
+describe('what a cooking opened', () => {
+  it('reads the lines the app already claims you have, through the meal\'s own recipe', () => {
+    const oil = item({ name: 'olive oil', lastPurchasedAt: new Date().toISOString(), purchaseCount: 3 });
+    const r = recipe('Pasta', [ing('olive oil'), ing('spaghetti')]);
+    const rows = cookedConsumption(entry('2026-03-02', r.id), [r], [oil], [], new Date(), []);
+    expect(rows.map(x => x.name)).toEqual(['olive oil']);
+    expect(cookedConsumption(entry('2026-03-02', null), [r], [oil], [], new Date(), [])).toEqual([]);
+  });
+
+  it('resolves rows back to catalog ids, leaving out one already open and one with no row', () => {
+    const oil = item({ name: 'olive oil' });
+    const salt = item({ name: 'salt', openedAt: '2026-01-01T00:00:00.000Z' });
+    const rows = [classifiedRow({ nameKey: oil.nameKey, name: 'olive oil' }), classifiedRow({ nameKey: salt.nameKey, name: 'salt' }), classifiedRow({ nameKey: 'saffron', name: 'saffron' })];
+    expect(cookOpenedIds(rows, [oil, salt])).toEqual([oil.id]);
+  });
+
+  it('dates the opening on a past meal\'s own day at noon, and now otherwise', () => {
+    const now = new Date(2026, 2, 5, 18);
+    expect(openedAtForCook({ date: '2026-03-02' }, '2026-03-05', now)).toEqual(new Date(2026, 2, 2, 12));
+    expect(openedAtForCook({ date: '2026-03-05' }, '2026-03-05', now)).toBe(now);
   });
 });

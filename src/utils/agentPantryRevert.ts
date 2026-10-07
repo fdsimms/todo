@@ -21,7 +21,7 @@ export const PANTRY_ITEM_REVERT_FIELDS = [
 ] as const;
 
 /** The leftover fields a pantry write can change. */
-export const LEFTOVER_REVERT_FIELDS = ['frozenAt', 'storedAt', 'keepUntil', 'finishedAt', 'outcome'] as const;
+export const LEFTOVER_REVERT_FIELDS = ['title', 'weightG', 'frozenAt', 'storedAt', 'keepUntil', 'finishedAt', 'outcome'] as const;
 
 /** The columns of a box that carry its pantry state. Everything else about a box is never touched. */
 const BOX_STATE_FIELDS = ['onHandUntil', 'expiresAt', 'frozenAt', 'openedAt'] as const;

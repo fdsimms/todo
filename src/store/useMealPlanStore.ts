@@ -31,18 +31,15 @@ import type { ApplyReport } from '../utils/syncMerge';
 import { getCalendarPermission } from '../utils/calendarSync';
 import { filledExternalId } from '../utils/calendarEventLink';
 import {
-  classifyPlanned,
-  consumedRows,
+  cookOpenedIds,
+  cookedConsumption,
   mealCreditIds,
-  plannedIngredientsForRecipe,
+  openedAtForCook,
   rowsLeftBehind,
-  type ClassifiedIngredient,
   type LeftBehindRow,
 } from '../utils/mealPlanGroceries';
-import { standingSwapMap } from '../utils/standingSwaps';
-import { onHandNameKeys } from '../utils/grocerySuggest';
 import { generateId } from '../utils/id';
-import { householdScale, isUnscaled, normalizeScale, rescaleForRecipe } from '../utils/recipeScale';
+import { householdScale, normalizeScale, rescaleForRecipe } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
@@ -58,6 +55,7 @@ import {
   recipeIndex,
   recipeIsGone,
   recipeNamedLike,
+  replacedMealEntry,
   resolveBulkMoveTargets,
   shiftDayKey,
   slotCopyDrafts,
@@ -75,7 +73,6 @@ import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } 
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { upcomingRecipeMeals } from '../utils/recipePlanned';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import { setHours } from 'date-fns/setHours';
 
 import {
   UndoableAction,
@@ -1104,7 +1101,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // the freezer and purchase history, and `openedAt` is none of the three, so
     // the sheet recomputing its rows live still lands on the same set.
     set({ cookRecap: cooked ? cookRecapFor(next) : null });
-    if (cooked) markConsumedOpened(next, cookedConsumption(next));
+    if (cooked) markConsumedOpened(next);
     // Ticking the meal ticks its task, and un-ticking un-ticks it. The
     // ping-pong this would otherwise cause is broken by the guard above plus
     // the one in completeTask: whichever side moves first has already written
@@ -1303,30 +1300,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (toUpdate.length === 0) return;
 
     const recipesById = recipeIndex(useRecipeStore.getState().recipes);
-    const toRecipe = replacement.recipeId ? recipesById.get(replacement.recipeId) : undefined;
-    const toServings = toRecipe?.servings ?? null;
     const household = useSettingsStore.getState().householdServings;
-    const updated = toUpdate.map((e): MealPlanEntry => ({
-      ...e,
-      recipeId: replacement.recipeId,
-      title,
-      recipeChoices: [],
-      leftoverId: null,
-      // Same recipe, same factor: converting through its own servings would
-      // only round a 1.5× of 3 to a different number.
-      recipeScale: e.recipeId === replacement.recipeId && e.recipeId
-        ? e.recipeScale
-        // An as-written night names no head count of its own, so the new
-        // recipe starts where planning it would have (#2910): the household
-        // size when one is set, as written otherwise. Without this a household
-        // of four swapping a 1x recipe for 4 onto one for 2 was left cooking
-        // for two, while planning the same recipe fresh gave it 2x.
-        : isUnscaled(e.recipeScale)
-          ? householdScale(household, toServings, toRecipe?.servingsMax)
-          : e.recipeId
-            ? rescaleForRecipe(e.recipeScale, recipesById.get(e.recipeId)?.servings, toServings)
-            : e.recipeScale,
-    }));
+    const updated = toUpdate.map(e => replacedMealEntry(e, { recipeId: replacement.recipeId, title }, recipesById, household));
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
@@ -1691,74 +1666,6 @@ function cookRecapFor(entry: MealPlanEntry): CookRecap {
 }
 
 /**
- * What a just-cooked meal was made of, as far as the app can honestly claim —
- * empty when there's nothing it can say.
- *
- * `consumedRows` is what a cooking can defend (the lines the app is already
- * claiming you have), and it's the same restraint that decides what a cooking
- * may mark opened. See `markConsumedOpened` for where the two part ways, and
- * the sheet's own section for the question put to the user.
- *
- * The rows aren't stored on the recap. They're recomputed live by the sheet off
- * these same three utils, so ticking a line takes it out of the set — the same
- * "read it as it now stands" call `cookRecapFor` makes about the recipe.
- *
- * Reads two other stores at write time, like `setCookedPaired` reaching into
- * `useRecipeStore` just below. A free-text meal has no recipe and so no
- * ingredients, which is not an error — just a meal with nothing to ask about.
- */
-function cookedConsumption(entry: MealPlanEntry): ClassifiedIngredient[] {
-  if (!entry.recipeId) return [];
-  const recipes = useRecipeStore.getState().recipes;
-  const recipe = recipes.find(r => r.id === entry.recipeId);
-  if (!recipe) return [];
-
-  const recipesById = new Map(recipes.map(r => [r.id, r]));
-  // Swapped: what a cook used up is what they actually cooked with, so a
-  // standing "oat milk for milk" asks after the oat milk.
-  const { items, itemSubs, itemProducts } = useGroceryStore.getState();
-  const now = new Date();
-  return consumedRows(
-    classifyPlanned(
-      plannedIngredientsForRecipe(
-        recipe,
-        recipesById,
-        // Live, not persisted — matches mealShortfallRows' resolution, so a
-        // cook marking this meal done consumes the same alternative the
-        // shopping task asked them to buy (see ChoiceResolution.onHand).
-        { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, itemProducts) },
-        normalizeScale(entry.recipeScale),
-        standingSwapMap(itemSubs, items)
-      ),
-      items,
-      now,
-      [],
-      null,
-      itemProducts
-    )
-  );
-}
-
-/**
- * When a cooking opened what it opened: now, or the meal's own day once that
- * day has passed.
- *
- * A Tuesday dinner is routinely ticked off on Thursday — from the plan, or from
- * a "Make X" task that sat on Today for two days — and `openedAt` re-dates a
- * use-by day, so stamping the tap would hand the jar two days of shelf life it
- * hasn't got. Every other pantry assertion stamps now because every other one
- * is a statement about the present ("I'm out of it", "I have it"); this one is
- * a statement about when something happened. Noon rather than midnight for
- * `getLogicalToday`'s reason — a day, not a boundary — and `dayKeyOf` reads the
- * *logical* today, so a meal ticked off at 1am with a 2am reset is still that
- * day's cooking rather than yesterday's.
- */
-function openedAtForCook(entry: MealPlanEntry): Date {
-  const now = new Date();
-  return entry.date < dayKeyOf(getLogicalToday()) ? setHours(dayKeyToDate(entry.date), 12) : now;
-}
-
-/**
  * Records that a cooking opened the things it was made of.
  *
  * **This is the one claim a cooking is allowed to make on its own**, and the
@@ -1780,17 +1687,11 @@ function openedAtForCook(entry: MealPlanEntry): Date {
  * write — what `markOutOfMany` marked out from the sheet — isn't retracted
  * either. Resealing is one tap on the item's own sheet.
  */
-function markConsumedOpened(entry: MealPlanEntry, rows: readonly ClassifiedIngredient[]): void {
-  const { items, markOpenedMany } = useGroceryStore.getState();
-  // Resolved back to catalog ids here rather than carried on the row, the same
-  // way CookRecapSheet does it: a ClassifiedIngredient is keyed by name, and
-  // the pantry assertion lives on the row. A key with no live row is dropped
-  // rather than minting one.
-  const byKey = new Map(items.map(i => [i.nameKey, i.id]));
-  const ids = rows
-    .map(r => byKey.get(r.nameKey))
-    .filter((id): id is string => !!id);
-  markOpenedMany(ids, openedAtForCook(entry));
+function markConsumedOpened(entry: MealPlanEntry): void {
+  const { items, itemSubs, itemProducts, markOpenedMany } = useGroceryStore.getState();
+  const now = new Date();
+  const rows = cookedConsumption(entry, useRecipeStore.getState().recipes, items, itemSubs, now, itemProducts);
+  markOpenedMany(cookOpenedIds(rows, items), openedAtForCook(entry, dayKeyOf(getLogicalToday()), now));
 }
 
 // ─── Meal tasks (#1402, folded into slots) ──────────────────────────────────

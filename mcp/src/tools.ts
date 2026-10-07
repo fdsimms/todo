@@ -48,7 +48,7 @@ import { localDateInput } from './timeZone';
 // value where awayDates, which reaches the settings store, is not.
 
 /** The four sub-views of TodayScreen, plus the everything case. */
-export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all'] as const;
+export const TASK_VIEWS = ['today', 'later', 'unscheduled', 'inbox', 'all', 'archived'] as const;
 export type TaskView = (typeof TASK_VIEWS)[number];
 
 /**
@@ -92,7 +92,8 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
     .filter(isTopLevel)
     // Archived is "out of every list" in the app (CLAUDE.md, "Projects"); an
     // open archived row would otherwise fall through the other lenses into later.
-    .filter(t => !t.archived)
+    // The archived view is the Archived screen, which lists only those.
+    .filter(t => (view === 'archived' ? t.archived : !t.archived))
     .filter(t => (input.includeCompleted ? true : !t.completed))
     .filter(t => (input.category ? t.category === input.category : true))
     .filter(t => (input.tag ? t.tags.includes(input.tag) : true))
@@ -123,6 +124,7 @@ function matchesView(replica: Replica, task: Task, view: TaskView): boolean {
     case 'inbox':
       return replica.isInbox(task);
     case 'all':
+    case 'archived':
       return true;
   }
 }
@@ -188,9 +190,9 @@ export interface GetTaskResult {
   /** A completion outside the task's own time window counts as done but does not extend the streak (`streakRequiresWindow`). */
   streakRequiresWindow?: true;
   /**
-   * Read-only, deliberately. Each of these changes something outside the task:
-   * a gate or penalty blocks apps on the phone, and a medication makes
-   * completing the task record a dose. Neither can be set from here.
+   * Read-only, deliberately: a gate or penalty blocks apps on the phone, so
+   * only the person sets one. (`medication` below is writable: it makes
+   * completing the task record a dose, which `reopen_task` takes back.)
    */
   gatesApps?: true;
   /** Failing this task blocks the apps the person picked in Settings. Read-only here: only the person sets or changes it. */
@@ -438,6 +440,8 @@ export interface SerializedProject {
   title: string;
   notes?: string;
   deadline?: string;
+  /** The project category it is filed under on the Projects screen. */
+  category?: string;
   /** Members finished, by the app's own reckoning. */
   done: number;
   /** Members in total. One per *series*, not one per row. */
@@ -452,6 +456,13 @@ export interface SerializedCategory {
   openTasks: number;
   /** A few of them, so what belongs here can be judged from more than the name. */
   examples?: string[];
+  emoji?: string;
+  /** The days (0 = Sunday) and hours its tasks show, where it has a schedule. */
+  schedule?: { days: number[]; start: string | null; end: string | null };
+  hideOnVacation?: true;
+  excludeFromSuggestions?: true;
+  /** The time of day new tasks in it start in. */
+  defaultTimeSegments?: string[];
 }
 
 /**
@@ -464,7 +475,16 @@ export function listCategories(replica: Replica): SerializedCategory[] {
   return replica.categories().map(c => {
     const mine = open.filter(t => t.category === c.name);
     const examples = mine.slice(0, 3).map(t => replica.displayTitle(t));
-    return { name: c.name, openTasks: mine.length, ...(examples.length > 0 ? { examples } : {}) };
+    return {
+      name: c.name,
+      openTasks: mine.length,
+      ...(examples.length > 0 ? { examples } : {}),
+      ...(c.emoji ? { emoji: c.emoji } : {}),
+      ...(c.scheduleDays ? { schedule: { days: c.scheduleDays, start: c.scheduleStart, end: c.scheduleEnd } } : {}),
+      ...(c.hideOnVacation ? { hideOnVacation: true as const } : {}),
+      ...(c.excludeFromSuggestions ? { excludeFromSuggestions: true as const } : {}),
+      ...((c.defaultTimeSegments ?? []).length > 0 ? { defaultTimeSegments: c.defaultTimeSegments } : {}),
+    };
   });
 }
 
@@ -483,6 +503,7 @@ export function listProjects(replica: Replica): SerializedProject[] {
       title: p.title,
       notes: p.notes || undefined,
       deadline: p.deadline ?? undefined,
+      category: p.category ?? undefined,
       ...awayFields(replica, p),
       done,
       total,
@@ -635,6 +656,8 @@ export interface FoodLogResult {
    * none.
    */
   produce: { dayKey: string; vegetable: number; fruit: number; unmeasured: number }[];
+  /** The daily targets the person set, by nutrient. Nothing here is a recommendation. */
+  targets: Record<string, number>;
 }
 
 export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLogResult {
@@ -667,6 +690,8 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
       entries: totals.entries,
     },
     produce,
+    // The figures the person set to read a day's totals against; absent for a nutrient with none.
+    targets: replica.nutritionTargets(),
   };
 }
 

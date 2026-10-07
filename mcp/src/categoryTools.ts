@@ -14,7 +14,7 @@
  * because one left naming a deleted category files the next generated task
  * under a name nothing has any more.
  */
-import type { DeletedCategory, Replica } from './replica';
+import type { CategorySettingsPatch, DeletedCategory, Replica } from './replica';
 
 export function deleteCategory(
   replica: Replica,
@@ -42,4 +42,35 @@ export function deleteCategory(
     }
   }
   return replica.deleteCategory(category.name, moveTo);
+}
+
+export interface UpdateCategoryInput extends CategorySettingsPatch {
+  name: string;
+  /** Renames it everywhere it is named: tasks, stacks, projects, views, templates, automations. */
+  newName?: string;
+}
+
+/** Rename a category, change its settings, or both. Returns the category as list_categories shows it. */
+export function updateCategory(replica: Replica, input: UpdateCategoryInput) {
+  const { name, newName, ...settings } = input;
+  if (newName === undefined && Object.keys(settings).length === 0) throw new Error('Nothing to change: give newName or a setting.');
+  let current = name;
+  if (newName !== undefined) current = replica.renameCategory(name, newName).to;
+  if (Object.keys(settings).length > 0) replica.updateCategorySettings(current, settings);
+  const category = replica.categories().find(c => c.name === current)!;
+  return {
+    name: category.name,
+    ...(category.emoji ? { emoji: category.emoji } : {}),
+    ...(category.scheduleDays ? { schedule: { days: category.scheduleDays, start: category.scheduleStart, end: category.scheduleEnd } } : {}),
+    hideOnVacation: category.hideOnVacation,
+    excludeFromSuggestions: category.excludeFromSuggestions,
+    excludeFromNewTasksBanner: category.excludeFromNewTasksBanner,
+    defaultTimeSegments: category.defaultTimeSegments,
+    ...(newName !== undefined ? { renamedFrom: name } : {}),
+  };
+}
+
+export function reorderCategories(replica: Replica, names: string[]): { order: string[] } {
+  if (names.length === 0) throw new Error('Name the categories to put first, in order.');
+  return { order: replica.reorderCategories(names) };
 }

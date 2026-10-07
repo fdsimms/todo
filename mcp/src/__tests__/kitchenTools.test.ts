@@ -3,11 +3,11 @@ import type { Replica } from '../replica';
 import type { MealPlanEntry, Recipe } from '../../../src/types';
 
 const recipe = (over: Partial<Recipe> & { id: string; name: string }): Recipe =>
-  ({ tags: [], ingredients: [], steps: [], components: [], cookCount: 0, lastCookedAt: null, upNext: false,
+  ({ tags: [], ingredients: [], steps: [], components: [], prepTasks: [], cookCount: 0, lastCookedAt: null, upNext: false,
      mealType: null, servings: null, estimatedMinutes: null, vote: null, cookbookId: null, notes: '', ...over }) as Recipe;
 
 const meal = (over: Partial<MealPlanEntry> & { id: string; date: string }): MealPlanEntry =>
-  ({ slot: 'dinner', title: 'x', recipeId: null, sortOrder: 1, cookedAt: null, ...over }) as MealPlanEntry;
+  ({ slot: 'dinner', title: 'x', recipeId: null, leftoverId: null, recipeScale: 1, sortOrder: 1, cookedAt: null, ...over }) as MealPlanEntry;
 
 function stub(over: Partial<Replica> = {}): Replica {
   return {
@@ -17,6 +17,7 @@ function stub(over: Partial<Replica> = {}): Replica {
     ],
     cookbooks: () => [{ id: 'c1', title: 'Salt Fat' }],
     mealPlan: () => [],
+    mealChoices: () => [],
     todayKey: () => '2026-10-04',
     shiftDayKey: (key: string, days: number) => {
       const d = new Date(`${key}T12:00:00`);

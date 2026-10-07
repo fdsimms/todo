@@ -16,8 +16,12 @@ export interface SerializedStack {
   title: string;
   /** Where it renders on Today, and the category every member is filed under. */
   category?: string;
-  /** The project it was built inside, if any. */
+  /** The project it was built inside, if any: a section on that project's page. */
   projectId?: string;
+  notes?: string;
+  tags?: string[];
+  /** Its members are ticked off in place, as a checklist. */
+  checklist?: true;
   /**
    * Its open top-level tasks, in the stack's own order. A repeating task is one
    * entry however many finished occurrences sit behind it, and a dated series is
@@ -56,6 +60,9 @@ function serializeStack(replica: Replica, stack: ReturnType<Replica['stacks']>[n
     title: stack.title,
     ...(stack.category ? { category: stack.category } : {}),
     ...(stack.projectId ? { projectId: stack.projectId } : {}),
+    ...(stack.notes ? { notes: stack.notes } : {}),
+    ...(stack.tags.length > 0 ? { tags: stack.tags } : {}),
+    ...(stack.checklist ? { checklist: true as const } : {}),
     members,
   };
 }
@@ -133,6 +140,8 @@ export interface CreateStackInput {
   category?: string | null;
   /** Tasks to file in it straight away. */
   taskIds?: string[];
+  /** A project whose page shows it as a section. Its members keep their own projects. */
+  projectId?: string | null;
 }
 
 /**
@@ -160,7 +169,7 @@ export function createStack(replica: Replica, input: CreateStackInput): StackWri
     category = shared[0];
   }
 
-  const stack = replica.createStack(title, category);
+  const stack = replica.createStack(title, category, input.projectId ?? null);
   const moved = moveTasks(replica, stack.id, taskIds);
   return finish(replica, stack.id, moved);
 }
@@ -169,4 +178,46 @@ export function createStack(replica: Replica, input: CreateStackInput): StackWri
 export function renameStack(replica: Replica, id: string, title: string): { id: string; title: string } {
   const stack = replica.renameStack(id, title);
   return { id: stack.id, title: stack.title };
+}
+
+export interface UpdateStackInput {
+  title?: string;
+  notes?: string;
+  tags?: string[];
+  /** A category from list_categories, or null. Re-files every open member with it. */
+  category?: string | null;
+  projectId?: string | null;
+  checklist?: boolean;
+}
+
+/** Change a stack as its editor does. See `Replica.updateStack`. */
+export function updateStack(replica: Replica, id: string, input: UpdateStackInput): StackWrite {
+  if (Object.keys(input).length === 0) throw new Error('Nothing to change: name at least one field.');
+  const result = replica.updateStack(id, input);
+  const moved: StackMove[] = result.moved.map(({ before, after }) => ({
+    id: after.id,
+    title: replica.displayTitle(after),
+    category: { from: before.category ?? null, to: after.category ?? null },
+  }));
+  return finish(replica, id, moved);
+}
+
+export interface DeleteStackResult {
+  deleted: string;
+  tasksDeleted: number;
+  tasksTakenOut: number;
+  note: string;
+}
+
+/** Delete a stack, taking its tasks out of it, or with `deleteTasks` deleting the open ones. */
+export function deleteStack(replica: Replica, id: string, deleteTasks = false): DeleteStackResult {
+  const snapshot = replica.deleteStack(id, deleteTasks);
+  return {
+    deleted: snapshot.stack.title,
+    tasksDeleted: snapshot.deleted.filter(t => !t.parentId).length,
+    tasksTakenOut: snapshot.unfiledTaskIds.length,
+    note: deleteTasks
+      ? 'Its open tasks were deleted; finished occurrences were only taken out, since they are history. The stack and its tasks can be restored from Activity.'
+      : 'Its tasks were taken out and kept their category. The stack can be restored from Activity.',
+  };
 }

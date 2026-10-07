@@ -17,6 +17,7 @@ import type {
   JournalEntry,
   EventPeopleLink,
   CalendarRequest,
+  CalendarRequestChanges,
   CalendarRequestStatus,
   MoodLevel,
   MoodLog,
@@ -1971,6 +1972,11 @@ export function initDatabase(): void {
     // NULL on every existing row: no gap between purchases has been measured
     // yet. See GroceryItem.purchaseIntervalDays.
     'ALTER TABLE grocery_items ADD COLUMN purchase_interval_days REAL',
+    // 'create' on every existing row: each was a request for a new event. See
+    // CalendarRequest.action, and targetRequestId / changes beside it.
+    "ALTER TABLE calendar_requests ADD COLUMN action TEXT NOT NULL DEFAULT 'create'",
+    'ALTER TABLE calendar_requests ADD COLUMN target_request_id TEXT',
+    'ALTER TABLE calendar_requests ADD COLUMN changes TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -6830,7 +6836,22 @@ function rowToCalendarRequest(row: Record<string, unknown>): CalendarRequest {
     eventExternalId: (row.event_external_id as string | null) ?? null,
     resolvedAt: (row.resolved_at as string | null) ?? null,
     createdAt: row.created_at as string,
+    // An action this build doesn't know is read as cancelled above's way:
+    // left alone rather than guessed at.
+    action: row.action === 'update' || row.action === 'delete' ? row.action : 'create',
+    targetRequestId: (row.target_request_id as string | null) ?? null,
+    changes: parseCalendarRequestChanges(row.changes),
   };
+}
+
+function parseCalendarRequestChanges(raw: unknown): CalendarRequestChanges | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as CalendarRequestChanges) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function dbGetAllCalendarRequests(): CalendarRequest[] {
@@ -6847,10 +6868,12 @@ export function dbGetCalendarRequest(id: string): CalendarRequest | null {
 export function dbInsertCalendarRequest(r: CalendarRequest): void {
   db.runSync(
     `INSERT INTO calendar_requests
-       (id, title, start_at, end_at, all_day, location, notes, status, failure_reason, event_external_id, resolved_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, title, start_at, end_at, all_day, location, notes, status, failure_reason, event_external_id, resolved_at, created_at,
+        action, target_request_id, changes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [r.id, r.title, r.startAt, r.endAt, r.allDay ? 1 : 0, r.location, r.notes, r.status,
-      r.failureReason, r.eventExternalId, r.resolvedAt, r.createdAt]
+      r.failureReason, r.eventExternalId, r.resolvedAt, r.createdAt,
+      r.action ?? 'create', r.targetRequestId ?? null, r.changes ? JSON.stringify(r.changes) : null]
   );
 }
 
