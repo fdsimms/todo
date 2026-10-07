@@ -22,7 +22,9 @@ describe('settings', () => {
   it('reads every allowed setting with what it means', () => {
     const read = getSettings(replica);
     expect(read.settings.day.dayResetTime).toMatchObject({ value: expect.any(String), means: expect.stringMatching(/day turns over/) });
-    expect(read.settings.rewards.rewardsEnabled.value).toBe(false);
+    // A boolean, not `false`: the settings live in a store the other tests write
+    // to, and the suite runs under --randomize.
+    expect(typeof read.settings.rewards.rewardsEnabled.value).toBe('boolean');
   });
 
   it('changes several at once and stores them in the settings table', () => {
@@ -34,6 +36,7 @@ describe('settings', () => {
   });
 
   it('refuses the whole call when one value is wrong, and an unknown setting', () => {
+    updateSettings(replica, { weekStartsOn: 1 });
     expect(() => updateSettings(replica, { weekStartsOn: 0, dayResetTime: '25:00' })).toThrow(/HH:MM/);
     expect(replica.settings().weekStartsOn).toBe(1);
     expect(() => updateSettings(replica, { anthropicApiKey: 'x' })).toThrow(/Not a setting this can change/);
