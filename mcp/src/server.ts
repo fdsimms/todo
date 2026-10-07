@@ -2552,8 +2552,10 @@ function registerWriteTools(
       year: z.number().int().nullable().optional().describe('Leave out when unknown. The app never works an age out from it.'),
     }).nullable().optional().describe('null clears it.'),
     phoneNumber: z.string().nullable().optional(),
+    faxNumber: z.string().nullable().optional(),
     email: z.string().nullable().optional(),
     linkUrl: z.string().nullable().optional(),
+    location: z.string().nullable().optional().describe('Where they live, as free text ("Austin, TX"). The app uses it to find people when planning a trip. null clears it.'),
   };
   const PEOPLE_RULE = ' Identity and contact details only: nothing here sets how often to reach out, turns on nudges, files someone into a group, archives or orders people, because the app never scores or ranks anyone and those are the person\'s own choices.';
 
