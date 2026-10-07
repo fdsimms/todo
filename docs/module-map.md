@@ -503,6 +503,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/useOverlapPicker.ts` — OverlapPickerState, useOverlapPicker
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
+- `src/hooks/usePlaceSuggestions.ts` — usePlaceSuggestions
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
 - `src/hooks/useReachOutPrompt.ts` — useReachOutPrompt
 - `src/hooks/useRecipeComponentImports.ts` — useRecipeComponentImports

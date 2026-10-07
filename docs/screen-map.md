@@ -329,6 +329,7 @@ Where each component can appear.
 - `src/components/TipHost.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, ProjectsScreen, RecipesScreen, TipsScreen, TodayScreen
 - `src/components/TitleRuleSheet.tsx` — on SettingsGroupScreen
 - `src/components/TitleRulesSheet.tsx` — on SettingsGroupScreen
+- `src/components/TitleSuggestionBanner.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/TitleTokenAccessory.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/TodayEventsSheet.tsx` — on CalendarScreen, TodayScreen
 - `src/components/TodayOptionsMenu.tsx` — on TodayScreen

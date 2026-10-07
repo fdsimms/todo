@@ -30,10 +30,14 @@ const basePerson: Person = {
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,
-  location: null,
+  location: null, faxNumber: null,
 };
 
 describe('isPersonFieldMissing', () => {
+  it('never asks a business for a birthday', () => {
+    expect(isPersonFieldMissing({ ...basePerson, kind: 'business' }, 'birthday')).toBe(false);
+  });
+
   it('treats a birthday as missing until both halves are on file', () => {
     expect(isPersonFieldMissing(basePerson, 'birthday')).toBe(true);
     expect(isPersonFieldMissing({ ...basePerson, birthdayMonth: 3 }, 'birthday')).toBe(true);

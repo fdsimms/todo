@@ -266,7 +266,9 @@ export function wantedBirthdayTasks(
   const lead = clampBirthdayLeadDays(leadDays);
   const wants: BirthdayWant[] = [];
   for (const person of people) {
-    if (person.archived || person.birthdayTaskOptOut) continue;
+    // A business has no birthday field in the editor, so one left over from
+    // before it was hidden must not keep producing tasks nobody can switch off.
+    if (person.archived || person.birthdayTaskOptOut || person.kind === 'business') continue;
     const date = nextBirthday(person, today);
     if (!date) continue;
     const away = differenceInCalendarDays(date, today);

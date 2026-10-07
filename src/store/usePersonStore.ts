@@ -57,6 +57,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     birthdayTaskOptOut: false,
     birthdayGiftTaskOptOut: false,
     phoneNumber: null,
+    faxNumber: null,
     email: null,
     linkUrl: null,
     // Off, and off is the whole design. Every person starts with no cadence and
@@ -83,7 +84,7 @@ export function displayNameOf(person: Pick<Person, 'name' | 'nickname'>): string
 export type PersonPatch = Partial<Pick<Person,
   | 'name' | 'kind' | 'nickname' | 'notes'
   | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut' | 'birthdayGiftTaskOptOut'
-  | 'phoneNumber' | 'email' | 'linkUrl'
+  | 'phoneNumber' | 'faxNumber' | 'email' | 'linkUrl'
   | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'reachOutOfferDeclinedAt' | 'askAbout'
   // Written by the Backfill screen rather than by the editor, through the same
   // patch path everything else uses — the project side does the same with
