@@ -1,0 +1,7 @@
+{
+  "name": "todo-key-commands",
+  "version": "1.0.0",
+  "description": "Local Expo module that turns hardware-keyboard shortcuts into events, for driving the app through iPhone Mirroring.",
+  "main": "index.ts",
+  "private": true
+}

@@ -221,6 +221,21 @@ export function openQuickAddFromShortcut(): void {
   });
 }
 
+// The keyboard shortcuts' three ways onto Today (useKeyShortcuts). Unlike the
+// Home Screen action above, none of them sends resetToToday: a shortcut acts on
+// the view that's showing, and "1" to "4" are how the view gets changed.
+export function openQuickAddFromKeyboard(): void {
+  runWhenReady(() => navigateToTab('Today', { openQuickAdd: Date.now() }));
+}
+
+export function openQuickSearchFromKeyboard(): void {
+  runWhenReady(() => navigateToTab('Today', { openQuickSearch: Date.now() }));
+}
+
+export function showTodayViewModeFromKeyboard(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
+  runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now() }));
+}
+
 // `dundundun://addevent` — the Today widget's event shortcut. The event
 // counterpart of openQuickAddFromShortcut above: lands on Today and pops
 // QuickEventSheet instead of quick add, the same sheet the FAB's "Event" row

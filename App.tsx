@@ -13,6 +13,7 @@ import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthor
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
+import { useKeyShortcuts } from './src/hooks/useKeyShortcuts';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
@@ -65,6 +66,9 @@ function AppContent() {
   const { isDark } = useTheme();
   const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
   useShakeToUndo(shakeToUndoEnabled);
+  // Beside the shake: both are app-wide ways in from outside the screen, and
+  // the shortcuts' ⌘Z is the shake's replacement in iPhone Mirroring.
+  useKeyShortcuts();
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />

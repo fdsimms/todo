@@ -1780,6 +1780,21 @@ export function TodayScreen() {
       : VIEW_MODES),
     [simpleMode, unscheduledCount, viewMode]
   );
+
+  // The keyboard shortcuts 1 to 4 (showTodayViewModeFromKeyboard in
+  // navigationRef.ts), the same stamped-param handoff as openQuickAdd. Does
+  // what a pill tap does, and nothing for a lens simplified mode has hidden.
+  const [handledShowViewMode, setHandledShowViewMode] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const at: number | undefined = route.params?.showViewModeAt;
+    if (at === undefined || at === handledShowViewMode) return;
+    setHandledShowViewMode(at);
+    const mode: ViewMode = route.params.showViewMode;
+    if (!viewModes.includes(mode) || mode === viewMode) return;
+    leaveViewMode();
+    selectViewMode(mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.showViewModeAt, handledShowViewMode]);
   const projects = useProjectStore(useShallow(s => s.projects));
 
   const activeFilterCount =
@@ -1840,6 +1855,17 @@ export function TodayScreen() {
   // its own, on any sub-view, and a gesture that worked on one lens but
   // silently did nothing on the other three was hard to learn (#821) —
   // Later, Unscheduled and Inbox all wire the same refreshControl to this.
+  // The search shortcut ("/" or ⌘F, openQuickSearchFromKeyboard in
+  // navigationRef.ts). Opens the same sheet a pull does, without the pull's
+  // refresh-control bookkeeping: there's no pull to end.
+  const [handledOpenQuickSearch, setHandledOpenQuickSearch] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const at: number | undefined = route.params?.openQuickSearch;
+    if (at === undefined || at === handledOpenQuickSearch) return;
+    setHandledOpenQuickSearch(at);
+    setQuickSearchVisible(true);
+  }, [route.params?.openQuickSearch, handledOpenQuickSearch]);
+
   const handlePullToSearch = useCallback(() => {
     setPullingToSearch(true);
     haptics.impactLight();

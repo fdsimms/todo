@@ -310,3 +310,39 @@ export function subscribeDismissAllSheets(fn: () => void): () => void {
   dismissAllListeners.add(fn);
   return () => { dismissAllListeners.delete(fn); };
 }
+
+/**
+ * Open sheets in the order they came up, each with a way to ask it to close.
+ * Tracked so the Escape shortcut (`closeTopmostSheet`) can close the one on top
+ * rather than every sheet at once the way `requestDismissAllSheets` does.
+ *
+ * One flat list rather than a walk of the levels: a sheet raised from another
+ * always registers after it, so the last one in is the one on top, nested or
+ * not. A sheet that can't come up yet (`canShowSheet`) isn't in it.
+ */
+const openSheets: { id: string; close: () => void }[] = [];
+
+/** Adds an open sheet. Returns the call that takes it off again. */
+export function trackOpenSheet(id: string, close: () => void): () => void {
+  openSheets.push({ id, close });
+  return () => {
+    const at = openSheets.findIndex(s => s.id === id);
+    if (at >= 0) openSheets.splice(at, 1);
+  };
+}
+
+/**
+ * Asks the sheet on top to close, through its own `onRequestClose` (so an
+ * unsaved-changes guard still asks). False when no sheet is open.
+ */
+export function closeTopmostSheet(): boolean {
+  const top = openSheets[openSheets.length - 1];
+  if (!top) return false;
+  top.close();
+  return true;
+}
+
+/** Whether any tracked sheet is open, for a shortcut that only acts on a bare screen. */
+export function anySheetOpen(): boolean {
+  return openSheets.length > 0;
+}
