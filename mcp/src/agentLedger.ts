@@ -734,6 +734,12 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
+    deleteCookbook(id) {
+      const result = replica.deleteCookbook(id);
+      log({ action: 'cleared', subject: 'recipe', title: result.cookbook.title, taskId: null, note: `Delete the cookbook "${result.cookbook.title}": its ${result.recipesUnlinked} recipes stay, no longer in a book, and its index of ${result.indexEntries} dishes goes. It cannot be restored from here.` });
+      return result;
+    },
+
     saveIndexEntry(input) {
       const entry = replica.saveIndexEntry(input);
       const book = replica.cookbookSummaries().find(c => c.id === entry.cookbookId)?.title ?? 'a cookbook';

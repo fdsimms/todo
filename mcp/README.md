@@ -97,7 +97,7 @@ only the fallback until the first sync.
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
 | `list_cookbooks` / `get_cookbook_index` | The cookbooks, and the dishes one's index lists. |
-| `rename_cookbook` / `merge_cookbooks` | **Write.** Renames a cookbook on every recipe in it, or joins two copies of one book. |
+| `rename_cookbook` / `merge_cookbooks` / `delete_cookbook` | **Write.** Renames a cookbook on every recipe in it, joins two copies of one book, or deletes one (its recipes stay). |
 | `save_index_entry` / `delete_index_entry` / `recipe_from_index_entry` | **Write.** Adds, changes or removes a dish in a cookbook's index, or makes the saved recipe for one. |
 | `reorder_up_next` / `log_cook_time` | **Write.** Orders the Up next shelf; records how long cooking a recipe took. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |

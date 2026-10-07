@@ -175,6 +175,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     startFreshProject: () => { throw new Error('not stubbed'); },
     saveProjectAsTemplate: () => { throw new Error('not stubbed'); },
     projectCategories: () => [],
+    deleteCookbook: () => { throw new Error('not stubbed'); },
     splitLeftover: () => { throw new Error('not stubbed'); },
     deleteLeftover: () => { throw new Error('not stubbed'); },
     moveFoodEntry: () => { throw new Error('not stubbed'); },

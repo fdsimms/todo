@@ -8,6 +8,7 @@ import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { saveRecipe, updateRecipe } from '../logTools';
 import {
+  deleteCookbook,
   deleteIndexEntry,
   getCookbookIndex,
   listCookbooks,
@@ -142,6 +143,16 @@ describe('cookbooks', () => {
     saveIndexEntry(replica, { cookbookId: lose.id, title: 'Saag', page: '40', ingredients: ['spinach'] });
     expect(mergeCookbooks(replica, keep.id, lose.id)).toMatchObject({ kept: { id: keep.id }, merged: 'Weeknights (copy)', recipesMoved: 1 });
     expect(listCookbooks(replica).cookbooks).toEqual([expect.objectContaining({ id: keep.id, recipes: 2, indexEntries: 1 })]);
+  });
+
+  it('deletes a book, keeping its recipes unlinked and taking its index', () => {
+    const r = saveRecipe(replica, { name: 'Dal', cookbook: 'Weeknights' });
+    const book = listCookbooks(replica).cookbooks[0];
+    saveIndexEntry(replica, { cookbookId: book.id, title: 'Saag' });
+    expect(deleteCookbook(replica, book.id)).toMatchObject({ recipesUnlinked: 1, indexEntriesDeleted: 1 });
+    expect(listCookbooks(replica).cookbooks).toEqual([]);
+    expect(stored(r.id)).toMatchObject({ cookbookId: null, source: 'Weeknights' });
+    expect(() => deleteCookbook(replica, book.id)).toThrow(/No cookbook/);
   });
 
   it('adds, changes and deletes index lines, refusing a dish the index already lists', () => {

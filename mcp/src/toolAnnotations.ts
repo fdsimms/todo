@@ -107,6 +107,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   copy_meals: { title: 'Copy meals', destructive: false, idempotent: false },
   rename_cookbook: { title: 'Rename a cookbook', destructive: true, idempotent: true },
   merge_cookbooks: { title: 'Merge cookbooks', destructive: true, idempotent: false },
+  delete_cookbook: { title: 'Delete a cookbook', destructive: true, idempotent: true },
   save_index_entry: { title: 'Save a cookbook index line', destructive: true, idempotent: false },
   delete_index_entry: { title: 'Delete a cookbook index line', destructive: true, idempotent: true },
   recipe_from_index_entry: { title: 'Recipe from an index line', destructive: false, idempotent: true },

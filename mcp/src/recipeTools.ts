@@ -49,6 +49,11 @@ export function mergeCookbooks(replica: Replica, keepId: string, mergeId: string
   };
 }
 
+export function deleteCookbook(replica: Replica, id: string) {
+  const r = replica.deleteCookbook(id);
+  return { deleted: { id: r.cookbook.id, title: r.cookbook.title }, recipesUnlinked: r.recipesUnlinked, indexEntriesDeleted: r.indexEntries };
+}
+
 export function saveIndexEntry(replica: Replica, input: IndexEntryInput) {
   return { entry: serializeEntry(replica.saveIndexEntry(input)) };
 }

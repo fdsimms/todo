@@ -1069,6 +1069,12 @@ export interface Replica {
   renameCookbook(id: string, title: string, author?: string | null): Cookbook;
   /** Two copies of one book made one, through `mergeCookbooks`: the loser's recipes and index move to the survivor. */
   mergeCookbooks(survivorId: string, loserId: string): { survivor: Cookbook; merged: Cookbook; recipesMoved: number };
+  /**
+   * Delete a cookbook through the store's `deleteCookbook`: its recipes are
+   * unlinked rather than deleted, keeping the title and author mirrored onto
+   * them, and its index lines go with it.
+   */
+  deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number; indexEntries: number };
   /** Add or change a cookbook index line. Refused when that book's index already lists the dish. */
   saveIndexEntry(input: IndexEntryInput): CookbookIndexEntry;
   deleteIndexEntry(id: string): CookbookIndexEntry;
@@ -3638,6 +3644,18 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.getState().initialize();
       refresh();
       return { survivor: store.getState().cookbooks.find(c => c.id === survivorId)!, merged: loser, recipesMoved };
+    },
+
+    deleteCookbook(id: string): { cookbook: Cookbook; recipesUnlinked: number; indexEntries: number } {
+      const store = recipeStore();
+      const cookbook = store.getState().cookbooks.find(c => c.id === id);
+      if (!cookbook) throw new Error(`No cookbook with id ${id}.`);
+      const recipesUnlinked = store.getState().recipes.filter(r => r.cookbookId === id).length;
+      const indexEntries = store.getState().indexEntries.filter(e => e.cookbookId === id).length;
+      // `dbDeleteCookbook` unlinks the recipes and takes the index with the book.
+      store.getState().deleteCookbook(id);
+      refresh();
+      return { cookbook, recipesUnlinked, indexEntries };
     },
 
     saveIndexEntry(input: IndexEntryInput): CookbookIndexEntry {
