@@ -4984,7 +4984,9 @@ export function dbFinishGroceryShopping(
   // It doubles as the away flag rather than there being a second parameter,
   // because the two could then disagree: "away" is exactly "not the home
   // list", and see `away` below for what that costs a trip.
-  listId: string | null = null
+  listId: string | null = null,
+  // What a price was paid for where a receipt said; see finishShopping.
+  priceQuantityById: Readonly<Record<string, string>> = {}
 ): string[] {
   const away = listId !== null;
   // Joined rather than read off grocery_items' own checked/on_list, because
@@ -5013,8 +5015,8 @@ export function dbFinishGroceryShopping(
   // against nothing rather than against that: recipeCost divides by this
   // string, and a gallon's price over "3 cups" costs every later recipe wrong.
   // Mirrors pricedQuantityById in useGroceryStore.finishShopping.
-  const pricedQuantity = (row: { quantity: string | null; quantity_from_recipe: number | null }) =>
-    row.quantity_from_recipe ? null : row.quantity ?? null;
+  const pricedQuantity = (row: { id: string; quantity: string | null; quantity_from_recipe: number | null }) =>
+    priceQuantityById[row.id] ?? (row.quantity_from_recipe ? null : row.quantity ?? null);
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   // The trolley empties by the entries going, which is the whole of what an

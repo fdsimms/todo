@@ -320,6 +320,12 @@ export function GroceryScreen() {
        * the same prices.
        */
       stamp: string;
+      /**
+       * The amount each receipt price was for ("3.5 lb"), by item. Used at
+       * finish only while the row's price is still the one the receipt read:
+       * a price typed over it is the person's, about what the list says.
+       */
+      quantityById?: Record<string, string>;
     } | null
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
@@ -1062,6 +1068,11 @@ export function GroceryScreen() {
       frozenIds: ReadonlySet<string>
     ) => {
       setFinishOpen(false);
+      const priceQuantityById: Record<string, string> = {};
+      for (const [id, quantity] of Object.entries(receiptSeed?.quantityById ?? {})) {
+        const minor = priceById[id];
+        if (minor !== undefined && receiptSeed?.priceText[id] === priceToInput(minor)) priceQuantityById[id] = quantity;
+      }
       // The receipt was for the trip that just ended. Leaving it set would
       // pre-fill the next shop with this one's prices.
       setReceiptSeed(null);
@@ -1092,7 +1103,7 @@ export function GroceryScreen() {
       // again here.
       // A whole trip closing out is more than one more item ticked off, same
       // distinction chainFinish already draws for a task chain's last step.
-      if (finishShopping(shopId, priceById, purchasedAt, frozenIds) > 0) haptics.chainFinish();
+      if (finishShopping(shopId, priceById, purchasedAt, frozenIds, priceQuantityById) > 0) haptics.chainFinish();
       // Consumed either way: an id finishShopping didn't end up touching
       // (marked unavailable, substituted away) was never going to be applied
       // on some later trip either.
@@ -1103,7 +1114,7 @@ export function GroceryScreen() {
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs, receiptSeed]
   );
 
   /**
@@ -1131,11 +1142,14 @@ export function GroceryScreen() {
       itemIds: string[],
       priceById: Record<string, number>,
       purchasedAt: string,
-      toAdd: ReceiptAddDraft[]
+      toAdd: ReceiptAddDraft[],
+      _frozenItemIds: ReadonlySet<string>,
+      quantityById: Record<string, string>
     ) => {
       animateLayout();
       const allIds = [...itemIds];
       const allPriceById = { ...priceById };
+      const allQuantityById = { ...quantityById };
       for (const draft of toAdd) {
         let id: string;
         if (draft.existingItemId) {
@@ -1146,6 +1160,7 @@ export function GroceryScreen() {
         }
         allIds.push(id);
         if (draft.priceMinor !== null) allPriceById[id] = draft.priceMinor;
+        if (draft.priceMinor !== null && draft.quantity) allQuantityById[id] = draft.quantity;
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
       setReceiptSeed({
@@ -1155,6 +1170,7 @@ export function GroceryScreen() {
         ),
         purchasedAt,
         stamp: generateId(),
+        quantityById: allQuantityById,
       });
       setReceiptOpen(false);
       // Already true when the scan was started from the finish sheet, which is

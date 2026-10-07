@@ -35,6 +35,18 @@ describe('isNonItemRow', () => {
     expect(isNonItemRow('CARDAMOM PODS')).toBe(false);
     expect(isNonItemRow('BAGELS')).toBe(false);
   });
+
+  it('keeps products whose names share a word with a till line', () => {
+    for (const label of ['CHOC CHIP COOKIES', '10LB BAG POTATOES', 'EYE ROUND ROAST', '200 COUNT NAPKINS', 'STORE BRAND OATS']) {
+      expect(isNonItemRow(label)).toBe(false);
+    }
+  });
+
+  it('still drops the till lines those words come from', () => {
+    for (const label of ['BAG FEE', 'ROUND UP DONATION', 'ITEM COUNT 14', 'STORE #1234']) {
+      expect(isNonItemRow(label)).toBe(true);
+    }
+  });
 });
 
 describe('findPrintedDate', () => {

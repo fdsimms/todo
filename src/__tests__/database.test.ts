@@ -3572,6 +3572,14 @@ describe('grocery items', () => {
       expect(byId.get('g2')!.expiresAt).toBeNull();
     });
 
+    it('pairs a price with the amount the receipt printed, where it printed one', () => {
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken', nameKey: 'chicken', checked: true, quantity: '2 lb' }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, { g1: 1047 }, new Set(), null, { g1: '3.5 lb' });
+
+      expect(dbGetAllGroceryItems()[0]).toMatchObject({ lastPriceMinor: 1047, lastPriceQuantity: '3.5 lb' });
+    });
+
     it('measures the gap since the last purchase into the running average', () => {
       insertListedGroceryItem(makeGroceryItem({
         id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3,

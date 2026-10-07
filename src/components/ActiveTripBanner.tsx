@@ -88,7 +88,7 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
   // than reading `checked` off `items`: that flag answers for the home list,
   // and a trolley is per-list. See GroceryListEntry.
   const cart = useGroceryStore(
-    useShallow(s => estimateCartTotal(itemsOnList(s.items, s.listEntries, s.activeListId))),
+    useShallow(s => estimateCartTotal(itemsOnList(s.items, s.listEntries, s.activeListId), s.tripShopId, s.itemShops)),
   );
   const budgetMinor = useGroceryStore(s => s.tripBudgetMinor);
   const setTripBudget = useGroceryStore(s => s.setTripBudget);

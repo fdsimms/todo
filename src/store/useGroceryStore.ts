@@ -1352,7 +1352,14 @@ interface GroceryStore extends UndoHistoryActions {
     shopId?: string | null,
     priceById?: Readonly<Record<string, number>>,
     purchasedAt?: string,
-    frozenIds?: ReadonlySet<string>
+    frozenIds?: ReadonlySet<string>,
+    /**
+     * What a price was paid *for*, where a receipt said: "3.5 lb $10.47"
+     * against a row listed as "2 lb". Without it the price was filed against
+     * the list's quantity, a per-pound figure 75% too high. A row not named
+     * here keeps the list's quantity, as before.
+     */
+    priceQuantityById?: Readonly<Record<string, string>>
   ) => number;
   /**
    * Records what one item cost, by hand. Writes the item's own price and — with
@@ -4246,7 +4253,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const id of ids) dropUseUpTask(id);
   },
 
-  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds) {
+  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds, priceQuantityById = {}) {
     const now = new Date(purchasedAt);
     // The list being finished, and whether it is one you're away from home for.
     // **An away trip records nothing** — see GroceryList: no purchase count, no
@@ -4300,7 +4307,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const pricedQuantityById = new Map(
       get().items
         .filter(i => priceById[i.id] !== undefined)
-        .map(i => [i.id, i.quantityFromRecipe ? null : i.quantity])
+        .map(i => [i.id, priceQuantityById[i.id] ?? (i.quantityFromRecipe ? null : i.quantity)])
     );
     // Snapshotted before anything is written, so undo restores the rows
     // themselves rather than reconstructing what they probably were — same
@@ -4322,7 +4329,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       expiresAtById,
       priceById,
       frozenIds ?? new Set(),
-      listId
+      listId,
+      priceQuantityById
     );
     if (ids.length === 0) return 0;
     const done = new Set(ids);

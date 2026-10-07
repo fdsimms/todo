@@ -181,6 +181,8 @@ interface Props {
     purchasedAt: string,
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
+    /** The receipt's own amount for each priced row it names, where it printed one. */
+    quantityById: Record<string, string>,
   ) => void;
 }
 
@@ -539,9 +541,15 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 
   const handleApply = () => {
     const priceById: Record<string, number> = {};
+    const quantityById: Record<string, string> = {};
     for (const match of matches) {
       if (!match.itemId || !accepted.has(match.itemId)) continue;
-      if (match.line.priceMinor !== null) priceById[match.itemId] = match.line.priceMinor;
+      if (match.line.priceMinor !== null) {
+        priceById[match.itemId] = match.line.priceMinor;
+        // What that price bought, as printed, so it isn't filed against the
+        // list's amount instead ("3.5 lb" against a row listed as "2 lb").
+        if (match.line.quantity.trim()) quantityById[match.itemId] = match.line.quantity.trim();
+      }
     }
     const toAdd: ReceiptAddDraft[] = matches
       .filter(m => m.itemId === null)
@@ -583,7 +591,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       pantry ? Array.from(accepted).filter(id => frozenMatched.has(id)) : []
     );
     haptics.success();
-    onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd, frozenItemIds);
+    onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd, frozenItemIds, quantityById);
   };
 
   /** Returning the message rejects the name and holds the field open. */

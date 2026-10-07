@@ -1202,7 +1202,7 @@ describe('finishShopping', () => {
     const receiptDate = '2026-08-15T12:00:00.000Z';
     useGroceryStore.getState().finishShopping(null, {}, receiptDate);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null, {});
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.lastPurchasedAt)
       .toBe(receiptDate);
   });
@@ -2459,6 +2459,19 @@ describe('prices by hand', () => {
     expect(state.itemShops[0].lastPriceQuantity).toBe('2 L');
   });
 
+  it('finishShopping files a receipt price against the receipt\'s amount, not the list\'s', () => {
+    const chicken = makeItem({ name: 'Chicken thighs', quantity: '2 lb', onList: true, checked: true });
+    seed([chicken]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([chicken.id]);
+
+    useGroceryStore.getState().finishShopping(null, { [chicken.id]: 1047 }, undefined, undefined, { [chicken.id]: '3.5 lb' });
+
+    const item = useGroceryStore.getState().items[0];
+    expect(item.lastPriceQuantity).toBe('3.5 lb');
+    expect(item.priceHistory[0]).toMatchObject({ minor: 1047, quantity: '3.5 lb' });
+    expect((dbFinishGroceryShopping as jest.Mock).mock.calls[0][6]).toEqual({ [chicken.id]: '3.5 lb' });
+  });
+
   it('setItemPrice pairs no quantity when a recipe wrote the one on the row', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', quantity: '3 cups', quantityFromRecipe: true });
@@ -2550,7 +2563,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -2799,7 +2812,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -2814,7 +2827,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -8229,7 +8242,7 @@ describe('separate shopping lists', () => {
       useGroceryStore.getState().finishShopping(null, {});
 
       expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
-        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}
       );
     });
 
@@ -8274,7 +8287,7 @@ describe('separate shopping lists', () => {
       // And the db is told nothing to record either, rather than being trusted
       // to drop it on its own.
       expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
-        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}
       );
     });
 

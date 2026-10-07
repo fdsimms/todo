@@ -5115,7 +5115,7 @@ describe('demo seed — the trip budget', () => {
     // Neither over nor fully priced, so the banner reports the total and the
     // coverage and offers no verdict. That refusal is the feature.
     const { items, listEntries, activeListId, tripBudgetMinor } = useGroceryStore.getState();
-    const cart = estimateCartTotal(itemsOnList(items, listEntries, activeListId));
+    const cart = estimateCartTotal(itemsOnList(items, listEntries, activeListId), null, []);
     expect(cart.priced).toBeGreaterThan(0);
     expect(cart.priced).toBeLessThan(cart.total);
     expect(cartBudgetStanding(cart, tripBudgetMinor)).toBeNull();
