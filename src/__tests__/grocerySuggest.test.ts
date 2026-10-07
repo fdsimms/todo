@@ -7,6 +7,8 @@ import {
   estimatedPurchaseCadenceDays,
   probablyHaveReason,
   correctableHaveReason,
+  isRunningLow,
+  runningLowLapsedDays,
   defaultOnHandUntil,
   pantryGuessLapsedDays,
   OUT_OF_IT_UNTIL,
@@ -567,6 +569,14 @@ describe('correctableHaveReason', () => {
     expect(correctableHaveReason(item, NOW)).toBeNull();
   });
 
+  it('offers a correction again once the "running low" mark has lapsed', () => {
+    const item = makeItem({
+      name: 'Milk', runningLowAt: daysAgo(20), purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    expect(isRunningLow(item, NOW)).toBe(false);
+    expect(correctableHaveReason(item, NOW)).not.toBeNull();
+  });
+
   it('stays quiet for a frozen row — buying more does not empty the freezer', () => {
     const item = makeItem({ name: 'Chicken', frozenAt: daysAgo(30) });
     expect(probablyHaveReason(item, NOW)).toBe(FROZEN_REASON);
@@ -907,3 +917,37 @@ describe('frozen portions', () => {
   });
 });
 
+
+describe('running low lapses', () => {
+  it('holds for up to two weeks and then stops answering for the item', () => {
+    const fresh = makeItem({ name: 'Rice', runningLowAt: daysAgo(13) });
+    expect(isRunningLow(fresh, NOW)).toBe(true);
+    expect(probablyHaveReason(fresh, NOW)).toBe(RUNNING_LOW_REASON);
+    expect(runningLowLapsedDays(fresh, NOW)).toBeNull();
+
+    const stale = makeItem({ name: 'Rice', runningLowAt: daysAgo(16) });
+    expect(isRunningLow(stale, NOW)).toBe(false);
+    expect(probablyHaveReason(stale, NOW)).toBeNull();
+    expect(runningLowLapsedDays(stale, NOW)).toBeCloseTo(2, 5);
+  });
+
+  it('lapses sooner for something bought often', () => {
+    // Weekly cadence: three purchases over 21 days.
+    const milk = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(21), lastPurchasedAt: daysAgo(20), runningLowAt: daysAgo(9),
+    });
+    expect(isRunningLow(milk, NOW)).toBe(false);
+  });
+
+  it('is not low when nothing was ever marked', () => {
+    expect(isRunningLow(makeItem({ name: 'Rice' }), NOW)).toBe(false);
+    expect(runningLowLapsedDays(makeItem({ name: 'Rice' }), NOW)).toBeNull();
+  });
+
+  it('yields to a "Got it" once the mark has lapsed', () => {
+    const item = makeItem({
+      name: 'Rice', runningLowAt: daysAgo(30), onHandUntil: new Date(NOW.getTime() + 5 * 86_400_000).toISOString(),
+    });
+    expect(probablyHaveReason(item, NOW)).toBe('marked as on hand');
+  });
+});

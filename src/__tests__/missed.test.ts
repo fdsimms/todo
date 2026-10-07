@@ -1,4 +1,4 @@
-import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
+import { isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, mostMissed } from '../utils/missed';
 import type { Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
@@ -141,6 +141,20 @@ describe('isMissed / isRealCompletion', () => {
     expect(isRealCompletion(makeTask({ completed: true, missedAt: null }))).toBe(true);
     expect(isRealCompletion(makeTask({ completed: true, missedAt: '2025-01-01T00:00:00.000Z' }))).toBe(false);
     expect(isRealCompletion(makeTask({ completed: false, missedAt: null }))).toBe(false);
+  });
+});
+
+describe('isDoneByOther / isResolvedAsDone', () => {
+  const by = '2025-01-01T00:00:00.000Z';
+  it('a row somebody else did is resolved as done but is not your completion', () => {
+    const t = makeTask({ completed: true, doneByOtherAt: by });
+    expect(isDoneByOther(t)).toBe(true);
+    expect(isRealCompletion(t)).toBe(false);
+    expect(isResolvedAsDone(t)).toBe(true);
+  });
+  it('a miss is neither', () => {
+    const t = makeTask({ completed: true, missedAt: by });
+    expect(isResolvedAsDone(t)).toBe(false);
   });
 });
 

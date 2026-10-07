@@ -24,7 +24,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   // instruction; these are the history, the same split the medication triple
   // and deliverableKind already make.
   'state a task records as it runs': [
-    'completed', 'completedAt', 'missedAt', 'autoScheduledAt', 'createdAt', 'seenAt', 'sortOrder', 'pinned',
+    'completed', 'completedAt', 'missedAt', 'doneByOtherAt', 'autoScheduledAt', 'createdAt', 'seenAt', 'sortOrder', 'pinned',
     'pinnedOrder', 'backfillDismissedFields', 'progressCount', 'quotaStartedAt', 'rotationLog',
     'rotationPeriodStart', 'rotationLastDone', 'rotationPlan', 'supplyDeclinedAtCount', 'slipCount', 'slipDate', 'penaltyFiredAt',
     'penaltyCreditedAt', 'streakCount', 'streakDate', 'previousStreakCount', 'previousStreakDate', 'priorBestStreak',

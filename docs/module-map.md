@@ -155,7 +155,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryRowQuantity.ts` — QUANTITY_BESIDE_NAME_MAX_CHARS, quantityCharsForPill, NameRowSpace, groceryRowNameSpace, recipeToListNameSpace, addMealsToListNameSpace, quantityFitsBesideName
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, describeOwnAisleOrders, +14 more
-- `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +13 more
+- `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +15 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/haptics.ts` — haptics
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported, openHealthApp
@@ -205,7 +205,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +10 more
-- `src/utils/missed.ts` — isMissed, isRealCompletion, MostMissedGroup, mostMissed
+- `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, hasWrittenNote, toggleFilterValue, filterMoodLogs, searchMoodLogs, textMatchesQuery, adjacentLogDays, MoodLogDay, +10 more
 - `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, taskIdentityKey, HealthDayInput, FoodDayInput, NUTRIENT_INSIGHT_KEYS, InsightNutrient, completionDayKey, buildMoodDays, +43 more

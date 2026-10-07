@@ -232,6 +232,14 @@ describe('projectProgress', () => {
     expect(projectProgress('p1', tasks)).toEqual({ done: 2, total: 2 });
   });
 
+  it('counts a member somebody else did, because the work happened', () => {
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', completed: true, doneByOtherAt: '2025-01-05T00:00:00.000Z' }),
+      makeTask({ id: 'b', projectId: 'p1', completed: false }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 2 });
+  });
+
   it('does not count a member whose only row was marked missed', () => {
     // A miss is stored as a completed row (see Task.missedAt), so the plain
     // `completed` test would call this project finished. Normally the miss

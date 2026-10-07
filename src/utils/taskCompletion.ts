@@ -89,6 +89,14 @@ export interface CompletionOptions {
    */
   deliverableReasoning?: DeliverableReasoning;
   neutral?: boolean;
+  /**
+   * The person says somebody else did it. Stamps `Task.doneByOtherAt`, and
+   * closes the occurrence the way `neutral` does (no coins, the streak neither
+   * advances nor breaks), so it implies it. Unlike a bare `neutral` it is a
+   * person's own call, so anything a completion frees (a task waiting on this
+   * one) is offered a day as for any other completion.
+   */
+  byOther?: boolean;
   completedAt?: string;
   /**
    * Confirmed override for an `'hours'` recurrence's own not-yet-due lock
@@ -197,7 +205,8 @@ export function buildCompletion(
 
   const { dayResetTime, vacationMode, now, allTasks, subtasks } = context;
   const missed = options?.missed ?? false;
-  const neutral = options?.neutral ?? false;
+  const byOther = options?.byOther ?? false;
+  const neutral = (options?.neutral ?? false) || byOther;
   const id = task.id;
   // Two callers complete a task after the fact and want the record to say
   // so: the morning check-in ("yes, I did this last night") and a queued
@@ -352,6 +361,8 @@ export function buildCompletion(
     // What makes this row a miss rather than a completion. It is set
     // alongside `completed`, never instead of it — see Task.missedAt.
     missedAt: missed ? completedAt.toISOString() : task.missedAt,
+    // The other way a row can be resolved without the user having done it.
+    doneByOtherAt: byOther && !missed ? completedAt.toISOString() : task.doneByOtherAt,
     // Pin is cleared once the completion hold expires, not immediately —
     // otherwise a pinned row would vanish from the Pinned section instantly
     // instead of getting the same fade-out grace period every other list
@@ -560,6 +571,7 @@ export function buildCompletion(
         completed: false,
         completedAt: null,
         missedAt: null, // a miss belongs to the occurrence that was missed, never to its successor
+        doneByOtherAt: null, // and so does somebody else's completion
         // The twin of the line above, and load-bearing rather than tidy: the
         // stamp is what stops a charge being made twice, so riding it forward
         // would mean a daily task could be charged once and then never again,
@@ -764,6 +776,7 @@ export function buildCompletion(
         completed: false,
         completedAt: null,
         missedAt: null,
+        doneByOtherAt: null,
         autoScheduledAt: null,
         createdAt: now.toISOString(),
         seenAt: now.toISOString(),

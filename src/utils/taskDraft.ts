@@ -214,6 +214,7 @@ export function newTaskFromDraft(
     completed: false,
     completedAt: null,
     missedAt: null,
+    doneByOtherAt: null,
     autoScheduledAt: null,
     createdAt: now,
     seenAt: now,

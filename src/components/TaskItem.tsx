@@ -100,6 +100,8 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallTasks';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { CompletionOptionsMenu } from './CompletionOptionsMenu';
+import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
 import { isRotationTask, plannedRotationItem, rotationLastPickLabel, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
@@ -1099,6 +1101,12 @@ export const TaskItem = React.memo(function TaskItem({
   const mountMealPicker = useSheetMount(mealPickerOpen);
   const [showRotationPick, setShowRotationPick] = useState(false);
   const mountRotationPick = useSheetMount(showRotationPick);
+  // Long-pressing the checkbox of a repeating task: skip, mark missed, or
+  // "someone else did it". The anchor is where the finger is, so the card
+  // opens above it when the row is low on screen (cardAnchorPlacement).
+  const [completionMenuAnchor, setCompletionMenuAnchor] = useState<CardAnchor | null>(null);
+  const [showCompletionMenu, setShowCompletionMenu] = useState(false);
+  const mountCompletionMenu = useSheetMount(showCompletionMenu);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // One reading per render rather than one per helper, so the chip, the
   // over-commitment test and the sheet can't land on different sides of a
@@ -1530,6 +1538,24 @@ export const TaskItem = React.memo(function TaskItem({
   // does what a completing row's checkbox does — undo. Nor while selecting,
   // where every tap on the row means "pick this one".
   const meterInteractive = showQuotaMeter && !completing && !pacingOut && !selectionMode;
+  // The long-press menu is for a task that can be closed out right now. A
+  // meter, a rotation and a negative habit keep their own long press; one that
+  // isn't due yet has nothing to close (completionLocked). Skip and Mark Missed
+  // are offered only when there is a next date to move to.
+  const completionMenuOffered =
+    !selectionMode && !isNegative && !completing && !showQuotaMeter && !isRotation &&
+    !completionLocked;
+  const completionMenuRepeats = task.recurrenceType !== 'none';
+  const openCompletionMenu = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
+    haptics.impactMedium();
+    setCompletionMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+    setShowCompletionMenu(true);
+  };
+  // The same collapse the panel's own Skip and Missed buttons do: the row
+  // leaves the list, and nothing else clears an expanded row's spotlight.
+  const afterCompletionMenuChoice = () => {
+    if (expandedRef.current) onPress(rowId);
+  };
 
   // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
   // a habit whose streak just broke doesn't silently lose a chip — the row
@@ -2422,6 +2448,7 @@ export const TaskItem = React.memo(function TaskItem({
         onLongPress={
           isNegative ? (slipsLoggedToday > 0 ? handleSlipUndo : undefined)
           : meterInteractive ? handleQuotaUndo
+          : completionMenuOffered ? openCompletionMenu
           : undefined
         }
         delayLongPress={interaction.delayLongPress}
@@ -4453,6 +4480,16 @@ export const TaskItem = React.memo(function TaskItem({
           screenful of rows meant a screenful of those re-rendering on every
           store write. It stays mounted afterwards so it can close through
           `visible`; see useSheetMount. */}
+      {mountCompletionMenu && (
+        <CompletionOptionsMenu
+          visible={showCompletionMenu}
+          anchor={completionMenuAnchor}
+          onClose={() => setShowCompletionMenu(false)}
+          onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
+          onMiss={completionMenuRepeats ? () => { markMissed(task.id); afterCompletionMenuChoice(); } : undefined}
+          onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
+        />
+      )}
       {mountWhenPicker && (
         <WhenPicker
           visible={whenPickerOpen}

@@ -20,7 +20,7 @@
 import type { GroceryItem, GroceryListEntry, ItemProduct, Leftover, LeftoverOutcome } from '../types';
 import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { PORTION_PRODUCT_KEY, isPortionBox } from '../types';
-import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
+import { OUT_OF_IT_UNTIL, defaultOnHandUntil, isRunningLow } from './grocerySuggest';
 import { expiresAtForOpening, expiresAtForPurchase } from './groceryShelfLife';
 import type { DisposalOutcome } from './itemDisposal';
 import type { PantryReviewAnswer } from './pantryReview';
@@ -133,7 +133,9 @@ export function reviewedRow(item: GroceryItem, answer: PantryReviewAnswer, now: 
  * row was not yet on the list it joins, which is the caller's join to write.
  */
 export function runningLowRow(item: GroceryItem, low: boolean, wasOnList: boolean, nowIso: string): GroceryItem | null {
-  if (!!item.runningLowAt === low) return null;
+  // A lapsed mark is not "already low": marking again renews it, rather than
+  // being a no-op that leaves the row answering nothing. Clearing still clears.
+  if (low ? isRunningLow(item, new Date(nowIso)) : !item.runningLowAt) return null;
   return {
     ...item,
     runningLowAt: low ? nowIso : null,

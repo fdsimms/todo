@@ -88,6 +88,8 @@ export interface SerializedTask {
    * without this a missed occurrence reads as done. Not a completion.
    */
   missed?: boolean;
+  /** Marked as done by somebody else. Also `completed: true`; not something the person did, so not a completion of theirs and no coins. */
+  doneByOther?: boolean;
   /** Which of the app's generators wrote this task unasked (weather, birthday, meal...). Absent on anything a person typed. */
   generatedBy?: string;
   /**
@@ -174,6 +176,7 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     blocked: replica.isBlocked(task) ? true : undefined,
     notNeeded: replica.isNotNeeded(task) ? true : undefined,
     missed: task.missedAt ? true : undefined,
+    doneByOther: task.doneByOtherAt ? true : undefined,
     generatedBy: task.generatedKind ?? undefined,
     seriesId: task.seriesId ?? undefined,
     people,

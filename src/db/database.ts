@@ -1623,6 +1623,9 @@ export function initDatabase(): void {
     // NULL on every existing row, which is "no allowance": the first slip of a
     // day fails it, as it always has. See Task.slipAllowance.
     'ALTER TABLE tasks ADD COLUMN slip_allowance INTEGER',
+    // Null for every existing row: nothing completed before this shipped was
+    // marked as done by someone else. See Task.doneByOtherAt.
+    'ALTER TABLE tasks ADD COLUMN done_by_other_at TEXT',
     // NULL on every existing row, which is exactly "not a health-target task" —
     // the pair travels together and neither means anything alone (see
     // hasHealthTarget). No default, because a target nobody set is not a target
@@ -3471,6 +3474,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     slipCount: (row.slip_count as number) ?? 0,
     slipDate: (row.slip_date as string) ?? null,
     slipAllowance: (row.slip_allowance as number | null) ?? null,
+    doneByOtherAt: (row.done_by_other_at as string) ?? null,
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -3539,8 +3543,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3665,6 +3669,7 @@ export function dbInsertTask(task: Task): void {
       task.waitForSeriesEnd ? 1 : 0,
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
+      task.doneByOtherAt ?? null,
     ]
   );
 }
@@ -3701,7 +3706,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3827,6 +3832,7 @@ export function dbUpdateTask(task: Task): void {
       task.waitForSeriesEnd ? 1 : 0,
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
+      task.doneByOtherAt ?? null,
       task.id,
     ]
   );
