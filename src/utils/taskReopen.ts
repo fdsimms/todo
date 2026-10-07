@@ -20,6 +20,7 @@ export function reopenedTask(task: Task): Task {
     // needed to restore the streak it broke: the snapshot below covers it,
     // exactly as it covers an undone completion.
     missedAt: null,
+    doneByOtherAt: null,
     // Restore the streak to what it was before this completion, so
     // undoing a completion (e.g. from the Logbook) doesn't leave the
     // streak incremented for something that no longer happened.

@@ -2251,6 +2251,15 @@ export interface Task {
   // "did the user actually do this", never where it's "is this row history".
   missedAt: string | null;
   /**
+   * A repeating occurrence (or one-off) the user said somebody else did. Like a
+   * miss it is *also* `completed`, so every "is this row history" gate keeps
+   * working, and this field is what `isRealCompletion` reads: the user did not
+   * do it, so it earns no coins, advances and breaks no streak, and isn't an
+   * achievement in Stats. Unlike a miss it still counts as done for a project
+   * (`isResolvedAsDone`), because the work happened.
+   */
+  doneByOtherAt?: string | null;
+  /**
    * When dripStalledProjects put a date on this task — the one write in the app
    * the user never asked for, so it's the one that has to say so. Two readers,
    * and they're why this is a timestamp rather than a boolean:

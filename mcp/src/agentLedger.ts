@@ -154,6 +154,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
+    // Its own note, reverted like a completion: reopening is the way back.
+    markDoneByOther(id) {
+      const result = replica.markDoneByOther(id);
+      log({ action: 'completed', subject: 'task', title: result.completed.title, taskId: id, note: `Mark "${result.completed.title}" done by someone else, with no coins and no change to its streak` });
+      return result;
+    },
+
     reopenTask(id) {
       const result = replica.reopenTask(id);
       log({

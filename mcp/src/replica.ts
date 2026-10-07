@@ -1331,6 +1331,14 @@ export interface Replica {
    */
   markMissed(id: string): CompletedResult;
   /**
+   * Close a task as done by somebody else: `completeTask` with `byOther: true`.
+   * The occurrence is completed and any next one created, but it earns no coins,
+   * the streak neither advances nor breaks, and no dose is logged. Works on a
+   * one-off too. `reopenTask` undoes it. No answer is asked for: nobody here did
+   * the thing the question is about.
+   */
+  markDoneByOther(id: string): CompletedResult;
+  /**
    * Log a slip against a "don't do this" habit, and take back today's latest one.
    * A habit with a penalty is refused: the slip charges an app block on the
    * phone, which only the phone can set.
@@ -2090,11 +2098,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * same walk with `missed: true`, so the streak breaks and the next occurrence
    * is created by the one rule that does both.
    */
-  const finishCompletion = (task: Task, options: CompletionOptions | undefined, mode: 'completed' | 'missed' | 'neutral'): CompletedResult => {
+  const finishCompletion = (task: Task, options: CompletionOptions | undefined, mode: 'completed' | 'missed' | 'neutral' | 'other'): CompletedResult => {
     const id = task.id;
     const missed = mode === 'missed';
     const settings = useSettingsStore.getState();
-    const built = completion.buildCompletion(task, missed ? { missed: true } : mode === 'neutral' ? { ...options, neutral: true } : options, {
+    const built = completion.buildCompletion(task, missed ? { missed: true } : mode === 'neutral' ? { ...options, neutral: true } : mode === 'other' ? { byOther: true } : options, {
       dayResetTime: settings.dayResetTime,
       vacationMode: settings.vacationMode,
       now: new Date(),
@@ -2122,7 +2130,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // it would make a medication task completed here invisible in the log
     // that exists to count exactly these. Read through `medicationFor` so a
     // chain step carrying its own medication records that one.
-    const dose = missed ? null : medication.medicationFor(task);
+    const dose = missed || mode === 'other' ? null : medication.medicationFor(task);
     if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
 
     // Coins, kept for the same reason: the ledger is a record, and a task
@@ -2133,7 +2141,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // reads the same answer the phone does).
     // A neutral completion is the app closing something on its own account, so
     // it moves no coins either way (a claimed wish-list item is the one use).
-    if (mode !== 'neutral' && rewards.taskEarnsCoins(task)) {
+    if (mode !== 'neutral' && mode !== 'other' && rewards.taskEarnsCoins(task)) {
       const store = useRewardStore.getState();
       const title = visibility.displayTitleFor(task);
       const at = new Date().toISOString();
@@ -3331,6 +3339,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const refusal = completion.completionRefusal(task);
       if (refusal) throw new Error(refusal);
       return finishCompletion(task, undefined, 'missed');
+    },
+
+    markDoneByOther(id: string): CompletedResult {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      const refusal = completion.completionRefusal(task);
+      if (refusal) throw new Error(refusal);
+      return finishCompletion(task, undefined, 'other');
     },
 
     reopenTask(id: string): { task: Task; removed: Task[] } {
