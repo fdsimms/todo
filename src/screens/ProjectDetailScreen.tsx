@@ -31,6 +31,7 @@ import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
 import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
+import { reuseUnchangedLists } from '../utils/stableLists';
 import { Alert, InteractionManager, Linking, Share } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
@@ -399,7 +400,6 @@ export function ProjectDetailScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
   const updateProject = useProjectStore(s => s.updateProject);
   const allTasks = useTaskStore(s => s.tasks);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const addTask = useTaskStore(s => s.addTask);
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
@@ -732,6 +732,10 @@ export function ProjectDetailScreen() {
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
+  // Each map below keeps last time's array for any key whose members didn't
+  // change (reuseUnchangedLists), so adding one task re-renders the rows and
+  // headers it touched rather than every one on the page.
+  const subtasksPrev = useRef<Map<string, Task[]> | null>(null);
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -740,7 +744,7 @@ export function ProjectDetailScreen() {
       if (list) list.push(t);
       else map.set(t.parentId, [t]);
     }
-    return map;
+    return (subtasksPrev.current = reuseUnchangedLists(subtasksPrev.current, map));
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 
@@ -749,6 +753,7 @@ export function ProjectDetailScreen() {
   // TaskGroupHeader's "N/M done today" tally needs the stack's whole roster
   // regardless of which project happens to hold a given member. Same
   // computation as TodayScreen's own childrenByGroupId.
+  const groupChildrenPrev = useRef<Map<string, Task[]> | null>(null);
   const childrenByGroupId = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -758,7 +763,7 @@ export function ProjectDetailScreen() {
       else map.set(t.groupId, [t]);
     }
     for (const list of map.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
-    return map;
+    return (groupChildrenPrev.current = reuseUnchangedLists(groupChildrenPrev.current, map));
   }, [allTasks]);
 
   // Stacked tasks collapsed into a single 'group' entry, plus any stack built
@@ -821,12 +826,13 @@ export function ProjectDetailScreen() {
   // Each section's roster in this project, done and undone, for its header's
   // tally. Built once, so the memoized headers get the same array until a task
   // actually changes.
+  const sectionRosterPrev = useRef<Map<string, Task[]> | null>(null);
   const sectionRosterById = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const [groupId, children] of childrenByGroupId) {
       map.set(groupId, groupRoster(children.filter(t => t.projectId === projectId && !t.archived && t.parentId === null)));
     }
-    return map;
+    return (sectionRosterPrev.current = reuseUnchangedLists(sectionRosterPrev.current, map));
   }, [childrenByGroupId, projectId]);
 
   const selectableTasks = useMemo(() => {
@@ -1504,7 +1510,8 @@ export function ProjectDetailScreen() {
   };
 
   const eligibleForAdd = useMemo(() => {
-    if (!project) return [];
+    // Nothing to sort while the picker is shut, and this ran on every add.
+    if (!project || !showExistingPicker) return [];
     const q = existingSearch.trim().toLowerCase();
     // Newest first, so the task just written somewhere else is at the top
     // rather than wherever it fell in store order.
@@ -1517,7 +1524,7 @@ export function ProjectDetailScreen() {
         (q === '' || t.title.toLowerCase().includes(q))
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [allTasks, existingSearch, project]);
+  }, [allTasks, existingSearch, project, showExistingPicker]);
   const shownForAdd = useMemo(() => eligibleForAdd.slice(0, EXISTING_PICKER_LIMIT), [eligibleForAdd]);
 
   // Where the bulk bar can move a selection: every other active project.
@@ -2433,7 +2440,10 @@ export function ProjectDetailScreen() {
           <BulkActionBar
             selectedCount={selectedIds.size}
             totalCount={selectableTasks.length}
-            existingTags={allTags}
+            // Read here rather than subscribed: the selector walks every
+            // task's tags on every store write, for a bar that's only up
+            // while selecting (and re-renders with the page anyway).
+            existingTags={useTaskStore.getState().allTags()}
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
