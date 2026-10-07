@@ -3,6 +3,8 @@ import {
   UndoableAction,
   freshest,
   isReplaying,
+  latestRedoHistory,
+  latestUndoHistory,
   offersOnUndoBar,
   popEntry,
   pushEntry,
@@ -145,5 +147,24 @@ describe('offersOnUndoBar', () => {
   it('never offers an empty slot', () => {
     expect(offersOnUndoBar(null, true)).toBe(false);
     expect(offersOnUndoBar(null, false)).toBe(false);
+  });
+});
+
+describe('latestUndoHistory / latestRedoHistory', () => {
+  const history = (undo: UndoableAction[], redo: UndoableAction[] = []) => ({ undoStack: undo, redoStack: redo });
+
+  it('undoes in whichever history acted last', () => {
+    const tasks = history([act('Task deleted', 5)]);
+    const groceries = history([act('Item checked', 9)]);
+    expect(latestUndoHistory([tasks, groceries])).toBe(groceries);
+    expect(latestUndoHistory([history([]), history([])])).toBeNull();
+  });
+
+  it('redoes only while nothing has happened since the undo', () => {
+    const tasks = history([], [act('Task deleted', 10)]);
+    const groceries = history([act('Item checked', 8)]);
+    expect(latestRedoHistory([tasks, groceries])).toBe(tasks);
+    const later = history([act('Item checked', 12)]);
+    expect(latestRedoHistory([tasks, later])).toBeNull();
   });
 });

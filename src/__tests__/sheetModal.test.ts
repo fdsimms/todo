@@ -1,5 +1,7 @@
 import {
+  anySheetOpen,
   canHideSheet,
+  closeTopmostSheet,
   canShowSheet,
   claimPresentation,
   createPresentationLevel,
@@ -13,6 +15,7 @@ import {
   subscribeDismissAllSheets,
   subscribePresentation,
   subscribeSheetCover,
+  trackOpenSheet,
 } from '../utils/sheetModal';
 
 describe('nextSheetVisibility', () => {
@@ -400,5 +403,36 @@ describe('requestDismissAllSheets', () => {
     requestDismissAllSheets();
     expect([a, b]).toEqual([1, 2]);
     offB();
+  });
+});
+
+describe('closeTopmostSheet', () => {
+  it('closes the sheet that came up last, and only that one', () => {
+    const closed: string[] = [];
+    const offA = trackOpenSheet('a', () => closed.push('a'));
+    const offB = trackOpenSheet('b', () => closed.push('b'));
+    expect(anySheetOpen()).toBe(true);
+    expect(closeTopmostSheet()).toBe(true);
+    expect(closed).toEqual(['b']);
+    offB();
+    expect(closeTopmostSheet()).toBe(true);
+    expect(closed).toEqual(['b', 'a']);
+    offA();
+  });
+
+  it('reports false with nothing open', () => {
+    expect(anySheetOpen()).toBe(false);
+    expect(closeTopmostSheet()).toBe(false);
+  });
+
+  it('untracks a sheet that closed under one still open above it', () => {
+    const closed: string[] = [];
+    const offA = trackOpenSheet('a', () => closed.push('a'));
+    const offB = trackOpenSheet('b', () => closed.push('b'));
+    offA();
+    closeTopmostSheet();
+    expect(closed).toEqual(['b']);
+    offB();
+    expect(anySheetOpen()).toBe(false);
   });
 });

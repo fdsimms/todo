@@ -178,6 +178,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, journalExportCsv, journalExportFileName, journalExportSummary
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, toggleLinePrefix
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
+- `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, shortcutById, shortcutKeys, describeShortcuts
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
@@ -345,7 +346,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
 - `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
-- `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, canShowSheet, claimPresentation, releasePresentationClaim, +7 more
+- `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, canShowSheet, claimPresentation, releasePresentationClaim, +10 more
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
@@ -408,7 +409,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +2 more
-- `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, UndoHistoryActions, +7 more
+- `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, latestUndoHistory, +9 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, unitFactor, +3 more
 - `src/utils/useReduceMotion.ts` — useReduceMotion
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
@@ -497,6 +498,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useEventTaskSync.ts` — useEventTaskSync
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusPlanReconcile
+- `src/hooks/useKeyShortcuts.ts` — useKeyShortcuts
 - `src/hooks/useKeyboardHeight.ts` — useKeyboardHeight
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
 - `src/hooks/useKeyboardLift.ts` — useKeyboardLift

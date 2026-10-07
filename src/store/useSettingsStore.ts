@@ -606,7 +606,8 @@ interface SettingsStore {
    * the UndoBar offers every undoable action rather than only the destructive
    * ones (shake-to-undo, the route to the rest, is out of reach), and Return
    * on a task title (quick add, the editor, a row's rename) accepts the
-   * suggestion found in it. Off by default and device-local: it describes how
+   * suggestion found in it, and the hardware-keyboard shortcuts in
+   * `keyShortcuts.ts` are on (`useKeyShortcuts`). Off by default and device-local: it describes how
    * this phone is being held, not a preference another device should inherit.
    */
   mirroringMode: boolean;

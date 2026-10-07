@@ -13,6 +13,7 @@ import {
   releasePresentationClaim,
   subscribeDismissAllSheets,
   subscribePresentation,
+  trackOpenSheet,
   type PresentationLevel,
 } from '../utils/sheetModal';
 
@@ -304,8 +305,14 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
       setShown(false);
       return;
     }
-    return () => releasePresentation(parentLevel, id);
-  }, [shown, parentLevel, ownLevel, id, name, rest.testID]);
+    // For the Escape shortcut (`closeTopmostSheet`). The lock screen is exempt
+    // for the same reason it is exempt from dismiss-all above.
+    const untrack = preempts ? null : trackOpenSheet(id, () => onRequestCloseRef.current?.({} as never));
+    return () => {
+      untrack?.();
+      releasePresentation(parentLevel, id);
+    };
+  }, [shown, parentLevel, ownLevel, id, name, rest.testID, preempts]);
 
   return (
     <Modal visible={shown} {...rest}>

@@ -148,6 +148,25 @@ export function offersOnUndoBar(action: UndoableAction | null, everyAction: bool
   return everyAction || action.destructive === true;
 }
 
+/**
+ * Which of several histories an undo would run next: the one whose top entry
+ * landed most recently, the same pick `useShakeToUndo` and the UndoBar make.
+ * Null when every undo stack is empty.
+ */
+export function latestUndoHistory<T extends UndoHistory>(histories: T[]): T | null {
+  return freshest(histories, h => topOf(h.undoStack)?.at);
+}
+
+/**
+ * Which history a redo would run next, or null when there is nothing to redo
+ * or something has been done since the last undo (`redoIsCurrent`).
+ */
+export function latestRedoHistory<T extends UndoHistory>(histories: T[]): T | null {
+  const history = freshest(histories, h => topOf(h.redoStack)?.at);
+  if (!history) return null;
+  return redoIsCurrent(topOf(history.redoStack), histories.map(h => topOf(h.undoStack))) ? history : null;
+}
+
 /** The four actions every store with a history exposes. */
 export interface UndoHistoryActions {
   /**
