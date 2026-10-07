@@ -19157,6 +19157,21 @@ describe('coins', () => {
     expect(useRewardStore.getState().entries).toEqual([]);
   });
 
+  // "Someone else did it" on a repeating task: the row closes and the next
+  // occurrence appears, with no coins and the streak neither advanced nor broken.
+  it('closes a repeat as done by someone else with no coins and the streak kept', () => {
+    useTaskStore.setState({ tasks: [{ ...recurring(), streakCount: 4, streakDate: new Date(2025, 5, 8).toISOString() }] });
+    useTaskStore.getState().completeTask('t1', { neutral: true });
+    const tasks = useTaskStore.getState().tasks;
+    const done = tasks.find(t => t.id === 't1')!;
+    expect(done.completed).toBe(true);
+    expect(done.missedAt).toBeNull();
+    expect(done.streakCount).toBe(4);
+    expect(tasks.filter(t => !t.completed)).toHaveLength(1);
+    expect(tasks.find(t => !t.completed)!.streakCount).toBe(4);
+    expect(useRewardStore.getState().entries).toEqual([]);
+  });
+
   it('pays nothing for a subtask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'p' }), makeTask({ id: 's', parentId: 'p' })] });
     useTaskStore.getState().completeTask('s');
