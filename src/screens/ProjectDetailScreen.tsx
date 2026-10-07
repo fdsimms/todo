@@ -350,7 +350,7 @@ function NewLineField({
           activeOpacity={interaction.activeOpacity}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={`Add ${placeholder === 'New item' ? 'item' : 'line'}`}
+          accessibilityLabel={`Add ${placeholder.replace(/^New /, '')}`}
         >
           <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.accent} />
         </TouchableOpacity>
@@ -946,21 +946,16 @@ export function ProjectDetailScreen() {
   }, [completeGroup, requestComplete, projectId]);
 
   const openAddToSection = (group: TaskGroup) => {
-    // A list item or checklist line is typed where it goes, not in a sheet:
-    // the field opens at the section's foot, as it does under a line on
-    // Return. Every other way onto a list (the top field, Return, a new
-    // section, a FAB drop) is this field, so a section's button opening the
-    // full quick add instead made one list behave two ways.
-    if (isList || group.checklist) {
-      setExpandedTaskId(null);
-      setInsertAfterId(null);
-      if (group.collapsed) setGroupCollapsed(group.id, false);
-      setSectionLine({ groupId: group.id, n: 0 });
-      return;
-    }
-    setQuickAddSeed({ groupId: group.id });
-    setQuickAddSeedLabel(group.title.trim() || 'Section');
-    setQuickAddVisible(true);
+    // Typed where it goes, not in a sheet: the field opens at the section's
+    // foot, as it does under a list line on Return, and Return adds the task
+    // and opens the next field. A task section used to open the full quick
+    // add, which cost a sheet's round trip per task when filling a section
+    // with several; anything the field can't set is a tap on the row away.
+    // Dropping the add button on a section still opens the sheet.
+    setExpandedTaskId(null);
+    setInsertAfterId(null);
+    if (group.collapsed) setGroupCollapsed(group.id, false);
+    setSectionLine({ groupId: group.id, n: 0 });
   };
 
   // Stable, and a no-op on an empty section. An empty one always draws open
@@ -1174,9 +1169,11 @@ export function ProjectDetailScreen() {
    * field on the page: its `#` and `@` markers, whatever the keyboard bar's
    * Confirm set on it, and a link at the end kept on the task with the words
    * as its title. No title rules and no default category: a line is what was
-   * typed, plus only what its own markers say.
+   * typed, plus only what its own markers say. A task (`asTask`, a task
+   * section's field) keeps both, the way quick add and the project's own
+   * suggestions do.
    */
-  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING): Task => {
+  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING, asTask = false): Task => {
     const context: LineParseContext = {
       categories: useCategoryStore.getState().categories.map(c => c.name),
       tags: useTaskStore.getState().allTags(),
@@ -1198,7 +1195,7 @@ export function ProjectDetailScreen() {
         ...(link ? { linkUrl: link.url } : {}),
       },
       undefined,
-      { skipTitleRules: true, skipCategoryDefault: true },
+      { skipTitleRules: !asTask, skipCategoryDefault: !asTask },
     );
     // "On the 10th and the 15th": the rest of the set, not just its first date.
     if (seriesDates) useTaskStore.getState().applyTaskDates(task.id, seriesDates);
@@ -1206,7 +1203,7 @@ export function ProjectDetailScreen() {
   };
 
   const addLineToSection = (group: TaskGroup, text: string, pending?: LinePending) => {
-    const task = createLine(text, { projectId, groupId: group.id }, pending);
+    const task = createLine(text, { projectId, groupId: group.id }, pending, !isList && !group.checklist);
     const siblings = useTaskStore.getState().tasks
       .filter(t => t.groupId === group.id && t.projectId === projectId && !t.parentId && !t.completed && !t.archived && t.id !== task.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -2169,7 +2166,7 @@ export function ProjectDetailScreen() {
                           onDone={() => setSectionLine(null)}
                           styles={styles}
                           placeholderColor={colors.textTertiary}
-                          placeholder={isList ? 'New item' : 'New line'}
+                          placeholder={isList ? 'New item' : group.checklist ? 'New line' : 'New task'}
                           inTray
                         />
                       ) : empty ? (
@@ -2210,9 +2207,9 @@ export function ProjectDetailScreen() {
                         )}
                         {checkedHere.map(task => renderCheckedRow(task, true))}
                         {/* Every open section can take another task from
-                            here, not only an empty one. The quick add it
-                            opens can stay open ("Add another"), and each
-                            task joins this section. */}
+                            here, not only an empty one. Return adds what's
+                            typed and opens the next field, and each task
+                            joins this section. */}
                         {!selectionMode && sectionLine?.groupId === group.id && (
                           <NewLineField
                             key={`section-${group.id}-${sectionLine.n}`}
@@ -2224,7 +2221,7 @@ export function ProjectDetailScreen() {
                             onDone={() => setSectionLine(null)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
-                            placeholder={isList ? 'New item' : 'New line'}
+                            placeholder={isList ? 'New item' : group.checklist ? 'New line' : 'New task'}
                             inTray
                           />
                         )}
