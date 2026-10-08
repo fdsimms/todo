@@ -1230,6 +1230,32 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             </TouchableOpacity>
           )}
         </CollapsibleField>
+        <View style={styles.sepIcon} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Suggest for a free weekend"
+          accessibilityState={{ checked: weekendSource }}
+        >
+          <Ionicons name="sunny-outline" size={18} color={weekendSource ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
+            <Text style={styles.optionHint}>
+              {!weekendNudgeOn
+                ? 'Takes effect once "Nudge for an empty weekend" is on in Automations, in the menu'
+                : nudgeMode === 'never'
+                  ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
+                  : weekendSource
+                  ? 'The weekend task names this project when a weekend has nothing on it'
+                  : 'The weekend task does not name this project'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, weekendSource && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
       </View>
       </>
       )}
@@ -1356,32 +1382,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
             <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-        <View style={styles.sepIcon} />
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Suggest for a free weekend"
-          accessibilityState={{ checked: weekendSource }}
-        >
-          <Ionicons name="sunny-outline" size={18} color={weekendSource ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
-            <Text style={styles.optionHint}>
-              {!weekendNudgeOn
-                ? 'Takes effect once "Nudge for an empty weekend" is on in Automations, in the menu'
-                : nudgeMode === 'never'
-                  ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
-                  : weekendSource
-                  ? 'The weekend task names this project when a weekend has nothing on it'
-                  : 'The weekend task does not name this project'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, weekendSource && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>
