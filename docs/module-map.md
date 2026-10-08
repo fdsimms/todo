@@ -352,7 +352,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
-- `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, DoseAction, SearchAction, SearchActionsOutcome, searchActions, DoseActionDescription, describeDoseAction
+- `src/utils/searchActionRun.ts` — SearchActionReceipt, waterTodayMl, openMoodLogFor, runSearchAction
+- `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, DoseAction, WaterAction, MoodAction, GroceryAction, SearchAction, SearchActionSources, SearchActionsOutcome, glassMl, isRunnable, +4 more
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +5 more
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
@@ -558,7 +559,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useScrollEdgeFade.ts` — ScrollEdgeFadeScrollProps, ScrollEdgeFadeBinding, useScrollEdgeFade
 - `src/hooks/useScrollToTopOnTabPress.ts` — useScrollToTopOnTabPress
 - `src/hooks/useScrollToTopVisibility.ts` — useScrollToTopVisibility
-- `src/hooks/useSearchActions.ts` — useSearchActions
+- `src/hooks/useSearchActions.ts` — SearchActionsView, useSearchActions, useSearchActionReceipts
 - `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useSheetMotion.ts` — useSheetMotion

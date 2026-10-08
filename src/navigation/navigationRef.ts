@@ -1,5 +1,5 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
-import type { JournalKind, MealSlot } from '../types';
+import type { JournalKind, MealSlot, MoodLevel } from '../types';
 import type { TemplateRunDestination } from '../utils/templateRunDestination';
 
 // Shared with AppNavigator's <NavigationContainer ref={navigationRef}>, so
@@ -345,13 +345,26 @@ export function resetToJournal(kind: JournalKind, openLog = false, entryId: stri
   });
 }
 
-export function resetToMood(openLog = false): void {
+/**
+ * `prefill` opens a new entry with a mood or symptom already picked (search's
+ * "feeling tired"), offered exactly as if it had been tapped, so it comes back
+ * off with one more tap.
+ */
+export function resetToMood(
+  openLog = false,
+  prefill?: { mood: MoodLevel | null; symptom: string | null }
+): void {
   runWhenReady(() => {
     const returnTo = openLog ? currentTabName() : undefined;
     navigateToTab(
       'Mood',
       openLog
-        ? { openLog: Date.now(), returnTo: returnTo !== 'Mood' ? returnTo : undefined }
+        ? {
+            openLog: Date.now(),
+            returnTo: returnTo !== 'Mood' ? returnTo : undefined,
+            prefillMood: prefill?.mood ?? undefined,
+            prefillSymptom: prefill?.symptom ?? undefined,
+          }
         : undefined
     );
   });

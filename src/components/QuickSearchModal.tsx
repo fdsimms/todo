@@ -30,11 +30,10 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import { allElsewhere, describeElsewhere, quickElsewhere, QUICK_ELSEWHERE_LIMIT, type ElsewhereResult } from '../utils/searchElsewhere';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
-import { useSearchActions } from '../hooks/useSearchActions';
-import { describeDoseAction, type SearchAction, type DoseActionDescription } from '../utils/searchActions';
-import { useMedicationStore } from '../store/useMedicationStore';
-import { confirmWithinLimit, recordDose, unrecordDose } from '../utils/doseRecording';
-import { formatDose } from '../utils/medicationLog';
+import { useSearchActionReceipts, useSearchActions } from '../hooks/useSearchActions';
+import { QUICK_ACTION_LIMIT, type SearchAction } from '../utils/searchActions';
+import { openMoodLogFor } from '../utils/searchActionRun';
+import { SearchActionRow } from './SearchActionRow';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, quotaNextDueLabel } from '../utils/visibilityUtils';
@@ -47,7 +46,7 @@ import { TaskCheckbox } from './TaskCheckbox';
 import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import type { MedicationLog, Task, TaskGroup } from '../types';
+import type { Task, TaskGroup } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 
 // Keeps the field's own value/onChangeText bound to the raw, fast-updating
@@ -364,77 +363,6 @@ function QuickSearchElsewhereRow({ result, onSelect, styles, colors }: {
 }
 
 /**
- * Something the card can do rather than find: "take aleve" offers to record a
- * dose (see `searchActions.ts`). Once tapped the row stays where it was and
- * says what it recorded, with an Undo beside it, rather than closing the card:
- * a mis-tap on the row above a search result is easy, and an undo that went
- * away with the card would leave a dose in a health record that was never
- * taken.
- */
-function QuickSearchActionRow({ action, description, recorded, onRun, onUndo, styles, colors }: {
-  action: SearchAction;
-  description: DoseActionDescription;
-  recorded: MedicationLog | null;
-  onRun: (action: SearchAction) => void;
-  onUndo: (action: SearchAction) => void;
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-}) {
-  if (recorded) {
-    const amount = formatDose(recorded);
-    const meta = [amount, format(new Date(recorded.takenAt), 'h:mm a')].filter(Boolean).join(' · ');
-    return (
-      <View style={styles.resultRow}>
-        <View style={styles.entityIcon}>
-          <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} />
-        </View>
-        <View style={styles.resultTap} accessible accessibilityLabel={`Recorded a dose of ${recorded.name}, ${meta}`}>
-          <Text style={styles.resultTitle} numberOfLines={1}>Recorded {recorded.name}</Text>
-          <Text style={styles.metaText} numberOfLines={1}>{meta}</Text>
-        </View>
-        <InlineAction
-          label="Undo"
-          variant="neutral"
-          onPress={() => onUndo(action)}
-          accessibilityLabel={`Undo the dose of ${recorded.name}`}
-        />
-      </View>
-    );
-  }
-  return (
-    <TouchableOpacity
-      style={styles.resultRow}
-      onPress={() => onRun(action)}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={[description.title, ...description.meta].join(', ')}
-      accessibilityHint="Double tap to record it now"
-    >
-      <View style={styles.entityIcon}>
-        <Ionicons name="medkit-outline" size={iconSize.sm} color={colors.accent} />
-      </View>
-      <View style={styles.resultTap}>
-        <Text style={styles.resultTitle} numberOfLines={1}>{description.title}</Text>
-        {description.meta.length > 0 && (
-          <Text style={styles.metaText} numberOfLines={1}>
-            {description.meta.map((part, i) => {
-              // The limit's line is the last part, and only when it holds the
-              // next dose back; it's the one worth seeing at a glance.
-              const warn = description.tooSoon && i === description.meta.length - 1;
-              return (
-                <Text key={i} style={warn ? styles.metaWarn : undefined}>
-                  {i > 0 ? ' · ' : ''}{part}
-                </Text>
-              );
-            })}
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-/**
  * The pull-down quick search: a small card over a dimmed screen, holding a
  * field and at most seven results.
  *
@@ -536,18 +464,13 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const allElsewhereResults = useMemo(() => allElsewhere(elsewhereSections), [elsewhereSections]);
   const elsewhereTotal = allElsewhereResults.length;
 
-  // Actions ("take aleve") lead the card and come out of its seven slots, so
-  // offering one never makes the card longer than it always was.
-  const { actions, explicit: actionsExplicit } = useSearchActions(debouncedQuery, visible);
-  const actionDescriptions = useMemo(() => {
-    const { logs, settings } = useMedicationStore.getState();
-    const now = new Date();
-    return new Map(actions.map(a => [a.key, describeDoseAction(a, logs, settings, now)]));
-  }, [actions]);
-  // Doses recorded from this card while it's open, so the row can say so and
-  // offer Undo. Cleared with the query, like `heldIds`.
-  const [recorded, setRecorded] = useState<ReadonlyMap<string, MedicationLog>>(new Map());
-  useEffect(() => setRecorded(new Map()), [debouncedQuery]);
+  // Actions ("take aleve", "buy milk") lead the card and come out of its seven
+  // slots, so offering one never makes the card longer than it always was.
+  const { actions, onSubmit: submitAction, descriptions: actionDescriptions } =
+    useSearchActions(debouncedQuery, visible, QUICK_ACTION_LIMIT);
+  // What the rows ran while the card is open, so a row can say so and offer
+  // Undo. Cleared with the query, like `heldIds`.
+  const { receipts, run: runReceipt, undo: undoAction, clear: clearReceipts } = useSearchActionReceipts(debouncedQuery);
   const searchBudget = QUICK_SEARCH_LIMIT - actions.length;
 
   // Tasks, stacks and projects take the card's slots first; the non-task rows
@@ -573,7 +496,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   useEffect(() => {
     if (!visible) return;
     searchFilter.clear();
-    setRecorded(new Map());
+    clearReceipts();
     scaleAnim.setValue(0.94);
     translateYAnim.setValue(-20);
     cardOpacity.setValue(0);
@@ -628,28 +551,15 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     dismiss(() => onSelectElsewhere(result));
   };
 
-  // Through `recordDose`, like every other door a dose comes in by, so the
-  // limit is asked about and a low supply offers a refill.
-  const runAction = async (action: SearchAction) => {
-    haptics.tap();
-    if (recorded.has(action.key)) return;
-    if (!(await confirmWithinLimit(action.dose.name))) return;
-    const log = recordDose(action.dose);
-    if (!log) return;
-    haptics.success();
-    setRecorded(prev => new Map(prev).set(action.key, log));
-  };
-
-  const undoAction = (action: SearchAction) => {
-    const log = recorded.get(action.key);
-    if (!log) return;
-    haptics.tap();
-    unrecordDose(log);
-    setRecorded(prev => {
-      const next = new Map(prev);
-      next.delete(action.key);
-      return next;
-    });
+  // The mood log is a screen rather than a write, so it closes the card like
+  // any other result that goes somewhere; the rest run in place.
+  const runAction = (action: SearchAction) => {
+    if (action.kind === 'mood') {
+      haptics.tap();
+      dismiss(() => openMoodLogFor(action));
+      return;
+    }
+    void runReceipt(action);
   };
 
   const handleOpenFull = () => {
@@ -667,14 +577,13 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
   // Return goes to the Search tab as it always has, unless the query found no
   // task at all: "weight" means the Weight screen, not a Search tab with one
-  // row on it. A query that opened with a verb and offers exactly one action
-  // ("take aleve") runs it, since that is what was typed. Only once the
+  // row on it. A query that asked for one action in words ("take aleve", "buy
+  // milk") runs it, since that is what was typed. Only once the
   // debounce has caught up, so Return never runs an action for a query that's
   // already been typed past.
   const handleSubmit = () => {
-    const only = actions.length === 1 ? actions[0] : null;
-    if (actionsExplicit && only && query === debouncedQuery && !recorded.has(only.key)) {
-      void runAction(only);
+    if (submitAction && query === debouncedQuery && !receipts.has(submitAction.key)) {
+      runAction(submitAction);
       return;
     }
     if (!hasTaskResults && elsewhereResults.length > 0) {
@@ -743,15 +652,14 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
           {hasResults && (
             <View style={styles.results}>
               {actions.map(action => (
-                <QuickSearchActionRow
+                <SearchActionRow
                   key={action.key}
                   action={action}
                   description={actionDescriptions.get(action.key)!}
-                  recorded={recorded.get(action.key) ?? null}
-                  onRun={a => { void runAction(a); }}
+                  receipt={receipts.get(action.key) ?? null}
+                  layout="card"
+                  onRun={runAction}
                   onUndo={undoAction}
-                  styles={styles}
-                  colors={colors}
                 />
               ))}
               {/* Stacks and projects lead, same order and reasoning as the
@@ -900,7 +808,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 5,
   },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
-  metaWarn: { color: colors.orangeText },
   metaHighlight: { color: colors.accent, fontWeight: fontWeight.semibold },
   notesMatch: {
     flexDirection: 'row',
