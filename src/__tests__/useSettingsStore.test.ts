@@ -472,6 +472,7 @@ describe('resetToDefaults', () => {
     expect(state.autoRemoveExpiredTasks).toBe(7);
     expect(state.autoCompleteProjectsOnDone).toBe(false);
     expect(state.hideCategories).toBe(false);
+    expect(state.hideNextStep).toBe(false);
     expect(state.hideHelpText).toBe(false);
     expect(state.timerLiveActivity).toBe(true);
     expect(state.tripLiveActivity).toBe(true);

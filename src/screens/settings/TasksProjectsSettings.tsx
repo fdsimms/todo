@@ -107,7 +107,9 @@ export function TasksProjectsSettings() {
   const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes, focusBreaksEnabled });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
+  const hideNextStep = useSettingsStore(s => s.hideNextStep);
   const setHideListPreviews = useSettingsStore(s => s.setHideListPreviews);
+  const setHideNextStep = useSettingsStore(s => s.setHideNextStep);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
@@ -441,6 +443,18 @@ export function TasksProjectsSettings() {
             : 'Lists on the Projects screen show their first few items'}
           toggle={hideListPreviews}
           onPress={() => setHideListPreviews(!hideListPreviews)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="hideNextStep"
+          icon="eye-off-outline"
+          iconColor={hideNextStep ? colors.accent : undefined}
+          label="Hide next task on cards"
+          hint={hideNextStep
+            ? 'Projects and stacks do not show their next open task'
+            : 'Projects and stacks show their next open task'}
+          toggle={hideNextStep}
+          onPress={() => setHideNextStep(!hideNextStep)}
         />
         <View style={styles.sep} />
         <SettingsRow
