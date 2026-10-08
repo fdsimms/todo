@@ -471,5 +471,17 @@ describe('the catalog tools', () => {
       expect(onHome()).toEqual(['coriander']);
       expect(replica.recipes().find(r => r.name === 'Salsa')!.ingredients[0].nameKey).toBe(replica.groceryItems().find(i => i.name.toLowerCase() === 'coriander')!.nameKey);
     });
+
+    // Read back from the database rather than the merge's own plan: the boxes
+    // used to survive in the plan and be deleted by the loser's cascade.
+    it('keeps both items\' brands when merging', () => {
+      addGroceryItem(replica, 'roasted edamame');
+      addGroceryItem(replica, 'crispy roasted edamame');
+      saveGroceryBox(replica, { name: 'roasted edamame' }, { brand: 'The Only Bean' });
+      saveGroceryBox(replica, { name: 'crispy roasted edamame' }, { brand: 'Biena' });
+      mergeGroceryItems(replica, { from: 'crispy roasted edamame', into: 'roasted edamame' });
+      replica.refresh();
+      expect(getGroceryItem(replica, { name: 'roasted edamame' }).boxes.map(b => b.brand).sort()).toEqual(['Biena', 'The Only Bean']);
+    });
   });
 });

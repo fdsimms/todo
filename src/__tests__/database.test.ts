@@ -2875,6 +2875,23 @@ describe('grocery items', () => {
     expect(products[0]).toMatchObject({ variant: 'white', rating: 'avoid', note: 'Too soft' });
   });
 
+  // What a merge does to the loser's boxes: rewrite each onto the survivor, then
+  // delete the loser item, whose cascade takes every box still keyed to it. An
+  // upsert that left item_id alone kept the box on the loser, so the cascade
+  // took every brand a merge was meant to carry across.
+  it('re-parents a product when the row is rewritten under another item', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Crispy roasted edamame', nameKey: 'crispy roasted edamame' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Roasted edamame', nameKey: 'roasted edamame' }));
+    const product = makeProduct({ id: 'p1', itemId: 'g1', brand: 'Biena', variant: null });
+    dbSetItemProduct(product);
+    dbSetItemProduct({ ...product, itemId: 'g2' });
+    dbDeleteGroceryItem('g1');
+
+    expect(dbGetAllItemProducts()).toEqual([
+      expect.objectContaining({ id: 'p1', itemId: 'g2', brand: 'Biena' }),
+    ]);
+  });
+
   // The no-duplicates guarantee lives in SQLite, not in a store method a
   // future call site could go around — same as grocery_items.name_key.
   it('refuses two products of one item with the same key', () => {
