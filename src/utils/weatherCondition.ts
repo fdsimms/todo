@@ -39,9 +39,10 @@ const HOT_THRESHOLD_F = 85;
  * to the sky half; a temperature past either threshold still contributes its
  * own condition regardless of what the sky is doing.
  */
-export function classifyWeather(weatherCode: number, tempF: number): WeatherCondition[] {
+export function classifyWeather(weatherCode: number, tempF: number, isDay: boolean = true): WeatherCondition[] {
   const conditions: WeatherCondition[] = [];
-  if (SUNNY_CODES.has(weatherCode)) conditions.push('sunny');
+  // A clear sky after dark is not sunny: nobody needs sunscreen at midnight.
+  if (SUNNY_CODES.has(weatherCode) && isDay) conditions.push('sunny');
   if (RAINY_CODES.has(weatherCode)) conditions.push('rainy');
   if (SNOWY_CODES.has(weatherCode)) conditions.push('snowy');
   if (tempF <= COLD_THRESHOLD_F) conditions.push('cold');

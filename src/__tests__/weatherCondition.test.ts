@@ -48,6 +48,14 @@ describe('classifyWeather', () => {
   });
 });
 
+describe('classifyWeather after dark', () => {
+  it('does not call a clear night sunny, but keeps temperature and other skies', () => {
+    expect(classifyWeather(0, 70, false)).toEqual([]);
+    expect(classifyWeather(0, 40, false)).toEqual(['cold']);
+    expect(classifyWeather(61, 60, false)).toEqual(['rainy']);
+  });
+});
+
 describe('weatherIconFor', () => {
   it('picks snow over rain over sun, sky codes only', () => {
     expect(weatherIconFor(71)).toBe('snow-outline');

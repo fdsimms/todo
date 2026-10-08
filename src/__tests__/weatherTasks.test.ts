@@ -195,6 +195,17 @@ describe('weatherWindowFor', () => {
     expect(weatherWindowFor(makeHours(run(14, 17, 61)), 'snowy', 9)).toBeNull();
   });
 
+  it('never counts a clear hour after dark as sunny', () => {
+    const hours = [
+      { hour: 5, weatherCode: 0, tempF: 60, isDay: false },
+      { hour: 8, weatherCode: 0, tempF: 60, isDay: true },
+      { hour: 9, weatherCode: 0, tempF: 60, isDay: true },
+      { hour: 21, weatherCode: 0, tempF: 60, isDay: false },
+    ];
+    expect(weatherWindowFor(hours, 'sunny', 0)).toEqual({ startHour: 8, endHour: 10 });
+    expect(weatherWindowFor(hours, 'sunny', 12)).toBeNull();
+  });
+
   // The hourly block degrades on its own — see WeatherSnapshot.todayHours.
   it('is null when there is no hourly forecast at all', () => {
     expect(weatherWindowFor(null, 'rainy', 9)).toBeNull();

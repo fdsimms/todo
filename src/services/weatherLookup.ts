@@ -42,6 +42,8 @@ export interface WeatherHour {
   hour: number;
   weatherCode: number;
   tempF: number;
+  /** Whether the sun is up that hour (`hourly.is_day`); absent reads as daytime. */
+  isDay?: boolean;
 }
 
 /** Today's reading, reduced to what a rule can be matched against. */
@@ -120,7 +122,7 @@ export interface WeatherSnapshot {
  */
 function parseHoursOn(hourly: unknown, date: string | null): WeatherHour[] | null {
   if (!date) return null;
-  const block = hourly as { time?: unknown[]; weather_code?: unknown[]; temperature_2m?: unknown[] } | null | undefined;
+  const block = hourly as { time?: unknown[]; weather_code?: unknown[]; temperature_2m?: unknown[]; is_day?: unknown[] } | null | undefined;
   const times = block?.time;
   if (!Array.isArray(times)) return null;
   const codes = block?.weather_code;
@@ -134,7 +136,8 @@ function parseHoursOn(hourly: unknown, date: string | null): WeatherHour[] | nul
     if (typeof weatherCode !== 'number' || typeof tempF !== 'number') continue;
     const hour = Number(time.slice(11, 13));
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) continue;
-    out.push({ hour, weatherCode, tempF });
+    const dayFlag = block?.is_day?.[i];
+    out.push(typeof dayFlag === 'number' ? { hour, weatherCode, tempF, isDay: dayFlag === 1 } : { hour, weatherCode, tempF });
   }
   return out.length > 0 ? out : null;
 }
@@ -173,7 +176,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
     const url = `${FORECAST_URL}?latitude=${location.latitude}&longitude=${location.longitude}` +
       '&current=temperature_2m,weather_code,is_day' +
       '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
-      '&hourly=weather_code,temperature_2m' +
+      '&hourly=weather_code,temperature_2m,is_day' +
       '&forecast_days=14&temperature_unit=fahrenheit&timezone=auto';
     // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
     // against Node's AbortSignal, which disagrees with React Native's.
