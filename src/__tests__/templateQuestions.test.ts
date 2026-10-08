@@ -296,6 +296,28 @@ describe('conditions', () => {
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Day trip' })).toBe(false);
   });
 
+  it('ticks on any one condition when the item says any', () => {
+    const flying = makeQuestion({ id: 'q-fly', name: 'flying', prompt: 'Flying?', options: ['Yes', 'No'] });
+    const intl = makeQuestion({ id: 'q-intl', name: 'international', prompt: 'International?', options: ['Yes', 'No'] });
+    const qs = [flying, intl];
+    const conditions = [{ questionId: 'q-fly', values: ['Yes'] }, { questionId: 'q-intl', values: ['Yes'] }];
+    const all = makeItem({ conditions });
+    const any = makeItem({ conditions, conditionsMatch: 'any' });
+    const answers = (fly: string, int: string) => ({ 'q-fly': fly, 'q-intl': int });
+    expect([['Yes', 'Yes'], ['Yes', 'No'], ['No', 'Yes'], ['No', 'No']].map(([f, i]) => itemMatchesAnswers(all, qs, answers(f, i))))
+      .toEqual([true, false, false, false]);
+    expect([['Yes', 'Yes'], ['Yes', 'No'], ['No', 'Yes'], ['No', 'No']].map(([f, i]) => itemMatchesAnswers(any, qs, answers(f, i))))
+      .toEqual([true, true, true, false]);
+    expect(describeConditions(conditions, qs, 'any')).toBe('Flying? Yes or International? Yes');
+    expect(describeConditions(conditions, qs)).toBe('Flying? Yes · International? Yes');
+  });
+
+  it('reads an item stored without conditionsMatch as all', () => {
+    expect(normalizeTemplateItem({ title: 'x' } as never).conditionsMatch).toBe('all');
+    expect(normalizeTemplateItem({ title: 'x', conditionsMatch: 'any' } as never).conditionsMatch).toBe('any');
+    expect(normalizeTemplateItem({ title: 'x', conditionsMatch: 'bogus' } as never).conditionsMatch).toBe('all');
+  });
+
   it('requires every condition to match', () => {
     const item = makeItem({
       conditions: [

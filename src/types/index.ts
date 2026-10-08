@@ -4313,6 +4313,13 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+  // How several conditions combine: 'all' (every one must match, the default
+  // and what an item stored before this reads as) or 'any' (one is enough),
+  // so "bring a passport if flying or international" is one item rather than
+  // two. One switch over the whole list rather than nested groups: it covers
+  // every case an item has asked for, and "this and (that or the other)" is a
+  // second item. Meaningless with fewer than two live conditions.
+  conditionsMatch?: 'all' | 'any';
 
   // Alternative title/notes for particular answers; see TemplateItemVariant.
   // Empty for every item stored before this shipped, which is "no variants".

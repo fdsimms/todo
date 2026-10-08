@@ -113,6 +113,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     conditions: normalizeConditions(raw.conditions),
+    conditionsMatch: raw.conditionsMatch === 'any' ? 'any' : 'all',
     variants: normalizeVariants(raw.variants),
     answerGate: normalizeItemGate(raw.answerGate),
     refTemplateId: raw.refTemplateId ?? null,

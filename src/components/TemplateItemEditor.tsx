@@ -231,6 +231,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
+  const [conditionsMatch, setConditionsMatch] = useState<'all' | 'any'>('all');
   const [variants, setVariants] = useState<TemplateItemVariant[]>([]);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
@@ -352,6 +353,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
+    setConditionsMatch(item?.conditionsMatch ?? 'all');
     setVariants(item?.variants ?? draft?.variants ?? []);
     setAnswerGate(item?.answerGate ?? draft?.answerGate ?? null);
     setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
@@ -433,7 +435,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setShowTimeWindow(false);
   }, [visible, item, initialDraft]);
 
-  const conditionSummary = describeConditions(conditions, conditionQuestions);
+  const conditionSummary = describeConditions(conditions, conditionQuestions, conditionsMatch);
   const variantSummary = describeVariants(variants, choiceQuestions);
 
   /**
@@ -625,6 +627,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       notes,
       optional,
       conditions,
+      conditionsMatch,
       variants,
       // A gate with no answers ticked would rule the task out whatever the
       // answer, so it's dropped rather than saved.
@@ -996,6 +999,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 </View>
               </View>
             ))}
+            {conditions.length >= 2 && (
+              <View style={styles.conditionBlock}>
+                <SegmentedControl
+                  label="When there is more than one"
+                  value={conditionsMatch}
+                  onChange={setConditionsMatch}
+                  options={[
+                    { value: 'all', label: 'All of these' },
+                    { value: 'any', label: 'Any of these' },
+                  ]}
+                />
+              </View>
+            )}
           </CollapsibleField>
         </View>
       )}

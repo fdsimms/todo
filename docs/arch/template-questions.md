@@ -142,6 +142,12 @@ beside it.
   This reads the answer the run resolved (typed, else off the dates), so a trip's dates decide it
   with nothing typed. Over MCP it is `min`/`max` on a condition in place of `values`, and the plan
   validator refuses mixing the two.
+- **Several conditions are all-of by default, and an item can say any-of** (`TemplateItem.conditionsMatch`,
+  `'all' | 'any'`, absent reads as all). It is one switch over the item's whole list rather than nested
+  groups, because "passport if flying *or* international" is the case that came up and "this and
+  (that or the other)" is two items. Within one condition several values were always any-of, so this
+  is only about combining *different* questions. It does nothing with fewer than two live conditions,
+  and an item with conditions still ignores `optional` either way (`itemMatchesAnswers`).
 - **A `'people'` question is the one kind that fills no blank and offers no authored set.**
   `normalizeTemplateQuestion` forces its `name` to `''` (nothing for `placeholderValuesFor` to key
   on) the same way it forces `defaultValue` to `''` (nothing to default to but nobody). It still

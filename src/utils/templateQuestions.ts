@@ -293,18 +293,24 @@ export function describeVariants(
   return live.length > 0 ? live.map(v => v.answer).join(', ') : null;
 }
 
-/** True if the run's answers include this item — every live condition matched, with any one of its values enough. */
+/**
+ * True if the run's answers include this item: every live condition matched, or
+ * just one when the item says `conditionsMatch: 'any'`. Within one condition any
+ * one of its values (or a number inside its range) is enough either way.
+ */
 export function itemMatchesAnswers(
   item: TemplateItem,
   questions: readonly TemplateQuestion[],
   answers: Record<string, string>,
 ): boolean {
-  return liveConditions(item.conditions, questions).every(c => {
+  const matches = (c: TemplateItemCondition) => {
     const answer = answers[c.questionId] ?? '';
     if (hasRange(c)) return numberInRange(answer, c);
     const picked = answerValues(answer);
     return c.values.some(v => picked.includes(v));
-  });
+  };
+  const live = liveConditions(item.conditions, questions);
+  return item.conditionsMatch === 'any' ? live.some(matches) : live.every(matches);
 }
 
 /**
@@ -495,6 +501,7 @@ export function toggleItemCondition(
 export function describeConditions(
   conditions: readonly TemplateItemCondition[],
   questions: readonly TemplateQuestion[],
+  match: 'all' | 'any' = 'all',
 ): string | null {
   const parts = liveConditions(conditions, questions).map(c => {
     const question = questions.find(q => q.id === c.questionId)!;
@@ -504,7 +511,7 @@ export function describeConditions(
     // its answer separated by a space reads as exactly what it is.
     return `${label}${label.endsWith('?') ? '' : ':'} ${describeConditionAnswers(c)}`;
   });
-  return parts.length > 0 ? parts.join(' · ') : null;
+  return parts.length > 0 ? parts.join(match === 'any' ? ' or ' : ' · ') : null;
 }
 
 /**
