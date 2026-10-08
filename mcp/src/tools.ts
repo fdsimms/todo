@@ -18,11 +18,12 @@
  * blocker, a `dayResetTime` that is not midnight.
  */
 import { format } from 'date-fns/format';
-import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
+import type { FoodLogEntry, GroceryItem, GroceryListEntry, ItemProduct, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
 import type { AnswerEdit, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { roundToHalf } from '../../src/utils/produceServings';
+import { describePreferredProduct } from '../../src/utils/groceryProduct';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
@@ -537,6 +538,14 @@ export interface SerializedGroceryItem {
   onList: boolean;
   /** Checked off on that list. */
   checked?: boolean;
+  /**
+   * The brand the item asks for, worded as the app's list row shows it. Absent
+   * when any will do, which is most items. Box ids and every other recorded
+   * brand are get_grocery_item's.
+   */
+  brand?: string;
+  /** Only the preferred brand counts as getting it ("only this one" in the app). */
+  onlyPreferredBrand?: boolean;
 }
 
 /**
@@ -551,7 +560,12 @@ export interface SerializedGroceryItem {
  * then couldn't be checked off; `GroceryItem.checked` is only a mirror of the
  * home entry.
  */
-export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | undefined): SerializedGroceryItem {
+export function serializeGroceryItem(
+  i: GroceryItem,
+  home: GroceryListEntry | undefined,
+  products: readonly ItemProduct[],
+): SerializedGroceryItem {
+  const brand = describePreferredProduct(i, products);
   return {
     id: i.id,
     name: i.name,
@@ -559,6 +573,10 @@ export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | un
     aisle: i.aisle || undefined,
     onList: home !== undefined,
     checked: home?.checked ? true : undefined,
+    brand: brand ?? undefined,
+    // Only meaningful alongside a brand, as in the app: the rule with nothing
+    // preferred filters nothing.
+    onlyPreferredBrand: brand && i.productStrict ? true : undefined,
   };
 }
 
@@ -570,7 +588,7 @@ function homeEntries(replica: Replica, listId: string | null = null): Map<string
 }
 
 function serializeWithHome(replica: Replica, item: GroceryItem, listId: string | null = null): SerializedGroceryItem {
-  return serializeGroceryItem(item, homeEntries(replica, listId).get(item.id));
+  return serializeGroceryItem(item, homeEntries(replica, listId).get(item.id), replica.itemProducts());
 }
 
 /** The home list, or with `onListOnly: false` the whole catalog. */
@@ -581,7 +599,8 @@ export function listGroceryItems(
   const home = homeEntries(replica, input.listId ?? null);
   const items = replica.groceryItems();
   const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => home.has(i.id));
-  return wanted.map(i => serializeGroceryItem(i, home.get(i.id)));
+  const products = replica.itemProducts();
+  return wanted.map(i => serializeGroceryItem(i, home.get(i.id), products));
 }
 
 // ---------------------------------------------------------------------------

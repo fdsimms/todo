@@ -196,6 +196,20 @@ describe('the catalog tools', () => {
       saveGroceryBox(replica, { name: 'bread' }, { boxId: first.box!.id, delete: true });
       expect(getGroceryItem(replica, { name: 'bread' }).preferredBoxId).toBeUndefined();
     });
+
+    // The list row in the app shows the preferred brand, so the list read does
+    // too: otherwise "what's on my list" answers with less than the screen says.
+    it('shows the preferred brand on the list, and only the rule when it has a brand to apply to', () => {
+      addGroceryItem(replica, 'bread');
+      addGroceryItem(replica, 'milk');
+      saveGroceryBox(replica, { name: 'bread' }, { brand: "Dave's", variant: '21 grain' });
+      updateGroceryItem(replica, { name: 'bread', onlyPreferredBrand: true });
+      const rows = listGroceryItems(replica, {});
+      expect(rows.find(r => r.name === 'bread')).toMatchObject({ brand: "Dave's 21 grain", onlyPreferredBrand: true });
+      const milk = rows.find(r => r.name === 'milk')!;
+      expect(milk.brand).toBeUndefined();
+      expect(milk.onlyPreferredBrand).toBeUndefined();
+    });
   });
 
   describe('stores', () => {
