@@ -1,34 +1,68 @@
 const fs = require('fs');
 const path = require('path');
 const { withXcodeProject } = require('@expo/config-plugins');
-const { addWatchAppTarget, withExplicitTargetDependency } = require('./lib/nativeTarget');
+const { APP_GROUP_ID } = require('./withAppGroup');
+const {
+  addWatchAppTarget,
+  addWatchExtensionTarget,
+  withExplicitTargetDependency,
+} = require('./lib/nativeTarget');
 
-// Injects the Apple Watch app ("TodoWatch"): a single-target SwiftUI watchOS
-// app embedded in the iPhone app. The Xcode-target plumbing, and what makes a
-// watch app different from an extension there, lives in
-// ./lib/nativeTarget.js (addWatchAppTarget); what's here is what's specific to
-// this app.
+// Injects the Apple Watch app ("TodoWatch", targets/todo-watch) and its
+// complication ("TodoWatchComplication", targets/todo-watch-complication), the
+// complication embedded in the watch app and the watch app in the iPhone app.
+// The Xcode-target plumbing, and what makes a watch target different from an
+// extension there, lives in ./lib/nativeTarget.js; what's here is what's
+// specific to these two.
 //
-// This is the first step of the watch app and deliberately does nothing yet: it
-// exists to prove the target builds, signs, uploads to TestFlight and installs,
-// before any watch code depends on it. See docs/native-targets.md.
+// Data reaches the watch over WatchConnectivity, not the App Group: the watch
+// is another device. The iPhone's half of that is WatchSession.swift in
+// modules/todo-widget-bridge, compiled into the app like the rest of that
+// module. See docs/native-targets.md, "The watch app".
 //
-// **Off unless DUNDUNDUN_WATCH_APP is "1"**, which only eas.json's
-// `watch-canary` profile sets. EAS applies a build profile's `env` both when
-// EAS CLI evaluates this config locally (to resolve credentials) and on the
-// builder (where prebuild runs), so one variable switches the target *and* its
-// EAS declaration together, and a production build stays exactly what it was
-// before this plugin existed. That's also why the declaration is added here
-// rather than written into app.json: a static entry would have EAS provision a
-// target the production project doesn't contain.
-const TARGET_NAME = 'TodoWatch';
-const BUNDLE_ID_SUFFIX = 'watchkitapp';
-// watchOS 11 is the first with interactive widgets, which the complication
-// will want, and runs on the same watches as watchOS 26.
+// **The two targets are off unless DUNDUNDUN_WATCH_APP is "1"**, which only
+// eas.json's `watch-canary` profile sets, until a canary build has gone all the
+// way to an install. EAS applies a build profile's `env` both when EAS CLI
+// evaluates this config locally (to resolve credentials) and on the builder
+// (where prebuild runs), so one variable switches the targets *and* their EAS
+// declarations together. That's also why the declarations are added here
+// rather than written into app.json: a static entry would have EAS provision
+// targets the production project doesn't contain. The iPhone half is in every
+// build, and does nothing without a paired watch that has the app installed.
+const WATCH_TARGET = 'TodoWatch';
+const WATCH_BUNDLE_SUFFIX = 'watchkitapp';
+const COMPLICATION_TARGET = 'TodoWatchComplication';
+const COMPLICATION_BUNDLE_SUFFIX = 'complication';
+// watchOS 11 is the first with interactive widgets, and runs on the same
+// watches as watchOS 26.
 const DEPLOYMENT_TARGET = '11.0';
-const SOURCE_DIR = path.join(__dirname, '..', 'targets', 'todo-watch');
-const SWIFT_FILES = ['TodoWatchApp.swift'];
+const WATCH_DIR = path.join(__dirname, '..', 'targets', 'todo-watch');
+const COMPLICATION_DIR = path.join(__dirname, '..', 'targets', 'todo-watch-complication');
+const WIDGET_DIR = path.join(__dirname, '..', 'targets', 'todo-widget');
 const ASSET_CATALOG = 'Assets.xcassets';
+
+// The widget's snapshot model, compiled into both watch targets as it is: the
+// watch receives the same JSON shape (with larger caps) and keeps it under the
+// same file name, so the decoder, its update-order tolerance and its
+// time-passing helpers are shared rather than copied. Foundation and SwiftUI
+// only, so it builds for watchOS unchanged.
+const SNAPSHOT_MODEL = { dir: WIDGET_DIR, name: 'TodoWidgetData.swift' };
+// The watch's own taps, read by both the app (which writes them) and the
+// complication (which counts them).
+const TAP_LOG = { dir: WATCH_DIR, name: 'WatchTaps.swift' };
+
+const WATCH_SOURCES = [
+  { dir: WATCH_DIR, name: 'TodoWatchApp.swift' },
+  { dir: WATCH_DIR, name: 'WatchStore.swift' },
+  { dir: WATCH_DIR, name: 'WatchScreens.swift' },
+  TAP_LOG,
+  SNAPSHOT_MODEL,
+];
+const COMPLICATION_SOURCES = [
+  { dir: COMPLICATION_DIR, name: 'TodoWatchComplication.swift' },
+  TAP_LOG,
+  SNAPSHOT_MODEL,
+];
 
 function watchAppEnabled() {
   return process.env.DUNDUNDUN_WATCH_APP === '1';
@@ -36,20 +70,8 @@ function watchAppEnabled() {
 
 // Same placeholder rule as every other target's Info.plist (see
 // withWidgetExtension.js): a $(BUILD_SETTING) only gets substituted into a key
-// that is actually present. Two keys are the watch's own:
-// - WKApplication marks a single-target watchOS app (the legacy two-target
-//   kind used WKWatchKitApp instead).
-// - WKCompanionAppBundleIdentifier names the iPhone app it belongs to, and
-//   must equal that app's CFBundleIdentifier.
-// GENERATE_INFOPLIST_FILE is also on (see below), so anything Xcode's own
-// watch template would add that isn't listed here is still generated, and
-// what is listed here wins.
-function watchInfoPlist(companionBundleIdentifier) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleDevelopmentRegion</key>
+// that is actually present.
+const BUNDLE_KEYS = `	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>dundundun</string>
@@ -66,47 +88,70 @@ function watchInfoPlist(companionBundleIdentifier) {
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>WKApplication</key>
-	<true/>
-	<key>WKCompanionAppBundleIdentifier</key>
-	<string>${companionBundleIdentifier}</string>
-</dict>
-</plist>
-`;
-}
+	<string>$(CURRENT_PROJECT_VERSION)</string>`;
 
-// Nothing yet. Kept as a file (rather than no entitlements at all) because
-// the shared helper always points CODE_SIGN_ENTITLEMENTS at one, and the
-// watch app will want an App Group of its own once it has a complication.
-function watchEntitlements() {
+function plist(body) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+${body}
 </dict>
 </plist>
 `;
 }
 
-// The `extra.eas.build.experimental.ios.appExtensions` entry, without which
-// EAS never provisions the target and never stamps its build number (the
+// Two keys are the watch app's own:
+// - WKApplication marks a single-target watchOS app (the legacy two-target
+//   kind used WKWatchKitApp instead).
+// - WKCompanionAppBundleIdentifier names the iPhone app it belongs to, and
+//   must equal that app's CFBundleIdentifier.
+// GENERATE_INFOPLIST_FILE is also on (see below), so anything Xcode's own
+// watch template would add that isn't listed here is still generated, and
+// what is listed here wins.
+function watchInfoPlist(companionBundleIdentifier) {
+  return plist(`${BUNDLE_KEYS}
+	<key>WKApplication</key>
+	<true/>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>${companionBundleIdentifier}</string>`);
+}
+
+function complicationInfoPlist() {
+  return plist(`${BUNDLE_KEYS}
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>`);
+}
+
+// Both targets share an App Group *on the watch*: the app writes the snapshot
+// and its taps there and the complication reads them. Same identifier as the
+// iPhone's group, which is a separate container on a separate device.
+function appGroupEntitlements() {
+  return plist(`	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>${APP_GROUP_ID}</string>
+	</array>`);
+}
+
+// The `extra.eas.build.experimental.ios.appExtensions` entries, without which
+// EAS never provisions the targets and never stamps their build numbers (the
 // upload is then refused for a CFBundleVersion that doesn't match the app's).
 // Replaces an entry with the same bundle id rather than adding a second one,
 // since a config can be evaluated more than once.
-function withWatchAppCredentials(config, bundleIdentifier) {
+function withWatchCredentials(config, entries) {
   config.extra = config.extra ?? {};
   config.extra.eas = config.extra.eas ?? {};
   config.extra.eas.build = config.extra.eas.build ?? {};
   config.extra.eas.build.experimental = config.extra.eas.build.experimental ?? {};
   const experimental = config.extra.eas.build.experimental;
   experimental.ios = experimental.ios ?? {};
-  const extensions = (experimental.ios.appExtensions ?? []).filter(
-    ext => ext.bundleIdentifier !== bundleIdentifier
-  );
+  const ids = new Set(entries.map(entry => entry.bundleIdentifier));
   experimental.ios.appExtensions = [
-    ...extensions,
-    { targetName: TARGET_NAME, bundleIdentifier, entitlements: {} },
+    ...(experimental.ios.appExtensions ?? []).filter(ext => !ids.has(ext.bundleIdentifier)),
+    ...entries,
   ];
   return config;
 }
@@ -115,30 +160,50 @@ const withWatchApp = config => {
   if (!watchAppEnabled()) return config;
 
   const companionBundleIdentifier = config.ios?.bundleIdentifier;
-  const bundleIdentifier = `${companionBundleIdentifier}.${BUNDLE_ID_SUFFIX}`;
+  const watchBundleIdentifier = `${companionBundleIdentifier}.${WATCH_BUNDLE_SUFFIX}`;
+  // A nested bundle's id has to start with its container's.
+  const complicationBundleIdentifier = `${watchBundleIdentifier}.${COMPLICATION_BUNDLE_SUFFIX}`;
   // The watch face masks the icon to a circle, so the iPhone's square artwork
-  // is cropped rather than redrawn. Good enough to prove the catalog builds.
+  // is cropped rather than redrawn.
   const iconPath = config.ios?.icon?.light ?? config.icon;
+  const entitlements = { 'com.apple.security.application-groups': [APP_GROUP_ID] };
 
-  config = withWatchAppCredentials(config, bundleIdentifier);
-  config = withExplicitTargetDependency(config, TARGET_NAME);
+  config = withWatchCredentials(config, [
+    { targetName: WATCH_TARGET, bundleIdentifier: watchBundleIdentifier, entitlements },
+    { targetName: COMPLICATION_TARGET, bundleIdentifier: complicationBundleIdentifier, entitlements },
+  ]);
+  config = withExplicitTargetDependency(config, WATCH_TARGET);
+  config = withExplicitTargetDependency(config, COMPLICATION_TARGET, WATCH_TARGET);
 
   return withXcodeProject(config, mod => {
     const { platformProjectRoot, projectRoot } = mod.modRequest;
     addWatchAppTarget({
       project: mod.modResults,
       platformProjectRoot,
-      targetName: TARGET_NAME,
-      bundleIdentifier,
+      targetName: WATCH_TARGET,
+      bundleIdentifier: watchBundleIdentifier,
       deploymentTarget: DEPLOYMENT_TARGET,
-      sourceFiles: SWIFT_FILES.map(name => ({ dir: SOURCE_DIR, name })),
-      resourceFolders: [{ dir: SOURCE_DIR, name: ASSET_CATALOG }],
+      sourceFiles: WATCH_SOURCES,
+      resourceFolders: [{ dir: WATCH_DIR, name: ASSET_CATALOG }],
       infoPlist: watchInfoPlist(companionBundleIdentifier),
-      entitlements: watchEntitlements(),
+      entitlements: appGroupEntitlements(),
       extraBuildSettings: {
         ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
         GENERATE_INFOPLIST_FILE: 'YES',
       },
+    });
+
+    // After the watch app, which it is embedded in.
+    addWatchExtensionTarget({
+      project: mod.modResults,
+      platformProjectRoot,
+      targetName: COMPLICATION_TARGET,
+      hostTargetName: WATCH_TARGET,
+      bundleIdentifier: complicationBundleIdentifier,
+      deploymentTarget: DEPLOYMENT_TARGET,
+      sourceFiles: COMPLICATION_SOURCES,
+      infoPlist: complicationInfoPlist(),
+      entitlements: appGroupEntitlements(),
     });
 
     // The catalog's AppIcon.appiconset/Contents.json names `icon.png`; the
@@ -147,7 +212,7 @@ const withWatchApp = config => {
     // at build time.
     fs.copyFileSync(
       path.join(projectRoot, iconPath),
-      path.join(platformProjectRoot, TARGET_NAME, ASSET_CATALOG, 'AppIcon.appiconset', 'icon.png')
+      path.join(platformProjectRoot, WATCH_TARGET, ASSET_CATALOG, 'AppIcon.appiconset', 'icon.png')
     );
 
     return mod;

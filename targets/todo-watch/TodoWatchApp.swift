@@ -1,35 +1,35 @@
 import SwiftUI
 
-// The Apple Watch app. For now it is an empty screen on purpose: this first
-// build exists to prove the watch target builds, signs, uploads and installs
-// alongside the iPhone app (see plugins/withWatchApp.js), before any watch
-// code depends on that working.
+// The Apple Watch app: today's tasks and the grocery list, ticked off from the
+// wrist, plus a task added by dictation.
 //
-// What comes next, so the shape here doesn't surprise whoever adds it: the
-// iPhone app will send the widget's own snapshot (widget_data.json, built by
-// src/utils/widgetSnapshot.ts) over WatchConnectivity, since the watch is a
-// separate device and can't read the iPhone's App Group. Taps come back the
-// same way and join the widget's quiet-tap queue, so the iPhone applies them
-// with the code it already has.
+// Everything shown comes from the iPhone (WatchStore.swift has how), and
+// everything done here is a tap the iPhone applies with the code it already
+// has for the widget's own checkboxes. So this target holds no rules about
+// tasks at all: what a tap means, whether a task needs the app, what is on
+// Today, all of it was decided on the phone and arrives in the snapshot.
 @main
 struct TodoWatchApp: App {
-  var body: some Scene {
-    WindowGroup {
-      PlaceholderView()
-    }
-  }
-}
+    @StateObject private var store = WatchStore.shared
 
-private struct PlaceholderView: View {
-  var body: some View {
-    VStack(spacing: 6) {
-      Text("dundundun")
-        .font(.headline)
-      Text("Today and your grocery list will show up here in a later version.")
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
+    init() {
+        WatchStore.shared.activate()
     }
-    .padding()
-  }
+
+    var body: some Scene {
+        WindowGroup {
+            TabView {
+                TodayView()
+                GroceriesView()
+            }
+            .tabViewStyle(.verticalPage)
+            .environmentObject(store)
+        }
+        // Lets WatchConnectivity wake the app in the background to hand over a
+        // new snapshot, which is what keeps the complication current while
+        // the app isn't open.
+        .backgroundTask(.watchConnectivity) {
+            await WatchStore.shared.receivePendingContent()
+        }
+    }
 }

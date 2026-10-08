@@ -113,8 +113,30 @@ function addWatchAppTarget(options) {
   return addNativeTarget({ ...options, frameworks: [], kind: 'watch_app' });
 }
 
+/**
+ * An app extension that runs on the watch (a complication's WidgetKit
+ * extension), embedded in the watch app named by `hostTargetName` rather than
+ * in the iPhone app. Same options as addWatchAppTarget, plus that name; the
+ * host must already have been added.
+ *
+ * addTarget() embeds every `app_extension` in the iPhone app: it adds a
+ * "Copy Files" phase to the first target and files the product under the
+ * first such phase in the project. Both are undone here and the product goes
+ * into an "Embed Foundation Extensions" phase on the watch app instead
+ * (subfolder spec 13, its PlugIns folder). An extension built for watchOS and
+ * left in the iPhone app's PlugIns is refused at validation. The host's
+ * dependency on it is withExplicitTargetDependency's, as for the watch app.
+ *
+ * @param {object} options  as addWatchAppTarget
+ * @param {string} options.hostTargetName  the watch app it is embedded in
+ */
+function addWatchExtensionTarget(options) {
+  return addNativeTarget({ ...options, frameworks: [], kind: 'watch_extension' });
+}
+
 function addNativeTarget({
   kind,
+  hostTargetName,
   project,
   platformProjectRoot,
   targetName,
@@ -127,7 +149,9 @@ function addNativeTarget({
   frameworks,
   extraBuildSettings = {},
 }) {
-  const isWatch = kind === 'watch_app';
+  const isWatchApp = kind === 'watch_app';
+  const isWatchExtension = kind === 'watch_extension';
+  const onWatch = isWatchApp || isWatchExtension;
   const infoPlistName = `${targetName}-Info.plist`;
   const entitlementsName = `${targetName}.entitlements`;
 
@@ -148,9 +172,11 @@ function addNativeTarget({
   // lands on a project that already has the target.
   if (findExistingTarget(project, targetName)) return null;
 
+  const mainTarget = project.getFirstTarget();
+  const mainPhasesBefore = mainTarget.firstTarget.buildPhases.map(phase => phase.value);
   const target = project.addTarget(
     targetName,
-    isWatch ? 'application' : 'app_extension',
+    isWatchApp ? 'application' : 'app_extension',
     targetName,
     bundleIdentifier
   );
@@ -198,7 +224,7 @@ function addNativeTarget({
   project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
   project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
 
-  if (isWatch) {
+  if (isWatchApp) {
     // addTarget() embeds an `app_extension` itself (the main target's
     // "Copy Files" phase) but does nothing for an `application`, so the watch
     // app's phase is made here. 'watch2_app' is only the folder-type key that
@@ -227,6 +253,45 @@ function addNativeTarget({
     buildPhase.files.push({ value: productBuildFile, comment: embedComment });
     // The dependency on this target is withExplicitTargetDependency's job, not
     // this function's; see there for why it can't happen here.
+  }
+
+  if (isWatchExtension) {
+    // Out of the iPhone app (see addWatchExtensionTarget): the product's build
+    // file is taken out of whichever copy phase addTarget() filed it under,
+    // and the phase addTarget() added to the main target is dropped once
+    // that leaves it empty.
+    const productRef = target.pbxNativeTarget.productReference;
+    const buildFiles = project.pbxBuildFileSection();
+    const productBuildFile = Object.keys(buildFiles).find(
+      key => !key.endsWith('_comment') && buildFiles[key].fileRef === productRef
+    );
+    const copyPhases = project.hash.project.objects.PBXCopyFilesBuildPhase;
+    for (const key of Object.keys(copyPhases)) {
+      if (key.endsWith('_comment')) continue;
+      copyPhases[key].files = copyPhases[key].files.filter(file => file.value !== productBuildFile);
+    }
+    mainTarget.firstTarget.buildPhases = mainTarget.firstTarget.buildPhases.filter(phase => {
+      const added = !mainPhasesBefore.includes(phase.value);
+      const empty = copyPhases[phase.value] && copyPhases[phase.value].files.length === 0;
+      if (added && empty) {
+        delete copyPhases[phase.value];
+        delete copyPhases[`${phase.value}_comment`];
+        return false;
+      }
+      return true;
+    });
+
+    const hostKey = findTargetKey(project, hostTargetName);
+    const { buildPhase } = project.addBuildPhase(
+      [],
+      'PBXCopyFilesBuildPhase',
+      'Embed Foundation Extensions',
+      hostKey,
+      'app_extension'
+    );
+    const embedComment = `${targetName}.appex in Embed Foundation Extensions`;
+    buildFiles[`${productBuildFile}_comment`] = embedComment;
+    buildPhase.files.push({ value: productBuildFile, comment: embedComment });
   }
 
   // Non-source files just need a file reference in the group — they're wired in
@@ -282,7 +347,7 @@ function addNativeTarget({
     buildSettings.CODE_SIGN_ENTITLEMENTS = `${targetName}/${entitlementsName}`;
     buildSettings.CODE_SIGN_STYLE = 'Automatic';
     buildSettings.DEVELOPMENT_TEAM = DEVELOPMENT_TEAM;
-    if (isWatch) {
+    if (onWatch) {
       // Overrides the project-level SDKROOT = iphoneos every target inherits.
       // The project's IPHONEOS_DEPLOYMENT_TARGET is still inherited and is
       // simply unread under the watchOS SDK.
@@ -292,7 +357,7 @@ function addNativeTarget({
       buildSettings.IPHONEOS_DEPLOYMENT_TARGET = deploymentTarget;
     }
     buildSettings.SWIFT_VERSION = '5.0';
-    buildSettings.TARGETED_DEVICE_FAMILY = isWatch ? '4' : '"1,2"';
+    buildSettings.TARGETED_DEVICE_FAMILY = onWatch ? '4' : '"1,2"';
     buildSettings.CURRENT_PROJECT_VERSION = '1';
     buildSettings.MARKETING_VERSION = '1.0';
     Object.assign(buildSettings, extraBuildSettings);
@@ -302,9 +367,10 @@ function addNativeTarget({
 }
 
 /**
- * Makes the main app target depend on `targetName` explicitly, as Xcode's own
- * watch app template does, so building a watchOS target inside an iOS archive
- * doesn't rest on the scheme inferring that dependency across platforms.
+ * Makes the main app target (or `hostTargetName`, for an extension embedded in
+ * the watch app) depend on `targetName` explicitly, as Xcode's own watch app
+ * template does, so building a watchOS target inside an iOS archive doesn't
+ * rest on the scheme inferring that dependency across platforms.
  *
  * The extensions have no explicit dependency at all, and that's by accident:
  * addTarget() asks for one, but addTargetDependency only writes into the
@@ -319,13 +385,14 @@ function addNativeTarget({
  * written, and re-reads the project from disk. Re-running prebuild doesn't add
  * a second dependency.
  */
-function withExplicitTargetDependency(config, targetName) {
+function withExplicitTargetDependency(config, targetName, hostTargetName = null) {
   return withFinalizedMod(config, [
     'ios',
     async mod => {
       const project = IOSConfig.XcodeUtils.getPbxproj(mod.modRequest.projectRoot);
       const targetKey = findTargetKey(project, targetName);
-      if (!targetKey) return mod;
+      const hostKey = hostTargetName ? findTargetKey(project, hostTargetName) : project.getFirstTarget().uuid;
+      if (!targetKey || !hostKey) return mod;
 
       const objects = project.hash.project.objects;
       const alreadyDepends = Object.values(objects.PBXTargetDependency ?? {}).some(
@@ -335,7 +402,7 @@ function withExplicitTargetDependency(config, targetName) {
 
       objects.PBXTargetDependency = objects.PBXTargetDependency ?? {};
       objects.PBXContainerItemProxy = objects.PBXContainerItemProxy ?? {};
-      project.addTargetDependency(project.getFirstTarget().uuid, [targetKey]);
+      project.addTargetDependency(hostKey, [targetKey]);
       fs.writeFileSync(project.filepath, project.writeSync());
       return mod;
     },
@@ -345,6 +412,7 @@ function withExplicitTargetDependency(config, targetName) {
 module.exports = {
   addAppExtensionTarget,
   addWatchAppTarget,
+  addWatchExtensionTarget,
   findExistingTarget,
   withExplicitTargetDependency,
   DEVELOPMENT_TEAM,

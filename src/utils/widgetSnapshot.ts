@@ -51,12 +51,40 @@ import { widgetTapNeedsApp } from './widgetQuietTaps';
  * which the extension has no access to — those are counted here.
  */
 
-/** How much of each section crosses the bridge. */
-const MAX_VISIBLE_TASKS = 50;
-const MAX_PINNED_TASKS = 10;
-const MAX_UPCOMING_TASKS = 30;
-const MAX_GROCERY_LISTS = 12;
-const MAX_GROCERY_ITEMS_PER_LIST = 10;
+/**
+ * How much of the task and grocery sections crosses the bridge.
+ *
+ * Two readers, two sizes. The widget draws a handful of rows, and its own file
+ * is read on every timeline reload. The Apple Watch app (`targets/todo-watch`)
+ * is where a shopping trip gets ticked off with the phone in a pocket, so a
+ * list cut at ten rows is a list that runs out in the middle of the store.
+ * Its copy is still capped, because it travels as one WatchConnectivity
+ * context with a size ceiling: compressed, these caps keep it well under.
+ */
+export interface SnapshotLimits {
+  visibleTasks: number;
+  pinnedTasks: number;
+  upcomingTasks: number;
+  groceryLists: number;
+  groceryItemsPerList: number;
+}
+
+export const WIDGET_LIMITS: SnapshotLimits = {
+  visibleTasks: 50,
+  pinnedTasks: 10,
+  upcomingTasks: 30,
+  groceryLists: 12,
+  groceryItemsPerList: 10,
+};
+
+export const WATCH_LIMITS: SnapshotLimits = {
+  visibleTasks: 80,
+  pinnedTasks: 20,
+  upcomingTasks: 30,
+  groceryLists: 12,
+  groceryItemsPerList: 60,
+};
+
 const MAX_MEALS = 6;
 const MAX_KITCHEN_ITEMS = 8;
 
@@ -279,13 +307,17 @@ export interface GroceryInput {
 }
 
 /** One list's unbought rows, as names and as rows the widget can tick. */
-function groceryRows(input: GroceryInput, listId: string | null): Pick<WidgetGroceryList, 'items' | 'rows'> {
+function groceryRows(
+  input: GroceryInput,
+  listId: string | null,
+  maxItems: number,
+): Pick<WidgetGroceryList, 'items' | 'rows'> {
   const choiceIds = new Set(
     input.listEntries.filter(e => e.listId === listId && e.choiceGroup).map(e => e.itemId)
   );
   const rows = itemsOnList(input.items, input.listEntries, listId)
     .filter(item => !item.checked)
-    .slice(0, MAX_GROCERY_ITEMS_PER_LIST)
+    .slice(0, maxItems)
     .map(item => ({ id: item.id, name: item.name, choice: choiceIds.has(item.id) }));
   return { items: rows.map(r => r.name), rows };
 }
@@ -298,7 +330,11 @@ function groceryRows(input: GroceryInput, listId: string | null): Pick<WidgetGro
  * happens to have open — the whole point of configuring one is that the away
  * list stays on the home screen while the app is back on the home list.
  */
-export function buildGroceries(input: GroceryInput, now: Date): WidgetGroceries {
+export function buildGroceries(
+  input: GroceryInput,
+  now: Date,
+  limits: SnapshotLimits = WIDGET_LIMITS,
+): WidgetGroceries {
   // The home list is not a row in `lists` (its id is null), so it is named
   // here rather than found — same shape `listPickerRows` builds.
   const ids: (string | null)[] = [null, ...input.lists.map(l => l.id)];
@@ -306,12 +342,12 @@ export function buildGroceries(input: GroceryInput, now: Date): WidgetGroceries 
     .slice()
     .sort((a, b) => Number(b === input.activeListId) - Number(a === input.activeListId));
 
-  const lists = ordered.slice(0, MAX_GROCERY_LISTS).map(id => ({
+  const lists = ordered.slice(0, limits.groceryLists).map(id => ({
     id,
     name: id === null ? HOME_LIST_NAME : listNameFor(id, input.lists),
     remaining: listRemainingCount(input.listEntries, id),
     total: listCount(input.listEntries, id),
-    ...groceryRows(input, id),
+    ...groceryRows(input, id, limits.groceryItemsPerList),
   }));
 
   const shop = resolveActiveTrip(input.tripShopId, input.tripStartedAt, input.shops, now);
@@ -381,6 +417,8 @@ export interface SnapshotInput {
   upcoming: readonly { task: Task; visibleAt: Date }[];
   /** The "what did you eat?" setting, which decides whether a tap needs the app. */
   mealLogPrompt: boolean;
+  /** The widget's caps unless given; the watch's copy passes `WATCH_LIMITS`. */
+  limits?: SnapshotLimits;
 }
 
 /**
@@ -394,6 +432,7 @@ export function buildUpcomingTasks(
   staleAfter: Date,
   events: readonly BusyEvent[] | null = null,
   mealLogPrompt = true,
+  maxTasks = WIDGET_LIMITS.upcomingTasks,
 ): WidgetUpcomingTask[] {
   return upcoming
     .filter(({ task, visibleAt }) =>
@@ -403,7 +442,7 @@ export function buildUpcomingTasks(
     )
     .slice()
     .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
-    .slice(0, MAX_UPCOMING_TASKS)
+    .slice(0, maxTasks)
     .map(({ task, visibleAt }) => ({
       ...toWidgetTask(task, events, mealLogPrompt),
       visibleAt: visibleAt.toISOString(),
@@ -431,18 +470,26 @@ export function buildUpcomingEvents(
 }
 
 export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
+  const limits = input.limits ?? WIDGET_LIMITS;
   const staleAfter = addDays(input.dayEnd, 1);
   return {
     updatedAt: input.now.toISOString(),
     visibleTasks: input.visibleTasks
       .filter(isWidgetWorthy)
-      .slice(0, MAX_VISIBLE_TASKS)
+      .slice(0, limits.visibleTasks)
       .map(t => toWidgetTask(t, input.events, input.mealLogPrompt)),
     pinnedTasks: input.pinnedTasks
       .filter(isWidgetWorthy)
-      .slice(0, MAX_PINNED_TASKS)
+      .slice(0, limits.pinnedTasks)
       .map(t => toWidgetTask(t, input.events, input.mealLogPrompt)),
-    upcomingTasks: buildUpcomingTasks(input.upcoming, input.now, staleAfter, input.events, input.mealLogPrompt),
+    upcomingTasks: buildUpcomingTasks(
+      input.upcoming,
+      input.now,
+      staleAfter,
+      input.events,
+      input.mealLogPrompt,
+      limits.upcomingTasks,
+    ),
     nextDayStart: input.dayEnd.toISOString(),
     staleAfter: staleAfter.toISOString(),
     categories: [...input.categories],
@@ -455,7 +502,7 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
       input.dayResetTime
     ),
     doneToday: input.doneToday,
-    groceries: input.grocery ? buildGroceries(input.grocery, input.now) : null,
+    groceries: input.grocery ? buildGroceries(input.grocery, input.now, limits) : null,
     meals: input.meals ? buildMeals(input.meals, input.recipes) : [],
     kitchen: input.kitchen ? buildKitchen(input.kitchen) : [],
     upcomingEvents: input.events ? buildUpcomingEvents(input.events, input.now, input.dayEnd) : null,

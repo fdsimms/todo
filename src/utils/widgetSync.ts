@@ -9,7 +9,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
-import { buildWidgetSnapshot } from './widgetSnapshot';
+import { buildWidgetSnapshot, WATCH_LIMITS, type SnapshotInput } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
 import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
@@ -258,7 +258,7 @@ function writeSnapshotNow(): void {
   const dayResetTime = settings.dayResetTime;
   const todayKey = getLogicalDayKey(now, dayResetTime);
 
-  const snapshot = buildWidgetSnapshot({
+  const input: SnapshotInput = {
     now,
     visibleTasks: tasks.visibleTasks(),
     pinnedTasks: tasks.pinnedTasks(),
@@ -299,9 +299,16 @@ function writeSnapshotNow(): void {
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
     upcoming: widgetUpcoming(tasks.deferredTasks(), now),
     mealLogPrompt: settings.mealLogPrompt,
-  });
+  };
 
-  writeToNativeBridge(JSON.stringify(snapshot));
+  writeToNativeBridge(JSON.stringify(buildWidgetSnapshot(input)));
+
+  // The Apple Watch reads the same snapshot with room for a whole shopping
+  // list (see WATCH_LIMITS). Same moment and the same gate as the widget's
+  // write, so the two never describe different states; the native half drops
+  // it when there's no paired watch with the app installed.
+  const bridge = widgetBridge();
+  bridge?.writeWatchSnapshot(JSON.stringify(buildWidgetSnapshot({ ...input, limits: WATCH_LIMITS }))).catch(() => {});
 
   // Rides the same debounce and the same store read rather than taking a
   // subscription of its own: every write that could change the index is a
@@ -315,7 +322,6 @@ function writeSnapshotNow(): void {
   // handles the same gap by contributing null for a section it can't speak
   // for; a file has no null, so it keeps the last true one.
   if (grocery.initialized) {
-    const bridge = widgetBridge();
     bridge?.writePantryIndex(JSON.stringify(buildPantryIndex(grocery.items))).catch(() => {});
   }
 }
@@ -419,9 +425,25 @@ export function useWidgetSync(): void {
       }
     });
 
+    // A tap or a dictated task from the Apple Watch, queued just now by the
+    // native half while this app is running. Applied at once rather than at
+    // the next foreground, which is the only other time these drains run.
+    // Through widgetBridge() like the drains themselves, so an app launched
+    // in demo mode has no listener and leaves the queue for the next real
+    // foreground, exactly as it does for the widget's taps.
+    let watchWork: { remove(): void } | undefined;
+    try {
+      watchWork = widgetBridge()?.addWatchQueuedWorkListener(() => {
+        Promise.all([processQuietWidgetTaps(), processPendingAddTasks()]).finally(scheduleSnapshotWrite);
+      });
+    } catch {
+      // A build predating the event — the foreground drains still cover it.
+    }
+
     return () => {
       unsubscribe();
       subscription.remove();
+      watchWork?.remove();
     };
   }, []);
 }

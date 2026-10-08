@@ -217,6 +217,20 @@ describe('parseQuietTaps', () => {
     expect(parseQuietTaps('{nope')).toEqual([]);
     expect(parseQuietTaps('{}')).toEqual([]);
   });
+
+  // The Apple Watch's taps join this queue (WatchSession.swift) with one key
+  // the widget's don't have, the id the watch settles them by, and with no
+  // list key at all for a task or the home list.
+  it('reads a watch tap exactly as it reads a widget tap', () => {
+    const json = JSON.stringify([
+      { kind: 'complete', id: 'a', at: AT, watchTapId: 'w1' },
+      { kind: 'grocery', id: 'milk', at: AT, watchTapId: 'w2' },
+    ]);
+    expect(parseQuietTaps(json)).toEqual([
+      { kind: 'complete', id: 'a', listId: null, at: AT },
+      { kind: 'grocery', id: 'milk', listId: null, at: AT },
+    ]);
+  });
 });
 
 describe('planQuietTaps', () => {

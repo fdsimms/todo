@@ -7,9 +7,9 @@ import { isDemoModeActive } from './demoState';
  *
  * Everything behind that bridge lives somewhere the app's SQLite file doesn't:
  * the App Group container the home-screen widget reads, the queue the widget's
- * checkbox writes into, the queue the share extension writes into, and the
- * Live Activities on the lock screen and in the Dynamic Island. All of it
- * outlives a launch, and all of it is visible with the app closed.
+ * checkbox writes into, the queue the share extension writes into, the Live
+ * Activities on the lock screen and in the Dynamic Island, and the Apple Watch.
+ * All of it outlives a launch, and all of it is visible with the app closed.
  *
  * **Which is why demo mode is gated here rather than at each call site.** Demo
  * mode swaps the whole database for a throwaway (`switchToDemoDatabase`), so
@@ -52,6 +52,14 @@ export interface WidgetBridge {
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
   syncFocusLiveActivity: (jsonString: string) => Promise<boolean>;
+  /** The Apple Watch's copy of the snapshot, built with `WATCH_LIMITS`. */
+  writeWatchSnapshot: (jsonString: string) => Promise<boolean>;
+  /**
+   * Called when a watch tap or a task dictated on the watch has just joined
+   * the queues the drains above read. Subscribing writes nothing, but it goes
+   * through here like everything else on this bridge.
+   */
+  addWatchQueuedWorkListener: (listener: () => void) => { remove(): void };
 }
 
 export function widgetBridge(): WidgetBridge | null {

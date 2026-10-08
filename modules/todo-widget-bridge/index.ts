@@ -36,6 +36,13 @@ interface TodoWidgetBridgeNativeModule {
   // See src/utils/focusLiveActivity.ts for the JSON shape (FocusRun) and the
   // reconciliation this drives. Empty string means "no session wanted".
   syncFocusLiveActivity(jsonString: string): Promise<boolean>;
+  // The Apple Watch's copy of the widget snapshot (WidgetSnapshot JSON, built
+  // with WATCH_LIMITS). Sent on over WatchConnectivity by WatchSession.swift;
+  // a no-op without a paired watch that has the app.
+  writeWatchSnapshot(jsonString: string): Promise<boolean>;
+  // Fired when a watch tap or dictated task has just joined the queues the
+  // drains above read, so a running app can drain now.
+  addListener(eventName: 'onWatchQueuedWork', listener: () => void): { remove(): void };
 }
 
 const TodoWidgetBridge = requireNativeModule<TodoWidgetBridgeNativeModule>('TodoWidgetBridge');
@@ -82,4 +89,12 @@ export function syncTripLiveActivity(jsonString: string): Promise<boolean> {
 
 export function syncFocusLiveActivity(jsonString: string): Promise<boolean> {
   return TodoWidgetBridge.syncFocusLiveActivity(jsonString);
+}
+
+export function writeWatchSnapshot(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.writeWatchSnapshot(jsonString);
+}
+
+export function addWatchQueuedWorkListener(listener: () => void): { remove(): void } {
+  return TodoWidgetBridge.addListener('onWatchQueuedWork', listener);
 }

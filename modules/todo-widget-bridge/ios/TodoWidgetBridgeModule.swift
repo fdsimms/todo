@@ -86,8 +86,41 @@ private struct FocusRunPayload: Codable {
 }
 
 public class TodoWidgetBridgeModule: Module {
+  private var watchWorkObserver: NSObjectProtocol?
+
   public func definition() -> ModuleDefinition {
     Name("TodoWidgetBridge")
+
+    // Fired when a tap or a dictated task from the Apple Watch has just been
+    // queued (WatchSession.swift), so a running app drains it at once instead
+    // of at its next foreground. Carries nothing: the queue is the payload.
+    Events("onWatchQueuedWork")
+
+    OnStartObserving("onWatchQueuedWork") {
+      guard self.watchWorkObserver == nil else { return }
+      self.watchWorkObserver = NotificationCenter.default.addObserver(
+        forName: .todoWatchQueuedWork,
+        object: nil,
+        queue: nil
+      ) { [weak self] _ in
+        self?.sendEvent("onWatchQueuedWork", [:])
+      }
+    }
+
+    OnStopObserving("onWatchQueuedWork") {
+      if let observer = self.watchWorkObserver {
+        NotificationCenter.default.removeObserver(observer)
+        self.watchWorkObserver = nil
+      }
+    }
+
+    // The watch's copy of the snapshot: the widget's shape with larger caps
+    // (widgetSync.ts). Handed straight to WatchSession, which keeps it and
+    // sends it on. Returns Bool for the same reason writeSnapshot below does.
+    AsyncFunction("writeWatchSnapshot") { (jsonString: String) -> Bool in
+      WatchSession.shared.writeSnapshot(jsonString)
+      return true
+    }
 
     // Returns a Bool rather than Void deliberately. Per
     // facebook/react-native#54859: an earlier RN fix (PR #50193) patched the
@@ -297,6 +330,9 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         json = String(data: data, encoding: .utf8) ?? "[]"
+        // Watch taps in what was just read stay "waiting" for the watch
+        // until the snapshot that includes them is written.
+        WatchSession.shared.noteDrained(data)
       }
       return json
     }
