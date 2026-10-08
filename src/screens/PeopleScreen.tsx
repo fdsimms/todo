@@ -18,7 +18,7 @@ import { PersonEditor } from '../components/PersonEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { ContactPickerSheet } from '../components/ContactPickerSheet';
 import { TripPlannerSheet } from '../components/TripPlannerSheet';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { SelectionDot } from '../components/SelectionDot';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
@@ -57,6 +57,7 @@ import { anyoneHasLocation } from '../utils/peopleLocations';
  */
 export function PeopleScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const route = useRoute<{ key: string; name: string; params?: { openPerson?: number; personId?: string } }>();
   const tabBarHeight = useBottomTabBarHeight();
@@ -238,7 +239,7 @@ export function PeopleScreen() {
           <ReorderableList
             data={visiblePeople}
             keyExtractor={p => p.id}
-            scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+            scrollToTop={{ bottom: fabBottom }}
             contentContainerStyle={styles.list}
             // A paint gesture owns the touch for its duration — see the note in
             // PaintSelectionProvider on why the list can't be allowed to scroll
@@ -301,7 +302,6 @@ export function PeopleScreen() {
         <Fab
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add person"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
         />
       )}
 

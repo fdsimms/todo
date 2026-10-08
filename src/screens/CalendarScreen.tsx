@@ -1245,7 +1245,6 @@ export function CalendarScreen() {
       <Fab
         onPress={() => setQuickAddVisible(true)}
         accessibilityLabel="Add task"
-        bottom={insets.bottom + tabBarHeight + spacing.md}
       />
 
       {draggingTask && (

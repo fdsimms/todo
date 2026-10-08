@@ -256,7 +256,6 @@ export function StacksScreen() {
         <Fab
           onPress={startNaming}
           accessibilityLabel="Add stack"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
         />
       )}
 

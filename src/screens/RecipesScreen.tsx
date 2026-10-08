@@ -38,7 +38,7 @@ import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { CookWithSheet } from '../components/CookWithSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -189,6 +189,7 @@ function usePantryCatalog() {
 
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -903,7 +904,7 @@ export function RecipesScreen() {
               <ReorderableList
                 data={visibleDraggableData}
                 keyExtractor={recipeListItemKey}
-                scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+                scrollToTop={{ bottom: fabBottom }}
                 // The user can't scroll during an add-button drag (the
                 // button's responder has the touch); the drag scrolls it
                 // instead, through scrollControl above. Same reasoning for a
@@ -994,7 +995,6 @@ export function RecipesScreen() {
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add recipe"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
           dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
         />
