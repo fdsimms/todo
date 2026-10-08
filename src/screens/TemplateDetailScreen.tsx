@@ -30,6 +30,8 @@ import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
@@ -111,6 +113,7 @@ export function TemplateDetailScreen() {
   // its own to land the created tasks in, so without this the run leaves no
   // trace beyond wherever its container happens to be.
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
   // Snapshot rather than the live row, like TemplatesScreen does: the editor
   // seeds its fields off this object's identity, so handing it a value that
   // changes under it would reset them mid-edit.
@@ -600,7 +603,11 @@ export function TemplateDetailScreen() {
           visible={applyTemplateObj !== null}
           template={applyTemplateObj}
           onClose={() => setApplyTemplateId(null)}
-          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+          onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
         />
       )}
 
@@ -608,7 +615,11 @@ export function TemplateDetailScreen() {
         <TemplateAppliedToast
           count={templateAppliedCount}
           bottom={fabBottom + FAB_SIZE + spacing.md}
-          onDismiss={() => setTemplateAppliedCount(null)}
+          goTo={templateAppliedDest ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
         />
       )}
     </View>

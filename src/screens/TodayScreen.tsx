@@ -139,6 +139,8 @@ import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
@@ -1021,6 +1023,7 @@ export function TodayScreen() {
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -5119,7 +5122,11 @@ export function TodayScreen() {
             visible={applyTemplate !== null}
             template={applyTemplate}
             onClose={() => setApplyTemplate(null)}
-            onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+            onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
           />
         </LazySheet>
 
@@ -5127,7 +5134,11 @@ export function TodayScreen() {
           <TemplateAppliedToast
             count={templateAppliedCount}
             bottom={fabBottom + FAB_SIZE + spacing.md}
-            onDismiss={() => setTemplateAppliedCount(null)}
+            goTo={templateAppliedDest && !(templateAppliedDest.kind === 'view' && templateAppliedDest.mode === viewMode) ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
           />
         )}
 
