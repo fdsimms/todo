@@ -1265,9 +1265,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       )}
 
       {/*
-        Whether this project is a list lives on its own screen — the
-        list-outline toggle in ProjectDetailScreen's header, right where its
-        effect shows — not here. See docs/arch/lists.md.
+        Whether this project is a list is chosen when it is made (quick add's
+        Project/List control) and converted from ProjectDetailScreen's "..."
+        menu, right where its effect shows — not here. See docs/arch/lists.md.
       */}
 
       <Text style={styles.groupLabel}>More</Text>

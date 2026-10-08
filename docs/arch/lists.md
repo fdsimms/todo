@@ -69,10 +69,12 @@ silently drop a schedule someone set, including a recurrence.
 
 ## Where the kind is switched
 
-The `list-outline` toggle in the project page's header, and the List chip when
-a project is created from quick add. The editor deliberately has no control for
-it (see the comment in `ProjectEditor.tsx`): the switch belongs where its effect
-shows.
+The Project/List control at the top of quick add chooses the kind when one is
+made (a list leaves out the Deadline and Trip chips). Switching an existing one is
+**Convert to list / Convert to project** in the project page's "..." menu
+(`ProjectPageMenu`). It used to be a `list-outline` toggle in the page header,
+which made a list read as a project with a switch on. The editor deliberately
+has no control for it (see the comment in `ProjectEditor.tsx`).
 
 ## Readers
 
