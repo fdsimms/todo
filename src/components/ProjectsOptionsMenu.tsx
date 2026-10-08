@@ -234,8 +234,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Its own group, not a fourth row in the one above: those three are one
   // question (which list am I looking at) with a tick on the current answer,
   // and a row that opens somewhere else is not an answer to it. The band is
-  // the iOS menu's group break, drawn in the screen colour.
-  secondCard: { borderTopWidth: spacing.xsm, borderTopColor: colors.bg },
+  // the iOS menu's group break. It is a translucent separator tint rather than
+  // the opaque screen colour, which read as a white bar across the blurred card.
+  secondCard: { borderTopWidth: spacing.xsm, borderTopColor: colors.separator + '66' },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
