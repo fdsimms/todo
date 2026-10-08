@@ -1011,6 +1011,15 @@ export function seedDemoData(): void {
   // archiveTask stamps the moment it runs, which is the seed's own runtime.
   updateTask(swim.id, { archivedAt: subDays(today, 26).toISOString() });
 
+  // --- A stack with several tasks on one future day ---------------------------
+  // Later folds three or more of one stack's tasks on the same day into a
+  // single row (see LATER_STACK_FOLD_MIN), so this is what shows it.
+  const poconos = createGroup('Pack for Poconos', 'Home');
+  ['Underwear x4', 'Socks x4', 'Phone charger', 'Binoculars', 'Comfortable shoes', 'Pants x1'].forEach(title => {
+    const t = addNewGroupedTask(poconos.id, title);
+    updateTask(t.id, { dueDate: addDays(today, 5).toISOString() });
+  });
+
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
   const vitaminD = addNewGroupedTask(supplements.id, 'Vitamin D');
