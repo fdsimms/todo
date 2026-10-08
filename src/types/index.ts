@@ -1040,7 +1040,9 @@ export type UnattendedSubject =
   // A saved view (`SavedView`), created or deleted by an agent. Record only.
   | 'view'
   // A switch in Settings an agent flipped (vacation mode). Record only: the switch is one tap.
-  | 'setting';
+  | 'setting'
+  // A meter reading (`MeterReading`) an agent logged or deleted. Record only.
+  | 'meter';
 
 /**
  * What an agent's edit or move changed: the fields it touched, as they were
@@ -1911,6 +1913,25 @@ export interface JournalEntry {
   dayKey: string;
   /** What was written. Never empty: the store refuses a blank entry. */
   text: string;
+}
+
+/**
+ * One reading of a meter the user tracks by hand: an odometer, a hobbs meter,
+ * an espresso machine's shot counter. Readings are keyed by the meter, not by
+ * a task, so a single entry serves every task following that meter
+ * (`Task.meterName`). Rows are only ever added or deleted, never merged, so
+ * two devices logging at once both keep their reading. See src/utils/meters.ts.
+ */
+export interface MeterReading {
+  id: string;
+  /** `meterKey(name)`: trimmed and lowercased, so "Car" and "car " are one meter. */
+  meterKey: string;
+  /** The name as it was typed, for display. */
+  meterName: string;
+  value: number;
+  /** When the reading was taken. */
+  readAt: string;
+  createdAt: string;
 }
 
 /**
@@ -3658,6 +3679,31 @@ export interface Task {
   // `canWaitForWeather`); a repeating task, chain step or series member never
   // carries it. See src/utils/weatherWait.ts.
   weatherWait?: WeatherCondition | null;
+
+  // A one-off due at a reading rather than a date: "change the oil every 5,000
+  // miles". The readings belong to the meter, not the task (`MeterReading`,
+  // keyed by `meterKey(meterName)`), so one odometer entry speaks for every
+  // task on the car. While set, the meter pass owns `deferUntil` the way the
+  // weather pass does: it holds the task until a reading reaches `meterDueAt`,
+  // the date the reading rate projects, or `meterLimitMonths` after the task
+  // was made, whichever comes first. Completing it writes the next one, due
+  // `meterEvery` further on. Only a plain one-off may follow a meter (see
+  // `canFollowMeter`). See src/utils/meters.ts and docs/arch/meters.md.
+  meterName?: string | null;
+  // What the meter counts, as the user wrote it ("miles", "hours", "shots").
+  // Display only: nothing converts it.
+  meterUnit?: string | null;
+  // How far the meter runs between occurrences.
+  meterEvery?: number | null;
+  // The reading this occurrence is due at.
+  meterDueAt?: number | null;
+  // "Or every 6 months, whichever comes first": a time limit counted from the
+  // task's createdAt, so a meter nobody reads still surfaces. Null = none.
+  meterLimitMonths?: number | null;
+  // The day key of the last hold the meter pass wrote into `deferUntil`, so it
+  // only ever moves its own: a defer that doesn't match is the user's snooze
+  // and is left alone. Null when the pass has written nothing.
+  meterHeldUntil?: string | null;
 
   // On a recurring task: every occurrence it spawns starts pinned. Completing
   // a pinned task clears its pin and a successor is a new row that starts

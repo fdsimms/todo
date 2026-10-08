@@ -33,6 +33,10 @@ import { haptics } from '../utils/haptics';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { medicationVocabulary, type MedicationDose } from '../utils/medicationLog';
+import { parseQuickDose } from '../utils/quickDose';
+import { confirmWithinLimit, recordDose } from '../utils/doseRecording';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -78,7 +82,9 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput, meterKey } from '../utils/meters';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -511,6 +517,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // "on the next sunny day" off the title tooltip (Task.weatherWait).
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  // "every 5,000 miles on the car" off the title tooltip (Task.meterName). The
+  // reading it's due at isn't in the phrase; it comes from the meter's last
+  // reading on save, or from the first one logged (meterStartPatch).
+  const [titleMeter, setTitleMeter] = useState<{ name: string; unit: string; every: number } | null>(null);
+  const meterReadings = useMeterReadingStore(s => s.readings);
   // Read for the re-render alone: the sun tooltip resolves through
   // sunLocationOn, which reads the setting itself.
   const sunLocationSetting = useSettingsStore(s => s.sunLocation);
@@ -623,6 +634,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
     setQuotaPeriod('day');
     setWeatherWait(null);
+    setTitleMeter(null);
     setTitleWindowStart(null);
     setTitleWindowStartSun(null);
     setTitleSeries(null);
@@ -1062,6 +1074,20 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, type, sunDayStart.getTime(), sunLocationSetting]);
+  // "change the oil every 5,000 miles on the car": due by usage. After the sun
+  // phrase in the chain, and only on a plain one-off with nothing else holding
+  // it (canFollowMeter's rule). The name is matched against the meters already
+  // read, so "the car" files under the "Car" the readings use.
+  const meterParsed = useMemo(() => {
+    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
+      || durationParsed || supplyParsed || targetParsed || estimateParsed || weatherParsed || sunParsed || !title.trim()) return null;
+    if (type !== 'task' || recurrenceType !== 'none' || titleSeries || chainItems.length > 0 || weatherWait !== null || polarity === 'negative' || titleMeter !== null) return null;
+    const hit = parseMeterInput(title);
+    if (!hit) return null;
+    const known = knownMeterNames(meterReadings).find(n => meterKey(n) === meterKey(hit.meterName));
+    const name = known?.trim() ?? hit.meterName.charAt(0).toUpperCase() + hit.meterName.slice(1);
+    return { ...hit, meterName: name, read: !!known };
+  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, type, recurrenceType, titleSeries, chainItems, weatherWait, polarity, titleMeter, meterReadings]);
   // "file taxes after get W-2" — waiting on another task. Matched strictly
   // (see parseWaitingOnInput) against live top-level tasks, one row per
   // series so a dated set doesn't read as several tasks of the same name.
@@ -1081,17 +1107,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   }, [tasks, visible]);
   const waitingParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && title.trim()
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && title.trim()
       ? parseWaitingOnInput(title, waitCandidates) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, waitCandidates]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, waitCandidates]
   );
   // "pack: socks, charger, passport" — subtasks. Last of all: a colon list is
   // the loosest shape here, so anything more specific in the line wins first.
   const subtasksParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !waitingParsed && title.trim()
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !waitingParsed && title.trim()
       ? parseSubtasksInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, waitingParsed]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, waitingParsed]
   );
   // "Don't check Twitter", "No snacking" — a habit to avoid. Strips nothing
   // (the words are its name), so it stops being offered once accepted rather
@@ -1099,10 +1125,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // control in the editor.
   const avoidParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !waitingParsed && !subtasksParsed
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !waitingParsed && !subtasksParsed
       && type === 'task' && polarity !== 'negative' && title.trim()
       ? parseAvoidInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, waitingParsed, subtasksParsed, type, polarity]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, waitingParsed, subtasksParsed, type, polarity]
   );
   // Whether the task being built is an avoid-task: the flag, on the one kind
   // that can hold it (a later switch to Timed or Target leaves it unset).
@@ -1171,6 +1197,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       ? {
                           matchStart: sunParsed.matchStart,
                           matchedText: title.slice(sunParsed.matchStart, sunParsed.matchEnd),
+                        }
+                    : meterParsed
+                      ? {
+                          matchStart: meterParsed.matchStart,
+                          matchedText: title.slice(meterParsed.matchStart, meterParsed.matchEnd),
                         }
                     : waitingParsed
                       ? {
@@ -1582,6 +1613,18 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     }
   };
 
+  // Makes it due by usage on that meter. The applied line says so, and says
+  // when the meter still needs its first reading.
+  const applyMeter = () => {
+    if (!meterParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(meterParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setTitleMeter({ name: meterParsed.meterName, unit: meterParsed.unit, every: meterParsed.every });
+  };
+
   const applyProject = () => {
     if (!projectParsed) return;
     haptics.success();
@@ -1640,6 +1683,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (estimateParsed) applyEstimate();
     else if (weatherParsed) applyWeather();
     else if (sunParsed) applySun();
+    else if (meterParsed) applyMeter();
     else if (waitingParsed) applyWaiting();
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
@@ -1708,6 +1752,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // The wait only survives on a plain one-off, the same rule the editor applies
   // on save: a Target or a repeat chosen after accepting the phrase drops it.
   const weatherWaitHere = weatherWait !== null && type === 'task' && recurrenceType === 'none' && seriesExtraDates.length === 0 && chainItems.length === 0;
+  // The same plain one-off, and never alongside a weather wait or as an
+  // avoid-task (canFollowMeter). A later switch that breaks it drops the meter.
+  const meterHere = titleMeter !== null && type === 'task' && recurrenceType === 'none' && seriesExtraDates.length === 0 && chainItems.length === 0 && !weatherWaitHere && polarity !== 'negative';
+  const titleMeterInput = titleMeter
+    ? { name: titleMeter.name, unit: titleMeter.unit, everyText: String(titleMeter.every), dueText: '', limitMonths: null }
+    : null;
 
   const typeValues: TypeValues = {
     // Always empty here, for the same reason healthMetric is null: quick add
@@ -1859,6 +1909,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(blockerIds.length > 0 ? blockerFields(blockerIds) : {}),
       ...(titleWindowEnd ? { windowEnd: titleWindowEnd, windowEndSun: titleWindowEndSun } : {}),
       ...(weatherWaitHere ? { weatherWait } : {}),
+      ...(meterHere && titleMeterInput ? meterFieldsFromInput(titleMeterInput, meterReadings) : {}),
       // Plain kind only, the editor's rule: every other kind is a way of
       // completing something, and an avoid-task is never completed.
       ...(avoidsHere ? { polarity: 'negative' as const, showStreak: true } : {}),
@@ -1922,6 +1973,23 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // a demo, where the event would reach the real calendar, so there the line is
   // an ordinary task.
   const eventText = isDemoModeActive() ? null : eventMarkerText(title);
+  // "took ibuprofen 400mg" is a dose to record, not a task (see quickDose.ts
+  // for how strict that reading is). Recorded through the same path the
+  // Medications screen uses, so the limit is checked and a low supply offers
+  // a refill. No demo gate: a dose only reaches the database, which in a demo
+  // is the throwaway one.
+  const medicationLogs = useMedicationStore(s => s.logs);
+  const doseParse = useMemo(
+    () => (eventText === null ? parseQuickDose(title, medicationVocabulary(medicationLogs)) : null),
+    [eventText, title, medicationLogs],
+  );
+  const addAsDose = async (dose: MedicationDose) => {
+    haptics.tap();
+    if (!(await confirmWithinLimit(dose.name))) return;
+    if (!recordDose({ ...dose, asNeeded: true })) return;
+    haptics.success();
+    dismiss();
+  };
   const addAsEvent = async (text: string) => {
     haptics.tap();
     const byId = new Map(people.map(p => [p.id, p]));
@@ -2008,6 +2076,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
 
   const handleAdd = () => {
     if (eventText !== null) { void addAsEvent(eventText); return; }
+    if (doseParse !== null) { void addAsDose(doseParse); return; }
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
@@ -2054,6 +2123,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowStart: titleWindowStart,
       windowStartSun: titleWindowStart ? titleWindowStartSun : null,
       weatherWait: weatherWaitHere ? weatherWait : null,
+      meter: meterHere ? titleMeter : null,
       blockerIds,
       subtaskTitles,
       windowEnd: titleWindowEnd,
@@ -2504,7 +2574,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 onPress={handleAdd}
                 disabled={!title.trim() || blocked !== null}
                 accessibilityRole="button"
-                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
+                accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Ionicons name="arrow-up" size={18} color={!title.trim() || blocked !== null ? colors.textTertiary : colors.onAccent} />
               </TouchableOpacity>
@@ -2628,6 +2698,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                                 ? 'partly-sunny-outline'
                                                 : sunParsed
                                                 ? (sunParsed.anchor === 'sunrise' ? 'sunny-outline' : 'moon-outline')
+                                                : meterParsed
+                                                ? 'speedometer-outline'
                                                 : waitingParsed
                                                   ? 'hourglass-outline'
                                                   : subtasksParsed
@@ -2663,6 +2735,8 @@ parsed
                                               ? `Wait for a ${weatherParsed.condition} day`
                                               : sunParsed
                                               ? `${sunParsed.bound === 'start' ? 'Hidden until' : 'Expires at'} ${sunParsed.anchor} · ${formatHHMM(sunParsed.clock)} that day`
+                                              : meterParsed
+                                              ? `Due every ${formatMeterAmount(meterParsed.every, meterParsed.unit)} on ${meterParsed.meterName}`
                                               : waitingParsed
                                                 ? `Waiting on · ${waitingParsed.title}`
                                                 : subtasksParsed
@@ -2742,6 +2816,14 @@ parsed
             `Waiting for a ${weatherWait} day`,
             'Stop waiting for weather',
             () => setWeatherWait(null),
+          )}
+          {meterHere && titleMeter && appliedLine(
+            'speedometer-outline',
+            latestReading(meterReadings, titleMeter.name)
+              ? `Due every ${formatMeterAmount(titleMeter.every, titleMeter.unit)} on ${titleMeter.name}, from its last reading`
+              : `Due every ${formatMeterAmount(titleMeter.every, titleMeter.unit)} on ${titleMeter.name}. Log a reading from the task to start it`,
+            'Remove the meter',
+            () => setTitleMeter(null),
           )}
           {blockerIds.length > 0 && appliedLine(
             'hourglass-outline',
@@ -3559,13 +3641,13 @@ parsed
                 disabled={!title.trim() || blocked !== null}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
+                accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Text style={[
                   styles.footerAddText,
                   (!title.trim() || blocked !== null) && styles.footerAddTextDisabled,
                 ]}>
-                  {eventText !== null ? 'Add event' : 'Add task'}
+                  {eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
                 </Text>
               </TouchableOpacity>
             </View>

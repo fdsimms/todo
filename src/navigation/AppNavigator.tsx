@@ -12,6 +12,7 @@ import { SafeBlurView } from '../components/SafeBlurView';
 import { GlassLayer, glassSupported } from '../components/GlassLayer';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
+import { MetersScreen } from '../screens/MetersScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { GroceryScreen } from '../screens/GroceryScreen';
@@ -32,6 +33,7 @@ import { JournalScreen, DreamsScreen } from '../screens/JournalScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { MoodDayScreen } from '../screens/MoodDayScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
+import { MedicationDetailScreen } from '../screens/MedicationDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
 import { AutomationsScreen } from '../screens/AutomationsScreen';
@@ -85,6 +87,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -139,6 +142,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Calendar: freezeWhenBlurred(CalendarScreen),
   Categories: freezeWhenBlurred(CategoriesScreen),
   Tags: freezeWhenBlurred(TagsScreen),
+  Meters: freezeWhenBlurred(MetersScreen),
   People: freezeWhenBlurred(PeopleScreen),
   Stacks: freezeWhenBlurred(StacksScreen),
   Templates: freezeWhenBlurred(TemplatesScreen),
@@ -203,6 +207,8 @@ const PUSHED_ROUTES = new Set([
   // and neither would survive a cold-launch restore with nothing to say what
   // it was showing.
   'MoodHistory', 'MoodDay', 'SymptomDetail',
+  // One medication's page, reached from Medications for the same reason.
+  'MedicationDetail',
 ]);
 
 function MorePlaceholder() {
@@ -406,6 +412,7 @@ function initialScreenFromSettings(): string {
     journal: useJournalStore.getState().entries.filter(e => e.kind === 'journal').length,
     dreams: useJournalStore.getState().entries.filter(e => e.kind === 'dream').length,
     foodLog: useFoodLogStore.getState().totalCount,
+    meters: useMeterReadingStore.getState().readings.length,
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).
   if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);
@@ -636,6 +643,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="SymptomDetail"
             component={SymptomDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="MedicationDetail"
+            component={MedicationDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

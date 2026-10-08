@@ -200,6 +200,18 @@ struct WidgetMeal: Codable, Identifiable {
     var id: String { slot + title }
 }
 
+/// One as-needed medication on the Medications widget (`buildWidgetMedications`
+/// in widgetSnapshot.ts). `id` is the medication's key, the same id
+/// LogMedicationIntent's entity carries, so a row's button can build the
+/// entity straight from this.
+struct WidgetMedication: Codable, Identifiable {
+    let id: String
+    let name: String
+    /// What the button records ("400 mg"), or nil when no amount was stated.
+    let dose: String?
+    let lastTakenAt: String
+}
+
 struct WidgetKitchenItem: Codable, Identifiable {
     let title: String
     /// A `YYYY-MM-DD` day key, or nil for a row with no date on it.
@@ -254,11 +266,15 @@ struct WidgetSnapshot: Codable {
     /// When the task rows stop being trustworthy. Nil from a build predating
     /// it, which never goes stale — the widget behaves as it always did.
     let staleAfter: String?
+    /// Nil before the medication log has loaded, or from a build predating
+    /// the Medications widget; either way the widget asks for the app.
+    let medications: [WidgetMedication]?
 
     enum CodingKeys: String, CodingKey {
         case updatedAt, visibleTasks, pinnedTasks, categories, agenda, doneToday
         case groceries, meals, kitchen, upcomingEvents
         case upcomingTasks, nextDayStart, staleAfter
+        case medications
     }
 
     init(from decoder: Decoder) throws {
@@ -276,6 +292,7 @@ struct WidgetSnapshot: Codable {
         upcomingTasks = try c.decodeIfPresent([WidgetTask].self, forKey: .upcomingTasks) ?? []
         nextDayStart = try c.decodeIfPresent(String.self, forKey: .nextDayStart)
         staleAfter = try c.decodeIfPresent(String.self, forKey: .staleAfter)
+        medications = try c.decodeIfPresent([WidgetMedication].self, forKey: .medications)
     }
 
     // ==== Time passing without the app ====

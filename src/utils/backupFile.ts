@@ -25,6 +25,9 @@ function sharing(): typeof import('expo-sharing') {
 function documentPicker(): typeof import('expo-document-picker') {
   return require('expo-document-picker');
 }
+function print(): typeof import('expo-print') {
+  return require('expo-print');
+}
 
 /**
  * Writes text to the cache directory and returns its file:// URI.
@@ -74,6 +77,35 @@ export async function shareCsvFile(uri: string, dialogTitle: string): Promise<vo
   await shareExportFile(uri, {
     mimeType: 'text/csv',
     UTI: 'public.comma-separated-values-text',
+    dialogTitle,
+  });
+}
+
+/**
+ * Renders an HTML page to a PDF in the cache, named `fileName`, and returns its
+ * file:// URI. US Letter, with the margins set here rather than by an `@page`
+ * rule, which the iOS print renderer doesn't honour. The rename is so the file
+ * the share sheet offers is called what it is rather than a random id.
+ */
+export async function writePdfFile(html: string, fileName: string): Promise<string> {
+  const { uri } = await print().printToFileAsync({
+    html,
+    width: 612,
+    height: 792,
+    margins: { top: 48, bottom: 48, left: 52, right: 52 },
+  });
+  const { File, Paths } = fileSystem();
+  const dest = new File(Paths.cache, fileName);
+  if (dest.exists) dest.delete();
+  // Awaited: `move()` is asynchronous from SDK 57 (see recipePhoto.ts).
+  await new File(uri).move(dest);
+  return dest.uri;
+}
+
+export async function sharePdfFile(uri: string, dialogTitle: string): Promise<void> {
+  await shareExportFile(uri, {
+    mimeType: 'application/pdf',
+    UTI: 'com.adobe.pdf',
     dialogTitle,
   });
 }

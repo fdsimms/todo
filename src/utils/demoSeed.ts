@@ -14,6 +14,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
@@ -2168,6 +2169,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedMeterTask(today);
   seedJournal(today);
   seedAsNeededDoses(today);
   seedRewards(today);
@@ -2956,6 +2958,30 @@ function seedMoodTasks(today: Date): void {
  * Goes through `addMilestone` like everything else here, so a seeded row
  * cannot drift from the type.
  */
+/**
+ * A task due at a reading rather than a date: the car's oil change, with two
+ * odometer readings a month apart so the row shows an estimate ("est. Nov 3")
+ * rather than asking for a reading. Readings go through `logReading` and the
+ * task through `addTask`, and `applyMeterHolds` places it the way the pass
+ * would, so nothing here can drift from what the app writes.
+ */
+function seedMeterTask(today: Date): void {
+  const { logReading } = useMeterReadingStore.getState();
+  const read = (daysAgo: number, value: number) => {
+    const at = subDays(today, daysAgo);
+    at.setHours(9, 0, 0, 0);
+    logReading('Car', value, at);
+  };
+  read(40, 38200);
+  read(10, 39400);
+  const { addTask, updateTask, applyMeterHolds } = useTaskStore.getState();
+  const task = addTask({ title: 'Change the oil', category: 'Home', effort: 2 });
+  updateTask(task.id, {
+    meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 40500, meterLimitMonths: 6,
+  });
+  applyMeterHolds();
+}
+
 function seedMilestone(today: Date): void {
   const { addMilestone } = useMilestoneStore.getState();
   const date = subDays(today, 9);
@@ -3088,6 +3114,26 @@ function seedAsNeededDoses(today: Date): void {
     });
   }
   useMedicationStore.getState().archiveMedication('Amoxicillin');
+
+  // A limit and a supply on the ibuprofen, so its row says where it stands
+  // and its page has both cards filled in. Through the store's own actions,
+  // which stamp the supply's count as of now, so the doses above (all in the
+  // past) leave it at the number typed here.
+  const meds = useMedicationStore.getState();
+  meds.setLimit('Ibuprofen', { minHours: 6, maxPer24h: 3, notify: false });
+  meds.setSupply('Ibuprofen', { count: 9, unit: 'dose', refillCount: 24, reorderAt: 3 });
+
+  // Something started a few days ago with no milestone for it, so the
+  // Medications screen shows its "mark the day you started" offer.
+  for (const back of [5, 3, 1]) {
+    addLog({
+      name: 'Melatonin',
+      amount: 3,
+      unit: 'mg',
+      asNeeded: true,
+      at: setHours(subDays(today, back), 22),
+    });
+  }
 }
 
 /**
@@ -3279,6 +3325,31 @@ function seedTemplates(): void {
   ];
   RESET_ITEMS.forEach(item => addItem(reset.id, item));
   useTemplateStore.getState().setTemplateContainer(reset.id, 'stack');
+
+  // A taper: one daily task whose chain steps each record their own dose,
+  // moving one step a day ("Next step: on the next repeat") and ending after
+  // the last one (the repeat count). Nothing else in the app shows that a
+  // chain step can carry a dose, so without this the way to schedule a taper
+  // is a thing nobody would find.
+  const taper = addTemplate('Prednisone taper');
+  const TAPER_DOSES = [40, 40, 40, 30, 30, 30, 20, 20, 20, 10, 10, 10];
+  addItem(taper.id, {
+    title: 'Take prednisone',
+    category: 'Health',
+    dueOffsetDays: 0,
+    recurrenceType: 'daily',
+    recurrenceCount: TAPER_DOSES.length,
+    chainEnabled: true,
+    chainStepOnSchedule: true,
+    chainItems: TAPER_DOSES.map(mg => ({
+      id: generateId(),
+      title: `Prednisone ${mg} mg`,
+      estimatedMinutes: null,
+      medicationName: 'Prednisone',
+      medicationAmount: mg,
+      medicationUnit: 'mg',
+    })),
+  });
   useTemplateStore.getState().setSchedule(reset.id, {
     frequency: 'weekly',
     weekday: 0,

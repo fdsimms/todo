@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2086,6 +2086,37 @@ describe('parseAvoidInput', () => {
     expect(said('no morning meetings')).toBeNull();
     expect(said("don't forget to call mom")).toBeNull();
     expect(said('call mom, never mind')).toBeNull();
+  });
+});
+
+describe('parseMeterInput', () => {
+  it('reads "every 5,000 miles on the car" off the end of a title', () => {
+    expect(parseMeterInput('change the oil every 5,000 miles on the car')).toEqual({
+      every: 5000, unit: 'miles', meterName: 'car', cleanTitle: 'change the oil',
+      matchStart: 15, matchEnd: 43,
+    });
+  });
+
+  it('takes a name of up to three words, "for" as well as "on", and a decimal', () => {
+    expect(parseMeterInput('descale every 200 shots on the espresso machine'))
+      .toMatchObject({ every: 200, unit: 'shots', meterName: 'espresso machine', cleanTitle: 'descale' });
+    expect(parseMeterInput('grease the chain every 150.5 km for my bike'))
+      .toMatchObject({ every: 150.5, unit: 'km', meterName: 'bike' });
+  });
+
+  it('leaves a time unit to the schedule, which reads it as a repeat', () => {
+    expect(parseMeterInput('check the tires every 2 weeks on the car')).toBeNull();
+    expect(parseMeterInput('service it every 50 hours on the mower')).toBeNull();
+  });
+
+  it('needs a meter to read: a bare interval names nothing', () => {
+    expect(parseMeterInput('change the oil every 5,000 miles')).toBeNull();
+    expect(parseMeterInput('every 5,000 miles on the car')).toBeNull();
+  });
+
+  it('is not taken for a schedule by the parse that runs ahead of it', () => {
+    expect(parseTaskInput('change the oil every 5,000 miles on the car')).toBeNull();
+    expect(parseTaskInput('descale every 200 shots on the espresso machine')).toBeNull();
   });
 });
 

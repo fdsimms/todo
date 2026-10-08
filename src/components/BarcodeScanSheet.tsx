@@ -52,6 +52,7 @@ import {
   pluScannedItem,
   nameFromScanFor,
   scannedItemFor,
+  shorterNameSuggestions,
   sourceLabelFor,
   variantFor,
   unknownScannedItem,
@@ -63,6 +64,10 @@ import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { TextField } from './TextField';
+
+/** How many shorter names a review row offers: the shortest few, since the
+ * longer suffixes only differ from the full name by a word or two. */
+const NAME_SUGGESTION_LIMIT = 3;
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -1073,6 +1078,32 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       {!!row.label && (
                         <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
                       )}
+                      {/* Shorter names for a row that is still wearing the
+                          lookup's words and will mint a new item (a row filed
+                          onto an existing one never uses its own name). The
+                          same suffixes the Backfill's Scanned name step offers,
+                          so the rename doesn't have to wait for it. Tapping one
+                          edits the name, and committing already clears
+                          `nameFromScan` for an edited name, so nothing else
+                          needs to know. */}
+                      {!row.pending && !rowItemId && nameFromScanFor(row) && (() => {
+                        const shorter = shorterNameSuggestions(row.name).slice(-NAME_SUGGESTION_LIMIT);
+                        if (shorter.length === 0) return null;
+                        return (
+                          <View style={styles.captionRow}>
+                            {shorter.map(label => (
+                              <InlineAction
+                                key={label}
+                                label={label}
+                                variant="neutral"
+                                onPress={() => patchRow(row.key, { name: label.slice(0, GROCERY_NAME_MAX_LENGTH) })}
+                                accessibilityLabel={`Rename to ${label}`}
+                                style={styles.confirmPill}
+                              />
+                            ))}
+                          </View>
+                        );
+                      })()}
                       {/* A price read off the shelf label the barcode was on.
                           Shown as its own line with a way out, because it is a
                           geometric guess about which price belongs to this

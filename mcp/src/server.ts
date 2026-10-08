@@ -105,6 +105,7 @@ import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, reque
 import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
 import { setVacationMode } from './vacationTools';
@@ -502,7 +503,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, when the next is within it, and how many are left). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -512,6 +513,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
     async () => json(await withFresh(() => listMilestones(replica)))
+  );
+
+  server.tool(
+    'list_meter_readings',
+    'The meters the person reads by hand (a car\'s odometer, an espresso machine\'s shot counter), each with its readings, the rate they imply when there are readings at least a week apart, and the open tasks due at a reading on it with what their row says ("Due at 45,000 miles · est. Dec 10"). Pass meter to see one.',
+    { meter: z.string().optional().describe('One meter by name, e.g. "Car".') },
+    async input => json(await withFresh(() => listMeterReadings(replica, input)))
   );
 
   server.tool(
@@ -1036,6 +1044,14 @@ const taskFieldsShape = {
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional()
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
+  meter: z.object({
+    name: z.string().describe('What the reading is taken off, e.g. "Car". Tasks on the same meter share its readings.'),
+    unit: z.string().nullable().optional().describe('What it counts, for display, e.g. "miles".'),
+    every: z.number().positive().describe('How far the meter runs between occurrences, e.g. 5000.'),
+    dueAt: z.number().nonnegative().nullable().optional().describe('The reading this one is due at. Required when setting a meter up; optional on an update that keeps it.'),
+    limitMonths: z.number().int().min(1).max(60).nullable().optional().describe('Or after this many months, whichever comes first.'),
+  }).nullable().optional()
+    .describe('Make a one-off due at a meter reading rather than a date, e.g. "change the oil every 5,000 miles". The phone holds it until a logged reading reaches dueAt, the reading rate projects it, or limitMonths pass, so it can take until the next sync to move. Completing it writes the next one `every` further on. Log readings with log_meter_reading. Not for a repeating task, chain, set of dates, subtask or a task waiting on weather. null stops following the meter.'),
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
   pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
@@ -1787,6 +1803,36 @@ function registerWriteTools(
         return json(await withWrite(() => deleteMilestone(replica, id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not delete the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_meter_reading',
+    'Record a reading of a meter the person tracks by hand, e.g. "the car is at 45,120 miles". Every task due at a reading on that meter uses it: one past its due reading surfaces on Today, and the readings set the estimate for the rest. Only a number they told you; never estimate one. The date defaults to today.',
+    {
+      meter: z.string().min(1).max(40).describe('The meter, as its tasks name it, e.g. "Car".'),
+      value: z.number().nonnegative().describe('The reading.'),
+      date: dayKey.optional().describe('The day it was read, YYYY-MM-DD. Default today.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => logMeterReading(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log the reading.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_meter_reading',
+    'Delete a meter reading by its id from list_meter_readings. Readings are never edited: a wrong one is deleted and logged again.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteMeterReading(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the reading.' });
       }
     }
   );

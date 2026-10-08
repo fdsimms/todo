@@ -75,6 +75,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Meter readings (MeterReading): an odometer entry has to travel, or a task
+  // due at 45,000 miles surfaces on one phone and not the other. Rows are
+  // inserted or deleted, never edited, so two devices logging at once both
+  // keep theirs.
+  { name: 'meter_readings', key: ['id'] },
   // Journal and dream entries (JournalEntry). Same reasoning as mood_logs: a
   // diary that reads differently on each phone is half a diary on each, and an
   // entry is written once and rarely edited.
@@ -534,6 +539,11 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Which medications you have archived. A statement about what you take, and
   // a device without it would list a medicine you stopped on the other one.
   'medication_archived',
+  // The limits and supply counts you set per medication, and when you last
+  // made a summary for a visit. Same reasoning: they say what you take.
+  'medication_settings',
+  'medication_summary_last',
+  'medication_milestone_dismissed',
   // Named places ("Home") and the address behind each. A name, text and an
   // optional map pin, so they mean the same on every device.
   'savedPlaces',
@@ -654,7 +664,10 @@ export function isSyncedSettingKey(key: string): boolean {
  * `journal_entries` are not here but in `JOURNAL_SYNC_TABLES` below, with a
  * switch of their own.
  * `medication_archived` is here because it is a list of medicine names, which
- * says what somebody takes as plainly as the dose log does. What is not here,
+ * says what somebody takes as plainly as the dose log does, and
+ * `medication_settings` (a limit and a pill count per medicine name) ,
+ * `medication_summary_last` and `medication_milestone_dismissed` (medicine
+ * names again) sit beside it for the same reason. What is not here,
  * and why: a task's `medication_name` rides on a task, and a task titled "Take
  * sertraline" says the same thing whatever column is withheld; `saved_meals`
  * are shortcuts for logging, not a record of what was eaten.
@@ -663,7 +676,10 @@ export function isSyncedSettingKey(key: string): boolean {
  * a peer on an older build that still sends them does no harm.
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
-export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived', 'nutritionTargets'];
+export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
+  'medication_archived', 'medication_settings', 'medication_summary_last',
+  'medication_milestone_dismissed', 'nutritionTargets',
+];
 
 /**
  * The journal and the dream log: withheld from iCloud with the health record,

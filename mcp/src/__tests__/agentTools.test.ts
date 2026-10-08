@@ -140,6 +140,21 @@ describe('quickAdd and the sun', () => {
     expect(row.title).toBe('Porch lights');
     expect(row.window).toMatchObject({ startFollows: 'sunset', start: expect.stringMatching(/^\d{2}:\d{2}$/) });
   });
+
+  it('reads "every 5,000 miles on the car" as due by usage, from the meter\'s last reading', () => {
+    replica.logMeterReading('Car', 41000, new Date(2026, 8, 21, 12));
+    const { rows } = quickAdd(replica, { lines: ['Change the oil every 5,000 miles on the car'], apply: true });
+    expect(rows[0].title).toBe('Change the oil');
+    expect(rows[0].meter).toEqual({ name: 'Car', unit: 'miles', every: 5000, dueAt: 46000 });
+    const task = replica.tasks().find(t => t.title === 'Change the oil')!;
+    expect(task).toMatchObject({ meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 46000 });
+  });
+
+  it('says an unread meter starts on its first reading', () => {
+    const [row] = quickAdd(replica, { lines: ['Descale every 200 shots on the espresso machine'] }).rows;
+    expect(row.meter).toEqual({ name: 'Espresso machine', unit: 'shots', every: 200 });
+    expect(row.notes?.join(' ')).toMatch(/no reading yet/);
+  });
 });
 
 describe('planDay', () => {

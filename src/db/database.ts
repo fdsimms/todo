@@ -14,6 +14,7 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
+  MeterReading,
   JournalEntry,
   EventPeopleLink,
   CalendarRequest,
@@ -463,6 +464,18 @@ export function initDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       label TEXT NOT NULL,
       date TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- Readings of a meter the user tracks by hand (an odometer, a shot
+    -- counter), keyed by the meter rather than a task so one entry serves every
+    -- task following it. Only ever inserted or deleted. See MeterReading.
+    CREATE TABLE IF NOT EXISTS meter_readings (
+      id TEXT PRIMARY KEY NOT NULL,
+      meter_key TEXT NOT NULL,
+      meter_name TEXT NOT NULL,
+      value REAL NOT NULL,
+      read_at TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
 
@@ -2005,6 +2018,15 @@ export function initDatabase(): void {
     // 'skip' / 'move' for an occurrence the rule lands on a holiday; NULL on
     // every existing row, which happens anyway. See Task.recurrenceHolidays.
     'ALTER TABLE tasks ADD COLUMN recurrence_holidays TEXT',
+    // A one-off due at a meter reading ("every 5,000 miles"); NULL on every
+    // existing row, which follows no meter. See Task.meterName.
+    'ALTER TABLE tasks ADD COLUMN meter_name TEXT',
+    'ALTER TABLE tasks ADD COLUMN meter_unit TEXT',
+    'ALTER TABLE tasks ADD COLUMN meter_every REAL',
+    'ALTER TABLE tasks ADD COLUMN meter_due_at REAL',
+    'ALTER TABLE tasks ADD COLUMN meter_limit_months INTEGER',
+    'ALTER TABLE tasks ADD COLUMN meter_held_until TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_meter_readings_key ON meter_readings(meter_key, read_at)',
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
     'ALTER TABLE projects ADD COLUMN group_on_today INTEGER NOT NULL DEFAULT 0',
@@ -2394,6 +2416,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // Meter readings point at nothing: the meter is a name, not a row.
+  'meter_readings',
   // Journal and dream entries: standalone, beside the mood log they grew out of.
   'journal_entries',
   // After people: a link names people by id, so they are restored first.
@@ -3416,6 +3440,12 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     recurrenceHolidays: row.recurrence_holidays === 'skip' || row.recurrence_holidays === 'move' ? row.recurrence_holidays : null,
+    meterName: (row.meter_name as string | null) ?? null,
+    meterUnit: (row.meter_unit as string | null) ?? null,
+    meterEvery: (row.meter_every as number | null) ?? null,
+    meterDueAt: (row.meter_due_at as number | null) ?? null,
+    meterLimitMonths: (row.meter_limit_months as number | null) ?? null,
+    meterHeldUntil: (row.meter_held_until as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -3626,8 +3656,9 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
+      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3755,6 +3786,12 @@ export function dbInsertTask(task: Task): void {
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.recurrenceHolidays ?? null,
+      task.meterName ?? null,
+      task.meterUnit ?? null,
+      task.meterEvery ?? null,
+      task.meterDueAt ?? null,
+      task.meterLimitMonths ?? null,
+      task.meterHeldUntil ?? null,
     ]
   );
 }
@@ -3791,7 +3828,8 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
+      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3920,6 +3958,12 @@ export function dbUpdateTask(task: Task): void {
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.recurrenceHolidays ?? null,
+      task.meterName ?? null,
+      task.meterUnit ?? null,
+      task.meterEvery ?? null,
+      task.meterDueAt ?? null,
+      task.meterLimitMonths ?? null,
+      task.meterHeldUntil ?? null,
       task.id,
     ]
   );
@@ -6813,6 +6857,34 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+function rowToMeterReading(row: Record<string, unknown>): MeterReading {
+  return {
+    id: row.id as string,
+    meterKey: row.meter_key as string,
+    meterName: row.meter_name as string,
+    value: row.value as number,
+    readAt: row.read_at as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllMeterReadings(): MeterReading[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM meter_readings ORDER BY read_at ASC')
+    .map(rowToMeterReading);
+}
+
+export function dbInsertMeterReading(reading: MeterReading): void {
+  db.runSync(
+    'INSERT INTO meter_readings (id, meter_key, meter_name, value, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [reading.id, reading.meterKey, reading.meterName, reading.value, reading.readAt, reading.createdAt]
+  );
+}
+
+export function dbDeleteMeterReading(id: string): void {
+  db.runSync('DELETE FROM meter_readings WHERE id = ?', [id]);
 }
 
 function rowToEventPeopleLink(row: Record<string, unknown>): EventPeopleLink {

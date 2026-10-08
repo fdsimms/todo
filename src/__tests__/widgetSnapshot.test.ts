@@ -4,6 +4,7 @@ import {
   buildGroceries,
   buildKitchen,
   buildMeals,
+  buildWidgetMedications,
   buildWidgetSnapshot,
   isWidgetWorthy,
   toWidgetTask,
@@ -13,6 +14,7 @@ import type {
   GroceryList,
   GroceryListEntry,
   MealPlanEntry,
+  MedicationLog,
   Recipe,
   Shop,
   Task,
@@ -411,5 +413,26 @@ describe('buildUpcomingTasks', () => {
     expect(snapshot.upcomingTasks.map(t => t.id)).toEqual(['later']);
     expect(snapshot.nextDayStart).toBe(new Date(2026, 7, 7).toISOString());
     expect(snapshot.staleAfter).toBe(staleAfter.toISOString());
+  });
+});
+
+describe('buildWidgetMedications', () => {
+  const log = (name: string, takenAt: string, overrides: Partial<MedicationLog> = {}): MedicationLog => ({
+    id: `${name}-${takenAt}`, name, takenAt, dayKey: takenAt.slice(0, 10),
+    amount: 400, unit: 'mg', asNeeded: true, taskId: null, note: null, ...overrides,
+  });
+
+  it('lists current as-needed medications, most recent first, with the dose a tap records', () => {
+    const logs = [
+      log('Ibuprofen', '2026-09-10T09:00:00.000Z', { amount: 200 }),
+      log('Ibuprofen', '2026-09-12T09:00:00.000Z'),
+      log('Zyrtec', '2026-09-13T09:00:00.000Z', { amount: null, unit: null }),
+      log('Sertraline', '2026-09-14T09:00:00.000Z', { asNeeded: false, taskId: 't' }),
+      log('Amoxicillin', '2026-09-14T09:00:00.000Z'),
+    ];
+    expect(buildWidgetMedications(logs, ['amoxicillin'])).toEqual([
+      { id: 'zyrtec', name: 'Zyrtec', dose: null, lastTakenAt: '2026-09-13T09:00:00.000Z' },
+      { id: 'ibuprofen', name: 'Ibuprofen', dose: '400 mg', lastTakenAt: '2026-09-12T09:00:00.000Z' },
+    ]);
   });
 });

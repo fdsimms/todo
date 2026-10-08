@@ -1318,6 +1318,18 @@ synced with the health record), and `rename_mood_tag` renames a context tag acro
 entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
 person's to set on the phone.
 
+### Meters
+
+A task due at a reading (`meter` on a task write, `src/utils/meters.ts`) is written like any other
+field, refused on anything but a plain one-off for the reason `weatherWait` is: both are held by a
+pass that owns `deferUntil`, and that pass runs on the phone. So this server records the want and
+the readings and never moves a meter task itself; `meterHeldUntil`, the pass's mark on its own
+hold, is cleared when a meter is taken off and otherwise left alone. Readings go through
+`useMeterReadingStore`'s own action (`meterTools.ts`), are only ever added or deleted, and belong
+to the meter rather than a task, so `log_meter_reading` moves every task on that meter once the
+phone syncs. A completion here passes the readings into `buildCompletion`, so the next occurrence
+counts on from the same baseline the phone would use.
+
 ### Focus sessions, milestones, saved views and the vacation switch
 
 Four areas had no MCP read or write, and the shape of each answer follows from what syncs:

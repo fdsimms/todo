@@ -7,6 +7,7 @@ import type {
   RecurrenceType,
   Recipe,
   MealPlanEntry,
+  MedicationLog,
   Shop,
   Task,
 } from '../types';
@@ -27,6 +28,7 @@ import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { eventTaskEventOf } from './eventTasks';
 import { addDays } from 'date-fns/addDays';
 import { widgetTapNeedsApp } from './widgetQuietTaps';
+import { formatDose, medicationStats, repeatDose } from './medicationLog';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.
@@ -218,6 +220,50 @@ export interface WidgetSnapshot {
    * list would be "no more meetings today".
    */
   upcomingEvents: WidgetEvent[] | null;
+  /**
+   * The as-needed medications the Medications widget offers a button for,
+   * most recently taken first, or null when the medication log hasn't loaded
+   * in this process (the widget asks for the app rather than saying "none").
+   */
+  medications: WidgetMedication[] | null;
+}
+
+/**
+ * One as-needed medication on the Medications widget. `id` is its
+ * `medicationKey`, the same id `LogMedicationIntent`'s entity carries, so the
+ * widget's button can hand the intent an entity without reading the Siri
+ * index. `dose` is what the button records (the last dose, `repeatDose`), so
+ * the row can say so before it is tapped.
+ */
+export interface WidgetMedication {
+  id: string;
+  name: string;
+  dose: string | null;
+  lastTakenAt: string;
+}
+
+/** How many medications the widget carries. A medium widget shows six. */
+export const MAX_WIDGET_MEDICATIONS = 6;
+
+/**
+ * The as-needed, non-archived medications, most recently taken first. Only
+ * as-needed ones for the reason the Medications screen's quick button is only
+ * on those: a scheduled dose is recorded by checking off its task, and the
+ * Today widget already has that checkbox.
+ */
+export function buildWidgetMedications(
+  logs: readonly MedicationLog[],
+  archived: readonly string[],
+): WidgetMedication[] {
+  return medicationStats(logs)
+    .filter(stat => stat.asNeeded && !archived.includes(stat.key))
+    .slice(0, MAX_WIDGET_MEDICATIONS)
+    .map(stat => ({
+      id: stat.key,
+      name: stat.name,
+      dose: formatDose(repeatDose(logs, stat.name)),
+      lastTakenAt: stat.lastTakenAt,
+    }));
 }
 
 /**
@@ -381,6 +427,8 @@ export interface SnapshotInput {
   upcoming: readonly { task: Task; visibleAt: Date }[];
   /** The "what did you eat?" setting, which decides whether a tap needs the app. */
   mealLogPrompt: boolean;
+  /** The medication log and its archived names, or null before it has loaded. */
+  medications?: { logs: readonly MedicationLog[]; archived: readonly string[] } | null;
 }
 
 /**
@@ -459,5 +507,8 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
     meals: input.meals ? buildMeals(input.meals, input.recipes) : [],
     kitchen: input.kitchen ? buildKitchen(input.kitchen) : [],
     upcomingEvents: input.events ? buildUpcomingEvents(input.events, input.now, input.dayEnd) : null,
+    medications: input.medications
+      ? buildWidgetMedications(input.medications.logs, input.medications.archived)
+      : null,
   };
 }

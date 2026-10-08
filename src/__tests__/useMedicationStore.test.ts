@@ -247,3 +247,54 @@ describe('removeLatestLogForTask', () => {
     expect(state().logs).toHaveLength(1);
   });
 });
+
+describe('limits and supply', () => {
+  beforeEach(() => {
+    useMedicationStore.setState({ settings: {}, lastSummaryAt: null });
+  });
+
+  it('stores a limit under the match key with a since stamp', () => {
+    state().setLimit(' Ibuprofen ', { minHours: 6, maxPer24h: 4, notify: true });
+    const limit = state().settings.ibuprofen.limit!;
+    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 4, notify: true });
+    expect(typeof limit.since).toBe('string');
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_settings', expect.any(String));
+  });
+
+  it('keeps since when only the notification changes, restamps when a cap does', () => {
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: false });
+    const first = state().settings.ibuprofen.limit!.since;
+    useMedicationStore.setState({
+      settings: { ibuprofen: { limit: { ...state().settings.ibuprofen.limit!, since: '2026-01-01T00:00:00.000Z' }, supply: null } },
+    });
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: true });
+    expect(state().settings.ibuprofen.limit!.since).toBe('2026-01-01T00:00:00.000Z');
+    state().setLimit('Ibuprofen', { minHours: 8, maxPer24h: null, notify: true });
+    expect(state().settings.ibuprofen.limit!.since).not.toBe('2026-01-01T00:00:00.000Z');
+    expect(first).toBeTruthy();
+  });
+
+  it('clearing both the limit and the supply drops the entry', () => {
+    state().setLimit('Ibuprofen', { minHours: 6, maxPer24h: null, notify: false });
+    state().setLimit('Ibuprofen', null);
+    expect(state().settings).toEqual({});
+  });
+
+  it('a refill adds to what is left and clears a decline', () => {
+    state().setSupply('Ibuprofen', { count: 10, unit: 'tablet', refillCount: 30, reorderAt: 3 });
+    useMedicationStore.setState({
+      settings: { ibuprofen: { limit: null, supply: { ...state().settings.ibuprofen.supply!, since: '2026-09-01T00:00:00.000Z' } } },
+    });
+    state().addLog({ name: 'Ibuprofen', amount: 2, unit: 'tablet', asNeeded: true, at: new Date(2026, 8, 5, 9) });
+    state().declineRefill('Ibuprofen');
+    expect(state().settings.ibuprofen.supply!.declinedAt).toBe(8);
+    state().refillSupply('Ibuprofen', 30);
+    expect(state().settings.ibuprofen.supply!).toMatchObject({ count: 38, declinedAt: null });
+  });
+
+  it('remembers when a summary was shared', () => {
+    state().markSummaryShared(new Date('2026-09-10T12:00:00.000Z'));
+    expect(state().lastSummaryAt).toBe('2026-09-10T12:00:00.000Z');
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_summary_last', '2026-09-10T12:00:00.000Z');
+  });
+});
