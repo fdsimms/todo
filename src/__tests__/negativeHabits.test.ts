@@ -9,6 +9,11 @@ import {
   slipPatch,
   undoSlipPatch,
   cleanDayPatch,
+  closeDayPatch,
+  reopenDayPatch,
+  isClosedToday,
+  windowCloseDayPatch,
+  negativeHoldFor,
   type NegativeHabitFields,
 } from '../utils/negativeHabits';
 
@@ -253,5 +258,73 @@ describe('slip allowance', () => {
   it('does not give back an older break when the allowance is lowered mid-day', () => {
     const lowered = allowing(1, { slipCount: 2, slipDate: iso(10), streakCount: 3, streakDate: iso(9), previousStreakCount: 40 });
     expect(undoSlipPatch(lowered, day(10))).toEqual({ slipCount: 1, slipDate: iso(10) });
+  });
+});
+
+describe('closing a day early', () => {
+  it('credits the days since the anchor including today, and anchors on today', () => {
+    expect(closeDayPatch(habit({ streakCount: 3, streakDate: iso(9) }), day(10))).toEqual({
+      streakCount: 4, streakDate: iso(10), priorBestStreak: 0,
+    });
+    // Two days not yet rolled over: the 9th and today.
+    expect(closeDayPatch(habit({ streakCount: 3, streakDate: iso(8) }), day(10))).toMatchObject({ streakCount: 5 });
+  });
+
+  it('does nothing twice, so the rollover cannot double count it', () => {
+    const closed = { ...habit({ streakCount: 3, streakDate: iso(9) }), ...closeDayPatch(habit({ streakCount: 3, streakDate: iso(9) }), day(10)) };
+    expect(closeDayPatch(closed, day(10))).toBeNull();
+    expect(cleanDayPatch(closed, day(11))).toBeNull();
+    expect(cleanDayPatch(closed, day(12))).toMatchObject({ streakCount: 5 });
+  });
+
+  it('refuses a day a slip already broke, and the day the habit was created', () => {
+    expect(closeDayPatch(habit({ streakCount: 0, streakDate: iso(10), slipCount: 1, slipDate: iso(10) }), day(10))).toBeNull();
+    expect(closeDayPatch(habit({ streakCount: 0, streakDate: iso(10) }), day(10))).toBeNull();
+  });
+
+  it('is derived from the anchor sitting on today with a live run', () => {
+    expect(isClosedToday(habit({ streakCount: 4, streakDate: iso(10) }), day(10))).toBe(true);
+    expect(isClosedToday(habit({ streakCount: 4, streakDate: iso(9) }), day(10))).toBe(false);
+    expect(isClosedToday(habit({ streakCount: 0, streakDate: iso(10) }), day(10))).toBe(false);
+  });
+
+  it('reopens to the state before the close', () => {
+    const task = habit({ streakCount: 4, streakDate: iso(10) });
+    expect(reopenDayPatch(task, day(10))).toEqual({ streakCount: 3, streakDate: iso(9) });
+    expect(reopenDayPatch(habit({ streakCount: 3, streakDate: iso(9) }), day(10))).toBeNull();
+  });
+
+  it('breaks the closed run on a later slip and gives it back on undo', () => {
+    const closed = habit({ streakCount: 4, streakDate: iso(10) });
+    const slipped = { ...closed, ...slipPatch(closed, day(10)) };
+    expect(slipped.streakCount).toBe(0);
+    expect(slipped.previousStreakCount).toBe(4);
+    expect(undoSlipPatch(slipped, day(10))).toMatchObject({ streakCount: 4, streakDate: iso(10) });
+  });
+
+  describe('windowCloseDayPatch', () => {
+    const end = new Date(2026, 0, 10, 22, 0);
+    const task = habit({ streakCount: 3, streakDate: iso(9) });
+    it('closes once the end time has passed', () => {
+      expect(windowCloseDayPatch(task, day(10), end, new Date(2026, 0, 10, 22, 1))).toMatchObject({ streakCount: 4 });
+    });
+    it('waits before it, has nothing without an end, and holds while paused', () => {
+      expect(windowCloseDayPatch(task, day(10), end, new Date(2026, 0, 10, 21, 59))).toBeNull();
+      expect(windowCloseDayPatch(task, day(10), null, new Date(2026, 0, 10, 23))).toBeNull();
+      expect(windowCloseDayPatch(task, day(10), end, new Date(2026, 0, 10, 23), { paused: true })).toBeNull();
+    });
+  });
+
+  describe('negativeHoldFor', () => {
+    it('picks what a long press means', () => {
+      expect(negativeHoldFor(habit({ streakCount: 3, streakDate: iso(9) }), day(10))).toBe('close');
+      expect(negativeHoldFor(habit({ streakCount: 4, streakDate: iso(10) }), day(10))).toBe('reopen');
+      expect(negativeHoldFor(habit({ streakCount: 0, streakDate: iso(10), slipCount: 1, slipDate: iso(10) }), day(10))).toBe('undo-slip');
+      expect(negativeHoldFor(habit({ slipAllowance: 2, slipCount: 1, slipDate: iso(10), streakCount: 3, streakDate: iso(9) }), day(10))).toBe('undo-or-close');
+      expect(negativeHoldFor(habit({ streakCount: 0, streakDate: iso(10) }), day(10))).toBeNull();
+    });
+    it('offers no reopen once the end time would just close it again', () => {
+      expect(negativeHoldFor(habit({ streakCount: 4, streakDate: iso(10) }), day(10), { windowClosed: true })).toBeNull();
+    });
   });
 });
