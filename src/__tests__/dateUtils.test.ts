@@ -33,12 +33,14 @@ import {
   isDeadlineTimePassed,
   formatDeadlineLabel,
   formatHHMM,
+  formatWindowRemaining,
+  getNextOccurrence,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
 // weekStartsOn is mutable because getNextWeekdayOccurrence reads it: an
 // interval > 1 has to know which seven days "the next week" is.
-const settings = { dayResetTime: '00:00', weekStartsOn: 0 as 0 | 1 };
+const settings = { dayResetTime: '00:00', weekStartsOn: 0 as 0 | 1, holidaySet: 'us' as 'us' | 'none', customHolidays: [] as string[] };
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -1828,5 +1830,101 @@ describe('deadline time of day', () => {
   it('leaves the label alone without a time or once the day is past', () => {
     expect(formatDeadlineLabel(noon(10), null, '00:00')).toBe('Today');
     expect(formatDeadlineLabel(noon(8), '17:00', '00:00')).toBe('2d overdue');
+  });
+});
+
+describe('formatWindowRemaining', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    settings.dayResetTime = '00:00';
+  });
+
+  it('counts down to a close later the same day', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 9, 8, 15, 45));
+    expect(formatWindowRemaining('18:00')).toBe('2h 15m left');
+  });
+
+  // Placed on the logical day: under a 4 AM reset, 02:00 is the small hours at
+  // the end of today, not this morning. On the calendar date instead it read
+  // as already past and said "0m left" all evening.
+  it('counts down to a close in the small hours under a later day reset', () => {
+    settings.dayResetTime = '04:00';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 9, 8, 23, 0));
+    expect(formatWindowRemaining('02:00')).toBe('3h left');
+  });
+});
+
+describe('a recurring task on a holiday', () => {
+  afterEach(() => {
+    settings.holidaySet = 'us';
+    settings.customHolidays = [];
+  });
+
+  const key = (d: Date | null | undefined) => (d ? dayKeyOf(d) : null);
+  // Mondays, due on the 12th; the next one is MLK Day (the 19th) in 2026.
+  const mondays = (rule: 'skip' | 'move' | null): Task => ({
+    ...baseTask,
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    recurrenceDays: [1],
+    dueDate: new Date(2026, 0, 12, 12).toISOString(),
+    recurrenceHolidays: rule,
+  });
+
+  it('happens anyway with no rule, and with nothing set up to skip', () => {
+    expect(key(getNextDueDate(mondays(null)))).toBe('2026-01-19');
+    settings.holidaySet = 'none';
+    expect(key(getNextDueDate(mondays('skip')))).toBe('2026-01-19');
+  });
+
+  it('skips to the rule\'s next date', () => {
+    expect(getNextOccurrence(mondays('skip'))).toMatchObject({ gridDate: null });
+    expect(key(getNextDueDate(mondays('skip')))).toBe('2026-01-26');
+  });
+
+  it('moves to the next day, and keeps the rule\'s own day as the anchor', () => {
+    const next = getNextOccurrence(mondays('move'))!;
+    expect(key(next.date)).toBe('2026-01-20');
+    expect(key(next.gridDate)).toBe('2026-01-19');
+  });
+
+  it('steps the occurrence after a moved one from the rule, not from the moved day', () => {
+    const moved: Task = {
+      ...mondays('move'),
+      dueDate: new Date(2026, 0, 20, 12).toISOString(),
+      recurrenceAnchorDate: new Date(2026, 0, 19, 12).toISOString(),
+    };
+    expect(key(getNextDueDate(moved))).toBe('2026-01-26');
+  });
+
+  // A daily task moved off Thanksgiving would land on the 27th, which is its
+  // own next day anyway, so it doesn't stack a second occurrence there.
+  it('turns a move that would reach the next occurrence into a skip', () => {
+    const daily: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 1, dueDate: new Date(2026, 10, 25, 12).toISOString(), recurrenceHolidays: 'move' };
+    const next = getNextOccurrence(daily)!;
+    expect(key(next.date)).toBe('2026-11-27');
+    expect(next.gridDate).toBeNull();
+  });
+
+  it('counts the user\'s own days off, and skips a run of them', () => {
+    settings.customHolidays = ['2026-11-27', '2026-11-28'];
+    const daily: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 1, dueDate: new Date(2026, 10, 25, 12).toISOString(), recurrenceHolidays: 'skip' };
+    expect(key(getNextDueDate(daily))).toBe('2026-11-29');
+  });
+
+  it('moves past a run of holidays to the first ordinary day', () => {
+    // Thursdays: Thanksgiving, with a day off on the Friday after.
+    settings.customHolidays = ['2026-11-27'];
+    const thursdays: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 1, recurrenceDays: [4], dueDate: new Date(2026, 10, 19, 12).toISOString(), recurrenceHolidays: 'move' };
+    const next = getNextOccurrence(thursdays)!;
+    expect(key(next.date)).toBe('2026-11-28');
+    expect(key(next.gridDate)).toBe('2026-11-26');
+  });
+
+  it('leaves an hours rule alone', () => {
+    const hours: Task = { ...baseTask, recurrenceType: 'hours', recurrenceInterval: 4, dueDate: new Date(2026, 0, 19, 8).toISOString(), recurrenceHolidays: 'skip' };
+    expect(getNextOccurrence(hours)?.gridDate).toBeNull();
   });
 });

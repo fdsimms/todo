@@ -242,6 +242,20 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     notes.push('"remind me" needs a time to remind at; none was found.');
   }
 
+  // "after sunset" / "expires at dark": a window bound that follows the sun,
+  // read as quick add reads it and only where the time can be worked out.
+  const sun = p.parseSunWindowInput(text);
+  if (sun) {
+    const clock = replica.sunAnchorClock(sun.anchor, draft.dueDate ?? null);
+    if (clock) {
+      text = sun.cleanTitle;
+      if (sun.bound === 'start') { draft.windowStart = clock; draft.windowStartSun = sun.anchor; }
+      else { draft.windowEnd = clock; draft.windowEndSun = sun.anchor; }
+    } else {
+      notes.push(`"${text.slice(sun.matchStart, sun.matchEnd)}" needs a location to work sunrise and sunset out from, and none is saved, so it stays in the title.`);
+    }
+  }
+
   for (const m of text.matchAll(/(^|\s)([#+!][\p{L}\p{N}_-]+)/gu)) {
     notes.push(`"${m[2]}" matched nothing the app knows, so it stays in the title.`);
   }
@@ -254,7 +268,12 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     ...(draft.deadline ? { deadline: draft.deadline } : {}),
     ...(draft.timeSegments?.length ? { timeSegments: draft.timeSegments } : {}),
     ...(draft.windowStart || draft.windowEnd
-      ? { window: { ...(draft.windowStart ? { start: draft.windowStart } : {}), ...(draft.windowEnd ? { end: draft.windowEnd } : {}) } }
+      ? { window: {
+          ...(draft.windowStart ? { start: draft.windowStart } : {}),
+          ...(draft.windowEnd ? { end: draft.windowEnd } : {}),
+          ...(draft.windowStartSun ? { startFollows: draft.windowStartSun } : {}),
+          ...(draft.windowEndSun ? { endFollows: draft.windowEndSun } : {}),
+        } }
       : {}),
     ...(draft.recurrenceType && draft.recurrenceType !== 'none'
       ? { repeat: describeRepeat({ ...(draft as Task), recurrenceType: draft.recurrenceType }) ?? undefined }
@@ -404,11 +423,13 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
       if (t.priority >= 3) why.push('high priority');
       // Already on Today means it can start whenever the plan starts, short
       // of its own window; otherwise not before the moment the app shows it.
+      // Today's times, a bound that follows the sun resolved for today.
+      const window = replica.windowToday(t);
       const earliest = replica.isVisible(t)
-        ? Math.max(from, t.windowStart ? dayMinutesOf(t.windowStart) : 0)
+        ? Math.max(from, window.start ? dayMinutesOf(window.start) : 0)
         : Math.max(from, clockMinutes(replica.visibleAt(t), todayStart));
-      const latest = t.windowEnd ? dayMinutesOf(t.windowEnd) : to;
-      if (t.windowStart || t.windowEnd) why.push(`time window ${t.windowStart ?? ''}–${t.windowEnd ?? ''}`);
+      const latest = window.end ? dayMinutesOf(window.end) : to;
+      if (window.start || window.end) why.push(`time window ${window.start ?? ''}–${window.end ?? ''}`);
       return { t, minutes: est ?? assumed, estimated: est != null, earliest, latest, why };
     })
     .sort((a, b) =>

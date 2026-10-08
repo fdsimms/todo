@@ -14,9 +14,10 @@ import {
   summarizeDay,
 } from '../utils/calendarMonth';
 
+const mockSettings = { dayResetTime: '00:00', holidaySet: 'none', customHolidays: [] as string[] };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00' }),
+    getState: () => mockSettings,
   },
 }));
 
@@ -683,5 +684,28 @@ describe('nthOccurrence', () => {
     range.forEach((date, i) => {
       expect(dayKeyOf(nthOccurrence(task, i + 1)!)).toBe(dayKeyOf(date));
     });
+  });
+});
+
+describe('projecting a task that moves off holidays', () => {
+  afterEach(() => { mockSettings.holidaySet = 'none'; });
+
+  // Mondays from Jan 12, 2026; the 19th is MLK Day and Feb 16 Presidents' Day.
+  const mondays = (rule: 'skip' | 'move') => makeTask({
+    recurrenceType: 'weekly', recurrenceInterval: 1, recurrenceDays: [1],
+    dueDate: at(2026, 1, 12).toISOString(), recurrenceHolidays: rule,
+  });
+  const keys = (task: Task) => projectOccurrences(task, at(2026, 1, 13), at(2026, 2, 28), '00:00').map(dayKeyOf);
+
+  it('moves each holiday occurrence and keeps the rest on their Mondays', () => {
+    mockSettings.holidaySet = 'us';
+    expect(keys(mondays('move'))).toEqual([
+      '2026-01-20', '2026-01-26', '2026-02-02', '2026-02-09', '2026-02-17', '2026-02-23',
+    ]);
+  });
+
+  it('leaves the holiday weeks out when it skips', () => {
+    mockSettings.holidaySet = 'us';
+    expect(keys(mondays('skip'))).toEqual(['2026-01-26', '2026-02-02', '2026-02-09', '2026-02-23']);
   });
 });

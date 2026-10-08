@@ -90,6 +90,7 @@ import type {
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
+import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
@@ -233,6 +234,8 @@ export interface ReplicaSettings {
   rewardsEnabled: boolean;
   /** The reward being saved for, or null. */
   rewardGoalId: string | null;
+  /** Weekly reward spend in minor units, which with the earning rate sets the coin-to-dollar rate. Null when unset. */
+  rewardWeeklyBudgetMinor: number | null;
   /** How many coin bounties may be live at once. */
   bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
@@ -923,6 +926,18 @@ export interface Replica {
    * user would say they were asking about.
    */
   todayKey(): string;
+  /**
+   * A task's window as clock times today, with a bound that follows the sun
+   * resolved for today (see Task.windowStartSun). The stored clock fields hold
+   * only the time an anchor resolved to when it was set.
+   */
+  windowToday(task: Task): { start: string | null; end: string | null };
+  /**
+   * The "HH:MM" a sun anchor comes to on a task's day (its due date, else
+   * today), at the trip's destination on a trip day and home otherwise; null
+   * with no location saved, or on a day the sun doesn't rise or set.
+   */
+  sunAnchorClock(anchor: string, dueDate: string | null): string | null;
   /** Shifts a day key by whole days. Used to default a range to "the last N days". */
   shiftDayKey(key: string, days: number): string;
 
@@ -1662,9 +1677,9 @@ export interface Replica {
    * sit on a screen the person cannot open. Never a wish-list reward: those
    * read their title off a list item and are made in the app.
    */
-  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null }): Reward;
   /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
-  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
@@ -1927,6 +1942,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { generatedSourceOf, liveGeneratedTask } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
   const { completesMealSlot, mealSlotSourceId, parseMealSlotSource } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
   const mealPlanGroceries = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries');
+
+  /** See Replica.sunAnchorClock. One copy, for the patch and the quick-add reader both. */
+  const sunAnchorClock = (anchor: string, dueDate: string | null): string | null => {
+    const dayStart = dueDate ? dates.getTaskDayStart(new Date(dueDate)) : dates.getCurrentDayStart();
+    return sunAnchorHHMM(anchor, dayStart, visibility.sunLocationOn(dayStart));
+  };
 
   // ---- recipes ------------------------------------------------------------
 
@@ -2671,6 +2692,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const { patch, waitsOn, onlyIfAnswer, errors } = taskFieldsPatch(fields, current, {
       newId: generateId,
       emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
+      // The clock time a sun anchor resolves to on the task's day, which is
+      // what the task keeps as its fallback (see Task.windowStartSun). Null
+      // with no location saved, which the patch refuses with the reason.
+      sunClockFor: sunAnchorClock,
     }, { isSubtask });
     errors.unshift(...eventErrors);
 
@@ -3203,6 +3228,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     deliverableOptions: (task: Task) => deliverables.deliverableOptionsFor(task),
 
     todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
+    windowToday: (task: Task) => visibility.windowBoundsFor(task),
+    sunAnchorClock,
     shiftDayKey: (key: string, days: number) =>
       dates.dayKeyOf(addDays(dates.dayKeyToDate(key), days)),
 
@@ -3296,6 +3323,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
         rewardGoalId: s.rewardGoalId,
+        rewardWeeklyBudgetMinor: s.rewardWeeklyBudgetMinor,
         bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
         // Read off the table, as requestCalendarEvent does, so the two agree.

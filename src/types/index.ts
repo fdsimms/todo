@@ -1,6 +1,9 @@
 // 'hours' is the one type with no calendar grid of its own — see
 // getNextDueDate and the "hours" note on Task.recurrenceInterval. It always
 // behaves as recurrenceFromCompletion regardless of that flag's stored value.
+// What a recurring task does on a holiday. See Task.recurrenceHolidays.
+export type HolidayRule = 'skip' | 'move';
+
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'hours';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -1477,12 +1480,25 @@ export interface Project {
    * is the one thing packing actually turns on. It also gives a trip template's
    * `{destination}` blank somewhere to live between runs.
    *
-   * Free text, and geocoded only when the reader asks (see
-   * `src/services/geocode.ts`) — never stored back as coordinates. "Mum's" is a
-   * destination and is not a place any gazetteer knows, and a field that only
-   * accepted what a geocoder recognised would refuse half the trips people take.
+   * Free text, geocoded when a reader asks (see `src/services/geocode.ts`).
+   * "Mum's" is a destination and is not a place any gazetteer knows, and a
+   * field that only accepted what a geocoder recognised would refuse half the
+   * trips people take.
    */
   destination: string | null;
+  /**
+   * Where `destination` geocoded to, kept so sunrise and sunset can follow the
+   * trip (`tripSunLocationOn`): those are worked out synchronously in every
+   * list pass, which can't wait on a request. Rounded like `sunLocation`.
+   *
+   * **A cache of the text, never a second answer to it.** Written only by the
+   * trip page's own geocode, against the destination it asked about, and
+   * cleared whenever the destination changes (`destinationPinFields`), so it
+   * can't outlive the words it came from. Null for a place no geocoder knows
+   * ("Mum's"), and until the page has looked it up; sun times then use home.
+   */
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
 }
 
 /**
@@ -2060,6 +2076,14 @@ export interface Reward {
    * key, like every other provenance pointer in the ledger.
    */
   taskId: string | null;
+  /**
+   * A real-money price in minor units (cents), for a reward that costs money.
+   * When set, `cost` is derived from it at the current exchange rate
+   * (`repriceCoinsFor` in `src/utils/rewards.ts`) and rewritten whenever the
+   * rate moves, so `cost` stays the one figure every reader claims, sorts and
+   * saves toward. Null for a reward priced in coins only.
+   */
+  priceMinor: number | null;
 }
 
 /**
@@ -2382,6 +2406,22 @@ export interface Task {
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
   windowEnd: string | null;   // "HH:MM" — task expires (moves to Expired) after this time on its day
+  /**
+   * A window bound that follows the sun instead of the clock: "sunset",
+   * "sunset-30", "sunrise+15" (see src/utils/sunTimes.ts). Null for a plain
+   * clock time, which is every row written before this existed.
+   *
+   * **It overrides `windowStart`/`windowEnd` for that bound, and doesn't
+   * replace them.** A reader resolves it for the day it's asking about through
+   * `windowBoundsFor`, and the clock field keeps the time it resolved to when
+   * it was set: that is what a reader with no day of its own, an older build on
+   * another device, and a day the sun times can't be worked out (no location
+   * saved, a polar day) all read instead. So anything writing the clock field
+   * for a bound without naming its anchor clears the anchor (`updateTask`), or
+   * the anchor would silently outrank the time just typed.
+   */
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
 
   recurrenceType: RecurrenceType;
   // The count of days/weeks/months/years for every type but 'hours', which
@@ -2444,6 +2484,22 @@ export interface Task {
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
+  /**
+   * What the next occurrence does when the rule lands it on a holiday
+   * (`src/utils/holidays.ts`: the set chosen in Settings plus the user's own
+   * days off). `'skip'` drops it for the rule's following date; `'move'` puts
+   * it on the next day that isn't one, the way a trash pickup slides a day
+   * after a holiday. Null, as on every row written before this existed, is
+   * "happens anyway".
+   *
+   * Applied where the engine produces a date (`getNextOccurrence`), so the
+   * successor, a skip and the month grid all agree. A move keeps the rule's
+   * own date in `recurrenceAnchorDate`, the pull-forward mechanism, so one
+   * moved occurrence doesn't drag the rest of the schedule with it. The
+   * occurrence the user dated themselves is never moved: this governs the
+   * dates the rule picks.
+   */
+  recurrenceHolidays?: HolidayRule | null;
 
   // Quota — a habit logged N times a day (8 glasses of water) rather than done
   // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
@@ -3976,6 +4032,11 @@ export interface TemplateItem {
   deadlineTime?: string | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
+  // Task.windowStartSun / windowEndSun, carried through unchanged beside the
+  // clock fallback above. Optional so a template stored before them reads as
+  // a plain clock window.
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
   // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
   // Optional so a template stored before it reads as having none.
   linkUrl?: string | null;
@@ -4006,6 +4067,9 @@ export interface TemplateItem {
   recurrenceMonthDay: number | null;
   recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
+  // Task.recurrenceHolidays, carried through. Optional so a template stored
+  // before it reads as happening anyway.
+  recurrenceHolidays?: HolidayRule | null;
   recurrenceCount: number | null;
   // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
   // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the

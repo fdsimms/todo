@@ -18,6 +18,10 @@ import {
   describeRewardPace,
   earnRatePerDay,
   suggestRewardCost,
+  coinsForPrice,
+  coinsPerDollar,
+  describeExchangeRate,
+  parseWeeklyBudget,
   coinsForCompletion,
   coinsForLoss,
   fullBountyFor,
@@ -41,6 +45,7 @@ import {
   liveBountyCount,
   nextBountyPushes,
   parseBountyLimit,
+  suggestedBountyTasks,
 } from '../utils/rewards';
 import type { CoinEntry, ChainItem, Effort } from '../types';
 
@@ -500,6 +505,21 @@ describe('bounties', () => {
     expect(canPostBounty({ ...withBounty(30, null), completed: true })).toBe(false);
   });
 
+  it('suggests only drifting tasks a bounty can go on, in the order given, up to the cap', () => {
+    const t = (id: string, over: object = {}) => ({ id, ...withBounty(30, null), ...over });
+    const drifting = [
+      t('a'),
+      t('b', { polarity: 'negative' }),
+      t('c', { bountyPushes: BOUNTY_WITHDRAWN }),
+      t('d'),
+      t('e'),
+      t('f'),
+    ];
+    expect(suggestedBountyTasks(drifting).map(x => x.id)).toEqual(['a', 'd', 'e']);
+    expect(suggestedBountyTasks(drifting, 1).map(x => x.id)).toEqual(['a']);
+    expect(suggestedBountyTasks([])).toEqual([]);
+  });
+
   it('reads a stored limit back, clamped', () => {
     expect(parseBountyLimit(null)).toBe(DEFAULT_BOUNTY_LIMIT);
     expect(parseBountyLimit('')).toBe(DEFAULT_BOUNTY_LIMIT);
@@ -513,5 +533,38 @@ describe('bounties', () => {
     expect(describeBounty(withBounty(480, 0))).toBe('+12 coins extra when done. Moving it again drops it to +8 coins.');
     expect(describeBounty(withBounty(480, 2))).toBe('+4 coins extra when done. Moving it again ends the bounty.');
     expect(describeBounty(withBounty(480, null))).toBeNull();
+  });
+});
+
+describe('exchange rate', () => {
+  it('divides a week of earning by a week of spending', () => {
+    // 12 coins a day is 84 a week; $20 a week is 4.2 coins to the dollar.
+    expect(coinsPerDollar(12, 2000)).toBeCloseTo(4.2);
+  });
+
+  it('has no rate until both halves exist', () => {
+    expect(coinsPerDollar(null, 2000)).toBeNull();
+    expect(coinsPerDollar(0, 2000)).toBeNull();
+    expect(coinsPerDollar(12, null)).toBeNull();
+    expect(coinsPerDollar(12, 0)).toBeNull();
+  });
+
+  it('prices in clean coins and moves with the rate', () => {
+    expect(coinsForPrice(450, 10)).toBe(45);
+    expect(coinsForPrice(450, 20)).toBe(90);
+    expect(coinsForPrice(1, 0.1)).toBe(1);
+  });
+
+  it('reads a stored budget, refusing anything that is not a positive amount', () => {
+    expect(parseWeeklyBudget('2000')).toBe(2000);
+    expect(parseWeeklyBudget('')).toBeNull();
+    expect(parseWeeklyBudget(null)).toBeNull();
+    expect(parseWeeklyBudget('-5')).toBeNull();
+  });
+
+  it('describes the rate in whole coins once it is large', () => {
+    expect(describeExchangeRate(4.24, '$')).toBe('About 4.2 coins per $1');
+    expect(describeExchangeRate(12.4, '$')).toBe('About 12 coins per $1');
+    expect(describeExchangeRate(1, '$')).toBe('About 1 coin per $1');
   });
 });

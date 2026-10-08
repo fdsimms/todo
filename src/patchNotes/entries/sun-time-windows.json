@@ -1,0 +1,4 @@
+{
+  "message": "A task's time window can now start or end at sunrise or sunset, or up to three hours either side, and it follows the sun as the days change. Pick Sunrise or Sunset under Time window in the task editor or a template, or type \"after sunset\" or \"expires at dark\" in quick add. Your phone works out the times from a location you save once, and uses a trip's destination on the days of the trip.",
+  "date": "2026-10-08"
+}

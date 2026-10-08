@@ -48,6 +48,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     deadlineTime: raw.deadlineOffsetDays != null ? (raw.deadlineTime ?? null) : null,
     windowStart: raw.windowStart ?? null,
     windowEnd: raw.windowEnd ?? null,
+    windowStartSun: raw.windowStartSun ?? null,
+    windowEndSun: raw.windowEndSun ?? null,
     linkUrl: raw.linkUrl ?? null,
     location: raw.location ?? null,
     reminderOffsetMinutes: raw.reminderOffsetMinutes ?? null,
@@ -67,6 +69,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceMonthDay: raw.recurrenceMonthDay ?? null,
     recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
+    recurrenceHolidays: raw.recurrenceHolidays ?? null,
     recurrenceCount: raw.recurrenceCount ?? null,
     recurrenceWeekOrdinal: raw.recurrenceWeekOrdinal ?? null,
     // A target below 2 is no target (Task.targetCount's own floor), so it
@@ -286,6 +289,8 @@ export function buildDraftsFromTemplate(
       deadlineTime: item.deadlineOffsetDays !== null ? (item.deadlineTime ?? null) : null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
+      windowStartSun: item.windowStartSun ?? null,
+      windowEndSun: item.windowEndSun ?? null,
       linkUrl: item.linkUrl ?? null,
       location: item.location ?? null,
       reminderTime,
@@ -300,6 +305,7 @@ export function buildDraftsFromTemplate(
       recurrenceMonthDay: item.recurrenceMonthDay,
       recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
+      recurrenceHolidays: item.recurrenceHolidays ?? null,
       recurrenceCount: item.recurrenceCount,
       // Only a monthly repeat reads an ordinal (TaskEditor saves it the same way).
       recurrenceWeekOrdinal: item.recurrenceType === 'monthly' ? item.recurrenceWeekOrdinal ?? null : null,
@@ -1093,6 +1099,44 @@ export function substitutePlaceholders(text: string, values: Record<string, stri
     resolvePlaceholderRef(parsePlaceholderRef(token), keyed) ?? ''
   );
   return tidySubstituted(substituted);
+}
+
+/** One branch or sum in words: "days ÷ 2", "days + 1, up to 5", "2". */
+function describePlaceholderExpr(expr: PlaceholderExpr): string {
+  if (expr.literal !== null) return String(expr.literal);
+  const sym = expr.op === '/' ? '÷' : expr.op === '*' ? '×' : expr.op;
+  const sum = expr.op === null ? expr.name : `${expr.name} ${sym} ${expr.operand}`;
+  return expr.cap === null ? sum : `${sum}, up to ${expr.cap}`;
+}
+
+/**
+ * `text` with each computed `{...}` token spelled out for reading, for the
+ * places a template is looked at rather than edited: `Socks x{laundry access =
+ * Yes ? days / 2 : days + 1 max 5}` reads "Socks x (days ÷ 2 if laundry access
+ * is Yes, otherwise days + 1, up to 5)". Display only: the stored title and the
+ * editor keep the syntax, and `substitutePlaceholders` never sees this output.
+ *
+ * A plain `{name}` is left as typed (it already reads as a blank), so text with
+ * no computed token comes back byte for byte.
+ */
+export function describePlaceholderTokens(text: string): string {
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  return text.replace(PLACEHOLDER_PATTERN, (match: string, token: string, offset: number) => {
+    const ref = parsePlaceholderRef(token);
+    let words: string;
+    if ('blank' in ref) {
+      // The option is read from the token again because the parsed one is
+      // lowercased for matching and the author's own capitals read better.
+      const option = token.slice(token.indexOf('=') + 1, token.indexOf('?')).trim();
+      words = `${describePlaceholderExpr(ref.then)} if ${ref.blank} is ${option}, otherwise ${describePlaceholderExpr(ref.otherwise)}`;
+    } else if (ref.op === null && ref.cap === null) {
+      return match;
+    } else {
+      words = describePlaceholderExpr(ref);
+    }
+    const before = text.slice(0, offset);
+    return `${before === '' || /\s$/.test(before) ? '' : ' '}(${words})`;
+  });
 }
 
 /** Apply `substitutePlaceholders` to every user-visible string on a draft built from a template item. */

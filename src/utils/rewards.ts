@@ -242,6 +242,22 @@ export function canPostBounty(
   );
 }
 
+/** How many tasks the Rewards screen suggests posting a bounty on. */
+export const SUGGESTED_BOUNTY_COUNT = 3;
+
+/**
+ * Tasks worth offering a bounty on while none is posted: the ones already
+ * being put off (`drifting`, worst first, as `driftingTaskList` returns them)
+ * that a bounty can go on at all. The order is the caller's, so the task moved
+ * the most comes first; nothing here ranks by age or push count itself.
+ */
+export function suggestedBountyTasks<T extends Parameters<typeof canPostBounty>[0]>(
+  drifting: readonly T[],
+  max: number = SUGGESTED_BOUNTY_COUNT,
+): T[] {
+  return drifting.filter(canPostBounty).slice(0, max);
+}
+
 /**
  * The count after a schedule write. Only a push moves it, and it stops at the
  * expiry. Unlike `nextPostponeCount`, a pull back to today leaves it alone.
@@ -437,9 +453,52 @@ export function earnRatePerDay(tasks: readonly EarnHistoryTask[], now: Date): nu
  */
 export function suggestRewardCost(ratePerDay: number | null, days: number): number | null {
   if (ratePerDay === null || !(ratePerDay > 0)) return null;
-  const raw = ratePerDay * days;
+  return cleanCoins(ratePerDay * days);
+}
+
+/** Rounds a raw coin figure to the clean steps a price reads in, within 1..MAX_REWARD_COST. */
+function cleanCoins(raw: number): number {
   const step = raw < 20 ? 1 : raw < 100 ? 5 : raw < 1000 ? 10 : 50;
   return Math.min(MAX_REWARD_COST, Math.max(1, Math.round(raw / step) * step));
+}
+
+// ==== Pricing a reward in dollars ====
+//
+// A reward that costs real money gets a dollar price, and the coin cost is that
+// price at an exchange rate: the coins you earn in a week divided by what you'd
+// spend on rewards in a week. Both halves are the person's own: the earning
+// rate is the same one `suggestRewardCost` reads, and the budget is typed, so
+// the rate is never a number the app made up. Because the earning rate moves,
+// so does the rate, and `cost` is rewritten from the price when it does (see
+// `repriceDollarRewards` in `useRewardStore`). That is the one place a saved
+// price moves by itself, and only for a reward the person priced in dollars.
+
+/** Reads the stored weekly budget: a positive whole number of minor units, or null. */
+export function parseWeeklyBudget(stored: string | null | undefined): number | null {
+  const n = Number(stored);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * Coins per whole dollar: a week of earning over a week of spending. Null when
+ * either half is missing, which leaves dollar prices unconverted rather than
+ * guessed.
+ */
+export function coinsPerDollar(ratePerDay: number | null, weeklyBudgetMinor: number | null): number | null {
+  if (ratePerDay === null || !(ratePerDay > 0)) return null;
+  if (weeklyBudgetMinor === null || !(weeklyBudgetMinor > 0)) return null;
+  return (ratePerDay * 7) / (weeklyBudgetMinor / 100);
+}
+
+/** The clean coin cost of a dollar price at an exchange rate. */
+export function coinsForPrice(priceMinor: number, rate: number): number {
+  return cleanCoins((priceMinor / 100) * rate);
+}
+
+/** "About 12 coins per $1", for the line under the budget field. */
+export function describeExchangeRate(rate: number, symbol: string): string {
+  const perDollar = rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10;
+  return `About ${perDollar} ${perDollar === 1 ? 'coin' : 'coins'} per ${symbol}1`;
 }
 
 /**

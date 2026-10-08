@@ -7,6 +7,7 @@ import type { DeliverableReasoning } from '../utils/deliverables';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { confirmSlip } from '../utils/slipConfirm';
+import { negativeHoldOffered, runNegativeHold } from '../utils/negativeHold';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
@@ -74,6 +75,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const logSlip = useTaskStore(s => s.logSlip);
+  const undoSlip = useTaskStore(s => s.undoSlip);
+  const closeNegativeDay = useTaskStore(s => s.closeNegativeDay);
+  const reopenNegativeDay = useTaskStore(s => s.reopenNegativeDay);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   const mealLogPromptEnabled = useSettingsStore(s => s.mealLogPrompt);
   const planMeal = useMealPlanStore(s => s.planMeal);
@@ -232,6 +236,12 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     <>
       <TouchableOpacity
         onPress={handlePress}
+        onLongPress={
+          action === 'slip' && negativeHoldOffered(task, getCurrentDayStart())
+            ? () => { void runNegativeHold(task, getCurrentDayStart(), { undoSlip, closeDay: closeNegativeDay, reopenDay: reopenNegativeDay }); }
+            : undefined
+        }
+        delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         // The box is 20pt on the row's leading edge: out to the card edge on the
         // left (the row clips hit-testing at its own bounds, so more than

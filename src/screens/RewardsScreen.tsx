@@ -26,14 +26,17 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { formatPrice, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { COIN_ICON } from '../constants/coinIcon';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
+import { driftingTaskList } from '../utils/postpone';
 import {
   MAX_BOUNTY_LIMIT,
   MIN_BOUNTY_LIMIT,
+  suggestedBountyTasks,
   bountyCoinsFor,
   describeBounty,
   isBountyLive,
@@ -43,6 +46,9 @@ import {
   STREAK_BONUS_EVERY,
   canClaimReward,
   coinBalance,
+  coinsForPrice,
+  coinsPerDollar,
+  describeExchangeRate,
   describeLastClaimed,
   describeRewardPace,
   earnRatePerDay,
@@ -126,7 +132,12 @@ export function RewardsScreen() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const bountyLimit = useSettingsStore(s => s.bountyLimit);
   const setBountyLimit = useSettingsStore(s => s.setBountyLimit);
+  const budgetMinor = useSettingsStore(s => s.rewardWeeklyBudgetMinor);
+  const setBudgetMinor = useSettingsStore(s => s.setRewardWeeklyBudgetMinor);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const withdrawBounty = useTaskStore(s => s.withdrawBounty);
+  const postBounty = useTaskStore(s => s.postBounty);
+  const driftThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const entries = useRewardStore(s => s.entries);
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
@@ -136,6 +147,14 @@ export function RewardsScreen() {
   // history, and every reader treats that as "nothing to say".
   const tasks = useTaskStore(s => s.tasks);
   const rate = useMemo(() => earnRatePerDay(tasks, new Date()), [tasks]);
+  // Coins per dollar: a week of your earning over a week of what you'd spend
+  // on rewards. Null until both exist, and dollar prices wait for it.
+  const exchange = useMemo(() => coinsPerDollar(rate, budgetMinor), [rate, budgetMinor]);
+  // Dollar-priced rewards follow the rate as your earning changes.
+  useEffect(() => {
+    if (enabled && exchange !== null) useRewardStore.getState().repriceDollarRewards(exchange);
+  }, [enabled, exchange]);
+  const [budgetText, setBudgetText] = useState(() => (budgetMinor === null ? '' : priceToInput(budgetMinor)));
   const taskById = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
   const sourceOf = useCallback((reward: Reward) => (reward.taskId ? taskById.get(reward.taskId) ?? null : null), [taskById]);
 
@@ -207,6 +226,16 @@ export function RewardsScreen() {
     () => tasks.filter(t => !t.parentId && isBountyLive(t)).sort((a, b) => bountyCoinsFor(b) - bountyCoinsFor(a)),
     [tasks],
   );
+  // With none posted, offer the tasks already being put off (the ones the
+  // Stuck screen lists), most-moved first.
+  const suggestedBounties = useMemo(
+    () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold)) : []),
+    [bounties.length, tasks, driftThreshold],
+  );
+  const postSuggestedBounty = (task: Task) => {
+    const result = postBounty(task.id);
+    if (result === 'posted') haptics.success();
+  };
   const confirmWithdraw = (task: Task) => {
     Alert.alert(
       'Withdraw bounty?',
@@ -223,10 +252,16 @@ export function RewardsScreen() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftCost, setDraftCost] = useState('');
+  const [draftPrice, setDraftPrice] = useState('');
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
-  const parsedCost = parseRewardCost(draftCost);
+  // A dollar price, when one is typed, decides the cost: the coin field gives
+  // way to the converted figure rather than holding a second answer.
+  const parsedPrice = parsePriceInput(draftPrice);
+  const priceTyped = draftPrice.trim().length > 0;
+  const priceDriven = parsedPrice !== null && exchange !== null;
+  const parsedCost = priceDriven ? coinsForPrice(parsedPrice, exchange) : parseRewardCost(draftCost);
   // A reward made from a list item takes its title, note and link from the
   // item, so the form doesn't ask for them.
   const draftItem: Task | null = draft?.mode === 'item'
@@ -237,12 +272,14 @@ export function RewardsScreen() {
         return r?.taskId ? taskById.get(r.taskId) ?? null : null;
       })()
       : null;
-  const canSave = (draftItem !== null || draftTitle.trim().length > 0) && parsedCost !== null;
+  const canSave = (draftItem !== null || draftTitle.trim().length > 0) && parsedCost !== null
+    && (!priceTyped || priceDriven);
 
   const closeDraft = useCallback(() => {
     setDraft(null);
     setDraftTitle('');
     setDraftCost('');
+    setDraftPrice('');
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
@@ -252,6 +289,7 @@ export function RewardsScreen() {
     setDraft(next);
     setDraftTitle(reward?.title ?? '');
     setDraftCost(reward ? String(reward.cost) : '');
+    setDraftPrice(reward?.priceMinor != null ? priceToInput(reward.priceMinor) : '');
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
@@ -261,20 +299,21 @@ export function RewardsScreen() {
     if (!canSave || draft === null) return;
     haptics.tap();
     const store = useRewardStore.getState();
-    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime };
+    const priceMinor = priceDriven ? parsedPrice : null;
+    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
       // The title is a snapshot for if the item is ever deleted; what shows is
       // the item's own (see rewardDisplay).
-      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true });
+      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true, priceMinor });
     } else {
       store.updateReward(draft.id, draftItem
-        ? { cost: parsedCost!, title: draftItem.title }
+        ? { cost: parsedCost!, title: draftItem.title, priceMinor }
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, parsedCost, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, parsedCost, parsedPrice, priceDriven, closeDraft]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {
@@ -426,6 +465,7 @@ export function RewardsScreen() {
                 onPress={() => {
                   haptics.tap();
                   setDraftCost(String(cost));
+                  setDraftPrice('');
                 }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
@@ -438,16 +478,39 @@ export function RewardsScreen() {
           })}
         </View>
       )}
+      <Text style={styles.fieldLabel}>Price</Text>
       <TextField
         style={styles.input}
-        value={draftCost}
-        onChangeText={setDraftCost}
-        placeholder="Cost in coins"
+        value={draftPrice}
+        onChangeText={setDraftPrice}
+        placeholder={`e.g. ${currencySymbol}4.50`}
         placeholderTextColor={colors.textTertiary}
-        keyboardType="number-pad"
+        keyboardType="decimal-pad"
         returnKeyType="done"
-        accessibilityLabel="Cost in coins"
+        accessibilityLabel="Price in dollars"
       />
+      {priceTyped && parsedPrice === null && (
+        <Text style={styles.hint}>Enter an amount like 4.50.</Text>
+      )}
+      {parsedPrice !== null && exchange === null && (
+        <Text style={styles.hint}>Set a weekly budget under Exchange rate to price a reward in dollars.</Text>
+      )}
+      {priceDriven ? (
+        <Text style={styles.hint}>
+          {`${formatCoins(parsedCost!)} at ${describeExchangeRate(exchange, currencySymbol).toLowerCase()}. This changes as the coins you earn change.`}
+        </Text>
+      ) : (
+        <TextField
+          style={styles.input}
+          value={draftCost}
+          onChangeText={setDraftCost}
+          placeholder="Cost in coins"
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="number-pad"
+          returnKeyType="done"
+          accessibilityLabel="Cost in coins"
+        />
+      )}
       {parsedCost !== null && describeRewardPace(rate, parsedCost) !== null && (
         <Text style={styles.hint}>{sentence(describeRewardPace(rate, parsedCost)!)}</Text>
       )}
@@ -559,7 +622,11 @@ export function RewardsScreen() {
           <View style={styles.costRow}>
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
             <Text style={styles.rewardCost}>
-              {reward.oneTime ? `${formatCoins(reward.cost)} · one time` : formatCoins(reward.cost)}
+              {[
+                reward.priceMinor !== null ? formatPrice(reward.priceMinor, currencySymbol) : null,
+                formatCoins(reward.cost),
+                reward.oneTime ? 'one time' : null,
+              ].filter(Boolean).join(' · ')}
             </Text>
           </View>
           {pace && <Text style={styles.hint}>{sentence(pace)}</Text>}
@@ -690,6 +757,36 @@ export function RewardsScreen() {
           </View>
         )}
 
+        <Text style={styles.sectionHeader}>Exchange rate</Text>
+        <Text style={styles.sectionHint}>
+          Set what you would spend on rewards in a week. Rewards priced in dollars convert at your weekly earning divided by that amount, and update as your earning changes.
+        </Text>
+        <View style={styles.bountyLimit}>
+          <Text style={styles.historyLabel}>Weekly reward budget</Text>
+          <TextField
+            style={[styles.input, styles.budgetInput]}
+            value={budgetText}
+            onChangeText={setBudgetText}
+            onEndEditing={() => {
+              const minor = parsePriceInput(budgetText);
+              setBudgetMinor(minor);
+              setBudgetText(minor === null ? '' : priceToInput(minor));
+            }}
+            placeholder={`e.g. ${currencySymbol}20`}
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            accessibilityLabel="Weekly reward budget"
+          />
+        </View>
+        {budgetMinor !== null && (
+          <Text style={styles.sectionHint}>
+            {exchange !== null
+              ? describeExchangeRate(exchange, currencySymbol)
+              : 'After a week of completed tasks, this can set the rate from how fast you earn coins.'}
+          </Text>
+        )}
+
         {showIdeas && (
           <>
             <Text style={styles.sectionHeader}>Ideas</Text>
@@ -722,9 +819,35 @@ export function RewardsScreen() {
           Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
         </Text>
         {bounties.length === 0 ? (
-          <View style={styles.emptyNote}>
-            <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
-          </View>
+          <>
+            <View style={styles.emptyNote}>
+              <EmptyNote icon={COIN_ICON}>
+                {suggestedBounties.length > 0
+                  ? 'No bounties posted. These tasks have been moved the most.'
+                  : 'No bounties posted.'}
+              </EmptyNote>
+            </View>
+            {suggestedBounties.length > 0 && (
+              <View style={styles.historyCard}>
+                {suggestedBounties.map((task, i) => (
+                  <View key={task.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                    <View style={styles.historyText}>
+                      <Text style={styles.historyLabel}>{task.title}</Text>
+                      <Text style={styles.historyMeta}>
+                        {`Moved ${task.postponeCount} times · +${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done`}
+                      </Text>
+                    </View>
+                    <InlineAction
+                      label="Post"
+                      icon="add"
+                      onPress={() => postSuggestedBounty(task)}
+                      accessibilityLabel={`Post a bounty on ${task.title}`}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
         ) : (
           <View style={styles.historyCard}>
             {bounties.map((task, i) => (
@@ -961,6 +1084,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
   emptyNote: { marginHorizontal: spacing.md },
+  budgetInput: {
+    minWidth: 96,
+    textAlign: 'right',
+  },
   bountyLimit: {
     flexDirection: 'row',
     alignItems: 'center',

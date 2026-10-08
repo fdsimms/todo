@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { geocodePlace } from '../services/geocode';
+import { useEffect, useRef, useState } from 'react';
+import { geocodePlace, type GeocodedPlace } from '../services/geocode';
 import { fetchDestinationForecast } from '../services/weatherLookup';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
@@ -33,13 +33,20 @@ export interface DestinationForecastLines {
  *
  * `startKey`/`endKey` are local `YYYY-MM-DD` day keys, the last day inclusive.
  * `spanDays` is only what the gap caveat compares the forecast's reach against.
+ * `onPlace` hears the geocoded place along with the destination text it was
+ * asked for, so a caller can keep the coordinates (the project page pins them
+ * for sunrise and sunset; see `destinationPinUpdate`). Read through a ref, so a
+ * fresh callback doesn't refetch.
  */
 export function useDestinationForecast(
   destination: string | null,
   startKey: string | null,
   endKey: string | null,
   spanDays: number | null,
+  onPlace?: (place: GeocodedPlace, askedFor: string) => void,
 ): DestinationForecastLines {
+  const onPlaceRef = useRef(onPlace);
+  onPlaceRef.current = onPlace;
   const [lines, setLines] = useState<DestinationForecastLines>({ line: null, gap: null });
   const enabled = useSettingsStore(s => s.destinationForecastEnabled);
   const unitSystem = useSettingsStore(s => s.unitSystem);
@@ -52,6 +59,7 @@ export function useDestinationForecast(
     void (async () => {
       const found = await geocodePlace(place);
       if (!live || !found) return;
+      if (destination) onPlaceRef.current?.(found, destination);
       const days = await fetchDestinationForecast(found, startKey, endKey);
       if (!live || !days) return;
       const summary = summarizeTripForecast(days);
