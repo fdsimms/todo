@@ -1603,7 +1603,10 @@ export function GroceryScreen() {
         // What being on one *means* is said where there's room to say it: the
         // switcher's hint, and the finish sheet's intro at the moment it
         // actually matters.
-        overline={away ? 'Away list' : undefined}
+        // On a home list the price estimate takes the overline, so the counts
+        // keep one line; on an away list the label has it, and the estimate
+        // stays with the counts.
+        overline={away ? 'Away list' : estimate ?? undefined}
         subtitle={
           listCount > 0
             ? [
@@ -1611,7 +1614,7 @@ export function GroceryScreen() {
                 checkedCount > 0 ? `${checkedCount} in cart` : null,
                 // Absent until something on the list has ever been priced, so
                 // the header reads exactly as it did for anyone not using this.
-                estimate,
+                away ? estimate : null,
               ]
                 .filter(Boolean)
                 .join(' · ')
