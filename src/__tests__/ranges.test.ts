@@ -52,6 +52,19 @@ describe('scoreSubstring', () => {
       .toBeGreaterThan(scoreSubstring('oat milk', 'milk').score);
   });
 
+  it('ranks the start of a word above the middle of one', () => {
+    const start = scoreSubstring('Look into flights', 'lo').score;
+    const wordStart = scoreSubstring('Buy a lollipop', 'lo').score;
+    const mid = scoreSubstring('Use the cloud credits', 'lo').score;
+    expect(start).toBeGreaterThan(wordStart);
+    expect(wordStart).toBeGreaterThan(mid);
+  });
+
+  it('prefers a later word-start occurrence over an earlier mid-word one', () => {
+    const { ranges } = scoreSubstring('cloud lock', 'lo');
+    expect(ranges).toEqual([[6, 8]]);
+  });
+
   it('reports where the exact match sits', () => {
     expect(scoreSubstring('oat milk', 'milk').ranges).toEqual([[4, 8]]);
   });

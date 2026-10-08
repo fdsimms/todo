@@ -329,6 +329,34 @@ describe('quickSearch', () => {
   });
 
   describe('stacks and projects', () => {
+    it('puts a task that starts with the query ahead of a stack that only contains it mid-word', () => {
+      const out = quickSearch(
+        [makeTask({ id: 't1', title: 'Look into flights' })],
+        'lo',
+        new Map(),
+        QUICK_SEARCH_LIMIT,
+        new Set(),
+        [makeGroup({ id: 'g1', title: 'Cardiologist' })],
+        new Map()
+      );
+      expect(out.results.map(r => r.task.id)).toEqual(['t1']);
+      expect(out.groupResults.map(g => g.group.id)).toEqual(['g1']);
+    });
+
+    it('still leads with a stack whose word starts with the query', () => {
+      const out = quickSearch(
+        [makeTask({ id: 't1', title: 'Look into flights' })],
+        'lo',
+        new Map(),
+        1,
+        new Set(),
+        [makeGroup({ id: 'g1', title: 'Long term' })],
+        new Map()
+      );
+      expect(out.groupResults.map(g => g.group.id)).toEqual(['g1']);
+      expect(out.results).toEqual([]);
+    });
+
     const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
       id: 'g1',
       title: 'Supplements',

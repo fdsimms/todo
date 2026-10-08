@@ -43,10 +43,23 @@ export function scoreSubstring(haystack: string, needle: string): { score: numbe
   const h = haystack.toLowerCase();
   const n = needle.toLowerCase();
 
-  // Exact substring match
-  const exactIdx = h.indexOf(n);
-  if (exactIdx !== -1) {
-    return { score: 100 + (exactIdx === 0 ? 20 : 0), ranges: [[exactIdx, exactIdx + n.length]] };
+  // Exact substring match. Where it lands decides the score: the start of the
+  // string beats the start of a later word beats the middle of a word, so "lo"
+  // ranks "Look into flights" above "Use the cloud credits" and "Cardiologist".
+  // Every occurrence is considered, since the first one can sit mid-word while
+  // a later one starts a word ("cloud ... lock").
+  let bestIdx = -1;
+  let bestBonus = -1;
+  for (let idx = h.indexOf(n); idx !== -1; idx = h.indexOf(n, idx + 1)) {
+    const bonus = idx === 0 ? 40 : /[^\p{L}\p{N}]/u.test(h[idx - 1]) ? 30 : 0;
+    if (bonus > bestBonus) {
+      bestIdx = idx;
+      bestBonus = bonus;
+    }
+    if (bonus === 40) break;
+  }
+  if (bestIdx !== -1) {
+    return { score: 100 + bestBonus, ranges: [[bestIdx, bestIdx + n.length]] };
   }
 
   // Fuzzy: all chars of needle appear in order in haystack
