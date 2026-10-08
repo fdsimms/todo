@@ -80,6 +80,30 @@ the meter already ran past that. Never from an estimate. The successor is built 
 `buildCompletion`, so the MCP server's completions get it too, and it's held until tomorrow and
 marked as the pass's own, so it never flashes through Unscheduled before the pass looks.
 
+## Setting one up from quick add
+
+`parseMeterInput` reads "every 5,000 miles on the car" off the end of a title. Two rules hold the
+grammar:
+
+- **"on" or "for" and a name are required.** A bare "every 5,000 miles" names nothing to read, and
+  the name is what files the readings. It is matched against the meters already read, so "the car"
+  lands on the "Car" the readings use.
+- **A time unit is refused** ("every 2 weeks on the car"). That is a repeat, and the schedule
+  parse ahead of this one in the tooltip chain already offers it.
+
+The phrase can't carry the reading it is due at, so it comes from the meter's last reading on save.
+A meter never read yet saves with no due reading (`meterAwaitingStart`): the row says "Every 5,000
+miles · log a reading", and the first reading starts it (`meterStartPatch`, run by the same pass),
+by the rule the editor applies to an empty "Next due at".
+
+## The Meters screen
+
+In the Organize hub, beside Tags and People, because a meter is something tasks belong to. It is
+the meter's whole history (`meterOverview`), a meter with no open task left on it, and the place a
+typo from months ago is found and removed. Simplified mode treats it as a content screen and keeps
+it while any reading exists: readings live nowhere else. The editor's "Due by usage" row is gated
+by the same feature, and stays on a task that already has a meter.
+
 ## Not on templates
 
 A template item can't carry a meter (`templateItemParity.test.ts` says so): "due at 45,000" is

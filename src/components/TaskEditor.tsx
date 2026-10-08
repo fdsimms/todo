@@ -144,7 +144,7 @@ import { DoseAmountField } from './DoseAmountField';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
-import { METER_NAME_MAX_LENGTH, NO_METER, canFollowMeter, describeLatestReading, formatMeterAmount, knownMeterNames, meterFieldsFromInput, meterInputFromTask, meterSetupGap, parseMeterNumber, type MeterInput } from '../utils/meters';
+import { METER_NAME_MAX_LENGTH, NO_METER, canFollowMeter, describeLatestReading, formatMeterAmount, formatMeterValue, knownMeterNames, meterFieldsFromInput, meterInputFromTask, meterSetupGap, parseMeterNumber, type MeterInput } from '../utils/meters';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { SunBoundPanel } from './SunBoundPanel';
 import {
@@ -270,6 +270,8 @@ export interface TaskDraft {
   quotaPeriod?: QuotaPeriod;
   /** Carried over when quick add parses "on the next sunny day". */
   weatherWait?: WeatherCondition | null;
+  /** Carried over when quick add parses "every 5,000 miles on the car". The due reading is left for the editor. */
+  meter?: { name: string; unit: string; every: number } | null;
   allowOvershoot?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
@@ -281,6 +283,14 @@ export interface TaskDraft {
   supplyReorderAt?: number;
   supplyLeadDays?: number | null;
   supplyGroceryItemId?: string | null;
+}
+
+/** The meter a quick-add draft carried, as the editor's typed fields; empty without one. */
+function meterInputFromDraft(draft: Pick<TaskDraft, 'meter'> | null | undefined): MeterInput {
+  const m = draft?.meter;
+  return m
+    ? { name: m.name, unit: m.unit, everyText: formatMeterValue(m.every), dueText: '', limitMonths: null }
+    : meterInputFromTask(null);
 }
 
 interface Props {
@@ -1120,7 +1130,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromTask(null)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1289,9 +1299,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       weatherWait: task ? (task.weatherWait ?? null) : (initialDraft?.weatherWait ?? null),
       // Through the same function the live snapshot uses, so a meter saved
       // half set up doesn't read as edited the moment the sheet opens.
-      ...(task && canFollowMeter(task)
-        ? meterFieldsFromInput(meterInputFromTask(task), useMeterReadingStore.getState().readings)
-        : NO_METER),
+      ...(task
+        ? (canFollowMeter(task) ? meterFieldsFromInput(meterInputFromTask(task), useMeterReadingStore.getState().readings) : NO_METER)
+        : meterFieldsFromInput(meterInputFromDraft(initialDraft), useMeterReadingStore.getState().readings)),
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),

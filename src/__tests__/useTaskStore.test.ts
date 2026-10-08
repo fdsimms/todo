@@ -6349,6 +6349,17 @@ describe('a task due at a meter reading', () => {
     expect(next.meterHeldUntil).toBe('2026-10-09');
   });
 
+  it('starts a meter set up before it was read, on the first reading', () => {
+    const id = addOilChange({ meterDueAt: null });
+    useTaskStore.getState().applyMeterHolds();
+    expect(read(id).meterDueAt).toBeNull();
+    log(41000, new Date(2026, 9, 8, 8));
+    useTaskStore.getState().applyMeterHolds();
+    expect(read(id).meterDueAt).toBe(46000);
+    // One reading and no limit: held until it asks for the next one.
+    expect(read(id).meterHeldUntil).toBe('2026-11-07');
+  });
+
   it('takes the next one back out when the completion is undone', () => {
     const id = addOilChange();
     useTaskStore.getState().completeTask(id);

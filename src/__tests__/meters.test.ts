@@ -3,7 +3,7 @@ import {
   meterKey, canFollowMeter, hasMeter, readingsFor, latestReading, meterRatePerDay,
   projectedMeterDay, meterLimitDay, decideMeterHold, meterHoldPatch, nextMeterDueAt,
   formatMeterAmount, parseMeterNumber, meterChipText, describeLatestReading, knownMeterNames,
-  METER_CHECK_IN_DAYS, meterInputFromTask, meterFieldsFromInput, meterSetupGap,
+  METER_CHECK_IN_DAYS, meterInputFromTask, meterFieldsFromInput, meterSetupGap, meterAwaitingStart, meterStartPatch, meterOverview, describeMeterRate,
 } from '../utils/meters';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 
@@ -249,5 +249,50 @@ describe('the editor\'s fields', () => {
     expect(meterFieldsFromInput(input, car)).toEqual({
       meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, meterLimitMonths: 6,
     });
+  });
+});
+
+describe('a meter set up before it was read', () => {
+  const unread = { ...oilChange, meterDueAt: null };
+
+  it('waits for its first reading', () => {
+    expect(meterAwaitingStart(unread)).toBe(true);
+    expect(meterAwaitingStart(oilChange)).toBe(false);
+    expect(meterStartPatch(unread, [])).toBeNull();
+    expect(meterChipText(unread, [])).toBe('Every 5,000 miles · log a reading');
+  });
+
+  it('starts from the latest reading plus the interval once there is one', () => {
+    expect(meterStartPatch(unread, car)).toEqual({ meterDueAt: 46000 });
+    expect(meterStartPatch(oilChange, car)).toBeNull();
+  });
+});
+
+describe('the Meters screen\'s list', () => {
+  const task = (over: Record<string, unknown>) => ({
+    ...oilChange, id: 't', title: 'Change the oil', parentId: null, ...over,
+  }) as unknown as import('../types').Task;
+
+  it('lists read meters newest first, then ones only a task names, with the tasks on each', () => {
+    const readings = [...car, reading('Espresso', 120, new Date(2026, 8, 25, 9))];
+    const tasks = [
+      task({ id: 'oil' }),
+      task({ id: 'tires', title: 'Rotate the tires', meterUnit: null }),
+      task({ id: 'mow', title: 'Service the mower', meterName: 'Mower', meterUnit: 'hours' }),
+      task({ id: 'done', completed: true }),
+    ];
+    const list = meterOverview(readings, tasks);
+    expect(list.map(m => m.name)).toEqual(['Espresso', 'car', 'Mower']);
+    const carRow = list[1];
+    expect(carRow.unit).toBe('miles');
+    expect(carRow.ratePerDay).toBe(50);
+    expect(carRow.readings.map(r => r.value)).toEqual([41000, 40000]);
+    expect(carRow.tasks.map(t => t.id)).toEqual(['oil', 'tires']);
+  });
+
+  it('says the rate per day, or per week when a day is under one', () => {
+    expect(describeMeterRate(50.4, 'miles')).toBe('About 50 miles a day');
+    expect(describeMeterRate(0.8, 'shots')).toBe('About 6 shots a week');
+    expect(describeMeterRate(0.01, null)).toBe('About 1 a week');
   });
 });

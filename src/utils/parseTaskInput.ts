@@ -1382,6 +1382,47 @@ export function parseWeatherWaitInput(input: string): ParsedWeatherWait | null {
   return { condition: match[1].toLowerCase() as WeatherCondition, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedMeter {
+  /** How far the meter runs between times: 5000 in "every 5,000 miles". */
+  every: number;
+  /** What it counts, as typed: "miles". */
+  unit: string;
+  /** The meter, as typed after "on" or "for": "car", "espresso machine". */
+  meterName: string;
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "change the oil every 5,000 miles on the car". The "on"/"for" and a name at
+// the end are what make it a meter: a bare "every 5,000 miles" names nothing to
+// read, and a time unit ("every 2 weeks on the car") is a repeat, which the
+// schedule parse ahead of this one already offers. Up to three words of name,
+// so "on the espresso machine" reads whole.
+const METER_PATTERN = /\bevery\s+((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s+([a-z]+)\s+(?:on|for)\s+(?:the\s+|my\s+|our\s+)?([a-z][a-z0-9'-]*(?:\s+[a-z][a-z0-9'-]*){0,2})\s*$/i;
+const METER_TIME_UNIT = /^(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|wks?|months?|mos?|years?|yrs?|times?|x)$/i;
+
+/**
+ * Pulls "every 5,000 miles on the car" off the end of a quick-add title, so
+ * the task is due by usage (`Task.meterName`). The reading it's due at isn't
+ * in the phrase: it comes from the meter's last reading, or from the first one
+ * logged (see `meterStartPatch`). Same shape as `parseWeatherWaitInput`.
+ */
+export function parseMeterInput(input: string): ParsedMeter | null {
+  const match = input.match(METER_PATTERN);
+  if (!match || match.index === undefined) return null;
+  if (METER_TIME_UNIT.test(match[2])) return null;
+  const every = Number(match[1].replace(/,/g, ''));
+  if (!Number.isFinite(every) || every <= 0) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { every, unit: match[2], meterName: match[3].trim(), cleanTitle, matchStart, matchEnd };
+}
+
 export interface ParsedSunWindow {
   /** Which bound of the time window the phrase sets. */
   bound: 'start' | 'end';

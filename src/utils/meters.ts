@@ -150,6 +150,30 @@ export function meterLimitDay(task: Partial<MeterFields> & Pick<Task, 'createdAt
 /** Why a meter task is on Today, or why it is waiting. */
 export type MeterHoldReason = 'reached' | 'projected' | 'limit' | 'checkIn';
 
+/**
+ * A meter set up with no reading to be due at yet (quick add on a meter never
+ * read, or the editor left "Next due at" empty): a name and an interval, and
+ * nothing for the hold to measure against.
+ */
+export function meterAwaitingStart(task: Partial<MeterFields>): boolean {
+  return !!task.meterName?.trim() && typeof task.meterEvery === 'number' && task.meterEvery > 0
+    && (task.meterDueAt === null || task.meterDueAt === undefined);
+}
+
+/**
+ * The due reading for a meter awaiting its start, once the meter has one: the
+ * latest reading plus the interval, the same rule the editor applies to an
+ * empty "Next due at". Null while the meter has never been read.
+ */
+export function meterStartPatch(
+  task: Partial<MeterFields>,
+  readings: readonly MeterReading[],
+): Pick<Task, 'meterDueAt'> | null {
+  if (!meterAwaitingStart(task)) return null;
+  const latest = latestReading(readings, task.meterName!);
+  return latest ? { meterDueAt: latest.value + task.meterEvery! } : null;
+}
+
 /** What the meter pass should do with one task. */
 export type MeterHoldDecision =
   | { kind: 'none' }
@@ -266,13 +290,15 @@ export function parseMeterNumber(text: string): number | null {
 /**
  * The row's chip: "Due at 45,000 miles", then what the app knows about when.
  * "· now 45,120" once a reading has reached it, "· est. Nov 3" from the rate,
- * and "· log a reading" when the meter has never been read. Null on a task
- * with no meter.
+ * and "· log a reading" when the meter has never been read (or, with no due
+ * reading yet, "Every 5,000 miles · log a reading"). Null on a task with no
+ * meter.
  */
 export function meterChipText(
   task: Partial<MeterFields>,
   readings: readonly MeterReading[],
 ): string | null {
+  if (meterAwaitingStart(task)) return `Every ${formatMeterAmount(task.meterEvery!, task.meterUnit)} · log a reading`;
   if (!hasMeter(task)) return null;
   const head = `Due at ${formatMeterAmount(task.meterDueAt!, task.meterUnit)}`;
   const latest = latestReading(readings, task.meterName!);
@@ -356,4 +382,61 @@ export function meterSetupGap(fields: MeterFields): string | null {
   if (fields.meterEvery === null) return 'Enter how far the meter runs between times.';
   if (fields.meterDueAt === null) return 'Enter the reading it is next due at, or log the meter\'s current reading.';
   return null;
+}
+
+/** One meter as the Meters screen lists it. */
+export interface MeterOverview {
+  key: string;
+  /** As most recently typed, by a reading or a task. */
+  name: string;
+  /** From the first open task on it that names one: readings carry no unit. */
+  unit: string | null;
+  /** Newest first. */
+  readings: MeterReading[];
+  ratePerDay: number | null;
+  /** Open, unarchived tasks following it. */
+  tasks: Task[];
+}
+
+/**
+ * Every meter there is: the ones with readings and the ones only a task names
+ * so far. Most recently read first, then the unread ones by name, so the
+ * screen opens on the meter somebody is actually reading.
+ */
+export function meterOverview(readings: readonly MeterReading[], tasks: readonly Task[]): MeterOverview[] {
+  const open = tasks.filter(t => t.meterName?.trim() && !t.completed && !t.archived && !t.parentId);
+  const names = new Map<string, string>();
+  for (const name of knownMeterNames(readings)) names.set(meterKey(name), name.trim());
+  for (const t of open) if (!names.has(meterKey(t.meterName!))) names.set(meterKey(t.meterName!), t.meterName!.trim());
+  return [...names.entries()]
+    .map(([key, name]) => {
+      const own = readingsFor(readings, name).reverse();
+      const onIt = open.filter(t => meterKey(t.meterName!) === key);
+      return {
+        key,
+        name,
+        unit: onIt.find(t => t.meterUnit?.trim())?.meterUnit?.trim() ?? null,
+        readings: own,
+        ratePerDay: meterRatePerDay(readings, name),
+        tasks: onIt,
+      };
+    })
+    .sort((a, b) => {
+      const at = a.readings[0]?.readAt ?? '';
+      const bt = b.readings[0]?.readAt ?? '';
+      if (at !== bt) return at < bt ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+/**
+ * "About 50 miles a day", or a week's worth when a day's is under one ("About
+ * 6 shots a week"). Rounded, because the rate is two readings' worth of
+ * arithmetic and a decimal would claim more than that.
+ */
+export function describeMeterRate(ratePerDay: number, unit: string | null | undefined): string {
+  const u = unit?.trim();
+  if (ratePerDay >= 1) return `About ${formatMeterValue(Math.round(ratePerDay))}${u ? ` ${u}` : ''} a day`;
+  const perWeek = Math.max(1, Math.round(ratePerDay * 7));
+  return `About ${formatMeterValue(perWeek)}${u ? ` ${u}` : ''} a week`;
 }

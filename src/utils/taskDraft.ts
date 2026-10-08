@@ -383,6 +383,14 @@ export function newTaskFromDraft(
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     weatherWait: draft.weatherWait ?? null,
+    // A meter rides in from the editor or quick add as typed; the hold is the
+    // pass's to write, so a new row never starts with one.
+    meterName: draft.meterName ?? null,
+    meterUnit: draft.meterUnit ?? null,
+    meterEvery: draft.meterEvery ?? null,
+    meterDueAt: draft.meterDueAt ?? null,
+    meterLimitMonths: draft.meterLimitMonths ?? null,
+    meterHeldUntil: null,
     difficulty: seeded.difficulty,
     pinEachOccurrence: draft.pinEachOccurrence ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,

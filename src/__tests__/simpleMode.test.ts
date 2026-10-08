@@ -204,6 +204,14 @@ describe('screenShown', () => {
     expect(screenShown('Stacks', true, { stacks: 1, templates: 0 })).toBe(true);
     expect(screenShown('Templates', true, none)).toBe(false);
     expect(screenShown('Templates', true, { stacks: 0, templates: 1 })).toBe(true);
+    expect(screenShown('Meters', true, none)).toBe(false);
+    expect(screenShown('Meters', true, { stacks: 0, templates: 0, meters: 1 })).toBe(true);
+  });
+
+  it('hides the Due by usage row on a task without a meter, and keeps it on one with', () => {
+    expect(editorRowShown('meter', true, false)).toBe(false);
+    expect(editorRowShown('meter', true, true)).toBe(true);
+    expect(editorRowShown('meter', false, false)).toBe(true);
   });
 
   it('leaves the screens simplified mode has no opinion about', () => {

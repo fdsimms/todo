@@ -353,7 +353,7 @@ import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { decideWeatherWait } from '../utils/weatherWait';
-import { decideMeterHold, meterHoldPatch } from '../utils/meters';
+import { canFollowMeter, decideMeterHold, meterHoldPatch, meterStartPatch } from '../utils/meters';
 import {
   weatherSourceId,
   parseWeatherSourceId,
@@ -6510,7 +6510,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (following.length === 0) return;
     const readings = useMeterReadingStore.getState().readings;
     const todayKey = dayKeyOf(getCurrentDayStart());
-    for (const task of following) {
+    for (const row of following) {
+      // A meter set up before it had a reading (quick add on a meter never
+      // read) starts the first time one arrives, by the rule the editor uses
+      // for an empty "Next due at". A plain one-off only, like the hold.
+      const start = canFollowMeter(row) ? meterStartPatch(row, readings) : null;
+      if (start) get().updateTask(row.id, start);
+      const task = start ? { ...row, ...start } : row;
       const patch = meterHoldPatch(task, decideMeterHold(task, readings, todayKey), todayKey);
       // Idempotent: meterHoldPatch returns null for a hold already in place,
       // which is what keeps the subscription that re-runs this from looping.
