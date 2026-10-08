@@ -1,0 +1,4 @@
+{
+  "message": "When filling in item details, the Counts as step now has a \"Mark as generic item\" button for an item that isn't a kind of anything else, and the Substitutes step has \"No substitutes\", instead of a generic \"Don't ask again\"",
+  "date": "2026-10-08"
+}

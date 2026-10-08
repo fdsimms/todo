@@ -3163,10 +3163,21 @@ export function BackfillScreen() {
                 // so "leave it unset" would describe the wrong thing.
                 active.id === 'scannedName'
                   ? `Keep the name "${currentItem.name}" and don't ask again`
-                  : `Leave "${itemField.label}" unset for this item and don't ask again`
+                  : active.id === 'variety'
+                    ? `Mark ${currentItem.name} as a generic item, not a kind of anything else, and don't ask again`
+                    : active.id === 'substitutes'
+                      ? `${currentItem.name} has no substitutes, don't ask again`
+                      : `Leave "${itemField.label}" unset for this item and don't ask again`
               }
             >
-              <Text style={styles.skipText}>Don't ask again</Text>
+              {/* Same dismissal as every pool's "Don't ask again". For these two
+                  fields the answer is a statement about the item, so the button
+                  says it rather than the generic label. */}
+              <Text style={styles.skipText}>
+                {active.id === 'variety' ? 'Mark as generic item'
+                  : active.id === 'substitutes' ? 'No substitutes'
+                  : "Don't ask again"}
+              </Text>
             </PressableScale>
           </View>
         </ScrollView>
