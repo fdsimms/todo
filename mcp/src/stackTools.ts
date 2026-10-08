@@ -22,6 +22,8 @@ export interface SerializedStack {
   tags?: string[];
   /** Its members are ticked off in place, as a checklist. */
   checklist?: true;
+  /** Its collapsed header shows no "Next:" task. */
+  hideNextStep?: true;
   /**
    * Its open top-level tasks, in the stack's own order. A repeating task is one
    * entry however many finished occurrences sit behind it, and a dated series is
@@ -63,6 +65,7 @@ function serializeStack(replica: Replica, stack: ReturnType<Replica['stacks']>[n
     ...(stack.notes ? { notes: stack.notes } : {}),
     ...(stack.tags.length > 0 ? { tags: stack.tags } : {}),
     ...(stack.checklist ? { checklist: true as const } : {}),
+    ...(stack.hideNextStep ? { hideNextStep: true as const } : {}),
     members,
   };
 }
@@ -188,6 +191,7 @@ export interface UpdateStackInput {
   category?: string | null;
   projectId?: string | null;
   checklist?: boolean;
+  hideNextStep?: boolean;
 }
 
 /** Change a stack as its editor does. See `Replica.updateStack`. */

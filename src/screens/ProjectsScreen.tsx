@@ -177,7 +177,7 @@ export function ProjectsScreen() {
       progress: projectProgress(p.id, allTasks),
       // Not for a list: "Next" reads as an order to work in, and a list of
       // books or gift ideas has none.
-      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
+      next: projectFilter === 'active' && p.kind !== 'list' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
       // A list shows its first lines instead, which is what it's for.
       preview: projectFilter === 'active' && p.kind === 'list' && !hideListPreviews
         ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null

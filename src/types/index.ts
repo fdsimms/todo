@@ -775,6 +775,9 @@ export interface TaskGroup {
   // a project's section; ignored anywhere else. Optional for rows built before
   // it existed.
   checklist?: boolean;
+  // Leaves the "Next: ..." part off this stack's collapsed header.
+  // Presentation only. Optional for rows built before it existed.
+  hideNextStep?: boolean;
 }
 
 /**
@@ -1460,6 +1463,11 @@ export interface Project {
    * list is read with what's already packed in view. Presentation only.
    */
   showChecked: boolean;
+  /**
+   * Leaves the "Next: ..." line off this project's card on the Projects
+   * screen. Presentation only. Optional for rows built before it existed.
+   */
+  hideNextStep?: boolean;
   /**
    * Where the trip goes, as free text.
    *

@@ -211,6 +211,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [linkError, setLinkError] = useState<string | null>(null);
   const [inOrder, setInOrder] = useState(false);
   const [showChecked, setShowChecked] = useState(false);
+  const [hideNextStep, setHideNextStep] = useState(false);
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
 
   // Returns the typed link to the list, or says why it can't.
@@ -291,6 +292,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setLinkError(null);
     setInOrder(project.inOrder ?? false);
     setShowChecked(project.showChecked ?? false);
+    setHideNextStep(project.hideNextStep ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [visible, project]);
@@ -435,6 +437,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       })(),
       inOrder,
       showChecked,
+      hideNextStep,
     });
     if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
     // The same offer when the event moves: the wedding pushed back a month
@@ -534,7 +537,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
       linkDraft.trim() !== '' ||
       inOrder !== (project.inOrder ?? false) ||
-      showChecked !== (project.showChecked ?? false)
+      showChecked !== (project.showChecked ?? false) ||
+      hideNextStep !== (project.hideNextStep ?? false)
     );
   };
 
@@ -1344,6 +1348,29 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             </View>
           </TouchableOpacity>
         ) : (
+          <>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setHideNextStep(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Hide next task"
+            accessibilityState={{ checked: hideNextStep }}
+          >
+            <Ionicons name="eye-off-outline" size={18} color={hideNextStep ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Hide next task</Text>
+              <Text style={styles.optionHint}>
+                {hideNextStep
+                  ? 'The project card does not show its next open task'
+                  : 'The project card shows its next open task'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, hideNextStep && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, hideNextStep && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => { haptics.tap(); setInOrder(v => !v); }}
@@ -1365,6 +1392,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
               <View style={[styles.toggleKnob, inOrder && styles.toggleKnobOn]} />
             </View>
           </TouchableOpacity>
+          </>
         )}
         <View style={styles.sepIcon} />
         <TouchableOpacity
