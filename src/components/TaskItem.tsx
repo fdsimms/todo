@@ -41,7 +41,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
+import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
@@ -1402,9 +1402,14 @@ export const TaskItem = React.memo(function TaskItem({
   // reminder is its own fact about the task, the same way a deadline badge
   // renders regardless of whether the scheduled chip is showing.
   const reminderTimeLabel = task.reminderTime ? formatTimeOfDay(new Date(task.reminderTime)) : null;
+  // A deadline with a time of day is late from that minute, not from midnight.
+  const deadlineClosed = deadlineDays !== null && (
+    deadlineDays < 0 || isDeadlineTimePassed(task.deadline!, task.deadlineTime)
+  );
+  const deadlineLabel = task.deadline ? formatDeadlineLabel(task.deadline, task.deadlineTime) : '';
   const deadlineColor =
     deadlineDays === null ? colors.textSecondary
-    : deadlineDays < 0 ? colors.redText
+    : deadlineClosed ? colors.redText
     : deadlineDays <= 2 ? colors.orangeText
     : colors.textSecondary;
   const isNew = isTaskNew(task);
@@ -2817,14 +2822,14 @@ export const TaskItem = React.memo(function TaskItem({
               <View
                 style={styles.deadlineBadge}
                 accessibilityLabel={
-                  deadlineDays < 0
-                    ? `Deadline was ${formatDeadlineDate(task.deadline!)}`
-                    : `Deadline ${formatDeadlineDate(task.deadline!)}`
+                  deadlineClosed
+                    ? `Deadline was ${deadlineLabel}`
+                    : `Deadline ${deadlineLabel}`
                 }
               >
                 <Ionicons name="flag" size={9} color={deadlineColor} />
                 <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
-                  {formatDeadlineDate(task.deadline!)}
+                  {deadlineLabel}
                 </Text>
               </View>
             )}
@@ -5388,7 +5393,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xxs,
     flexShrink: 1,
-    maxWidth: 110,
+    maxWidth: 140,
   },
   deadlineBadgeText: {
     fontSize: font.xxs,

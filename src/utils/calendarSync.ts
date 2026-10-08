@@ -274,6 +274,23 @@ export interface AllDayEventFields {
   title: string;
   /** The event's calendar day, read as a whole day rather than a moment. */
   date: Date;
+  /**
+   * A moment to write in place of the whole day: the event becomes a timed one
+   * from `start` to `end`. A deadline with a time of day is the only caller.
+   */
+  timed?: { start: Date; end: Date };
+}
+
+/**
+ * The dates and `allDay` flag a save sends for these fields. All-day events
+ * are exclusive on the end date in EventKit, so one full day is [date, date + 1).
+ * Sent explicitly both ways: a save assigns `isAllDay` every time, so moving an
+ * event between a whole-day deadline and a timed one has to say which it is.
+ */
+function allDayOrTimedDates(fields: AllDayEventFields) {
+  return fields.timed
+    ? { startDate: fields.timed.start, endDate: fields.timed.end, allDay: false }
+    : { startDate: fields.date, endDate: addDays(fields.date, 1), allDay: true };
 }
 
 /**
@@ -292,11 +309,7 @@ export async function createAllDayEvent(
   try {
     const id = await calendar().createEventAsync(calendarId, {
       title: fields.title,
-      startDate: fields.date,
-      // All-day events are exclusive on the end date in EventKit — one full
-      // day is [date, date + 1).
-      endDate: addDays(fields.date, 1),
-      allDay: true,
+      ...allDayOrTimedDates(fields),
     });
     return id ?? null;
   } catch {
@@ -458,9 +471,7 @@ export async function moveAllDayEvent(
     const id = await rewriteEvent(eventId, {
       calendarId,
       title: fields.title,
-      startDate: fields.date,
-      endDate: addDays(fields.date, 1),
-      allDay: true,
+      ...allDayOrTimedDates(fields),
     });
     return id || eventId;
   } catch {

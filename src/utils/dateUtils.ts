@@ -16,7 +16,7 @@ import { setDate } from 'date-fns/setDate';
 import { setMonth } from 'date-fns/setMonth';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
-import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart, taskDayStart } from './clockTime';
+import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart, taskDayStart, onLogicalDay } from './clockTime';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 
 /**
@@ -627,6 +627,48 @@ export function getDeadlineCountdown(deadline: string, dayResetTime?: string): n
   const today = getDayStart(new Date(), dayResetTime);
   const target = getDayStart(new Date(deadline), dayResetTime);
   return differenceInCalendarDays(target, today);
+}
+
+/**
+ * The instant a deadline with a time of day closes: the deadline's own logical
+ * day at `deadlineTime`. Null when the deadline names no time, which is every
+ * deadline written before the field existed. Goes through `onLogicalDay`, so
+ * "1:00 AM" under a 4 AM day reset closes in the small hours after that day.
+ */
+export function deadlineMoment(
+  deadline: string,
+  deadlineTime: string | null | undefined,
+  dayResetTime?: string,
+): Date | null {
+  if (!deadlineTime) return null;
+  return onLogicalDay(getTaskDayStart(new Date(deadline), dayResetTime), deadlineTime);
+}
+
+/** Whether a deadline with a time of day has already closed. Always false without a time. */
+export function isDeadlineTimePassed(
+  deadline: string,
+  deadlineTime: string | null | undefined,
+  now: Date = new Date(),
+  dayResetTime?: string,
+): boolean {
+  const moment = deadlineMoment(deadline, deadlineTime, dayResetTime);
+  return moment !== null && now >= moment;
+}
+
+/**
+ * The deadline badge's text. Without a time it is `formatDeadlineDate`. With
+ * one, the day word gains the clock time ("Today 5:00 PM"), except once the day
+ * itself is past, where "3d overdue" already says everything and a time on it
+ * would only crowd the badge.
+ */
+export function formatDeadlineLabel(
+  deadline: string,
+  deadlineTime: string | null | undefined,
+  dayResetTime?: string,
+): string {
+  const day = formatDeadlineDate(deadline, dayResetTime);
+  if (!deadlineTime || getDeadlineCountdown(deadline, dayResetTime) < 0) return day;
+  return `${day} ${formatHHMM(deadlineTime)}`;
 }
 
 /**

@@ -2,7 +2,7 @@ import type { Task } from '../types';
 
 let mockSettings: { deadlineCalendarId: string | null } = { deadlineCalendarId: null };
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => mockSettings },
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', ...mockSettings }) },
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
@@ -317,6 +317,28 @@ describe('syncDeadlineEvent', () => {
     const task = makeTask({ deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', title: '' });
     await syncDeadlineEvent(task);
     expect(mockCreateDeadlineEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Deadline' }));
+  });
+
+  it('writes a timed event when the deadline has a time of day', async () => {
+    mockCreateDeadlineEvent.mockResolvedValue('evt');
+    const deadline = new Date(2026, 7, 20, 12, 0).toISOString();
+    await syncDeadlineEvent(makeTask({ deadlineOnCalendar: true, deadline, deadlineTime: '17:00', title: 'Renew passport' }));
+    expect(mockCreateDeadlineEvent).toHaveBeenCalledWith('cal-1', {
+      title: 'Renew passport',
+      date: new Date(deadline),
+      timed: { start: new Date(2026, 7, 20, 17, 0), end: new Date(2026, 7, 20, 17, 30) },
+    });
+  });
+
+  it('adopts a restored timed event by its server id', async () => {
+    mockMoveDeadlineEvent.mockImplementation((id: string) => Promise.resolve(id === 'evt-old-phone' ? null : id));
+    mockEventsWithExternalId.mockResolvedValue([{ id: 'evt-this-phone', allDay: false, calendarId: 'cal-1' }]);
+    const link = await syncDeadlineEvent(makeTask({
+      deadlineOnCalendar: true, deadline: new Date(2026, 7, 20, 12, 0).toISOString(), deadlineTime: '09:00',
+      calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    }));
+    expect(link.eventId).toBe('evt-this-phone');
+    expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
   });
 
   it('never touches the device calendar while demo mode is active', async () => {

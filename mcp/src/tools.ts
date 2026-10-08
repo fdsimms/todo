@@ -181,6 +181,8 @@ export interface GetTaskResult {
   healthTarget?: HealthTargetInput;
   /** A stock that counts down as the repeating task is completed; `groceryItem` is the catalog row it reorders (`supplyGroceryItemId`), where it is linked to one. */
   supply?: SupplyInput & { groceryItem?: { id: string; name: string } };
+  /** HH:MM the deadline closes at on its day; absent for a deadline that covers the whole day. */
+  deadlineTime?: string;
   /** The deadline is recomputed from the date on every occurrence by this rule (read-only; a `deadline` written by update_task replaces it with a fixed date). */
   deadlineRule?: DeadlineRule;
   /** The reminder is placed by this rule rather than at a fixed time (read-only). */
@@ -378,6 +380,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
       const item = task.supplyGroceryItemId ? replica.groceryItems().find(i => i.id === task.supplyGroceryItemId) : undefined;
       return { ...supply, ...(item ? { groceryItem: { id: item.id, name: item.name } } : {}) };
     })(),
+    deadlineTime: task.deadlineTime ?? undefined,
     deadlineRule: describeDeadlineRule(task) ?? undefined,
     reminderRule: describeReminderRule(task) ?? undefined,
     excludeFromSuggestions: task.excludeFromSuggestions ? true : undefined,
