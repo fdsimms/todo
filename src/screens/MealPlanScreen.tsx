@@ -1997,21 +1997,26 @@ export function MealPlanScreen() {
       : null),
     [entries, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
   );
-  const subtitle = [
-    describeWeekPlan(entries),
+  // The plan summary keeps the subtitle line; cost, nutrition and the added
+  // stamp share the overline. Joined into one subtitle they wrapped beside the
+  // five buttons and made this header taller than the other hub pages'.
+  const subtitle = describeWeekPlan(entries) || undefined;
+  const overline = [
     describeWeekCost(weekCost, currencySymbol, new Date()),
     describeWeekNutrition(weekNutritionEstimate),
     addedStamp ? describeAddedToList(addedStamp, new Date(), weekStartsOn) : null,
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean).join(' · ') || undefined;
 
   // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* No overline: the week range is PeriodNav's label below, and naming it
-          twice on the same screen is what a caption above the title becomes
-          once the arrows that move it are no longer beside the title. */}
+      {/* The overline carries the week's cost and nutrition, never the week
+          range: that is PeriodNav's label below, and naming it twice on the
+          same screen is what a caption above the title becomes once the
+          arrows that move it are no longer beside the title. */}
       <ScreenHeader
         title="Meal plan"
+        overline={overline}
         subtitle={subtitle}
         actions={withScreenSettings(headerActions, screenSettings.action)}
       />

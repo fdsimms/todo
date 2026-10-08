@@ -85,7 +85,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
     <View style={styles.header}>
       <View style={styles.titleBlock}>
         {overline != null ? (
-          <Text style={styles.overline}>{overline}</Text>
+          <Text style={styles.overline} numberOfLines={1}>{overline}</Text>
         ) : (
           // Reserves the overline's line height even when unused, so the
           // title sits at the same vertical position on every screen as it

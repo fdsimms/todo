@@ -777,9 +777,13 @@ export function KitchenScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Pantry"
-        // "40 things in the pantry · 2 to use up" wrapped mid-phrase beside the
-        // action buttons, so each part gets its own line.
-        subtitle={entries.length > 0 ? describeKitchen(entries).split(' · ').join('\n') : undefined}
+        // "40 things in the pantry · 2 to use up" wraps mid-phrase beside the
+        // action buttons, so each part gets its own line. The second part goes
+        // in the overline rather than a second subtitle line: a two-line
+        // subtitle made this header a line taller than every other hub page's
+        // and shunted the pills down when moving between them.
+        overline={entries.length > 0 ? describeKitchen(entries).split(' · ')[1] : undefined}
+        subtitle={entries.length > 0 ? describeKitchen(entries).split(' · ')[0] : undefined}
         actions={withScreenSettings([
           // Gated on a key for the reason the shopping list's own receipt
           // button is: the reading is the whole feature, and without one this
