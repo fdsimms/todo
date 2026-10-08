@@ -161,6 +161,15 @@ export interface SettingsEntry {
   id: string;
   groupId: SettingsGroupId;
   /**
+   * The screen this setting lives on instead of a row in Settings: a sheet only
+   * its own screen can open (grocery aisles, a project's categories). It is
+   * indexed so a search finds it, and opening it goes to that screen, with
+   * `section` naming the way in. It has no row to wire, so
+   * `settingsEntryWiring.test.ts` skips it, and it is never listed by a
+   * screen's gear (`SCREEN_SETTINGS`), which jumps to a row.
+   */
+  screen?: string;
+  /**
    * The row's label as rendered. Where a label is computed at runtime (the app
    * lock names whatever the device authenticates with) this is the common case
    * and the alternatives live in `keywords`.
@@ -736,6 +745,17 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
   { id: 'vacationEnd', requires: 'vacationMode', groupId: 'dayTime', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
+  // Settings that live only on their own screen, found here by search and
+  // opened by going to that screen (`SettingsEntry.screen`).
+  { id: 'groceryAislesStores', screen: 'Groceries', groupId: 'kitchen', label: 'Aisles, stores and sorting',
+    section: 'On the Groceries screen, in the settings button',
+    keywords: ['shop', 'supermarket', 'order', 'layout', 'walk', 'grouping'] },
+  { id: 'projectCategories', screen: 'Projects', groupId: 'tasksProjects', label: 'Project categories',
+    section: 'On the Projects screen, in the … menu',
+    keywords: ['rename', 'delete', 'reorder', 'sections', 'groups', 'folders'] },
+  { id: 'todayCategoryOrder', screen: 'Today', groupId: 'tasksProjects', label: 'Category order',
+    section: 'On the Today screen, in the … menu',
+    keywords: ['sections', 'reorder', 'move', 'headers', 'sort', 'arrange'] },
   { id: 'destinationForecastEnabled', groupId: 'dayTime', label: 'Destination forecast',
     section: 'Trips',
     keywords: ['weather', 'trip', 'away', 'packing', 'travel', 'rain'] },
@@ -1032,5 +1052,7 @@ export function settingsGroupTarget(groupId: SettingsGroupId, entryId?: string):
  */
 export function settingsEntryTarget(entryId: string): SettingsTarget | null {
   const entry = SETTINGS_ENTRIES.find(e => e.id === entryId);
-  return entry ? settingsGroupTarget(entry.groupId, entryId) : null;
+  if (!entry) return null;
+  if (entry.screen) return { kind: 'screen', route: entry.screen };
+  return settingsGroupTarget(entry.groupId, entryId);
 }

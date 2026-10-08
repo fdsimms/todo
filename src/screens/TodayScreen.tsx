@@ -4347,7 +4347,11 @@ export function TodayScreen() {
           active: hideCategories,
           accessibilityLabel: 'More options',
         }]
-      : []),
+      // Later, Unscheduled and Inbox have no "…" menu, which is where Today's
+      // settings row lives, so they get the screen's usual gear instead. The
+      // list is the same one: where quick add files a task, Hide categories,
+      // Day starts and vacation all apply to those lists too.
+      : screenSettings.action ? [screenSettings.action] : []),
   ];
 
   // ==== render. Everything below is JSX ====

@@ -21,7 +21,7 @@ import {
   settingsIndexGroups,
   type IndexedSettingsGroup, type SettingsGroupId, type SettingsTint,
 } from '../utils/settingsIndex';
-import { openSettingsGroup } from '../navigation/openSettings';
+import { navigateToSettingsEntry, openSettingsGroup } from '../navigation/openSettings';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
 import { searchableSettingsEntries } from '../utils/settingsActiveRows';
@@ -223,7 +223,7 @@ export function SettingsScreen() {
                   {i > 0 && <View style={styles.sep} />}
                   <TouchableOpacity
                     style={styles.resultRow}
-                    onPress={() => openGroup(group.id, hit.entry.id)}
+                    onPress={() => navigateToSettingsEntry(navigation, hit.entry.id)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                     accessibilityLabel={`${hit.entry.label}, in ${group.title}`}

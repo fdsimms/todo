@@ -3330,7 +3330,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const where = group?.screen ? `Menu › ${group.title}` : `Settings › ${group?.title ?? r.entry.groupId}`;
         return {
           label: r.entry.label,
-          path: `${where} › ${r.entry.section} › ${r.entry.label}`,
+          // A setting that lives on its own screen has no Settings row: its
+          // section already says which screen and which button.
+          path: r.entry.screen
+            ? `${r.entry.section} › ${r.entry.label}`
+            : `${where} › ${r.entry.section} › ${r.entry.label}`,
           ...(r.matchedVia ? { matchedVia: r.matchedVia } : {}),
         };
       });

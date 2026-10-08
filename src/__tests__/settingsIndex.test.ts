@@ -393,6 +393,11 @@ describe('settings index', () => {
         .toEqual({ kind: 'group', groupId: 'health', entryId: 'healthWrite' });
     });
 
+    it('sends a setting that lives on its own screen to that screen, with no row to focus', () => {
+      expect(settingsEntryTarget('groceryAislesStores')).toEqual({ kind: 'screen', route: 'Groceries' });
+      expect(settingsEntryTarget('projectCategories')).toEqual({ kind: 'screen', route: 'Projects' });
+    });
+
     it('refuses an id no entry has, rather than landing somewhere arbitrary', () => {
       expect(settingsEntryTarget('noSuchRow')).toBeNull();
     });
