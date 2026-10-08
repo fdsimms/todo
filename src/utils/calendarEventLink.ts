@@ -205,8 +205,13 @@ function uniqueById(matches: readonly ExternalEventMatch[]): ExternalEventMatch[
  * reconcile doesn't carry; and the server id was read off this very event,
  * which the day could only second-guess.
  */
-export function adoptableEventId(matches: readonly ExternalEventMatch[], calendarId: string): string | null {
-  return oneOf(matches.filter(m => m.allDay), calendarId);
+export function adoptableEventId(
+  matches: readonly ExternalEventMatch[],
+  calendarId: string,
+  /** A deadline's event is timed when the deadline has a time of day, so it is the one caller that accepts either kind. */
+  includeTimed = false,
+): string | null {
+  return oneOf(includeTimed ? [...matches] : matches.filter(m => m.allDay), calendarId);
 }
 
 /**
@@ -300,7 +305,9 @@ async function linkAfterWrite(written: string, known: CalendarEventLink): Promis
 export async function writeAllDayEvent(
   link: CalendarEventLink,
   calendarId: string,
-  fields: AllDayEventFields
+  fields: AllDayEventFields,
+  /** Whether a restored event found by its server id may be a timed one. See `adoptableEventId`. */
+  adoptTimed = false
 ): Promise<CalendarEventLink> {
   if (link.eventId) {
     const moved = await moveAllDayEvent(link.eventId, calendarId, fields);
@@ -308,7 +315,7 @@ export async function writeAllDayEvent(
     await deleteCalendarEvent(link.eventId);
 
     if (link.externalId) {
-      const adopted = adoptableEventId(await eventsWithExternalId(link.externalId), calendarId);
+      const adopted = adoptableEventId(await eventsWithExternalId(link.externalId), calendarId, adoptTimed);
       if (adopted) {
         const movedAdopted = await moveAllDayEvent(adopted, calendarId, fields);
         if (movedAdopted) return linkAfterWrite(movedAdopted, { eventId: adopted, externalId: link.externalId });

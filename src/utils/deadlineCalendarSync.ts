@@ -1,4 +1,7 @@
+import { addMinutes } from 'date-fns/addMinutes';
 import type { Task } from '../types';
+import { deadlineMoment } from './dateUtils';
+import type { AllDayEventFields } from './calendarSync';
 import { displayTitleFor } from './visibilityUtils';
 import {
   NO_EVENT_LINK,
@@ -55,9 +58,24 @@ export async function syncDeadlineEvent(task: Task): Promise<CalendarEventLink> 
   return writeAllDayEvent(
     deadlineEventLink(task),
     deadlineCalendarId,
-    { title: displayTitleFor(task) || 'Deadline', date: new Date(task.deadline) }
+    deadlineEventFields(task, task.deadline),
+    true
   );
 }
+
+/**
+ * The event a deadline writes: the whole day, or, when the deadline has a time
+ * of day, a 30 minute event starting then (a deadline is a moment, and the
+ * calendar has no zero-length event to show one).
+ */
+function deadlineEventFields(task: Task, deadline: string): AllDayEventFields {
+  const title = displayTitleFor(task) || 'Deadline';
+  const date = new Date(deadline);
+  const start = deadlineMoment(deadline, task.deadlineTime);
+  return start ? { title, date, timed: { start, end: addMinutes(start, DEADLINE_EVENT_MINUTES) } } : { title, date };
+}
+
+const DEADLINE_EVENT_MINUTES = 30;
 
 /** The deadline event a task is linked to on this device. */
 export function deadlineEventLink(task: Task): CalendarEventLink {
@@ -72,7 +90,7 @@ export function deadlineEventLink(task: Task): CalendarEventLink {
  */
 export function deleteDeadlineEvent(link: CalendarEventLink): Promise<void> {
   const calendarId = useSettingsStore.getState().deadlineCalendarId ?? '';
-  return deleteLinkedEvent(link, matches => adoptableEventId(matches, calendarId));
+  return deleteLinkedEvent(link, matches => adoptableEventId(matches, calendarId, true));
 }
 
 /** What a sync apply asks of this device's task events. */
