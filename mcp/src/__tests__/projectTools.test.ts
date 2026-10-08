@@ -244,6 +244,12 @@ describe('the project writes, against a real database', () => {
     expect(() => tools.updateProject(real, id, { pausedUntil: '2001-01-01' })).toThrow(/after today/);
   });
 
+  it('switches a project to group on Today and back, showing the flag only while it is on', () => {
+    const id = plan();
+    expect(tools.updateProject(real, id, { groupOnToday: true }).project).toMatchObject({ groupOnToday: true });
+    expect(tools.updateProject(real, id, { groupOnToday: false }).project).not.toHaveProperty('groupOnToday');
+  });
+
   it('puts a project in Planning and marks it ready, reported by name rather than as its day', () => {
     const created = tools.createProject(real, { title: 'Move', planning: true, steps: [{ title: 'Pack' }], defaultTaskCategory: 'Home' } as never);
     expect(created.project).toMatchObject({ planning: true });

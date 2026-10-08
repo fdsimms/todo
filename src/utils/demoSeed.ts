@@ -1358,10 +1358,15 @@ export function seedDemoData(): void {
   const quotes = createGroup('Contractor quotes', 'Home');
   const abcQuote = addNewGroupedTask(quotes.id, 'Call ABC Contractors');
   const sunriseQuote = addNewGroupedTask(quotes.id, 'Call Sunrise Builders');
-  updateTask(abcQuote.id, { dueDate: addDays(today, 2).toISOString() });
-  updateTask(sunriseQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  // Due today, so the kitchen has something on Today for its band below.
+  updateTask(abcQuote.id, { dueDate: today.toISOString() });
+  updateTask(sunriseQuote.id, { dueDate: today.toISOString() });
   addExistingToProject(abcQuote.id, kitchen.id);
   addExistingToProject(sunriseQuote.id, kitchen.id);
+  // Gathered on Today under the project's name (Project.groupOnToday), with
+  // the quotes stack inside it. An opt-in that starts off, so with no project
+  // seeded with it on, Today in demo mode never shows a project band.
+  updateProject(kitchen.id, { groupOnToday: true });
 
   // A stack with nothing in it yet, homed on the project rather than scoped by
   // members it hasn't got (see TaskGroup.projectId) — an outline of the part of

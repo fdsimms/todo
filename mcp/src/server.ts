@@ -3115,6 +3115,7 @@ function registerWriteTools(
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
       showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
       hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
+      groupOnToday: z.boolean().optional().describe('Today shows its tasks and stacks for the day together under its name, at the top below the pinned tasks, instead of in their categories. A trip with a packing list is the usual case. Display only: it changes nothing about what is due.'),
     },
     async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {
