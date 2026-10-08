@@ -64,7 +64,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -378,6 +378,7 @@ function NewLineField({
 
 export function ProjectDetailScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
@@ -635,7 +636,7 @@ export function ProjectDetailScreen() {
   // it. With completed tasks present, ListFooterComponent renders and carries
   // its own bottom padding; stacking this on top of it would double the gap.
   const baseListBottomPadding = completedProjectTasks.length === 0
-    ? insets.bottom + FAB_SIZE + spacing.lg
+    ? fabBottom + FAB_SIZE + spacing.lg
     : undefined;
   // Same identity-grouped count the Projects list badges its quick-complete
   // action with — a recurring member never reads done here either. Memoized
@@ -1785,7 +1786,7 @@ export function ProjectDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
-            scrollToTop={{ bottom: insets.bottom + spacing.xl }}
+            scrollToTop={{ bottom: fabBottom }}
             data={shownListItems}
             keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,
@@ -2274,7 +2275,7 @@ export function ProjectDetailScreen() {
             // the box the empty state centres in.
             ListFooterComponent={
               completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection && taskLineOpen === null ? null : (
-              <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
+              <View style={[styles.detailFooter, { paddingBottom: fabBottom + FAB_SIZE + spacing.lg }]}>
                 {/* Where the new section will land: after everything else. */}
                 {namingSection && (
                   <InlineNameField
@@ -2532,7 +2533,6 @@ export function ProjectDetailScreen() {
             channel={fabIntentChannel}
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
-            bottom={insets.bottom + spacing.xl}
             accessibilityLabel={isList ? 'Add to this list' : 'Add task to project'}
             drag={fabDrag}
             dragHint={isList
@@ -2592,7 +2592,7 @@ export function ProjectDetailScreen() {
           <TemplateAppliedToast
             count={templateAppliedCount}
             noun={isList ? 'item' : 'task'}
-            bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
         )}

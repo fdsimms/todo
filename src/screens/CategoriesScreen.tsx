@@ -20,7 +20,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
 import { CategoryEditor } from '../components/CategoryEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -29,6 +29,7 @@ import { formatCategorySchedule } from '../utils/categorySchedule';
 
 export function CategoriesScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation();
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -78,7 +79,7 @@ export function CategoriesScreen() {
         <ReorderableList
           data={allCategories}
           keyExtractor={c => c}
-          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+          scrollToTop={{ bottom: fabBottom }}
           contentContainerStyle={styles.list}
           ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
@@ -174,7 +175,6 @@ export function CategoriesScreen() {
       <Fab
         onPress={() => setQuickAddVisible(true)}
         accessibilityLabel="Add category"
-        bottom={insets.bottom + tabBarHeight + spacing.md}
       />
 
       <QuickAddNameSheet

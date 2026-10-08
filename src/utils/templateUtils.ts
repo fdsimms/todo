@@ -192,6 +192,39 @@ export function normalizeTemplateQuestion(raw: Partial<TemplateQuestion>): Templ
 }
 
 /**
+ * Where a freshly added item goes when the add button was dropped on the list.
+ *
+ * `items` already holds the new item (at the end, where `addItem` puts it). It
+ * is lifted out and spliced next to `anchorId`, above or below it, and the
+ * result is handed back as ids in the order `reorderItems` takes. A null when
+ * either id isn't in the list, so a drop whose row has since been deleted
+ * leaves the item where it was added instead of guessing.
+ *
+ * `groupId` is the group the new item lands inside: a spot between two members
+ * of one group belongs to it, because the list draws that group's members as one
+ * run. An edge of a group, or a spot between two groups, joins neither.
+ */
+export function placeItemAtDrop(
+  items: readonly TemplateItem[],
+  itemId: string,
+  anchorId: string,
+  before: boolean,
+): { ids: string[]; groupId: string | null } | null {
+  const moved = items.find(i => i.id === itemId);
+  if (!moved || itemId === anchorId) return null;
+  const rest = items.filter(i => i.id !== itemId);
+  const anchor = rest.findIndex(i => i.id === anchorId);
+  if (anchor < 0) return null;
+  const at = before ? anchor : anchor + 1;
+  const above = rest[at - 1];
+  const below = rest[at];
+  const groupId = above?.groupId && above.groupId === below?.groupId ? above.groupId : null;
+  const ids = rest.map(i => i.id);
+  ids.splice(at, 0, itemId);
+  return { ids, groupId };
+}
+
+/**
  * Resolve an offset (days relative to the anchor) to an ISO date, normalized
  * to noon — the app-wide convention for day-granular dates, which keeps the
  * task on the intended logical day for any sane dayResetTime.

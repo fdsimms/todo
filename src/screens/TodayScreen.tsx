@@ -196,7 +196,7 @@ import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
-import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
+import { type FabDragHandlers, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -711,6 +711,7 @@ export function TodayScreen() {
   const route = useRoute<any>();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   // ==== local state (view mode, selection, expansion, sheets) ====
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   // Declared up here rather than with the rest of the sheet/selection state
@@ -4499,7 +4500,7 @@ export function TodayScreen() {
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             rowScrollerRef={laterRowScroller}
-            scrollToTop={{ bottom: insets.bottom + 64 }}
+            scrollToTop={{ bottom: fabBottom }}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             // See the Today list's own note: an expanded row's card shadow
@@ -4628,7 +4629,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
-            scrollToTop={{ bottom: insets.bottom + 64 }}
+            scrollToTop={{ bottom: fabBottom }}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -5023,14 +5024,14 @@ export function TodayScreen() {
         {viewMode === 'unscheduled' && (
           <ScrollToTopButton
             visible={unscheduledScrollTop.visible}
-            bottom={insets.bottom + 64}
+            bottom={fabBottom}
             onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
         {viewMode === 'inbox' && (
           <ScrollToTopButton
             visible={inboxScrollTop.visible}
-            bottom={insets.bottom + 64}
+            bottom={fabBottom}
             onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
@@ -5039,7 +5040,6 @@ export function TodayScreen() {
           <AddTaskFabWithDropLabel
             channel={fabIntentChannel}
             categories={categories}
-            bottom={insets.bottom + 64}
             disabled={spotlightActive}
             opacity={fabOpacity}
             onSelect={handleAddMenuSelect}
@@ -5054,7 +5054,7 @@ export function TodayScreen() {
           <View
             style={[
               styles.stackNameBar,
-              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : insets.bottom + 64 },
+              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : fabBottom },
             ]}
           >
             <InlineNameField
@@ -5073,7 +5073,7 @@ export function TodayScreen() {
             destination={createdToast.destination}
             mode={createdToast.source}
             dayResetTime={dayResetTime}
-            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
           />
@@ -5126,7 +5126,7 @@ export function TodayScreen() {
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
             count={templateAppliedCount}
-            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
         )}

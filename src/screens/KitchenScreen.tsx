@@ -77,6 +77,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
 import { isPortionBox } from '../types';
 import { LazySheet } from '../components/LazySheet';
+import { useFabBottom } from '../components/Fab';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -151,6 +152,7 @@ import { LazySheet } from '../components/LazySheet';
 export function KitchenScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Kitchen', 'Pantry settings');
@@ -889,7 +891,7 @@ export function KitchenScreen() {
         data={rows}
         keyExtractor={kitchenRowKey}
         renderItem={renderRow}
-        scrollToTop={{ bottom: tabBarHeight + spacing.md }}
+        scrollToTop={{ bottom: fabBottom }}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
