@@ -293,9 +293,12 @@ export const NUTRIENT_LABEL: Record<NutrientKey, { label: string; unit: string }
   calorieKcal: { label: 'Calories', unit: 'cal' },
   fatG: { label: 'Total fat', unit: 'g' },
   satFatG: { label: 'Saturated fat', unit: 'g' },
+  transFatG: { label: 'Trans fat', unit: 'g' },
+  cholesterolMg: { label: 'Cholesterol', unit: 'mg' },
   carbsG: { label: 'Total carbohydrate', unit: 'g' },
   fiberG: { label: 'Dietary fiber', unit: 'g' },
   sugarG: { label: 'Total sugars', unit: 'g' },
+  addedSugarG: { label: 'Added sugars', unit: 'g' },
   proteinG: { label: 'Protein', unit: 'g' },
   sodiumMg: { label: 'Sodium', unit: 'mg' },
   calciumMg: { label: 'Calcium', unit: 'mg' },
@@ -334,3 +337,38 @@ export const NUTRITION_BASIS_LABEL: Record<FoodNutrition['basis'], string> = {
   per100ml: 'per 100ml',
   perServing: 'per serving',
 };
+
+/**
+ * "Per serving (2 cookies): Saturated fat 2.5g · Total sugars 11g", the named
+ * nutrients of a stored panel as somebody holding the packet reads them.
+ *
+ * Per serving where the panel can say what a serving is (stated per serving, or
+ * per 100g with a serving weight), and per 100g or 100ml otherwise, since
+ * scaling to a serving nobody stated would be a guess. A nutrient the panel
+ * doesn't state says so rather than reading as zero. Null with nothing asked
+ * for or no panel, so a caller with no limits set draws nothing.
+ */
+export function describePanelFigures(
+  nutrition: FoodNutrition | null,
+  keys: readonly NutrientKey[],
+): string | null {
+  if (!nutrition || keys.length === 0) return null;
+  let factor = 1;
+  let heading: string;
+  if (nutrition.basis === 'perServing') {
+    heading = nutrition.servingText ? `Per serving (${nutrition.servingText})` : 'Per serving';
+  } else if (nutrition.basis === 'per100g' && nutrition.servingGrams) {
+    factor = nutrition.servingGrams / 100;
+    heading = `Per serving (${nutrition.servingText ?? `${nutrition.servingGrams}g`})`;
+  } else {
+    heading = nutrition.basis === 'per100ml' ? 'Per 100ml' : 'Per 100g';
+  }
+  const parts = keys.map(key => {
+    const amount = nutrition.amounts[key];
+    const { label, unit } = NUTRIENT_LABEL[key];
+    if (amount === undefined) return `${label} not stated`;
+    const value = Math.round(amount * factor * 10) / 10;
+    return `${label} ${value.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`;
+  });
+  return `${heading}: ${parts.join(' · ')}`;
+}

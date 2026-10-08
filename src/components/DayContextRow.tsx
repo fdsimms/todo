@@ -115,7 +115,8 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
     : row.kind === 'health' ? (
       row.id === 'health-activeEnergy' ? 'flame-outline'
         : row.id === 'health-rings' ? 'fitness-outline'
-          : 'footsteps-outline')
+          : row.id.startsWith('limit-') ? 'nutrition-outline'
+            : 'footsteps-outline')
     : 'restaurant-outline';
 
   const leading = onMarkCooked ? (
@@ -133,7 +134,11 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
     </TouchableOpacity>
   ) : (
     <View style={styles.slot}>
-      <Ionicons name={glyphName} size={iconSize.sm} color={colors.textTertiary} />
+      <Ionicons
+        name={glyphName}
+        size={iconSize.sm}
+        color={row.tone === 'over' ? colors.red : row.tone === 'near' ? colors.orangeText : colors.textTertiary}
+      />
     </View>
   );
 
@@ -143,7 +148,7 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
 
   const body = (
     <>
-      <Text style={[styles.title, row.now && styles.titleNow]} numberOfLines={1}>
+      <Text style={[styles.title, row.now && styles.titleNow, row.tone === 'over' && styles.titleOver]} numberOfLines={1}>
         {row.title}
       </Text>
       {/* One meta chip, shaped like TaskItem's. Every caption these rows can
@@ -343,6 +348,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The one emphasis in the treatment, and only while an event is actually
   // running — see ContextRow.now. Weight only: the title is already at full
   // strength now that the row is a card, so the colour has nowhere left to go.
+  titleOver: { color: colors.redText },
   titleNow: {
     fontWeight: fontWeight.medium,
   },

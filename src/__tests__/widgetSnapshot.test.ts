@@ -8,6 +8,7 @@ import {
   buildWidgetSnapshot,
   isWidgetWorthy,
   toWidgetTask,
+  buildWidgetLimits,
 } from '../utils/widgetSnapshot';
 import type {
   GroceryItem,
@@ -434,5 +435,23 @@ describe('buildWidgetMedications', () => {
       { id: 'zyrtec', name: 'Zyrtec', dose: null, lastTakenAt: '2026-09-13T09:00:00.000Z' },
       { id: 'ibuprofen', name: 'Ibuprofen', dose: '400 mg', lastTakenAt: '2026-09-12T09:00:00.000Z' },
     ]);
+  });
+});
+
+describe('buildWidgetLimits', () => {
+  const targets = { satFatG: 16, sugarG: 35, proteinG: 150 };
+
+  it('words each limit the way Today does, with the bar and its state', () => {
+    expect(buildWidgetLimits({ satFatG: 13, sugarG: 41.25 }, targets, ['sugarG', 'satFatG'], 75)).toEqual([
+      { id: 'satFatG', label: 'Sat fat', value: '13 of 16g', detail: '3g left', fraction: 13 / 16, status: 'near' },
+      { id: 'sugarG', label: 'Sugar', value: '41.3 of 35g', detail: '6.3g over', fraction: 1, status: 'over' },
+    ]);
+  });
+
+  it('reads a limit nothing logged states as a full budget, and leaves goals out', () => {
+    expect(buildWidgetLimits({ proteinG: 80 }, targets, ['satFatG'], 75)).toEqual([
+      { id: 'satFatG', label: 'Sat fat', value: '0 of 16g', detail: '16g left', fraction: 0, status: 'within' },
+    ]);
+    expect(buildWidgetLimits({}, targets, [], 75)).toEqual([]);
   });
 });

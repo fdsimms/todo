@@ -1,3 +1,4 @@
+import { slipsToday } from '../utils/negativeHabits';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
@@ -14094,6 +14095,96 @@ describe('quota tasks', () => {
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([calorieEntry(600)]);
           run();
           expect(snackTasks()).toHaveLength(0);
+        });
+      });
+
+      describe('the limit task', () => {
+        const fatEntry = (satFatG: number, id = 'f1'): FoodLogEntry => ({
+          ...waterEntry(0),
+          id,
+          label: 'Ice cream',
+          nutrition: { ...panel(0), amounts: { satFatG } },
+        });
+        const limitTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'limitWarning' && !t.archived);
+        const on = () => ({
+          limitWarningTasks: true, limitWarningTaskCategory: 'Health', vacationMode: false,
+          nutritionTargets: { satFatG: 16 }, nutritionLimits: ['satFatG'],
+          limitWarnPercent: 75, limitWarningDeclined: [], limitWarningAutoSlips: {},
+          // The pass records its own slips; the mock keeps what it wrote.
+          setLimitWarningAutoSlips: (days: Record<string, string>) => withSettings({ limitWarningAutoSlips: days }),
+        });
+        const run = () => useTaskStore.getState().syncLimitWarningTasks();
+        const log = (...entries: FoodLogEntry[]) => (dbGetFoodLogEntries as jest.Mock).mockReturnValue(entries);
+        const todayStart = () => getCurrentDayStart();
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => jest.useRealTimers());
+
+        it('keeps one "don\'t do" task per limit, there before anything is logged', () => {
+          withSettings(on());
+          log();
+          run();
+          expect(limitTasks()).toHaveLength(1);
+          const [task] = limitTasks();
+          expect(task).toMatchObject({
+            title: 'Stay under 16g sat fat', polarity: 'negative', showStreak: true,
+            generatedSourceId: 'satFatG', linkUrl: 'dundundun://foodlog', dueDate: null,
+          });
+        });
+
+        it('follows the total in its title and names the foods behind it', () => {
+          withSettings(on());
+          log(fatEntry(12));
+          run();
+          const [task] = limitTasks();
+          expect(task.title).toBe('Stay under 16g sat fat · 12g so far');
+          expect(task.notes).toMatch(/^Today: 12 of 16g, 4g left\.\n\nMost of it: Ice cream \(12g\)\./);
+          run();
+          expect(limitTasks()).toHaveLength(1);
+        });
+
+        it('logs a slip the moment the day goes over, once, and takes it back when the entry goes', () => {
+          withSettings(on());
+          log(fatEntry(12));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(0);
+          log(fatEntry(12), fatEntry(7, 'f2'));
+          run();
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+          log(fatEntry(12));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(0);
+        });
+
+        it('never slips on top of, or takes back, a slip the person logged', () => {
+          withSettings(on());
+          log(fatEntry(12));
+          run();
+          useTaskStore.getState().logSlip(limitTasks()[0].id);
+          log(fatEntry(20));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+          log();
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+        });
+
+        it('writes none for a declined limit, and takes them all away when switched off', () => {
+          withSettings({ ...on(), limitWarningDeclined: ['satFatG'] });
+          log();
+          run();
+          expect(limitTasks()).toHaveLength(0);
+          withSettings(on());
+          run();
+          expect(limitTasks()).toHaveLength(1);
+          withSettings({ ...on(), limitWarningTasks: false });
+          run();
+          expect(limitTasks()).toHaveLength(0);
         });
       });
 

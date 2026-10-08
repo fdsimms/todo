@@ -139,8 +139,11 @@ import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
-import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
-import { targetedNutrients } from '../utils/nutritionTargets';
+import { describeWeekNutrition, perServing, recipeNutrition, weekNutrition } from '../utils/recipeNutrition';
+import { plannedDayNutrition } from '../utils/plannedDayNutrition';
+import { normalizeScale } from '../utils/recipeScale';
+import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { activeLimits, targetedNutrients } from '../utils/nutritionTargets';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -543,6 +546,44 @@ export function MealPlanScreen() {
     }
     return byDay;
   }, [days, entries, weekFoodLog]);
+  /**
+   * Each day against the Stay under limits: what the food log has for it plus
+   * a helping of each planned meal not logged yet (`plannedDayNutrition`), so a
+   * heavy day reads as one before it is eaten. Empty with no limits set, which
+   * leaves every day header as it was.
+   */
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitLineByDay = useMemo(() => {
+    const out = new Map<string, { text: string; over: boolean }>();
+    const keys = activeLimits(nutritionTargets, nutritionLimits);
+    if (keys.length === 0) return out;
+    const helpingFor = (entry: MealPlanEntry) => {
+      const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+      if (!recipe) return null;
+      const dish = recipeNutrition(
+        recipe, groceryItems, itemProducts, recipesById,
+        { chosen: entry.recipeChoices }, normalizeScale(entry.recipeScale), standingSwaps,
+      );
+      return dish ? perServing(dish) ?? dish.total : null;
+    };
+    for (const day of days) {
+      const key = dayKeyOf(day);
+      const coverage = coverageByDay.get(key);
+      const logged = weekFoodLog.filter(e => e.dayKey === key);
+      if (logged.length === 0 && (coverage?.size ?? 0) === 0) continue;
+      const { totals, uncounted } = plannedDayNutrition(coverage, logged, helpingFor);
+      const parts = keys.map(k => {
+        const unit = NUTRIENT_LABEL[k].unit;
+        const amount = Math.round((totals[k] ?? 0) * 10) / 10;
+        return `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} of ${nutritionTargets[k]!.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`;
+      });
+      const over = keys.some(k => (totals[k] ?? 0) > nutritionTargets[k]!);
+      const note = uncounted > 0 ? ` (${uncounted} ${uncounted === 1 ? 'meal' : 'meals'} with no figures left out)` : '';
+      out.set(key, { text: `Planned: ${parts.join(' · ')}${note}`, over });
+    }
+    return out;
+  }, [days, coverageByDay, weekFoodLog, nutritionTargets, nutritionLimits, recipesById, groceryItems, itemProducts, standingSwaps]);
   /**
    * The row "View in food log" opens: the entry linked to this meal outright,
    * or else the first thing logged in its slot that day. The second is the
@@ -1528,6 +1569,11 @@ export function MealPlanScreen() {
                   week-level hint above says the thing the seven copies were each
                   saying badly.
                 */}
+                {!collapsed && limitLineByDay.has(key) && (
+                  <Text style={[styles.limitLine, limitLineByDay.get(key)!.over && styles.limitLineOver]}>
+                    {limitLineByDay.get(key)!.text}
+                  </Text>
+                )}
                 {!collapsed && dayEntries.length > 0 && (
                   (
                     /*
@@ -1601,7 +1647,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -2686,6 +2732,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
+  // A planned day against the Stay under limits, under its header. Secondary
+  // grey while it fits, red text once the plan goes past one.
+  limitLine: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginBottom: spacing.xs,
+  },
+  limitLineOver: { color: colors.redText },
   dayHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',

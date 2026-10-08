@@ -130,12 +130,14 @@ const MIN_LABEL_ROWS = 3;
  * all, and which are therefore dropped whole.
  *
  * **This runs before the matching below and that ordering is the point.** Every
- * one of these contains a word the matcher would otherwise take: "Trans Fat" and
- * "Polyunsaturated Fat" both end in fat, "Includes 2g Added Sugars" ends in
- * sugars, and the old US "Calories from Fat 30" line contains both. Matched
+ * one of these contains a word the matcher would otherwise take: "Polyunsaturated
+ * Fat" ends in fat, "Includes 2g Sugar Alcohols" names sugar, and the old US
+ * "Calories from Fat 30" line contains both. Matched
  * loosely they do not merely get ignored, they overwrite a figure that was
  * right — the total fat row read as 0g because the trans fat row below it was
- * the last one to match.
+ * the last one to match. Trans fat, cholesterol and added sugars have since left
+ * this list for keys of their own, claimed first in `ROW_TARGETS` for the same
+ * reason; an "Includes" row is still dropped unless it is the added sugars one.
  *
  * The vitamin rows are here rather than unmatched because the rest of a
  * micronutrient panel is the next widening of `NutrientKey` that could happen,
@@ -145,10 +147,7 @@ const MIN_LABEL_ROWS = 3;
  * note on `NutrientKey` says why it is the one mandatory row with no field.
  */
 const IGNORED_ROW: readonly RegExp[] = [
-  /\btrans\b/,
-  /\badded\s*sugars?\b/,
-  /\bincludes\b/,
-  /\bcholesterol\b/,
+  /\bincludes\b(?!.*\badded\b)/,
   /\bmono-?\s*unsaturated\b/,
   /\bpoly-?\s*unsaturated\b/,
   /\bsugar\s*alcohols?\b/,
@@ -161,7 +160,7 @@ const IGNORED_ROW: readonly RegExp[] = [
 /**
  * Which nutrient a row's wording names, tried in order.
  *
- * **Most specific first, because the words nest.** "Saturated Fat" and "of
+ * **Most specific first, because the words nest.** "Trans Fat", "Saturated Fat" and "of
  * which saturates" have to be claimed before anything looks for fat, and
  * "Total Sugars" before anything looks for carbohydrate — a panel prints the
  * breakdown indented under its total, so both wordings appear and the general
@@ -175,6 +174,10 @@ const IGNORED_ROW: readonly RegExp[] = [
  * factor rather than an equality.
  */
 const ROW_TARGETS: readonly { target: NutrientKey | 'salt'; pattern: RegExp }[] = [
+  // Ahead of fat and sugars, which their own wording contains.
+  { target: 'transFatG', pattern: /\btrans\b/ },
+  { target: 'addedSugarG', pattern: /\badded\s*sugars?\b/ },
+  { target: 'cholesterolMg', pattern: /\bcholesterol\b/ },
   { target: 'satFatG', pattern: /\bsaturat/ },
   { target: 'fiberG', pattern: /\bfib(er|re)\b/ },
   { target: 'sugarG', pattern: /\bsugars?\b/ },

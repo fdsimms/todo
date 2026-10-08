@@ -2358,20 +2358,34 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
 }
 
 /**
- * The nutrients a model-made estimate (a described meal, a whole recipe) may
+ * The nutrients a model-made estimate (a described meal, a whole recipe) must
  * state, shared so the two can't drift apart: the minerals were once added to
  * the label reader and left out of both of these.
+ *
+ * **Every food nutrient is required.** These were optional, with the prompt
+ * asking for "every one you can reasonably approximate", and in practice a
+ * restaurant meal came back with calories and macros and no saturated fat, so
+ * somebody watching a limit had a day total quietly missing its biggest
+ * contributors. An estimate is already labelled as one wherever it's shown
+ * (`source: 'estimated'`), so a rough figure costs nothing a missing one
+ * doesn't. Water is the exception: it isn't a figure anybody reads off a meal,
+ * and a guessed one would land in the day's water.
  */
+const ESTIMATE_REQUIRED_KEYS = NUTRIENT_KEYS.filter(key => key !== 'waterMl');
+
 const ESTIMATE_AMOUNTS_SCHEMA = {
   type: 'object' as const,
-  description: 'Every nutrient you can reasonably approximate, including saturated fat, fiber, sugars and the minerals. Omit only the ones you cannot judge at all, rather than sending zero.',
+  description: 'Every nutrient listed, each as your best approximation. A rough figure is expected and is better than none; give zero only when the food really contains essentially none (caffeine in a sandwich, cholesterol in a salad with no animal products).',
   properties: {
     calorieKcal: { type: 'number', description: 'Calories (kcal)' },
     fatG: { type: 'number', description: 'Total fat in grams' },
     satFatG: { type: 'number', description: 'Saturated fat in grams' },
+    transFatG: { type: 'number', description: 'Trans fat in grams' },
+    cholesterolMg: { type: 'number', description: 'Cholesterol in milligrams' },
     carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
     fiberG: { type: 'number', description: 'Dietary fiber in grams' },
     sugarG: { type: 'number', description: 'Total sugars in grams' },
+    addedSugarG: { type: 'number', description: 'Added sugars in grams: sugar, syrups and honey added in making it, not the sugar naturally in fruit, milk or vegetables' },
     proteinG: { type: 'number', description: 'Protein in grams' },
     sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
     calciumMg: { type: 'number', description: 'Calcium in milligrams' },
@@ -2380,6 +2394,7 @@ const ESTIMATE_AMOUNTS_SCHEMA = {
     caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
     waterMl: { type: 'number', description: 'Water in millilitres' },
   },
+  required: ESTIMATE_REQUIRED_KEYS,
 };
 
 /**
@@ -2464,13 +2479,13 @@ export async function estimateMealNutrition(
     .join('\n');
 
   const data = await callAnthropic({
-    max_tokens: 900,
+    max_tokens: 2000,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
       'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
-      'Give a figure for every nutrient you can reasonably approximate for the food, including saturated fat, fiber, sugars and sodium, even when the figure is an approximation. Omit a field only when you cannot judge it at all, and never send a zero to mean unknown: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
-      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states the nutrients you can approximate for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
+      'Give a figure for every nutrient in the schema, saturated fat, trans fat, cholesterol, added sugars and sodium included. Every one is required: when you are unsure, give your best approximation for a typical version of the food rather than leaving it out. A zero reads as a statement that the food contains essentially none, so use it only when that is true.',
+      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states every nutrient for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
       ...(offered.length > 0 ? [
         'You may be given figures the user already has, for foods they have logged before, packets in their kitchen, and recipes they have saved. When the description refers to one of them, reason from those figures rather than recalling generic ones for the same food, including when only part of it was eaten or it was eaten alongside something else.',
@@ -2583,12 +2598,12 @@ export async function estimateRecipeNutrition(
     : "It doesn't say how many servings it makes.";
 
   const data = await callAnthropic({
-    max_tokens: 500,
+    max_tokens: 900,
     system: [
       'You estimate what a whole home-cooked recipe contains, from its ingredient list, for someone whose own grocery data can\'t total it yet.',
       'Give figures for the whole recipe as written — every ingredient line, at the quantity given — not per serving and not per 100g.',
       'Account for cooking loss and waste where it plainly matters: a marinade mostly poured off, water that boils away, a peel or bone that isn\'t eaten. Otherwise assume the ingredients as listed are what ends up in the dish.',
-      'Give a figure for every nutrient you can reasonably approximate for the dish, including saturated fat, fiber, sugars and sodium, even when the figure is an approximation. Omit a field only when you cannot judge it at all, and never send a zero to mean unknown: an omitted nutrient reads as unknown, and a zero reads as a measurement that the dish contains none.',
+      'Give a figure for every nutrient in the schema, saturated fat, trans fat, cholesterol, added sugars and sodium included. Every one is required: when you are unsure, give your best approximation rather than leaving it out. A zero reads as a statement that the dish contains essentially none, so use it only when that is true.',
       'Set confidence honestly. A short list of plain, easily-quantified ingredients is high; a long or vaguely-quantified list ("a handful of", "to taste") is low.',
       'Never comment on the dish. No opinion about whether it\'s healthy, heavy, large or small, no suggestion about what to change, and no advice of any kind. Return numbers and nothing else.',
     ].join('\n'),
@@ -2678,7 +2693,7 @@ export async function readLabelPhotoWithAi(image: RecipeImage): Promise<LabelRea
     'Give each nutrient\'s figure exactly as printed, value and unit together ("7g", "490mg", "<0.5g") — do not convert a unit or compute a figure from a percentage. Leave a field empty if the panel does not print that nutrient at all; only write a figure for one the panel actually states, including one it states as zero.',
     'A panel sometimes prints more than one column of figures side by side, typically "per 100g" and "per serving". Read every column it prints, left to right, and give what that column\'s own heading states — per100g, per100ml, or perServing. Leave a column\'s basis empty only when the panel genuinely does not head it.',
     'The serving line, when printed, states a size ("2 cookies", "1 oz (28g)") — give it verbatim in servingText, and the gram weight separately in servingGrams if it states one in parentheses.',
-    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat", "Trans Fat", and "Added Sugars" — this app has no field for any of them.',
+    'Ignore the %DV column entirely; it is not a figure to report. Ignore "Calories from Fat" — this app has no field for it. Read "Trans Fat", "Cholesterol" and the "Includes Ng Added Sugars" line into their own fields, never into total fat or total sugars.',
     'The mineral rows at the foot of a US panel are read: give calcium, iron and potassium as printed, in the amount column and never the %DV one. Ignore every other vitamin and mineral row, vitamin D included — this app has no field for those.',
     'If the photo does not show a nutrition panel at all, or is too illegible to make out real figures, return an empty columns array rather than guessing.',
   ].join('\n\n');

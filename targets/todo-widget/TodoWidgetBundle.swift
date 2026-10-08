@@ -8,6 +8,7 @@ struct TodoWidgetBundle: WidgetBundle {
         TodoGroceryWidget()
         TodoKitchenWidget()
         TodoMedicationWidget()
+        TodoLimitsWidget()
         // No #available needed here: this whole target is built at
         // IPHONEOS_DEPLOYMENT_TARGET 17.0 (plugins/withWidgetExtension.js).
         TimerLiveActivity()

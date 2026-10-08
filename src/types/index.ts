@@ -2286,6 +2286,10 @@ export type GeneratedKind =
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
   | 'snackNudge'
+  // A "don't do" task per Stay under limit, slipped automatically when the food
+  // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
+  // nutrient; deleting one adds it to limitWarningDeclined.
+  | 'limitWarning'
   // "Book Optometrist" once a saved event's own interval has nearly passed
   // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved
   // event and the cycle (`key|day`), and declined on the saved event itself.
@@ -4571,7 +4575,7 @@ export interface GroceryListEntry {
 }
 
 /**
- * The thirteen nutrients a food can be recorded as holding, keyed the way the
+ * The nutrients a food can be recorded as holding, keyed the way the
  * health rules already key theirs.
  *
  * **Eight of these are `HealthRuleMetric`'s own nutrient keys, character for
@@ -4623,27 +4627,51 @@ export interface GroceryListEntry {
  * meal reaching the Health app with the label's mineral block missing reads as
  * incomplete rather than deliberate.
  *
+ * **`transFatG`, `cholesterolMg` and `addedSugarG` are the three a person
+ * watching their cholesterol reads first**, and every US label prints them, so
+ * the barcode sources carry them about as often as saturated fat. They are
+ * recorded, and cholesterol is written to Health with the rest of a meal. Trans
+ * fat and added sugars are never written: HealthKit has no type for either. So
+ * those two sit outside `HEALTH_WRITABLE_NUTRIENTS` below, which is the list
+ * every Health-facing reader walks instead of this one. Cholesterol's share
+ * type arrived after people had already allowed nutrition, so for them it reads
+ * as not yet asked until they allow it, the minerals' arrangement.
+ *
  * The unit is in the name, the same convention the health metrics use, because
  * a figure stored in one unit and read in another is the bug with no symptom
  * until somebody's sodium reads a thousand times too high.
  */
 export type NutrientKey =
-  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG'
-  | 'fiberG' | 'sugarG' | 'sodiumMg'
+  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG' | 'transFatG'
+  | 'cholesterolMg' | 'fiberG' | 'sugarG' | 'addedSugarG' | 'sodiumMg'
   | 'calciumMg' | 'ironMg' | 'potassiumMg'
   | 'caffeineMg' | 'waterMl';
 
 /**
- * Every `NutrientKey`, in the order a nutrition label prints them — which is
+ * Every `NutrientKey`, in the order a nutrition label prints them (trans fat
+ * and cholesterol under saturated fat, added sugars under total sugars), which is
  * why the three minerals sit together after sodium, where a US panel prints
  * its own mineral block, and why caffeine and water trail the lot: no label
  * prints either.
  */
 export const NUTRIENT_KEYS: readonly NutrientKey[] = [
-  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg',
+  'calorieKcal', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg',
+  'carbsG', 'fiberG', 'sugarG', 'addedSugarG', 'proteinG', 'sodiumMg',
   'calciumMg', 'ironMg', 'potassiumMg',
   'caffeineMg', 'waterMl',
 ];
+
+/**
+ * The nutrients a logged meal can carry into Apple Health: one per row of the
+ * bridge's `nutrientWriteTable`, and so every key above except the two
+ * HealthKit has no type for (see `NutrientKey`). The Health settings'
+ * per-nutrient choice, the default write selection, the write itself and a
+ * task's "log to Health" picker all walk this, so a key the native side would
+ * silently skip is never offered as though it were written.
+ */
+export const HEALTH_WRITABLE_NUTRIENTS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
+  key => key !== 'transFatG' && key !== 'addedSugarG',
+);
 
 /**
  * Nothing but an identity, whose constraint does the work: it accepts a union
@@ -7807,6 +7835,12 @@ export interface ContextRow {
    * hours (`startsInLabel`). Absent on every other row.
    */
   startsIn?: string | null;
+  /**
+   * How a Stay under limit's row reads against it (`limitContextRows`): the
+   * glyph goes orange once the day is close and the row red once it is past.
+   * Absent on every other row.
+   */
+  tone?: 'near' | 'over';
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

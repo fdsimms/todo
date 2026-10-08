@@ -1190,6 +1190,8 @@ export interface Replica {
   deleteSavedMeal(id: string): SavedMeal;
   /** The daily figures the food log's totals are read against, as the person set them. */
   nutritionTargets(): Partial<Record<NutrientKey, number>>;
+  /** The nutrients whose target is a Stay under limit. */
+  nutritionLimits(): NutrientKey[];
   /** Set or clear (null) targets, through the settings store's own setter. Each is checked against the Settings stepper's range. */
   setNutritionTargets(changes: Partial<Record<NutrientKey, number | null>>): Partial<Record<NutrientKey, number>>;
   updateMoodLog(id: string, patch: MoodPatch): MoodLog;
@@ -4101,6 +4103,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     nutritionTargets(): Partial<Record<NutrientKey, number>> {
       return { ...useSettingsStore.getState().nutritionTargets };
+    },
+
+    nutritionLimits(): NutrientKey[] {
+      return [...useSettingsStore.getState().nutritionLimits];
     },
 
     setNutritionTargets(changes: Partial<Record<NutrientKey, number | null>>): Partial<Record<NutrientKey, number>> {

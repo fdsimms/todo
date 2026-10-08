@@ -9,7 +9,18 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRITION_TARGET_RANGES, type NutritionTargets } from '../utils/nutritionTargets';
+import {
+  DEFAULT_LIMIT_WARN_PERCENT,
+  LIMIT_WARN_PERCENT_MAX,
+  LIMIT_WARN_PERCENT_MIN,
+  LIMIT_WARN_PERCENT_STEP,
+  NO_DAILY_VALUE,
+  NUTRITION_TARGET_RANGES,
+  activeLimits,
+  type NutritionTargets,
+} from '../utils/nutritionTargets';
+import { HEALTH_CATEGORY, useCategoryStore } from '../store/useCategoryStore';
+import { setGeneratorEnabled } from '../store/generatorSwitch';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeWater, waterInUnit, waterTargetRange, waterToMl } from '../utils/waterLog';
 import {
@@ -32,6 +43,7 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SegmentedControl } from './SegmentedControl';
 
 /** Every nutrient the Food log's own card can show — water has its own card. */
 const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
@@ -59,10 +71,23 @@ const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
  * lose and no unsaved-changes guard. That is the other valid answer to the
  * `pageSheet` `onRequestClose` rule, not a workaround.
  *
- * All ten are listed rather than hidden behind an "add one" picker: the set is
- * closed and short, and a picker would make the nine somebody has not set
- * invisible rather than merely empty.
+ * Every nutrient is listed rather than hidden behind an "add one" picker: the
+ * set is closed and short, and a picker would make the ones somebody has not
+ * set invisible rather than merely empty.
+ *
+ * **A set target says which way it points** ("Aim for" / "Stay under"), and
+ * only once it is set, since a direction with no number is nothing to read.
+ * Stay under is what lets the Food log say what's left and draw past the limit
+ * in red; see the Limits section of `nutritionTargets.ts`. Marking one also
+ * pins it on the Food log, because a limit nobody can see without tapping
+ * "Show every nutrient" can't be kept.
  */
+
+type TargetDirection = 'reach' | 'limit';
+const DIRECTION_OPTIONS: { value: TargetDirection; label: string }[] = [
+  { value: 'reach', label: 'Aim for' },
+  { value: 'limit', label: 'Stay under' },
+];
 
 interface Props {
   visible: boolean;
@@ -80,6 +105,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const setNutritionTargets = useSettingsStore(s => s.setNutritionTargets);
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
+  const limits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const setNutritionLimits = useSettingsStore(s => s.setNutritionLimits);
+  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const setLimitsTodayCategory = useSettingsStore(s => s.setLimitsTodayCategory);
+  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
+  const setLimitWarnPercent = useSettingsStore(s => s.setLimitWarnPercent);
+  const limitWarningTasks = useSettingsStore(s => s.limitWarningTasks);
   const waterUnit = useSettingsStore(s => s.waterUnit);
   // Whether the weight goal keeps the calorie target in step
   // (autoCalorieTargetKcal): a goal and a complete profile. The row says so,
@@ -164,12 +197,37 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
-  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined);
+  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined && !NO_DAILY_VALUE.has(key));
   const applyDailyValues = () => {
     haptics.tap();
     const values: NutritionTargets = {};
     for (const key of unsetKeys) values[key] = NUTRITION_TARGET_RANGES[key].default;
     setNutritionTargets(values);
+  };
+
+  const setDirection = (key: NutrientKey, direction: TargetDirection) => {
+    haptics.tap();
+    if (direction === 'limit') {
+      if (!limits.includes(key)) setNutritionLimits([...limits, key]);
+      if (!pinnedNutrients.includes(key)) setFoodLogPinnedNutrients([...pinnedNutrients, key]);
+    } else if (limits.includes(key)) {
+      setNutritionLimits(limits.filter(k => k !== key));
+    }
+  };
+
+  // Files the rows under Health's own section when there is one, so the day's
+  // readings sit together, and otherwise under a "Health" category made for it.
+  const toggleLimitsOnToday = () => {
+    haptics.tap();
+    if (limitsTodayCategory !== null) { setLimitsTodayCategory(null); return; }
+    const category = healthCategory ?? HEALTH_CATEGORY;
+    useCategoryStore.getState().addCategory(category);
+    setLimitsTodayCategory(category);
+  };
+
+  const toggleLimitWarning = () => {
+    haptics.tap();
+    setGeneratorEnabled('limitWarning', !limitWarningTasks);
   };
 
   const togglePinned = (key: NutrientKey) => {
@@ -286,7 +344,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       : `${n} ${unit === 'cal' ? 'calories' : unit}`
                   }
                 />
-                {targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
+                {!NO_DAILY_VALUE.has(key) && targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
                   <InlineAction
                     label="Use Daily Value"
                     variant="neutral"
@@ -298,6 +356,15 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   />
                 )}
                 </View>
+                {!isWater && targets[key] !== undefined && (
+                  <SegmentedControl
+                    options={DIRECTION_OPTIONS}
+                    value={limits.includes(key) ? 'limit' : 'reach'}
+                    onChange={direction => setDirection(key, direction)}
+                    label={`${NUTRIENT_LABEL[key].label} target direction`}
+                    surface="card"
+                  />
+                )}
                 {key === 'calorieKcal' && calorieFollowsGoal && (
                   <Text style={styles.boostHint}>
                     This follows your weight goal. It is worked out again each time the
@@ -307,6 +374,64 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
               </View>
             );
           })}
+
+          {activeLimits(targets, limits).length > 0 && (
+            <View>
+              <Text style={styles.sectionLabel}>Limits</Text>
+              <Text style={styles.intro}>
+                For the targets set to Stay under. A day counts as close to one at this share of it.
+              </Text>
+              <View style={styles.boostCard}>
+                <TouchableOpacity
+                  style={styles.boostToggleRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={toggleLimitsOnToday}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: limitsTodayCategory !== null }}
+                  accessibilityLabel="Show limits on Today"
+                >
+                  <Ionicons
+                    name={limitsTodayCategory !== null ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={iconSize.md}
+                    color={limitsTodayCategory !== null ? colors.accent : colors.textTertiary}
+                  />
+                  <Text style={styles.boostToggleLabel}>
+                    {limitsTodayCategory !== null ? `Show on Today, under ${limitsTodayCategory}` : 'Show on Today'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.boostToggleRow, styles.limitToggleRule]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={toggleLimitWarning}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: limitWarningTasks }}
+                  accessibilityLabel="Add a daily don't-do task for each limit"
+                >
+                  <Ionicons
+                    name={limitWarningTasks ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={iconSize.md}
+                    color={limitWarningTasks ? colors.accent : colors.textTertiary}
+                  />
+                  <Text style={styles.boostToggleLabel}>Add a "don't do" task for each</Text>
+                </TouchableOpacity>
+                <View style={styles.boostFields}>
+                  <View style={styles.boostFieldRow}>
+                    <Text style={styles.boostFieldLabel}>Close at</Text>
+                    <CountStepper
+                      value={limitWarnPercent}
+                      onChange={n => setLimitWarnPercent(n ?? DEFAULT_LIMIT_WARN_PERCENT)}
+                      min={LIMIT_WARN_PERCENT_MIN}
+                      max={LIMIT_WARN_PERCENT_MAX}
+                      step={LIMIT_WARN_PERCENT_STEP}
+                      format={n => `${n}% of the limit`}
+                      label="Share of a limit that counts as close"
+                      describeValue={n => `${n} percent`}
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
 
           {targets.waterMl !== undefined && (
             <View>
@@ -604,6 +729,7 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       gap: spacing.sm,
     },
+    limitToggleRule: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     boostFieldRow: { gap: spacing.sm },
     boostFieldLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     boostHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },

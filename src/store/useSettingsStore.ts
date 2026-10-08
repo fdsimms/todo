@@ -46,8 +46,13 @@ import {
   parseHealthWriteNutrients,
   serializeHealthWriteNutrients,
   DEFAULT_HEALTH_WRITE_NUTRIENTS,
+  parseNutritionLimits,
+  serializeNutritionLimits,
+  clampLimitWarnPercent,
+  DEFAULT_LIMIT_WARN_PERCENT,
   type NutritionTargets,
 } from '../utils/nutritionTargets';
+import { parseAutoSlips } from '../utils/limitWarningTasks';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -1361,7 +1366,39 @@ interface SettingsStore {
   foodLogPinnedNutrients: NutrientKey[];
 
   /**
-   * Which of the thirteen nutrients a logged meal is allowed to write to
+   * The nutrients whose target is a ceiling ("Stay under") rather than a
+   * figure to reach — see the Limits section of src/utils/nutritionTargets.ts.
+   * Empty by default, so every target reads the way it always did until
+   * somebody says otherwise. Kept out of DEFAULT_SETTINGS/resetToDefaults for
+   * foodLogPinnedNutrients' reason.
+   */
+  nutritionLimits: NutrientKey[];
+  /**
+   * The share of a limit, as a percent, at which a day reads as close to it:
+   * the bar turns orange, Today's row says so, and the limit warning task can
+   * appear. One number for all three so they never disagree about "close".
+   */
+  limitWarnPercent: number;
+  /**
+   * The category Today files a row per limit under ("Sat fat 9 of 16g, 7g
+   * left"), or null for no rows. Same double duty `healthCategory` does: the
+   * section and the off switch. Off by default; the Nutrition sheet's "Show on
+   * Today" sets it. See `limitContextRows`.
+   */
+  limitsTodayCategory: string | null;
+  // Opt-in, off by default: a task the first time a day's food log passes
+  // limitWarnPercent of a limit. See src/utils/limitWarningTasks.ts.
+  limitWarningTasks: boolean;
+  limitWarningTaskCategory: string | null;
+  // The limits whose task was deleted: none is written back for them until the
+  // nutrient is set to Stay under again (setNutritionLimits clears it).
+  limitWarningDeclined: NutrientKey[];
+  // Per limit, the logical day the app last logged a slip on itself, so a
+  // deleted entry can take back that slip and never one the person logged.
+  limitWarningAutoSlips: Partial<Record<NutrientKey, string>>;
+
+  /**
+   * Which of the nutrients a logged meal is allowed to write to
    * Health — see src/utils/healthFoodSync.ts.
    *
    * **Defaults to all of them**, matching what this file always wrote before
@@ -2001,6 +2038,14 @@ interface SettingsStore {
   setNutritionTargets: (values: NutritionTargets) => void;
   /** Replaces the whole set of nutrients shown above the fold on the Food log. */
   setFoodLogPinnedNutrients: (keys: NutrientKey[]) => void;
+  /** Replaces the whole set of nutrients whose target is a limit. */
+  setNutritionLimits: (keys: NutrientKey[]) => void;
+  setLimitWarnPercent: (percent: number) => void;
+  setLimitsTodayCategory: (category: string | null) => void;
+  setLimitWarningTasks: (on: boolean) => void;
+  setLimitWarningTaskCategory: (category: string | null) => void;
+  setLimitWarningDeclined: (keys: NutrientKey[]) => void;
+  setLimitWarningAutoSlips: (days: Partial<Record<NutrientKey, string>>) => void;
   setMealShortfallLeadDays: (days: number) => void;
   setMealShortfallTaskCategory: (category: string | null) => void;
   setMealLogNudgeTasks: (on: boolean) => void;
@@ -2643,6 +2688,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealLogPrompt: true,
   nutritionTargets: {},
   foodLogPinnedNutrients: [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS],
+  nutritionLimits: [],
+  limitWarnPercent: DEFAULT_LIMIT_WARN_PERCENT,
+  limitsTodayCategory: null,
+  limitWarningTasks: false,
+  limitWarningTaskCategory: null,
+  limitWarningDeclined: [],
+  limitWarningAutoSlips: {},
   healthWriteNutrients: [...DEFAULT_HEALTH_WRITE_NUTRIENTS],
   keepOpenAfterFoodLog: false,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
@@ -3116,6 +3168,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealLogPrompt = dbGetSetting('mealLogPrompt') !== 'false';
     const nutritionTargets = parseNutritionTargets(dbGetSetting('nutritionTargets'));
     const foodLogPinnedNutrients = parseFoodLogPinnedNutrients(dbGetSetting('foodLogPinnedNutrients'));
+    const nutritionLimits = parseNutritionLimits(dbGetSetting('nutritionLimits'));
+    const limitWarnPercent = clampLimitWarnPercent(parseInt(dbGetSetting('limitWarnPercent') ?? '', 10));
+    const limitWarningTasks = dbGetSetting('limitWarningTasks') === 'true';
+    const limitsTodayCategory = dbGetSetting('limitsTodayCategory') || null;
+    const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
+    const limitWarningDeclined = parseNutritionLimits(dbGetSetting('limitWarningDeclined'));
+    const limitWarningAutoSlips = parseAutoSlips(dbGetSetting('limitWarningAutoSlips'));
     const healthWriteNutrients = parseHealthWriteNutrients(dbGetSetting('healthWriteNutrients'));
     const keepOpenAfterFoodLog = dbGetSetting('keepOpenAfterFoodLog') === 'true';
     const mealShortfallTaskCategory = dbGetSetting('mealShortfallTaskCategory') || null;
@@ -3483,6 +3542,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastVisitedScreen,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
+      limitsTodayCategory,
+      limitWarningAutoSlips,
+      limitWarningDeclined,
+      limitWarningTaskCategory,
+      limitWarningTasks,
+      limitWarnPercent,
       mapsApp,
       mealCalendarId,
       mealCookTaskCategory,
@@ -3520,6 +3585,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       morningStart,
       newTaskDefaults,
       nightStart,
+      nutritionLimits,
       nutritionTargets,
       onDeviceAiEnabled,
       pantryCheckTaskCategory,
@@ -4035,6 +4101,47 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFoodLogPinnedNutrients(keys: NutrientKey[]) {
     dbSetSetting('foodLogPinnedNutrients', serializeFoodLogPinnedNutrients(keys));
     set({ foodLogPinnedNutrients: keys });
+  },
+
+  setNutritionLimits(keys: NutrientKey[]) {
+    dbSetSetting('nutritionLimits', serializeNutritionLimits(keys));
+    // Setting a nutrient to Stay under again is asking for its task again, so
+    // a task deleted for it before is no longer declined.
+    const added = keys.filter(k => !get().nutritionLimits.includes(k));
+    const declined = get().limitWarningDeclined.filter(k => !added.includes(k));
+    if (declined.length !== get().limitWarningDeclined.length) get().setLimitWarningDeclined(declined);
+    set({ nutritionLimits: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitWarnPercent(percent: number) {
+    const clamped = clampLimitWarnPercent(percent);
+    dbSetSetting('limitWarnPercent', String(clamped));
+    set({ limitWarnPercent: clamped });
+  },
+
+  setLimitsTodayCategory(category: string | null) {
+    dbSetSetting('limitsTodayCategory', category ?? '');
+    set({ limitsTodayCategory: category });
+  },
+
+  setLimitWarningTasks(on: boolean) {
+    dbSetSetting('limitWarningTasks', String(on));
+    set({ limitWarningTasks: on });
+  },
+
+  setLimitWarningTaskCategory(category: string | null) {
+    dbSetSetting('limitWarningTaskCategory', category ?? '');
+    set({ limitWarningTaskCategory: category });
+  },
+
+  setLimitWarningDeclined(keys: NutrientKey[]) {
+    dbSetSetting('limitWarningDeclined', serializeNutritionLimits(keys));
+    set({ limitWarningDeclined: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitWarningAutoSlips(days: Partial<Record<NutrientKey, string>>) {
+    dbSetSetting('limitWarningAutoSlips', JSON.stringify(days));
+    set({ limitWarningAutoSlips: days });
   },
 
   setHealthWriteNutrients(keys: NutrientKey[]) {

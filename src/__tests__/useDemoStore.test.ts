@@ -4632,6 +4632,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a Stay under limit, shown on Today, and a warning for it', () => {
+    const settings = useSettingsStore.getState();
+    expect(settings.nutritionLimits).toEqual(['satFatG']);
+    expect(settings.nutritionTargets.satFatG).toBeGreaterThan(0);
+    expect(settings.limitsTodayCategory).toBe('Health');
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'limitWarning');
+    expect(task?.category).toBe('Health');
+    expect(task?.generatedSourceId).toBe('satFatG');
+    expect(task?.polarity).toBe('negative');
+  });
+
   it('seeds a snack suggestion under the Health category', () => {
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'snackNudge');
     expect(task).toBeDefined();

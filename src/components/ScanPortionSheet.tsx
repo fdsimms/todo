@@ -9,9 +9,11 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
+import { LimitImpactLines } from './LimitImpactLines';
+import { useLimitImpact } from '../hooks/useLimitImpact';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -178,6 +180,23 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   }, [foods, answers, at, weighedPanels]);
 
   const loggable = foods.filter(f => resolved.get(f.key));
+
+  // Everything Log would add, summed, for one "puts you at" line per limit:
+  // the cards land together, so their effect on a limit is the batch's.
+  const batchAmounts = useMemo(() => {
+    const sum: Partial<Record<NutrientKey, number>> = {};
+    let any = false;
+    for (const food of foods) {
+      const outcome = resolved.get(food.key);
+      if (!outcome) continue;
+      any = true;
+      for (const [key, value] of Object.entries(outcome.nutrition.amounts) as [NutrientKey, number][]) {
+        sum[key] = (sum[key] ?? 0) + value;
+      }
+    }
+    return any ? sum : null;
+  }, [foods, resolved]);
+  const limitImpacts = useLimitImpact(batchAmounts, at);
 
   /**
    * Records a self-weighed portion for one card, the same move
@@ -475,6 +494,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           <Text style={styles.footnote}>
             Anything left blank isn't logged.
           </Text>
+          <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
         </ScrollView>
       </View>
       <NumberPadAccessory />
@@ -514,6 +534,7 @@ function makeStyles(colors: Colors) {
     packageAction: { alignSelf: 'flex-start' },
     hint: { color: colors.textTertiary, fontSize: font.sm },
     outcome: { color: colors.textSecondary, fontSize: font.sm },
+    limitImpacts: { marginTop: spacing.md },
     outcomeRefused: { color: colors.textTertiary },
     approximateNote: { color: colors.textTertiary, fontSize: font.xs },
     weighForm: {

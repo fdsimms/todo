@@ -71,7 +71,14 @@ export function describeRule(type: string, rule: LooseRule): string {
   switch (type) {
     case 'health': {
       const metric = HEALTH_METRIC_LABEL[String(rule.metric)] ?? String(rule.metric);
-      const hour = typeof rule.checkpointHour === 'number' ? ` by ${hourLabel(rule.checkpointHour)}` : '';
+      // An under rule asks whether the day has reached a number by an hour; an
+      // over rule fires the moment it's passed, from that hour on, so "by 12 AM"
+      // read as though it were only checked at midnight.
+      const over = rule.direction === 'over';
+      const hour = typeof rule.checkpointHour !== 'number' ? ''
+        : !over ? ` by ${hourLabel(rule.checkpointHour)}`
+        : rule.checkpointHour === 0 ? ' at any point in the day'
+        : ` from ${hourLabel(rule.checkpointHour)} on`;
       return `when ${metric} is ${rule.direction ?? 'under'} ${rule.threshold}${hour}, ${adds}${off}`;
     }
     case 'weather': return `when the forecast is ${rule.condition}, ${adds}${off}`;

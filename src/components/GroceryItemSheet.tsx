@@ -51,7 +51,8 @@ import { SearchField } from './SearchField';
 import { CollapsibleField } from './CollapsibleField';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
-import { describeFoodPanel } from '../utils/foodNutrition';
+import { describeFoodPanel, describePanelFigures } from '../utils/foodNutrition';
+import { activeLimits } from '../utils/nutritionTargets';
 import { InlineAction } from './InlineAction';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
@@ -195,6 +196,9 @@ export function GroceryItemSheet({
   ));
   const clearChoice = useGroceryStore(s => s.clearChoice);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitFigures = describePanelFigures(item?.nutrition ?? null, activeLimits(nutritionTargets, nutritionLimits));
   // Named siblings, live ones only — the same read GroceryScreen does for the
   // row caption. Shown as chips below the hint rather than joined into it, so
   // the actual alternatives are visible rather than described.
@@ -1174,6 +1178,9 @@ export function GroceryItemSheet({
             onToggle={() => toggleField('nutrition')}
           >
             <View style={styles.nutritionField}>
+              {/* The Stay under nutrients on their own line, so a packet
+                  can be read against a limit without opening the form. */}
+              {!!limitFigures && <Text style={styles.limitFigures}>{limitFigures}</Text>}
               {item.nutrition ? (
                 item.nutrition.portions.length > 0 ? (
                   // Shows the food's actual stated portions, the same way
@@ -2144,6 +2151,7 @@ export function GroceryItemSheet({
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     nutritionField: { gap: spacing.sm },
+    limitFigures: { color: colors.text, fontSize: font.sm },
     nutritionDetail: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
     infoChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
     infoChip: {

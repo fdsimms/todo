@@ -13,7 +13,10 @@
  * settings store's state once the SQLite shim is in place.
  */
 import type { useSettingsStore } from '../../src/store/useSettingsStore';
-import type { MealSlot, TimeOfDay } from '../../src/types';
+import type { MealSlot, NutrientKey, TimeOfDay } from '../../src/types';
+// A value import, unlike the rest: the nutrient list is plain data with no
+// imports of its own, so loading it here needs nothing from the shim.
+import { NUTRIENT_KEYS } from '../../src/types';
 
 type SettingsState = ReturnType<typeof useSettingsStore.getState>;
 
@@ -50,6 +53,11 @@ function oneOf<T extends string | number | null>(name: string, v: unknown, optio
 function segments(name: string, v: unknown): TimeOfDay[] {
   if (!Array.isArray(v) || v.some(x => !SEGMENTS.includes(x))) throw new Error(`${name} is a list of ${SEGMENTS.join(', ')}.`);
   return [...new Set(v as TimeOfDay[])];
+}
+function nutrients(name: string, v: unknown): NutrientKey[] {
+  const allowed = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
+  if (!Array.isArray(v) || v.some(x => !allowed.includes(x))) throw new Error(`${name} is a list of ${allowed.join(', ')}.`);
+  return [...new Set(v as NutrientKey[])];
 }
 function slots(name: string, v: unknown): MealSlot[] {
   if (!Array.isArray(v) || v.some(x => !SLOTS.includes(x))) throw new Error(`${name} is a list of ${SLOTS.join(', ')}.`);
@@ -134,6 +142,9 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   householdServings: { group: 'kitchen', describe: 'How many the meal plan cooks for; 0 uses each recipe\'s own servings.', read: s => s.householdServings, write: (s, v) => s.setHouseholdServings(int('householdServings', v, 0, 99)) },
   currencySymbol: { group: 'kitchen', describe: 'The currency prices are shown in, as a symbol.', read: s => s.currencySymbol, write: (s, v) => { if (typeof v !== 'string' || !v.trim() || v.length > 4) throw new Error('currencySymbol is a short symbol like $ or €.'); s.setCurrencySymbol(v.trim()); } },
   waterUnit: { group: 'kitchen', describe: 'The unit water is counted in: ml or flOz.', read: s => s.waterUnit, write: (s, v) => s.setWaterUnit(oneOf('waterUnit', v, ['ml', 'flOz'] as const)) },
+  nutritionLimits: { group: 'kitchen', describe: 'The nutrients whose food log target is a limit to stay under rather than a figure to reach (keys as in set_nutrition_targets). The Food log then says what is left and turns red past it. Only mark one the person said is a limit.', read: s => s.nutritionLimits, write: (s, v) => s.setNutritionLimits(nutrients('nutritionLimits', v)) },
+  limitWarnPercent: { group: 'kitchen', describe: 'The share of a limit, as a percent (50-100), at which a day counts as close to it: the Food log bar and the Today row turn orange.', read: s => s.limitWarnPercent, write: (s, v) => s.setLimitWarnPercent(int('limitWarnPercent', v, 50, 100)) },
+  limitsTodayCategory: { group: 'kitchen', describe: 'The category Today shows a row per limit under ("Sat fat 9 of 16g, 7g left"), or null for none. It must already exist.', read: s => s.limitsTodayCategory, write: (s, v) => s.setLimitsTodayCategory(v === null ? null : String(v)) },
 
   // ---- automations' own settings -----------------------------------------
   birthdayLeadDays: { group: 'automations', describe: 'Days before a birthday its task appears.', read: s => s.birthdayLeadDays, write: (s, v) => s.setBirthdayLeadDays(int('birthdayLeadDays', v, 0, 60)) },
