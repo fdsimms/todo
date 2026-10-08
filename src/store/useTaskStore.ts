@@ -1747,7 +1747,8 @@ interface TaskStore extends UndoHistoryActions {
   sweepTaskPenalties: () => void;
   /**
    * Credits the clean days that have gone by since each negative habit was last
-   * accounted for.
+   * accounted for, and moves a repeating one's date onto today once its day has
+   * passed (see negativeHabitDuePatch).
    *
    * The one pass in the app that advances a streak without a completion, and it
    * has to be: a negative streak is made of days on which nothing happened, so
@@ -2484,6 +2485,31 @@ function syncGatedReminders(questionId: string, tasks: Task[]): void {
 export function redoRestoringRows(ids: string[]): () => void {
   const after = useTaskStore.getState().tasks.filter(t => ids.includes(t.id)).map(t => ({ ...t }));
   return () => after.forEach(t => useTaskStore.getState().updateTask(t.id, t));
+}
+
+/**
+ * The date a negative habit moves to once its day has gone by, or null when it
+ * should stay put. Used by `rolloverNegativeStreaks` only.
+ *
+ * A "don't" habit is never completed, so nothing else ever advances its date:
+ * left alone it sat on "2d ago" beside a streak that was running fine. Once the
+ * rollover reaches a new logical day the row is moved to the occurrence owed
+ * today, the same grid `redateRoutines` steps. A slip doesn't move it, so a
+ * habit slipped today reads as due today until the day turns. One-offs and
+ * hour-based repeats have no next day to move to, so they are left alone.
+ */
+function negativeHabitDuePatch(task: Task, todayStart: Date, resetTime: string): Partial<Task> | null {
+  if (!task.dueDate || task.recurrenceType === 'none' || task.recurrenceType === 'hours') return null;
+  if (getTaskDayStart(new Date(task.dueDate), resetTime) >= todayStart) return null;
+  // From-completion measures from the day it was last done rather than a grid,
+  // and a "don't" habit owes today's occurrence, not tomorrow's successor.
+  const next = task.recurrenceFromCompletion
+    ? (task.recurrenceEndDate && todayStart > new Date(task.recurrenceEndDate) ? null : todayStart)
+    : getNextDueDate(task, resetTime, { catchUp: true });
+  if (!next) return null;
+  // Written the way `updateTask` writes any dueDate: the pinned grid anchor
+  // belonged to the occurrence being left behind.
+  return { dueDate: next.toISOString(), recurrenceAnchorDate: null };
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -4224,13 +4250,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   rolloverNegativeStreaks() {
     const todayStart = getCurrentDayStart();
+    const resetTime = useSettingsStore.getState().dayResetTime;
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
       // every other streak here makes. Read through isWithheld so a category
       // paused for vacation, or a paused project, covers its habits too,
       // exactly as it does for the tasks the quota rollover skips.
-      const patch = cleanDayPatch(t, todayStart, { paused: isWithheld(t) });
+      const paused = isWithheld(t);
+      const streak = cleanDayPatch(t, todayStart, { paused });
+      const due = negativeHabitDuePatch(t, todayStart, resetTime);
+      const patch = due ? { ...streak, ...due } : streak;
       return patch ? [{ ...t, ...patch }] : [];
     });
     if (patched.length === 0) return;
