@@ -62,7 +62,7 @@ import {
   describeRewardPace,
   earnRatePerDay,
   formatCoins,
-  goalProgress,
+  goalBarFill,
   lastClaimedAt,
   parseRewardCost,
   rewardDisplay,
@@ -766,7 +766,7 @@ export function RewardsScreen() {
             >
               <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
               <View style={styles.goalTrack}>
-                <View style={[styles.goalFill, { width: `${goalProgress(balance, goal.cost) * 100}%` }]} />
+                <View style={[styles.goalFill, { width: `${goalBarFill(balance, goal.cost) * 100}%` }]} />
               </View>
               <Text style={styles.goalMeta}>
                 {balance >= goal.cost

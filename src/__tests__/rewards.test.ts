@@ -10,6 +10,7 @@ import {
   rewardIdeas,
   describeLastClaimed,
   goalProgress,
+  goalBarFill,
   savingForGoal,
   lastClaimedAt,
   rewardDisplay,
@@ -588,5 +589,18 @@ describe('savingForGoal', () => {
   it('reads a wish list reward title off its item', () => {
     const task = { title: 'Fancy headphones', notes: '', linkUrl: null, completed: false, archived: false };
     expect(savingForGoal([r({ taskId: 't' })], [], 'g', () => task)?.title).toBe('Fancy headphones');
+  });
+});
+
+describe('goalBarFill', () => {
+  it('never drops below a sliver, so an empty goal still reads as a bar', () => {
+    expect(goalBarFill(0, 110)).toBe(0.05);
+    expect(goalBarFill(-10, 110)).toBe(0.05);
+    expect(goalBarFill(1, 110)).toBe(0.05);
+  });
+
+  it('follows the real progress above the floor, capped at full', () => {
+    expect(goalBarFill(55, 110)).toBe(0.5);
+    expect(goalBarFill(500, 110)).toBe(1);
   });
 });

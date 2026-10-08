@@ -629,6 +629,17 @@ export function describeLastClaimed(at: string, now: Date): string {
   return `Last claimed ${days} days ago`;
 }
 
+/** The share of a goal bar's track that is always filled, so an empty goal still reads as a bar. */
+export const GOAL_BAR_MIN_FILL = 0.05;
+
+/**
+ * The width of a goal bar's fill, 0..1: `goalProgress` with a floor. Display
+ * only; the text beside the bar still states the real figures.
+ */
+export function goalBarFill(balance: number, cost: number): number {
+  return Math.max(goalProgress(balance, cost), GOAL_BAR_MIN_FILL);
+}
+
 /** How far the balance is toward a goal's cost, 0..1. */
 export function goalProgress(balance: number, cost: number): number {
   if (!(cost > 0)) return 0;

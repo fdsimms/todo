@@ -81,7 +81,7 @@ import { completionTapFor } from '../utils/completionTap';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
-import { coinBalance, goalProgress, savingForGoal, formatCoins } from '../utils/rewards';
+import { coinBalance, goalBarFill, savingForGoal, formatCoins } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -4439,7 +4439,7 @@ export function TodayScreen() {
               </Text>
             </View>
             <View style={styles.goalStripTrack}>
-              <View style={[styles.goalStripFill, { width: `${goalProgress(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
+              <View style={[styles.goalStripFill, { width: `${goalBarFill(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
             </View>
           </TouchableOpacity>
         )}
