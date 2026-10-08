@@ -942,8 +942,10 @@ export function ProjectDetailScreen() {
     if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
+    // Finished rows count too, to match `empty` in the render: a section whose
+    // only members are done is not empty, so it has to be able to collapse.
     const hasRows = useTaskStore.getState().tasks.some(
-      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.completed && !t.archived,
+      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.archived,
     );
     if (!hasRows) return;
     haptics.tap();
@@ -2105,7 +2107,12 @@ export function ProjectDetailScreen() {
                 // buildProjectListItems) — the membership walk can't produce a
                 // group row without the task that led it there.
                 const checkedHere = checkedBySection.get(group.id) ?? NO_GROUP_CHILDREN;
-                const empty = children.length === 0 && checkedHere.length === 0;
+                // A finished member counts as something under the header even
+                // while completed rows are hidden: a section holding only done
+                // tasks is not empty, and reading as empty would both claim it
+                // has no items and lock its chevron.
+                const doneHere = allChildren.some(t => t.completed && !t.archived && t.parentId === null && t.projectId === projectId);
+                const empty = children.length === 0 && checkedHere.length === 0 && !doneHere;
                 // Collapse hides rows, and an empty stack has none to hide —
                 // collapsed it would be a bare title with no way to reach the
                 // button that fills it in. The header takes the same value so
