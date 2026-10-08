@@ -202,7 +202,7 @@ import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, ty
 import { haptics } from '../utils/haptics';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
-import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -5170,14 +5170,13 @@ export function TodayScreen() {
             } : undefined}
             eventCount={todayCalendarEvents.length}
             anchor={optionsMenuAnchor}
-            onOpenSettings={screenSettings.hasSettings ? () => {
+            onOpenSettings={screenSettings.link ? () => {
               setOptionsMenuVisible(false);
-              screenSettings.open(optionsMenuAnchor);
+              navigateToSettingsEntry(navigation, screenSettings.link!.entryId);
             } : undefined}
-            settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+            settingsHint={screenSettings.link?.hint}
           />
         </LazySheet>
-        <ScreenSettingsSheet {...screenSettings.sheet} />
 
         <LazySheet open={categoryOrderVisible}>
           <CategoryOrderSheet

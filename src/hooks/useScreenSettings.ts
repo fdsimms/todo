@@ -23,6 +23,13 @@ export function useScreenSettings(route: string, title: string): {
   open: (anchor?: CardAnchor | null) => void;
   hasSettings: boolean;
   sheet: ScreenSettingsSheetProps;
+  /**
+   * For a screen whose "…" menu has a settings row: one jump into Settings
+   * instead of the `sheet` popover. `entryId` is the first setting (Settings
+   * scrolls to it and highlights it), and `hint` names only the settings that
+   * share its group, so the row doesn't promise ones it won't land beside.
+   */
+  link: { entryId: string; hint: string } | null;
 } {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -50,6 +57,10 @@ export function useScreenSettings(route: string, title: string): {
     open,
     hasSettings: entries.length > 0,
     sheet: { visible, onClose, anchor, title, entries },
+    link: entries.length === 0 ? null : {
+      entryId: entries[0].id,
+      hint: entries.filter(e => e.groupId === entries[0].groupId).map(e => e.label).join(', '),
+    },
   };
 }
 

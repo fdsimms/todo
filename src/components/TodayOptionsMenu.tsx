@@ -41,8 +41,8 @@ interface Props {
    */
   onPullFromProjects: () => void;
   /**
-   * Opens Today's own settings (`ScreenSettingsSheet`), with `settingsHint`
-   * naming them. Omitted when none are on show, and the row goes with it.
+   * Jumps into Settings at Today's first setting, with `settingsHint` naming
+   * the ones beside it. Omitted when none are on show, and the row goes with it.
    */
   onOpenSettings?: () => void;
   settingsHint?: string;
