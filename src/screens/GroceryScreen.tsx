@@ -76,6 +76,7 @@ import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, priceToInput, tripPriceFor } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
@@ -180,6 +181,7 @@ export function GroceryScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  const pullSearch = usePullToSearch();
   // The list's own settings, from an action at the foot of the list. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Groceries', 'Grocery settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -1667,6 +1669,7 @@ export function GroceryScreen() {
       >
       <ReorderableList
         data={rows}
+        refreshControl={pullSearch.refreshControl}
         keyExtractor={row => row.key}
         renderItem={renderRow}
         // The user can't scroll during an add-button drag (the button's
@@ -1949,6 +1952,7 @@ export function GroceryScreen() {
           onClose={() => setRecipeToAdd(null)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

@@ -18,6 +18,7 @@ import { CountStepper } from '../components/CountStepper';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -106,11 +107,12 @@ function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () =>
 }
 
 export function RewardsScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ refreshing: pullSearch.pulling });
 
   const enabled = useSettingsStore(s => s.rewardsEnabled);
   const setEnabled = useSettingsStore(s => s.setRewardsEnabled);
@@ -609,6 +611,7 @@ export function RewardsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
       <ScrollView
+        refreshControl={pullSearch.refreshControl}
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         keyboardShouldPersistTaps="handled"
@@ -849,6 +852,7 @@ export function RewardsScreen() {
         title="Rewards from a list"
         noneLabel="No list"
       />
+      {pullSearch.sheet}
     </View>
   );
 }

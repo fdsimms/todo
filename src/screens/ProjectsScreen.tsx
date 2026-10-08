@@ -67,6 +67,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { SearchField } from '../components/SearchField';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import type { Project } from '../types';
 import { LazySheet } from '../components/LazySheet';
 
@@ -93,6 +94,7 @@ function AddProjectFabWithDropLabel({
 }
 
 export function ProjectsScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -631,6 +633,7 @@ export function ProjectsScreen() {
         )
       ) : (
         <ReorderableList
+          refreshControl={pullSearch.refreshControl}
           data={projectListItems}
           keyExtractor={item => item.key}
           scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
@@ -754,6 +757,7 @@ export function ProjectsScreen() {
           onClose={handleEditorClose}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

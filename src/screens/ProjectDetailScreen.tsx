@@ -109,6 +109,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
@@ -377,6 +378,7 @@ function NewLineField({
 }
 
 export function ProjectDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
@@ -1779,6 +1781,7 @@ export function ProjectDetailScreen() {
           scroller={scrollControl}
         >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // scrollControl below.
@@ -2659,6 +2662,7 @@ export function ProjectDetailScreen() {
             setExpandedTaskId(null);
           }}
         />
+        {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

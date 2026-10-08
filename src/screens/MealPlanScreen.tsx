@@ -124,6 +124,7 @@ import {
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import {
   collectPlannedIngredients,
   describeLeftBehind,
@@ -337,6 +338,7 @@ const DRAG_LIFT_SCALE = 1.03;
 const NO_FOOD_LOG: FoodLogEntry[] = [];
 
 export function MealPlanScreen() {
+  const pullSearch = usePullToSearch();
   // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -2040,6 +2042,7 @@ export function MealPlanScreen() {
         scroller={scrollControl}
       >
         <FlatList
+          refreshControl={pullSearch.refreshControl}
           ref={flatListRef}
           data={days}
           keyExtractor={d => dayKeyOf(d)}
@@ -2666,6 +2669,7 @@ export function MealPlanScreen() {
           onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

@@ -75,6 +75,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { isPortionBox } from '../types';
 import { LazySheet } from '../components/LazySheet';
 
@@ -149,6 +150,7 @@ import { LazySheet } from '../components/LazySheet';
  * inventory, and stay out.
  */
 export function KitchenScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -886,6 +888,7 @@ export function KitchenScreen() {
       )}
 
       <ReorderableList
+        refreshControl={pullSearch.refreshControl}
         data={rows}
         keyExtractor={kitchenRowKey}
         renderItem={renderRow}
@@ -1001,6 +1004,7 @@ export function KitchenScreen() {
           }
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

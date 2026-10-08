@@ -29,6 +29,7 @@ import { SelectionDot } from '../components/SelectionDot';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { CategoryPickerSheet } from '../components/CategoryPicker';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -47,6 +48,7 @@ import { categoryLabel } from '../utils/categoryLabel';
  * list of its own.
  */
 export function StacksScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -63,7 +65,7 @@ export function StacksScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   // The "New stack" name field, open at the end of the list.
   const [naming, setNaming] = useState(false);
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
   const listRef = keyboardScroll.ref;
 
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -218,6 +220,7 @@ export function StacksScreen() {
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            refreshControl={pullSearch.refreshControl}
             ref={keyboardScroll.ref}
             {...keyboardScroll.props}
             data={groups}
@@ -291,6 +294,7 @@ export function StacksScreen() {
         group={editingGroup}
         onClose={closeEditor}
       />
+      {pullSearch.sheet}
     </View>
   );
 }
