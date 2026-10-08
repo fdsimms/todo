@@ -8,7 +8,8 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
-import { JOURNAL_KIND_COPY, entriesOnDay, journalPromptAt } from '../utils/journal';
+import { JOURNAL_KIND_COPY, entriesOnDay, journalPromptAt, openEntries } from '../utils/journal';
+import { addSealedNoteReminder, dropSealedNoteReminder } from '../utils/sealedNoteTasks';
 import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -69,6 +70,10 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const [text, setText] = useState('');
   const [day, setDay] = useState<Date>(() => getLogicalToday());
   const [pickerOpen, setPickerOpen] = useState(false);
+  // A note to your future self: the day it opens, or null for an ordinary
+  // entry (JournalEntry.openOn). Offered on a new journal entry for today only.
+  const [openOn, setOpenOn] = useState<Date | null>(null);
+  const [openOnPickerOpen, setOpenOnPickerOpen] = useState(false);
   // Which writing prompt is showing, or null for none. Only ever set by a tap:
   // a prompt is offered, never put in front of you or written into the entry.
   const [promptIndex, setPromptIndex] = useState<number | null>(null);
@@ -85,6 +90,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     caret.resetCaret(editing?.text ?? '');
     setDay(getLogicalToday());
     setPickerOpen(false);
+    setOpenOn(null);
+    setOpenOnPickerOpen(false);
     setPromptIndex(null);
     // caret's functions are stable (useCallback with no deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,7 +111,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
 
   // The day's page so far, for a new entry only: an edit is one snippet of it.
   const soFar = useMemo(
-    () => (editing ? [] : entriesOnDay(allEntries, kind, dayKeyOf(day))),
+    // Never a sealed note: its words don't show anywhere before its day.
+    () => (editing ? [] : entriesOnDay(openEntries(allEntries, dayKeyOf(getLogicalToday())), kind, dayKeyOf(day))),
     [editing, allEntries, kind, day],
   );
   const soFarLabel = isSameDay(day, getLogicalToday())
@@ -112,6 +120,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     : `ALREADY WRITTEN ON ${format(day, 'EEE, MMM d').toUpperCase()}`;
 
   const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text);
+  // Sealing is for a page written now: a backdated entry is filling in a day
+  // that has gone, not leaving a note for one to come.
+  const canSeal = kind === 'journal' && !editing && isSameDay(day, getLogicalToday());
 
   const save = () => {
     if (!canSave) return;
@@ -120,7 +131,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       updateEntry(editing.id, text);
     } else {
       const isToday = isSameDay(day, getLogicalToday());
-      addEntry(kind, text, isToday ? undefined : noonOn(day));
+      const sealUntil = canSeal && openOn ? dayKeyOf(openOn) : null;
+      const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil);
+      if (entry?.openOn) addSealedNoteReminder(entry);
       // Writing is what the reminder asks for. Only a new entry for today: the
       // day you missed filled in later is not today's entry.
       if (isToday) completeJournalTaskForToday(kind);
@@ -151,7 +164,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () => { haptics.warning(); removeEntry(id); onClose(); },
+        onPress: () => { haptics.warning(); removeEntry(id); dropSealedNoteReminder(id); onClose(); },
       },
     ]);
   };
@@ -187,6 +200,19 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
             value={dayLabel(day)}
             onPress={() => { haptics.tap(); setPickerOpen(true); }}
           />
+          {canSeal && (
+            <EditorRow
+              icon="lock-closed-outline"
+              label="Open on"
+              value={openOn ? format(openOn, 'EEE, MMM d, yyyy') : 'Now'}
+              onPress={() => { haptics.tap(); setOpenOnPickerOpen(true); }}
+            />
+          )}
+          {canSeal && openOn && (
+            <Text style={styles.sealHint}>
+              A note to your future self. It stays hidden until that day, when a task reminds you to read it.
+            </Text>
+          )}
         </View>
       )}
 
@@ -219,7 +245,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           onSelectionChange={caret.onSelectionChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={soFar.length > 0 ? copy.continuePlaceholder : copy.placeholder}
+          placeholder={canSeal && openOn ? 'e.g. What you want to tell yourself then' : soFar.length > 0 ? copy.continuePlaceholder : copy.placeholder}
           placeholderTextColor={colors.textTertiary}
           maxLength={TEXT_MAX_LENGTH}
           multiline
@@ -272,6 +298,21 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         onConfirm={picked => { if (picked) setDay(picked); setPickerOpen(false); }}
         onCancel={() => setPickerOpen(false)}
       />
+      <WhenPicker
+        visible={openOnPickerOpen}
+        value={openOn}
+        title="Open on which day?"
+        allowPast={false}
+        showTimeOfDay={false}
+        showSuggest={false}
+        // Today is no later at all, so picking it (or clearing) leaves the
+        // entry open as soon as it's saved.
+        onConfirm={picked => {
+          setOpenOn(picked && !isSameDay(picked, getLogicalToday()) ? picked : null);
+          setOpenOnPickerOpen(false);
+        }}
+        onCancel={() => setOpenOnPickerOpen(false)}
+      />
     </EditorSheet>
   );
 }
@@ -309,6 +350,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   soFarText: {
     fontSize: font.sm,
     color: colors.textSecondary,
+  },
+  sealHint: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
   hint: {
     fontSize: font.sm,

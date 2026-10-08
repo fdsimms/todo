@@ -323,16 +323,23 @@ export function resetToFocusSession(): void {
  */
 /**
  * Where `dundundun://journal` and `dundundun://dreams` land, with `log=1`
- * opening the writing sheet. `resetToMood`'s shape, `returnTo` included.
+ * opening the writing sheet and `entry=<id>` opening that entry (a note to
+ * your future self, from its reminder). `resetToMood`'s shape, `returnTo`
+ * included.
  */
-export function resetToJournal(kind: JournalKind, openLog = false): void {
+export function resetToJournal(kind: JournalKind, openLog = false, entryId: string | null = null): void {
   const route = kind === 'dream' ? 'Dreams' : 'Journal';
   runWhenReady(() => {
-    const returnTo = openLog ? currentTabName() : undefined;
+    const opensSheet = openLog || entryId !== null;
+    const returnTo = opensSheet ? currentTabName() : undefined;
     navigateToTab(
       route,
-      openLog
-        ? { openLog: Date.now(), returnTo: returnTo !== route ? returnTo : undefined }
+      opensSheet
+        ? {
+            openLog: Date.now(),
+            ...(entryId ? { openEntry: entryId } : {}),
+            returnTo: returnTo !== route ? returnTo : undefined,
+          }
         : undefined
     );
   });

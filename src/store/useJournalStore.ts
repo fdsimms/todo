@@ -28,9 +28,11 @@ interface JournalStore {
    * mood sheet does); the day key is stamped from it under `dayResetTime`, so
    * a 1am entry with a 02:00 reset files under yesterday. Refuses blank text.
    */
-  addEntry: (kind: JournalKind, text: string, at?: Date) => JournalEntry | null;
+  addEntry: (kind: JournalKind, text: string, at?: Date, openOn?: string | null) => JournalEntry | null;
   /** Change the words. The day is fixed once written, as a mood entry's is. */
   updateEntry: (id: string, text: string) => void;
+  /** Opens a sealed note early: clears `openOn`, so it reads like any other entry. */
+  openNow: (id: string) => void;
   removeEntry: (id: string) => void;
 }
 
@@ -42,7 +44,7 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
     set({ entries: dbGetAllJournalEntries(), initialized: true });
   },
 
-  addEntry(kind, text, at) {
+  addEntry(kind, text, at, openOn) {
     const trimmed = text.trim();
     if (!trimmed) return null;
     const when = at ?? new Date();
@@ -52,6 +54,8 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
       loggedAt: when.toISOString(),
       dayKey: dayKeyOf(at ? getDayStart(when) : getCurrentDayStart()),
       text: trimmed,
+      // Only a later day seals anything; today or earlier is open already.
+      openOn: openOn && openOn > dayKeyOf(getCurrentDayStart()) ? openOn : null,
     };
     dbInsertJournalEntry(entry);
     // Kept in the order dbGetAllJournalEntries hands back, so nothing reorders
@@ -67,6 +71,14 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
     // action; an empty entry would be a day marked written with nothing on it.
     if (!existing || !trimmed || trimmed === existing.text) return;
     const next: JournalEntry = { ...existing, text: trimmed };
+    dbUpdateJournalEntry(next);
+    set({ entries: get().entries.map(e => (e.id === id ? next : e)) });
+  },
+
+  openNow(id) {
+    const existing = get().entries.find(e => e.id === id);
+    if (!existing?.openOn) return;
+    const next: JournalEntry = { ...existing, openOn: null };
     dbUpdateJournalEntry(next);
     set({ entries: get().entries.map(e => (e.id === id ? next : e)) });
   },

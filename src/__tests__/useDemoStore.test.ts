@@ -135,6 +135,8 @@ import { buildTodayProjectBands } from '../utils/todayProjectBands';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { recipeIndex } from '../utils/mealPlan';
+import { decisionOutcomes, pendingReviewOf } from '../utils/decisionReview';
+import { journalEntryLink, sealedEntries } from '../utils/journal';
 import { collectPlannedIngredients } from '../utils/mealPlanGroceries';
 import { overlapSeedFromPlanned, rankOverlapRecipes } from '../utils/recipeOverlap';
 import { probablyHaveReason } from '../utils/grocerySuggest';
@@ -2346,6 +2348,21 @@ describe('demo seed — people', () => {
     expect(targetedNutrients(targets).length).toBeGreaterThan(0);
     expect(targets.calorieKcal).toBeGreaterThan(0);
     expect(targetedNutrients(targets).length).toBeLessThan(NUTRIENT_KEYS.length);
+  });
+
+  it('seeds a decision whose look-back has been answered, and one still waiting', () => {
+    const { tasks } = useTaskStore.getState();
+    const tile = tasks.find(t => t.title === 'Pick a tile')!;
+    expect(decisionOutcomes(tasks).get(tile.id)?.text).toBe('Easy to clean, and no regrets on the white');
+    const budget = tasks.find(t => t.title === 'Set the budget')!;
+    expect(pendingReviewOf(tasks, budget.id)?.title).toBe('How did it turn out? Set the budget');
+  });
+
+  it('seeds a note to your future self, sealed, with its reminder', () => {
+    const today = dayKeyOf(getCurrentDayStart());
+    const sealed = sealedEntries(useJournalStore.getState().entries, today);
+    expect(sealed).toHaveLength(1);
+    expect(useTaskStore.getState().tasks.some(t => t.linkUrl === journalEntryLink(sealed[0].id) && !t.completed)).toBe(true);
   });
 
   it('seeds a meal that has opted out of being logged', () => {

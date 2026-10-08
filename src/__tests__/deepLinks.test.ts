@@ -113,6 +113,7 @@ import {
   isMedicationsUrl,
   journalUrlKind,
   journalUrlWantsLog,
+  journalUrlEntryId,
   isProjectsUrl,
   projectsUrlPullId,
   projectsUrlPullDay,
@@ -1042,8 +1043,17 @@ describe('journal and dreams links', () => {
   it('lands on the matching screen, opening the sheet when asked', () => {
     mockResetToJournal.mockClear();
     expect(openInAppUrl('dundundun://dreams?log=1')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true);
+    expect(mockResetToJournal).toHaveBeenCalledWith('dream', true, null);
     expect(openInAppUrl('dundundun://journal')).toBe(true);
-    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false);
+    expect(mockResetToJournal).toHaveBeenLastCalledWith('journal', false, null);
+  });
+
+  it('opens one entry by id, the link a note for later leaves on its day', () => {
+    expect(journalUrlEntryId('dundundun://journal?entry=n%201')).toBe('n 1');
+    expect(journalUrlEntryId('dundundun://journal?log=1')).toBeNull();
+    expect(journalUrlEntryId('dundundun://mood?entry=x')).toBeNull();
+    mockResetToJournal.mockClear();
+    expect(openInAppUrl('dundundun://journal?entry=abc')).toBe(true);
+    expect(mockResetToJournal).toHaveBeenCalledWith('journal', false, 'abc');
   });
 });

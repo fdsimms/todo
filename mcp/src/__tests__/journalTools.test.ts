@@ -54,4 +54,16 @@ describe('the journal tools', () => {
     expect(deleteJournalEntry(replica, entry.id).deleted.id).toBe(entry.id);
     expect(listJournalEntries(replica).entries).toEqual([]);
   });
+
+  it('keeps a note for later sealed: counted, never listed, and refused by id', () => {
+    const { entry } = logJournalEntry(replica, { kind: 'journal', text: 'Open' });
+    mockRaw.runSync(
+      "INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on) VALUES ('sealed', 'journal', ?, ?, 'Dear future me', '2999-01-01')",
+      [new Date().toISOString(), replica.todayKey()],
+    );
+    replica.refresh();
+    expect(listJournalEntries(replica)).toMatchObject({ entries: [{ id: entry.id }], sealedNotes: 1 });
+    expect(() => updateJournalEntry(replica, 'sealed', 'x')).toThrow(/sealed until 2999-01-01/);
+    expect(() => deleteJournalEntry(replica, 'sealed')).toThrow(/sealed until/);
+  });
 });

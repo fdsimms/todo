@@ -19,6 +19,7 @@ import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import {
   applyTemplate as applyTemplateTool,
+  completeTask as completeTaskTool,
   createTask as createTaskTool,
   createTemplate as createTemplateTool,
   getTask as getTaskTool,
@@ -1621,6 +1622,17 @@ describe('the replica', () => {
     const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
     const result = replica.completeTask(task.id, { deliverableValue: 'Green' });
     expect(result.completed.deliverableValue).toBe('Green');
+  });
+
+  it('adds a look-back when asked, and reads its answer as the decision\'s outcome', () => {
+    const task = replica.createTask({ title: 'Which contractor?', deliverableKind: 'text' });
+    const done = completeTaskTool(replica, task.id, { deliverableValue: 'Bob', lookBackAfter: '1m' });
+    expect(done.spawned.join(' ')).toMatch(/look-back task "How did it turn out\? Which contractor\?"/);
+    const review = replica.tasks().find(t => t.reviewOfTaskId === task.id)!;
+    expect(getTaskTool(replica, review.id)?.task).toMatchObject({ lookBackOf: task.id, asksOnCompletion: 'text' });
+
+    completeTaskTool(replica, review.id, { deliverableValue: 'On time and under budget' });
+    expect(getTaskTool(replica, task.id)?.task).toMatchObject({ answer: 'Bob', outcome: { text: 'On time and under budget' } });
   });
 
   // A fixed set of answers takes one of them, in the option's own spelling,

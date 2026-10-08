@@ -2030,6 +2030,11 @@ export function initDatabase(): void {
     // row, which never skips.
     'ALTER TABLE tasks ADD COLUMN rain_skip_mm REAL',
     'ALTER TABLE tasks ADD COLUMN rain_skipped_on TEXT',
+    // Null on every existing task: none of them is a look-back. See Task.reviewOfTaskId.
+    'ALTER TABLE tasks ADD COLUMN review_of_task_id TEXT',
+    // Null on every existing entry: all of them were open when written. See
+    // JournalEntry.openOn.
+    'ALTER TABLE journal_entries ADD COLUMN open_on TEXT',
     'CREATE INDEX IF NOT EXISTS idx_meter_readings_key ON meter_readings(meter_key, read_at)',
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
@@ -3452,6 +3457,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     meterHeldUntil: (row.meter_held_until as string | null) ?? null,
     rainSkipMm: (row.rain_skip_mm as number | null) ?? null,
     rainSkippedOn: (row.rain_skipped_on as string | null) ?? null,
+    reviewOfTaskId: (row.review_of_task_id as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -3663,8 +3669,8 @@ export function dbInsertTask(task: Task): void {
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
-      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on, review_of_task_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3800,6 +3806,7 @@ export function dbInsertTask(task: Task): void {
       task.meterHeldUntil ?? null,
       task.rainSkipMm ?? null,
       task.rainSkippedOn ?? null,
+      task.reviewOfTaskId ?? null,
     ]
   );
 }
@@ -3837,7 +3844,7 @@ export function dbUpdateTask(task: Task): void {
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
-      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?
+      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?, review_of_task_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3974,6 +3981,7 @@ export function dbUpdateTask(task: Task): void {
       task.meterHeldUntil ?? null,
       task.rainSkipMm ?? null,
       task.rainSkippedOn ?? null,
+      task.reviewOfTaskId ?? null,
       task.id,
     ]
   );
@@ -6769,6 +6777,7 @@ function rowToJournalEntry(row: Record<string, unknown>): JournalEntry {
     loggedAt: row.logged_at as string,
     dayKey: row.day_key as string,
     text: row.text as string,
+    openOn: typeof row.open_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.open_on) ? row.open_on : null,
   };
 }
 
@@ -6785,14 +6794,17 @@ export function dbGetAllJournalEntries(): JournalEntry[] {
 
 export function dbInsertJournalEntry(entry: JournalEntry): void {
   db.runSync(
-    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text) VALUES (?, ?, ?, ?, ?)',
-    [entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text]
+    'INSERT INTO journal_entries (id, kind, logged_at, day_key, text, open_on) VALUES (?, ?, ?, ?, ?, ?)',
+    [entry.id, entry.kind, entry.loggedAt, entry.dayKey, entry.text, entry.openOn ?? null]
   );
 }
 
-/** Only the words change: an entry's day is fixed once written, as a mood entry's is. */
+/**
+ * Only the words and the day it opens change: an entry's day is fixed once
+ * written, as a mood entry's is. `openOn` only ever clears here (opened early).
+ */
 export function dbUpdateJournalEntry(entry: JournalEntry): void {
-  db.runSync('UPDATE journal_entries SET text=? WHERE id=?', [entry.text, entry.id]);
+  db.runSync('UPDATE journal_entries SET text=?, open_on=? WHERE id=?', [entry.text, entry.openOn ?? null, entry.id]);
 }
 
 export function dbDeleteJournalEntry(id: string): void {

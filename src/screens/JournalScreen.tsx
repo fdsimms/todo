@@ -7,7 +7,8 @@ import { format } from 'date-fns/format';
 import type { JournalEntry, JournalKind } from '../types';
 import { useJournalStore } from '../store/useJournalStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import {
@@ -15,9 +16,13 @@ import {
   entriesOfKind,
   groupJournalByDay,
   journalStats,
+  justOpened,
+  openEntries,
   searchJournal,
+  sealedEntries,
   type JournalDay,
 } from '../utils/journal';
+import { dropSealedNoteReminder } from '../utils/sealedNoteTasks';
 import { journalExportCsv, journalExportFileName, journalExportSummary } from '../utils/journalExport';
 import { writeExportFile, shareCsvFile, discardBackupFile, canShare } from '../utils/backupFile';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -56,13 +61,20 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   const screenSettings = useScreenSettings(route, kind === 'dream' ? 'Dream settings' : 'Journal settings');
 
   const all = useJournalStore(s => s.entries);
-  const entries = useMemo(() => entriesOfKind(all, kind), [all, kind]);
+  const openNow = useJournalStore(s => s.openNow);
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const written = useMemo(() => entriesOfKind(all, kind), [all, kind]);
+  // A sealed note to your future self is read nowhere before its day, the
+  // list, search, the counts and the export included (openEntries). It shows
+  // only as the count above the list.
+  const entries = useMemo(() => openEntries(written, todayKey), [written, todayKey]);
+  const sealed = useMemo(() => sealedEntries(written, todayKey), [written, todayKey]);
+  const opened = useMemo(() => justOpened(entries, todayKey), [entries, todayKey]);
   const search = useFilterField();
   const days = useMemo(
     () => groupJournalByDay(searchJournal(entries, search.query)),
     [entries, search.query],
   );
-  const todayKey = dayKeyOf(getCurrentDayStart());
   const stats = useMemo(() => journalStats(entries, todayKey.slice(0, 7)), [entries, todayKey]);
   const keyboardScroll = useKeyboardInsetScroll<FlatList<JournalDay>>({ refreshing: pullSearch.pulling });
   const scrollTop = useListScrollToTop(keyboardScroll);
@@ -73,16 +85,53 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   // `dundundun://journal?log=1` / `dreams?log=1`, the reminder task's link.
   // Stamped and tracked against what was handled, as MoodScreen's openLog is,
   // with the same `returnTo` hand-back once the sheet closes.
-  const routeInfo = useRoute<{ key: string; name: string; params?: { openLog?: number; returnTo?: string } }>();
+  const routeInfo = useRoute<{ key: string; name: string; params?: { openLog?: number; openEntry?: string; returnTo?: string } }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
   const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (routeInfo.params?.openLog === undefined || routeInfo.params.openLog === handledOpenLog) return;
     setHandledOpenLog(routeInfo.params.openLog);
     setReturnTo(routeInfo.params.returnTo);
+    // `entry=<id>`, a sealed note's reminder: that note, once it's open.
+    // One still sealed (the task tapped from Later) or since deleted opens
+    // nothing, rather than a blank page in its place.
+    const wanted = routeInfo.params.openEntry;
+    if (wanted) {
+      const entry = entries.find(e => e.id === wanted);
+      if (!entry) return;
+      setEditing(entry);
+      setSheetOpen(true);
+      return;
+    }
     setEditing(null);
     setSheetOpen(true);
+    // `entries` is read when the link lands, not tracked: a later edit must not reopen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeInfo.params?.openLog, routeInfo.params?.returnTo, handledOpenLog]);
+
+  /** Offers to open the soonest sealed note now rather than on its day. */
+  const openSealedEarly = () => {
+    const next = sealed[0];
+    if (!next) return;
+    haptics.tap();
+    Alert.alert(
+      'Open a note early?',
+      `The next one was written on ${format(new Date(`${next.dayKey}T00:00:00`), 'MMMM d, yyyy')} to open on ${format(new Date(`${next.openOn}T00:00:00`), 'MMMM d, yyyy')}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open it now',
+          onPress: () => {
+            openNow(next.id);
+            dropSealedNoteReminder(next.id);
+            setReturnTo(undefined);
+            setEditing({ ...next, openOn: null });
+            setSheetOpen(true);
+          },
+        },
+      ],
+    );
+  };
 
   const openNew = () => { haptics.tap(); setReturnTo(undefined); setEditing(null); setSheetOpen(true); };
   const openEdit = (entry: JournalEntry) => { haptics.tap(); setReturnTo(undefined); setEditing(entry); setSheetOpen(true); };
@@ -163,7 +212,9 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
     <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} onClose={closeSheet} />
   );
 
-  if (entries.length === 0) {
+  // A note for later and nothing else is still something written, so the
+  // list (with its sealed card) shows rather than the empty state.
+  if (entries.length === 0 && sealed.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {header}
@@ -199,7 +250,55 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
         keyExtractor={day => day.dayKey}
         contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={<Text style={styles.noMatch}>Nothing matches that search.</Text>}
+        ListHeaderComponent={search.query ? null : (
+          <>
+            {sealed.length > 0 && (
+              <TouchableOpacity
+                style={[styles.card, styles.sealedCard]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={openSealedEarly}
+                accessibilityRole="button"
+                accessibilityLabel={`${sealedLabel(sealed.length)}. The next opens ${format(new Date(`${sealed[0].openOn}T00:00:00`), 'EEEE, MMMM d, yyyy')}`}
+                accessibilityHint="Offers to open the next one early"
+              >
+                <Ionicons name="lock-closed-outline" size={iconSize.md} color={colors.textSecondary} />
+                <View style={styles.sealedText}>
+                  <Text style={styles.sealedTitle}>{sealedLabel(sealed.length)}</Text>
+                  <Text style={styles.sealedSub}>
+                    {`The next opens ${format(new Date(`${sealed[0].openOn}T00:00:00`), 'EEEE, MMMM d, yyyy')}.`}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+            {opened.length > 0 && (
+              <View>
+                <Text style={styles.dayLabel}>JUST OPENED</Text>
+                <View style={styles.card}>
+                  {opened.map((entry, index) => (
+                    <TouchableOpacity
+                      key={entry.id}
+                      style={[styles.entryRow, index === 0 && styles.firstRow]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => openEdit(entry)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Note written on ${format(new Date(`${entry.dayKey}T00:00:00`), 'MMMM d, yyyy')}: ${journalPlainText(entry.text)}`}
+                    >
+                      <Text style={styles.entryTime}>
+                        {`Written ${format(new Date(`${entry.dayKey}T00:00:00`), 'MMMM d, yyyy')}`}
+                      </Text>
+                      <JournalText text={entry.text} textStyle={styles.entryText} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
+        )}
+        ListEmptyComponent={
+          search.query || entries.length > 0
+            ? <Text style={styles.noMatch}>Nothing matches that search.</Text>
+            : null
+        }
         renderItem={({ item: day }) => (
           <View>
             <Text style={styles.dayLabel}>
@@ -228,6 +327,10 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
       {pullSearch.sheet}
     </View>
   );
+}
+
+function sealedLabel(count: number): string {
+  return count === 1 ? '1 note for later' : `${count} notes for later`;
 }
 
 export function JournalScreen() {
@@ -272,6 +375,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     color: colors.text,
   },
+  sealedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingTop: spacing.md,
+    marginTop: spacing.sm,
+  },
+  sealedText: { flex: 1, gap: spacing.xxs },
+  sealedTitle: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+  sealedSub: { fontSize: font.sm, color: colors.textSecondary },
   noMatch: {
     fontSize: font.sm,
     color: colors.textSecondary,

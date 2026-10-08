@@ -2185,6 +2185,8 @@ function registerWriteTools(
         .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
       why: z.string().optional().describe('With an answer: why it was chosen, in a sentence. Shown under the answer in the project\'s Decisions.'),
       revisitIf: z.string().optional().describe('With an answer: what would reopen the decision ("the guest list goes over 25").'),
+      lookBackAfter: z.enum(['2w', '1m', '3m', '6m']).optional()
+        .describe('With an answer, when the person asks for it: add a task that long from now asking how the decision turned out. Its answer becomes the decision\'s outcome. Ignored without an answer.'),
     },
     async ({ id, ...rest }) => {
       try {

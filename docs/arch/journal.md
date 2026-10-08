@@ -131,3 +131,25 @@ its height to `EditorSheet` (`keyboardAccessoryHeight`, then `accessoryHeight`
 on `useKeyboardInsetScroll`). That takes the hook's JS-owned inset path and
 adds the bar to the keyboard's inset, which keeps a caret typing near the
 bottom of a long entry above the bar rather than behind it.
+
+## Notes to your future self
+
+A new journal entry written for today can be sealed until a later day ("Open on" in the sheet,
+`JournalEntry.openOn`). Until then it is kept, synced and counts as a day written, but nobody reads
+its words: the Journal shows only "2 notes for later" and the next date, and the other readers
+leave it out.
+
+- **One rule, read everywhere: `openEntries`.** The Journal list, search, stats and export, the
+  sheet's "so far", the mood day page, Looking back and Claude's journal tools all filter through
+  it. A new reader of journal entries does the same. Over MCP a sealed note is a count
+  (`sealedNotes`), and updating or deleting one by id is refused.
+- **It opens by day, with a task to say so.** Saving a sealed note adds a plain task due on its
+  day whose link is `dundundun://journal?entry=<id>` (`sealedNoteTaskDraft`), which opens that
+  note. It's a task the person asked for, so it isn't a generated one. Deleting the note or opening
+  it early (the sealed card's "Open it now", `openNow`) deletes the task with it
+  (`dropSealedNoteReminder`).
+- **It still files under the day it was written**, which can be a year down the page, so a note
+  shows under "Just opened" at the top for a week from its day (`justOpened`).
+- **Only a page written now can be sealed.** A backdated entry is filling in a day that has gone,
+  and a dream is about last night, so the row shows for neither. Opening early is the only change
+  to `openOn` after it's written, and it only ever clears it.

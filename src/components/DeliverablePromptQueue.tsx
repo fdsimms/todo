@@ -65,11 +65,12 @@ export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
     <DeliverablePromptSheet
       visible={current !== null}
       task={shown}
-      onConfirm={(value, reasoning) => {
+      onConfirm={(value, reasoning, lookBack) => {
         animateLayout();
-        completeTask(shown.id, { deliverableValue: value, deliverableReasoning: reasoning });
+        completeTask(shown.id, { deliverableValue: value, deliverableReasoning: reasoning, reviewAfter: lookBack });
         onResolved(shown.id);
       }}
+      offerLookBack
       onCancel={() => onResolved(shown.id)}
       onOpenTask={onOpenTask}
     />

@@ -7,6 +7,12 @@ import {
   journalPromptAt,
   journalStats,
   searchJournal,
+  isSealed,
+  openEntries,
+  sealedEntries,
+  justOpened,
+  journalEntryLink,
+  sealedNoteTaskDraft,
 } from '../utils/journal';
 
 let n = 0;
@@ -18,6 +24,7 @@ function entry(over: Partial<JournalEntry> = {}): JournalEntry {
     loggedAt: over.loggedAt ?? `2026-10-0${(n % 9) + 1}T09:00:00.000Z`,
     dayKey: over.dayKey ?? '2026-10-02',
     text: over.text ?? 'Something',
+    openOn: over.openOn ?? null,
   };
 }
 
@@ -96,5 +103,45 @@ describe('writing prompts', () => {
       expect(p.endsWith('?')).toBe(true);
       expect(p).not.toMatch(/—|depress|anxi|sad|unwell/i);
     }
+  });
+});
+
+describe('notes to your future self', () => {
+  const today = '2026-10-08';
+
+  it('are sealed until their day, and open on it', () => {
+    expect(isSealed(entry({ openOn: '2026-10-09' }), today)).toBe(true);
+    expect(isSealed(entry({ openOn: today }), today)).toBe(false);
+    expect(isSealed(entry({ openOn: null }), today)).toBe(false);
+  });
+
+  it('are left out of everything read before then, soonest listed first', () => {
+    const list = [
+      entry({ id: 'open' }),
+      entry({ id: 'later', openOn: '2027-01-01' }),
+      entry({ id: 'sooner', openOn: '2026-12-25' }),
+      entry({ id: 'today', openOn: today }),
+    ];
+    expect(openEntries(list, today).map(e => e.id)).toEqual(['open', 'today']);
+    expect(sealedEntries(list, today).map(e => e.id)).toEqual(['sooner', 'later']);
+  });
+
+  it('show under Just opened for a week from their day', () => {
+    const list = [
+      entry({ id: 'week-old', openOn: '2026-10-02' }),
+      entry({ id: 'too-old', openOn: '2026-10-01' }),
+      entry({ id: 'today', openOn: today }),
+      entry({ id: 'plain' }),
+    ];
+    expect(justOpened(list, today).map(e => e.id)).toEqual(['today', 'week-old']);
+  });
+
+  it('leave a reminder due on their day that opens them', () => {
+    const draft = sealedNoteTaskDraft({ id: 'n 1', dayKey: '2026-10-08', openOn: '2027-10-08' })!;
+    expect(draft.title).toBe('Read the note you wrote on Oct 8, 2026');
+    expect(new Date(draft.dueDate!)).toEqual(new Date(2027, 9, 8, 12));
+    expect(draft.linkUrl).toBe(journalEntryLink('n 1'));
+    expect(journalEntryLink('n 1')).toBe('dundundun://journal?entry=n%201');
+    expect(sealedNoteTaskDraft({ id: 'x', dayKey: today, openOn: null })).toBeNull();
   });
 });
