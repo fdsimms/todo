@@ -3275,7 +3275,8 @@ function registerWriteTools(
     "Add a reward the person can spend coins on, such as a treat or a night off. Ask them for the cost, or offer one based on how often they want it (get_rewards shows the balance and history to judge the pace). A reward is a note to themselves: claiming one unlocks nothing in the app. oneTime makes it disappear once claimed. Refused while rewards are switched off.",
     {
       title: z.string().min(1),
-      cost: z.number().int().min(1).describe('Coins, a whole number.'),
+      cost: z.number().int().min(1).optional().describe('Coins, a whole number. Give this or price.'),
+      price: z.number().positive().optional().describe('Dollars, like 4.5, for a reward that costs money. Converted to coins at the person\'s own rate (their weekly earning over their weekly reward budget), and repriced as their earning changes. Refused until they have set a weekly budget.'),
       note: z.string().nullable().optional().describe('A line of context, e.g. "the Thai place on 5th".'),
       link: z.string().nullable().optional().describe('A URL to open for it.'),
       oneTime: z.boolean().optional().describe('Claimed once, then gone from the list.'),
@@ -3295,7 +3296,8 @@ function registerWriteTools(
     {
       id: z.string().min(1),
       title: z.string().min(1).optional(),
-      cost: z.number().int().min(1).optional(),
+      cost: z.number().int().min(1).optional().describe('Coins. Makes the reward coin-priced, dropping any dollar price.'),
+      price: z.number().positive().nullable().optional().describe('Dollars. Null drops the dollar price and keeps the current coin cost.'),
       note: z.string().nullable().optional(),
       link: z.string().nullable().optional(),
       oneTime: z.boolean().optional(),
