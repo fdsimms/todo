@@ -14,6 +14,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import type { Cookbook } from '../types';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 /**
  * The shelf: every `Cookbook` a recipe has ever been linked to, with a
@@ -26,6 +27,7 @@ import type { Cookbook } from '../types';
  * the shelf yet to attach it to.
  */
 export function CookbooksScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
@@ -111,6 +113,7 @@ export function CookbooksScreen() {
         />
       ) : (
         <FlatList
+          refreshControl={pullSearch.refreshControl}
           data={sorted}
           keyExtractor={c => c.id}
           renderItem={renderItem}
@@ -130,6 +133,7 @@ export function CookbooksScreen() {
         onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
         onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Alert, AppState, type ScrollView } from 'react-native';
+import { Animated, View, Alert, AppState, type ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -10,6 +10,7 @@ import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
+import { useSettingsFocusFlash } from './SettingsFocus';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
@@ -24,6 +25,21 @@ interface Props {
 
 const GRACE_OPTIONS: SegmentOption<number>[] =
   APP_LOCK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
+
+/**
+ * One AI feature's row and its model picker, lit together when search opens
+ * onto it. The flash lives here rather than on `SettingsRow` because the
+ * picker sits beside the row, not inside it: a highlight on the row alone
+ * left the picker unlit underneath.
+ */
+function AiFeatureBlock({ entryId, children }: { entryId: string; children: React.ReactNode }) {
+  const { focused, setFocusRef, highlight } = useSettingsFocusFlash(entryId);
+  return (
+    <Animated.View ref={setFocusRef} style={focused && { backgroundColor: highlight }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export function PrivacyAiSettings({ scrollRef }: Props) {
   const appLockEnabled = useSettingsStore(s => s.appLockEnabled);
@@ -240,28 +256,30 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           return (
             <React.Fragment key={feature.id}>
               {i > 0 && <View style={styles.sep} />}
-              <SettingsRow
-                // Same shape settingsIndex derives its entry ids in — both
-                // sides map over AI_FEATURES, so neither can name a row the
-                // other doesn't have.
-                entryId={`ai:${feature.id}`}
-                icon="sparkles-outline"
-                iconColor={config.enabled ? colors.purple : undefined}
-                label={feature.label}
-                hint={feature.hint}
-                toggle={config.enabled}
-                onPress={() => setAiFeatureConfig(feature.id, { enabled: !config.enabled })}
-                tight={config.enabled}
-              />
-              {config.enabled && (
-                <SettingsSegments
-                  attached
-                  options={AI_MODEL_OPTIONS}
-                  selected={config.model}
-                  onSelect={model => setAiFeatureConfig(feature.id, { model })}
-                  accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
+              {/* Same shape settingsIndex derives its entry ids in — both
+                  sides map over AI_FEATURES, so neither can name a row the
+                  other doesn't have. The id sits on the block, not the row,
+                  so the highlight covers the model picker too. */}
+              <AiFeatureBlock entryId={`ai:${feature.id}`}>
+                <SettingsRow
+                  icon="sparkles-outline"
+                  iconColor={config.enabled ? colors.purple : undefined}
+                  label={feature.label}
+                  hint={feature.hint}
+                  toggle={config.enabled}
+                  onPress={() => setAiFeatureConfig(feature.id, { enabled: !config.enabled })}
+                  tight={config.enabled}
                 />
-              )}
+                {config.enabled && (
+                  <SettingsSegments
+                    attached
+                    options={AI_MODEL_OPTIONS}
+                    selected={config.model}
+                    onSelect={model => setAiFeatureConfig(feature.id, { model })}
+                    accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
+                  />
+                )}
+              </AiFeatureBlock>
             </React.Fragment>
           );
         })}

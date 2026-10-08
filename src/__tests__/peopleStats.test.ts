@@ -119,11 +119,11 @@ describe('describeTimeTogether', () => {
   });
 
   it('is singular for one', () => {
-    expect(describeTimeTogether(1)).toBe('You spent time with people on 1 occasion this year.');
+    expect(describeTimeTogether(1)).toBe('You completed 1 task involving people this year.');
   });
 
   it('is plural otherwise', () => {
-    expect(describeTimeTogether(11)).toBe('You spent time with people on 11 occasions this year.');
+    expect(describeTimeTogether(11)).toBe('You completed 11 tasks involving people this year.');
   });
 });
 

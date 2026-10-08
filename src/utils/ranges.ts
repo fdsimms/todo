@@ -43,10 +43,23 @@ export function scoreSubstring(haystack: string, needle: string): { score: numbe
   const h = haystack.toLowerCase();
   const n = needle.toLowerCase();
 
-  // Exact substring match
-  const exactIdx = h.indexOf(n);
-  if (exactIdx !== -1) {
-    return { score: 100 + (exactIdx === 0 ? 20 : 0), ranges: [[exactIdx, exactIdx + n.length]] };
+  // Exact substring match. Where it lands decides the score: the start of the
+  // string beats the start of a later word beats the middle of a word, so "lo"
+  // ranks "Look into flights" above "Use the cloud credits" and "Cardiologist".
+  // Every occurrence is considered, since the first one can sit mid-word while
+  // a later one starts a word ("cloud ... lock").
+  let bestIdx = -1;
+  let bestBonus = -1;
+  for (let idx = h.indexOf(n); idx !== -1; idx = h.indexOf(n, idx + 1)) {
+    const bonus = idx === 0 ? 40 : /[^\p{L}\p{N}]/u.test(h[idx - 1]) ? 30 : 0;
+    if (bonus > bestBonus) {
+      bestIdx = idx;
+      bestBonus = bonus;
+    }
+    if (bonus === 40) break;
+  }
+  if (bestIdx !== -1) {
+    return { score: 100 + bestBonus, ranges: [[bestIdx, bestIdx + n.length]] };
   }
 
   // Fuzzy: all chars of needle appear in order in haystack
@@ -69,4 +82,54 @@ export function scoreSubstring(haystack: string, needle: string): { score: numbe
   const density = n.length / span; // 1.0 = all chars consecutive
   const score = Math.round(density * 60);
   return { score, ranges: firstMatch !== -1 ? [[firstMatch, lastMatch + 1]] : [] };
+}
+
+export interface MatchExcerpt {
+  /** One line, with a leading/trailing "…" where it was cut. */
+  text: string;
+  /** Highlight ranges into `text`. */
+  ranges: [number, number][];
+}
+
+/**
+ * A one-line window of `text` around where the query's words match it, for a
+ * result that matched on text the row doesn't otherwise show (a task's notes).
+ *
+ * Only exact substring hits count, the same line `quickSearch` draws between a
+ * real match and a scattered-letters guess: an excerpt highlighting "l…o…g"
+ * spread across a sentence would explain nothing. Returns null when no word
+ * matches exactly. The window opens `lead` characters before the first hit,
+ * snapped forward to a word start so it never begins mid-word.
+ */
+export function matchExcerpt(
+  text: string,
+  words: string[],
+  { lead = 24, max = 90 }: { lead?: number; max?: number } = {}
+): MatchExcerpt | null {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return null;
+
+  const hits: [number, number][] = [];
+  for (const word of words) {
+    const { score, ranges } = scoreSubstring(flat, word);
+    if (score >= 100) hits.push(ranges[0]);
+  }
+  if (hits.length === 0) return null;
+
+  const anchor = Math.min(...hits.map(h => h[0]));
+  let start = Math.max(0, anchor - lead);
+  if (start > 0) {
+    const space = flat.indexOf(' ', start);
+    if (space !== -1 && space < anchor) start = space + 1;
+  }
+  const end = Math.min(flat.length, Math.max(start + max, anchor + 1));
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < flat.length ? '…' : '';
+  const shift = prefix.length - start;
+  const ranges = mergeRanges(
+    hits
+      .filter(([s, e]) => s >= start && e <= end)
+      .map(([s, e]): [number, number] => [s + shift, e + shift])
+  );
+  return { text: prefix + flat.slice(start, end) + suffix, ranges };
 }

@@ -224,6 +224,7 @@ import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFo
 // visibility helper is added to, so one line is a guaranteed conflict.
 import {
   isTaskVisible,
+  isPinnedOnToday,
   isTaskNew,
   isTaskDeferred,
   isUpcomingToday,
@@ -6509,7 +6510,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // already spent. `todayWeatherCode` is Open-Meteo's own summary for the
     // whole day, so this is a look-ahead rather than a second live reading.
     const conditions = Array.from(new Set([
-      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF),
+      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF, weather.snapshot.isDay ?? true),
       ...(weather.snapshot.todayWeatherCode != null
         ? classifyWeather(weather.snapshot.todayWeatherCode, weather.snapshot.tempF)
         : []),
@@ -6536,7 +6537,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // anyway, and reading the hours is what lets "cold" answer to the small
     // hours rather than to a single temperature standing for the whole day.
     const tomorrowConditions = Array.from(new Set(
-      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF)),
+      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true)),
     ));
     const aheadOpen = nowHour >= WEATHER_AHEAD_FROM_HOUR && !!tomorrowHours;
 
@@ -6587,11 +6588,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Hours exist but none of the condition's runs is still ahead: the
       // weather has already happened, so a row for it is a chore about nothing.
       const windowPassed = !window && !tomorrow && !!hours && hours.length > 0
-        && hours.some(h => classifyWeather(h.weatherCode, h.tempF).includes(rule.condition));
+        && hours.some(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true).includes(rule.condition));
       if (existing && windowPassed) {
         dropGeneratedTask('weather', sourceId);
         return;
       }
+      // The sun has set on a sunny day whose rule hadn't been looked at yet
+      // (the day-level code still says sunny): nothing is left to write a row
+      // about. Only sunny, because that is the one condition night ends; the
+      // others keep writing a row for weather that already happened.
+      if (windowPassed && rule.condition === 'sunny') return;
       if (tomorrow && !window) {
         if (existing) dropGeneratedTask('weather', sourceId);
         return;
@@ -9535,8 +9541,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // It comes back the moment the blocker clears, exactly as that row does.
       // A paused project's task is the other non-clock hide: the pause is the
       // person saying "not until then", which pinning doesn't answer.
-      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !isWithheld(t))
+      //
+      // The one clock gate pinning does not override is a pinEachOccurrence
+      // task, whose pin counts only while its occurrence is visible (see
+      // isPinnedOnToday). Its successor is spawned pinned, so without that gate
+      // a daily task finished today would sit at the top of Today all day.
+      .filter(t => !t.parentId && !t.completed && !t.archived
+        && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

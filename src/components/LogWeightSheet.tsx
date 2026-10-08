@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,6 +22,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
 /**
  * Recording a weight, which writes a body-mass sample to Apple Health.
@@ -224,6 +225,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
               value={text}
               onChangeText={setText}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               placeholder="e.g. 72.4"
               placeholderTextColor={colors.textTertiary}
               accessibilityLabel={`Weight in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
@@ -248,6 +250,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
         Saved to Apple Health. This app keeps no copy of it, so editing or
         removing a weight is done in the Health app.
       </Text>
+      <NumberPadAccessory />
     </EditorSheet>
   );
 }

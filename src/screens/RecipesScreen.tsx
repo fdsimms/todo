@@ -38,7 +38,7 @@ import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { CookWithSheet } from '../components/CookWithSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -87,6 +87,7 @@ import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } fr
 import { tagColor } from '../utils/tagColor';
 import { useFilterField } from '../hooks/useFilterField';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 
 /**
@@ -188,7 +189,9 @@ function usePantryCatalog() {
 }
 
 export function RecipesScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -901,9 +904,10 @@ export function RecipesScreen() {
               scroller={scrollControl}
             >
               <ReorderableList
+                refreshControl={pullSearch.refreshControl}
                 data={visibleDraggableData}
                 keyExtractor={recipeListItemKey}
-                scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+                scrollToTop={{ bottom: fabBottom }}
                 // The user can't scroll during an add-button drag (the
                 // button's responder has the touch); the drag scrolls it
                 // instead, through scrollControl above. Same reasoning for a
@@ -970,6 +974,7 @@ export function RecipesScreen() {
           ) : (
             <PaintSelectionProvider {...paintProps}>
             <FlatList
+              refreshControl={pullSearch.refreshControl}
               data={visible}
               keyExtractor={r => r.id}
               renderItem={renderFlatRecipe}
@@ -994,7 +999,6 @@ export function RecipesScreen() {
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add recipe"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
           dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
         />
@@ -1115,6 +1119,7 @@ export function RecipesScreen() {
           onClose={() => setPlanningRecipe(null)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

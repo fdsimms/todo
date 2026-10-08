@@ -30,6 +30,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
+import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -1319,6 +1320,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     haptics.success();
     setReminderTime(reminderOffer);
     setReminderOffer(null);
+    // Accepting the offer is the person asking for a reminder: ask for the
+    // permission now if it has never been asked.
+    void askForReminderPermissionIfNeeded();
   };
 
   const dismissReminderOffer = () => {

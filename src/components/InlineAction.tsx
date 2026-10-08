@@ -33,8 +33,11 @@ interface Props {
    * default) is inside a `bgSecondary` card, where `bgTertiary` reads as a step
    * down. `page` is straight onto `colors.bg`, where `bgTertiary` is nearly
    * invisible against it — same distinction `PillGroup`'s `surface` prop makes.
+   * `tray` is inside a stack's `TaskGroupTray` (`bgSunken`), where `bgTertiary`
+   * is nearly the same grey as the tray; the pill takes the `bgSecondary` card
+   * colour the tray's own task rows use, so it reads as a control on the tray.
    */
-  surface?: 'page' | 'card';
+  surface?: 'page' | 'card' | 'tray';
   disabled?: boolean;
   accessibilityLabel?: string;
   haptic?: boolean;
@@ -77,7 +80,7 @@ export function InlineAction({
   // ranks the pair; dimming the quieter one's text isn't.
   const fg = neutral ? colors.text : tint ?? colors.accentText;
   const bg = neutral
-    ? (surface === 'page' ? colors.bgSecondary : colors.bgTertiary)
+    ? (surface === 'page' || surface === 'tray' ? colors.bgSecondary : colors.bgTertiary)
     : tint
       ? tint + (isDark ? '26' : '1F')
       : colors.accentSubtle;

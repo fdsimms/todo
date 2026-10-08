@@ -10,6 +10,7 @@ import { DEFAULT_TAB_ROUTES, NAV_MENU_ROWS, type NavDestination } from '../../ut
 import { TabSlotPickerSheet, TAB_SLOT_NAMES } from '../../components/TabSlotPickerSheet';
 import { haptics } from '../../utils/haptics';
 import { COIN_ICON } from '../../constants/coinIcon';
+import { FirstRunSheet } from '../../components/FirstRunSheet';
 
 const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
   NAV_MENU_ROWS.flatMap(row => row.kind === 'screen' ? [row.destination] : row.hub.members)
@@ -44,6 +45,7 @@ export function FeatureAreasSettings() {
   const clearTabSlot = useSettingsStore(s => s.clearTabSlot);
   const resetTabRoutes = useSettingsStore(s => s.resetTabRoutes);
   const [pickingSlot, setPickingSlot] = useState<number | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
   const isDefaultTabs = tabRoutes.length === DEFAULT_TAB_ROUTES.length
     && tabRoutes.every((route, i) => route === DEFAULT_TAB_ROUTES[i]);
   /** One tab slot's row: the screen it holds, opening the picker for that slot. */
@@ -101,6 +103,14 @@ export function FeatureAreasSettings() {
         onPress={() => setSimpleMode(!simpleMode)}
       />
       <View style={styles.sep} />
+      <SettingsRow
+        entryId="firstRunSetup"
+        icon="help-circle-outline"
+        label="Run setup again"
+        hint="Asks the three first-launch questions again: groceries and meals, simplified mode and reminders."
+        onPress={() => { haptics.tap(); setSetupOpen(true); }}
+      />
+      <View style={styles.sep} />
       {/* The list is the setting's only honest description: "hides advanced
           features" is not something anyone can act on without knowing which. */}
       <SettingsRow icon="list-outline" label="What simplified mode hides" />
@@ -142,6 +152,7 @@ export function FeatureAreasSettings() {
         </>
       )}
     </SettingsSection>
+    <FirstRunSheet visible={setupOpen} onClose={() => setSetupOpen(false)} rerun />
     <TabSlotPickerSheet
       visible={pickingSlot !== null}
       onClose={() => setPickingSlot(null)}

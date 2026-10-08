@@ -9256,6 +9256,21 @@ describe('pinned ordering', () => {
     expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'b']);
   });
 
+  it('keeps a pin-each-occurrence successor out of the Pinned block until it is due', () => {
+    // The successor of a pinEachOccurrence task is spawned pinned, so without a
+    // clock gate it sat at the top of Today for the whole of its wait.
+    const later = new Date(2999, 0, 1, 9).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'future', pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: later }),
+        makeTask({ id: 'due', pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2020, 0, 1, 9).toISOString() }),
+        makeTask({ id: 'manual', pinned: true, dueDate: later }),
+      ],
+    });
+    // The manual pin still ignores the clock, as it always has.
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['due', 'manual']);
+  });
+
   it('keeps unpinning free of ranks', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: true, pinnedOrder: 3 })] });
     useTaskStore.getState().togglePin('a');

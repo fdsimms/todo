@@ -27,7 +27,7 @@ import { useScreenSettings } from '../hooks/useScreenSettings';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -76,6 +76,7 @@ import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, priceToInput, tripPriceFor } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
@@ -178,8 +179,10 @@ function AddGroceryFabWithDropLabel({
 
 export function GroceryScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  const pullSearch = usePullToSearch();
   // The list's own settings, from an action at the foot of the list. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Groceries', 'Grocery settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -1667,6 +1670,7 @@ export function GroceryScreen() {
       >
       <ReorderableList
         data={rows}
+        refreshControl={pullSearch.refreshControl}
         keyExtractor={row => row.key}
         renderItem={renderRow}
         // The user can't scroll during an add-button drag (the button's
@@ -1676,7 +1680,7 @@ export function GroceryScreen() {
         scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
-        scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+        scrollToTop={{ bottom: fabBottom }}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
@@ -1784,7 +1788,6 @@ export function GroceryScreen() {
           channel={fabIntentChannel}
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           accessibilityLabel="Add groceries"
           drag={fabDrag}
           dragHint="Drag onto the list to add an item there, or back to the button to cancel"
@@ -1949,6 +1952,7 @@ export function GroceryScreen() {
           onClose={() => setRecipeToAdd(null)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

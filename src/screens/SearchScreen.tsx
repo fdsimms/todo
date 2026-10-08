@@ -82,7 +82,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const { task, titleMatches, projectName, projectMatches, occurrenceCount } = result;
+  const { task, titleMatches, projectName, projectMatches, notesExcerpt, occurrenceCount } = result;
   const isCompleted = task.completed;
   // A daily target closed out short of its count (see rolloverQuotas) is still
   // `completed`, but a plain green checkmark would read as the same full
@@ -269,7 +269,17 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
               <Text style={styles.countText}>{countLabel}</Text>
             </View>
           )}
-          {task.notes.length > 0 && (
+          {/* The excerpt replaces the start-of-notes preview when the notes
+              are why the task matched, so the match is the part on screen. */}
+          {notesExcerpt ? (
+            <HighlightedText
+              text={notesExcerpt.text}
+              ranges={notesExcerpt.ranges}
+              style={styles.notesPreview}
+              highlightStyle={styles.notesHighlight}
+              numberOfLines={1}
+            />
+          ) : task.notes.length > 0 && (
             <Text style={styles.notesPreview} numberOfLines={1}>{task.notes}</Text>
           )}
         </View>
@@ -1049,4 +1059,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     flex: 1,
   },
+  notesHighlight: { color: colors.accent, fontWeight: fontWeight.semibold },
 });

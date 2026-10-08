@@ -86,6 +86,7 @@ import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 interface LogbookSection {
   title: string;
@@ -218,6 +219,7 @@ function formatTime(iso: string): string {
 }
 
 export function LogbookScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
@@ -680,6 +682,7 @@ export function LogbookScreen() {
         // have. What the two share is the metrics (see cellLayout) and the day
         // header, which is what makes them read as one screen.
         <SectionList
+          refreshControl={pullSearch.refreshControl}
           sections={kitchenSections}
           keyExtractor={item => item.key}
           getItemLayout={getItemLayout}
@@ -734,6 +737,7 @@ export function LogbookScreen() {
       ) : (
       <PaintSelectionProvider {...paintProps}>
       <SectionList
+        refreshControl={pullSearch.refreshControl}
         sections={sections}
         keyExtractor={item => item.id}
         getItemLayout={getItemLayout}
@@ -903,6 +907,7 @@ export function LogbookScreen() {
         selectedProject={selectedProject}
         onSelectProject={setSelectedProject}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

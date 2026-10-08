@@ -22,7 +22,7 @@ import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddP
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
-import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -67,6 +67,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { SearchField } from '../components/SearchField';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import type { Project } from '../types';
 import { LazySheet } from '../components/LazySheet';
 
@@ -93,7 +94,9 @@ function AddProjectFabWithDropLabel({
 }
 
 export function ProjectsScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // The page's own settings, from the last row of its "…" menu. See SCREEN_SETTINGS.
@@ -631,9 +634,10 @@ export function ProjectsScreen() {
         )
       ) : (
         <ReorderableList
+          refreshControl={pullSearch.refreshControl}
           data={projectListItems}
           keyExtractor={item => item.key}
-          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+          scrollToTop={{ bottom: fabBottom }}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
           // control below. Same while a paint gesture owns the touch — see
@@ -673,7 +677,6 @@ export function ProjectsScreen() {
           channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add project"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           // Placing a new project by hand is a hand-set order, so it goes
           // wherever a row drag does (see canReorder).
           drag={canReorder ? fabDrag : undefined}
@@ -754,6 +757,7 @@ export function ProjectsScreen() {
           onClose={handleEditorClose}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

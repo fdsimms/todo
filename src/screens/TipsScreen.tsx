@@ -16,6 +16,7 @@ import { font, fontWeight, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TIPS, TIP_AREAS, filterTips, tipsFor, type Tip } from '../utils/tips';
 import { useFilterField } from '../hooks/useFilterField';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 /**
  * Everything the app can do, in one list.
@@ -38,13 +39,14 @@ type Row =
   | { type: 'tip'; key: string; tip: Tip; seen: boolean };
 
 export function TipsScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Tips', 'Tip settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
 
   const seenTips = useSettingsStore(useShallow(s => s.seenTips));
   const markAllTipsSeen = useSettingsStore(s => s.markAllTipsSeen);
@@ -167,6 +169,7 @@ export function TipsScreen() {
         />
       ) : (
         <FlatList
+          refreshControl={pullSearch.refreshControl}
           ref={keyboardScroll.ref}
           data={rows}
           keyExtractor={row => row.key}
@@ -177,6 +180,7 @@ export function TipsScreen() {
           {...keyboardScroll.props}
         />
       )}
+      {pullSearch.sheet}
     </View>
   );
 }

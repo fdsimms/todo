@@ -1258,7 +1258,7 @@ is how `list_calendar_requests` reads the outcome. The rules are in `src/utils/c
 - **Exactly one device writes them, and that is a synced setting.** An iCloud calendar shows an event
   on every device signed in to it, so two devices answering one request would put it there twice.
   `calendarRequestDeviceId` names the writer (a `dbGetDeviceId` id). Picking a calendar in Settings ›
-  Reminders & Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
+  Calendar › Add Claude's events to makes this device the writer, which switches the previous one off
   by overwriting the key rather than by anybody remembering to. The calendar itself,
   `calendarRequestCalendarId`, is device-local like every other EventKit id. A device-local on/off
   switch was the first sketch and was dropped for this reason.

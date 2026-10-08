@@ -854,6 +854,15 @@ export function isTaskVisible(task: Task): boolean {
   return isVisibleApartFromVacation(task);
 }
 
+// Whether a task's pin is lit right now. A pinEachOccurrence task is spawned
+// pinned, so the stored flag says what the person wants; the pin only counts
+// once the occurrence is visible on Today. Until then the row shows an unlit
+// pin and the Pinned block leaves it out. Manual pins ignore the clock, as
+// they always have.
+export function isPinnedOnToday(task: Task): boolean {
+  return task.pinned && (!task.pinEachOccurrence || isTaskVisible(task));
+}
+
 // True for a recurring task that's showing up in Later ahead of its own day
 // (deferred to, or due on, a future day). Completing these early skips the
 // point of the schedule — the next occurrence gets generated before this one
@@ -1010,7 +1019,14 @@ export function isUpcomingToday(task: Task): boolean {
   // headerless bucket of Later Today rather than under Morning/Afternoon: the
   // pace ramp reaches across the whole day, so no one segment is where it
   // belongs. isOnPaceQuota has already run every gate below.
-  if (isOnPaceQuota(task)) return true;
+  //
+  // Only while the next unit falls due on *this* logical day, though. A weekly
+  // target's next unit is usually days away ("next Thu"), and listing it under
+  // Later Today contradicted the row's own label; it belongs in Later, which
+  // sorts it by quotaNextDueAt.
+  if (isOnPaceQuota(task)) {
+    return getTaskDayStart(quotaNextDueAt(task)).getTime() === getCurrentDayStart().getTime();
+  }
   if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
