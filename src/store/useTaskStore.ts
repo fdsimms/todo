@@ -9514,8 +9514,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // It comes back the moment the blocker clears, exactly as that row does.
       // A paused project's task is the other non-clock hide: the pause is the
       // person saying "not until then", which pinning doesn't answer.
+      //
+      // The one clock gate pinning does not override is a pinEachOccurrence
+      // task. Its successor is pinned the moment it is spawned, so the pin
+      // answers the occurrence, not the schedule: a daily task finished today
+      // would otherwise sit at the top of Today all day, for tomorrow's
+      // occurrence. Such a row joins the block once it is actually due.
       .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !isWithheld(t))
+        && !isHeldBack(t) && !isWithheld(t)
+        && (!t.pinEachOccurrence || isTaskVisible(t)))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.
