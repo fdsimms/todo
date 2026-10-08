@@ -334,7 +334,7 @@ import {
 } from '../utils/snackNudgeTasks';
 import {
   limitWarningsFor, limitWarningSourceId, limitWarningDayOf, limitWarningKeyOf, limitWarningTitle,
-  LIMIT_WARNING_NOTES,
+  LIMIT_WARNING_LINK, limitWarningNotes,
 } from '../utils/limitWarningTasks';
 import { foodLogTotals } from '../utils/foodLog';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
@@ -2510,7 +2510,8 @@ function reconcileLimitWarnings(tasks: Task[]): void {
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const declined = settings.limitWarningDeclinedDayKey === todayKey;
-  const totals = foodLogTotals(dbGetFoodLogEntries(todayKey, todayKey)).total;
+  const todayEntries = dbGetFoodLogEntries(todayKey, todayKey);
+  const totals = foodLogTotals(todayEntries).total;
   const warnings = limitWarningsFor(
     totals, settings.nutritionTargets, settings.nutritionLimits, settings.limitWarnPercent,
   );
@@ -2532,14 +2533,21 @@ function reconcileLimitWarnings(tasks: Task[]): void {
       wanted: !declined && wantedKeys.has(key),
       // Ticked off ends it for the day, even once the total climbs past the limit.
       blocksOnFinished: true,
+      // The title follows the total and the notes follow what made it, so
+      // the task says which foods to look at without opening anything.
       drift: existing => {
         if (!warning) return null;
         const title = limitWarningTitle(warning);
-        return existing.title === title ? null : { title };
+        const notes = limitWarningNotes(todayEntries, key);
+        const patch: Partial<Task> = {};
+        if (existing.title !== title) patch.title = title;
+        if (existing.notes !== notes) patch.notes = notes;
+        return Object.keys(patch).length > 0 ? patch : null;
       },
       draft: () => ({
         title: warning ? limitWarningTitle(warning) : '',
-        notes: LIMIT_WARNING_NOTES,
+        notes: limitWarningNotes(todayEntries, key),
+        linkUrl: LIMIT_WARNING_LINK,
         dueDate,
         category: settings.limitWarningTaskCategory,
         ...generatedBy('limitWarning', limitWarningSourceId(todayKey, key)),

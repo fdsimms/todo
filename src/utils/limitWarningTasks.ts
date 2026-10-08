@@ -1,4 +1,4 @@
-import type { NutrientKey } from '../types';
+import type { FoodLogEntry, NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import { activeLimits, limitStatus, type LimitStatus, type NutritionTargets } from './nutritionTargets';
 
@@ -77,3 +77,44 @@ export function limitWarningTitle(warning: LimitWarning): string {
 
 export const LIMIT_WARNING_NOTES =
   'From the food log so far today, against the Stay under limit set in Nutrition. If you have eaten without logging it, the total is higher than this.';
+
+/** What opens the Food log, for the warning task's link button. */
+export const LIMIT_WARNING_LINK = 'dundundun://foodlog';
+
+/** How many of the day's biggest contributors the notes name. */
+export const LIMIT_WARNING_TOP_FOODS = 3;
+
+/**
+ * "Most of it: Ice cream (18g), Chocolate chip cookies (9g), Oat milk (4g)."
+ *
+ * The entries that put the most of `key` into today's total, biggest first,
+ * merged by name so three scoops logged separately read as one food. Only
+ * entries that state the nutrient: one that doesn't is unknown, and naming it
+ * as a contributor of nothing would be a claim. Null when nothing states it.
+ */
+export function describeLimitContributors(
+  entries: readonly FoodLogEntry[],
+  key: NutrientKey,
+  limit: number = LIMIT_WARNING_TOP_FOODS,
+): string | null {
+  const byName = new Map<string, number>();
+  for (const entry of entries) {
+    const amount = entry.nutrition.amounts[key];
+    if (amount === undefined || amount <= 0) continue;
+    byName.set(entry.label, (byName.get(entry.label) ?? 0) + amount);
+  }
+  if (byName.size === 0) return null;
+  const unit = NUTRIENT_LABEL[key].unit;
+  const suffix = unit === 'cal' ? ' cal' : unit;
+  const top = [...byName.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name, amount]) => `${name} (${(Math.round(amount * 10) / 10).toLocaleString('en-US')}${suffix})`);
+  return `Most of it: ${top.join(', ')}.`;
+}
+
+/** The warning's notes: what it's made of, then where the figure comes from. */
+export function limitWarningNotes(entries: readonly FoodLogEntry[], key: NutrientKey): string {
+  const contributors = describeLimitContributors(entries, key);
+  return contributors ? `${contributors}\n\n${LIMIT_WARNING_NOTES}` : LIMIT_WARNING_NOTES;
+}

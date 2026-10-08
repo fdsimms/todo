@@ -1,4 +1,8 @@
+import type { FoodLogEntry } from '../types';
 import {
+  describeLimitContributors,
+  limitWarningNotes,
+  LIMIT_WARNING_NOTES,
   limitWarningDayOf,
   limitWarningKeyOf,
   limitWarningSourceId,
@@ -42,5 +46,29 @@ describe('limitWarningTitle', () => {
       .toBe('Saturated fat at 12 of 16g today');
     expect(limitWarningTitle({ key: 'cholesterolMg', total: 1250, target: 300, status: 'over' }))
       .toBe('Cholesterol at 1,250 of 300mg today, over the limit');
+  });
+});
+
+describe('describeLimitContributors', () => {
+  const entry = (label: string, sugarG?: number) =>
+    ({ label, nutrition: { amounts: sugarG === undefined ? {} : { sugarG } } }) as unknown as FoodLogEntry;
+
+  it('names the biggest contributors first, merging repeats of one food', () => {
+    const entries = [
+      entry('Oat milk', 4), entry('Ice cream', 12), entry('Cookie', 9), entry('Ice cream', 6), entry('Banana', 3),
+    ];
+    expect(describeLimitContributors(entries, 'sugarG'))
+      .toBe('Most of it: Ice cream (18g), Cookie (9g), Oat milk (4g).');
+  });
+
+  it('leaves out entries that do not state it, and says nothing when none do', () => {
+    expect(describeLimitContributors([entry('Restaurant curry'), entry('Cookie', 9)], 'sugarG'))
+      .toBe('Most of it: Cookie (9g).');
+    expect(describeLimitContributors([entry('Restaurant curry')], 'sugarG')).toBeNull();
+  });
+
+  it('puts them ahead of the standing note', () => {
+    expect(limitWarningNotes([entry('Cookie', 9)], 'sugarG')).toBe(`Most of it: Cookie (9g).\n\n${LIMIT_WARNING_NOTES}`);
+    expect(limitWarningNotes([], 'sugarG')).toBe(LIMIT_WARNING_NOTES);
   });
 });

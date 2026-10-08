@@ -14025,6 +14025,9 @@ describe('quota tasks', () => {
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
           run();
           expect(warnings().map(t => t.title)).toEqual(['Saturated fat at 12 of 16g today']);
+          // Says what it's made of, and its link button opens the Food log.
+          expect(warnings()[0].notes).toMatch(/^Most of it: Ice cream \(12g\)\./);
+          expect(warnings()[0].linkUrl).toBe('dundundun://foodlog');
         });
 
         it('writes nothing below it, or for a nutrient that is not a limit', () => {
@@ -14045,6 +14048,7 @@ describe('quota tasks', () => {
           (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12), fatEntry(7, 'f2')]);
           run();
           expect(warnings().map(t => t.title)).toEqual(['Saturated fat at 19 of 16g today, over the limit']);
+          expect(warnings()[0].notes).toMatch(/^Most of it: Ice cream \(19g\)\./);
         });
 
         it('removes it when the entry behind it is deleted', () => {

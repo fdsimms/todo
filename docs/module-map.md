@@ -193,7 +193,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
-- `src/utils/limitWarningTasks.ts` — LimitWarning, limitWarningsFor, limitWarningSourceId, limitWarningKeyOf, limitWarningDayOf, limitWarningTitle, LIMIT_WARNING_NOTES
+- `src/utils/limitWarningTasks.ts` — LimitWarning, limitWarningsFor, limitWarningSourceId, limitWarningKeyOf, limitWarningDayOf, limitWarningTitle, LIMIT_WARNING_NOTES, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, describeLimitContributors, +1 more
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync

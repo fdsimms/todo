@@ -55,7 +55,7 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
-import { LIMIT_WARNING_NOTES, limitWarningSourceId, limitWarningTitle } from './limitWarningTasks';
+import { LIMIT_WARNING_LINK, LIMIT_WARNING_NOTES, limitWarningSourceId, limitWarningTitle } from './limitWarningTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
 import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
@@ -1905,7 +1905,8 @@ export function seedDemoData(): void {
   useSettingsStore.getState().setLimitWarningTaskCategory('Health');
   addTask({
     title: limitWarningTitle({ key: 'satFatG', total: 16, target: 20, status: 'near' }),
-    notes: LIMIT_WARNING_NOTES,
+    notes: `Most of it: Ice cream (9g), Cheese pizza (5g).\n\n${LIMIT_WARNING_NOTES}`,
+    linkUrl: LIMIT_WARNING_LINK,
     dueDate: today.toISOString(),
     category: 'Health',
     ...generatedBy('limitWarning', limitWarningSourceId(dayKeyOf(today), 'satFatG')),
