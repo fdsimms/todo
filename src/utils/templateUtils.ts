@@ -113,6 +113,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     conditions: normalizeConditions(raw.conditions),
+    conditionsMatch: raw.conditionsMatch === 'any' ? 'any' : 'all',
     variants: normalizeVariants(raw.variants),
     answerGate: normalizeItemGate(raw.answerGate),
     refTemplateId: raw.refTemplateId ?? null,
@@ -138,6 +139,8 @@ function normalizeConditions(raw: unknown): TemplateItemCondition[] {
     .map(c => ({
       questionId: c.questionId,
       values: Array.isArray(c.values) ? c.values.filter((v): v is string => typeof v === 'string') : [],
+      ...(Number.isFinite(c.min) ? { min: c.min } : {}),
+      ...(Number.isFinite(c.max) ? { max: c.max } : {}),
     }));
 }
 
