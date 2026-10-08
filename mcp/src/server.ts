@@ -3054,6 +3054,7 @@ function registerWriteTools(
       nudgeOptIn: z.boolean().optional().describe('false keeps it out of every nudge, the Pull from projects sheet included.'),
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
       showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
+      hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
     },
     async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {
@@ -3122,6 +3123,7 @@ function registerWriteTools(
       category: z.string().nullable().optional().describe('A category from list_categories, or null for none.'),
       projectId: z.string().nullable().optional().describe('The project whose page shows it as a section. Its tasks keep their own projects.'),
       checklist: z.boolean().optional(),
+      hideNextStep: z.boolean().optional().describe('Leave the "Next:" task off its collapsed header.'),
     },
     async ({ id, ...input }) => {
       try {

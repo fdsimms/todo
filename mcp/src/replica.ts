@@ -120,6 +120,7 @@ export interface StackPatch {
   category?: string | null;
   projectId?: string | null;
   checklist?: boolean;
+  hideNextStep?: boolean;
 }
 
 export interface CategorySettingsPatch {
@@ -800,6 +801,8 @@ export interface ProjectPatch {
   weekendSource?: boolean;
   /** On a list: checked items stay on the page instead of folding away. */
   showChecked?: boolean;
+  /** Leave the "Next:" line off its card on the Projects screen. */
+  hideNextStep?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -6381,7 +6384,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           notes: source.notes, defaultTaskCategory: source.defaultTaskCategory, taskDefaults: source.taskDefaults ?? null,
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
-          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked,
+          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked, hideNextStep: source.hideNextStep,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {
