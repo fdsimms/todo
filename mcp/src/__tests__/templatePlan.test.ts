@@ -114,6 +114,14 @@ describe('what the normalizers would have swallowed', () => {
     expect(errors(plan({ items: [{ title: 'Pack', effort: 7 as never }] }))[0]).toContain('effort must be 0 to 6');
   });
 
+  it('takes a window bound that follows the sun, with its clock fallback', () => {
+    expect(errors(plan({ items: [{ title: 'Walk', windowEnd: '18:40', windowEndSun: 'sunset-30' }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'Walk', windowEndSun: 'sunset' }] }))).toEqual([
+      'item "Walk" windowEndSun needs windowEnd beside it, the clock time to fall back to.',
+    ]);
+    expect(errors(plan({ items: [{ title: 'Walk', windowEnd: '18:40', windowEndSun: 'dusk' }] }))[0]).toContain('"sunrise" or "sunset"');
+  });
+
   it('refuses a time that is not HH:MM', () => {
     expect(errors(plan({ items: [{ title: 'Pack', windowStart: '9am' }] }))).toEqual([
       'item "Pack" windowStart must be HH:MM.',

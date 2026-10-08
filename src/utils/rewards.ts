@@ -242,6 +242,22 @@ export function canPostBounty(
   );
 }
 
+/** How many tasks the Rewards screen suggests posting a bounty on. */
+export const SUGGESTED_BOUNTY_COUNT = 3;
+
+/**
+ * Tasks worth offering a bounty on while none is posted: the ones already
+ * being put off (`drifting`, worst first, as `driftingTaskList` returns them)
+ * that a bounty can go on at all. The order is the caller's, so the task moved
+ * the most comes first; nothing here ranks by age or push count itself.
+ */
+export function suggestedBountyTasks<T extends Parameters<typeof canPostBounty>[0]>(
+  drifting: readonly T[],
+  max: number = SUGGESTED_BOUNTY_COUNT,
+): T[] {
+  return drifting.filter(canPostBounty).slice(0, max);
+}
+
 /**
  * The count after a schedule write. Only a push moves it, and it stops at the
  * expiry. Unlike `nextPostponeCount`, a pull back to today leaves it alone.

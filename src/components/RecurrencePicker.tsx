@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { RecurrenceType } from '../types';
+import type { HolidayRule, RecurrenceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { ORDINAL_OPTIONS, MONTH_ABBREVIATIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
@@ -11,6 +11,8 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
 import { haptics } from '../utils/haptics';
 import { ordinal } from '../utils/ordinal';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { HOLIDAY_SET_LABELS, hasAnyHolidays } from '../utils/holidays';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -100,7 +102,20 @@ interface Props {
    * the choice reads as an actual date rather than an abstract mechanism.
    */
   previewNextDate?: Date | null;
+
+  /**
+   * What an occurrence the rule lands on a holiday does (Task.recurrenceHolidays).
+   * Omit `onChangeHolidays` to leave the group out.
+   */
+  recurrenceHolidays?: HolidayRule | null;
+  onChangeHolidays?: (rule: HolidayRule | null) => void;
 }
+
+const HOLIDAY_OPTIONS: { value: HolidayRule | null; label: string }[] = [
+  { value: null, label: 'As usual' },
+  { value: 'skip', label: 'Skip it' },
+  { value: 'move', label: 'Next day' },
+];
 
 /** The monthly day-anchor modes, as one closed set the picker can switch on. */
 type MonthAnchor = 'dueDate' | 'monthDay' | 'lastDay' | 'weekday';
@@ -170,9 +185,21 @@ export function RecurrencePicker({
   onSelectEndNever, onSelectEndCount,
   endDate,
   previewNextDate,
+  recurrenceHolidays, onChangeHolidays,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Which days count, said where the choice is: with none set up the choice
+  // does nothing, and the hint says so rather than letting it look armed.
+  const holidaySet = useSettingsStore(s => s.holidaySet);
+  const customHolidays = useSettingsStore(s => s.customHolidays);
+  const holidayHint = !hasAnyHolidays({ set: holidaySet, custom: customHolidays })
+    ? 'No holidays are set up, so this does nothing yet. Choose them in Settings, Day & time.'
+    : `Uses ${[
+        holidaySet !== 'none' ? `${HOLIDAY_SET_LABELS[holidaySet]} holidays` : null,
+        customHolidays.length > 0 ? `${customHolidays.length} day${customHolidays.length === 1 ? '' : 's'} off of your own` : null,
+      ].filter(Boolean).join(' and ')}, set in Settings, Day & time.`;
 
   const endMode: 'never' | 'date' | 'count' =
     endDate?.value ? 'date' : recurrenceCount !== null ? 'count' : 'never';
@@ -376,6 +403,17 @@ export function RecurrencePicker({
                 : `Falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`}
             </Text>
           )}
+        </Group>
+      )}
+
+      {recurrenceType !== 'hours' && !!onChangeHolidays && (
+        <Group label="On a holiday" hint={holidayHint} styles={styles}>
+          <SegmentedControl
+            label="On a holiday"
+            value={recurrenceHolidays ?? null}
+            onChange={onChangeHolidays}
+            options={HOLIDAY_OPTIONS}
+          />
         </Group>
       )}
 

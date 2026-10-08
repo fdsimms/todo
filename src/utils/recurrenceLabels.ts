@@ -80,7 +80,8 @@ export interface RecurrenceRule {
  * ("Tue, Jun 17"), off a `ParsedSchedule` rather than a stored row.
  */
 export function describeTaskRecurrence(
-  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion'>,
+  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion'>
+    & Partial<Pick<Task, 'recurrenceHolidays'>>,
 ): string {
   const { recurrenceType: type, recurrenceInterval: interval, recurrenceDays: days } = task;
   if (type === 'none') return '';
@@ -123,7 +124,13 @@ export function describeTaskRecurrence(
   // saying which end of the cycle the next date is measured from. 'hours'
   // is always measured from completion (there's no "on schedule" mode for
   // it — see RecurrencePicker), so saying so on every row would be noise.
-  return type !== 'hours' && task.recurrenceFromCompletion ? `${text} · from completion` : text;
+  if (type !== 'hours' && task.recurrenceFromCompletion) text = `${text} · from completion`;
+  // The same reason: a holiday rule changes where the next date lands, and
+  // nothing else on a row says so.
+  if (type !== 'hours' && task.recurrenceHolidays) {
+    text = `${text} · ${task.recurrenceHolidays === 'skip' ? 'skips holidays' : 'moves off holidays'}`;
+  }
+  return text;
 }
 
 /**

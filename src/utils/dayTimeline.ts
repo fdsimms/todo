@@ -2,6 +2,7 @@ import type { Task } from '../types';
 import type { BusyEvent } from './calendarBusy';
 import { effectiveWindowEndTime, hhmmMinutes } from './clockTime';
 import { estimatedMinutesFor } from './effort';
+import { windowBounds, type SunLocation } from './sunTimes';
 
 /**
  * Laying one day out on a time axis (#2680) — the first clock-time-to-offset
@@ -77,6 +78,8 @@ export interface DayTimelineInput {
   tasks: readonly Task[];
   /** The day's events, already sliced by `eventsIn`. */
   events: readonly BusyEvent[];
+  /** Where a window that follows the sun is worked out for (sunTimes.ts). */
+  sunLocation?: SunLocation | null;
 }
 
 /**
@@ -147,16 +150,22 @@ export function instantToDayMinutes(iso: string, dayStart: Date): number | null 
 }
 
 /** Where a task sits on the axis, or null when nothing says when. */
-function placeTask(task: Task, dayStart: Date): { start: number; end: number; instant: boolean } | null {
+function placeTask(
+  task: Task,
+  dayStart: Date,
+  sunLocation: SunLocation | null,
+): { start: number; end: number; instant: boolean } | null {
   const length = estimatedMinutesFor(task);
 
   if (task.windowStart) {
-    const start = clockToDayMinutes(task.windowStart, dayStart);
+    const window = windowBounds(task, dayStart, sunLocation);
+    const windowStart = window.start ?? task.windowStart;
+    const start = clockToDayMinutes(windowStart, dayStart);
     // The day's start instant carries the reset time, which is the timeline
     // "after the start" is measured on (see effectiveWindowEndTime).
     const pad = (n: number) => String(n).padStart(2, '0');
     const dayResetTime = `${pad(dayStart.getHours())}:${pad(dayStart.getMinutes())}`;
-    const close = effectiveWindowEndTime(task.windowStart, task.windowEnd, dayResetTime);
+    const close = effectiveWindowEndTime(windowStart, window.end, dayResetTime);
     if (close) {
       // A window that closes is the one case with a length nobody guessed:
       // the user typed both ends of it.
@@ -224,7 +233,7 @@ function assignLanes(entries: TimelineEntry[]): void {
   if (run.length > 0) closeRun();
 }
 
-export function buildDayTimeline({ dayStart, tasks, events }: DayTimelineInput): DayTimeline {
+export function buildDayTimeline({ dayStart, tasks, events, sunLocation = null }: DayTimelineInput): DayTimeline {
   const allDay = events.filter(e => e.allDay);
   const timed = events.filter(e => !e.allDay);
 
@@ -261,7 +270,7 @@ export function buildDayTimeline({ dayStart, tasks, events }: DayTimelineInput):
         continue;
       }
     }
-    const placed = placeTask(task, dayStart);
+    const placed = placeTask(task, dayStart, sunLocation);
     if (!placed) {
       unplaced.push(task);
       continue;

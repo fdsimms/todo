@@ -130,7 +130,7 @@ export function FeatureAreasSettings() {
         the menu reaches can be one; see normalizeTabRoutes for the rules. */}
     <SettingsSection
       label="Tab bar"
-      footer="Three screens, plus an optional fourth, beside More in the bar along the bottom. More always opens the menu, and every screen stays in the menu whether or not it has a tab."
+      footer="Three screens, plus an optional fourth and fifth, beside More in the bar along the bottom. More always opens the menu, and every screen stays in the menu whether or not it has a tab."
     >
       <SettingsRow entryId="tabRoutes" {...slotRow(0)} />
       <View style={styles.sep} />
@@ -139,6 +139,8 @@ export function FeatureAreasSettings() {
       <SettingsRow {...slotRow(2)} />
       <View style={styles.sep} />
       <SettingsRow {...slotRow(3)} />
+      <View style={styles.sep} />
+      <SettingsRow {...slotRow(4)} />
       {!isDefaultTabs && (
         <>
           <View style={styles.sep} />

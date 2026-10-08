@@ -98,6 +98,14 @@ describe('repeat', () => {
     expect(ok({ repeat: { every: 'week', weekdays: [3, 1, 1] } })).toMatchObject({ recurrenceType: 'weekly', recurrenceDays: [1, 3] });
   });
 
+  it('takes a holiday rule, reads it back, and refuses one on an hourly repeat', () => {
+    const written = ok({ repeat: { every: 'week', weekdays: [2], holidays: 'move' } });
+    expect(written).toMatchObject({ recurrenceType: 'weekly', recurrenceHolidays: 'move' });
+    expect(describeRepeat({ ...written, recurrenceInterval: 1, recurrenceDays: [2] } as Task)).toMatchObject({ every: 'week', holidays: 'move' });
+    expect(ok({ repeat: { every: 'week', weekdays: [2] } })).toMatchObject({ recurrenceHolidays: null });
+    expect(errorsOf({ repeat: { every: 'hours', interval: 4, holidays: 'skip' } })).toMatch(/no days to skip/);
+  });
+
   it('counts hourly and daily repeats from completion, as the picker does, unless told otherwise', () => {
     expect(ok({ repeat: { every: 'hours', interval: 3 } })).toMatchObject({ recurrenceType: 'hours', recurrenceInterval: 3, recurrenceFromCompletion: true });
     expect(ok({ repeat: { every: 'day' } }).recurrenceFromCompletion).toBe(true);
@@ -195,7 +203,41 @@ describe('habit, window, follow-up, blockers', () => {
   it('takes a 24-hour window and refuses anything else', () => {
     expect(ok({ window: { start: '08:00', end: '13:30' } })).toMatchObject({ windowStart: '08:00', windowEnd: '13:30' });
     expect(errorsOf({ window: { start: '8am' } })).toMatch(/HH:MM/);
-    expect(ok({ window: null })).toMatchObject({ windowStart: null, windowEnd: null });
+    expect(ok({ window: null })).toMatchObject({ windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null });
+  });
+
+  it('takes a bound that follows the sun, with the clock time it resolves to beside it', () => {
+    const asked: [string, string | null][] = [];
+    const sunDeps = {
+      ...deps,
+      sunClockFor: (anchor: string, dueDate: string | null) => {
+        asked.push([anchor, dueDate]);
+        return anchor === 'sunset-30' ? '18:12' : '06:41';
+      },
+    };
+    const { patch, errors } = taskFieldsPatch(
+      { dueDate: '2026-10-12T12:00:00', window: { start: 'sunrise+0', end: 'sunset-30' } }, null, sunDeps,
+    );
+    expect(errors).toEqual([]);
+    expect(patch).toMatchObject({
+      windowStart: '06:41', windowStartSun: 'sunrise',
+      windowEnd: '18:12', windowEndSun: 'sunset-30',
+    });
+    // Resolved on the task's own day, the one being written alongside it.
+    expect(asked.every(([, due]) => due === patch.dueDate)).toBe(true);
+  });
+
+  it('clears a bound\'s anchor when it is given a clock time instead', () => {
+    expect(ok({ window: { start: '08:00' } })).toMatchObject({ windowStart: '08:00', windowStartSun: null });
+  });
+
+  it('refuses an anchor it cannot resolve, and one it cannot read', () => {
+    // No sunClockFor at all, and one that answers null (no location saved).
+    expect(errorsOf({ window: { end: 'sunset' } })).toMatch(/no location is saved/);
+    const noPlace = { ...deps, sunClockFor: () => null };
+    expect(taskFieldsPatch({ window: { end: 'sunset' } }, null, noPlace).errors.join(' ')).toMatch(/Settings, Day & time/);
+    expect(errorsOf({ window: { end: 'dusk' } })).toMatch(/sunrise.*sunset/);
+    expect(errorsOf({ window: { end: 'sunset-500' } })).toMatch(/up to 180/);
   });
 
   it('sets a follow-up only on a repeating task', () => {
