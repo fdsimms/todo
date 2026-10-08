@@ -5,6 +5,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useColors } from '../../theme/ThemeContext';
 import { iconSize } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
+import { InlineAction } from '../../components/InlineAction';
+import { SavedEventSheet } from '../../components/SavedEntrySheets';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { haptics } from '../../utils/haptics';
 import { eventMemoryKey } from '../../utils/eventMemory';
@@ -28,10 +30,10 @@ import { makeSettingsStyles } from './settingsStyles';
 const BOOK_EVERY_START = 12;
 
 /**
- * The events kept for re-adding, in Settings › Calendar. Events are saved from
- * the toast after adding one; this is where they are removed, and where one
- * gets a booking reminder ("Book Optometrist" once a year has passed). Length,
- * place and alert aren't edited here: adding the event again updates them.
+ * The events kept for re-adding, in Settings › Calendar. An event is saved
+ * here or from the toast after adding one. This is also where one is edited
+ * (title, location, length, alert) and removed, and where it gets a booking
+ * reminder ("Book Optometrist" once a year has passed).
  *
  * Reads the list when the screen gains focus, the way `SavedPlacesRows` does.
  */
@@ -40,6 +42,7 @@ export function SavedEventsRows() {
   const styles = makeSettingsStyles(colors);
   const [events, setEvents] = useState<SavedEvent[]>([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SavedEvent | 'new' | null>(null);
   const bookEventTasks = useSettingsStore(s => s.bookEventTasks);
   const setBookEventTasks = useSettingsStore(s => s.setBookEventTasks);
   const anyInterval = events.some(e => e.bookEveryMonths !== null);
@@ -50,7 +53,6 @@ export function SavedEventsRows() {
     if (animate) animateLayout();
     writeSavedEvents(next);
     setEvents(next);
-    if (next.length === 0) setOpen(false);
   };
 
   // Giving an event an interval is the opt-in, so it switches the generator on
@@ -87,14 +89,12 @@ export function SavedEventsRows() {
         icon="bookmark-outline"
         iconColor={events.length > 0 ? colors.accent : undefined}
         label="Saved events"
-        hint={events.length === 0
-          ? 'Tap Save after adding an event. It is then listed when you start a new event, filled in except for the day.'
-          : anyInterval && !bookEventTasks
-            ? 'Booking reminders are off. Turn on "Book saved events" in Automations to get them.'
-            : 'Listed when you start a new event. Tapping one fills in everything but the day.'}
+        hint={anyInterval && !bookEventTasks
+          ? 'Booking reminders are off. Turn on "Book saved events" in Automations to get them.'
+          : 'Listed when you start a new event. Tapping one fills in everything but the day.'}
         value={events.length > 0 ? String(events.length) : undefined}
-        expanded={events.length > 0 ? open : undefined}
-        onPress={events.length > 0 ? () => { animateLayout(); setOpen(v => !v); } : undefined}
+        expanded={open}
+        onPress={() => { animateLayout(); setOpen(v => !v); }}
         accessibilityLabel="Saved events"
       />
       {open && sortedSavedEvents(events).map(event => (
@@ -106,6 +106,8 @@ export function SavedEventsRows() {
             hint={describeSavedEvent(event)}
             alwaysShowHint
             tight
+            onPress={() => setEditing(event)}
+            accessibilityLabel={`Edit ${event.title}`}
             trailing={(
               <TouchableOpacity
                 onPress={() => remove(event)}
@@ -135,6 +137,18 @@ export function SavedEventsRows() {
           </View>
         </React.Fragment>
       ))}
+      {open && (
+        <View style={styles.addRow}>
+          <InlineAction label="New saved event" icon="add" onPress={() => setEditing('new')} />
+        </View>
+      )}
+      <SavedEventSheet
+        visible={editing !== null}
+        subject={editing}
+        events={events}
+        onSave={next => { commit(next); useTaskStore.getState().checkBookEventTasks(); }}
+        onClose={() => setEditing(null)}
+      />
     </>
   );
 }

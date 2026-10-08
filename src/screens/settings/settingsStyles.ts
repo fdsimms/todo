@@ -67,6 +67,8 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
     gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
+  // The add button under an expandable list of rows.
+  addRow: { alignItems: 'flex-start', paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   cadenceUnitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   // The one pill left in Settings: the unit beside a `CountStepper`, which is
   // deliberately not a segmented control — it has a fourth state (no unit at
