@@ -6,6 +6,8 @@ import {
   FOCUS_REST_MAX,
   FOCUS_WORK_CAP_MAX,
   FOCUS_WORK_CAP_MIN,
+  applySessionBreakEdits,
+  describeBreakRule,
   focusPlanOptionsFrom,
   focusRestsDisabled,
   parseFocusDefaultWorkMinutes,
@@ -15,6 +17,8 @@ import {
   parseFocusRestMinutes,
   parseFocusWorkCapMinutes,
   serializeOptionalCount,
+  sessionBreakEditsFrom,
+  sessionBreakEditsMatch,
   type FocusSettingsSource,
 } from '../utils/focusSettings';
 
@@ -139,5 +143,62 @@ describe('focusRestsDisabled', () => {
     expect(focusRestsDisabled({ focusRestAfterTasks: 0, focusRestAfterMinutes: 0 })).toBe(true);
     expect(focusRestsDisabled({ focusRestAfterTasks: 2, focusRestAfterMinutes: null })).toBe(false);
     expect(focusRestsDisabled({ focusRestAfterTasks: null, focusRestAfterMinutes: 25 })).toBe(false);
+  });
+});
+
+describe('session break edits', () => {
+  const options = {
+    workCapMinutes: 25,
+    defaultWorkMinutes: 25,
+    restAfterTasks: null,
+    restAfterMinutes: 25,
+    restMinutes: 5,
+    longRestEvery: 4,
+    longRestMinutes: 15,
+  };
+
+  it('start equal to the options they came from', () => {
+    expect(sessionBreakEditsMatch(options, sessionBreakEditsFrom(options))).toBe(true);
+  });
+
+  it('stop matching once any one value changes', () => {
+    const edits = sessionBreakEditsFrom(options);
+    expect(sessionBreakEditsMatch(options, { ...edits, restMinutes: 10 })).toBe(false);
+    expect(sessionBreakEditsMatch(options, { ...edits, restAfterMinutes: null })).toBe(false);
+    expect(sessionBreakEditsMatch(options, { ...edits, longRestEvery: null })).toBe(false);
+  });
+
+  it('overwrite only the three break fields and leave the rest of the options alone', () => {
+    const next = applySessionBreakEdits(options, { restAfterMinutes: 40, restMinutes: 10, longRestEvery: null });
+    expect(next).toEqual({ ...options, restAfterMinutes: 40, restMinutes: 10, longRestEvery: null });
+  });
+});
+
+describe('describeBreakRule', () => {
+  const base = {
+    workCapMinutes: 25,
+    defaultWorkMinutes: 25,
+    restAfterTasks: null,
+    restAfterMinutes: 25,
+    restMinutes: 5,
+    longRestEvery: null,
+    longRestMinutes: 15,
+  };
+
+  it('says the length and the minute trigger', () => {
+    expect(describeBreakRule(base)).toBe('5 min after every 25 min of work');
+  });
+
+  it('says the task trigger, singular and plural', () => {
+    expect(describeBreakRule({ ...base, restAfterMinutes: null, restAfterTasks: 1 })).toBe('5 min after every 1 task');
+    expect(describeBreakRule({ ...base, restAfterMinutes: null, restAfterTasks: 3 })).toBe('5 min after every 3 tasks');
+  });
+
+  it('joins both triggers, since whichever fires first inserts the break', () => {
+    expect(describeBreakRule({ ...base, restAfterTasks: 2 })).toBe('5 min after every 25 min of work or every 2 tasks');
+  });
+
+  it('says there are no breaks when both triggers are off', () => {
+    expect(describeBreakRule({ ...base, restAfterMinutes: null })).toBe('No breaks');
   });
 });
