@@ -1010,7 +1010,14 @@ export function isUpcomingToday(task: Task): boolean {
   // headerless bucket of Later Today rather than under Morning/Afternoon: the
   // pace ramp reaches across the whole day, so no one segment is where it
   // belongs. isOnPaceQuota has already run every gate below.
-  if (isOnPaceQuota(task)) return true;
+  //
+  // Only while the next unit falls due on *this* logical day, though. A weekly
+  // target's next unit is usually days away ("next Thu"), and listing it under
+  // Later Today contradicted the row's own label; it belongs in Later, which
+  // sorts it by quotaNextDueAt.
+  if (isOnPaceQuota(task)) {
+    return getTaskDayStart(quotaNextDueAt(task)).getTime() === getCurrentDayStart().getTime();
+  }
   if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
