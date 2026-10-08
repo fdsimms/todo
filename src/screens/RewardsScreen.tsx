@@ -57,6 +57,7 @@ import {
   rewardDisplay,
   rewardIdeas,
   rewardIsOpen,
+  savingForGoal,
   type PricedRewardIdea,
   signedAmount,
   suggestRewardCost,
@@ -160,7 +161,11 @@ export function RewardsScreen() {
     () => rewards.filter(r => rewardIsOpen(r, entries, sourceOf(r))),
     [rewards, entries, sourceOf],
   );
-  const goal = openRewards.find(r => r.id === goalId) ?? null;
+  const savingGoal = useMemo(
+    () => savingForGoal(rewards, entries, goalId, sourceOf),
+    [rewards, entries, goalId, sourceOf],
+  );
+  const goal = savingGoal?.reward ?? null;
 
   // The hero coin hops when coins arrive while the screen is open, so a claim
   // undone or a completion drained in the background doesn't go unseen. Only a
@@ -661,7 +666,7 @@ export function RewardsScreen() {
     );
   };
 
-  const goalShown = goal ? rewardDisplay(goal, sourceOf(goal)) : null;
+  const goalShown = savingGoal;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
