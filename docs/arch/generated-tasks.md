@@ -169,6 +169,15 @@ one. Those three rules and the reasoning behind them are in
   survives only by pruning to what the Reminders list still holds on every drain. A generic record
   has no equivalent pruning pass unless each generator supplies one, at which point it isn't
   generic. On the source row it's bounded for free — whatever deletes the source deletes the "no".
+- **Deleting a generated task from the editor offers "Delete and turn off".** `confirmDeleteGenerated`
+  (`src/utils/confirmDeleteGenerated.ts`) asks which of "delete this one" and "delete and turn the
+  generator off" is meant, and the second passes `deleteTask`'s `stopGenerator`, which flips the
+  kind's Settings switch through `setGeneratorEnabled` (`src/store/generatorSwitch.ts`, also what
+  Settings' own row calls). The switch rides the delete's single undo entry, so undoing the delete
+  turns the generator back on. `stoppableGenerator` withholds the offer for a generator that is
+  already off and for a `notice` row. The prompt shows even with "Confirm before deleting" off,
+  because it is the only place the choice is offered. A bulk delete never offers it: a selection
+  can mix kinds.
 - **Two of them are `notice: true`, and that flag is about the row rather than the generator.**
   `calendarReview` and `mealPlanNudge` ask about a day instead of being a piece of work, so
   `TaskItem` drops every control that treats one as something to plan: the reschedule chip and the

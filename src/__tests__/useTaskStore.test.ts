@@ -4255,6 +4255,34 @@ describe('checkProjectReviewTasks', () => {
     expect(useProjectStore.getState().projects[0].reviewDeclinedAt).not.toBeNull();
   });
 
+  // "Delete and turn off": the delete and the switch are one undo entry, so
+  // undoing the delete can't leave the generator off with the task back.
+  it('turns the generator off with the delete when asked, and back on with the undo', () => {
+    const setProjectReviewTasks = jest.fn();
+    useSettingsStore.getState.mockReturnValue(settings({ setProjectReviewTasks }));
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().deleteTask(reviewTasks()[0].id, { stopGenerator: true });
+    expect(setProjectReviewTasks).toHaveBeenLastCalledWith(false);
+
+    useTaskStore.getState().lastAction?.undo();
+    expect(setProjectReviewTasks).toHaveBeenLastCalledWith(true);
+    expect(setProjectReviewTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves the generator alone on a plain delete', () => {
+    const setProjectReviewTasks = jest.fn();
+    useSettingsStore.getState.mockReturnValue(settings({ setProjectReviewTasks }));
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().deleteTask(reviewTasks()[0].id);
+    expect(setProjectReviewTasks).not.toHaveBeenCalled();
+  });
+
   // sweepExpiredTasks is the one bulkDeleteTasks caller that isn't the user
   // saying anything — see its call site's comment.
   it('a bulk delete with skipGeneratedOptOut leaves the source untouched', () => {

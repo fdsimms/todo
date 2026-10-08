@@ -1163,6 +1163,27 @@ export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabled
 }
 
 /**
+ * The generator a delete can offer to turn off for this task, or null when
+ * there is nothing to offer.
+ *
+ * Null for a task nobody generated, and for a generator that is already off or
+ * has no working switch (`generatorSwitchedOn` is false while its Health or
+ * calendar read is shut), since turning off something already off would say it
+ * did something. A `notice` row is excluded as well: it has no delete to hang
+ * the offer on, and its kind is the one thing it exists to say.
+ */
+export function stoppableGenerator(
+  task: Pick<Task, 'generatedKind'>,
+  flags: GeneratedEnabledFlags,
+): GeneratedKindSpec | null {
+  const kind = task.generatedKind;
+  if (!kind) return null;
+  const spec = GENERATED_KIND_SPECS[kind];
+  if (!spec || spec.notice) return null;
+  return generatorSwitchedOn(kind, flags) ? spec : null;
+}
+
+/**
  * Whether this generator should stand down right now — see
  * `GeneratedKindSpec.pausedOnVacation`.
  *
