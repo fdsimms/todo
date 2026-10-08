@@ -239,6 +239,19 @@ describe('fromDates', () => {
   });
 });
 
+describe('multiple and showForecast', () => {
+  it('belong to a choice question only', () => {
+    const choice = { name: 'trip', prompt: 'p', kind: 'choice' as const, options: ['A', 'B'] };
+    expect(errors(plan({ questions: [{ ...choice, multiple: true, showForecast: true }] }))).toEqual([]);
+    expect(errors(plan({ questions: [{ name: 'n', prompt: 'p', kind: 'number', multiple: true }] }))).toEqual([
+      'multiple and showForecast only apply to a choice question, not "n".',
+    ]);
+    expect(errors(plan({ questions: [{ name: 't', prompt: 'p', kind: 'text', showForecast: true }] }))).toEqual([
+      'multiple and showForecast only apply to a choice question, not "t".',
+    ]);
+  });
+});
+
 describe('nested templates', () => {
   const packing = template({ id: 'tpl-1', name: 'Packing' });
 

@@ -120,6 +120,7 @@ export interface StackPatch {
   category?: string | null;
   projectId?: string | null;
   checklist?: boolean;
+  hideNextStep?: boolean;
 }
 
 export interface CategorySettingsPatch {
@@ -800,6 +801,8 @@ export interface ProjectPatch {
   weekendSource?: boolean;
   /** On a list: checked items stay on the page instead of folding away. */
   showChecked?: boolean;
+  /** Leave the "Next:" line off its card on the Projects screen. */
+  hideNextStep?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -4377,10 +4380,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
         // A choice answer is spelled the way the option is, since a condition
         // compares the stored strings exactly.
-        const value = question.kind === 'choice'
-          ? question.options.find(o => o.trim().toLowerCase() === raw.trim().toLowerCase()) ?? raw
-          : raw;
-        if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
+        // A question that takes several answers gets them joined with commas,
+        // unless an option itself holds a comma and the whole string is one.
+        const spell = (text: string) => question.options.find(o => o.trim().toLowerCase() === text.trim().toLowerCase());
+        let value = question.kind === 'choice' ? spell(raw) ?? raw : raw;
+        if (question.kind === 'choice' && question.multiple && spell(raw) === undefined) {
+          const parts = raw.split(',').map(part => spell(part) ?? part.trim()).filter(Boolean);
+          const bad = parts.filter(part => !question.options.includes(part));
+          if (bad.length > 0 || parts.length === 0) errors.push(`"${name}" must be some of ${question.options.join(', ')}.`);
+          else value = templateQuestions.encodeAnswerValues(question.options.filter(o => parts.includes(o)));
+        } else if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
         if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
         typed[question.id] = value;
       }
@@ -6385,7 +6394,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           notes: source.notes, defaultTaskCategory: source.defaultTaskCategory, taskDefaults: source.taskDefaults ?? null,
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
-          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked,
+          personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked, hideNextStep: source.hideNextStep,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {

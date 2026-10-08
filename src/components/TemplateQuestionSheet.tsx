@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Switch,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TemplateQuestion, TemplateQuestionKind, TemplateQuestionSource } from '../types';
@@ -84,6 +85,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
   const [options, setOptions] = useState<string[]>([]);
   const [defaultValue, setDefaultValue] = useState('');
   const [fromDates, setFromDates] = useState<TemplateQuestionSource>('none');
+  const [multiple, setMultiple] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
   const [itemsSheetVisible, setItemsSheetVisible] = useState(false);
 
   useEffect(() => {
@@ -94,6 +97,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     setOptions(question?.options ?? ['', '']);
     setDefaultValue(question?.defaultValue ?? '');
     setFromDates(question?.fromDates ?? 'none');
+    setMultiple(question?.multiple ?? false);
+    setShowForecast(question?.showForecast ?? false);
     setItemsSheetVisible(false);
   }, [visible, question]);
 
@@ -136,6 +141,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       options: kind === 'choice' ? cleanedOptions : [],
       defaultValue: kind === 'choice' || kind === 'people' ? '' : defaultValue.trim(),
       fromDates: kind === 'number' ? fromDates : ('none' as TemplateQuestionSource),
+      multiple: kind === 'choice' && multiple,
+      showForecast: kind === 'choice' && showForecast,
     };
     if (question) updateQuestion(templateId, question.id, values);
     else addQuestion(templateId, values);
@@ -226,6 +233,40 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
             variant="neutral"
             onPress={() => { animateLayout(); setOptions(prev => [...prev, '']); }}
           />
+        </View>
+      )}
+
+      {kind === 'choice' && (
+        <View style={styles.sectionCard}>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchLabel}>Allow more than one answer</Text>
+              <Text style={styles.note}>
+                A run can pick several answers. An item is checked if it is set for any of them.
+              </Text>
+            </View>
+            <Switch
+              value={multiple}
+              onValueChange={next => { haptics.tap(); setMultiple(next); }}
+              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+              accessibilityLabel="Allow more than one answer"
+            />
+          </View>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchLabel}>Show the destination forecast</Text>
+              <Text style={styles.note}>
+                Shows the forecast for the trip's dates under this question, to help answer it. It
+                needs a destination and dates, and Destination forecast turned on in Settings.
+              </Text>
+            </View>
+            <Switch
+              value={showForecast}
+              onValueChange={next => { haptics.tap(); setShowForecast(next); }}
+              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+              accessibilityLabel="Show the destination forecast"
+            />
+          </View>
         </View>
       )}
 
@@ -377,6 +418,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   note: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  switchText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  switchLabel: {
+    color: colors.text,
+    fontSize: font.md,
   },
   optionRow: {
     flexDirection: 'row',

@@ -176,7 +176,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // numbers, and a bare "3/8" pill doesn't say which one it means.
   const nextUp = dueToday.find(c => !c.completed);
   const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp ? ` · Next: ${nextUp.title}` : ''}`;
+    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp && !group.hideNextStep ? ` · Next: ${nextUp.title}` : ''}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
