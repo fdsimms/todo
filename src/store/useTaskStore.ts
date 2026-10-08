@@ -149,6 +149,7 @@ import { useSavedMealsStore } from './useSavedMealsStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useMeterReadingStore } from './useMeterReadingStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
 import {
@@ -352,6 +353,7 @@ import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { decideWeatherWait } from '../utils/weatherWait';
+import { decideMeterHold, meterHoldPatch } from '../utils/meters';
 import {
   weatherSourceId,
   parseWeatherSourceId,
@@ -1973,6 +1975,12 @@ interface TaskStore extends UndoHistoryActions {
    * `src/utils/weatherWait.ts` for the decision.
    */
   applyWeatherWaits: () => void;
+  /**
+   * Holds every task due at a meter reading until a reading reaches it, the
+   * reading rate projects it, or its time limit runs out, and surfaces it once
+   * one does. Reads `useMeterReadingStore`; see `src/utils/meters.ts`.
+   */
+  applyMeterHolds: () => void;
   checkEventTasks: () => void;
   /**
    * "Leave for X" for each upcoming event with a location, its reminder at the
@@ -2643,6 +2651,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
     useMilestoneStore.getState().initialize();
+    // Meter readings: a task due at 45,000 miles is held or released on them,
+    // so they have to swap with the database the tasks came from.
+    useMeterReadingStore.getState().initialize();
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
     useJournalStore.getState().initialize();
@@ -3549,6 +3560,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       now,
       allTasks: get().tasks,
       subtasks: get().subtasksOf(task.id),
+      meterReadings: useMeterReadingStore.getState().readings,
     });
     // The three guards above already refused everything buildCompletion
     // refuses, so this is unreachable; it is here because the two run the same
@@ -6491,6 +6503,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  applyMeterHolds() {
+    const following = get().tasks.filter(t => t.meterName && !t.completed && !t.archived);
+    if (following.length === 0) return;
+    const readings = useMeterReadingStore.getState().readings;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    for (const task of following) {
+      const patch = meterHoldPatch(task, decideMeterHold(task, readings, todayKey), todayKey);
+      // Idempotent: meterHoldPatch returns null for a hold already in place,
+      // which is what keeps the subscription that re-runs this from looping.
+      if (patch) get().updateTask(task.id, patch);
+    }
   },
 
   applyWeatherWaits() {

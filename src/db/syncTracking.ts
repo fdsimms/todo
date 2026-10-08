@@ -75,6 +75,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Meter readings (MeterReading): an odometer entry has to travel, or a task
+  // due at 45,000 miles surfaces on one phone and not the other. Rows are
+  // inserted or deleted, never edited, so two devices logging at once both
+  // keep theirs.
+  { name: 'meter_readings', key: ['id'] },
   // Journal and dream entries (JournalEntry). Same reasoning as mood_logs: a
   // diary that reads differently on each phone is half a diary on each, and an
   // entry is written once and rarely edited.

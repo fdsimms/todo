@@ -35,7 +35,8 @@
  * interleave `dbUpdateTask(completed)` with the successor's computation.
  * Nothing read the database in between, so the rows are identical.
  */
-import type { Task } from '../types';
+import type { MeterReading, Task } from '../types';
+import { addDays } from 'date-fns/addDays';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   getNextOccurrence,
@@ -45,7 +46,10 @@ import {
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
   getReminderOffsetDate,
+  dayKeyOf,
+  dayKeyToDate,
 } from './dateUtils';
+import { canFollowMeter, hasMeter, nextMeterDueAt } from './meters';
 import { carryClockTime } from './clockTime';
 import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
@@ -128,6 +132,12 @@ export interface CompletionContext {
   allTasks: readonly Task[];
   /** The completing task's own subtasks, carried onto a successor. */
   subtasks: readonly Task[];
+  /**
+   * Every meter reading, for a task due at one (`Task.meterName`): the next
+   * occurrence counts on from a reading logged the day this one was done.
+   * Omitted counts on from where this one was due. See `nextMeterDueAt`.
+   */
+  meterReadings?: readonly MeterReading[];
 }
 
 /**
@@ -410,7 +420,12 @@ export function buildCompletion(
 
   let nextTask: Task | null = null;
   let nextSubtasks: Task[] = [];
-  const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : recurs;
+  // A task due at a meter reading is a one-off, but the meter keeps running:
+  // the oil needs changing again 5,000 miles on. So completing one writes the
+  // next, the way a recurrence does, with the reading in place of a date.
+  // See src/utils/meters.ts.
+  const meterSpawn = !recurs && !chainAdvances && hasMeter(task) && canFollowMeter(task);
+  const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : (recurs || meterSpawn);
   if (spawnsNext) {
     // The recurrence's schedule only decides the date at the point it
     // actually applies (see advancesBySchedule above) — everywhere else
@@ -423,7 +438,7 @@ export function buildCompletion(
     // Skip the spawn only when we actually consulted the schedule and it
     // says the series has ended — a mid-chain step never consults it, so
     // it always spawns regardless of recurrenceEndDate/recurrenceCount.
-    if (!advancesBySchedule || nextDue !== null) {
+    if (meterSpawn || !advancesBySchedule || nextDue !== null) {
       // A "this task only" edit (see updateTask) stores what content fields
       // should revert to for the next occurrence in seriesDefaults — apply
       // it before spreading so the clone below reflects the series' real
@@ -769,6 +784,18 @@ export function buildCompletion(
         // reconcile here to create one, deliberately.
         timeBlockEventId: null,
         timeBlockExternalId: null,
+        // Due the meter's interval on, and held until the meter pass has
+        // looked: a row with no date signal at all would sit in Unscheduled
+        // until then. The hold is marked as the pass's own (meterHeldUntil),
+        // so the pass is free to move it the moment it runs.
+        ...(meterSpawn ? (() => {
+          const holdKey = dayKeyOf(addDays(getCurrentDayStart(), 1));
+          return {
+            meterDueAt: nextMeterDueAt(task, context.meterReadings ?? [], dayKeyOf(completedAt)),
+            deferUntil: dayKeyToDate(holdKey).toISOString(),
+            meterHeldUntil: holdKey,
+          };
+        })() : {}),
       };
 
       // Subtasks belong to the series, not a single occurrence — carry them

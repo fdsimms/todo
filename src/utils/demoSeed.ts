@@ -14,6 +14,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
@@ -2139,6 +2140,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedMeterTask(today);
   seedJournal(today);
   seedAsNeededDoses(today);
   seedRewards(today);
@@ -2927,6 +2929,30 @@ function seedMoodTasks(today: Date): void {
  * Goes through `addMilestone` like everything else here, so a seeded row
  * cannot drift from the type.
  */
+/**
+ * A task due at a reading rather than a date: the car's oil change, with two
+ * odometer readings a month apart so the row shows an estimate ("est. Nov 3")
+ * rather than asking for a reading. Readings go through `logReading` and the
+ * task through `addTask`, and `applyMeterHolds` places it the way the pass
+ * would, so nothing here can drift from what the app writes.
+ */
+function seedMeterTask(today: Date): void {
+  const { logReading } = useMeterReadingStore.getState();
+  const read = (daysAgo: number, value: number) => {
+    const at = subDays(today, daysAgo);
+    at.setHours(9, 0, 0, 0);
+    logReading('Car', value, at);
+  };
+  read(40, 38200);
+  read(10, 39400);
+  const { addTask, updateTask, applyMeterHolds } = useTaskStore.getState();
+  const task = addTask({ title: 'Change the oil', category: 'Home', effort: 2 });
+  updateTask(task.id, {
+    meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 40500, meterLimitMonths: 6,
+  });
+  applyMeterHolds();
+}
+
 function seedMilestone(today: Date): void {
   const { addMilestone } = useMilestoneStore.getState();
   const date = subDays(today, 9);

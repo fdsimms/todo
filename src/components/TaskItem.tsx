@@ -41,6 +41,9 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
+import { meterChipText } from '../utils/meters';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
+import { MeterReadingSheet } from './MeterReadingSheet';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { negativeHoldOffered, runNegativeHold } from '../utils/negativeHold';
@@ -573,6 +576,7 @@ export const TaskItem = React.memo(function TaskItem({
   const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
+  const [showMeterReading, setShowMeterReading] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
   // The postpone prompt's "Break it up" needs somewhere to send the user. With
@@ -1131,6 +1135,7 @@ export const TaskItem = React.memo(function TaskItem({
   const mountWhenPicker = useSheetMount(whenPickerOpen);
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
+  const mountMeterReading = useSheetMount(showMeterReading);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
   const [showRotationPick, setShowRotationPick] = useState(false);
@@ -1772,6 +1777,10 @@ export const TaskItem = React.memo(function TaskItem({
   // A one-off waiting for a kind of day says so, because the date beside it is
   // only where the forecast currently puts it (see Task.weatherWait).
   const weatherWaitText = weatherWaitChipText(task, getLogicalDayKey(new Date()));
+  // A string or null, for the reason the health selectors above return a
+  // number: a row with no meter answers null for ever and never re-renders on
+  // a reading, and one with a meter only when its own sentence changes.
+  const meterText = useMeterReadingStore(s => (task.meterName && !task.completed ? meterChipText(task, s.readings) : null));
 
   // An "every N hours" task has no calendar grid — the row's own recurrence
   // caption just says the interval ("Every 8 hours"), never the clock time it
@@ -2907,7 +2916,7 @@ export const TaskItem = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
             {showCategory && task.category && (
               onOpenCategory ? (
@@ -3160,6 +3169,24 @@ export const TaskItem = React.memo(function TaskItem({
                   {weatherWaitText}
                 </Text>
               </View>
+            )}
+            {/* The one chip on the row that is also a button: the reading is
+                what moves this task, so logging one is a tap from where it's
+                read rather than a trip into the editor. */}
+            {meterText !== null && (
+              <TouchableOpacity
+                style={styles.metaChip}
+                onPress={() => { haptics.tap(); setShowMeterReading(true); }}
+                activeOpacity={interaction.activeOpacity}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={`${meterText}. Log a reading`}
+              >
+                <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {meterText}
+                </Text>
+              </TouchableOpacity>
             )}
             {/* An "every N hours" task's own placement — see hoursUnlockTime's
                 comment above. Shown regardless of showDate, the same as the
@@ -4681,6 +4708,15 @@ export const TaskItem = React.memo(function TaskItem({
           visible={showBreakdown}
           taskId={task.id}
           onClose={() => setShowBreakdown(false)}
+        />
+      )}
+      {mountMeterReading && task.meterName && (
+        <MeterReadingSheet
+          visible={showMeterReading}
+          meterName={task.meterName}
+          meterUnit={task.meterUnit ?? null}
+          dueAt={task.meterDueAt ?? null}
+          onClose={() => setShowMeterReading(false)}
         />
       )}
       {mountDeliverablePrompt && (
