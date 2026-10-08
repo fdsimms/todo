@@ -82,7 +82,11 @@ import {
   produceAverage,
   sourceMix,
 } from '../utils/nutritionStats';
-import { formatServings } from '../utils/produceServings';
+import {
+  DAILY_PRODUCE_SERVINGS,
+  dailyProduceProgress,
+  formatServings,
+} from '../utils/produceServings';
 import { recipeProduceResolver } from '../utils/recipeProduce';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
@@ -1070,9 +1074,34 @@ export function StatsScreen() {
                       </View>
                       <Text style={styles.cookValue}>{`about ${formatServings(eating.produce.vegetable)}`}</Text>
                     </View>
-                    <View style={styles.row}>
+                    <View style={[styles.row, styles.rowBorder]}>
                       <Text style={styles.rowText}>Fruit a day</Text>
                       <Text style={styles.cookValue}>{`about ${formatServings(eating.produce.fruit)}`}</Text>
+                    </View>
+                    {/* The same neutral bar as the Food log's: the average
+                        day against the fixed 5 a day, no status colour. */}
+                    <View style={[styles.row, { flexDirection: 'column', alignItems: 'stretch', gap: spacing.xs }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={styles.rowText}>{`${DAILY_PRODUCE_SERVINGS} a day`}</Text>
+                        <Text style={styles.cookValue}>
+                          {`about ${formatServings(eating.produce.vegetable + eating.produce.fruit)} of ${DAILY_PRODUCE_SERVINGS}`}
+                        </Text>
+                      </View>
+                      <View
+                        style={{ height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' }}
+                        accessible
+                        accessibilityRole="progressbar"
+                        accessibilityLabel={`Vegetables and fruit on an average day, about ${formatServings(eating.produce.vegetable + eating.produce.fruit)} of ${DAILY_PRODUCE_SERVINGS} servings`}
+                      >
+                        <View
+                          style={{
+                            height: '100%',
+                            borderRadius: 2,
+                            backgroundColor: colors.accent,
+                            width: `${dailyProduceProgress(eating.produce.vegetable, eating.produce.fruit) * 100}%`,
+                          }}
+                        />
+                      </View>
                     </View>
                   </>
                 )}

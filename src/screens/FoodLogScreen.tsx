@@ -47,7 +47,12 @@ import {
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
-import { dayProduce, formatServings } from '../utils/produceServings';
+import {
+  DAILY_PRODUCE_SERVINGS,
+  dailyProduceProgress,
+  dayProduce,
+  formatServings,
+} from '../utils/produceServings';
 import { recipeProduceResolver } from '../utils/recipeProduce';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
@@ -1100,8 +1105,9 @@ export function FoodLogScreen() {
     </View>
   );
 
-  // Counts, never a score: no target, no colour, nothing that reads as a
-  // result (`produceServings.ts`). Withheld on a day with nothing to say so an
+  // Counts, with one neutral bar toward the fixed "5 a day" figure. Still no
+  // status colour and no met state, nothing that reads as a result
+  // (`produceServings.ts`). Withheld on a day with nothing to say so an
   // empty day does not carry a row of zeros.
   const produceCard = produce.vegetable > 0 || produce.fruit > 0 || produce.unmeasured > 0 ? (
     <View style={styles.produceCard}>
@@ -1112,6 +1118,30 @@ export function FoodLogScreen() {
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Fruit</Text>
         <Text style={styles.totalValue}>{`about ${formatServings(produce.fruit)}`}</Text>
+      </View>
+      {/* One neutral bar for the combined "5 a day". Same accent as the other
+          bars and no status colour: it shows how far along the day is, and
+          nothing changes when it fills. */}
+      <View style={styles.totalBlock}>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>{`${DAILY_PRODUCE_SERVINGS} a day`}</Text>
+          <Text style={styles.waterTarget}>
+            {`about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS}`}
+          </Text>
+        </View>
+        <View
+          style={styles.targetTrack}
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={`Vegetables and fruit, about ${formatServings(produce.vegetable + produce.fruit)} of ${DAILY_PRODUCE_SERVINGS} servings`}
+        >
+          <View
+            style={[
+              styles.targetFill,
+              { width: `${dailyProduceProgress(produce.vegetable, produce.fruit) * 100}%` },
+            ]}
+          />
+        </View>
       </View>
       <Text style={styles.boostNote}>
         {produce.unmeasured > 0
