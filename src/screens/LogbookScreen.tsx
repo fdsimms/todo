@@ -343,6 +343,9 @@ export function LogbookScreen() {
   }, [route.params?.openProjectHistory, route.params?.projectId, handledProjectParam]);
   const people = usePersonStore(useShallow(s => s.people));
   const [filterVisible, setFilterVisible] = useState(false);
+  // The search field lives behind the header's magnifier. A live query keeps it
+  // open, so a filtered list never has no visible reason why.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // The same bulk-selection machinery every task list uses. Its delete flow
@@ -539,6 +542,25 @@ export function LogbookScreen() {
     [navigation]
   );
 
+  const searchVisible = searchOpen || query !== '';
+  const hasSearchableRows = activeLens === 'cooking'
+    ? allKitchenEvents.length > 0
+    : completedTasks.length > 0;
+  const toggleSearch = () => {
+    haptics.tap();
+    if (searchVisible) {
+      searchFilter.clear();
+      setSearchOpen(false);
+    } else {
+      setSearchOpen(true);
+    }
+  };
+  const activeFilterCount =
+    [selectedCategory, selectedTag, selectedPerson, selectedProject].filter(Boolean).length;
+  const hasFilterOptions =
+    categoryChipItems.length > 0 || tagChipItems.length > 0 ||
+    peopleChipItems.length > 0 || projectChipItems.length > 0;
+
   const switchLens = (next: LogbookLens) => {
     if (next === lens) return;
     haptics.tap();
@@ -563,14 +585,34 @@ export function LogbookScreen() {
         // so it belongs to that lens alone. There is no equivalent here and
         // there shouldn't be: the cooking rows are a read over the meal plan and
         // the fridge, and clearing them would mean deleting the plan.
-        actions={withScreenSettings(activeLens === 'tasks' && completedTasks.length > 0 ? [
-          {
-            icon: 'trash-outline',
-            onPress: handleClearLogbook,
-            disabled: selectionMode,
-            accessibilityLabel: 'Clear Logbook',
-          },
-        ] : undefined, screenSettings.action)}
+        actions={withScreenSettings([
+          ...(hasSearchableRows ? [{
+            icon: 'search-outline' as const,
+            onPress: toggleSearch,
+            active: searchVisible,
+            accessibilityLabel: searchVisible ? 'Close search' : 'Search the Logbook',
+          }] : []),
+          ...(activeLens === 'tasks' && completedTasks.length > 0 ? [
+            ...(hasFilterOptions ? [{
+              icon: 'funnel-outline' as const,
+              onPress: () => {
+                haptics.tap();
+                setFilterVisible(true);
+              },
+              active: activeFilterCount > 0,
+              badge: activeFilterCount,
+              badgeColor: colors.accentFill,
+              disabled: selectionMode,
+              accessibilityLabel: 'Filter Logbook',
+            }] : []),
+            {
+              icon: 'trash-outline' as const,
+              onPress: handleClearLogbook,
+              disabled: selectionMode,
+              accessibilityLabel: 'Clear Logbook',
+            },
+          ] : []),
+        ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="Logbook" />
@@ -587,22 +629,26 @@ export function LogbookScreen() {
         </View>
       )}
 
-      {activeLens === 'cooking' && allKitchenEvents.length > 0 && (
+      {activeLens === 'cooking' && allKitchenEvents.length > 0 && searchVisible && (
         <SearchField
           style={styles.searchBar}
           placeholder="Search cooking"
           field={searchFilter}
+          autoFocus
         />
       )}
 
       {activeLens === 'tasks' && completedTasks.length > 0 && (
         <>
-          <SearchField
-            style={styles.searchBar}
-            placeholder="Search the Logbook"
-            field={searchFilter}
-          />
-          {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
+          {searchVisible && (
+            <SearchField
+              style={styles.searchBar}
+              placeholder="Search the Logbook"
+              field={searchFilter}
+              autoFocus
+            />
+          )}
+          {activeFilterCount > 0 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -613,20 +659,6 @@ export function LogbookScreen() {
               style={styles.filterBarScroll}
               contentContainerStyle={styles.filterBar}
             >
-              <TouchableOpacity
-                style={styles.filterButton}
-                onPress={() => {
-                  haptics.tap();
-                  setFilterVisible(true);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Filter Logbook"
-              >
-                <Ionicons name="funnel-outline" size={13} color={colors.text} />
-                <Text style={styles.filterButtonText}>Filter</Text>
-                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
-              </TouchableOpacity>
               {selectedCategory && (
                 <ActiveFilterPill
                   label={categoryChipItems.find(c => c.key === selectedCategory)?.label ?? selectedCategory}
@@ -1291,7 +1323,7 @@ const KitchenRow = React.memo(function KitchenRow({
   );
 });
 
-// An applied filter, shown next to the Filter button so the current state is
+// An applied filter, shown under the header so the current state is
 // readable without opening the sheet. Tapping anywhere on it clears it.
 function ActiveFilterPill({
   label,
@@ -1344,20 +1376,6 @@ const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) 
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary,
-  },
-  filterButtonText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
   },
   activePill: {
     flexDirection: 'row',
