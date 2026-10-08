@@ -79,6 +79,10 @@ import {
   RECIPE_BACKFILL_FIELDS, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField,
   type RecipeBackfillFieldId,
 } from '../utils/recipeBackfill';
+import {
+  TASK_DISMISS_LABELS, CATEGORY_DISMISS_LABELS, PROJECT_DISMISS_LABELS, PERSON_DISMISS_LABELS,
+  ITEM_DISMISS_LABELS, RECIPE_DISMISS_LABELS, KEEP_AS_IS_LABEL,
+} from '../utils/backfillDismissCopy';
 import { useRecipeStore } from '../store/useRecipeStore';
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
@@ -307,6 +311,18 @@ type ActiveField =
   | { kind: 'person'; id: PersonBackfillFieldId }
   | { kind: 'item'; id: ItemBackfillFieldId }
   | { kind: 'recipe'; id: RecipeBackfillFieldId };
+
+/** What the dismiss button for this step says, by pool and field. */
+function dismissLabelFor(field: ActiveField): string {
+  switch (field.kind) {
+    case 'task': return TASK_DISMISS_LABELS[field.id];
+    case 'category': return CATEGORY_DISMISS_LABELS[field.id];
+    case 'project': return PROJECT_DISMISS_LABELS[field.id];
+    case 'person': return PERSON_DISMISS_LABELS[field.id];
+    case 'item': return ITEM_DISMISS_LABELS[field.id];
+    case 'recipe': return RECIPE_DISMISS_LABELS[field.id];
+  }
+}
 
 /**
  * One line of the compact review shown once a field's queue empties: what got
@@ -1451,9 +1467,10 @@ export function BackfillScreen() {
   // run of it).
   const dismiss = () => {
     if (!active) return;
+    const dismissedText = dismissLabelFor(active);
     if (active.kind === 'task' && currentTask && activeBatch) {
       const fieldId = active.id;
-      applyToGroup(task => dismissBackfillField(task, fieldId), 'Left unset', true);
+      applyToGroup(task => dismissBackfillField(task, fieldId), dismissedText, true);
       return;
     }
     haptics.tap();
@@ -1463,18 +1480,17 @@ export function BackfillScreen() {
     if (active.kind === 'task') {
       if (!currentTask) return;
       const snapshot = { ...currentTask };
-      const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
       const wasMissing = isFieldMissing(currentTask, active.id, categories);
       updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
       setLastAction({
-        label: `${fieldLabel} left unset`,
+        label: dismissedText,
         undo: () => updateTask(snapshot.id, snapshot),
         redo: redoRestoringRows([snapshot.id]),
       });
       logSession({
         itemId: currentTask.id,
         title: displayTitleFor(currentTask),
-        valueText: wasMissing ? 'Left unset' : "Won't ask again",
+        valueText: wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
         undo: () => updateTask(snapshot.id, snapshot),
       });
       advance(currentTask.id);
@@ -1486,10 +1502,10 @@ export function BackfillScreen() {
         categoryName,
         dismissCategoryBackfillField(currentCategory, active.id).backfillDismissedFields
       );
-      commit('Left unset', {
+      commit(dismissedText, {
         itemId: currentCategory.id,
         title: categoryLabel(categoryName, getCategoryByName),
-        valueText: "Won't ask again",
+        valueText: dismissedText,
         undo: () => setCategoryBackfillDismissedFields(categoryName, beforeDismissed),
       });
     } else if (active.kind === 'project') {
@@ -1497,10 +1513,10 @@ export function BackfillScreen() {
       const projectId = currentProject.id;
       const before = { backfillDismissedFields: currentProject.backfillDismissedFields };
       updateProject(projectId, dismissProjectBackfillField(currentProject, active.id));
-      commit('Left unset', {
+      commit(dismissedText, {
         itemId: projectId,
         title: currentProject.title,
-        valueText: "Won't ask again",
+        valueText: dismissedText,
         undo: () => updateProject(projectId, before),
       });
     } else {
@@ -1514,7 +1530,7 @@ export function BackfillScreen() {
         entries = people.map(person => {
           const before = { backfillDismissedFields: person.backfillDismissedFields };
           updatePerson(person.id, dismissPersonBackfillField(person, fieldId));
-          return { itemId: person.id, title: displayNameOf(person), valueText: "Won't ask again", undo: () => updatePerson(person.id, before) };
+          return { itemId: person.id, title: displayNameOf(person), valueText: dismissedText, undo: () => updatePerson(person.id, before) };
         });
       } else if (active.kind === 'item') {
         const fieldId = active.id;
@@ -1522,7 +1538,7 @@ export function BackfillScreen() {
         entries = items.map(item => {
           const before = item.backfillDismissedFields;
           setItemBackfillDismissedFields(item.id, dismissItemBackfillField(item, fieldId).backfillDismissedFields);
-          return { itemId: item.id, title: item.name, valueText: "Won't ask again", undo: () => setItemBackfillDismissedFields(item.id, before) };
+          return { itemId: item.id, title: item.name, valueText: dismissedText, undo: () => setItemBackfillDismissedFields(item.id, before) };
         });
       } else {
         const fieldId = active.id;
@@ -1530,11 +1546,11 @@ export function BackfillScreen() {
         entries = recipesToDismiss.map(recipe => {
           const before = recipe.backfillDismissedFields;
           setRecipeBackfillDismissedFields(recipe.id, dismissRecipeBackfillField(recipe, fieldId).backfillDismissedFields);
-          return { itemId: recipe.id, title: recipe.name, valueText: "Won't ask again", undo: () => setRecipeBackfillDismissedFields(recipe.id, before) };
+          return { itemId: recipe.id, title: recipe.name, valueText: dismissedText, undo: () => setRecipeBackfillDismissedFields(recipe.id, before) };
         });
       }
       if (entries.length === 0) return;
-      commit(entries.length > 1 ? `Left unset for ${entries.length}` : 'Left unset', entries);
+      commit(entries.length > 1 ? `${dismissedText} for ${entries.length}` : dismissedText, entries);
       if (entries.length > 1) setSkippedIds(prev => new Set([...prev, ...entries.map(e => e.itemId)]));
     }
   };
@@ -2074,7 +2090,7 @@ export function BackfillScreen() {
         const count = option.members.length;
         const title = batchAnswers
           ? `Use the next answer for all ${count} ${scopePhrase(option.scope)}`
-          : `Don't ask again for all ${count} ${scopePhrase(option.scope)}`;
+          : `${active ? dismissLabelFor(active) : 'Skip'} for all ${count} ${scopePhrase(option.scope)}`;
         return (
           <PressableScale
             key={option.scope.key}
@@ -2095,7 +2111,7 @@ export function BackfillScreen() {
                 <Text style={styles.groupApplyHint}>
                   {batchAnswers
                     ? `Leaving it unset also applies to all ${count}. A shake undoes it.`
-                    : `Applies to all ${count} when you tap Don't ask again. A shake undoes it.`}
+                    : `Applies to all ${count} when you tap "${active ? dismissLabelFor(active) : ''}". A shake undoes it.`}
                 </Text>
               )}
             </View>
@@ -2111,8 +2127,8 @@ export function BackfillScreen() {
     // a value — the current value is left exactly as it is, so "leave
     // unset" would misdescribe what the button does there.
     const dismissLabel = currentTask && isFieldMissing(currentTask, active.id, categories)
-      ? `Leave ${field.label.toLowerCase()} unset`
-      : `Don't ask again`;
+      ? TASK_DISMISS_LABELS[active.id]
+      : KEEP_AS_IS_LABEL;
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
@@ -2218,7 +2234,7 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`${dismissLabel} for this task`}
+                accessibilityLabel={`${dismissLabel} for this task, and don't ask again`}
               >
                 <Text style={styles.skipText}>{dismissLabel}</Text>
               </PressableScale>
@@ -2346,9 +2362,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${categoryField.label}" off for this category and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this category, and don't ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2637,9 +2653,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${personField.shortLabel}" unset for this person and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this person, and don't ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2799,9 +2815,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${projectField.label}" off for this project and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this project, and don't ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -2941,9 +2957,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave "${recipeField.label}" unset for this recipe and don't ask again`}
+                accessibilityLabel={`${dismissLabelFor(active)} for this recipe, and don't ask again`}
               >
-                <Text style={styles.skipText}>Don't ask again</Text>
+                <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -3159,14 +3175,12 @@ export function BackfillScreen() {
               onPress={dismiss}
               accessibilityRole="button"
               accessibilityLabel={
-                // `scannedName` is the one field here that already has a value,
-                // so "leave it unset" would describe the wrong thing.
                 active.id === 'scannedName'
                   ? `Keep the name "${currentItem.name}" and don't ask again`
-                  : `Leave "${itemField.label}" unset for this item and don't ask again`
+                  : `${dismissLabelFor(active)} for ${currentItem.name}, and don't ask again`
               }
             >
-              <Text style={styles.skipText}>Don't ask again</Text>
+              <Text style={styles.skipText}>{dismissLabelFor(active)}</Text>
             </PressableScale>
           </View>
         </ScrollView>
