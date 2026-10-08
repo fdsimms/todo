@@ -4382,10 +4382,15 @@ export function TodayScreen() {
           accessibilityLabel: 'More options',
         }]
       // Later, Unscheduled and Inbox have no "…" menu, which is where Today's
-      // settings row lives, so they get the screen's usual gear instead. The
-      // list is the same one: where quick add files a task, Hide categories,
-      // Day starts and vacation all apply to those lists too.
-      : screenSettings.action ? [screenSettings.action] : []),
+      // settings row lives, so they get a settings button that jumps straight
+      // into Settings, the same jump that row makes. The list is the same one:
+      // where quick add files a task, Hide categories, Day starts and vacation
+      // all apply to those lists too.
+      : screenSettings.link ? [{
+        icon: 'settings-outline' as const,
+        onPress: () => navigateToSettingsEntry(navigation, screenSettings.link!.entryId),
+        accessibilityLabel: 'Today settings',
+      }] : []),
   ];
 
   // ==== render. Everything below is JSX ====
