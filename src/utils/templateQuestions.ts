@@ -88,7 +88,10 @@ export function answerFromDates(question: TemplateQuestion, anchors: TemplateAnc
 export function defaultAnswer(question: TemplateQuestion, anchors: TemplateAnchors): string {
   const fromDates = answerFromDates(question, anchors);
   if (fromDates !== null) return fromDates;
-  if (question.kind === 'choice') return question.options[0] ?? '';
+  if (question.kind === 'choice') {
+    const first = question.options[0] ?? '';
+    return question.multiple && first ? encodeAnswerValues([first]) : first;
+  }
   // Deliberately not the choice rule above, and this is the one place that
   // matters most: a 'people' question always starts at nobody, never at a
   // guessed answer. checkScheduledTemplates() calls resolveAnswers with
@@ -142,9 +145,76 @@ export function placeholderValuesFor(
     // apply sheet doesn't also ask for it as an undeclared blank.
     const key = placeholderKey(question.name);
     if (key in values) continue;
-    values[key] = answers[question.id] ?? '';
+    const raw = answers[question.id] ?? '';
+    // A multi-answer choice reads as its picks in a title ("Outdoors, Camping"),
+    // never as the JSON it is stored as.
+    values[key] = question.kind === 'choice' && question.multiple ? answerValues(raw).join(', ') : raw;
   }
   return values;
+}
+
+/**
+ * The answers a stored answer string holds. A multi-answer choice stores a JSON
+ * array of its picked options (the way a 'people' answer stores ids, so the
+ * answer model stays one string per question); every other answer is the one
+ * value, or none when it is empty.
+ *
+ * Takes the string alone, not the question, so `applyItemVariant` (which only
+ * has answers by id) can match without the question list. Never throws: a
+ * single-answer option that merely starts with `[` and isn't a JSON array of
+ * strings reads as itself.
+ */
+export function answerValues(raw: string): string[] {
+  if (!raw) return [];
+  if (raw.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every(v => typeof v === 'string')) return parsed;
+    } catch {
+      // Not an encoded set: the option's own text.
+    }
+  }
+  return [raw];
+}
+
+/** The reverse of `answerValues` for a multi-answer choice. Empty when nothing is picked. */
+export function encodeAnswerValues(values: readonly string[]): string {
+  return values.length > 0 ? JSON.stringify(values) : '';
+}
+
+/**
+ * The answer string after tapping one option of a choice question.
+ *
+ * A single-answer choice takes the option. A multi-answer one toggles it in the
+ * picked set, kept in the question's own option order so the stored answer
+ * doesn't depend on the order of the taps. **The last pick can't be switched
+ * off**: an empty answer reads as untouched and falls back to the first option
+ * (`resolveAnswers`), so letting it go would make the tap look like it did
+ * nothing, or quietly select something else.
+ */
+export function toggleAnswer(question: TemplateQuestion, current: string, option: string): string {
+  if (!question.multiple) return option;
+  const picked = answerValues(current);
+  const next = picked.includes(option) ? picked.filter(v => v !== option) : [...picked, option];
+  if (next.length === 0) return current;
+  return encodeAnswerValues(question.options.filter(o => next.includes(o)));
+}
+
+/**
+ * The options of a choice in the order the apply sheet shows them. Only a
+ * Yes/No pair is reordered: it always reads Yes then No, however its author
+ * typed it. The first option is the default (`defaultAnswer`), and an author
+ * who wanted "International trip?" to start on No put No first, which left that
+ * one pair flipped against every other Yes/No in the same sheet. The default
+ * is untouched; only where the pills sit changes.
+ */
+export function displayOptions(question: TemplateQuestion): string[] {
+  const { options } = question;
+  if (options.length !== 2) return options;
+  const key = (o: string) => o.trim().toLowerCase();
+  const yes = options.find(o => key(o) === 'yes');
+  const no = options.find(o => key(o) === 'no');
+  return yes !== undefined && no !== undefined ? [yes, no] : options;
 }
 
 /**
@@ -179,7 +249,7 @@ export function liveConditions(
  * matches, so a template with no variants costs nothing.
  */
 export function applyItemVariant(item: TemplateItem, answers: Record<string, string>): TemplateItem {
-  const match = item.variants.find(v => (answers[v.questionId] ?? '') === v.answer);
+  const match = item.variants.find(v => answerValues(answers[v.questionId] ?? '').includes(v.answer));
   if (!match) return item;
   return {
     ...item,
@@ -233,7 +303,10 @@ export function itemMatchesAnswers(
   questions: readonly TemplateQuestion[],
   answers: Record<string, string>,
 ): boolean {
-  return liveConditions(item.conditions, questions).every(c => c.values.includes(answers[c.questionId] ?? ''));
+  return liveConditions(item.conditions, questions).every(c => {
+    const picked = answerValues(answers[c.questionId] ?? '');
+    return c.values.some(v => picked.includes(v));
+  });
 }
 
 /**
@@ -373,6 +446,7 @@ export function describeQuestion(question: TemplateQuestion): string {
   const parts: string[] = [];
   if (question.kind === 'choice') {
     parts.push(question.options.length > 0 ? question.options.join(' · ') : 'No answers yet');
+    if (question.multiple) parts.push('Pick any');
   } else if (question.kind === 'number') {
     parts.push(
       question.fromDates === 'none'

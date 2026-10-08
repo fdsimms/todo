@@ -4376,10 +4376,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
         // A choice answer is spelled the way the option is, since a condition
         // compares the stored strings exactly.
-        const value = question.kind === 'choice'
-          ? question.options.find(o => o.trim().toLowerCase() === raw.trim().toLowerCase()) ?? raw
-          : raw;
-        if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
+        // A question that takes several answers gets them joined with commas,
+        // unless an option itself holds a comma and the whole string is one.
+        const spell = (text: string) => question.options.find(o => o.trim().toLowerCase() === text.trim().toLowerCase());
+        let value = question.kind === 'choice' ? spell(raw) ?? raw : raw;
+        if (question.kind === 'choice' && question.multiple && spell(raw) === undefined) {
+          const parts = raw.split(',').map(part => spell(part) ?? part.trim()).filter(Boolean);
+          const bad = parts.filter(part => !question.options.includes(part));
+          if (bad.length > 0 || parts.length === 0) errors.push(`"${name}" must be some of ${question.options.join(', ')}.`);
+          else value = templateQuestions.encodeAnswerValues(question.options.filter(o => parts.includes(o)));
+        } else if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
         if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
         typed[question.id] = value;
       }

@@ -90,6 +90,10 @@ export interface QuestionPlan {
   defaultValue?: string;
   /** A number question can take its answer off the anchor dates instead. */
   fromDates?: TemplateQuestionSource;
+  /** A choice only: a run may pick several answers, and an item matches any of them. */
+  multiple?: boolean;
+  /** A choice only: the apply sheet states the destination forecast under the question. */
+  showForecast?: boolean;
 }
 
 export interface ConditionPlan {
@@ -265,6 +269,12 @@ export function validateTemplatePlan(
       // The normalizer drops it silently for every other kind, which reads as
       // the answer simply not coming off the dates rather than as a mistake.
       errors.push(`fromDates only applies to a number question, not "${question.name}".`);
+    }
+
+    if ((question.multiple || question.showForecast) && question.kind !== 'choice') {
+      // Dropped silently by the normalizer for every other kind, which reads as
+      // the flag simply not taking rather than as a mistake.
+      errors.push(`multiple and showForecast only apply to a choice question, not "${question.name ?? question.key ?? question.prompt}".`);
     }
 
     if (question.kind === 'people') {
@@ -632,6 +642,8 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       ...(q.options.length ? { options: q.options } : {}),
       ...(q.defaultValue ? { defaultValue: q.defaultValue } : {}),
       ...(q.fromDates !== 'none' ? { fromDates: q.fromDates } : {}),
+      ...(q.multiple ? { multiple: true } : {}),
+      ...(q.showForecast ? { showForecast: true } : {}),
     })),
     items: template.items.map(item => {
       const { groupId, conditions, variants, refTemplateId, refTemplateName, answerGate, blockedByItemIds, chainEnabled, chainItems, chainIndex, rotationEnabled, rotationItems, ...fields } = item;
