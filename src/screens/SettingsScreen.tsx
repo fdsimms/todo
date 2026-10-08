@@ -101,6 +101,9 @@ export function SettingsScreen() {
     mealsOnToday: settings.mealsOnToday === 'inline',
     unitSystemLabel: UNIT_SYSTEM_SUMMARY[settings.unitSystem] ?? null,
     vacationMode: settings.vacationMode,
+    writesCalendar: !!(settings.deadlineCalendarId || settings.completionCalendarId
+      || (settings.kitchenEnabled && settings.mealCalendarId)),
+    appBlocking: settings.focusShieldEnabled || settings.gateShieldEnabled || settings.penaltyShieldEnabled,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
     autoCompleteProjectsOnDone: settings.autoCompleteProjectsOnDone,
     appLockEnabled: settings.appLockEnabled,

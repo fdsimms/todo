@@ -44,7 +44,9 @@ export type SettingsGroupId =
   | 'dayTime'
   | 'notifications'
   | 'capture'
+  | 'calendar'
   | 'tasksProjects'
+  | 'focus'
   | 'generated'
   | 'health'
   | 'kitchen'
@@ -105,11 +107,18 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'appearance', title: 'Appearance', icon: 'color-palette-outline', tint: 'accent' },
   { id: 'dayTime', title: 'Day & time', icon: 'sunny-outline', tint: 'orange' },
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
-  // Both EventKit integrations live here rather than in two groups: they share
-  // a framework, a platform gate and the same caveat (no change notification,
-  // so both refresh on foreground).
-  { id: 'capture', title: 'Reminders & Calendar', icon: 'download-outline', tint: 'green', iosOnly: true },
+  // The two EventKit integrations were one group of 31 settings, with seven
+  // sections between them. They are two subjects (what comes in from Reminders
+  // and Siri, and what is read from and written to the calendar), and they
+  // still share a framework, a platform gate and the same caveat (no change
+  // notification, so both refresh on foreground), so they sit side by side.
+  // The id stays `capture`: it is what a saved route or link already names.
+  { id: 'capture', title: 'Reminders & Siri', icon: 'download-outline', tint: 'green', iosOnly: true },
+  { id: 'calendar', title: 'Calendar', icon: 'calendar-outline', tint: 'orange', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
+  // Focus sessions, app blocking and the timers' Lock Screen activity: 17 rows
+  // that were the biggest section of Tasks & projects.
+  { id: 'focus', title: 'Focus & app blocking', icon: 'timer-outline', tint: 'accent' },
   // Its own group rather than one section of fourteen inside Tasks & projects,
   // which is where half that screen's rows were. It answers the question people
   // actually have about these (*what writes tasks into my list*), and it grows
@@ -514,42 +523,42 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Calendar (iOS). "Google" earns a keyword on every row: it's what people
   // will search for, and it appears in none of the labels — the app reads
   // EventKit calendars and never asks which service is behind one.
-  { id: 'calendarRead', groupId: 'capture', label: 'Read my calendar', section: 'Calendar',
+  { id: 'calendarRead', groupId: 'calendar', label: 'Read my calendar', section: 'Calendar',
     keywords: ['google', 'gcal', 'ical', 'icloud', 'outlook', 'events', 'meetings', 'busy', 'schedule'] },
-  { id: 'calendarPermission', groupId: 'capture', label: 'Calendar access', section: 'Calendar',
+  { id: 'calendarPermission', groupId: 'calendar', label: 'Calendar access', section: 'Calendar',
     keywords: ['permission', 'allow', 'google'] },
-  { id: 'calendarList', groupId: 'capture', label: 'Calendars', section: 'Calendar',
+  { id: 'calendarList', groupId: 'calendar', label: 'Calendars', section: 'Calendar',
     keywords: ['which calendar', 'google', 'work', 'shared', 'subscribed'] },
-  { id: 'calendarToday', requires: 'calendarRead', groupId: 'capture', label: 'Today', section: 'Calendar',
+  { id: 'calendarToday', requires: 'calendarRead', groupId: 'calendar', label: 'Today', section: 'Calendar',
     keywords: ['events', 'booked', 'busy', 'free', 'google'] },
-  { id: 'calendarSyncNow', requires: 'calendarRead', groupId: 'capture', label: 'Sync now', section: 'Calendar',
+  { id: 'calendarSyncNow', requires: 'calendarRead', groupId: 'calendar', label: 'Sync now', section: 'Calendar',
     keywords: ['refresh', 'force', 'manual', 'reload', 'events', 'stale'] },
-  { id: 'calendarVacationHidden', groupId: 'capture', label: 'Hide during vacation', section: 'Calendar',
+  { id: 'calendarVacationHidden', groupId: 'calendar', label: 'Hide during vacation', section: 'Calendar',
     keywords: ['away', 'exclude', 'work calendar', 'trip'] },
-  { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'capture', label: 'Show events on Today', section: 'Calendar',
+  { id: 'calendarEventsOnToday', requires: 'calendarRead', groupId: 'calendar', label: 'Show events on Today', section: 'Calendar',
     keywords: ['hide events', 'rows', 'list', 'feed', 'off', 'agenda'] },
-  { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'capture', label: 'Show events under', section: 'Calendar',
+  { id: 'calendarEventCategory', requires: 'calendarRead', groupId: 'calendar', label: 'Show events under', section: 'Calendar',
     keywords: ['category', 'section', 'file', 'where'] },
-  { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
+  { id: 'reminderMeetingNudge', requires: 'calendarRead', groupId: 'calendar', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
-  { id: 'mapsApp', groupId: 'capture', label: 'Directions', section: 'Calendar',
+  { id: 'mapsApp', groupId: 'calendar', label: 'Directions', section: 'Adding events and directions',
     keywords: ['maps', 'apple maps', 'google maps', 'waze', 'navigation', 'navigate', 'location', 'address', 'route'] },
-  { id: 'placeSuggestions', groupId: 'capture', label: 'Suggest places', section: 'Calendar',
+  { id: 'placeSuggestions', groupId: 'calendar', label: 'Suggest places', section: 'Adding events and directions',
     keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
-  { id: 'savedPlaces', groupId: 'capture', label: 'Saved places', section: 'Calendar',
+  { id: 'savedPlaces', groupId: 'calendar', label: 'Saved places', section: 'Adding events and directions',
     keywords: ['home', 'work', 'location', 'address', 'event', 'name', 'bookmark', 'favorite'] },
-  { id: 'savedEvents', groupId: 'capture', label: 'Saved events', section: 'Calendar',
+  { id: 'savedEvents', groupId: 'calendar', label: 'Saved events', section: 'Adding events and directions',
     keywords: ['appointment', 'regular', 'repeat', 'bookmark', 'favorite', 'book', 'checkup', 'reminder'] },
-  { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
+  { id: 'calendarPeopleHistory', requires: 'calendarRead', groupId: 'calendar', label: 'Match events to people', section: 'Calendar',
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
-  { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
+  { id: 'deadlineCalendar', groupId: 'calendar', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
-  { id: 'completionCalendar', groupId: 'capture', label: 'Write completions to', section: 'Completions on your calendar',
+  { id: 'completionCalendar', groupId: 'calendar', label: 'Write completions to', section: 'Completions on your calendar',
     keywords: ['event', 'export', 'google', 'sync', 'log', 'history', 'record'] },
-  { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
+  { id: 'mealCalendar', groupId: 'calendar', label: 'Write meals to', section: 'Meals on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
-  { id: 'claudeCalendar', groupId: 'capture', label: 'Add Claude’s events to', section: 'Claude’s events on your calendar',
+  { id: 'claudeCalendar', groupId: 'calendar', label: 'Add Claude’s events to', section: 'Claude’s events on your calendar',
     keywords: ['mcp', 'agent', 'ai', 'assistant', 'appointment', 'sync server', 'calendar'] },
 
   { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
@@ -684,50 +693,50 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // thing, and it appears nowhere in the UI copy (which says what each setting
   // does in literal terms instead), so without it the whole section is
   // unfindable by the only word someone is likely to type.
-  { id: 'focusWorkCapMinutes', groupId: 'tasksProjects', label: 'Work stretch length', section: 'Focus sessions', simple: true,
+  { id: 'focusWorkCapMinutes', groupId: 'focus', label: 'Work stretch length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'timer', 'deep work', 'block', 'session', 'cap'] },
-  { id: 'focusDefaultWorkMinutes', groupId: 'tasksProjects', label: 'Length without an estimate', section: 'Focus sessions', simple: true,
+  { id: 'focusDefaultWorkMinutes', groupId: 'focus', label: 'Length without an estimate', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'unestimated', 'default', 'fallback'] },
-  { id: 'focusBreaksEnabled', groupId: 'tasksProjects', label: 'Breaks in focus sessions', section: 'Focus sessions', simple: true,
+  { id: 'focusBreaksEnabled', groupId: 'focus', label: 'Breaks in focus sessions', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'rest', 'no breaks', 'skip breaks', 'default'] },
-  { id: 'focusRestAfterMinutes', groupId: 'tasksProjects', label: 'Break after this much work', section: 'Focus sessions', simple: true,
+  { id: 'focusRestAfterMinutes', groupId: 'focus', label: 'Break after this much work', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'interval', 'how often'] },
-  { id: 'focusRestAfterTasks', groupId: 'tasksProjects', label: 'Break after this many tasks', section: 'Focus sessions', simple: true,
+  { id: 'focusRestAfterTasks', groupId: 'focus', label: 'Break after this many tasks', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how many'] },
-  { id: 'focusRestMinutes', groupId: 'tasksProjects', label: 'Break length', section: 'Focus sessions', simple: true,
+  { id: 'focusRestMinutes', groupId: 'focus', label: 'Break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'short break'] },
-  { id: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break every', section: 'Focus sessions', simple: true,
+  { id: 'focusLongRestEvery', groupId: 'focus', label: 'Long break every', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
-  { id: 'focusLongRestMinutes', requires: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
+  { id: 'focusLongRestMinutes', requires: 'focusLongRestEvery', groupId: 'focus', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
-  { id: 'focusHideTimers', groupId: 'tasksProjects', label: 'Hide timers while focusing', section: 'Focus sessions', simple: true,
+  { id: 'focusHideTimers', groupId: 'focus', label: 'Hide timers while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'countdown', 'clock'] },
-  { id: 'focusLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
+  { id: 'focusLiveActivity', iosOnly: true, groupId: 'focus', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
   // "Screen time" is the name most people have for this and appears nowhere in
   // the copy, same argument as "pomodoro" on the rows above. So are "block"
   // and "distraction", which is what somebody is actually looking for.
-  { id: 'focusShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
+  { id: 'focusShield', iosOnly: true, groupId: 'focus', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
-  { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
+  { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'focus', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
-  { id: 'gateShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
+  { id: 'gateShield', iosOnly: true, groupId: 'focus', label: 'Block apps until a task is done', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
-  { id: 'penaltyShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
+  { id: 'penaltyShield', iosOnly: true, groupId: 'focus', label: 'Block apps when you fail a task', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict'] },
-  { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
+  { id: 'penaltyShieldApps', iosOnly: true, requires: 'penaltyShield', groupId: 'focus', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'which apps', 'picker', 'choose'] },
-  { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'tasksProjects', label: 'Blocked until', section: 'Focus sessions', simple: true,
+  { id: 'penaltyShieldActive', iosOnly: true, requires: 'penaltyShield', groupId: 'focus', label: 'Blocked until', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'penalty', 'locked out', 'how long', 'end early', 'unblock'] },
-  { id: 'timerLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
+  { id: 'timerLiveActivity', iosOnly: true, groupId: 'focus', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown', 'completion timer', 'reminder'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
     keywords: ['window', 'delete'], simple: true },
-  { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
+  { id: 'vacationMode', groupId: 'dayTime', label: 'Vacation mode', section: 'Vacation',
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
-  { id: 'vacationEnd', requires: 'vacationMode', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
+  { id: 'vacationEnd', requires: 'vacationMode', groupId: 'dayTime', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
-  { id: 'destinationForecastEnabled', groupId: 'tasksProjects', label: 'Destination forecast',
+  { id: 'destinationForecastEnabled', groupId: 'dayTime', label: 'Destination forecast',
     section: 'Trips',
     keywords: ['weather', 'trip', 'away', 'packing', 'travel', 'rain'] },
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and

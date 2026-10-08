@@ -164,7 +164,7 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
 
           <Text style={styles.hint}>
             This is the calendar every task writes to, so picking one here also sets it for the
-            rest of the app. Settings › Reminders &amp; Calendar has the same choice.
+            rest of the app. Settings › Calendar has the same choice.
           </Text>
         </ScrollView>
       </View>

@@ -374,7 +374,7 @@ describe('settings index', () => {
     // screen gates it, and the next row added to the section inherits the check.
     it('flags every row in a section simplified mode hides wholesale', () => {
       const focus = SETTINGS_ENTRIES.filter(
-        e => e.groupId === 'tasksProjects' && e.section === 'Focus sessions');
+        e => e.groupId === 'focus' && e.section === 'Focus sessions');
       expect(focus.length).toBeGreaterThan(1);
       expect(focus.filter(e => !e.simple)).toEqual([]);
     });

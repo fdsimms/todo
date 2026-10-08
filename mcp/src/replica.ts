@@ -4054,7 +4054,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     requestCalendarEvent(input: CalendarRequestInput): CalendarRequest {
       if (!db.dbGetSetting('calendarRequestDeviceId')) {
         throw new Error(
-          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Reminders & Calendar › Add Claude’s events to.'
+          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Calendar › Add Claude’s events to.'
         );
       }
       const request: CalendarRequest = {
