@@ -620,3 +620,32 @@ describe('searchProjects', () => {
     expect(both[0].score).toBeGreaterThan(one[0].score);
   });
 });
+
+describe('notesExcerpt', () => {
+  it('is set when the notes are the only reason a task matched', () => {
+    const t = makeTask({ title: 'Call dentist', notes: 'ask about the local anesthetic' });
+    const [r] = fuzzySearch([t], 'local');
+    expect(r.titleMatches).toEqual([]);
+    expect(r.notesExcerpt?.text).toBe('ask about the local anesthetic');
+    const [s, e] = r.notesExcerpt!.ranges[0];
+    expect(r.notesExcerpt!.text.slice(s, e)).toBe('local');
+  });
+
+  it('is null when the title already carries the highlight', () => {
+    const t = makeTask({ title: 'Local errands', notes: 'a local shop' });
+    expect(fuzzySearch([t], 'local')[0].notesExcerpt).toBeNull();
+  });
+
+  it('is null when the project name carries the highlight', () => {
+    const t = makeTask({ title: 'Call dentist', notes: 'a local shop', projectId: 'p1' });
+    const [r] = fuzzySearch([t], 'local', new Map([['p1', 'Local move']]));
+    expect(r.notesExcerpt).toBeNull();
+  });
+
+  it('is null for a task with no notes, or notes that only match by scattered letters', () => {
+    const none = makeTask({ title: 'Call dentist', notes: '', tags: ['local'] });
+    expect(fuzzySearch([none], 'local')[0].notesExcerpt).toBeNull();
+    const scattered = makeTask({ title: 'Call dentist', notes: 'lemon on grill' });
+    expect(fuzzySearch([scattered], 'log')[0].notesExcerpt).toBeNull();
+  });
+});

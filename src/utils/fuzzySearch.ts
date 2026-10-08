@@ -1,7 +1,7 @@
 import type { Project, Task, TaskGroup } from '../types';
 import { displayTitleFor, isTaskNotNeeded } from './visibilityUtils';
 import { formatTaskDeliverable } from './deliverables';
-import { mergeRanges, scoreSubstring } from './ranges';
+import { matchExcerpt, mergeRanges, scoreSubstring, type MatchExcerpt } from './ranges';
 
 // Re-exported so the existing call sites (and their tests) keep importing them
 // from here; both moved to `ranges.ts` so a search that isn't over tasks can
@@ -16,6 +16,13 @@ export interface SearchResult {
   projectName: string | null;
   /** Ranges to highlight in `projectName` — how a row shows *why* a project-name match matched. */
   projectMatches: [number, number][];
+  /**
+   * Where the notes matched, as a one-line excerpt, when that is the reason the
+   * task is in the list. Null whenever the title or the project name already
+   * carries a highlight (the row explains itself), and when the notes matched
+   * only by scattered letters, which isn't worth pointing at.
+   */
+  notesExcerpt: MatchExcerpt | null;
 }
 
 export function fuzzySearch(
@@ -99,6 +106,10 @@ export function fuzzySearch(
         titleMatches: mergeRanges(titleMatches),
         projectName: projectName ?? null,
         projectMatches: mergeRanges(projectMatches),
+        notesExcerpt:
+          titleMatches.length === 0 && projectMatches.length === 0 && task.notes
+            ? matchExcerpt(task.notes, words)
+            : null,
       });
     }
   }
