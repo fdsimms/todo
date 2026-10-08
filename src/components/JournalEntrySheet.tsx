@@ -5,11 +5,11 @@ import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import type { JournalEntry, JournalKind } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { getLogicalToday } from '../utils/dateUtils';
-import { JOURNAL_KIND_COPY, journalPromptAt } from '../utils/journal';
-import { toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
+import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
+import { JOURNAL_KIND_COPY, entriesOnDay, journalPromptAt } from '../utils/journal';
+import { journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { EditorSheet } from './EditorSheet';
@@ -19,6 +19,7 @@ import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
+import { JournalText } from './JournalText';
 import { JOURNAL_FORMAT_BAR_HEIGHT, JournalFormatBar, type FormatAction } from './JournalFormatBar';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 
@@ -50,6 +51,10 @@ interface Props {
  * with, and Cancel asks before discarding changed text. The Day row shows only
  * for a new entry, for the mood sheet's reason: an entry's day is fixed once
  * written. Saving a new entry for today ticks off that kind's reminder task.
+ *
+ * A new entry on a day that already has some shows them above the field, read
+ * only, so a snippet written at 3pm carries on from the morning's rather than
+ * starting a blank page. The screen draws the day's snippets as one page.
  */
 export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Props) {
   const colors = useColors();
@@ -58,6 +63,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
   const addEntry = useJournalStore(s => s.addEntry);
   const updateEntry = useJournalStore(s => s.updateEntry);
   const removeEntry = useJournalStore(s => s.removeEntry);
+  const allEntries = useJournalStore(s => s.entries);
   const completeJournalTaskForToday = useTaskStore(s => s.completeJournalTaskForToday);
 
   const [text, setText] = useState('');
@@ -95,6 +101,15 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
     setText(edit.text);
     caret.selectRange(edit.selection, edit.text);
   };
+
+  // The day's page so far, for a new entry only: an edit is one snippet of it.
+  const soFar = useMemo(
+    () => (editing ? [] : entriesOnDay(allEntries, kind, dayKeyOf(day))),
+    [editing, allEntries, kind, day],
+  );
+  const soFarLabel = isSameDay(day, getLogicalToday())
+    ? 'SO FAR TODAY'
+    : `ALREADY WRITTEN ON ${format(day, 'EEE, MMM d').toUpperCase()}`;
 
   const canSave = text.trim().length > 0 && (!editing || text.trim() !== editing.text);
 
@@ -175,6 +190,25 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
         </View>
       )}
 
+      {soFar.length > 0 && (
+        <>
+          <Text style={styles.soFarLabel}>{soFarLabel}</Text>
+          <View style={styles.card}>
+            {soFar.map((entry, index) => (
+              <View
+                key={entry.id}
+                style={index > 0 && styles.soFarGap}
+                accessible
+                accessibilityLabel={`${format(new Date(entry.loggedAt), 'h:mm a')}. ${journalPlainText(entry.text)}`}
+              >
+                <Text style={styles.soFarTime}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
+                <JournalText text={entry.text} textStyle={styles.soFarText} />
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
       <View style={styles.card}>
         {copy.hint && <Text style={styles.hint}>{copy.hint}</Text>}
         <TextField
@@ -185,7 +219,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, onClose }: Pr
           onSelectionChange={caret.onSelectionChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={copy.placeholder}
+          placeholder={soFar.length > 0 ? copy.continuePlaceholder : copy.placeholder}
           placeholderTextColor={colors.textTertiary}
           maxLength={TEXT_MAX_LENGTH}
           multiline
@@ -258,6 +292,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
+  },
+  soFarLabel: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    marginBottom: spacing.sm,
+  },
+  soFarGap: { marginTop: spacing.smd },
+  soFarTime: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.xxs,
+  },
+  soFarText: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
   },
   hint: {
     fontSize: font.sm,
