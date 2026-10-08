@@ -2002,7 +2002,16 @@ export const TaskItem = React.memo(function TaskItem({
   const handleSlipUndo = async () => {
     if (slipsLoggedToday === 0) return;
     await haptics.tap();
-    undoSlip(task.id);
+    // Same reasoning as handleQuotaUndo: a stray long press shouldn't change the
+    // record silently. Note undoSlip doesn't refund a charge (penaltyShield.ts).
+    Alert.alert(
+      'Take back a slip?',
+      `Remove the most recent slip logged for "${displayTitleFor(task)}" today?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take back', style: 'destructive', onPress: () => undoSlip(task.id) },
+      ],
+    );
   };
 
   const handleComplete = async () => {
@@ -2323,12 +2332,28 @@ export const TaskItem = React.memo(function TaskItem({
   const handleQuotaUndo = async () => {
     if (task.progressCount === 0) return;
     await haptics.tap();
-    // A rotation's count and its ledger have to move together — decrementing
-    // through the quota path would leave the ledger holding a pick the count
-    // no longer knows about, and "the count is how many distinct members the
-    // ledger holds" is the invariant everything downstream reads.
-    if (isRotation) unlogRotationUnit(task.id);
-    else unlogQuotaUnit(task.id);
+    // A long press is easy to do by accident while scrolling or reordering, and
+    // taking a unit off changes the count with nothing on screen to say so, so
+    // it asks first.
+    Alert.alert(
+      'Take one off?',
+      `Reduce "${displayTitleFor(task)}" from ${task.progressCount} to ${task.progressCount - 1}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Take one off',
+          style: 'destructive',
+          onPress: () => {
+            // A rotation's count and its ledger have to move together — decrementing
+            // through the quota path would leave the ledger holding a pick the count
+            // no longer knows about, and "the count is how many distinct members the
+            // ledger holds" is the invariant everything downstream reads.
+            if (isRotation) unlogRotationUnit(task.id);
+            else unlogQuotaUnit(task.id);
+          },
+        },
+      ],
+    );
   };
 
   // Widget checkbox taps queue a completion and open the app (see
@@ -4814,10 +4839,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.accent,
     overflow: 'hidden', // clips the fill to the circle
   },
-  // The brim. Matches circleCompleting so a met target ends on the same green a
+  // The brim. Matches circleCompleting so a met target ends on the same gold a
   // ticked checkbox does, with the fill already that colour underneath it.
   circleQuotaDone: {
-    borderColor: colors.green,
+    // The same gold the fill ends on (`colors.done`), on both the ring and the
+    // box's own background. A green ring around a gold fill left the row's
+    // background showing through the antialiased seam between them, and the
+    // box's own fill means nothing is left to peek through at the corners.
+    borderColor: colors.done,
+    backgroundColor: colors.done,
   },
   // A broken day on a negative habit. Filled rather than outlined because it is
   // the one state on this row that wants to be legible at a glance from the top

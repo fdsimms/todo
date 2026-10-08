@@ -28,9 +28,13 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useProjectStore } from '../store/useProjectStore';
-import { awaySpanOf } from '../utils/awayDates';
+import { awaySpanOf, awayNights } from '../utils/awayDates';
+import { useDestinationForecast, type DestinationForecastLines } from '../hooks/useDestinationForecast';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   resolveOffsetDate,
   formatOffsetLabel,
@@ -44,10 +48,11 @@ import {
   declaresRunPlaceholder,
   resolveApplyContainer,
   RUN_PLACEHOLDER,
+  placeholderKey,
   type TemplateAnchors,
   type ApplyTreeNode,
 } from '../utils/templateUtils';
-import { formatScheduledDate } from '../utils/dateUtils';
+import { formatScheduledDate, dayKeyOf } from '../utils/dateUtils';
 import { TITLE_MAX_LENGTH } from '../types';
 import {
   questionsForTree,
@@ -56,6 +61,9 @@ import {
   initialLeafSelection,
   reselectForAnswers,
   questionLabel,
+  displayOptions,
+  toggleAnswer,
+  answerValues as answerValuesOf,
   applyItemVariant,
   personIdsFromAnswer,
   personIdsToAnswer,
@@ -202,6 +210,30 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // (docs/arch/people.md) rules out — so it doesn't render at all, the same
   // way MealEntrySheet's guest picker omits itself rather than showing empty.
   const visibleQuestions = questions.filter(q => q.kind !== 'people' || people.length > 0);
+
+  // The forecast line under a question that asks for it ("What's the weather
+  // like?"). Where: the project this lands in, else a `{destination}` blank
+  // the run answers. When: the two dates picked above, else that project's
+  // away span. It only states the forecast, and answers nothing (see
+  // TemplateQuestion.showForecast). Nothing is fetched unless a question asks.
+  const wantsForecast = visibleQuestions.some(q => q.showForecast);
+  const destinationBlank = placeholderKey('destination');
+  const typedDestination = (
+    placeholderValuesFor(questions, answers)[destinationBlank] ?? placeholderValues[destinationBlank] ?? ''
+  ).trim();
+  const forecastPlace = useDebouncedValue(
+    wantsForecast ? (targetProject?.destination?.trim() || typedDestination || null) : null,
+    600,
+  );
+  const targetSpan = targetProject ? awaySpanOf(targetProject) : null;
+  const forecastStart = startAnchor ?? targetSpan?.start ?? null;
+  const forecastEnd = endAnchor ?? (startAnchor ? null : targetSpan?.end ? addDays(targetSpan.end, -1) : null);
+  const forecast = useDestinationForecast(
+    forecastPlace,
+    forecastStart ? dayKeyOf(forecastStart) : null,
+    forecastStart ? dayKeyOf(forecastEnd ?? forecastStart) : null,
+    forecastStart && forecastEnd ? differenceInCalendarDays(forecastEnd, forecastStart) : null,
+  );
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -609,6 +641,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                   question={question}
                   value={answers[question.id] ?? ''}
                   onChange={value => setTypedAnswers(prev => ({ ...prev, [question.id]: value }))}
+                  forecast={question.showForecast ? forecast : null}
                   people={people}
                   colors={colors}
                   styles={styles}
@@ -741,31 +774,40 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
  * one line or wrap ragged, which is a row of pills again inside a box.
  */
 function QuestionRow({
-  question, value, onChange, people, colors, styles,
+  question, value, onChange, forecast, people, colors, styles,
 }: {
   question: TemplateQuestion;
   value: string;
   onChange: (value: string) => void;
+  /** The destination forecast to state under the prompt, when this question asks for it. Null draws nothing. */
+  forecast: DestinationForecastLines | null;
   /** Only read for a `'people'` question — guaranteed non-empty when one reaches this row, see visibleQuestions above. */
   people: Person[];
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
 }) {
+  const picked = answerValuesOf(value);
   return (
     <View style={styles.questionBlock}>
       <Text style={styles.questionPrompt} numberOfLines={2}>{questionLabel(question)}</Text>
+      {forecast?.line && (
+        <View>
+          <Text style={styles.forecastLine}>{forecast.line}</Text>
+          {forecast.gap && <Text style={styles.forecastGap}>{forecast.gap}</Text>}
+        </View>
+      )}
       {question.kind === 'choice' ? (
         <View style={styles.answerRow}>
-          {question.options.map(option => {
-            const on = option === value;
+          {displayOptions(question).map(option => {
+            const on = picked.includes(option);
             return (
               <TouchableOpacity
                 key={option}
                 style={[styles.answerPill, on && styles.answerPillOn]}
-                onPress={() => { haptics.tap(); onChange(option); }}
+                onPress={() => { haptics.tap(); onChange(toggleAnswer(question, value, option)); }}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
+                accessibilityRole={question.multiple ? 'checkbox' : 'radio'}
+                accessibilityState={question.multiple ? { checked: on } : { selected: on }}
                 accessibilityLabel={option}
               >
                 <Text style={[styles.answerPillText, on && styles.answerPillTextOn]}>{option}</Text>
@@ -940,6 +982,15 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   questionPrompt: {
     color: colors.textSecondary,
     fontSize: font.sm,
+  },
+  forecastLine: {
+    color: colors.text,
+    fontSize: font.sm,
+  },
+  forecastGap: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xxs,
   },
   answerRow: {
     flexDirection: 'row',

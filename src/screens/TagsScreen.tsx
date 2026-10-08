@@ -299,7 +299,6 @@ export function TagsScreen() {
         <Fab
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add tag"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
         />
 
         <QuickAddNameSheet

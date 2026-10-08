@@ -17,6 +17,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { isHeldBack } from '../utils/visibilityUtils';
 import { describeSavedView, filterTasksForView } from '../utils/savedViews';
 import type { SavedView } from '../types';
+import { useFabBottom } from '../components/Fab';
 
 /**
  * The saved views someone has kept (#2679), one row each.
@@ -37,6 +38,7 @@ import type { SavedView } from '../types';
  */
 export function SavedViewsScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -97,7 +99,7 @@ export function SavedViewsScreen() {
         data={views}
         keyExtractor={v => v.id}
         onReorder={handleReorder}
-        scrollToTop={{ bottom: insets.bottom + spacing.lg }}
+        scrollToTop={{ bottom: fabBottom }}
         contentContainerStyle={[styles.listContent, views.length === 0 && styles.emptyContent]}
         renderItem={({ item, drag, isActive }) => {
           const count = counts.get(item.id) ?? 0;

@@ -1,9 +1,10 @@
 /**
  * Finding a field in the task editor by name.
  *
- * The editor holds 26 rows across seven groups, all of them always on screen,
- * so this answers "I know the field exists, where is it" — a tidier layout
- * can't help with that on its own.
+ * The editor holds around forty rows across eight groups (some appear only for
+ * a given kind or setting), all of them always on screen, so this answers
+ * "I know the field exists, where is it" — a tidier layout can't help with
+ * that on its own.
  *
  * The half a tidier layout can never give you is the *wrong word*. "Waiting
  * on" is what you'd look for as blocked, depends on, after; "Vacation pause"

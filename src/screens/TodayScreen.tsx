@@ -196,7 +196,7 @@ import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
-import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
+import { type FabDragHandlers, FAB_SIZE, useFabBottom } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -247,7 +247,7 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 // and a bit ahead of the end costs a short hitch where sixty at the last few
 // rows cost a visible one, and could let a fling hit the bottom before they
 // arrived.
-const LATER_INITIAL_TASK_LIMIT = 15;
+const LATER_INITIAL_TASK_LIMIT = 12;
 const LATER_SETTLED_TASK_LIMIT = 60;
 const LATER_TASK_PAGE_SIZE = 30;
 const LATER_END_REACHED_THRESHOLD = 900;
@@ -711,6 +711,7 @@ export function TodayScreen() {
   const route = useRoute<any>();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   // ==== local state (view mode, selection, expansion, sheets) ====
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   // Declared up here rather than with the rest of the sheet/selection state
@@ -1792,8 +1793,8 @@ export function TodayScreen() {
     && weatherSnapshot
     && weatherSnapshotDayKey === getLogicalDayKey(new Date(), dayResetTime)
     ? {
-        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode))}`,
-        icon: weatherIconFor(weatherSnapshot.weatherCode),
+        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode, weatherSnapshot.isDay ?? true))}`,
+        icon: weatherIconFor(weatherSnapshot.weatherCode, weatherSnapshot.isDay ?? true),
       }
     : undefined;
 
@@ -4238,7 +4239,9 @@ export function TodayScreen() {
   }, [viewMode]);
 
   const { sections: visibleLaterSections, hasMore: hasMoreLaterSections } = useMemo(
-    () => laterDaySections(laterOrder, laterTaskLimit),
+    // Only the first-paint budget may end a day partway: it is gone one
+    // interaction later, and a drag needs whole days (see laterDaySections).
+    () => laterDaySections(laterOrder, laterTaskLimit, { cutMidDay: laterTaskLimit === LATER_INITIAL_TASK_LIMIT }),
     [laterOrder, laterTaskLimit],
   );
 
@@ -4381,7 +4384,16 @@ export function TodayScreen() {
           active: hideCategories,
           accessibilityLabel: 'More options',
         }]
-      : []),
+      // Later, Unscheduled and Inbox have no "…" menu, which is where Today's
+      // settings row lives, so they get a settings button that jumps straight
+      // into Settings, the same jump that row makes. The list is the same one:
+      // where quick add files a task, Hide categories, Day starts and vacation
+      // all apply to those lists too.
+      : screenSettings.link ? [{
+        icon: 'settings-outline' as const,
+        onPress: () => navigateToSettingsEntry(navigation, screenSettings.link!.entryId),
+        accessibilityLabel: 'Today settings',
+      }] : []),
   ];
 
   // ==== render. Everything below is JSX ====
@@ -4488,7 +4500,7 @@ export function TodayScreen() {
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             rowScrollerRef={laterRowScroller}
-            scrollToTop={{ bottom: insets.bottom + 64 }}
+            scrollToTop={{ bottom: fabBottom }}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             // See the Today list's own note: an expanded row's card shadow
@@ -4617,7 +4629,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
-            scrollToTop={{ bottom: insets.bottom + 64 }}
+            scrollToTop={{ bottom: fabBottom }}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -5012,14 +5024,14 @@ export function TodayScreen() {
         {viewMode === 'unscheduled' && (
           <ScrollToTopButton
             visible={unscheduledScrollTop.visible}
-            bottom={insets.bottom + 64}
+            bottom={fabBottom}
             onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
         {viewMode === 'inbox' && (
           <ScrollToTopButton
             visible={inboxScrollTop.visible}
-            bottom={insets.bottom + 64}
+            bottom={fabBottom}
             onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
           />
         )}
@@ -5028,7 +5040,6 @@ export function TodayScreen() {
           <AddTaskFabWithDropLabel
             channel={fabIntentChannel}
             categories={categories}
-            bottom={insets.bottom + 64}
             disabled={spotlightActive}
             opacity={fabOpacity}
             onSelect={handleAddMenuSelect}
@@ -5043,7 +5054,7 @@ export function TodayScreen() {
           <View
             style={[
               styles.stackNameBar,
-              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : insets.bottom + 64 },
+              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : fabBottom },
             ]}
           >
             <InlineNameField
@@ -5062,7 +5073,7 @@ export function TodayScreen() {
             destination={createdToast.destination}
             mode={createdToast.source}
             dayResetTime={dayResetTime}
-            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
           />
@@ -5115,7 +5126,7 @@ export function TodayScreen() {
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
             count={templateAppliedCount}
-            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
         )}

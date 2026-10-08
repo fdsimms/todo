@@ -313,7 +313,6 @@ export function CategoryDetailScreen() {
           <Fab
             onPress={() => setQuickAddVisible(true)}
             accessibilityLabel="Add task"
-            bottom={insets.bottom + spacing.xl}
           />
         )}
 

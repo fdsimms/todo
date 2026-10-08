@@ -25,6 +25,8 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
@@ -46,6 +48,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   const tabBarHeight = useBottomTabBarHeight();
   const copy = JOURNAL_KIND_COPY[kind];
   const route = kind === 'dream' ? 'Dreams' : 'Journal';
+  const screenSettings = useScreenSettings(route, kind === 'dream' ? 'Dream settings' : 'Journal settings');
 
   const all = useJournalStore(s => s.entries);
   const entries = useMemo(() => entriesOfKind(all, kind), [all, kind]);
@@ -130,7 +133,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
       <ScreenHeader
         title={copy.title}
         subtitle={subtitle}
-        actions={[
+        actions={withScreenSettings([
           // Only once there is something to share, as on the medication screen.
           ...(entries.length > 0 ? [{
             icon: 'share-outline' as const,
@@ -143,8 +146,9 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
             onPress: openNew,
             accessibilityLabel: kind === 'dream' ? 'Write down a dream' : 'Write in your journal',
           },
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="health" active={route} />
     </>
   );

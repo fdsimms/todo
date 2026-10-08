@@ -3157,8 +3157,21 @@ function seedTemplates(): void {
     prompt: 'What kind of trip?',
     name: 'trip type',
     kind: 'choice',
-    options: ['Vacation', 'Work'],
+    options: ['Vacation', 'Work', 'Outdoors'],
+    // A trip can be a work trip and an outdoors one at once.
+    multiple: true,
   })!;
+  // Asks for the destination's forecast under it, so what the weather will be
+  // is on screen where it's answered. It conditions nothing: the forecast only
+  // states, and the answer stays the person's.
+  addQuestion(template.id, {
+    prompt: "What's the weather like?",
+    name: 'weather',
+    kind: 'choice',
+    options: ['Mild', 'Warm', 'Cold', 'Rainy'],
+    multiple: true,
+    showForecast: true,
+  });
   // No options, no name, no default to seed — a 'people' question has none of
   // those, its answer set is read live off the People screen at apply time.
   addQuestion(template.id, { prompt: "Who's coming?", kind: 'people' });

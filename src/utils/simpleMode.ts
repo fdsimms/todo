@@ -29,11 +29,12 @@ import { TASK_KINDS } from './taskKinds';
  * **Screens split two ways under that second rule**, which is the one
  * non-obvious thing here. Calendar, Stats, Backfill and Stuck are *lenses*:
  * every task they show is reachable from Today or Search, so hiding them
- * costs nothing and they go unconditionally. Stacks, Templates, People and
- * Mood hold objects that live nowhere else, so hiding them while the user has
- * some would strand real data — those four survive as long as they hold
- * anything (see `screenShown`). An install with none of them loses all four
- * rows; an install with four stacks keeps the one row that can edit them.
+ * costs nothing and they go unconditionally. Stacks, Templates, People, Mood,
+ * Medications, Journal, Dreams and the Food log hold objects that live nowhere
+ * else, so hiding them while the user has some would strand real data — those
+ * eight survive as long as they hold anything (see `screenShown`). An install
+ * with none of them loses all eight rows; an install with four stacks keeps
+ * the one row that can edit them.
  * Mood was declared one of the four from the start but had no branch in
  * `screenShown` for a long time, so it alone was shown unconditionally,
  * including on an install with no entries at all.
@@ -453,4 +454,31 @@ export function visibleLenses<T extends string>(
 ): T[] {
   return lenses.filter(lens =>
     lens === current || lens !== 'unscheduled' || (counts[lens] ?? 0) > 0);
+}
+
+/**
+ * The sentence under an empty search result that says why a result might not
+ * be there. A search that skips what Simplified mode or the Groceries & meals
+ * switch is hiding looks identical to one for something that doesn't exist,
+ * and the only way back is a Settings group the person never needed to find.
+ *
+ * `fields` (the task editor) is affected by Simplified mode alone; the
+ * Groceries & meals switch only takes away settings and screens. Null when
+ * nothing is being hidden, so the caller shows no extra line.
+ */
+export function hiddenResultsNote(
+  state: { simpleMode: boolean; kitchenEnabled: boolean },
+  subject: 'settings' | 'screens' | 'fields',
+): string | null {
+  const kitchenOff = !state.kitchenEnabled && subject !== 'fields';
+  if (state.simpleMode && kitchenOff) {
+    return `Simplified mode and the Groceries & meals switch are hiding some ${subject}. Change them in Settings › Feature areas.`;
+  }
+  if (state.simpleMode) {
+    return `Simplified mode hides some ${subject}. Turn it off in Settings › Feature areas to see them.`;
+  }
+  if (kitchenOff) {
+    return `Groceries & meals is off, which hides its ${subject}. Turn it on in Settings › Feature areas.`;
+  }
+  return null;
 }

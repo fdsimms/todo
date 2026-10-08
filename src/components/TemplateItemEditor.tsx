@@ -118,6 +118,8 @@ interface Props {
   /** Pre-fill for a new item handed off from TemplateItemQuickAdd. Ignored when editing an existing item. */
   initialDraft?: Partial<TemplateItem> | null;
   onClose: () => void;
+  /** Called with the stored item right after a new one is added (not on an edit). */
+  onCreated?: (item: TemplateItem) => void;
 }
 
 /**
@@ -132,7 +134,7 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
   { value: 'sunset', label: 'Sunset' },
 ];
 
-export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose }: Props) {
+export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose, onCreated }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -694,15 +696,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     };
     if (item) {
       updateItem(templateId, item.id, updates);
-    } else if (!addItem(templateId, updates)) {
-      // Nothing was stored — closing here would throw away a whole editor's
-      // worth of work on a row that will never appear. See addItem.
-      haptics.error();
-      Alert.alert(
-        'Couldn’t add that item',
-        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
-      );
-      return;
+    } else {
+      const created = addItem(templateId, updates);
+      if (!created) {
+        // Nothing was stored — closing here would throw away a whole editor's
+        // worth of work on a row that will never appear. See addItem.
+        haptics.error();
+        Alert.alert(
+          'Couldn’t add that item',
+          'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+        );
+        return;
+      }
+      onCreated?.(created);
     }
     haptics.success();
     onClose();

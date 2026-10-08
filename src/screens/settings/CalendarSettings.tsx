@@ -29,6 +29,7 @@ import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import { SavedPlacesRows } from './SavedPlacesRows';
 import { SavedEventsRows } from './SavedEventsRows';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 const MAPS_APP_OPTIONS: SegmentOption<MapsApp>[] = [
   { value: 'apple', label: 'Apple Maps', icon: 'map-outline' },
@@ -245,9 +246,9 @@ export function CalendarSettings() {
     }
     if (permission !== 'granted' && !(await requestCalendarPermission())) {
       refreshState();
-      Alert.alert(
+      alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to read your calendars. Turn it on for this app in the Settings app, then try again.'
+        'This needs permission to read your calendars. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }
@@ -260,7 +261,7 @@ export function CalendarSettings() {
       // the device. There is nothing to pick, and no other screen will say why.
       Alert.alert(
         'No calendars on this device',
-        'To read a Google calendar here, add the account in the Settings app under Calendar › Accounts. Calendars from any account you add there show up in the list.'
+        'To read a Google calendar here, add the account in the Settings app under Calendar › Accounts. Calendars from any account you add there show up in the list.',
       );
       return;
     }
@@ -277,6 +278,7 @@ export function CalendarSettings() {
   const showCalendarsRow = permission === 'granted' && (calendarReadEnabled || pickerOpen);
 
   return (
+    <>
     <SettingsSection
       label="Calendar"
       footer="Reads the calendars you pick, so the app knows what else is on a day. Nothing is added, changed or deleted. This is read-only. A Google calendar shows up here once the account is added in the Settings app under Calendar › Accounts; it's read the same way as any other calendar. An event marked Free, and anything lasting all day, doesn't count as time taken."
@@ -552,9 +554,17 @@ export function CalendarSettings() {
         </>
       )}
 
-      {/* Shown whether or not the calendar is read: a task's own location has
-          the same directions button. */}
-      <View style={styles.sep} />
+    </SettingsSection>
+
+    {/* Shown whether or not the calendar is read: a task's own location has
+        the same directions button, and the event sheet's place lookup and
+        saved events work on events written from the app. A section of its own
+        so the rows that read the calendar and the rows that add to it aren't
+        one run of eighteen. */}
+    <SettingsSection
+      label="Adding events and directions"
+      footer="What the app uses when you add an event from it or tap directions on an event or task."
+    >
       <SettingsRow
         entryId="mapsApp"
         icon="navigate-outline"
@@ -586,5 +596,6 @@ export function CalendarSettings() {
       <SavedPlacesRows />
       <SavedEventsRows />
     </SettingsSection>
+    </>
   );
 }

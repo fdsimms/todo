@@ -27,7 +27,7 @@ import { useScreenSettings } from '../hooks/useScreenSettings';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -178,6 +178,7 @@ function AddGroceryFabWithDropLabel({
 
 export function GroceryScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // The list's own settings, from an action at the foot of the list. See SCREEN_SETTINGS.
@@ -1676,7 +1677,7 @@ export function GroceryScreen() {
         scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
-        scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+        scrollToTop={{ bottom: fabBottom }}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
@@ -1784,7 +1785,6 @@ export function GroceryScreen() {
           channel={fabIntentChannel}
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           accessibilityLabel="Add groceries"
           drag={fabDrag}
           dragHint="Drag onto the list to add an item there, or back to the button to cancel"

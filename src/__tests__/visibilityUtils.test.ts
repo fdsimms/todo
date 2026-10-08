@@ -56,6 +56,7 @@ const mockSettingsState = {
   nightStart: '21:00',
   activeHoursStart: '08:00',
   activeHoursEnd: '22:00',
+  weekStartsOn: 1,
   vacationMode: false,
   sunLocation: null as { latitude: number; longitude: number } | null,
 };
@@ -2081,6 +2082,26 @@ describe('quota tasks', () => {
 
     it('is false for quotaAlwaysVisible — being on pace never keeps it off Today', () => {
       expect(isOnPaceQuota({ ...quotaTask, quotaAlwaysVisible: true, progressCount: 2 })).toBe(false);
+    });
+  });
+
+  describe('isUpcomingToday for an on-pace target', () => {
+    it('is true for a daily target whose next unit falls due later today', () => {
+      expect(isUpcomingToday({ ...quotaTask, progressCount: 2 })).toBe(true);
+    });
+
+    // NOW is Tue Jun 10 10:00; the week runs Mon Jun 9 to Mon Jun 16, so 3 of 5
+    // is ahead of pace and the fourth unit isn't owed until Friday.
+    it('is false for a weekly target whose next unit falls due on another day', () => {
+      const weekly: Task = {
+        ...quotaTask,
+        recurrenceType: 'weekly',
+        quotaPeriod: 'week',
+        targetCount: 5,
+        progressCount: 3,
+      };
+      expect(isOnPaceQuota(weekly)).toBe(true);
+      expect(isUpcomingToday(weekly)).toBe(false);
     });
   });
 

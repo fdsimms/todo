@@ -279,7 +279,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     // dismiss animation runs same as Cancel; the pushed screen is behind it
     // and shows once the sheet is gone.
     (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId: 'tasksProjects' });
+      .navigate('SettingsGroup', { groupId: 'focus' });
     dismiss();
   };
 

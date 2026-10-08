@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { SheetScrim } from './SheetScrim';
 import { GlassLayer, glassSupported } from './GlassLayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -13,6 +14,28 @@ import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
 
 /** Diameter of the standard list-screen FAB — also the room a list must leave below its last row. */
 export const FAB_SIZE = 56;
+
+/**
+ * How far above the safe-area inset every FAB rests: the 49pt tab bar plus a
+ * 15pt gap. The same figure on every screen, tab bar or not, so the button is
+ * under the thumb in one place app-wide. It is deliberately not derived from
+ * `useBottomTabBarHeight()`, which already includes the inset (adding the inset
+ * again put the tab screens' button 34pt above Today's) and doesn't exist on the
+ * pushed detail pages at all.
+ */
+export const FAB_BOTTOM_OFFSET = 64;
+
+/**
+ * Distance from the bottom of the screen to the FAB's resting position.
+ *
+ * `Fab` and `FabMenu` read this themselves and take no `bottom` prop, so a
+ * screen can't place its button anywhere else. Anything that floats beside or
+ * above the button (a scroll-to-top button on the other corner, a toast above
+ * it, the padding that clears the last row) reads it here too.
+ */
+export function useFabBottom(): number {
+  return useSafeAreaInsets().bottom + FAB_BOTTOM_OFFSET;
+}
 
 /**
  * Turns the button into a thing you can also pull into the list behind it,
@@ -88,7 +111,6 @@ function useFabHand(): FabHand {
 interface FabButtonProps {
   onPress: () => void;
   accessibilityLabel: string;
-  bottom: number;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   size: number;
   disabled?: boolean;
@@ -108,9 +130,10 @@ interface FabButtonProps {
  * drag gesture can't drift between the single-action and the menu variants.
  */
 function FabButton({
-  onPress, accessibilityLabel, bottom, icon, size, disabled, dimWhenDisabled, opacity,
+  onPress, accessibilityLabel, icon, size, disabled, dimWhenDisabled, opacity,
   drag, dragHint, dragLabel,
 }: FabButtonProps) {
+  const bottom = useFabBottom();
   const colors = useColors();
   const { shadows } = useTheme();
   const hand = useFabHand();
@@ -317,8 +340,6 @@ interface FabProps {
   onPress: () => void;
   /** Spoken label — these buttons are icon-only. */
   accessibilityLabel: string;
-  /** Distance from the bottom of the screen; callers add their own tab bar / inset math. */
-  bottom: number;
   icon?: React.ComponentProps<typeof Ionicons>['name'];
   size?: number;
   disabled?: boolean;
@@ -340,14 +361,13 @@ interface FabProps {
  * FabMenu below, which accordions the same button open.
  */
 export function Fab({
-  onPress, accessibilityLabel, bottom, icon = 'add', size = FAB_SIZE, disabled,
+  onPress, accessibilityLabel, icon = 'add', size = FAB_SIZE, disabled,
   drag, dragHint, dragLabel,
 }: FabProps) {
   return (
     <FabButton
       onPress={() => { haptics.impactLight(); onPress(); }}
       accessibilityLabel={accessibilityLabel}
-      bottom={bottom}
       icon={icon}
       size={size}
       disabled={disabled}
@@ -461,7 +481,6 @@ interface FabMenuProps {
   /** Rendered bottom-up: the last item ends up closest to the button, so put the most-used one there. */
   items: FabMenuItem[];
   onSelect: (key: string) => void;
-  bottom: number;
   accessibilityLabel?: string;
   size?: number;
   disabled?: boolean;
@@ -494,10 +513,11 @@ interface FabMenuProps {
  * `Fab` if it came out at one" branch.
  */
 export function FabMenu({
-  items, onSelect, bottom, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
+  items, onSelect, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
   drag, dragHint = 'Drag onto the list to add a task there, or back to the button to cancel',
   dragLabel,
 }: FabMenuProps) {
+  const bottom = useFabBottom();
   const hand = useFabHand();
   const [menuVisible, setMenuVisible] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
@@ -549,7 +569,6 @@ export function FabMenu({
       <FabButton
         onPress={open}
         accessibilityLabel={accessibilityLabel}
-        bottom={bottom}
         icon="add"
         size={size}
         disabled={disabled}
