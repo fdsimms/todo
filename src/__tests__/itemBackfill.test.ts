@@ -160,6 +160,28 @@ describe('itemBackfillCandidates', () => {
   });
 });
 
+describe('itemBackfillCandidates fromScratch', () => {
+  it('includes items that already have the value or were dismissed', () => {
+    const items = [
+      makeItem('Onion', { id: 'a' }),
+      makeItem('White onion', { id: 'b', varietyOfKey: 'onion' }),
+      makeItem('Red onion', { id: 'c', backfillDismissedFields: ['variety'] }),
+    ];
+    expect(itemBackfillCandidates(items, 'variety').map(i => i.id)).toEqual(['a']);
+    expect(itemBackfillCandidates(items, 'variety', [], [], { fromScratch: true }).map(i => i.id))
+      .toEqual(['a', 'c', 'b']);
+  });
+
+  it('still leaves non-food items out of nutrition', () => {
+    const items = [
+      makeItem('Aleve', { id: 'medicine', aisle: 'Medicine & Supplements' }),
+      makeItem('Milk', { id: 'milk' }),
+    ];
+    expect(itemBackfillCandidates(items, 'nutrition', [], ['Medicine & Supplements'], { fromScratch: true }).map(i => i.id))
+      .toEqual(['milk']);
+  });
+});
+
 describe('isItemBackfillDismissed / dismissItemBackfillField', () => {
   it('is false until the field has been dismissed', () => {
     expect(isItemBackfillDismissed(butter, 'variety')).toBe(false);

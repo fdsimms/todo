@@ -78,6 +78,12 @@ const WEIGHT_CHART_RANGES: readonly {
  */
 const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
 
+// The goal bar's fill never drops below this share of the track. At the start
+// of a goal the true fraction is 0, and an empty track reads as a broken
+// element rather than a bar. Display only: the accessibility label still
+// reports the real percentage.
+const GOAL_BAR_MIN_FILL = 0.05;
+
 /**
  * Body weight over a selectable window, read from Apple Health.
  *
@@ -444,7 +450,7 @@ export function WeightScreen() {
                     accessible
                     accessibilityLabel={`${Math.round(progress.fraction * 100)} percent of the way from ${formatWeight(goal.startKg, unit)} to ${formatWeight(goal.targetKg, unit)}`}
                   >
-                    <View style={[styles.goalFill, { width: `${progress.fraction * 100}%` }]} />
+                    <View style={[styles.goalFill, { width: `${Math.max(progress.fraction, GOAL_BAR_MIN_FILL) * 100}%` }]} />
                   </View>
 
                   {progress.reached ? (
