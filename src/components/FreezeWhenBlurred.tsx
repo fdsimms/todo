@@ -70,18 +70,21 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
       useCallback((onChange: () => void) => subscribePresentation(level, onChange), [level]),
       () => level.presented.size > 0,
     );
-    const wantFrozen = shouldFreezeTab({ focused, sheetPresented });
     // Freezing waits out `TAB_FREEZE_DELAY_MS`; thawing does not, because
     // `wantFrozen && settled` is false in the very render that focused the tab.
+    // `settled` is also what tells the rule the tab is already frozen, so a
+    // sheet opening elsewhere (the side menu) leaves it frozen.
     const [settled, setSettled] = useState(false);
+    const wantFrozen = shouldFreezeTab({ focused, sheetPresented, frozen: settled });
     useEffect(() => {
       if (!wantFrozen) {
         setSettled(false);
         return;
       }
+      if (settled) return;
       const timer = setTimeout(() => setSettled(true), TAB_FREEZE_DELAY_MS);
       return () => clearTimeout(timer);
-    }, [wantFrozen]);
+    }, [wantFrozen, settled]);
     // The same element while the props are, so this wrapper re-rendering on a
     // sheet opening somewhere does not re-render the screen inside it.
     const screen = useMemo(() => <Screen {...props} />, [props]);
