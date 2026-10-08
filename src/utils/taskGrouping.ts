@@ -481,11 +481,16 @@ export interface LaterSectionsResult {
  * and this used to group every deferred task and then throw most of the
  * result away, which meant the budget bounded only how many rows mounted and
  * not what it cost to decide which. Omit it to group everything.
+ *
+ * `cutMidDay` lets the budget end a day partway instead of finishing it (still
+ * always after at least one task, so a header keeps a row under it).
  */
 export function laterDaySections(
   ordered: LaterOrderedTask[],
   taskLimit?: number,
+  options?: { cutMidDay?: boolean },
 ): LaterSectionsResult {
+  const cutMidDay = options?.cutMidDay === true;
   const days = new Map<
     string,
     { dayKeys: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
@@ -515,6 +520,15 @@ export function laterDaySections(
   for (const { task, visibleAt } of ordered) {
     const dayLabel = dayLabelOf(visibleAt);
     const dayKey = getDayStart(visibleAt).toISOString();
+    // First-paint only: a single day can hold dozens of rows (a day of
+    // routines), and finishing it would mount all of them before anything
+    // paints. A day cut short is safe to show because nothing can be dragged
+    // yet; the caller goes back to whole days before it can be, since a
+    // reorder only knows the rows it was handed.
+    if (cutMidDay && taskLimit !== undefined && placed >= taskLimit) {
+      hasMore = true;
+      break;
+    }
     if (!days.has(dayLabel)) {
       // The budget is checked only when a new day would open, so the day in
       // progress is always finished — the same whole-sections-at-a-time rule

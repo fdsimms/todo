@@ -247,7 +247,7 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 // and a bit ahead of the end costs a short hitch where sixty at the last few
 // rows cost a visible one, and could let a fling hit the bottom before they
 // arrived.
-const LATER_INITIAL_TASK_LIMIT = 15;
+const LATER_INITIAL_TASK_LIMIT = 12;
 const LATER_SETTLED_TASK_LIMIT = 60;
 const LATER_TASK_PAGE_SIZE = 30;
 const LATER_END_REACHED_THRESHOLD = 900;
@@ -4238,7 +4238,9 @@ export function TodayScreen() {
   }, [viewMode]);
 
   const { sections: visibleLaterSections, hasMore: hasMoreLaterSections } = useMemo(
-    () => laterDaySections(laterOrder, laterTaskLimit),
+    // Only the first-paint budget may end a day partway: it is gone one
+    // interaction later, and a drag needs whole days (see laterDaySections).
+    () => laterDaySections(laterOrder, laterTaskLimit, { cutMidDay: laterTaskLimit === LATER_INITIAL_TASK_LIMIT }),
     [laterOrder, laterTaskLimit],
   );
 

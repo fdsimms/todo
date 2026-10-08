@@ -940,6 +940,19 @@ describe('laterDaySections task budget', () => {
     expect(result.hasMore).toBe(true);
   });
 
+  it('ends a day partway when cutMidDay is set, keeping at least one row under its header', () => {
+    const result = laterDaySections([...day(1, 40), ...day(2, 40)], 12, { cutMidDay: true });
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].segments[0].data).toHaveLength(12);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('reports no more when cutMidDay is set and everything fits', () => {
+    const result = laterDaySections([...day(1, 5), ...day(2, 5)], 12, { cutMidDay: true });
+    expect(result.sections).toHaveLength(2);
+    expect(result.hasMore).toBe(false);
+  });
+
   it('groups everything with no budget given', () => {
     const result = laterDaySections([...day(1, 30), ...day(2, 30), ...day(3, 30)]);
     expect(result.sections).toHaveLength(3);
