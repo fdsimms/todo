@@ -185,8 +185,9 @@ export function LogbookEntryMenu({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   optionsCard: {},
   // Delete keeps its own group below the others, iOS-style; the band is the
-  // menu's group break, drawn in the screen colour.
-  destructiveGroup: { borderTopWidth: spacing.xsm, borderTopColor: colors.bg },
+  // menu's group break, a translucent separator tint so it doesn't read as an
+  // opaque bar across a blurred card.
+  destructiveGroup: { borderTopWidth: spacing.xsm, borderTopColor: colors.separator + '66' },
   // Hidden rather than closed while the calendar is up; see openCalendar.
   steppedAside: { opacity: 0 },
   optionRow: {
