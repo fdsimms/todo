@@ -1,6 +1,7 @@
 import {
   SAVED_PLACES_LIMIT,
   addSavedPlace,
+  editSavedPlace,
   findSavedPlace,
   parseSavedPlaces,
   removeSavedPlace,
@@ -121,5 +122,28 @@ describe('parseSavedPlaces', () => {
     const out = parseSavedPlaces(raw);
     expect(out.map(p => p.id)).toEqual(['a', 'd']);
     expect(out[1]).toMatchObject({ latitude: null, longitude: null });
+  });
+});
+
+describe('editSavedPlace', () => {
+  it('rewrites the name, address and pin of one place and leaves the rest', () => {
+    let places = home();
+    places = addSavedPlace(places, { name: 'Gym', text: '9 Elm St', place: null });
+    const next = editSavedPlace(places, places[0].id, { name: ' Home base ', text: ' 1 New Rd ', place: null });
+    expect(next[0]).toMatchObject({ id: places[0].id, name: 'Home base', text: '1 New Rd', latitude: null, longitude: null });
+    expect(next[1]).toEqual(places[1]);
+  });
+
+  it('refuses an empty field or a name another place has', () => {
+    let places = home();
+    places = addSavedPlace(places, { name: 'Gym', text: '9 Elm St', place: null });
+    expect(editSavedPlace(places, places[1].id, { name: 'home', text: '9 Elm St', place: null })).toEqual(places);
+    expect(editSavedPlace(places, places[1].id, { name: 'Gym', text: ' ', place: null })).toEqual(places);
+  });
+
+  it('allows keeping its own name', () => {
+    const places = home();
+    const next = editSavedPlace(places, places[0].id, { name: 'HOME', text: '12 Main St', place: pin });
+    expect(next[0]).toMatchObject({ name: 'HOME', text: '12 Main St', latitude: 40.7 });
   });
 });

@@ -6,11 +6,11 @@ import { useColors } from '../../theme/ThemeContext';
 import { iconSize } from '../../theme';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { haptics } from '../../utils/haptics';
+import { InlineAction } from '../../components/InlineAction';
+import { SavedPlaceSheet } from '../../components/SavedEntrySheets';
 import {
   readSavedPlaces,
   removeSavedPlace,
-  renameSavedPlace,
-  savedPlaceKey,
   writeSavedPlaces,
   type SavedPlace,
 } from '../../utils/savedPlaces';
@@ -19,8 +19,8 @@ import { makeSettingsStyles } from './settingsStyles';
 
 /**
  * The named places a new event's location can be typed as ("home"), in
- * Settings › Calendar. Places are added from the new-event card, where the
- * location is; this is where they are renamed and removed.
+ * Settings › Calendar. A place is added here or saved from the new-event card;
+ * this is also where one is edited (name and address) and removed.
  *
  * Reads the list when the screen gains focus rather than subscribing: it is a
  * plain setting (`savedPlaces`), and a sync that lands while the screen is open
@@ -31,6 +31,7 @@ export function SavedPlacesRows() {
   const styles = makeSettingsStyles(colors);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SavedPlace | 'new' | null>(null);
 
   useFocusEffect(React.useCallback(() => { setPlaces(readSavedPlaces()); }, []));
 
@@ -39,32 +40,6 @@ export function SavedPlacesRows() {
     writeSavedPlaces(next);
     setPlaces(next);
     if (next.length === 0) setOpen(false);
-  };
-
-  const rename = (place: SavedPlace) => {
-    Alert.prompt(
-      'Rename place',
-      `Type this name in an event's location to use ${place.text}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: (name?: string) => {
-            const trimmed = (name ?? '').trim();
-            if (!trimmed || trimmed === place.name) return;
-            const next = renameSavedPlace(places, place.id, trimmed);
-            if (!next.some(p => p.id === place.id && p.name === trimmed)) {
-              Alert.alert('Name already used', 'Another saved place has that name.');
-              return;
-            }
-            haptics.success();
-            commit(next);
-          },
-        },
-      ],
-      'plain-text',
-      place.name,
-    );
   };
 
   const remove = (place: SavedPlace) => {
@@ -86,12 +61,10 @@ export function SavedPlacesRows() {
         icon="bookmark-outline"
         iconColor={places.length > 0 ? colors.accent : undefined}
         label="Saved places"
-        hint={places.length === 0
-          ? 'Save a location from a new event. After that, typing its name, like "home", fills in the address.'
-          : 'Type a name in a new event\'s location to fill in its address.'}
+        hint="Type a name in a new event's location to fill in its address."
         value={places.length > 0 ? String(places.length) : undefined}
-        expanded={places.length > 0 ? open : undefined}
-        onPress={places.length > 0 ? () => { animateLayout(); setOpen(v => !v); } : undefined}
+        expanded={open}
+        onPress={() => { animateLayout(); setOpen(v => !v); }}
         accessibilityLabel="Saved places"
       />
       {open && places.map(place => (
@@ -102,8 +75,8 @@ export function SavedPlacesRows() {
             label={place.name}
             hint={place.text}
             alwaysShowHint
-            onPress={() => rename(place)}
-            accessibilityLabel={`Rename ${place.name}`}
+            onPress={() => setEditing(place)}
+            accessibilityLabel={`Edit ${place.name}`}
             trailing={(
               <TouchableOpacity
                 onPress={() => remove(place)}
@@ -117,6 +90,18 @@ export function SavedPlacesRows() {
           />
         </React.Fragment>
       ))}
+      {open && (
+        <View style={styles.addRow}>
+          <InlineAction label="New place" icon="add" onPress={() => setEditing('new')} />
+        </View>
+      )}
+      <SavedPlaceSheet
+        visible={editing !== null}
+        subject={editing}
+        places={places}
+        onSave={commit}
+        onClose={() => setEditing(null)}
+      />
     </>
   );
 }

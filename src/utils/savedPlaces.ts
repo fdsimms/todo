@@ -108,6 +108,22 @@ export function renameSavedPlace(places: readonly SavedPlace[], id: string, name
   return places.map(p => (p.id === id ? { ...p, name: trimmed } : p));
 }
 
+/**
+ * Rewrites one place's name, address and pin. Refused (list unchanged) for an
+ * empty name or address, or a name another place already has. The pin is
+ * replaced, not merged: an address typed over the old one no longer means the
+ * old coordinates, so a caller passes `place: null` unless one was just picked.
+ */
+export function editSavedPlace(places: readonly SavedPlace[], id: string, input: SavedPlaceInput): SavedPlace[] {
+  const name = input.name.trim();
+  const text = input.text.trim();
+  const key = savedPlaceKey(name);
+  if (!key || !text || places.some(p => p.id !== id && savedPlaceKey(p.name) === key)) return [...places];
+  return places.map(p => (p.id === id
+    ? { ...p, name, text, latitude: input.place?.latitude ?? null, longitude: input.place?.longitude ?? null }
+    : p));
+}
+
 export function removeSavedPlace(places: readonly SavedPlace[], id: string): SavedPlace[] {
   return places.filter(p => p.id !== id);
 }

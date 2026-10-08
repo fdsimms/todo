@@ -1,5 +1,5 @@
 import {
-  describeSavedEvent, findSavedEvent, parseSavedEvents, recordSavedEventUse, removeSavedEvent, saveEventAs,
+  describeSavedEvent, editSavedEvent, findSavedEvent, parseSavedEvents, recordSavedEventUse, removeSavedEvent, saveEventAs,
   savedEventRecall, SAVED_EVENTS_KEY, sortedSavedEvents, suggestSavedEvents, updateSavedEvent,
   type SavedEventFields,
 } from '../utils/savedEvents';
@@ -122,4 +122,41 @@ it('describes the length and the place', () => {
 
 it('syncs', () => {
   expect(isSyncedSettingKey(SAVED_EVENTS_KEY)).toBe(true);
+});
+
+describe('editSavedEvent', () => {
+  const input = { title: 'Dentist', location: ' 5 Oak St ', place: null, durationMinutes: 45, alertMinutes: null };
+
+  it('creates an event with no interval and no last start', () => {
+    const list = editSavedEvent([], null, input, 5)!;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      title: 'Dentist', location: '5 Oak St', durationMinutes: 45, availability: 'busy',
+      lastStart: null, bookEveryMonths: null, calendarTitle: null, at: 5,
+    });
+  });
+
+  it('keeps what the form does not show when it rewrites one, even under a new title', () => {
+    let list = saveEventAs([], 'Optometrist', fields, start, 1);
+    list = updateSavedEvent(list, 'Optometrist', { bookEveryMonths: 12, bookDeclinedFor: 'x' });
+    const next = editSavedEvent(list, 'Optometrist', { ...input, title: 'Eye exam' }, 9)!;
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({
+      title: 'Eye exam', bookEveryMonths: 12, bookDeclinedFor: 'x', lastStart: start.toISOString(),
+      calendarTitle: 'Health', durationMinutes: 45, at: 9,
+    });
+  });
+
+  it('allows saving under the same title, however it is typed', () => {
+    const list = saveEventAs([], 'Optometrist', fields, start, 1);
+    expect(editSavedEvent(list, 'Optometrist', { ...input, title: 'optometrist' }, 2)).toHaveLength(1);
+  });
+
+  it('refuses an empty title, or one another event already has', () => {
+    let list = saveEventAs([], 'Optometrist', fields, start, 1);
+    list = saveEventAs(list, 'Haircut', fields, start, 2);
+    expect(editSavedEvent(list, null, { ...input, title: '  ' }, 3)).toBeNull();
+    expect(editSavedEvent(list, 'Haircut', { ...input, title: 'optometrist' }, 3)).toBeNull();
+    expect(editSavedEvent(list, null, { ...input, title: 'Haircut' }, 3)).toBeNull();
+  });
 });

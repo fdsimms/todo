@@ -196,6 +196,46 @@ export function savedEventRecall(
   };
 }
 
+export type SavedEventInput = Pick<SavedEvent, 'title' | 'location' | 'place' | 'durationMinutes' | 'alertMinutes'>;
+
+/**
+ * Creates a saved event, or rewrites the one saved under `originalTitle`, from
+ * Settings. Returns null for an empty title, or a title another saved event
+ * already has (a loose match, `eventMemoryKey`), so the caller can say why.
+ *
+ * An edit keeps what the form doesn't show: the booking interval, the cycle
+ * the person declined, the last start, the calendar and availability. A new
+ * one starts with none of them. Its `at` is refreshed, which is what orders the
+ * list.
+ */
+export function editSavedEvent(
+  list: readonly SavedEvent[],
+  originalTitle: string | null,
+  input: SavedEventInput,
+  now: number,
+): SavedEvent[] | null {
+  const title = input.title.trim();
+  const key = eventMemoryKey(title);
+  if (!key) return null;
+  const originalKey = originalTitle === null ? null : eventMemoryKey(originalTitle);
+  if (list.some(e => eventMemoryKey(e.title) === key && key !== originalKey)) return null;
+  const existing = originalKey === null ? undefined : list.find(e => eventMemoryKey(e.title) === originalKey);
+  const entry: SavedEvent = {
+    title,
+    location: input.location?.trim() || null,
+    place: input.place,
+    durationMinutes: input.durationMinutes,
+    alertMinutes: input.alertMinutes,
+    availability: existing?.availability ?? 'busy',
+    calendarTitle: existing?.calendarTitle ?? null,
+    lastStart: existing?.lastStart ?? null,
+    bookEveryMonths: existing?.bookEveryMonths ?? null,
+    bookDeclinedFor: existing?.bookDeclinedFor ?? null,
+    at: now,
+  };
+  return [...list.filter(e => eventMemoryKey(e.title) !== originalKey), entry];
+}
+
 /** "1 hr · Eastside Eye Care", or "All day" for an all-day one. */
 export function describeSavedEvent(event: Pick<SavedEvent, 'durationMinutes' | 'location'>): string {
   const m = event.durationMinutes;
