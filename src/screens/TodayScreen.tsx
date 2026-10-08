@@ -1452,6 +1452,9 @@ export function TodayScreen() {
         // routine that just finished. Idempotent and self-clearing: the
         // completion it writes is what stops it matching again.
         useTaskStore.getState().sweepFinishedQuotaRuns();
+        // And for an avoid-task's end time, which counts the day clean the
+        // moment it passes. Idempotent: the anchor it moves is what stops it.
+        useTaskStore.getState().rolloverNegativeStreaks();
         // Same reasoning as the quota sweep above, for a health rule's own
         // checkpoint hour: "under 2,006mg sodium, from 12 PM" can go from
         // not-yet-judgeable to judgeable by noon simply arriving while the

@@ -15,6 +15,15 @@ import { CoinIcon } from '../components/CoinIcon';
 import { CoinBurst } from '../components/CoinBurst';
 import { TARGET_ICON } from '../components/TargetIcon';
 import { CountStepper } from '../components/CountStepper';
+import { SegmentedControl } from '../components/SegmentedControl';
+import {
+  CADENCE_UNITS,
+  CADENCE_UNIT_MAX,
+  cadenceUnitLabel,
+  fromCadenceParts,
+  withCadenceUnit,
+  type CadenceUnit,
+} from '../utils/nudgeCadence';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -32,9 +41,11 @@ import { COIN_ICON } from '../constants/coinIcon';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
+import { driftingTaskList } from '../utils/postpone';
 import {
   MAX_BOUNTY_LIMIT,
   MIN_BOUNTY_LIMIT,
+  suggestedBountyTasks,
   bountyCoinsFor,
   describeBounty,
   isBountyLive,
@@ -134,6 +145,8 @@ export function RewardsScreen() {
   const setBudgetMinor = useSettingsStore(s => s.setRewardWeeklyBudgetMinor);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const withdrawBounty = useTaskStore(s => s.withdrawBounty);
+  const postBounty = useTaskStore(s => s.postBounty);
+  const driftThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const entries = useRewardStore(s => s.entries);
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
@@ -222,6 +235,16 @@ export function RewardsScreen() {
     () => tasks.filter(t => !t.parentId && isBountyLive(t)).sort((a, b) => bountyCoinsFor(b) - bountyCoinsFor(a)),
     [tasks],
   );
+  // With none posted, offer the tasks already being put off (the ones the
+  // Stuck screen lists), most-moved first.
+  const suggestedBounties = useMemo(
+    () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold)) : []),
+    [bounties.length, tasks, driftThreshold],
+  );
+  const postSuggestedBounty = (task: Task) => {
+    const result = postBounty(task.id);
+    if (result === 'posted') haptics.success();
+  };
   const confirmWithdraw = (task: Task) => {
     Alert.alert(
       'Withdraw bounty?',
@@ -242,6 +265,19 @@ export function RewardsScreen() {
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
+  // The "every N days/weeks/months" stepper beside the presets. It only fills
+  // the cost field, the same as a preset does, so nothing about it is stored.
+  const [customCount, setCustomCount] = useState<number | null>(null);
+  const [customUnit, setCustomUnit] = useState<CadenceUnit>('weeks');
+  const applyCustomFrequency = (count: number | null, unit: CadenceUnit = customUnit) => {
+    setCustomCount(count);
+    const cost = count === null || rate === null
+      ? null
+      : suggestRewardCost(rate, fromCadenceParts({ count, unit }));
+    if (cost === null) return;
+    setDraftCost(String(cost));
+    setDraftPrice('');
+  };
   // A dollar price, when one is typed, decides the cost: the coin field gives
   // way to the converted figure rather than holding a second answer.
   const parsedPrice = parsePriceInput(draftPrice);
@@ -269,6 +305,7 @@ export function RewardsScreen() {
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
+    setCustomCount(null);
   }, []);
 
   const openDraft = useCallback((next: Draft, reward?: Reward) => {
@@ -279,6 +316,7 @@ export function RewardsScreen() {
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
+    setCustomCount(null);
   }, []);
 
   const saveDraft = useCallback(() => {
@@ -437,6 +475,7 @@ export function RewardsScreen() {
           After a week of completed tasks, this can suggest a price from how fast you earn coins.
         </Text>
       ) : (
+        <>
         <View style={styles.presetRow}>
           {REWARD_FREQUENCIES.map(f => {
             const cost = suggestRewardCost(rate, f.days);
@@ -463,6 +502,33 @@ export function RewardsScreen() {
             );
           })}
         </View>
+        <View style={styles.customRow}>
+          <CountStepper
+            value={customCount}
+            onChange={applyCustomFrequency}
+            min={1}
+            max={CADENCE_UNIT_MAX[customUnit]}
+            allowNull
+            start={1}
+            emptyLabel="Custom"
+            format={n => `Every ${n}`}
+            label="Custom reward frequency"
+            describeValue={n => (n === null ? 'Not set' : `Every ${n} ${customUnit}`)}
+          />
+          <View style={styles.customUnit}>
+            <SegmentedControl
+              label="Custom reward frequency unit"
+              options={CADENCE_UNITS.map(unit => ({ value: unit, label: cadenceUnitLabel(unit) }))}
+              value={customUnit}
+              onChange={unit => {
+                const next = withCadenceUnit({ count: customCount, unit }, unit);
+                setCustomUnit(unit);
+                applyCustomFrequency(next.count, unit);
+              }}
+            />
+          </View>
+        </View>
+        </>
       )}
       <Text style={styles.fieldLabel}>Price</Text>
       <TextField
@@ -805,9 +871,35 @@ export function RewardsScreen() {
           Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
         </Text>
         {bounties.length === 0 ? (
-          <View style={styles.emptyNote}>
-            <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
-          </View>
+          <>
+            <View style={styles.emptyNote}>
+              <EmptyNote icon={COIN_ICON}>
+                {suggestedBounties.length > 0
+                  ? 'No bounties posted. These tasks have been moved the most.'
+                  : 'No bounties posted.'}
+              </EmptyNote>
+            </View>
+            {suggestedBounties.length > 0 && (
+              <View style={styles.historyCard}>
+                {suggestedBounties.map((task, i) => (
+                  <View key={task.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                    <View style={styles.historyText}>
+                      <Text style={styles.historyLabel}>{task.title}</Text>
+                      <Text style={styles.historyMeta}>
+                        {`Moved ${task.postponeCount} times · +${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done`}
+                      </Text>
+                    </View>
+                    <InlineAction
+                      label="Post"
+                      icon="add"
+                      onPress={() => postSuggestedBounty(task)}
+                      accessibilityLabel={`Post a bounty on ${task.title}`}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
         ) : (
           <View style={styles.historyCard}>
             {bounties.map((task, i) => (
@@ -1016,6 +1108,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Quick add's preset chips: shortcuts that fill the field beside them, not a
   // segmented control, because the field can hold any value (see SegmentedControl).
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  customRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, marginTop: spacing.sm,
+  },
+  customUnit: { flexGrow: 1, flexBasis: 200 },
   presetChip: {
     paddingHorizontal: 14,
     minHeight: interaction.pillHeight,

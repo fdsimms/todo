@@ -26,6 +26,7 @@ import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { sunAnchorHHMM } from './sunTimes';
 import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -416,6 +417,22 @@ export function seedDemoData(): void {
     deferUntil: addDays(today, 3).toISOString(),
   });
 
+  // A window that closes at sunset. The demo database gets its own made-up
+  // location, so the real one is never read in demo mode; the clock time
+  // beside the anchor is the sunset it resolves to today, as the editor writes.
+  const demoSunLocation = { latitude: 40.68, longitude: -73.94 };
+  useSettingsStore.getState().setSunLocation(demoSunLocation);
+  addTask({
+    title: 'Walk the dog before dark',
+    category: 'Home',
+    effort: 1,
+    recurrenceType: 'daily',
+    dueDate: today.toISOString(),
+    windowStart: '15:00',
+    windowEnd: sunAnchorHHMM('sunset', today, demoSunLocation),
+    windowEndSun: 'sunset',
+  });
+
   // The 'hours' recurrence — a dose that can only be taken again N hours
   // after the last one, not on a fixed clock time (see RecurrenceType's own
   // doc comment). Naproxen rather than the ibuprofen already seeded by
@@ -751,6 +768,21 @@ export function seedDemoData(): void {
     recurrenceInterval: 1,
   });
   updateTask(stretch.id, { progressCount: 3 });
+
+  // A daily target with a countdown for each unit (see docs/arch/timed-tasks.md):
+  // `timedMinutes` is the length of one sit, and logging one restarts the clock.
+  addTask({
+    title: 'Meditate',
+    notes: 'Three sits a day, ten minutes each. Start the timer for each one; logging a sit resets it.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 3,
+    targetUnit: 'sits',
+    timedMinutes: 10,
+    quotaAlwaysVisible: true,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
 
   // A weekly target — the same counting mechanism over a week instead of a day
   // (see Task.quotaPeriod), which is what "three times a week, any days" is.
@@ -1151,6 +1183,9 @@ export function seedDemoData(): void {
     recurrenceDays: [subDays(today, 1).getDay()],
     dueDate: subDays(today, 1).toISOString(),
     effort: 1,
+    // Pickup slides a day after a holiday, which is what this rule is for
+    // (Task.recurrenceHolidays). Its row caption says so.
+    recurrenceHolidays: 'move',
   });
   completeTask(trash.id, { byOther: true });
 
@@ -1435,6 +1470,10 @@ export function seedDemoData(): void {
   // trip three weeks out shows the setting without a demo session ever waking
   // up with half its tasks hidden.
   updateProject(lisbon.id, { awayPauses: true });
+  // Where Lisbon is, as the trip page's lookup would have left it, so a
+  // sun-timed window on those days goes by Lisbon's sunset. Written directly
+  // because that lookup never runs in demo mode (see destination above).
+  updateProject(lisbon.id, { destinationLatitude: 38.72, destinationLongitude: -9.14 });
   ['Renew passport', 'Book the airport parking', 'Set up data roaming'].forEach((title, i) => {
     const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });
     addExistingToProject(t.id, lisbon.id);

@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, scheduleClockInstant, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2139,5 +2139,41 @@ describe('scheduleClockInstant', () => {
       .toEqual(new Date(2025, 5, 11, 3, 0, 0));
     expect(scheduleClockInstant({ dueDate: noon, explicitClockTime: { h: 16, m: 30 } }, '04:00'))
       .toEqual(new Date(2025, 5, 10, 16, 30, 0));
+  });
+});
+
+describe('parseSunWindowInput', () => {
+  it('reads "after sunset" and its synonyms as a window start', () => {
+    expect(parseSunWindowInput('porch lights after sunset')).toEqual({
+      bound: 'start', anchor: 'sunset', cleanTitle: 'porch lights', matchStart: 13, matchEnd: 25,
+    });
+    expect(parseSunWindowInput('stargazing after dark')).toMatchObject({ bound: 'start', anchor: 'sunset' });
+    expect(parseSunWindowInput('run after dawn')).toMatchObject({ bound: 'start', anchor: 'sunrise' });
+  });
+
+  it('reads only the explicit expiry words as a window end', () => {
+    expect(parseSunWindowInput('walk the dog expires at sunset')).toMatchObject({ bound: 'end', anchor: 'sunset', cleanTitle: 'walk the dog' });
+    expect(parseSunWindowInput('walk the dog only until dark')).toMatchObject({ bound: 'end', anchor: 'sunset', cleanTitle: 'walk the dog' });
+    expect(parseSunWindowInput('photos only before sunrise')).toMatchObject({ bound: 'end', anchor: 'sunrise' });
+  });
+
+  // "before 5pm" is a deadline in this file, never a window end, so a bare
+  // "before dark" is left in the title rather than read as one.
+  it('leaves a bare "before dark" alone', () => {
+    expect(parseSunWindowInput('walk the dog before dark')).toBeNull();
+  });
+
+  it('needs a whole word and something left to call the task', () => {
+    expect(parseSunWindowInput('after darkness falls')).toBeNull();
+    expect(parseSunWindowInput('after sunset')).toBeNull();
+    expect(parseSunWindowInput('Sunset Boulevard tickets')).toBeNull();
+  });
+
+  // The schedule tooltip comes first in quick add's chain, so it must not
+  // claim these phrases (and drop the sun) before this parser sees them.
+  it('is not claimed by the schedule parser first', () => {
+    expect(parseTaskInput('porch lights after sunset', NOW)).toBeNull();
+    expect(parseTaskInput('walk the dog expires at sunset', NOW)).toBeNull();
+    expect(parseTaskInput('walk the dog only until dark', NOW)).toBeNull();
   });
 });

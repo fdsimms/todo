@@ -703,7 +703,7 @@ export function MoodScreen() {
 
           {categoryRows.length > 0 && (
             <>
-              <Text style={styles.sectionTitle}>MOOD BY KIND OF WORK</Text>
+              <Text style={styles.sectionTitle}>MOOD BY TASK CATEGORY</Text>
               <View style={styles.card}>
                 {categoryRows.map((row, i) => (
                   <ContrastBars

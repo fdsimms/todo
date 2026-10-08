@@ -609,6 +609,15 @@ describe('scheduleTimerAlarm', () => {
     expect(call.identifier).not.toBe('task-1');
   });
 
+  it('asks to log a unit, not to complete, when the countdown belongs to a target', async () => {
+    const running = new Date().toISOString();
+    await scheduleTimerAlarm(makeTask({ title: 'Meditate', timedMinutes: 10, targetCount: 3, timerStartedAt: running }));
+    await scheduleTimerAlarm(makeTask({ title: 'Violin', timedMinutes: 10, timerStartedAt: running }));
+    const calls = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls;
+    expect(calls[0][0].content.body).toBe('Meditate is ready to log');
+    expect(calls[1][0].content.body).toBe('Violin is ready to complete');
+  });
+
   it('fires at the remaining time, not the full duration', async () => {
     // 15-minute target, 10 minutes already banked → 5 minutes left.
     await scheduleTimerAlarm(

@@ -132,6 +132,31 @@ describe('bakedFields', () => {
     expect(bakedFields('chain', carried).timedMinutes).toBeNull();
     expect(bakedFields('task', carried).timedMinutes).toBeNull();
   });
+
+  it('keeps a per-unit countdown on a target as timedMinutes', () => {
+    const f = bakedFields('target', values({ targetCount: 5, unitMinutes: 10 }));
+    expect(f.timedMinutes).toBe(10);
+    expect(taskKindOf({ ...f, chainEnabled: false })).toBe('target');
+  });
+
+  it('drops a per-unit countdown that is not a positive number of minutes', () => {
+    expect(bakedFields('target', values({ targetCount: 5, unitMinutes: 0 })).timedMinutes).toBeNull();
+    expect(bakedFields('target', values({ targetCount: 5, unitMinutes: null })).timedMinutes).toBeNull();
+  });
+
+  it('never carries a per-unit countdown into any other kind', () => {
+    const carried = values({ timedMinutes: 25, targetCount: 5, unitMinutes: 10 });
+    expect(bakedFields('task', carried).timedMinutes).toBeNull();
+    expect(bakedFields('chain', carried).timedMinutes).toBeNull();
+    expect(bakedFields('timed', carried).timedMinutes).toBe(25);
+  });
+});
+
+describe('typeSummary for a target with a countdown', () => {
+  it('names the time each unit gets', () => {
+    expect(typeSummary('target', values({ targetCount: 5, unitMinutes: 10 }))).toContain('5× a day, 10m each');
+    expect(typeSummary('target', values({ targetCount: 3, unitMinutes: 20, quotaPeriod: 'week' }))).toContain('3× a week, 20m each');
+  });
 });
 
 describe('canSaveType', () => {
