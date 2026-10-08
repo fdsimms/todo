@@ -27,7 +27,8 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   Recipes: ['unitSystem', 'householdServings', 'ai:recipeExtraction'],
   MealPlan: ['gen:mealPlanNudge', 'mealCalendar', 'householdServings'],
   Kitchen: ['gen:pantryCheck', 'gen:pantryReview', 'gen:groceryUseUp'],
-  FoodLog: ['nutritionTargets', 'mealLogPrompt', 'healthWrite'],
+  // No daily-targets row: the Food log's own target icon opens that sheet in place.
+  FoodLog: ['mealLogPrompt', 'healthWrite'],
   Mood: ['gen:moodLog', 'gen:moodNudge'],
   Journal: ['gen:journalLog'],
   Dreams: ['gen:journalLog'],

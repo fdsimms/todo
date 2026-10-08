@@ -129,7 +129,9 @@ import { parseTransitLines } from '../utils/transitAlerts';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
-import { DEFAULT_MOOD_NUDGE_AFTER_DAYS } from '../utils/moodTasks';
+import {
+  DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
+} from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
@@ -4297,8 +4299,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   // Floored at 1: a nudge after zero low days would fire on any day with a
   // mood on it at all, which is not what any answer to this question means.
+  // Capped at two weeks, the longest run the setting row offers.
   setMoodNudgeAfterDays(days: number) {
-    const clamped = Math.max(1, Math.round(days));
+    const clamped = Math.min(MOOD_NUDGE_AFTER_DAYS_MAX, Math.max(MOOD_NUDGE_AFTER_DAYS_MIN, Math.round(days)));
     dbSetSetting('moodNudgeAfterDays', String(clamped));
     set({ moodNudgeAfterDays: clamped });
   },

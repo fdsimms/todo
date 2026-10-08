@@ -786,6 +786,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
   { id: 'birthdayLeadDays', requires: 'gen:birthday', groupId: 'generated', label: 'Show the task', section: 'Birthday reminders',
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'moodNudgeAfterDays', requires: 'gen:moodNudge', groupId: 'generated', label: 'Low days before the task', section: 'Nudge after low days',
+    keywords: ['mood', 'run', 'streak', 'how many days', 'threshold', 'sensitivity', 'fewer', 'less often'] },
   { id: 'weekendNudgeLeadDays', requires: 'gen:weekendNudge', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgePlanThreshold', requires: 'gen:weekendNudge', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',
