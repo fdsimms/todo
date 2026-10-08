@@ -85,6 +85,7 @@
     "expo-local-authentication": "~57.0.2",
     "expo-location": "~57.0.14",
     "expo-notifications": "~57.0.14",
+    "expo-print": "~57.0.2",
     "expo-quick-actions": "~6.0.2",
     "expo-secure-store": "~57.0.1",
     "expo-sensors": "~57.0.2",

@@ -92,7 +92,8 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { frequencyTrend, medicationFor } from '../utils/medicationLog';
+import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicationLog';
+import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSettings';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
@@ -2264,6 +2265,33 @@ describe('demo seed — people', () => {
     const logTask = useTaskStore.getState().tasks.find(t => t.title === 'Log breakfast');
     expect(logTask).toBeDefined();
     expect(logTask!.logMealSlot).toBe('breakfast');
+  });
+
+  it('seeds a limit and a supply on an as-needed medication', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const { limit, supply } = prefsFor(settings, 'Ibuprofen');
+    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 3 });
+    expect(limitStatus(logs, 'Ibuprofen', limit, new Date()).inLast24h).toBe(0);
+    expect(supplyRemaining(logs, 'Ibuprofen', supply)).toBe(9);
+  });
+
+  it('seeds a medication started recently enough to offer a milestone', () => {
+    const logs = useMedicationStore.getState().logs;
+    const labels = useMilestoneStore.getState().milestones.map(m => m.label);
+    const offers = milestoneOffers(logs, labels, [], dayKeyOf(new Date()));
+    expect(offers.map(o => o.name)).toContain('Melatonin');
+  });
+
+  it('seeds a taper: a daily chain whose steps each record a smaller dose', () => {
+    const template = useTemplateStore.getState().templates.find(t => t.name === 'Prednisone taper');
+    expect(template).toBeDefined();
+    const item = template!.items[0];
+    expect(item.recurrenceType).toBe('daily');
+    expect(item.chainStepOnSchedule).toBe(true);
+    expect(item.recurrenceCount).toBe(item.chainItems.length);
+    const doses = item.chainItems.map(c => c.medicationAmount);
+    expect(doses[0]).toBeGreaterThan(doses[doses.length - 1]!);
+    expect(new Set(item.chainItems.map(c => c.medicationName))).toEqual(new Set(['Prednisone']));
   });
 
   it('seeds enough as-needed doses for the frequency card to draw', () => {
