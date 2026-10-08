@@ -5009,7 +5009,7 @@ describe('addManyToPantry', () => {
 
   // What a barcode scan hands the pantry: the box, matched back by the same
   // raw name frozenNames already keys on. See BarcodeScanSheet/ScanProductDraft.
-  it('records a scanned box and shows it, matched by name', () => {
+  it('records a scanned box without making it the preference, matched by name', () => {
     seed([]);
 
     useGroceryStore.getState().addManyToPantry(
@@ -5022,7 +5022,8 @@ describe('addManyToPantry', () => {
     expect(useGroceryStore.getState().itemProducts).toHaveLength(1);
     const [product] = useGroceryStore.getState().itemProducts;
     expect(product).toMatchObject({ brand: "Dave's Killer", variant: '21 grains' });
-    expect(bread.preferredProductId).toBe(product.id);
+    // A scan is what came home, not what the list asks for next time.
+    expect(bread.preferredProductId).toBeNull();
   });
 
   it('never overrides a box the item already has a preference for', () => {

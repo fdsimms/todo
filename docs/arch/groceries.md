@@ -143,6 +143,11 @@ chips are scoped to the item's own products**, deliberately: brands don't genera
   one would mean the list you build to compare products re-decides for you as you build it.
   `addByName`'s brand chip is the deliberate exception — typing a brand while adding to the list
   *is* a statement about what you're going shopping for.
+- **A scan records a box and never makes it the preference** (`addProduct`'s `promote: false`,
+  `addByName`'s `preferBox: false`), on the grocery, pantry and food log scans alike. A barcode
+  says what came home, not what you're shopping for, and the preference shows on the list row
+  every time the plain item is re-added. Letting a scan fill in a preference nobody had set yet
+  meant almost every branded item ended up asking for whatever was scanned first.
 - **`productStrict` is one flag, and the product picks the granularity.** A product carrying a
   brand and no variant ("any Arnold's") is the brand-level rule; one carrying both is the
   product-level rule its predecessor `brandStrict` couldn't express. Default false, and nothing
