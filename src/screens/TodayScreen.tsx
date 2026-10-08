@@ -33,6 +33,7 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { reuseUnchangedLists } from '../utils/stableLists';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
@@ -2137,6 +2138,9 @@ export function TodayScreen() {
   // Every task currently assigned to a group, regardless of its own
   // visibility — TaskGroupHeader needs the full roster (not just what's
   // visible right now) to compute its "N/M done today" tally.
+  // Unchanged stacks keep last time's array (reuseUnchangedLists), so a
+  // write re-renders the stack headers it touched rather than all of them.
+  const groupChildrenPrev = useRef<Map<string, Task[]> | null>(null);
   const childrenByGroupId = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -2152,7 +2156,7 @@ export function TodayScreen() {
     // list carried on showing the order it had before — a drag that looked
     // like it did nothing at all. (groupChildrenOf sorts for the same reason.)
     for (const list of map.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
-    return map;
+    return (groupChildrenPrev.current = reuseUnchangedLists(groupChildrenPrev.current, map));
   }, [allTasks]);
 
   // The same subset pinGroup itself acts on (see its own comment), computed
@@ -3153,18 +3157,25 @@ export function TodayScreen() {
   // Keyed by parent id, carrying the done tally alongside the rows so the
   // per-row `subs.filter(t => t.completed).length` that used to run on every
   // render of every row happens once per parent per change instead.
+  // A parent whose subtasks didn't change keeps last time's entry, so its
+  // memoized row isn't handed a fresh array on every write.
+  const subtaskItemsPrev = useRef<Map<string, Task[]> | null>(null);
+  const subtaskEntriesPrev = useRef<Map<string, SubtaskEntry> | null>(null);
   const subtasksByParent = useMemo(() => {
-    const map = new Map<string, SubtaskEntry>();
+    const items = new Map<string, Task[]>();
     for (const t of allTasks) {
       if (!t.parentId) continue;
-      const entry = map.get(t.parentId);
-      if (entry) entry.items.push(t);
-      else map.set(t.parentId, { items: [t], doneCount: 0 });
+      const list = items.get(t.parentId);
+      if (list) list.push(t);
+      else items.set(t.parentId, [t]);
     }
-    for (const entry of map.values()) {
-      entry.doneCount = entry.items.filter(t => t.completed).length;
+    subtaskItemsPrev.current = reuseUnchangedLists(subtaskItemsPrev.current, items);
+    const map = new Map<string, SubtaskEntry>();
+    for (const [parentId, list] of subtaskItemsPrev.current) {
+      const prev = subtaskEntriesPrev.current?.get(parentId);
+      map.set(parentId, prev && prev.items === list ? prev : { items: list, doneCount: list.filter(t => t.completed).length });
     }
-    return map;
+    return (subtaskEntriesPrev.current = map);
   }, [allTasks]);
 
   // Swiping a stack header left drops into bulk editing with the whole stack
