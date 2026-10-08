@@ -24,11 +24,18 @@ const screens = readdirSync(SCREENS)
   .map(name => ({ name, source: readFileSync(join(SCREENS, name), 'utf8') }));
 
 describe('screens with a settings gear', () => {
-  const withGear = screens.filter(s => /\buseScreenSettings\(/.test(s.source));
+  // A screen that opens the popover: it hands the gear to its header, or calls
+  // `open`, or spreads `.sheet`. One that only reads `.link` (Today and Projects
+  // jump straight to Settings from their "…" menu) renders no sheet by design.
+  // A merge that eats the element leaves the header's gear behind, so this
+  // still names exactly the screens the failure would break.
+  const OPENS_SHEET = /screenSettings\.(action|open|sheet)\b|withScreenSettings\(/;
+  const withGear = screens.filter(s => /\buseScreenSettings\(/.test(s.source) && OPENS_SHEET.test(s.source));
 
   it('finds the screens that use the gear', () => {
     // Guards the filter itself: an empty list would make every check below pass.
     expect(withGear.length).toBeGreaterThan(10);
+    expect(withGear.map(s => s.name)).not.toContain('TodayScreen.tsx');
   });
 
   it.each(withGear.map(s => [s.name, s.source] as const))('%s renders the sheet as an element', (_name, source) => {
