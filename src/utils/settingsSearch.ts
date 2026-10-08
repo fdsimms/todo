@@ -1,5 +1,5 @@
 import { mergeRanges } from './ranges';
-import type { SettingsEntry } from './settingsIndex';
+import { settingsGroup, type SettingsEntry } from './settingsIndex';
 
 export interface SettingsSearchResult {
   entry: SettingsEntry;
@@ -71,6 +71,16 @@ export function searchSettings(entries: SettingsEntry[], query: string): Setting
       if (hit !== undefined) {
         score += 20;
         matchedVia ??= hit;
+        continue;
+      }
+
+      // The group's own title, last and weakest: "privacy" or "appearance"
+      // names a place to look rather than a setting, so it should list that
+      // group's rows without outranking a row that mentions the word itself.
+      const groupTitle = settingsGroup(entry.groupId)?.title;
+      if (groupTitle !== undefined && groupTitle.toLowerCase().includes(term)) {
+        score += 10;
+        matchedVia ??= groupTitle;
         continue;
       }
 

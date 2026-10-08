@@ -102,6 +102,7 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -1039,7 +1040,7 @@ export function GeneratedTasksSection() {
                 s.setTravelEstimates(true);
                 return;
               }
-              Alert.alert(
+              alertPermissionOff(
                 'Location access is off',
                 'Estimating the trip needs to know where you are. Turn on location access for this app in the Settings app, then try again.',
               );
@@ -1077,7 +1078,7 @@ export function GeneratedTasksSection() {
                     // The phone's position is read under location access, so
                     // it is asked for here if it was never granted.
                     if (!(await requestLocationPermission())) {
-                      Alert.alert(
+                      alertPermissionOff(
                         'Location access is off',
                         'Estimating from where you are needs location access. Turn it on for this app in the Settings app, then try again.',
                       );

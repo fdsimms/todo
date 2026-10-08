@@ -1,6 +1,6 @@
 # Simplified mode
 
-One switch (`simpleMode`, Settings → Tasks & projects → Feature areas) that takes the app down to
+One switch (`simpleMode`, Settings → Feature areas) that takes the app down to
 an ordinary todo/kitchen app by hiding a few dozen capabilities at once (`SIMPLE_FEATURES` is the
 list).
 

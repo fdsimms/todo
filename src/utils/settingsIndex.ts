@@ -432,8 +432,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 
   // Day & time
-  { id: 'dayReset', groupId: 'dayTime', label: 'Morning', section: 'When the day turns over',
-    keywords: ['day start', 'day reset', 'today', 'streaks', 'midnight'] },
+  { id: 'dayReset', groupId: 'dayTime', label: 'Day starts', section: 'When the day turns over',
+    keywords: ['morning', 'day reset', 'rollover', 'today', 'streaks', 'midnight'] },
   { id: 'afternoon', groupId: 'dayTime', label: 'Afternoon starts', section: 'When the day turns over' },
   { id: 'evening', groupId: 'dayTime', label: 'Evening starts', section: 'When the day turns over' },
   { id: 'night', groupId: 'dayTime', label: 'Night starts', section: 'When the day turns over' },
@@ -620,7 +620,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['default', 'new task', 'easy', 'hard', 'coins', 'rewards'] },
   { id: 'newTaskTimeOfDay', groupId: 'tasksProjects', label: 'Time of day', section: 'New tasks',
     keywords: ['default', 'new task', 'morning', 'afternoon', 'evening', 'night', 'segment'] },
-  { id: 'newTaskDestination', groupId: 'tasksProjects', label: 'Where quick-add lands', section: 'New tasks',
+  { id: 'newTaskDestination', groupId: 'tasksProjects', label: 'Where quick add lands', section: 'New tasks',
     keywords: ['default', 'new task', 'inbox', 'today', 'unscheduled', 'goes', 'files'] },
   { id: 'openEditorAfterQuickAdd', groupId: 'tasksProjects', label: 'Open editor after quick add', section: 'New tasks',
     keywords: ['new task', 'sheet', 'stay', 'straight to', 'full form'] },
@@ -737,6 +737,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'kitchenEnabled', groupId: 'featureAreas', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
+  // Coins and rewards. Unflagged for the same reason as the two around it: the
+  // switch that brings the feature back can't be hidden by the feature.
+  { id: 'rewardsEnabled', groupId: 'featureAreas', label: 'Coins and rewards', section: 'Feature areas',
+    keywords: ['bounty', 'bounties', 'points', 'gamify', 'earn', 'spend', 'prize',
+      'hide', 'remove', 'disable', 'turn off', 'difficulty'] },
   // The other master switch, and unflagged for the same reason. Keyworded for
   // the features it removes as well as for what it is: someone who wants
   // chains or the focus timer gone will search for those, not for "simplified".

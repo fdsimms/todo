@@ -18,7 +18,7 @@ import type { SettingsEntry } from './settingsIndex';
  * `screenSettings.test.ts` holds the list to that, and to every id existing.
  */
 export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
-  Today: ['newTaskDestination', 'mealsOnToday', 'calendarRead'],
+  Today: ['newTaskDestination', 'mealsOnToday', 'calendarRead', 'hideCategories', 'dayReset', 'vacationMode'],
   Projects: ['autoCompleteProjects', 'hideListPreviews', 'defaultProjectNudgeCadence', 'gen:projectReview'],
   Calendar: ['calendarRead', 'deadlineCalendar', 'completionCalendar', 'claudeCalendar'],
   Reminders: ['defaultReminderLead', 'quietHours', 'notifPermission'],
@@ -29,8 +29,13 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   Kitchen: ['gen:pantryCheck', 'gen:pantryReview', 'gen:groceryUseUp'],
   FoodLog: ['nutritionTargets', 'mealLogPrompt', 'healthWrite'],
   Mood: ['gen:moodLog', 'gen:moodNudge'],
-  Weight: ['weightGoal', 'weightUnit', 'healthRead'],
-  Sleep: ['sleepGoal', 'healthRead'],
+  Journal: ['gen:journalLog'],
+  Dreams: ['gen:journalLog'],
+  // No goal row on Weight or Sleep: each screen's own target icon opens the goal
+  // sheet in place, and the Settings row either round-trips through Settings back
+  // to that sheet (weight) or edits the same value with a second control (sleep).
+  Weight: ['weightUnit', 'healthRead'],
+  Sleep: ['healthRead'],
   Logbook: ['retention', 'completionCalendar'],
   Stats: ['weekStartsOn'],
   UnattendedLog: ['backgroundRefreshEnabled', 'retention'],
