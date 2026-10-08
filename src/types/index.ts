@@ -4212,6 +4212,12 @@ export interface TemplateItem {
   weatherWait?: WeatherCondition | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
+  // Adds one subtask per medication you currently take, read from the
+  // medication log when the template runs, after the item's own subtasks. The
+  // list is never stored on the item: it is whatever "what you take" is on the
+  // day of the run (`medicationVocabulary`, archived ones left out), so a
+  // packing list stays right as medicines come and go. Absent reads as false.
+  medicationChecklist?: boolean;
   estimatedMinutes: number | null;
   // Seeds Task.completionTimerMinutes — a routine (like a recurring
   // medication) that always wants the same "remind me N later" offer

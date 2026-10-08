@@ -17,6 +17,7 @@
  */
 import type { Project, Task, TaskTemplate } from '../types';
 import { awayNoonIso } from './awayDates';
+import { medicationKey } from './medicationLog';
 import { applyItemVariant } from './templateQuestions';
 import {
   RUN_PLACEHOLDER,
@@ -51,6 +52,12 @@ export interface TemplateRunOptions {
    * parent row have no `personIds`, and a stub subtask takes no overrides.
    */
   personIds?: string[];
+  /**
+   * The medicines you take as of this run, for an item marked
+   * `medicationChecklist`. Supplied by the caller because the log lives in a
+   * store this module doesn't read; left out, such an item gets no checklist.
+   */
+  medications?: string[];
   /**
    * Land every created task in this existing project instead of the template's
    * own container. A resolved 'project' container would otherwise create a
@@ -212,6 +219,14 @@ export function applyTemplateRun(
     // nested a second level nothing renders or cascade-deletes.
     const subtaskParent = runTask ?? createdTask;
     item.subtasks.forEach(stub => sink.addSubtask(subtaskParent.id, substitutePlaceholders(stub.title, placeholders)));
+    // One line per medicine, after the item's own, skipping a name the item
+    // already lists by hand so a template that spelled one out doesn't double it.
+    if (item.medicationChecklist) {
+      const listed = new Set(item.subtasks.map(s => medicationKey(substitutePlaceholders(s.title, placeholders))));
+      (options?.medications ?? []).forEach(name => {
+        if (!listed.has(medicationKey(name))) sink.addSubtask(subtaskParent.id, name);
+      });
+    }
 
     // Item-group sub-stacks only mean anything among top-level tasks.
     if (item.groupId && !runTask) {

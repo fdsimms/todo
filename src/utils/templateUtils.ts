@@ -90,6 +90,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
     weatherWait: raw.weatherWait ?? null,
     pinEachOccurrence: raw.pinEachOccurrence ?? false,
+    medicationChecklist: raw.medicationChecklist ?? false,
     penaltyMinutes: raw.penaltyMinutes ?? null,
     penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
     gatesApps: raw.gatesApps ?? false,

@@ -280,6 +280,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
+  const [medicationChecklist, setMedicationChecklist] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
@@ -381,6 +382,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setWeatherWait(item?.weatherWait ?? draft?.weatherWait ?? null);
     setDifficulty(item?.difficulty ?? draft?.difficulty ?? null);
     setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
+    setMedicationChecklist(item?.medicationChecklist ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
@@ -651,6 +653,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       difficulty,
       // Cleared with the schedule: it only means anything on a repeating task.
       pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
+      medicationChecklist,
       // Belt and braces with the row above being hidden for a chain: the two
       // are mutually exclusive, and this is what an item saved by an older
       // build carrying both is normalized by on its next save.
@@ -2284,7 +2287,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       <View style={styles.sectionCard}>
         <CollapsibleField
           label="Subtasks"
-          summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
+          summary={[
+            subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : null,
+            medicationChecklist ? 'Your medicines' : null,
+          ].filter(Boolean).join(' + ') || undefined}
           hint="Checklist items created alongside the task when the template is applied."
           expanded={fieldOpen('subtasks', true)}
           onToggle={() => toggleField('subtasks', true)}
@@ -2356,6 +2362,24 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               style={styles.addBtnSpacing}
             />
           )}
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setMedicationChecklist(!medicationChecklist); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Add my medicines as subtasks"
+            accessibilityState={{ checked: medicationChecklist }}
+          >
+            <Ionicons name="medkit-outline" size={18} color={medicationChecklist ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Add my medicines as subtasks</Text>
+              <Text style={styles.optionHint}>One subtask for each medicine you currently take, from your medication log when the template is applied</Text>
+            </View>
+            <View style={[styles.toggle, medicationChecklist && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, medicationChecklist && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
         </CollapsibleField>
       </View>
 

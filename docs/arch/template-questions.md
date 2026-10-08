@@ -138,3 +138,26 @@ beside it.
   of ids rather than a string a title could use, and gates nothing (see above). What that answer
   means and where it goes is `docs/arch/people.md`, "Templates that ask who" — this file stays about
   the question mechanism, that one's about the person it names.
+
+## An item that becomes your medicines
+
+`TemplateItem.medicationChecklist` makes a run add one subtask per medicine you currently take, after
+the item's own subtasks (`applyTemplateRun`). Built for a packing list's "Medications" line, and
+narrow on purpose.
+
+- **The list is read when the template runs and never stored on the item.** What "your medicines" is
+  changes whenever you start or stop one, and a copy typed into the template would go stale the
+  first time that happened. The source is `medicationVocabulary` over the medication log with the
+  archived list passed in, the same set the app already means by "what you take". The caller supplies
+  it as `TemplateRunOptions.medications` (`useTemplateStore.applyTemplate` and the MCP replica's
+  `runTemplateIn` both read it themselves), so the apply sheet, a scheduled run and an agent's run
+  agree and the pure run function stays store-free.
+- **It adds lines and never reads anything back.** The subtasks are plain checklist stubs: ticking
+  one is not a dose, and nothing here records, schedules or counts a medicine. That keeps it out of
+  the medication log's rules (`docs/arch/mood-log.md`), which only a person's own dose entry or a
+  task naming a medication may write to.
+- **A medicine the item already lists by hand is not added twice** (compared with `medicationKey`, so
+  case and surrounding space don't matter), and no medicines in the log means no extra lines, with
+  the item still created as written.
+- **The medicine names are not a blank.** They are added as written, so a name can't be altered by
+  `{blank}` substitution, and an item's own stubs still go through it as before.
