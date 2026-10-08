@@ -7,6 +7,7 @@ import {
   foodKeyResolver,
   hasNutritionData,
   mostLoggedFoods,
+  daysWithinLimits,
   nutrientAverages,
   nutritionCounts,
   produceAverage,
@@ -628,5 +629,40 @@ describe('produceAverage', () => {
     const unweighed = { ...entry('2026-09-08', { label: 'Broccoli', slot: 'dinner' }), grams: null };
     const entries = [...produceDay('2026-09-08', [unweighed]), ...produceDay('2026-09-09')];
     expect(produceAverage(entries, WINDOW)).toEqual({ vegetable: 2, fruit: 1, days: 1, daysLeftOut: 1 });
+  });
+});
+
+describe('daysWithinLimits', () => {
+  // fullDay is two entries, so a day's saturated fat is twice the per-entry figure.
+  const sat = (g: number) => ({ amounts: { calorieKcal: 300, satFatG: g } });
+
+  it('counts the measurable days at or under each limit', () => {
+    const rows = daysWithinLimits(
+      [...fullDay('2026-09-07', sat(4)), ...fullDay('2026-09-08', sat(8)), ...fullDay('2026-09-09', sat(12))],
+      WINDOW,
+      { satFatG: 16, proteinG: 100 },
+      ['satFatG'],
+    );
+    expect(rows).toEqual([{ key: 'satFatG', within: 2, days: 3 }]);
+  });
+
+  it('leaves out today, an unfinished day, and a day an entry did not state it', () => {
+    const rows = daysWithinLimits(
+      [
+        ...fullDay('2026-09-08', sat(4)),
+        entry('2026-09-09', { slot: 'breakfast', amounts: { satFatG: 30 } }),
+        entry('2026-09-09', { slot: 'dinner', amounts: { calorieKcal: 900 } }),
+        ...fullDay('2026-09-10', sat(30)),
+      ],
+      WINDOW,
+      { satFatG: 16 },
+      ['satFatG'],
+    );
+    expect(rows).toEqual([{ key: 'satFatG', within: 1, days: 1 }]);
+  });
+
+  it('says nothing for a goal, or a limit with nothing measured', () => {
+    expect(daysWithinLimits(fullDay('2026-09-08', sat(4)), WINDOW, { satFatG: 16 }, [])).toEqual([]);
+    expect(daysWithinLimits(fullDay('2026-09-08'), WINDOW, { sugarG: 35 }, ['sugarG'])).toEqual([]);
   });
 });

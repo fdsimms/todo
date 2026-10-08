@@ -7,6 +7,7 @@ import {
   nutritionFor,
   parseFoodNutrition,
   serializeFoodNutrition,
+  describePanelFigures,
 } from '../utils/foodNutrition';
 import { NUTRIENT_KEYS } from '../types';
 import { HEALTH_NUTRIENT_METRICS } from '../utils/healthRules';
@@ -359,5 +360,32 @@ describe('mlToFlOz / flOzToMl', () => {
   it('round-trips without drifting', () => {
     expect(flOzToMl(mlToFlOz(300))).toBeCloseTo(300, 10);
     expect(mlToFlOz(flOzToMl(10))).toBeCloseTo(10, 10);
+  });
+});
+
+describe('describePanelFigures', () => {
+  const panel = (over: Partial<FoodNutrition>): FoodNutrition => ({
+    basis: 'per100g', servingGrams: null, servingText: null, amounts: {}, source: 'fdc',
+    sourceId: null, portions: [], recordedAt: '2026-10-08T12:00:00.000Z', ...over,
+  } as FoodNutrition);
+
+  it('reads a per-serving panel as printed', () => {
+    expect(describePanelFigures(
+      panel({ basis: 'perServing', servingText: '2 cookies', amounts: { satFatG: 2.5, sugarG: 11 } }),
+      ['satFatG', 'sugarG'],
+    )).toBe('Per serving (2 cookies): Saturated fat 2.5g · Total sugars 11g');
+  });
+
+  it('scales a per-100g panel to its stated serving, and says when one is not stated', () => {
+    expect(describePanelFigures(
+      panel({ servingGrams: 30, servingText: '1 bar (30g)', amounts: { satFatG: 10 } }),
+      ['satFatG', 'addedSugarG'],
+    )).toBe('Per serving (1 bar (30g)): Saturated fat 3g · Added sugars not stated');
+  });
+
+  it('stays per 100g with no serving to scale to, and says nothing with nothing asked', () => {
+    expect(describePanelFigures(panel({ amounts: { satFatG: 10 } }), ['satFatG'])).toBe('Per 100g: Saturated fat 10g');
+    expect(describePanelFigures(panel({}), [])).toBeNull();
+    expect(describePanelFigures(null, ['satFatG'])).toBeNull();
   });
 });
