@@ -43,6 +43,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
+import { negativeHoldOffered, runNegativeHold } from '../utils/negativeHold';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -396,6 +397,8 @@ export const TaskItem = React.memo(function TaskItem({
     planRotationItem,
     logSlip,
     undoSlip,
+    closeNegativeDay,
+    reopenNegativeDay,
     startQuotaRun,
     holdQuotaOnToday,
     releaseQuotaHold,
@@ -1492,6 +1495,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const slipped = isNegative && isFailedToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
+  const negativeHoldAvailable = isNegative && negativeHoldOffered(task, getCurrentDayStart());
 
   // A quota task is logged a unit at a time rather than ticked off once, so
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
@@ -2003,20 +2007,10 @@ export const TaskItem = React.memo(function TaskItem({
     confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
   };
 
-  const handleSlipUndo = async () => {
-    if (slipsLoggedToday === 0) return;
-    await haptics.tap();
-    // Same reasoning as handleQuotaUndo: a stray long press shouldn't change the
-    // record silently. Note undoSlip doesn't refund a charge (penaltyShield.ts).
-    Alert.alert(
-      'Take back a slip?',
-      `Remove the most recent slip logged for "${displayTitleFor(task)}" today?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Take back', style: 'destructive', onPress: () => undoSlip(task.id) },
-      ],
-    );
-  };
+  // A long press on an avoid-task: take a slip back, or count today clean now
+  // (or reopen it). See runNegativeHold for which, and why.
+  const handleNegativeHold = () =>
+    runNegativeHold(task, getCurrentDayStart(), { undoSlip, closeDay: closeNegativeDay, reopenDay: reopenNegativeDay });
 
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
@@ -2540,7 +2534,7 @@ export const TaskItem = React.memo(function TaskItem({
           : handleComplete
         }
         onLongPress={
-          isNegative ? (slipsLoggedToday > 0 ? handleSlipUndo : undefined)
+          isNegative ? (negativeHoldAvailable ? handleNegativeHold : undefined)
           : meterInteractive ? handleQuotaUndo
           : completionMenuOffered ? openCompletionMenu
           : undefined
@@ -2602,7 +2596,7 @@ export const TaskItem = React.memo(function TaskItem({
         }
         accessibilityHint={
           isNegative
-            ? (slipsLoggedToday > 0 ? 'Double tap and hold to take one back' : undefined)
+            ? (negativeHoldAvailable ? 'Double tap and hold to count today as clean, or take a slip back' : undefined)
             : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined
         }
       >

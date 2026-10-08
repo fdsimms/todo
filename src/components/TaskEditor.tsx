@@ -1626,7 +1626,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // Like the calendar flag: a time with no deadline to close at is dropped.
       deadlineTime: deadline ? deadlineTime : null,
       logCompletionToCalendar,
-      timeSegments, windowStart, windowEnd, targetCount: savedTargetCount,
+      // An avoid-task has no start: it is on Today all day, and its end is when
+      // the day counts as clean.
+      timeSegments, windowStart: polarity === 'negative' ? null : windowStart, windowEnd, targetCount: savedTargetCount,
       penaltyMinutes,
       // Meaningless on an avoid-task, which is never completed and so could
       // never satisfy a gate. Cleared rather than carried so flipping the
@@ -2720,7 +2722,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     };
     return getVisibleAt(previewTask);
   }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
-  const timeWindowSummary = (windowStart || windowEnd)
+  const timeWindowSummary = polarity === 'negative'
+    ? (windowEnd ? formatHHMM(windowEnd) : undefined)
+    : (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
   // Says what happens and when, because the two halves are set separately and
@@ -3460,7 +3464,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
                 <Text style={styles.kindHint}>
                   {polarity === 'negative'
-                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count.'
+                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count, or long press it to count today as clean early.'
                     : 'Completed when you do it, like any other task.'}
                 </Text>
                 {polarity === 'negative' && (
@@ -4667,8 +4671,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'timeWindow', label: 'Time window', set: !!windowStart || !!windowEnd,
-            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window'],
+            key: 'timeWindow', label: polarity === 'negative' ? 'Day ends at' : 'Time window', set: polarity === 'negative' ? !!windowEnd : (!!windowStart || !!windowEnd),
+            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window', 'end', 'after', 'cutoff', 'time box'],
             node: (
               <>
             <EditorRow
@@ -4688,6 +4692,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             {showTimeWindow && (
               <>
                 <View style={styles.windowPillRow}>
+                  {polarity !== 'negative' && (
                   <TouchableOpacity
                     style={[
                       styles.timePill, styles.windowPill,
@@ -4700,6 +4705,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       {windowStart ? formatHHMM(windowStart) : 'Start'}
                     </Text>
                   </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={[
                       styles.timePill, styles.windowPill,

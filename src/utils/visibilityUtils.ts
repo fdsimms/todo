@@ -493,6 +493,9 @@ function isVacationPauseInForce(): boolean {
 export function isTaskExpired(task: Task): boolean {
   const end = effectiveWindowEnd(task);
   if (task.completed || task.archived || !end) return false;
+  // An avoid-task's end time says when its day counts as clean, never that it
+  // lapsed: expiry deletes, and a standing commitment is not late for anything.
+  if (isNegativeTask(task)) return false;
   const paused = isVacationPauseInForce();
   if (paused && task.vacationPause) return false;
   if (paused && categoryHidesOnVacation(task.category)) return false;

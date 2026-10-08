@@ -217,7 +217,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
-import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree } from '../utils/negativeHabits';
+import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -235,6 +235,7 @@ import {
   isInPausedProject,
   isVisibleApartFromVacation,
   isTaskExpired,
+  effectiveWindowEnd,
   isTaskSweepable,
   isRecurrenceNotYetDue,
   isLiveRecurring,
@@ -377,7 +378,7 @@ import {
   describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
-import { carryClockTime, dateToHHMM } from '../utils/clockTime';
+import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
 import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
 import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
@@ -1755,6 +1756,16 @@ interface TaskStore extends UndoHistoryActions {
    * Runs alongside rolloverQuotas at day rollover and on launch, and is a no-op
    * on almost every call — see cleanDayPatch.
    */
+  /**
+   * Counts today clean now rather than when the day ends: "after 10pm there is
+   * no way I use the pots and pans". Credits every day since the anchor through
+   * today and moves the anchor to today, so the next rollover adds nothing twice
+   * (see `closeDayPatch`). Offers an undo, and does nothing on a day already
+   * closed or broken.
+   */
+  closeNegativeDay: (id: string) => void;
+  /** Takes a closed day back, so it is credited by the rollover if it ends clean. */
+  reopenNegativeDay: (id: string) => void;
   rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
@@ -4222,16 +4233,49 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until, reason);
   },
 
+  closeNegativeDay(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task) || task.archived) return;
+    const patch = closeDayPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    get().setLastAction({
+      label: `Day logged, streak ${updated.streakCount}`,
+      undo: () => get().reopenNegativeDay(id),
+      redo: () => get().closeNegativeDay(id),
+    });
+  },
+
+  reopenNegativeDay(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task)) return;
+    const patch = reopenDayPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   rolloverNegativeStreaks() {
     const todayStart = getCurrentDayStart();
+    const now = new Date();
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
       // every other streak here makes. Read through isWithheld so a category
       // paused for vacation, or a paused project, covers its habits too,
       // exactly as it does for the tasks the quota rollover skips.
-      const patch = cleanDayPatch(t, todayStart, { paused: isWithheld(t) });
-      return patch ? [{ ...t, ...patch }] : [];
+      const paused = isWithheld(t);
+      const patch = cleanDayPatch(t, todayStart, { paused });
+      const rolled = patch ? { ...t, ...patch } : t;
+      // The habit's own end time counts today as clean once it passes, on the
+      // rolled row so a catch-up and a close land in one write.
+      const end = effectiveWindowEnd(t);
+      const closing = windowCloseDayPatch(rolled, todayStart, end ? onLogicalDay(todayStart, end) : null, now, { paused });
+      if (!patch && !closing) return [];
+      return [{ ...rolled, ...closing }];
     });
     if (patched.length === 0) return;
     dbTransaction(() => patched.forEach(dbUpdateTask));
