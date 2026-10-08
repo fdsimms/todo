@@ -73,7 +73,12 @@ describe('describeEffects', () => {
 });
 
 describe('describeEffects, field changes', () => {
-  const dayOf = (iso: string) => iso.slice(0, 10);
+  // A local day key, as the replica's own dayOf is: slicing the ISO string is a
+  // UTC date, which is a day off far from Greenwich.
+  const dayOf = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const entry = (before: Record<string, unknown>, after: Record<string, unknown>) => ({
     action: 'edited' as const, subject: 'task' as const, title: 'Pay rent', taskId: 't1', revert: { before, after },
   });
@@ -87,12 +92,12 @@ describe('describeEffects, field changes', () => {
   it('names fields it used to drop, and labels weekdays, priority and a reminder time', () => {
     const lines = describeEffects([entry(
       { weatherWait: null, recurrenceDays: [1], priority: 1, reminderTime: null },
-      { weatherWait: 'sunny', recurrenceDays: [1, 5], priority: 3, reminderTime: '2026-10-09T13:30:00.000Z' },
+      { weatherWait: 'sunny', recurrenceDays: [1, 5], priority: 3, reminderTime: new Date(2026, 9, 9, 9, 30).toISOString() },
     )], dayOf);
     expect(lines[0]).toContain('waits for weather from nothing to "sunny"');
     expect(lines[0]).toContain('repeat days from Monday to Monday, Friday');
     expect(lines[0]).toContain('priority from 1 of 4 to 3 of 4');
-    expect(lines[0]).toMatch(/reminder from nothing to 2026-10-09 at \d{1,2}:30 [AP]M/);
+    expect(lines[0]).toMatch(/reminder from nothing to 2026-10-09 at 9:30 AM/);
   });
 
   it('appends a suffix, and counts identical lines once', () => {

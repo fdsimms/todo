@@ -144,7 +144,7 @@ describe('parseHealthWriteNutrients', () => {
   });
 
   it('drops a nutrient Health has no type for', () => {
-    expect(parseHealthWriteNutrients('["transFatG","cholesterolMg","addedSugarG","satFatG"]')).toEqual(['satFatG']);
+    expect(parseHealthWriteNutrients('["transFatG","cholesterolMg","addedSugarG","satFatG"]')).toEqual(['cholesterolMg', 'satFatG']);
   });
 
   it('keeps a stored empty array empty, since that is a real choice', () => {

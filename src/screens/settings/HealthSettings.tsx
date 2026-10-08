@@ -120,7 +120,7 @@ export function HealthSettings() {
   const [waterWriteStatus, setWaterWriteStatus] = useState<HealthWriteStatus | null>(null);
   const [weightWriteStatus, setWeightWriteStatus] = useState<HealthWriteStatus | null>(null);
   // A third, and the only one standing for more than one share type: a meal is
-  // thirteen of them, and this reads as allowed only when every one is. See the
+  // fourteen of them, and this reads as allowed only when every one is. See the
   // native `writeAuthorizationStatus`.
   const [nutritionWriteStatus, setNutritionWriteStatus] = useState<HealthWriteStatus | null>(null);
 

@@ -8,6 +8,7 @@ import type {
   Recipe,
   MealPlanEntry,
   MedicationLog,
+  NutrientKey,
   Shop,
   Task,
 } from '../types';
@@ -29,6 +30,16 @@ import { eventTaskEventOf } from './eventTasks';
 import { addDays } from 'date-fns/addDays';
 import { widgetTapNeedsApp } from './widgetQuietTaps';
 import { formatDose, medicationStats, repeatDose } from './medicationLog';
+import { NUTRIENT_LABEL } from './foodNutrition';
+import {
+  activeLimits,
+  describeLimit,
+  limitStatus,
+  targetProgress,
+  type LimitStatus,
+  type NutritionTargets,
+} from './nutritionTargets';
+import { LIMIT_ROW_NAME } from './dayContextRows';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.
@@ -226,6 +237,57 @@ export interface WidgetSnapshot {
    * in this process (the widget asks for the app rather than saying "none").
    */
   medications: WidgetMedication[] | null;
+  /**
+   * Today's food log against each Stay under limit, for the Limits widget, or
+   * null when the food log hasn't loaded in this process (the widget asks for
+   * the app rather than drawing a day of nothing). Empty when nothing is a
+   * limit. About the logical day it was written in only: the widget drops it
+   * at `nextDayStart`.
+   */
+  limits: WidgetLimit[] | null;
+}
+
+/**
+ * One limit on the Limits widget, worded here so the widget formats nothing:
+ * "Sat fat", "9 of 16g", "7g left". `fraction` is the bar, 0 to 1.
+ */
+export interface WidgetLimit {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+  fraction: number;
+  status: LimitStatus;
+}
+
+/** How many limits the widget carries. A medium widget shows four. */
+export const MAX_WIDGET_LIMITS = 4;
+
+/**
+ * Each Stay under limit against today's totals, in label order, the same
+ * figures and wording Today's limit rows use (`limitContextRows`).
+ */
+export function buildWidgetLimits(
+  totals: Partial<Record<NutrientKey, number>>,
+  targets: NutritionTargets,
+  limits: readonly NutrientKey[],
+  warnPercent: number,
+): WidgetLimit[] {
+  return activeLimits(targets, limits).slice(0, MAX_WIDGET_LIMITS).map(key => {
+    const total = totals[key] ?? 0;
+    const target = targets[key]!;
+    const unit = NUTRIENT_LABEL[key].unit;
+    const suffix = unit === 'cal' ? ' cal' : unit;
+    const rounded = Math.round(total * 10) / 10;
+    return {
+      id: key,
+      label: LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label,
+      value: `${rounded.toLocaleString('en-US')} of ${target.toLocaleString('en-US')}${suffix}`,
+      detail: describeLimit(key, total, targets) ?? '',
+      fraction: targetProgress(key, total, targets),
+      status: limitStatus(key, total, targets, warnPercent),
+    };
+  });
 }
 
 /**
@@ -429,6 +491,13 @@ export interface SnapshotInput {
   mealLogPrompt: boolean;
   /** The medication log and its archived names, or null before it has loaded. */
   medications?: { logs: readonly MedicationLog[]; archived: readonly string[] } | null;
+  /** Today's food log totals and the limits to read them against, or null before the log has loaded. */
+  limits?: {
+    totals: Partial<Record<NutrientKey, number>>;
+    targets: NutritionTargets;
+    limits: readonly NutrientKey[];
+    warnPercent: number;
+  } | null;
 }
 
 /**
@@ -509,6 +578,9 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
     upcomingEvents: input.events ? buildUpcomingEvents(input.events, input.now, input.dayEnd) : null,
     medications: input.medications
       ? buildWidgetMedications(input.medications.logs, input.medications.archived)
+      : null,
+    limits: input.limits
+      ? buildWidgetLimits(input.limits.totals, input.limits.targets, input.limits.limits, input.limits.warnPercent)
       : null,
   };
 }

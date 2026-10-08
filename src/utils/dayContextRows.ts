@@ -313,7 +313,7 @@ export function healthContextRows(
 }
 
 /** The short names a limit row uses, so a folded section's one-line summary fits. */
-const LIMIT_ROW_NAME: Partial<Record<NutrientKey, string>> = {
+export const LIMIT_ROW_NAME: Partial<Record<NutrientKey, string>> = {
   satFatG: 'Sat fat',
   transFatG: 'Trans fat',
   sugarG: 'Sugar',

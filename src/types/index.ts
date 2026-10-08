@@ -4608,11 +4608,12 @@ export interface GroceryListEntry {
  * **`transFatG`, `cholesterolMg` and `addedSugarG` are the three a person
  * watching their cholesterol reads first**, and every US label prints them, so
  * the barcode sources carry them about as often as saturated fat. They are
- * recorded and never written to Health: HealthKit has no type at all for trans
- * fat or added sugars, and cholesterol's would cost a new share type and a fresh
- * permission sheet for a figure nothing else on the phone reads. So they sit
- * outside `HEALTH_WRITABLE_NUTRIENTS` below, which is the list every
- * Health-facing reader walks instead of this one.
+ * recorded, and cholesterol is written to Health with the rest of a meal. Trans
+ * fat and added sugars are never written: HealthKit has no type for either. So
+ * those two sit outside `HEALTH_WRITABLE_NUTRIENTS` below, which is the list
+ * every Health-facing reader walks instead of this one. Cholesterol's share
+ * type arrived after people had already allowed nutrition, so for them it reads
+ * as not yet asked until they allow it, the minerals' arrangement.
  *
  * The unit is in the name, the same convention the health metrics use, because
  * a figure stored in one unit and read in another is the bug with no symptom
@@ -4640,14 +4641,14 @@ export const NUTRIENT_KEYS: readonly NutrientKey[] = [
 
 /**
  * The nutrients a logged meal can carry into Apple Health: one per row of the
- * bridge's `nutrientWriteTable`, and so every key above except the three
- * HealthKit gives no home here (see `NutrientKey`). The Health settings'
+ * bridge's `nutrientWriteTable`, and so every key above except the two
+ * HealthKit has no type for (see `NutrientKey`). The Health settings'
  * per-nutrient choice, the default write selection, the write itself and a
  * task's "log to Health" picker all walk this, so a key the native side would
  * silently skip is never offered as though it were written.
  */
 export const HEALTH_WRITABLE_NUTRIENTS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
-  key => key !== 'transFatG' && key !== 'cholesterolMg' && key !== 'addedSugarG',
+  key => key !== 'transFatG' && key !== 'addedSugarG',
 );
 
 /**

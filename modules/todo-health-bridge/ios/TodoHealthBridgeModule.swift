@@ -204,6 +204,11 @@ public class TodoHealthBridgeModule: Module {
     ("carbsG", .dietaryCarbohydrates, HKUnit.gram()),
     ("fatG", .dietaryFatTotal, HKUnit.gram()),
     ("satFatG", .dietaryFatSaturated, HKUnit.gram()),
+    // Added after the first thirteen, for somebody watching their cholesterol.
+    // An install that already allowed nutrition reads `notDetermined` for it
+    // until they allow it, the mineral types' arrangement (see
+    // `writeAuthorizationStatus`); until then the write skips it.
+    ("cholesterolMg", .dietaryCholesterol, HKUnit.gramUnit(with: .milli)),
     ("fiberG", .dietaryFiber, HKUnit.gram()),
     ("sugarG", .dietarySugar, HKUnit.gram()),
     ("sodiumMg", .dietarySodium, HKUnit.gramUnit(with: .milli)),

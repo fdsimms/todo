@@ -90,7 +90,7 @@ describe('writableFoodAmounts', () => {
     // An entry stating only these would otherwise come back with no samples and
     // read as Health refusing the write.
     expect(writableFoodAmounts(nutrition({ satFatG: 4, transFatG: 0.5, cholesterolMg: 30, addedSugarG: 9 })))
-      .toEqual({ satFatG: 4 });
+      .toEqual({ satFatG: 4, cholesterolMg: 30 });
   });
 
   it('leaves out a nutrient the entry does not state', () => {
