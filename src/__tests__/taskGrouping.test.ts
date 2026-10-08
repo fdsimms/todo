@@ -541,8 +541,61 @@ const daySection = (title: string, label: string | null, segment: string | null,
 // Readable view of a flattened Later layout.
 const laterSeq = (items: ReturnType<typeof flattenLaterSections>) =>
   items.map(item =>
-    item.type === 'header' ? `#${item.label}` : item.type === 'subheader' ? `##${item.label}` : item.task.id,
+    item.type === 'header' ? `#${item.label}`
+      : item.type === 'subheader' ? `##${item.label}`
+      : item.type === 'stack' ? `[${item.group.id}:${item.tasks.map(t => t.id).join(',')}]`
+      : item.task.id,
   );
+
+describe('flattenLaterSections stack folding', () => {
+  const g = makeGroup({ id: 'g' });
+  const groupsById = new Map([['g', g]]);
+  const inG = (id: string) => makeTask({ id, groupId: 'g' });
+
+  it('folds three or more of one stack into a row at the first member', () => {
+    const flattened = flattenLaterSections(
+      [daySection('SAT', null, null, [makeTask({ id: 'x' }), inG('a'), makeTask({ id: 'y' }), inG('b'), inG('c')])],
+      { groupsById },
+    );
+    expect(laterSeq(flattened)).toEqual(['#SAT', 'x', '[g:a,b,c]', 'y']);
+  });
+
+  it('leaves two members as ordinary rows', () => {
+    const flattened = flattenLaterSections([daySection('SAT', null, null, [inG('a'), inG('b')])], { groupsById });
+    expect(laterSeq(flattened)).toEqual(['#SAT', 'a', 'b']);
+  });
+
+  it('counts per day, so a stack split across days folds only where it has three', () => {
+    const flattened = flattenLaterSections(
+      [
+        daySection('SAT', null, null, [inG('a'), inG('b'), inG('c')]),
+        daySection('SUN', null, null, [inG('d'), inG('e')]),
+      ],
+      { groupsById },
+    );
+    expect(laterSeq(flattened)).toEqual(['#SAT', '[g:a,b,c]', '#SUN', 'd', 'e']);
+  });
+
+  it('does not fold when fold is off or the stack is unknown', () => {
+    const day = [daySection('SAT', null, null, [inG('a'), inG('b'), inG('c')])];
+    expect(laterSeq(flattenLaterSections(day, { groupsById, fold: false }))).toEqual(['#SAT', 'a', 'b', 'c']);
+    expect(laterSeq(flattenLaterSections(day, { groupsById: new Map() }))).toEqual(['#SAT', 'a', 'b', 'c']);
+    expect(laterSeq(flattenLaterSections(day))).toEqual(['#SAT', 'a', 'b', 'c']);
+  });
+
+  it('keeps a folded stack\'s members in the order a reorder is numbered from', () => {
+    const flattened = flattenLaterSections(
+      [daySection('SAT', null, null, [makeTask({ id: 'x' }), inG('a'), inG('b'), inG('c'), makeTask({ id: 'y' })])],
+      { groupsById },
+    );
+    expect(laterTaskOrder(flattened)).toEqual(['x', 'a', 'b', 'c', 'y']);
+  });
+
+  it('gives a folded stack the day\'s drop zone like a task row', () => {
+    const flattened = flattenLaterSections([daySection('SAT', null, null, [inG('a'), inG('b'), inG('c')])], { groupsById });
+    expect(laterDropZones(flattened).map(z => z.kind)).toEqual(['header', 'task']);
+  });
+});
 
 describe('flattenLaterSections', () => {
   it('flattens day sections into header + task items in order', () => {
