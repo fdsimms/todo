@@ -44,6 +44,7 @@ import { TemplateEditor } from '../components/TemplateEditor';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
@@ -69,6 +70,7 @@ function AddTemplateFabWithDropLabel({
 }
 
 export function TemplatesScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
@@ -285,6 +287,7 @@ export function TemplatesScreen() {
         scroller={scrollControl}
       >
       <ReorderableList
+        refreshControl={pullSearch.refreshControl}
         data={templateListItems}
         keyExtractor={item => item.key}
         // The user can't scroll during an add-button drag (the button's
@@ -427,6 +430,7 @@ export function TemplatesScreen() {
           onDismiss={() => setTemplateAppliedCount(null)}
         />
       )}
+      {pullSearch.sheet}
     </View>
   );
 }

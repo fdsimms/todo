@@ -102,6 +102,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { CountStepper } from '../components/CountStepper';
 import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 
 /**
@@ -165,6 +166,7 @@ function atTimeOf(entry: FoodLogEntry, day: Date): Date {
 }
 
 export function FoodLogScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('FoodLog', 'Food log settings');
@@ -1259,7 +1261,7 @@ export function FoodLogScreen() {
         // left the empty state centered in negative space, drawn over the
         // water card with its button under the tab bar. `flexGrow` keeps it
         // centered in what's left whenever there is room.
-        <ScrollView style={styles.emptyScroll} contentContainerStyle={styles.emptyScrollContent}>
+        <ScrollView refreshControl={pullSearch.refreshControl} style={styles.emptyScroll} contentContainerStyle={styles.emptyScrollContent}>
           <View style={styles.plannedAlone}>
             {plannedCard}
             {totalsCard}
@@ -1275,6 +1277,7 @@ export function FoodLogScreen() {
             scroller={foodScrollControl}
           >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             data={listItems}
             keyExtractor={foodListItemKey}
             scrollToTop={{ bottom: fabBottom }}
@@ -1571,6 +1574,7 @@ export function FoodLogScreen() {
           onCancel={() => setDuplicatingEntry(null)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </SafeAreaView>
   );
 }

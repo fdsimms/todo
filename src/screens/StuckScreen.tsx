@@ -21,6 +21,7 @@ import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { PostponeCheckActions, type PostponeCheckAction } from '../components/PostponeCheckBanner';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -120,6 +121,7 @@ function labelForCategory(
 }
 
 export function StuckScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -534,6 +536,7 @@ export function StuckScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
+        refreshControl={pullSearch.refreshControl}
         data={rows}
         keyExtractor={row => row.key}
         contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.listContent}
@@ -585,6 +588,7 @@ export function StuckScreen() {
           onClose={() => setBreakdownId(null)}
         />
       )}
+      {pullSearch.sheet}
     </View>
   );
 }

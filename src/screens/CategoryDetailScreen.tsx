@@ -19,6 +19,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -46,6 +47,7 @@ type RootStackParamList = {
 const NO_SUBTASKS: Task[] = [];
 
 export function CategoryDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'CategoryDetail'>>();
@@ -104,7 +106,7 @@ export function CategoryDetailScreen() {
       },
     });
   };
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
   // Lifts the expanded row's cell above the row below it — see
   // useElevatedCellRenderer for why a genuine FlatList needs this and
   // ReorderableList's own lists don't.
@@ -258,6 +260,7 @@ export function CategoryDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            refreshControl={pullSearch.refreshControl}
             ref={keyboardScroll.ref}
             scrollEnabled={!painting && !draggingSubtask}
             data={categoryTasks}
@@ -358,6 +361,7 @@ export function CategoryDetailScreen() {
           seed={quickAddSeed}
           seedLabel={category}
         />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

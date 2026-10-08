@@ -57,6 +57,7 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -87,6 +88,7 @@ const BAR_HEIGHT = 90;
  * a finding built on eleven days reads as one.
  */
 export function MoodScreen() {
+  const pullSearch = usePullToSearch();
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -452,6 +454,7 @@ export function MoodScreen() {
         />
       ) : (
         <ScrollView
+          refreshControl={pullSearch.refreshControl}
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
         >
@@ -962,6 +965,7 @@ export function MoodScreen() {
         milestone={editingMilestone}
         onClose={closeMilestoneSheet}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

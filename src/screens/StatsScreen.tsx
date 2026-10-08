@@ -25,6 +25,7 @@ import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { onTimeSummary } from '../utils/stats';
@@ -164,6 +165,7 @@ function expectedCount(recurrenceType: string, interval: number): number {
 }
 
 export function StatsScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
@@ -528,6 +530,7 @@ export function StatsScreen() {
         />
       ) : (
         <ScrollView
+          refreshControl={pullSearch.refreshControl}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
         >
@@ -1238,6 +1241,7 @@ export function StatsScreen() {
 
         </ScrollView>
       )}
+      {pullSearch.sheet}
     </View>
   );
 }

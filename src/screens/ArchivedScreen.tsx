@@ -25,6 +25,7 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -37,6 +38,7 @@ import { useFilterField } from '../hooks/useFilterField';
 // selection mode and the per-row context are for — a hundred rows of title and
 // archive date is a list you can't answer any question about.
 export function ArchivedScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
@@ -181,6 +183,7 @@ export function ArchivedScreen() {
 
       <PaintSelectionProvider {...paintProps}>
         <FlatList
+          refreshControl={pullSearch.refreshControl}
           data={filtered}
           keyExtractor={item => item.id}
           // A paint gesture owns the touch for its duration — see the note in
@@ -257,6 +260,7 @@ export function ArchivedScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

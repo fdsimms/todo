@@ -241,7 +241,7 @@ export const TIPS: Tip[] = [
     screen: 'today',
     icon: 'search-outline',
     title: 'Search more than your tasks',
-    body: 'Tap the magnifying glass at the top of Today, or pull down on any of the four task views, to search tasks, people, recipes, groceries, screens and settings in one place. "See all" opens the full Search screen.',
+    body: 'Pull down on Today, Groceries, Projects, Recipes and most other lists, or tap the magnifying glass at the top of Today, to search tasks, people, recipes, groceries, screens and settings in one place. "See all" opens the full Search screen.',
     when: s => s.taskCount >= 10,
     keywords: ['find', 'lookup', 'refresh', 'gesture', 'pull', 'everything', 'magnifier'],
   },
