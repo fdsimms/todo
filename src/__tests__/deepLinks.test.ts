@@ -13,6 +13,7 @@ const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
 const mockResetToJournal = jest.fn();
 const mockResetToFoodLog = jest.fn();
+const mockResetToMedications = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockResetToTask = jest.fn();
@@ -74,6 +75,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
   resetToJournal: (...args: unknown[]) => mockResetToJournal(...args),
   resetToFoodLog: (...args: unknown[]) => mockResetToFoodLog(...args),
+  resetToMedications: (...args: unknown[]) => mockResetToMedications(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
@@ -108,6 +110,7 @@ import {
   isPeopleUrl,
   peopleUrlPersonId,
   isFoodLogUrl,
+  isMedicationsUrl,
   journalUrlKind,
   journalUrlWantsLog,
   isProjectsUrl,
@@ -831,6 +834,15 @@ describe('openInAppUrl', () => {
     expect(mockResetToRecipes).toHaveBeenCalledTimes(1);
     expect(mockResetToMealPlan).not.toHaveBeenCalled();
     expect(mockResetToGroceries).not.toHaveBeenCalled();
+  });
+
+  it('opens Medications for the widget link', () => {
+    expect(isMedicationsUrl('dundundun://medications')).toBe(true);
+    expect(isMedicationsUrl('dundundun:///medications/')).toBe(true);
+    expect(isMedicationsUrl('dundundun://medications?x=1')).toBe(false);
+    expect(linkIconFor('dundundun://medications')).toBe('medkit-outline');
+    openInAppUrl('dundundun://medications');
+    expect(mockResetToMedications).toHaveBeenCalledTimes(1);
   });
 
   // The Today widget's food log shortcut — a plain "open this screen" link,

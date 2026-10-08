@@ -25,6 +25,7 @@ const SWIFT_FILES = [
   'TodoTodayWidget.swift',
   'TodoGroceryWidget.swift',
   'TodoKitchenWidget.swift',
+  'TodoMedicationWidget.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
   'FocusLiveActivity.swift',
@@ -52,6 +53,10 @@ const SHARED_SWIFT_FILES = [
   'TripActivityAttributes.swift',
   'FocusActivityAttributes.swift',
   'CompleteTaskIntent.swift',
+  // The Medications widget's buttons name LogMedicationIntent, which opens
+  // the app, so it compiles into both targets exactly as CompleteTaskIntent
+  // does. It keeps its own file-private App Group helpers for that reason.
+  'LogMedicationIntent.swift',
 ];
 
 const ALL_SWIFT_FILES = [

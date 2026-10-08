@@ -124,6 +124,11 @@ export function resetToFoodLog(): void {
   runWhenReady(() => navigateToTab('FoodLog'));
 }
 
+// Where `dundundun://medications` lands: the Medications widget's own tap.
+export function resetToMedications(): void {
+  runWhenReady(() => navigateToTab('Medications'));
+}
+
 // Where `dundundun://recipe?id=…` lands — a meal-slot cook task's own link
 // once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
 // always, so the back chevron on RecipeDetail has somewhere to go — the same

@@ -180,6 +180,7 @@ type RecipeProduceModule = typeof import('../../src/utils/recipeProduce');
 type StandingSwapsModule = typeof import('../../src/utils/standingSwaps');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
+type MedicationSettingsModule = typeof import('../../src/utils/medicationSettings');
 type RewardsModule = typeof import('../../src/utils/rewards');
 type NegativeHabitsModule = typeof import('../../src/utils/negativeHabits');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
@@ -836,6 +837,18 @@ export interface DeletedCategory {
   calendarEventsRepointed: boolean;
 }
 
+/** One medication's limit and supply as `list_medication_logs` reports them. */
+export interface MedicationSettingsView {
+  name: string;
+  /** "At least 6 hours apart, at most 3 in 24 hours", the person's own limit. */
+  limit?: string;
+  dosesInLast24h?: number;
+  /** When the next dose is within the limit, if it isn't now. */
+  withinLimitAgainAt?: string;
+  /** "9 doses left". */
+  supplyLeft?: string;
+}
+
 export interface Replica {
   /** Where the database being served came from. Reported by `describe`. */
   readonly path: string;
@@ -963,6 +976,12 @@ export interface Replica {
   medicationLogs(fromDayKey: string, toDayKey: string): MedicationLog[];
   /** "Ibuprofen · 400 mg · as needed", the app's own one-line rendering of a dose. */
   medicationSummary(log: MedicationLog): string;
+  /**
+   * The limit and supply the person set per medication, read the app's way:
+   * where each one stands against its limit now, and what's left of its
+   * supply (derived from the doses, never stored as a running number).
+   */
+  medicationSettings(): MedicationSettingsView[];
 
   /** Every stored template, for listing and for resolving a nested reference. */
   templates(): TaskTemplate[];
@@ -1921,6 +1940,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const standingSwaps = require('../../src/utils/standingSwaps') as StandingSwapsModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
+  const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
   const rewards = require('../../src/utils/rewards') as RewardsModule;
   const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
@@ -3276,6 +3296,24 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     medicationLogs: (from: string, to: string) =>
       db.dbGetAllMedicationLogs().filter(l => l.dayKey >= from && l.dayKey <= to),
     medicationSummary: (log: MedicationLog) => medication.medicationLogSummary(log),
+    medicationSettings: () => {
+      const logs = db.dbGetAllMedicationLogs();
+      const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
+      const names = new Map(medication.medicationVocabulary(logs).map(n => [medication.medicationKey(n), n]));
+      const now = new Date();
+      return Object.entries(map).map(([key, prefs]) => {
+        const name = names.get(key) ?? key;
+        const status = medicationSettings.limitStatus(logs, name, prefs.limit, now);
+        const left = medicationSettings.supplyRemaining(logs, name, prefs.supply);
+        return {
+          name,
+          limit: medicationSettings.describeLimit(prefs.limit) ?? undefined,
+          dosesInLast24h: prefs.limit ? status.inLast24h : undefined,
+          withinLimitAgainAt: status.nextOkAt ? status.nextOkAt.toISOString() : undefined,
+          supplyLeft: left === null || !prefs.supply ? undefined : medicationSettings.describeSupplyLeft(left, prefs.supply.unit),
+        };
+      });
+    },
 
     // The same ranking the quick-search sheet gets, project names and all —
     // reimplementing it here would be a second answer to "what matches", which

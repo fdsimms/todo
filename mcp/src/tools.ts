@@ -19,7 +19,7 @@
  */
 import { format } from 'date-fns/format';
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
-import type { AnswerEdit, Replica } from './replica';
+import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { isRotationTask } from '../../src/utils/rotation';
 import { roundToHalf } from '../../src/utils/produceServings';
@@ -1060,11 +1060,14 @@ export function archiveTask(replica: Replica, id: string, archived: boolean): Se
 export function listMedicationLogs(
   replica: Replica,
   input: LogRangeInput = {}
-): { range: DayRange; logs: SerializedMedicationLog[] } {
+): { range: DayRange; logs: SerializedMedicationLog[]; limitsAndSupply: MedicationSettingsView[] } {
   const range = resolveRange(replica, input);
 
   return {
     range,
+    // The limits and supply counts the person set, whatever the range: they
+    // are standing settings, not entries in it.
+    limitsAndSupply: replica.medicationSettings(),
     logs: replica.medicationLogs(range.from, range.to).map((log: MedicationLog) => ({
       id: log.id,
       dayKey: log.dayKey,

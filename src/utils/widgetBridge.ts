@@ -48,6 +48,13 @@ export interface WidgetBridge {
    * see widgetQuietTaps.ts). A string for the same reason as the line above.
    */
   drainQuietWidgetTaps: () => Promise<string>;
+  /**
+   * The medications Siri can hear, and the doses it queued (`{ id, name, at }`
+   * as JSON) — see medicationIndex.ts. Optional because a binary built before
+   * LogMedicationIntent has neither, and a JS update can reach it first.
+   */
+  writeMedicationIndex?: (jsonString: string) => Promise<boolean>;
+  drainPendingDoses?: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;

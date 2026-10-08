@@ -137,7 +137,7 @@ only the fallback until the first sync.
 | `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |
 | `set_nutrition_targets` | **Write.** The daily figures the food log reads totals against, only as the person gives them. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
-| `list_medication_logs` | Doses recorded, scheduled and as-needed. |
+| `list_medication_logs` | Doses recorded, scheduled and as-needed, plus the limit and supply set for each medication (`limitsAndSupply`). |
 | `list_templates` | Stored templates: name, item count, groups, and the questions a run asks. |
 | `get_template` | One template in full, in the shape `create_template` and `update_template` take, with a `version` for `update_template`'s `expectedVersion`. |
 | `template_library_check` | Every template checked at once: broken pointers, unused questions, items copied across templates, near-copies. Suggests edits; changes nothing. |

@@ -129,5 +129,16 @@ struct DundundunShortcuts: AppShortcutsProvider {
             shortTitle: "Mark Gone Bad",
             systemImageName: "trash"
         )
+        // The medication is an AppEntity (LogMedicationIntent.swift), so it can
+        // be said inside the sentence, the same way the pantry item is above.
+        AppShortcut(
+            intent: LogMedicationIntent(),
+            phrases: [
+                "Log \(\.$medication) in \(.applicationName)",
+                "I took \(\.$medication) in \(.applicationName)",
+            ],
+            shortTitle: "Log a Dose",
+            systemImageName: "pills"
+        )
     }
 }
