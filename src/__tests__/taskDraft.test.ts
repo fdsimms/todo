@@ -4,7 +4,7 @@
  * is where they were tested before they moved here and where the call sites
  * that matter still live.
  */
-import { buildSeriesRow, reanchorReminder, NO_RECURRENCE } from '../utils/taskDraft';
+import { buildSeriesRow, newTaskFromDraft, reanchorReminder, NO_RECURRENCE } from '../utils/taskDraft';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -159,5 +159,27 @@ describe('buildSeriesRow', () => {
     // cleared same as every series row.
     expect(new Date(row.reminderTime!).getDate()).toBe(15);
     jest.useRealTimers();
+  });
+});
+
+describe('newTaskFromDraft: rotation', () => {
+  const items = [
+    { id: 'a', title: 'Spanish', linkUrl: null, perWeek: 2 },
+    { id: 'b', title: 'Korean', linkUrl: null },
+  ];
+  const make = (draft: Parameters<typeof newTaskFromDraft>[0]) =>
+    newTaskFromDraft({ title: 'Podcasts', ...draft }, '2026-03-01T09:00:00.000Z', 1, false, 'r1');
+
+  it('derives a weekly target from the set even when the draft carries none', () => {
+    // The editor's count is stamped when the kind is picked, before any member
+    // exists; without this the row saved as a plain task and its tap completed it.
+    const row = make({ rotationEnabled: true, rotationItems: items, targetCount: 0 });
+    expect(row.targetCount).toBe(3);
+    expect(row.quotaPeriod).toBe('week');
+  });
+
+  it('leaves a one-member set as the draft had it', () => {
+    const row = make({ rotationEnabled: true, rotationItems: [items[0]], targetCount: null });
+    expect(row.targetCount).toBeNull();
   });
 });

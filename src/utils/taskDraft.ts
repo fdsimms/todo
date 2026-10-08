@@ -40,6 +40,7 @@ import {
 } from './dateUtils';
 import { carryClockTime } from './clockTime';
 import { getVisibleAt } from './visibilityUtils';
+import { isRotationTask, rotationTargetTotal } from './rotation';
 import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
 import { canHoldSupply, clampSupplyReorderAt, DEFAULT_SUPPLY_REORDER_AT } from './supply';
@@ -239,7 +240,10 @@ export function newTaskFromDraft(
     recurrenceEndDate: draft.recurrenceEndDate ?? null,
     recurrenceCount: draft.recurrenceCount ?? null,
     recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
-    targetCount: draft.targetCount ?? null,
+    // A rotation's target is its set (see derivedTargetCount), so a draft that
+    // arrives with members but no count - a template, an import, the editor -
+    // still lands as a quota, which is what makes the tap ask which one.
+    targetCount: isRotationTask(draft) ? rotationTargetTotal(draft.rotationItems!) : draft.targetCount ?? null,
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
@@ -247,7 +251,7 @@ export function newTaskFromDraft(
     quotaReminders: draft.quotaReminders ?? false,
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     followWaterTarget: draft.followWaterTarget ?? false,
-    quotaPeriod: draft.quotaPeriod ?? 'day',
+    quotaPeriod: isRotationTask(draft) ? 'week' : draft.quotaPeriod ?? 'day',
     rotationEnabled: draft.rotationEnabled ?? false,
     rotationItems: draft.rotationItems ?? [],
     rotationLog: [],
