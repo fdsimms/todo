@@ -1,6 +1,7 @@
 import ExpoModulesCore
 import Foundation
 import UIKit
+import UserNotifications
 import WatchConnectivity
 
 // The iPhone's half of the Apple Watch app (targets/todo-watch).
@@ -32,8 +33,17 @@ import WatchConnectivity
 //
 // The session is activated at launch by WatchSessionAppDelegate below, before
 // any JS runs, so a transfer that arrives while the app is in the background
-// still lands in the queue. Applying it waits for JS (on the next foreground,
-// or at once through the onWatchQueuedWork event when JS is running).
+// still lands in the queue.
+//
+// **A tap can also wake the app to be applied.** The watch sends each tap
+// twice when the phone is in reach: as the queued transfer, and as a message,
+// which is what wakes this app in the background. The receipt is the same
+// either way and the second copy is dropped by its id. With the app not in
+// front, this asks iOS for background time, and the next snapshot written for
+// the watch hands it back: that write is the end of applying the tap
+// (runWatchWork in src/utils/backgroundRefresh.ts). The onWatchQueuedWork
+// notice is kept until JS has heard it, because on a cold launch the tap
+// arrives while the bundle is still loading, before anything is listening.
 
 // Same literals as TodoWidgetBridgeModule.swift and AddTaskIntent.swift: Swift
 // top-level `private` is file-scoped, so each file keeps its own copy.
@@ -71,6 +81,14 @@ final class WatchSession: NSObject, WCSessionDelegate {
   /// In memory only: a relaunch writes a fresh snapshot anyway.
   private var drainedAwaitingSnapshot = Set<String>()
 
+  /// Watch work was queued and no JS listener has been told yet. Read and
+  /// cleared on `queue`.
+  private var unannouncedWork = false
+
+  /// The background time asked for when a tap arrived with the app not in
+  /// front. Main thread only.
+  private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+
   func activate() {
     guard WCSession.isSupported() else { return }
     let session = WCSession.default
@@ -89,7 +107,46 @@ final class WatchSession: NSObject, WCSessionDelegate {
       try? data.write(to: url, options: .atomic)
       self.drainedAwaitingSnapshot.removeAll()
       self.pushContext()
+      // The tap that woke the app has been applied and the watch told.
+      DispatchQueue.main.async { self.endBackgroundTime() }
     }
+  }
+
+  /// Taps a drain put back (tapsToRequeue in widgetQuietTaps.ts), returned to
+  /// the front of the queue, ahead of anything that arrived since.
+  func requeue(_ tapsData: Data) {
+    queue.async {
+      let entries = Self.decodeEntries(tapsData)
+      guard !entries.isEmpty, let url = Self.appGroupFile(watchQuietTapsFileName) else { return }
+      var existing: [Any] = []
+      if let data = try? Data(contentsOf: url),
+         let decoded = (try? JSONSerialization.jsonObject(with: data)) as? [Any] {
+        existing = decoded
+      }
+      let requeued: [Any] = entries.map { $0 as Any }
+      guard let merged = try? JSONSerialization.data(withJSONObject: requeued + existing) else { return }
+      try? FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try? merged.write(to: url, options: .atomic)
+      self.pushContext()
+    }
+  }
+
+  /// Whether watch work was queued that no JS listener has heard of, clearing
+  /// it. The module asks when JS first listens, to replay the notice.
+  func takeUnannouncedWork() -> Bool {
+    queue.sync {
+      let pending = unannouncedWork
+      unannouncedWork = false
+      return pending
+    }
+  }
+
+  /// The notice reached a JS listener.
+  func markAnnounced() {
+    queue.async { self.unannouncedWork = false }
   }
 
   /// Called with the quiet-tap queue the app has just read and deleted, so the
@@ -146,6 +203,11 @@ final class WatchSession: NSObject, WCSessionDelegate {
     queue.async { self.receive(userInfo) }
   }
 
+  // The copy that wakes the app (see the header). Same tap, same id.
+  func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    queue.async { self.receive(message) }
+  }
+
   /// Runs on `queue`.
   private func receive(_ info: [String: Any]) {
     guard let kind = info["kind"] as? String, let tapId = info["watchTapId"] as? String else { return }
@@ -163,6 +225,13 @@ final class WatchSession: NSObject, WCSessionDelegate {
       var entry: [String: Any] = ["kind": kind, "id": id, "at": at, "watchTapId": tapId]
       if let listId = info["listId"] as? String, !listId.isEmpty { entry["listId"] = listId }
       appendToQueue(watchQuietTapsFileName, entry)
+      // As the widget's quiet checkbox does: the task's reminder is scheduled
+      // under its id (notifications.ts) and would otherwise still go off for
+      // something already checked off, until the app applies the tap. A unit
+      // doesn't finish the task, so it leaves the reminder alone.
+      if kind == "complete" {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+      }
     case "add":
       guard let title = (info["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
             !title.isEmpty else { return }
@@ -178,7 +247,29 @@ final class WatchSession: NSObject, WCSessionDelegate {
     UserDefaults.standard.set(received, forKey: Self.receivedIdsKey)
 
     pushContext()
+    unannouncedWork = true
+    holdBackgroundTime()
     NotificationCenter.default.post(name: .todoWatchQueuedWork, object: nil)
+  }
+
+  /// Asks iOS for time to apply a tap that arrived with the app not in front.
+  /// Handed back by the next snapshot write (`writeSnapshot`), or by iOS when
+  /// it runs out, whichever is first.
+  private func holdBackgroundTime() {
+    DispatchQueue.main.async {
+      guard self.backgroundTask == .invalid,
+            UIApplication.shared.applicationState != .active else { return }
+      self.backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Apply watch taps") {
+        self.endBackgroundTime()
+      }
+    }
+  }
+
+  /// Main thread only.
+  private func endBackgroundTime() {
+    guard backgroundTask != .invalid else { return }
+    UIApplication.shared.endBackgroundTask(backgroundTask)
+    backgroundTask = .invalid
   }
 
   /// Appends one entry to a JSON-array queue in the App Group. Read through

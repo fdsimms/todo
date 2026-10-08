@@ -103,7 +103,15 @@ public class TodoWidgetBridgeModule: Module {
         object: nil,
         queue: nil
       ) { [weak self] _ in
+        WatchSession.shared.markAnnounced()
         self?.sendEvent("onWatchQueuedWork", [:])
+      }
+      // A tap that arrived before anything listened: a cold launch woken by
+      // the watch, where the message lands while the bundle is still loading.
+      if WatchSession.shared.takeUnannouncedWork() {
+        DispatchQueue.main.async { [weak self] in
+          self?.sendEvent("onWatchQueuedWork", [:])
+        }
       }
     }
 
@@ -119,6 +127,16 @@ public class TodoWidgetBridgeModule: Module {
     // sends it on. Returns Bool for the same reason writeSnapshot below does.
     AsyncFunction("writeWatchSnapshot") { (jsonString: String) -> Bool in
       WatchSession.shared.writeSnapshot(jsonString)
+      return true
+    }
+
+    // Puts quiet taps back at the front of their queue, for a drain that ran
+    // with nobody there to hand a tap to (tapsToRequeue in widgetQuietTaps.ts).
+    // Through WatchSession because it's the other writer of that file in this
+    // process, and the watch's pending list changes with it.
+    AsyncFunction("requeueQuietTaps") { (jsonString: String) -> Bool in
+      guard let data = jsonString.data(using: .utf8) else { return false }
+      WatchSession.shared.requeue(data)
       return true
     }
 

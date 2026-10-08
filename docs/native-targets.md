@@ -189,8 +189,17 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
   is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
   AddTaskIntent's queue, for a dictated task) in the widget's shape, so
-  `processQuietWidgetTaps` applies it with the widget's rules. A running app is told through the
-  bridge's `onWatchQueuedWork` event; otherwise the next foreground drains it, as for the widget.
+  `processQuietWidgetTaps` applies it with the widget's rules.
+- **A tap can wake the iPhone app to be applied, and that path has no React tree.** With the
+  phone in reach the watch also sends each tap as a message, which (unlike the transfer) wakes
+  the app in the background; the phone drops the second copy by `watchTapId`. `WatchSession`
+  cancels a completed task's reminder, asks iOS for background time (the next snapshot write
+  hands it back) and posts `onWatchQueuedWork`, replaying it to the first JS listener so a cold
+  launch, where the tap lands while the bundle loads, still hears it. `runWatchWork` in
+  `backgroundRefresh.ts` answers, registered at module scope like the background task: open the
+  stores if nothing has, drain, write the snapshot. **With the app not in front, a tap that needs
+  the app goes back on the queue (`tapsToRequeue`)** rather than to `useWidgetCompletionStore`,
+  which is memory a suspended process loses.
 - **The watch draws its own taps until the phone has applied them, settled by id, not by
   clock.** Every tap carries a `watchTapId`. Each context lists the ids the phone has received
   and the ones still waiting (queued, or drained but not yet in a written snapshot); the watch

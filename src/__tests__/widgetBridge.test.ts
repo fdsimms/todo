@@ -29,6 +29,7 @@ const mockNativeBridge = {
   syncFocusLiveActivity: jest.fn(),
   writeWatchSnapshot: jest.fn(),
   addWatchQueuedWorkListener: jest.fn(),
+  requeueQuietTaps: jest.fn(),
 };
 let mockNativeMissing = false;
 jest.mock('todo-widget-bridge', () => {
@@ -92,6 +93,7 @@ describe('widgetBridge', () => {
       'syncFocusLiveActivity',
       'writeWatchSnapshot',
       'addWatchQueuedWorkListener',
+      'requeueQuietTaps',
     ] as const) {
       expect(typeof bridge[name]).toBe('function');
     }

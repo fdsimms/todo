@@ -40,7 +40,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, departureMoveFromAnswer, awaySpanOf, liveAwaySpans, isAwayDay, awayNights, +8 more
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, shiftDateOf, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
-- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
+- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runWatchWork, useBackgroundRefresh
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
@@ -436,9 +436,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +13 more
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInDeclineHolds, weighInNotes
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
-- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapAction, widgetTapNeedsApp, parseQuietTaps, planQuietTaps
+- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapAction, widgetTapNeedsApp, parseQuietTaps, planQuietTaps, tapsToRequeue
 - `src/utils/widgetSnapshot.ts` — SnapshotLimits, WIDGET_LIMITS, WATCH_LIMITS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +13 more
-- `src/utils/widgetSync.ts` — writeWidgetSnapshotNow, useWidgetSync
+- `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 
 ## `src/store`
 

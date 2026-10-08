@@ -45,6 +45,12 @@ export interface QuietTap {
   listId: string | null;
   /** When the tap happened, ISO. */
   at: string;
+  /**
+   * Set on a tap made on the Apple Watch: the watch's own id for it, which the
+   * watch settles its drawing by (WatchSession.swift). Kept through a drain so
+   * a tap put back on the queue (`tapsToRequeue`) is still the same tap there.
+   */
+  watchTapId?: string;
 }
 
 export type QuietTapAction =
@@ -84,11 +90,13 @@ export function parseQuietTaps(json: string): QuietTap[] {
   const taps: QuietTap[] = [];
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const { kind, id, listId, at } = entry as Record<string, unknown>;
+    const { kind, id, listId, at, watchTapId } = entry as Record<string, unknown>;
     if (kind !== 'complete' && kind !== 'unit' && kind !== 'grocery') continue;
     if (typeof id !== 'string' || id === '') continue;
     if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) continue;
-    taps.push({ kind, id, listId: typeof listId === 'string' && listId !== '' ? listId : null, at });
+    const tap: QuietTap = { kind, id, listId: typeof listId === 'string' && listId !== '' ? listId : null, at };
+    if (typeof watchTapId === 'string' && watchTapId !== '') tap.watchTapId = watchTapId;
+    taps.push(tap);
   }
   return taps;
 }
@@ -157,4 +165,20 @@ export function planQuietTaps(
     }
   }
   return actions;
+}
+
+/**
+ * The taps to put back on the queue instead of handing them to the app, when
+ * the drain ran with nobody looking (a watch tap that woke the app in the
+ * background).
+ *
+ * A hand-off goes to `useWidgetCompletionStore`, which lives in memory and is
+ * read by the Today screen. With the app in the background there may be no
+ * screen at all, and iOS can end the process before anyone opens it, so a tap
+ * handed off then would be gone with nothing left to retry from. Every tap on
+ * a handed-off task goes back, in its original order, so the next foreground
+ * drain plans it exactly as this one did and hands it over with a person there.
+ */
+export function tapsToRequeue(taps: readonly QuietTap[], handedOverIds: ReadonlySet<string>): QuietTap[] {
+  return taps.filter(tap => tap.kind !== 'grocery' && handedOverIds.has(tap.id));
 }

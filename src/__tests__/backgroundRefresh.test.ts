@@ -17,7 +17,34 @@ jest.mock('expo-background-task', () => ({
   BackgroundTaskResult: { Success: 1, Failed: 2 },
 }));
 
-jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+// AppState is read when the watch handler runs, so it's a getter over a
+// variable each test sets.
+let mockAppState = 'active';
+jest.mock('react-native', () => ({
+  Platform: { OS: 'ios' },
+  AppState: {
+    get currentState() {
+      return mockAppState;
+    },
+  },
+}));
+
+// The watch handler is registered with the bridge when the module loads; the
+// listener is caught here so a test can fire it the way the native event would.
+// Kept inside the factory, like defineTask's spy above, because the import runs
+// before any `const` in this file exists.
+jest.mock('../utils/widgetBridge', () => {
+  const watchListeners: (() => void)[] = [];
+  return {
+    watchListeners,
+    widgetBridge: () => ({
+      addWatchQueuedWorkListener: (listener: () => void) => {
+        watchListeners.push(listener);
+        return { remove: () => {} };
+      },
+    }),
+  };
+});
 
 // Every pass is a store action, and what this file is testing is *which* of
 // them the background run calls and in what order — not what any of them does,
@@ -148,6 +175,10 @@ jest.mock('../utils/notifications', () => ({
 }));
 jest.mock('../utils/widgetSync', () => ({
   writeWidgetSnapshotNow: () => { mockCalls.push('writeWidgetSnapshot'); },
+  drainWatchQueues: (handOff: string) => {
+    mockCalls.push(`drainWatchQueues:${handOff}`);
+    return Promise.resolve();
+  },
 }));
 jest.mock('../utils/appShieldReconcile', () => ({
   reconcileAppShield: () => { mockCalls.push('reconcileAppShield'); return null; },
@@ -155,13 +186,14 @@ jest.mock('../utils/appShieldReconcile', () => ({
 }));
 
 import * as TaskManager from 'expo-task-manager';
-import { runBackgroundRefresh, runBackgroundSync, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
+import { runBackgroundRefresh, runBackgroundSync, runWatchWork, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
 import { catchUpPasses, retentionPasses, expiryPasses } from '../utils/maintenancePasses';
 
 beforeEach(() => {
   mockCalls.length = 0;
   setDemoModeActive(false);
   mockSettingsState.initialized = true;
+  mockAppState = 'active';
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -365,5 +397,40 @@ describe('the task registration', () => {
     // launch, which is the case the whole feature exists for.
     expect(TaskManager.defineTask).toHaveBeenCalledWith(BACKGROUND_REFRESH_TASK, expect.any(Function));
     expect(BACKGROUND_REFRESH_TASK).toBe('dundundun-background-refresh');
+  });
+});
+
+// A tap on the Apple Watch can wake the app with no React tree at all, so its
+// handler lives here, beside the other thing that runs with the app closed.
+describe('runWatchWork', () => {
+  it('does nothing in demo mode, where a drain would consume real taps', async () => {
+    setDemoModeActive(true);
+    expect(await runWatchWork()).toBe(false);
+    expect(mockCalls).toEqual([]);
+  });
+
+  it('opens the stores on a cold background launch, and puts back what needs a person', async () => {
+    mockSettingsState.initialized = false;
+    mockAppState = 'background';
+    expect(await runWatchWork()).toBe(true);
+    expect(mockCalls).toEqual([
+      'initialize', 'initializeSettings', 'initializeSync',
+      'drainWatchQueues:requeue',
+      'writeWidgetSnapshot',
+    ]);
+  });
+
+  it('hands a tap to the Today screen when the app is in front, without reopening anything', async () => {
+    expect(await runWatchWork()).toBe(true);
+    expect(mockCalls).toEqual(['drainWatchQueues:app', 'writeWidgetSnapshot']);
+  });
+
+  it('is registered with the bridge when the module loads, not from a component', async () => {
+    const { watchListeners } = jest.requireMock<{ watchListeners: (() => void)[] }>('../utils/widgetBridge');
+    expect(watchListeners).toHaveLength(1);
+    mockAppState = 'background';
+    watchListeners[0]();
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mockCalls).toEqual(['drainWatchQueues:requeue', 'writeWidgetSnapshot']);
   });
 });

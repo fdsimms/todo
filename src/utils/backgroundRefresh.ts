@@ -64,6 +64,20 @@
  * docs/arch/mcp-server.md) reached the phone only when the app was next opened,
  * which is the one thing this file exists to stop being true of anything.
  *
+ * ## A watch tap is the other way in
+ *
+ * A tap on the Apple Watch, sent while the phone is in reach, wakes this app in
+ * the background (WatchSession.swift), which then asks iOS for a little time
+ * and tells JS through the bridge's `onWatchQueuedWork` event. `runWatchWork`
+ * below answers it: open the stores if nothing has, apply the queues the watch
+ * feeds, write the snapshot (which is also what hands the time back). It is
+ * registered at module scope for the same reason the task is: a cold
+ * background launch has no React tree to register anything from. A tap that
+ * turns out to need the app goes back on its queue instead of to the Today
+ * screen whenever the app isn't in front (see tapsToRequeue). No sync here:
+ * the time asked for ends with the snapshot write, and the next foreground or
+ * background run pushes what this applied.
+ *
  * ## What it deliberately does not do
  *
  * - **No weather read.** Refreshing the forecast needs a location read, and the
@@ -77,7 +91,7 @@
  */
 
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { useTaskStore } from '../store/useTaskStore';
@@ -90,7 +104,8 @@ import { isDemoModeActive } from './demoState';
 import { runPendingHealthFoodWrites } from './pendingHealthFoodWrites';
 import { runStartupSequence, runStartupStep } from './startup';
 import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
-import { writeWidgetSnapshotNow } from './widgetSync';
+import { drainWatchQueues, writeWidgetSnapshotNow } from './widgetSync';
+import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
 
 /**
@@ -123,6 +138,20 @@ export type BackgroundRefreshOutcome =
  * is `runSync`/`getAllSync`, so there is nothing to await and no window for iOS
  * to expire the task in the middle of a half-finished write.
  */
+function openStoresIfClosed(): void {
+  if (useSettingsStore.getState().initialized) return;
+  // Same order as AppGate: tasks first (it opens the database and fans out
+  // to every other store), then settings.
+  useTaskStore.getState().initialize();
+  useSettingsStore.getState().initialize();
+  // Not part of the task store's fan-out — App.tsx initializes it as its own
+  // startup step, which a cold background launch never reaches. Without this
+  // the store's `enabled` stays false, and `syncNow()` below would refuse
+  // every background sync while looking exactly like a device that had the
+  // feature switched off.
+  useSyncStore.getState().initialize();
+}
+
 export function runBackgroundRefresh(): BackgroundRefreshOutcome {
   if (isDemoModeActive()) return { ran: false, reason: 'demo' };
 
@@ -138,19 +167,7 @@ export function runBackgroundRefresh(): BackgroundRefreshOutcome {
   // answer there, but a pass that runs against a database that failed to open
   // just throws too. Bailing reports one useful failure instead of nineteen
   // identical ones.
-  const opened = runStartupStep('initialize stores', () => {
-    if (useSettingsStore.getState().initialized) return;
-    // Same order as AppGate: tasks first (it opens the database and fans out
-    // to every other store), then settings.
-    useTaskStore.getState().initialize();
-    useSettingsStore.getState().initialize();
-    // Not part of the task store's fan-out — App.tsx initializes it as its own
-    // startup step, which a cold background launch never reaches. Without this
-    // the store's `enabled` stays false, and `syncNow()` below would refuse
-    // every background sync while looking exactly like a device that had the
-    // feature switched off.
-    useSyncStore.getState().initialize();
-  });
+  const opened = runStartupStep('initialize stores', openStoresIfClosed);
   if (!opened) return { ran: true, failed: ['initialize stores'] };
 
   const failed = runStartupSequence([
@@ -246,6 +263,37 @@ TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
 });
+
+/**
+ * Applies what the Apple Watch queued (see "A watch tap is the other way in"
+ * above), with or without a React tree. Returns whether it ran.
+ */
+export async function runWatchWork(): Promise<boolean> {
+  // Same single check as runBackgroundRefresh, for the same reason: a cold
+  // launch is never in demo mode, and a live process mid-demo must not drain
+  // real taps into the scratch database. The drains check it again anyway.
+  if (isDemoModeActive()) return false;
+  if (!runStartupStep('initialize stores', openStoresIfClosed)) return false;
+  await drainWatchQueues(AppState.currentState === 'active' ? 'app' : 'requeue');
+  // Now rather than debounced: in the background this write is what ends the
+  // time WatchSession asked iOS for, and the watch is waiting on it to settle
+  // its taps.
+  writeWidgetSnapshotNow();
+  return true;
+}
+
+// Registered at module scope, like the task above, so a cold background launch
+// has it. The native side replays a notice it posted before this existed
+// (WatchSession.swift), which is the cold launch's case: the tap arrives while
+// the bundle is still loading.
+try {
+  widgetBridge()?.addWatchQueuedWorkListener(() => {
+    runWatchWork().catch(error => console.error('Applying watch taps failed', error));
+  });
+} catch {
+  // A build without the native half, or predating the event: the foreground
+  // drains in widgetSync.ts still apply the queue.
+}
 
 /**
  * Keeps the registration matching the setting.

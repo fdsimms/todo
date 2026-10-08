@@ -60,6 +60,11 @@ export interface WidgetBridge {
    * through here like everything else on this bridge.
    */
   addWatchQueuedWorkListener: (listener: () => void) => { remove(): void };
+  /**
+   * Puts taps back at the front of the quiet-tap queue (`QuietTap[]` as JSON),
+   * for a drain that ran with nobody there to hand them to. See tapsToRequeue.
+   */
+  requeueQuietTaps: (jsonString: string) => Promise<boolean>;
 }
 
 export function widgetBridge(): WidgetBridge | null {

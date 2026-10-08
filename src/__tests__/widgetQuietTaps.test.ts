@@ -1,4 +1,4 @@
-import { parseQuietTaps, planQuietTaps, widgetTapNeedsApp, type QuietTap } from '../utils/widgetQuietTaps';
+import { parseQuietTaps, tapsToRequeue, planQuietTaps, widgetTapNeedsApp, type QuietTap } from '../utils/widgetQuietTaps';
 import type { GroceryListEntry, Task } from '../types';
 
 const mockSettingsState = {
@@ -227,9 +227,33 @@ describe('parseQuietTaps', () => {
       { kind: 'grocery', id: 'milk', at: AT, watchTapId: 'w2' },
     ]);
     expect(parseQuietTaps(json)).toEqual([
-      { kind: 'complete', id: 'a', listId: null, at: AT },
-      { kind: 'grocery', id: 'milk', listId: null, at: AT },
+      { kind: 'complete', id: 'a', listId: null, at: AT, watchTapId: 'w1' },
+      { kind: 'grocery', id: 'milk', listId: null, at: AT, watchTapId: 'w2' },
     ]);
+  });
+
+  it('leaves the watch id off a widget tap', () => {
+    const [tap] = parseQuietTaps(JSON.stringify([{ kind: 'complete', id: 'a', at: AT }]));
+    expect('watchTapId' in tap).toBe(false);
+  });
+});
+
+describe('tapsToRequeue', () => {
+  // A drain with nobody looking can't hand a tap to the Today screen, so the
+  // taps on a task that needs the app go back to wait for a foreground.
+  it('puts back every tap on a handed-off task, in order, and nothing else', () => {
+    const taps = [
+      { kind: 'unit' as const, id: 'water', listId: null, at: AT, watchTapId: 'w1' },
+      { kind: 'complete' as const, id: 'plain', listId: null, at: AT },
+      { kind: 'complete' as const, id: 'asks', listId: null, at: AT, watchTapId: 'w2' },
+      { kind: 'unit' as const, id: 'water', listId: null, at: AT, watchTapId: 'w3' },
+    ];
+    expect(tapsToRequeue(taps, new Set(['water', 'asks'])).map(t => t.watchTapId)).toEqual(['w1', 'w2', 'w3']);
+  });
+
+  it('never puts back a grocery tap, whose id is an item rather than a task', () => {
+    const taps = [{ kind: 'grocery' as const, id: 'asks', listId: null, at: AT }];
+    expect(tapsToRequeue(taps, new Set(['asks']))).toEqual([]);
   });
 });
 

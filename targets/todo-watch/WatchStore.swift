@@ -119,13 +119,24 @@ final class WatchStore: NSObject, ObservableObject {
     /// `force`) to WatchConnectivity, which queues it and delivers it once, in
     /// order, whenever the phone is reachable. A tap due before the session
     /// finished activating waits here for the next call.
+    ///
+    /// With the phone in reach, the tap also goes as a message. That copy is
+    /// what wakes the iPhone app in the background to apply it now rather than
+    /// at its next launch (Apple documents that a message does; it says no such
+    /// thing of the queued transfer); the phone drops
+    /// whichever copy arrives second, by the tap's id. A message that fails
+    /// needs no handling, since the transfer is still on its way.
     private func sendDue(force: Bool) {
         let session = WCSession.default
         guard WCSession.isSupported(), session.activationState == .activated else { return }
         let due = Date().addingTimeInterval(-Self.undoWindow)
         var changed = false
         for index in taps.indices where !taps[index].sent && (force || taps[index].at <= due) {
-            _ = session.transferUserInfo(taps[index].userInfo)
+            let info = taps[index].userInfo
+            _ = session.transferUserInfo(info)
+            if session.isReachable {
+                session.sendMessage(info, replyHandler: nil, errorHandler: nil)
+            }
             taps[index].sent = true
             changed = true
         }
