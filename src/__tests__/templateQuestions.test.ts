@@ -12,6 +12,9 @@ import {
   questionLabel,
   describeQuestion,
   describeConditions,
+  describeConditionAnswers,
+  numberInRange,
+  setItemConditionRange,
   applyItemVariant,
   setVariantText,
   variantText,
@@ -234,6 +237,57 @@ describe('conditions', () => {
     });
     expect(liveConditions(item.conditions, questions)).toEqual([]);
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Vacation' })).toBe(true);
+  });
+
+  describe('on a number question', () => {
+    const days = makeQuestion({ id: 'q-days', name: 'days', prompt: 'How many days?', kind: 'number', options: [] });
+    const qs = [makeQuestion(), days];
+    const longer = makeItem({ conditions: [{ questionId: 'q-days', values: [], min: 5 }] });
+
+    it('matches an answer inside the range, both ends included', () => {
+      expect(itemMatchesAnswers(longer, qs, { 'q-days': '5' })).toBe(true);
+      expect(itemMatchesAnswers(longer, qs, { 'q-days': '12' })).toBe(true);
+      expect(itemMatchesAnswers(longer, qs, { 'q-days': '4' })).toBe(false);
+      const between = makeItem({ conditions: [{ questionId: 'q-days', values: [], min: 2, max: 4 }] });
+      expect([1, 2, 4, 5].map(n => itemMatchesAnswers(between, qs, { 'q-days': String(n) }))).toEqual([false, true, true, false]);
+    });
+
+    it('matches nothing for an answer that is blank or not a number', () => {
+      expect(numberInRange('', { min: 0 })).toBe(false);
+      expect(numberInRange('soon', { min: 0 })).toBe(false);
+      expect(itemMatchesAnswers(longer, qs, {})).toBe(false);
+    });
+
+    it('is inert with neither bound, and ANDs with a choice condition', () => {
+      const empty = makeItem({ conditions: [{ questionId: 'q-days', values: [] }] });
+      expect(liveConditions(empty.conditions, qs)).toEqual([]);
+      expect(itemMatchesAnswers(empty, qs, {})).toBe(true);
+
+      const both = makeItem({ conditions: [{ questionId: 'q-type', values: ['Work'] }, { questionId: 'q-days', values: [], min: 5 }] });
+      expect(itemMatchesAnswers(both, qs, { 'q-type': 'Work', 'q-days': '6' })).toBe(true);
+      expect(itemMatchesAnswers(both, qs, { 'q-type': 'Work', 'q-days': '3' })).toBe(false);
+      expect(itemMatchesAnswers(both, qs, { 'q-type': 'Vacation', 'q-days': '6' })).toBe(false);
+    });
+
+    it('is re-decided when the answer moves, and summarised in words', () => {
+      const nodes = buildApplyTree([longer], 't', new Map());
+      expect([...initialLeafSelection(nodes, qs, { 'q-days': '3' })]).toEqual([]);
+      expect([...reselectForAnswers(nodes, qs, { 'q-days': '7' }, new Set())]).toEqual([longer.id]);
+      expect(describeConditions(longer.conditions, qs)).toBe('How many days? 5 or more');
+      expect(describeConditionAnswers({ questionId: 'q', values: [], max: 3 })).toBe('3 or fewer');
+      expect(describeConditionAnswers({ questionId: 'q', values: [], min: 2, max: 4 })).toBe('2 to 4');
+    });
+
+    it('writes a range, drops it with no bounds, and lifts a reversed one', () => {
+      expect(setItemConditionRange([], 'q-days', 5, null)).toEqual([{ questionId: 'q-days', values: [], min: 5 }]);
+      expect(setItemConditionRange([{ questionId: 'q-days', values: [], min: 5 }], 'q-days', null, null)).toEqual([]);
+      expect(setItemConditionRange([], 'q-days', 6, 3)).toEqual([{ questionId: 'q-days', values: [], min: 6, max: 6 }]);
+    });
+
+    it('survives normalizing a stored item', () => {
+      const item = normalizeTemplateItem({ title: 'x', conditions: [{ questionId: 'q-days', values: [], min: 5, max: 'bad' }] } as never);
+      expect(item.conditions).toEqual([{ questionId: 'q-days', values: [], min: 5 }]);
+    });
   });
 
   it('matches any one of a condition\'s values', () => {

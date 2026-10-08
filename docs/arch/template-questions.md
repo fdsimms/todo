@@ -128,9 +128,20 @@ beside it.
 - **Deleting a question takes it off the items conditioned on it.** Every reader shrugs a dangling
   condition off anyway (`liveConditions`, the house rule for cross-row pointers), but an item still
   carrying one would render an "Only when" with nothing under it.
-- **Only a choice can gate an item** — a number, free-text or people answer has no fixed set to
-  tick, so the item editor's Only when field lists choice questions alone, and hides itself entirely
-  when the template has none.
+- **A choice gates an item by its options, a number by a range, and nothing else gates one.** A
+  free-text or people answer has no fixed set to tick and no order to compare, so the item editor's
+  "Checked by default for" lists choice and number questions only, and hides itself when the
+  template has neither. A condition on a number carries `min` and/or `max` (both inclusive, either
+  may be left off) in place of `values`, so "longer than 4 days" is `min: 5`. It composes like
+  every other condition: several entries AND, so a laundry line can need `laundry access = No`
+  *and* `days` at least 5. It is a range rather than a comparison operator because the answers are
+  whole numbers and two bounds cover every case ("more than", "fewer than", "between") without an
+  expression language. A number answer that is blank or isn't a number matches nothing
+  (`numberInRange`), the same as an unanswered choice, and a range with neither bound is inert
+  (`liveConditions`). It is still a default tick, never a filter: the item stays on the list.
+  This reads the answer the run resolved (typed, else off the dates), so a trip's dates decide it
+  with nothing typed. Over MCP it is `min`/`max` on a condition in place of `values`, and the plan
+  validator refuses mixing the two.
 - **A `'people'` question is the one kind that fills no blank and offers no authored set.**
   `normalizeTemplateQuestion` forces its `name` to `''` (nothing for `placeholderValuesFor` to key
   on) the same way it forces `defaultValue` to `''` (nothing to default to but nobody). It still

@@ -206,9 +206,32 @@ export function liveConditions(
   conditions: readonly TemplateItemCondition[],
   questions: readonly TemplateQuestion[],
 ): TemplateItemCondition[] {
-  return conditions.filter(
-    c => c.values.length > 0 && questions.some(q => q.id === c.questionId)
-  );
+  return conditions.filter(c => {
+    const question = questions.find(q => q.id === c.questionId);
+    if (!question) return false;
+    return hasRange(c) || c.values.length > 0;
+  });
+}
+
+/** True when a condition names at least one bound, which makes it a range over a number answer rather than a set of options. */
+function hasRange(c: TemplateItemCondition): boolean {
+  return c.min !== undefined || c.max !== undefined;
+}
+
+/**
+ * Does a number answer fall inside a range condition? Both bounds are
+ * inclusive and either may be absent. An answer that isn't a number (blank, or
+ * text typed into the field) matches nothing, the same way an unanswered choice
+ * does: a range can't say anything about a number nobody gave.
+ */
+export function numberInRange(answer: string, range: { min?: number; max?: number }): boolean {
+  const text = answer.trim();
+  if (text === '') return false;
+  const n = Number(text);
+  if (!Number.isFinite(n)) return false;
+  if (range.min !== undefined && n < range.min) return false;
+  if (range.max !== undefined && n > range.max) return false;
+  return true;
 }
 
 /**
@@ -277,7 +300,9 @@ export function itemMatchesAnswers(
   answers: Record<string, string>,
 ): boolean {
   return liveConditions(item.conditions, questions).every(c => {
-    const picked = answerValues(answers[c.questionId] ?? '');
+    const answer = answers[c.questionId] ?? '';
+    if (hasRange(c)) return numberInRange(answer, c);
+    const picked = answerValues(answer);
     return c.values.some(v => picked.includes(v));
   });
 }
@@ -477,7 +502,41 @@ export function describeConditions(
     // No colon after a prompt that already ends in a question mark — "What kind
     // of trip?: Work" is two punctuation marks doing one job. A question and
     // its answer separated by a space reads as exactly what it is.
-    return `${label}${label.endsWith('?') ? '' : ':'} ${c.values.join(' or ')}`;
+    return `${label}${label.endsWith('?') ? '' : ':'} ${describeConditionAnswers(c)}`;
   });
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * What a condition asks for, as the words after its question: the ticked
+ * options ("Work or City") for a choice, a range ("5 or more", "2 to 4") for a
+ * number. Shared by the item editor's summary and the template page's row.
+ */
+export function describeConditionAnswers(c: TemplateItemCondition): string {
+  if (c.min === undefined && c.max === undefined) return c.values.join(' or ');
+  if (c.min !== undefined && c.max !== undefined) return c.min === c.max ? `${c.min}` : `${c.min} to ${c.max}`;
+  return c.min !== undefined ? `${c.min} or more` : `${c.max} or fewer`;
+}
+
+/**
+ * An item's condition on a number question with its range set to `min`/`max`.
+ * A range with neither bound drops the condition entirely, the way unticking
+ * the last option of a choice does (`toggleItemCondition`): "included for no
+ * range" is a state nothing could act on, and it's how this says "every run"
+ * again. A reversed range (min above max) is lifted to a single value rather
+ * than stored, since no answer could ever fall inside it.
+ */
+export function setItemConditionRange(
+  conditions: readonly TemplateItemCondition[],
+  questionId: string,
+  min: number | null,
+  max: number | null,
+): TemplateItemCondition[] {
+  const rest = conditions.filter(c => c.questionId !== questionId);
+  if (min === null && max === null) return rest;
+  const hi = min !== null && max !== null && max < min ? min : max;
+  return [
+    ...rest,
+    { questionId, values: [], ...(min !== null ? { min } : {}), ...(hi !== null ? { max: hi } : {}) },
+  ];
 }

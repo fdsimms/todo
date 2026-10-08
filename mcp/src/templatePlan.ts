@@ -98,10 +98,14 @@ export interface QuestionPlan {
 }
 
 export interface ConditionPlan {
-  /** A choice question's `name`, or its `key` when it has none. Only a choice can gate an item. */
+  /** A choice question's `name` (or its `key` when it has none), or a number question's `name`. */
   question: string;
-  /** Which of that question's options switch this item on. */
-  values: string[];
+  /** Choice only: which of that question's options switch this item on. */
+  values?: string[];
+  /** Number only: the item matches when the answer is at least this. */
+  min?: number;
+  /** Number only: the item matches when the answer is at most this. */
+  max?: number;
 }
 
 /**
@@ -252,6 +256,7 @@ export function validateTemplatePlan(
 
   const questions = plan.questions ?? [];
   const choices = new Map<string, string[]>();
+  const numbers = new Set<string>();
   const questionNames = new Set<string>();
   const questionKeys = new Set<string>();
   for (const question of questions) {
@@ -311,6 +316,7 @@ export function validateTemplatePlan(
       if (options.length < 2) errors.push(`choice question "${question.name}" needs at least two options.`);
       else choices.set(question.name, options);
     }
+    if (question.kind === 'number') numbers.add(question.name);
   }
 
   const items = plan.items ?? [];
@@ -351,7 +357,7 @@ export function validateTemplatePlan(
     if (item.groupKey != null && !groupKeys.has(item.groupKey)) {
       errors.push(`item "${label}" names group "${item.groupKey}", which the plan does not define.`);
     }
-    errors.push(...conditionErrors(item, label, choices, questionNames));
+    errors.push(...conditionErrors(item, label, choices, numbers, questionNames));
     errors.push(...variantErrors(item, label, choices, questionNames));
     errors.push(...refErrors(item, label, existing, selfId));
     errors.push(...rangeErrors(item, label));
@@ -396,10 +402,26 @@ function conditionErrors(
   item: ItemPlan,
   label: string,
   choices: Map<string, string[]>,
+  numbers: Set<string>,
   questionNames: Set<string>
 ): string[] {
   const errors: string[] = [];
   for (const condition of item.conditions ?? []) {
+    if (numbers.has(condition.question)) {
+      const { min, max } = condition;
+      if (min === undefined && max === undefined) {
+        errors.push(`item "${label}" has a condition on "${condition.question}" with no min or max.`);
+      } else if (min !== undefined && max !== undefined && max < min) {
+        errors.push(`item "${label}" has a condition on "${condition.question}" with max ${max} below min ${min}, which no answer can satisfy.`);
+      }
+      if ((condition.values ?? []).length > 0) {
+        errors.push(`item "${label}" gives values for "${condition.question}", which is a number question. Use min and max.`);
+      }
+      continue;
+    }
+    if (condition.min !== undefined || condition.max !== undefined) {
+      errors.push(`item "${label}" gives a min or max for "${condition.question}", which is not a number question. Use values.`);
+    }
     const options = choices.get(condition.question);
     if (!options) {
       // Two different mistakes, and the distinction is worth the words: naming
@@ -407,7 +429,7 @@ function conditionErrors(
       // can gate an item.
       errors.push(
         questionNames.has(condition.question)
-          ? `item "${label}" is conditioned on "${condition.question}", which is not a choice question. Only a choice can gate an item.`
+          ? `item "${label}" is conditioned on "${condition.question}", which is neither a choice nor a number question. Only those can gate an item.`
           : `item "${label}" is conditioned on "${condition.question}", which the plan does not define.`
       );
       continue;
@@ -675,8 +697,15 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),
         ...(groupId ? { groupKey: groupId } : {}),
         ...(() => {
-          const live = conditions.filter(c => questionHandle.has(c.questionId) && c.values.length > 0);
-          return live.length ? { conditions: live.map(c => ({ question: questionHandle.get(c.questionId)!, values: c.values })) } : {};
+          const live = conditions.filter(c => questionHandle.has(c.questionId) && (c.values.length > 0 || c.min !== undefined || c.max !== undefined));
+          return live.length
+            ? { conditions: live.map(c => ({
+                question: questionHandle.get(c.questionId)!,
+                ...(c.values.length > 0 ? { values: c.values } : {}),
+                ...(c.min !== undefined ? { min: c.min } : {}),
+                ...(c.max !== undefined ? { max: c.max } : {}),
+              })) }
+            : {};
         })(),
         // A variant on a deleted question is left out for the reason a
         // condition on one is: every reader already ignores it.

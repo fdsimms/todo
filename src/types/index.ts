@@ -4078,7 +4078,15 @@ export interface TemplateItemCondition {
   questionId: string;
   // Which answers include the item. An empty list is inert (it would
   // otherwise mean "no answer includes this", which nothing can act on).
+  // Empty on a condition over a number question, which uses min/max instead.
   values: string[];
+  // A number question has no fixed set of answers to tick, so a condition on
+  // one is a range: the item matches when the answer is at least `min` and at
+  // most `max` (both inclusive, either may be left off). "Longer than 4 days"
+  // is `min: 5`. Neither set is inert, like an empty `values`. Ignored on a
+  // condition over a choice question.
+  min?: number;
+  max?: number;
 }
 
 /**

@@ -138,6 +138,8 @@ function normalizeConditions(raw: unknown): TemplateItemCondition[] {
     .map(c => ({
       questionId: c.questionId,
       values: Array.isArray(c.values) ? c.values.filter((v): v is string => typeof v === 'string') : [],
+      ...(Number.isFinite(c.min) ? { min: c.min } : {}),
+      ...(Number.isFinite(c.max) ? { max: c.max } : {}),
     }));
 }
 

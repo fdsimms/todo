@@ -188,7 +188,7 @@ describe('cross-references', () => {
 
   it('tells a missing question apart from one that cannot gate an item', () => {
     // Two different mistakes: a typo, and a misunderstanding of what a
-    // condition can ride on. Only a choice can gate an item.
+    // condition can ride on. Only a choice or a number can gate an item.
     const missing = errors(plan({ items: [{ title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] }] }));
     expect(missing[0]).toContain('which the plan does not define');
 
@@ -198,7 +198,23 @@ describe('cross-references', () => {
         items: [{ title: 'Laptop', conditions: [{ question: 'trip', values: ['Work'] }] }],
       })
     );
-    expect(notAChoice[0]).toContain('Only a choice can gate an item');
+    expect(notAChoice[0]).toContain('neither a choice nor a number question');
+  });
+
+  it('accepts a range on a number question and refuses the mixes that cannot work', () => {
+    const questions: TemplatePlan['questions'] = [
+      { name: 'days', prompt: 'How many days?', kind: 'number' },
+      { name: 'trip', prompt: 'p', kind: 'choice', options: ['Work', 'Holiday'] },
+    ];
+    const withCondition = (condition: NonNullable<NonNullable<TemplatePlan['items']>[number]['conditions']>[number]) =>
+      errors(plan({ questions, items: [{ title: 'Laundry line', conditions: [condition] }] }));
+
+    expect(withCondition({ question: 'days', min: 5 })).toEqual([]);
+    expect(withCondition({ question: 'days', min: 2, max: 4 })).toEqual([]);
+    expect(withCondition({ question: 'days' })[0]).toContain('no min or max');
+    expect(withCondition({ question: 'days', min: 5, max: 2 })[0]).toContain('below min 5');
+    expect(withCondition({ question: 'days', values: ['5'], min: 5 })[0]).toContain('Use min and max');
+    expect(withCondition({ question: 'trip', min: 5, values: ['Work'] })[0]).toContain('not a number question');
   });
 
   it('refuses a condition on a value that is not one of the options', () => {
@@ -357,6 +373,20 @@ describe('an edit to an existing template', () => {
     expect(asPlan.groups).toEqual([{ key: 'g1', title: 'Clothes', checklist: true }]);
     expect(asPlan.items![0]).toMatchObject({ id: 'i1', groupKey: 'g1' });
     expect(asPlan.items![1].conditions).toEqual([{ question: 'trip', values: ['Work'] }]);
+    expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
+  });
+
+  it('writes a number range back as min and max, without an empty values list', () => {
+    const stored = template({
+      id: 't1',
+      name: 'Trip',
+      questions: [{ id: 'q1', name: 'days', prompt: 'Days?', kind: 'number', options: [], defaultValue: '', fromDates: 'days' }],
+      items: [
+        { id: 'i1', title: 'Laundry line', groupId: null, conditions: [{ questionId: 'q1', values: [], min: 5 }], answerGate: null, refTemplateId: null, refTemplateName: '' },
+      ] as unknown as TaskTemplate['items'],
+    });
+    const asPlan = templateToPlan(stored);
+    expect(asPlan.items![0].conditions).toEqual([{ question: 'days', min: 5 }]);
     expect(validateTemplatePlan(asPlan, [stored], 't1')).toEqual([]);
   });
 });
