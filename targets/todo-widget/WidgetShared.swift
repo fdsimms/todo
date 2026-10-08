@@ -211,6 +211,10 @@ struct WidgetHeaderView: View {
                 // now that the plus reads by shape rather than by colour.
                 .widgetAccentable()
                 .accessibilityLabel(actionLabel)
+                // The shortcuts are small plain glyphs and this is a filled
+                // circle, so the shared 6pt gap read as the last shortcut
+                // touching it. Extra room only when there are shortcuts.
+                .padding(.leading, shortcutLinks.isEmpty ? 0 : 8)
             }
         }
         .frame(height: WidgetLayout.headerHeight)
