@@ -291,7 +291,7 @@ export function TasksProjectsSettings() {
           is a reason to meet them after the rest, not before it. */}
       <SettingsSection
         label="New tasks"
-        footer="What a fresh task starts with, and where quick add files it before you type anything. None of these override a value you actually pick. Typing a date in quick add still wins over the destination below."
+        footer="What a fresh task starts with, and where quick add files it before you type anything. A project's own defaults come first, and none of these override a value you actually pick. The task editor shows the default on a row you haven't touched. Typing a date in quick add still wins over the destination below."
       >
         <SettingsRow
   entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />

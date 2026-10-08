@@ -99,7 +99,8 @@ import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMenti
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel } from '../utils/effort';
+import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
@@ -597,6 +598,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  // Whether the person has answered these two on a new task. An untouched row
+  // is an unanswered question, not an answer of None: it is left out of the
+  // draft on save so the project's, then Settings', default applies, the same
+  // way it does from quick add. A 0 sent with the draft would be an answer and
+  // beat every default behind it. Picking None is touching it.
+  const [priorityTouched, setPriorityTouched] = useState(false);
+  const [effortTouched, setEffortTouched] = useState(false);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
@@ -1000,6 +1008,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
+      setPriorityTouched(true); setEffortTouched(true);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned); setPinEachOccurrence(task.pinEachOccurrence ?? false);
       setActualMinutes(task.actualMinutes ?? null);
       setTimedMinutes(task.timedMinutes ?? null);
@@ -1065,6 +1074,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
+      setPriorityTouched(initialDraft?.priority !== undefined);
+      setEffortTouched(initialDraft?.effort !== undefined || initialDraft?.estimatedMinutes != null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false); setPinEachOccurrence(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
@@ -1843,7 +1854,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         // groupId only rides along on the create path; for an existing task the
         // store methods above own the move, since they place it in the stack's
         // order and cascade the category as well as setting the field.
-        const newData = { ...data, groupId };
+        // An untouched Priority or Effort row is left out so a default can fill
+        // it (see priorityTouched); `estimatedMinutes` is already null when unset.
+        const newData = {
+          ...data,
+          groupId,
+          ...(priorityTouched ? {} : { priority: undefined }),
+          ...(effortTouched ? {} : { effort: undefined }),
+        };
         if (allDates.length >= 2) {
           const rows = addTaskSeries(newData, allDates, repeat);
           // The set's earliest date is what the waiters wait on: blockedById
@@ -2598,6 +2616,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
   const applyEffortPreset = (e: Effort) => {
+    setEffortTouched(true);
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
     setCustomEffortOpen(false);
@@ -2621,6 +2640,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const applyCustomEffort = (text: string, unit: 'min' | 'hr') => {
+    setEffortTouched(true);
     const n = parseFloat(text);
     if (!Number.isFinite(n) || n <= 0) {
       // Empty/invalid clears the estimate back to unknown.
@@ -2708,6 +2728,26 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const effortSummary = effort > 0 && effortSummaryMinutes != null
     ? formatDuration(effortSummaryMinutes)
     : undefined;
+  // What a new task starts with in the three fields a default can fill, shown
+  // on a row that hasn't been answered. Only for a new task: an existing one
+  // already holds its values. Read off the same functions the save uses.
+  const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const defaultsPreview = useMemo(() => {
+    if (task) return null;
+    const chosenProject = project ? projects.find(p => p.id === project) : undefined;
+    const seeded = previewSeededFields(chosenProject?.taskDefaults, newTaskDefaults, polarity === 'negative');
+    return {
+      priority: seeded.priority,
+      effort: seeded.effort,
+      category: previewCategoryDefault(chosenProject?.defaultTaskCategory, newTaskDefaults.category),
+    };
+  }, [task, project, projects, newTaskDefaults, polarity]);
+  const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
+    ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
+  const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
+    ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+  const defaultCategoryLabel = defaultsPreview && !category && selectedGroup === null && defaultsPreview.category
+    ? `Default: ${categoryLabel(defaultsPreview.category, categories)}` : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
   // The stretches of the countdown the subtasks have been given, in their own
   // order. Empty unless at least one subtask carries minutes, which is what
@@ -5216,6 +5256,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           <CollapsibleField
             label="Category"
             summary={category ? categoryLabel(category, categories) : undefined}
+            emptySummary={defaultCategoryLabel}
             hint="One home for the task. Drives the Categories screen and its filters."
             expanded={fieldOpen('category')}
             onToggle={() => toggleField('category')}
@@ -5586,6 +5627,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           <CollapsibleField
             label="Priority"
             summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+            emptySummary={defaultPriorityLabel}
             hint="Ranks the task against everything else on Today."
             expanded={fieldOpen('priority')}
             onToggle={() => toggleField('priority')}
@@ -5593,7 +5635,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <SegmentedControl
               label="Priority"
               value={priority}
-              onChange={p => { setPriority(p); closeField('priority'); }}
+              onChange={p => { setPriority(p); setPriorityTouched(true); closeField('priority'); }}
               // Five with "Medium" among them doesn't fit one row once each
               // carries a dot; 3 + 2 does, and keeps every cell the same width.
               columns={3}
@@ -5611,7 +5653,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           <CollapsibleField
             label="Effort"
             summary={effortSummary}
-            emptySummary="Not set"
+            emptySummary={defaultEffortLabel ?? 'Not set'}
             hint="Roughly how long this takes, so a day's list can be sized realistically."
             expanded={fieldOpen('effort')}
             onToggle={() => toggleField('effort')}

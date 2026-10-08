@@ -150,6 +150,36 @@ export function seedTaskFields(
 }
 
 /**
+ * What a new task will start with in priority and effort when nothing answers
+ * them: the editor shows this on a row the person hasn't touched, so the label
+ * reads off the same `seedTaskFields` the save does and cannot disagree with it.
+ *
+ * `projectDefaults` is the chosen project's own `taskDefaults`. A generated
+ * kind never reaches the editor, so that layer of `newTaskFromDraft` has no
+ * counterpart here.
+ */
+export function previewSeededFields(
+  projectDefaults: TaskFieldDefaults | null | undefined,
+  global: { priority: Priority | null; effort: Effort | null; difficulty: Difficulty | null },
+  negative: boolean,
+): { priority: Priority; effort: Effort } {
+  const { priority, effort } = seedTaskFields({}, resolveFieldDefaults(projectDefaults), global, negative);
+  return { priority, effort };
+}
+
+/**
+ * The category a new task lands in when none is chosen: the project's own
+ * default, else Settings'. The same two layers, in the same order, as
+ * `newTaskFromDraft`.
+ */
+export function previewCategoryDefault(
+  projectDefaultCategory: string | null | undefined,
+  globalCategory: string | null | undefined,
+): string | null {
+  return projectDefaultCategory ?? globalCategory ?? null;
+}
+
+/**
  * What to write onto a task that already exists, filling only what is still
  * unanswered. Null when there is nothing to fill. Used by "Apply to existing
  * tasks" on a project and by the backfill screen's whole-group apply.
