@@ -272,7 +272,7 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
     case 'target':
       if (v.quotaPeriod === 'week') {
         return v.targetCount != null
-          ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a week, on any days. Repeats weekly, and only shows up when you fall behind.`
+          ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a week${v.unitMinutes ? `, ${formatDuration(v.unitMinutes)} each` : ''}, on any days. Repeats weekly, and only shows up when you fall behind.`
           : 'Log it several times a week, on any days. Repeats weekly, and only shows up when you fall behind.';
       }
       return v.targetCount != null

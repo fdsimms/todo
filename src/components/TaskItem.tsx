@@ -3041,7 +3041,7 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   timerReady
-                    ? 'Timer done, ready to complete'
+                    ? (isQuota ? 'Timer done, ready to log' : 'Timer done, ready to complete')
                     : timerRunning
                       ? `${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
                       : timerPaused
@@ -4040,7 +4040,7 @@ export const TaskItem = React.memo(function TaskItem({
                     />
                     <Text style={styles.expandMeta}>
                       {timerReady
-                        ? `Ready to complete · ${formatDuration(task.timedMinutes!)} done`
+                        ? `${isQuota ? 'Ready to log' : 'Ready to complete'} · ${formatDuration(task.timedMinutes!)} done`
                         : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
                     </Text>
                   </View>

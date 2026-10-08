@@ -155,6 +155,7 @@ describe('bakedFields', () => {
 describe('typeSummary for a target with a countdown', () => {
   it('names the time each unit gets', () => {
     expect(typeSummary('target', values({ targetCount: 5, unitMinutes: 10 }))).toContain('5× a day, 10m each');
+    expect(typeSummary('target', values({ targetCount: 3, unitMinutes: 20, quotaPeriod: 'week' }))).toContain('3× a week, 20m each');
   });
 });
 

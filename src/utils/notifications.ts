@@ -11,7 +11,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isTaskNotNeeded, isWithheld } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -693,7 +693,11 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     identifier: timerAlarmId(task.id),
     content: {
       title: 'Time’s up',
-      body: `${displayTitleFor(task) || 'Your task'} is ready to complete`,
+      // A target's countdown is for one unit, and tapping it logs one rather
+      // than completing the task, so it can't say "complete".
+      body: isQuotaTask(task)
+        ? `${displayTitleFor(task) || 'Your task'} is ready to log`
+        : `${displayTitleFor(task) || 'Your task'} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
       // A countdown the user started and is waiting on, same urgency as a
