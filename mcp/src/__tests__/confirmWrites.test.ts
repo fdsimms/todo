@@ -71,3 +71,34 @@ describe('describeEffects', () => {
     ]);
   });
 });
+
+describe('describeEffects, field changes', () => {
+  const dayOf = (iso: string) => iso.slice(0, 10);
+  const entry = (before: Record<string, unknown>, after: Record<string, unknown>) => ({
+    action: 'edited' as const, subject: 'task' as const, title: 'Pay rent', taskId: 't1', revert: { before, after },
+  });
+
+  it('names the project and blocker instead of printing their ids', () => {
+    const names = { project: (id: string) => (id === 'p1' ? 'Home' : undefined), task: (id: string) => (id === 't9' ? 'Find lease' : undefined), stack: () => undefined };
+    const lines = describeEffects([entry({ projectId: null, blockedByIds: [] }, { projectId: 'p1', blockedByIds: ['t9'] })], dayOf, names);
+    expect(lines).toEqual(['Change "Pay rent": project from nothing to "Home"; waits on from none to "Find lease"']);
+  });
+
+  it('names fields it used to drop, and labels weekdays, priority and a reminder time', () => {
+    const lines = describeEffects([entry(
+      { weatherWait: null, recurrenceDays: [1], priority: 1, reminderTime: null },
+      { weatherWait: 'sunny', recurrenceDays: [1, 5], priority: 3, reminderTime: '2026-10-09T13:30:00.000Z' },
+    )], dayOf);
+    expect(lines[0]).toContain('waits for weather from nothing to "sunny"');
+    expect(lines[0]).toContain('repeat days from Monday to Monday, Friday');
+    expect(lines[0]).toContain('priority from 1 of 4 to 3 of 4');
+    expect(lines[0]).toMatch(/reminder from nothing to 2026-10-09 at \d{1,2}:30 [AP]M/);
+  });
+
+  it('appends a suffix, and counts identical lines once', () => {
+    expect(describeEffects([{ ...entry({ title: 'A' }, { title: 'B' }), suffix: ' (also applies to 2 later dates)' }], dayOf))
+      .toEqual(['Change "Pay rent": title from "A" to "B" (also applies to 2 later dates)']);
+    const same = { action: 'cleared' as const, subject: 'task' as const, title: 'Take meds', taskId: null, note: 'Delete the 2026-09-14 entry of "Take meds"' };
+    expect(describeEffects([same, same, same], dayOf)).toEqual(['Delete the 2026-09-14 entry of "Take meds" (3 times)']);
+  });
+});
