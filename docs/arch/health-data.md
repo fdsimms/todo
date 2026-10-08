@@ -1271,6 +1271,17 @@ sleep, which still have no case answering to a ceiling. What changed is
 not a new relationship between a reading and a task, and not a general
 greater/less toggle available everywhere.
 
+## Vegetables and fruit, and the one bar
+
+`produceServings.ts` counts 80 g servings of vegetables and fruit from the
+food log, on the Food log's day card and as an average on Stats. The nutrition
+stats rule is counts, never a score: no percentages of a goal, no status
+colors, no streaks. The one exception is a single neutral accent bar toward the
+fixed "5 a day" figure (`dailyProduceProgress`), added on request. Keep it
+that narrow: the target is a constant rather than a typed number, the bar
+stops at full, and nothing (color, copy, a streak) changes when it fills. The
+Stats row draws the average day against the same figure.
+
 ## What is deliberately not built yet
 
 Steps, sleep, exercise minutes, active energy, eight nutrients (sodium,

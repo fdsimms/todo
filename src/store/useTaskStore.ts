@@ -112,7 +112,8 @@ import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } 
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
 import { forgiveVacationStreaks } from '../utils/vacationStreaks';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
+import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
@@ -1619,8 +1620,13 @@ interface TaskStore extends UndoHistoryActions {
    * `skipGeneratedOptOut` is for a delete the app performs on its own behalf —
    * see dropGeneratedTask. A user's delete is an instruction to the source and
    * must keep writing it.
+   *
+   * `stopGenerator` also turns off the generator that wrote the task (the
+   * "Delete and turn off" answer), as part of the same undo entry: undoing the
+   * delete turns the generator back on. It does nothing for a task nobody
+   * generated or a generator that is already off.
    */
-  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean }) => void;
+  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean; stopGenerator?: boolean }) => void;
   /**
    * Put deleted rows back exactly as they were, with their reminders and
    * deadline events: Activity's restore of a task an agent deleted
@@ -3330,6 +3336,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its paths: reconcileGeneratedTask's `!wanted` branch and dropGeneratedTask).
     if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
+    // Read before the switch is flipped, or the generator would already read
+    // as off and the undo below would have nothing to turn back on.
+    const stoppedKind = opts.stopGenerator
+      ? stoppableGenerator(task, useSettingsStore.getState())?.kind ?? null
+      : null;
+    if (stoppedKind) setGeneratorEnabled(stoppedKind, false);
+
     get().setLastAction({
       // A list's rows are items, and the page they were deleted from says so.
       label: task.projectId && useProjectStore.getState().projects.some(p => p.id === task.projectId && p.kind === 'list')
@@ -3356,6 +3369,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // is its exact inverse — and skipped in the same breath when the
         // delete never wrote one.
         if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, null);
+        if (stoppedKind) setGeneratorEnabled(stoppedKind, true);
       },
     });
   },

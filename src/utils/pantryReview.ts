@@ -3,6 +3,7 @@ import type { GroceryItem, ItemProduct } from '../types';
 import {
   OUT_OF_IT_UNTIL,
   isRunningLow,
+  pantryGuessElapsedFraction,
   pantryGuessLapsedDays,
   probablyHaveReason,
 } from './grocerySuggest';
@@ -39,19 +40,25 @@ import { PANTRY_CHECK_GRACE_DAYS } from './pantryCheckTasks';
  * - **It is ordered by doubt**, not by name or aisle. A deck that opens on the
  *   things the app is surest about is a deck that wastes the user's first ten
  *   swipes confirming what it already believed.
- * - **It answers with the three assertions that already exist** — `onHandUntil`,
- *   `runningLowAt`, and the "Out of it" sentinel. No quantities, no per-card
- *   expiry, no freezer. Those are the inventory creeping back in.
+ * - **It answers with the assertions that already exist** — `onHandUntil`,
+ *   `runningLowAt`, and the "Out of it" sentinel, plus the new-packet clear a
+ *   receipt or scan already does. No quantities, no per-card expiry, no
+ *   freezer. Those are the inventory creeping back in.
  */
 
 /**
- * What a swipe says. Deliberately the three states the pantry can already be
- * told about, and deliberately not four: `runningLowAt` is the middle of the
- * scale that "Got it"/"Out of it" was missing (see `docs/arch/groceries.md`),
- * and it is the one answer with an outlet — it puts the row on the shopping
- * list, which is what gives a review pass something to show for itself.
+ * What a swipe says. Deliberately the states the pantry can already be told
+ * about: `runningLowAt` is the middle of the scale that "Got it"/"Out of it"
+ * was missing (see `docs/arch/groceries.md`), and it is the one answer with an
+ * outlet — it puts the row on the shopping list, which is what gives a review
+ * pass something to show for itself.
+ *
+ * `new` is "I just got another one": the packet the card was asking about is
+ * gone and a fresh one is here. It is only ever offered by the deck itself (the
+ * Describe and scan sheets' pantry control stays three-way), because a
+ * restock is something you say standing at the cupboard.
  */
-export type PantryReviewAnswer = 'have' | 'low' | 'out';
+export type PantryReviewAnswer = 'have' | 'low' | 'out' | 'new';
 
 /**
  * How many cards one session can hold.
@@ -85,6 +92,15 @@ export const MAX_PANTRY_REVIEW_CARDS = 20;
  * position in their day.
  */
 export const PANTRY_REVIEW_QUIET_DAYS = 7;
+
+/**
+ * How far through its purchase window a `guessed` row must be before it earns a
+ * card. A purchase from this morning is the app's best evidence that you have
+ * something, and asking about it is noise: the deck only cards a guess once
+ * half its window has gone, when there is a real chance it has run down.
+ * Lapsed and asserted rows are unaffected.
+ */
+export const PANTRY_GUESS_DOUBT_FRACTION = 0.5;
 
 const DAY_MS = 86_400_000;
 
@@ -183,13 +199,16 @@ export function buildPantryReviewDeck(
     // does" — never to build the card itself.
     const reason = probablyHaveReason(item, now, []);
     if (reason) {
+      // An explicit assertion outranks the purchase reading inside
+      // `probablyHaveReason`, so the columns are what decide the tier here
+      // rather than the prose it returned — the same "read the columns, not
+      // the string" rule `correctableHaveReason` follows.
+      const asserted = isAsserted(item, now);
+      // A guess from a purchase that has barely aged has nothing to doubt yet.
+      if (!asserted && pantryGuessElapsedFraction(item, now) < PANTRY_GUESS_DOUBT_FRACTION) continue;
       candidates.push({
         item,
-        // An explicit assertion outranks the purchase reading inside
-        // `probablyHaveReason`, so the columns are what decide the tier here
-        // rather than the prose it returned — the same "read the columns, not
-        // the string" rule `correctableHaveReason` follows.
-        doubt: isAsserted(item, now) ? 'asserted' : 'guessed',
+        doubt: asserted ? 'asserted' : 'guessed',
         reason,
         lapsedDays: null,
       });

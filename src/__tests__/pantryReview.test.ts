@@ -47,10 +47,11 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     checked: false,
     sortOrder: seq,
     // Three purchases across a year: a 122-day window, long enough that a case
-    // can move lastPurchasedAt without the window shifting under it.
+    // can move lastPurchasedAt without the window shifting under it. Bought 70
+    // days ago, so past the half of the window a guess needs to earn a card.
     purchaseCount: 3,
     lastAddedAt: null,
-    lastPurchasedAt: daysAgo(10),
+    lastPurchasedAt: daysAgo(70),
     purchaseIntervalDays: null,
     createdAt: daysAgo(366),
     onHandUntil: null,
@@ -105,6 +106,22 @@ describe('buildPantryReviewDeck', () => {
     expect(names(deck)).toEqual(['Flour']);
     expect(deck.cards[0].doubt).toBe('guessed');
     expect(deck.cards[0].reason).toContain('bought');
+  });
+
+  it('leaves a fresh purchase alone until half its window has gone', () => {
+    // Bought a few hours ago: the strongest evidence the app ever has.
+    const hoursAgo = new Date(NOW.getTime() - 3 * 3_600_000).toISOString();
+    const early = makeItem({ name: 'Flour', lastPurchasedAt: hoursAgo });
+    expect(buildPantryReviewDeck([early], NOW).cards).toEqual([]);
+    // 122-day window: 59 days is just under half, 62 just over.
+    expect(buildPantryReviewDeck([makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(59) })], NOW).cards).toEqual([]);
+    expect(names(buildPantryReviewDeck([makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(62) })], NOW))).toEqual(['Flour']);
+  });
+
+  it('still cards something the user said about, however recently it was bought', () => {
+    const hoursAgo = new Date(NOW.getTime() - 3 * 3_600_000).toISOString();
+    const deck = buildPantryReviewDeck([makeItem({ name: 'Jar', lastPurchasedAt: hoursAgo, runningLowAt: daysAgo(1) })], NOW);
+    expect(deck.cards[0].doubt).toBe('asserted');
   });
 
   it('cards a row whose guess has lapsed inside the grace period', () => {
@@ -245,7 +262,7 @@ describe('the doubt ladder', () => {
   it('asks about the guess closest to running out first', () => {
     const deck = buildPantryReviewDeck(
       [
-        makeItem({ name: 'Recent', lastPurchasedAt: daysAgo(3) }),
+        makeItem({ name: 'Recent', lastPurchasedAt: daysAgo(65) }),
         makeItem({ name: 'Stale', lastPurchasedAt: daysAgo(100) }),
       ],
       NOW

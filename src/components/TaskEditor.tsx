@@ -57,6 +57,8 @@ import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICUL
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
+import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
+import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
@@ -1588,6 +1590,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     const resolvedTags = categoryTagsParsed && categoryTagsParsed.tags.length > 0
       ? [...new Set([...tags, ...categoryTagsParsed.tags])]
       : tags;
+    // A rotation's target is its set, which the member list edits directly and
+    // never passes through the stepper, so `targetCount` state is whatever the
+    // kind switch stamped when the set was still empty. Read off the set here.
+    const savesRotation = rotationEnabled && rotationItems.length >= 2;
+    const savedTargetCount = savesRotation ? rotationTargetTotal(rotationItems) : targetCount;
     const data = {
       title: resolvedTitle, notes, category: resolvedCategory, projectId: project, tags: resolvedTags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
@@ -1601,7 +1608,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // Like the calendar flag: a time with no deadline to close at is dropped.
       deadlineTime: deadline ? deadlineTime : null,
       logCompletionToCalendar,
-      timeSegments, windowStart, windowEnd, targetCount,
+      timeSegments, windowStart, windowEnd, targetCount: savedTargetCount,
       penaltyMinutes,
       // Meaningless on an avoid-task, which is never completed and so could
       // never satisfy a gate. Cleared rather than carried so flipping the
@@ -1632,7 +1639,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // Cleared with the target, same as the flags around it: a period left
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
-      quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
+      quotaPeriod: savesRotation ? 'week' : targetCount !== null ? quotaPeriod : 'day',
       // A supply counts down by riding onto the successor a completion spawns,
       // so it means nothing on a one-off — cleared with the repeat rather than
       // left to sit at its starting number for ever, the same reset showStreak
@@ -2517,6 +2524,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               onClose();
             },
           },
+          ...(stoppableGenerator(task, useSettingsStore.getState()) ? [{
+            text: 'Delete and turn off',
+            style: 'destructive' as const,
+            onPress: () => {
+              haptics.success();
+              deleteTask(task.id, { stopGenerator: true });
+              onClose();
+            },
+          }] : []),
         ],
       );
       return;
@@ -2553,6 +2569,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           },
         ],
       );
+      return;
+    }
+    if (task.generatedKind) {
+      confirmDeleteGenerated(task, () => {
+        haptics.success();
+        onClose();
+      });
       return;
     }
     confirmDelete({

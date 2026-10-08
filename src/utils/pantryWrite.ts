@@ -114,14 +114,22 @@ export function openedRow(item: GroceryItem, opened: boolean, now: Date): Grocer
   };
 }
 
-/** The pantry review's three answers; every one stamps, so the deck stops dealing the card. */
+/**
+ * The pantry review's answers; every one stamps, so the deck stops dealing the card.
+ *
+ * `new` is a packet that has just come home, so it is "Still have it" over the
+ * row `acquiredRow` leaves: the old packet's frozen, opened and running-low
+ * claims go, and the window is measured on what is left (an opened jar's
+ * shorter one no longer applies).
+ */
 export function reviewedRow(item: GroceryItem, answer: PantryReviewAnswer, now: Date): GroceryItem {
+  const base = answer === 'new' ? acquiredRow(item) ?? item : item;
   const until =
-    answer === 'have' ? defaultOnHandUntil(item, now)
+    answer === 'have' || answer === 'new' ? defaultOnHandUntil(base, now)
     : answer === 'out' ? OUT_OF_IT_UNTIL
     : item.onHandUntil;
   return {
-    ...item,
+    ...base,
     onHandUntil: until,
     pantryReviewedAt: now.toISOString(),
     ...(answer === 'out' ? BOX_STORY_CLEARED : null),

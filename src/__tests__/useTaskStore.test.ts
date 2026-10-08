@@ -4255,6 +4255,34 @@ describe('checkProjectReviewTasks', () => {
     expect(useProjectStore.getState().projects[0].reviewDeclinedAt).not.toBeNull();
   });
 
+  // "Delete and turn off": the delete and the switch are one undo entry, so
+  // undoing the delete can't leave the generator off with the task back.
+  it('turns the generator off with the delete when asked, and back on with the undo', () => {
+    const setProjectReviewTasks = jest.fn();
+    useSettingsStore.getState.mockReturnValue(settings({ setProjectReviewTasks }));
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().deleteTask(reviewTasks()[0].id, { stopGenerator: true });
+    expect(setProjectReviewTasks).toHaveBeenLastCalledWith(false);
+
+    useTaskStore.getState().lastAction?.undo();
+    expect(setProjectReviewTasks).toHaveBeenLastCalledWith(true);
+    expect(setProjectReviewTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves the generator alone on a plain delete', () => {
+    const setProjectReviewTasks = jest.fn();
+    useSettingsStore.getState.mockReturnValue(settings({ setProjectReviewTasks }));
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().deleteTask(reviewTasks()[0].id);
+    expect(setProjectReviewTasks).not.toHaveBeenCalled();
+  });
+
   // sweepExpiredTasks is the one bulkDeleteTasks caller that isn't the user
   // saying anything — see its call site's comment.
   it('a bulk delete with skipGeneratedOptOut leaves the source untouched', () => {
@@ -5035,13 +5063,13 @@ describe('checkPantryReviewTasks', () => {
 
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
-  /** A row still inside its purchase window: a `guessed` card, the common case. */
+  /** A row past half its purchase window but not lapsed: a `guessed` card, the common case. */
   const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
     nameFromScan: false,
     id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: i,
-    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), purchaseIntervalDays: null, createdAt: daysAgo(366),
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(70), purchaseIntervalDays: null, createdAt: daysAgo(366),
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,

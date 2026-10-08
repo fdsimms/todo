@@ -11,6 +11,7 @@ import {
   CALENDAR_READ_KINDS,
   describeGeneratedCounts,
   generatorSwitchedOn,
+  stoppableGenerator,
   hasAnyGeneratedTask,
   isNoticeTask,
   isUseUpKind,
@@ -503,5 +504,34 @@ describe('generatorSwitchedOn', () => {
     const noReads = flags({ healthReadEnabled: false, healthWriteEnabled: false, calendarReadEnabled: false });
     expect(generatorSwitchedOn('birthday', noReads)).toBe(true);
     expect(generatorSwitchedOn('weather', noReads)).toBe(true);
+  });
+});
+
+// What "Delete and turn off" may offer: only a task some generator wrote, whose
+// generator is currently on.
+describe('stoppableGenerator', () => {
+  const flags = (over: Record<string, boolean> = {}) => ({
+    ...Object.fromEntries(GENERATED_KIND_LIST.map(sp => [sp.enabledKey, true])),
+    healthReadEnabled: true,
+    healthWriteEnabled: true,
+    calendarReadEnabled: true,
+    ...over,
+  } as Parameters<typeof stoppableGenerator>[1]);
+
+  it('names the generator of a generated task whose switch is on', () => {
+    expect(stoppableGenerator({ generatedKind: 'projectReview' }, flags())?.kind).toBe('projectReview');
+  });
+
+  it('offers nothing for a task nobody generated', () => {
+    expect(stoppableGenerator({ generatedKind: null }, flags())).toBeNull();
+  });
+
+  it('offers nothing once the generator is already off', () => {
+    expect(stoppableGenerator({ generatedKind: 'projectReview' }, flags({ projectReviewTasks: false }))).toBeNull();
+    expect(stoppableGenerator({ generatedKind: 'health' }, flags({ healthReadEnabled: false }))).toBeNull();
+  });
+
+  it('offers nothing on a notice, which has no delete to hang it on', () => {
+    expect(stoppableGenerator({ generatedKind: 'calendarReview' }, flags())).toBeNull();
   });
 });
