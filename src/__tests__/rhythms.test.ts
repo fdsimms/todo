@@ -260,6 +260,26 @@ describe('buildRhythmProfile', () => {
     expect(profile.byHour[15]).toBe(0);
   });
 
+  it('counts a burst of completions within minutes as one', () => {
+    // Ten supplements ticked in five minutes, on each of three mornings.
+    const routine = [1, 2, 3].flatMap(day =>
+      Array.from({ length: 10 }, (_, i) =>
+        makeTask({ title: `Supplement ${i}`, completedAt: at(2026, 3, day, 7, 30 + Math.floor(i / 2)) }),
+      ),
+    );
+    const profile = buildRhythmProfile([...routine, ...completionsAt('Report', 10, 3)]);
+    expect(profile.byHour[7]).toBe(3);
+    expect(profile.sampleCount).toBe(6);
+  });
+
+  it('keeps tasks that are spread out, even a few minutes apart', () => {
+    // Each is 12 minutes after the last, past the burst window.
+    const spread = Array.from({ length: 4 }, (_, i) =>
+      makeTask({ completedAt: at(2026, 3, 1, 14, i * 12) }),
+    );
+    expect(buildRhythmProfile(spread).sampleCount).toBe(4);
+  });
+
   it('survives an unparseable completedAt', () => {
     const profile = buildRhythmProfile([
       ...completionsAt('Real', 9, 3),
@@ -272,8 +292,8 @@ describe('buildRhythmProfile', () => {
     const now = new Date(2026, 2, 20, 12);
     const profile = buildRhythmProfile(
       [
-        ...completionsAt('Recent', 9, 3, { completedAt: at(2026, 3, 19, 9) }),
-        ...completionsAt('Ancient', 21, 4, { completedAt: at(2026, 1, 2, 21) }),
+        ...[17, 18, 19].map(day => makeTask({ title: 'Recent', completedAt: at(2026, 3, day, 9) })),
+        ...[2, 3, 4, 5].map(day => makeTask({ title: 'Ancient', completedAt: at(2026, 1, day, 21) })),
       ],
       { windowDays: 30, now },
     );
