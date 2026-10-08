@@ -625,6 +625,12 @@ interface SettingsStore {
    */
   tipsEnabled: boolean;
   /**
+   * The first-run questions were answered or skipped on this device
+   * (`src/utils/firstRun.ts`). Progress rather than a preference, so a settings
+   * reset leaves it alone, and not synced: it is a fact about this install.
+   */
+  firstRunDone: boolean;
+  /**
    * Tip ids already dismissed or marked read. Progress rather than a
    * preference, so it stays out of DEFAULT_SETTINGS/resetToDefaults for the
    * same reason patchNotesQaStatus does: "reset settings" replaying sixty tips
@@ -1877,6 +1883,7 @@ interface SettingsStore {
   setHideHelpText: (on: boolean) => void;
   setMirroringMode: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
+  setFirstRunDone: (done: boolean) => void;
   /**
    * Records a tip as promoted, which spends that logical day's one slot.
    *
@@ -2585,6 +2592,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mirroringMode: false,
   tipsEnabled: true,
   seenTips: [],
+  firstRunDone: false,
   lastTipShown: null,
   timerLiveActivity: true,
   tripLiveActivity: true,
@@ -3258,6 +3266,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // `!== 'false'`, same as postponeCheckEnabled above: defaults on, so an
     // install that predates the setting gets tips rather than silence.
     const tipsEnabled = dbGetSetting('tipsEnabled') !== 'false';
+    const firstRunDone = dbGetSetting('firstRunDone') === 'true';
     // Both stored as JSON, and both fall back to "nothing seen yet" on a parse
     // failure rather than throwing. The cost of getting this wrong is one
     // extra tip, which is the right way round to fail.
@@ -3400,6 +3409,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       filterEfforts,
       filterHasReminder,
       filterPriorities,
+      firstRunDone,
       focusBreaksEnabled,
       focusDefaultWorkMinutes,
       focusHideTimers,
@@ -4589,6 +4599,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTipsEnabled(on: boolean) {
     dbSetSetting('tipsEnabled', on ? 'true' : 'false');
     set({ tipsEnabled: on });
+  },
+
+  setFirstRunDone(done: boolean) {
+    dbSetSetting('firstRunDone', done ? 'true' : 'false');
+    set({ firstRunDone: done });
   },
 
   // Separate from markTipSeen because they answer different questions: this

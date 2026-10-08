@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
+import { FirstRunHost } from './src/components/FirstRunSheet';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
@@ -73,6 +74,9 @@ function AppContent() {
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppNavigator />
+      {/* The one-time setup questions on a new install. A sheet, so it presents
+          above the navigator whatever screen it opened on. */}
+      <FirstRunHost />
       {/* Inside ThemeProvider (it's a themed screen) and last, so its overlay
           sits above the navigator. */}
       <AppLockGate />
