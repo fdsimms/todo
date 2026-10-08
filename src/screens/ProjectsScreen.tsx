@@ -52,7 +52,7 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -721,11 +721,12 @@ export function ProjectsScreen() {
           sort={projectSort}
           onSortChange={setProjectSort}
           anchor={optionsMenuAnchor}
-          onOpenSettings={screenSettings.hasSettings ? () => screenSettings.open(optionsMenuAnchor) : undefined}
-          settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+          onOpenSettings={screenSettings.link
+            ? () => navigateToSettingsEntry(navigation, screenSettings.link!.entryId)
+            : undefined}
+          settingsHint={screenSettings.link?.hint}
         />
       </LazySheet>
-      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <LazySheet open={categoriesSheetVisible}>
         <ProjectCategoriesSheet

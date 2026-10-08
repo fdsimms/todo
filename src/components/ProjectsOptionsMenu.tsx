@@ -31,8 +31,8 @@ interface Props {
   /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
   anchor?: CardAnchor | null;
   /**
-   * Opens the Projects page's own settings (`ScreenSettingsSheet`), with
-   * `settingsHint` naming them. Omitted when none are on show.
+   * Jumps into Settings at the Projects page's first setting, with
+   * `settingsHint` naming the ones beside it. Omitted when none are on show.
    */
   onOpenSettings?: () => void;
   settingsHint?: string;
