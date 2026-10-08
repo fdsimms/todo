@@ -5,7 +5,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { taskRevert } from '../agentLedger';
+import { taskRevert, describeRuleListChange } from '../agentLedger';
 import { agentRevertPlan } from '../../../src/utils/agentRevert';
 import type { Task, UnattendedEntry } from '../../../src/types';
 
@@ -140,5 +140,13 @@ describe('records an undo can find again', () => {
     const entry = ledger().find(e => e.subject === 'automation')!;
     expect(entry.recordId).toBe('title');
     expect(entry.revert).toEqual({ before: { rules: before }, after: { rules: [] } });
+  });
+
+  it('describes a rule change in words for the approval prompt', () => {
+    const rule = { id: 'h1', metric: 'steps', threshold: 5000, direction: 'under', checkpointHour: 20, title: 'Take a walk', enabled: true, lastFiredDayKey: null };
+    expect(describeRuleListChange('health', [], [rule])).toBe('Add a Health rule: when steps is under 5000 by 8 PM, add the task "Take a walk"');
+    expect(describeRuleListChange('health', [rule], [{ ...rule, threshold: 6000, lastFiredDayKey: '2026-10-08' }]))
+      .toBe('Change a Health rule (when steps is under 6000 by 8 PM, add the task "Take a walk"): threshold from 5000 to 6000');
+    expect(describeRuleListChange('health', [rule], [])).toBe('Delete a Health rule: when steps is under 5000 by 8 PM, add the task "Take a walk"');
   });
 });

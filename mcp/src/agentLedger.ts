@@ -49,6 +49,66 @@ const RULE_LIST_LABEL: Record<string, string> = {
   screenTime: 'Screen time',
 };
 
+type LooseRule = Record<string, unknown> & { id?: string };
+
+const HEALTH_METRIC_LABEL: Record<string, string> = {
+  steps: 'steps', sleepHours: 'hours of sleep', exerciseMinutes: 'exercise minutes', sodiumMg: 'sodium (mg)',
+  proteinG: 'protein (g)', satFatG: 'saturated fat (g)', fiberG: 'fiber (g)', sugarG: 'sugar (g)',
+  caffeineMg: 'caffeine (mg)', waterMl: 'water (mL)', calorieKcal: 'calories',
+};
+
+function hourLabel(h: number): string {
+  return `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** One rule in the words its sheet would use: when it fires, then what it adds. */
+export function describeRule(type: string, rule: LooseRule): string {
+  const adds = typeof rule.title === 'string' && rule.title ? `add the task "${rule.title}"` : 'add a task';
+  const off = rule.enabled === false ? ' (off)' : '';
+  switch (type) {
+    case 'health': {
+      const metric = HEALTH_METRIC_LABEL[String(rule.metric)] ?? String(rule.metric);
+      const hour = typeof rule.checkpointHour === 'number' ? ` by ${hourLabel(rule.checkpointHour)}` : '';
+      return `when ${metric} is ${rule.direction ?? 'under'} ${rule.threshold}${hour}, ${adds}${off}`;
+    }
+    case 'weather': return `when the forecast is ${rule.condition}, ${adds}${off}`;
+    case 'screenTime': return `after ${rule.thresholdMinutes} minutes in the watched apps, ${adds}${off}`;
+    case 'event': {
+      const words = Array.isArray(rule.matches) ? rule.matches.map(m => `"${m}"`).join(', ') : '';
+      const when = rule.afterEvent ? 'after' : `${rule.leadDays ?? 0} day(s) before`;
+      return `${when} an event titled ${words}, ${adds}${off}`;
+    }
+    case 'title': {
+      const words = Array.isArray(rule.keywords) ? rule.keywords.map(k => `"${k}"`).join(', ') : '';
+      const filed = [rule.category && `category ${rule.category}`, typeof rule.priority === 'number' && rule.priority > 0 && `priority ${rule.priority}`]
+        .filter(Boolean).join(', ');
+      return `when a task title ${rule.match === 'startsWith' ? 'starts with' : 'contains'} ${words}${filed ? `, file it under ${filed}` : ''}${off}`;
+    }
+    default: return `${String(rule.title ?? rule.id ?? 'rule')}${off}`;
+  }
+}
+
+/** Fields that are the app's own bookkeeping, not something a person set. */
+const isBookkeeping = (key: string) => key.startsWith('last');
+
+/** What a rule-list write did, one clause per rule added, removed or changed. */
+export function describeRuleListChange(type: string, before: readonly LooseRule[], after: readonly LooseRule[]): string {
+  const label = RULE_LIST_LABEL[type] ?? type;
+  const byId = new Map(before.map(r => [r.id, r]));
+  const clauses: string[] = [];
+  for (const r of after) {
+    const old = byId.get(r.id);
+    byId.delete(r.id);
+    if (!old) { clauses.push(`Add a ${label} rule: ${describeRule(type, r)}`); continue; }
+    const changed = Object.keys(r).filter(k => !isBookkeeping(k) && !same(old[k], r[k]));
+    if (changed.length === 0) continue;
+    const parts = changed.map(k => `${k} from ${same(old[k], null) ? 'none' : JSON.stringify(old[k])} to ${same(r[k], null) ? 'none' : JSON.stringify(r[k])}`);
+    clauses.push(`Change a ${label} rule (${describeRule(type, r)}): ${parts.join(', ')}`);
+  }
+  for (const r of byId.values()) clauses.push(`Delete a ${label} rule: ${describeRule(type, r)}`);
+  return clauses.length > 0 ? clauses.join('; ') : `Save the ${label} rules with no change`;
+}
+
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
@@ -1215,6 +1275,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
         action: 'edited',
         subject: 'automation',
         title: `${RULE_LIST_LABEL[type]} rules`,
+        note: describeRuleListChange(type, before as unknown as LooseRule[], replica.ruleLists()[type] as unknown as LooseRule[]),
         taskId: null,
         recordId: type,
         revert: { before: { rules: before }, after: { rules: replica.ruleLists()[type] } },
