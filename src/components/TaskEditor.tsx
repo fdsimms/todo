@@ -3880,7 +3880,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       ? 'Not a target'
                       : quotaIntervalMinutes !== null
                         ? quotaCadenceCaption
-                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
+                        : task && task.targetCount !== null && task.progressCount > 0 && (task.quotaPeriod ?? 'day') === quotaPeriod
+                          // The row's real count, not a zero: the preview used to
+                          // read "0/6" on a target already half done, which looked
+                          // like opening the editor had reset it.
+                          ? `Logged ${formatQuotaProgress(task.progressCount, targetCount, targetUnit)} so far this ${quotaPeriod}`
+                          : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
                   </Text>
                   {targetCount !== null && (
                     <>
