@@ -1,0 +1,1 @@
+{ "message": "Template items with a count that depends on an answer, like \"Socks x{laundry access = Yes ? days / 2 : days + 1}\", now read in plain words on the template page: \"Socks x (days ÷ 2 if laundry access is Yes, otherwise days + 1)\". The item editor still shows the original.", "date": "2026-10-08" }

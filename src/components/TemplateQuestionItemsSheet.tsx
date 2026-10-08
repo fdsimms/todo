@@ -7,6 +7,7 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { questionLabel, toggleItemCondition } from '../utils/templateQuestions';
+import { describePlaceholderTokens } from '../utils/templateUtils';
 import type { TemplateItemCondition, TemplateQuestion } from '../types';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -78,7 +79,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
                   <View key={item.id}>
                     {i > 0 && <View style={styles.sep} />}
                     <View style={styles.row}>
-                      <Text style={styles.itemTitle} numberOfLines={2}>{item.title}</Text>
+                      <Text style={styles.itemTitle} numberOfLines={2}>{describePlaceholderTokens(item.title)}</Text>
                       <View style={styles.pillRow}>
                         {question.options.map(option => {
                           const on = existing?.values.includes(option) ?? false;
@@ -90,7 +91,7 @@ export function TemplateQuestionItemsSheet({ visible, templateId, question, onCl
                               activeOpacity={interaction.activeOpacity}
                               accessibilityRole="checkbox"
                               accessibilityState={{ checked: on }}
-                              accessibilityLabel={`${item.title}, ${option}`}
+                              accessibilityLabel={`${describePlaceholderTokens(item.title)}, ${option}`}
                             >
                               <Text style={[styles.pillText, on && styles.pillTextOn]} numberOfLines={1}>{option}</Text>
                             </TouchableOpacity>
