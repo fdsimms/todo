@@ -42,6 +42,8 @@ import { PaintSelectionProvider, usePaintSelectionRow } from '../components/Pain
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePullToSearch } from '../hooks/usePullToSearch';
@@ -100,6 +102,7 @@ export function TemplatesScreen() {
   // its own to land the created tasks in, so without this the run leaves no
   // trace beyond wherever its container happens to be.
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Selection is entered from the header rather than from a row: both of a
@@ -414,7 +417,11 @@ export function TemplatesScreen() {
         visible={applyTemplateObj !== null}
         template={applyTemplateObj}
         onClose={() => setApplyTemplateId(null)}
-        onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+        onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
       />
 
       <TemplateEditor
@@ -427,7 +434,11 @@ export function TemplatesScreen() {
         <TemplateAppliedToast
           count={templateAppliedCount}
           bottom={fabBottom + FAB_SIZE + spacing.md}
-          onDismiss={() => setTemplateAppliedCount(null)}
+          goTo={templateAppliedDest ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
         />
       )}
       {pullSearch.sheet}
