@@ -111,9 +111,16 @@ export function isRecipeBackfillDismissed(recipe: Recipe, fieldId: RecipeBackfil
 // exclude the way there is for a project — a recipe you haven't cooked in a
 // year is still a recipe, and the cookbook it's filed in says nothing about
 // whether its serving count is known.
-export function recipeBackfillCandidates(recipes: Recipe[], fieldId: RecipeBackfillFieldId): Recipe[] {
+//
+// `fromScratch` is the screen's redo: every recipe, including ones that already
+// have the value or were told never to be asked again.
+export function recipeBackfillCandidates(
+  recipes: Recipe[],
+  fieldId: RecipeBackfillFieldId,
+  opts: { fromScratch?: boolean } = {}
+): Recipe[] {
   return recipes
-    .filter(r => isRecipeFieldMissing(r, fieldId) && !isRecipeBackfillDismissed(r, fieldId))
+    .filter(r => opts.fromScratch || (isRecipeFieldMissing(r, fieldId) && !isRecipeBackfillDismissed(r, fieldId)))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

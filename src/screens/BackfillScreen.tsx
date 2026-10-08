@@ -17,6 +17,11 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { DetailHeader } from '../components/DetailHeader';
+import {
+  batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes,
+  canBatchApply, canBatchDismiss, type BatchScope,
+} from '../utils/backfillBatch';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -41,7 +46,7 @@ import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import {
-  GROUP_APPLY_FIELDS, backfillGroupKey, backfillGroupMembers, defaultsFromAnswer, defaultsDiffer,
+  defaultsFromAnswer, defaultsDiffer,
   NO_TASK_FIELD_DEFAULTS,
 } from '../utils/taskFieldDefaults';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
@@ -55,7 +60,7 @@ import {
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { describeAIError, suggestBackfillValues } from '../services/aiSuggestions';
 import {
-  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField,
+  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField, isCategoryFieldMissing,
   type CategoryBackfillFieldId,
 } from '../utils/categoryBackfill';
 import {
@@ -90,7 +95,7 @@ import { shorterNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Difficulty, type Effort, type FoodNutrition, type Person, type ReminderKind, type Task, type TaskFieldDefaults,
+  type Difficulty, type Effort, type FoodNutrition, type GroceryItem, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
 
@@ -286,12 +291,14 @@ const DURATION_UNIT_SEGMENTS = [
  * `renameItem` returns false there, and the collision is the *common* case in
  * a queue full of rows that all want to be called "Yogurt". See `applyRename`.
  *
- * The header's redo icon (task fields only, for now) starts the same loop
- * over from scratch — every live task for the field, including ones already
- * set — for someone who wants to revisit a field wholesale rather than just
- * fill in the gaps. It's still one task at a time through the normal
- * apply/skip/dismiss actions, so a value is only ever replaced when you
- * reach that task and set a new one; nothing is cleared in bulk up front.
+ * The header's redo icon (every pool has it) starts the same loop over from
+ * scratch — every live item for the field, including ones already set — for
+ * someone who wants to revisit a field wholesale rather than just fill in the
+ * gaps. It's still one item at a time through the normal apply/skip/dismiss
+ * actions, so a value is only ever replaced when you reach that item and set a
+ * new one; nothing is cleared in bulk up front. The two on/off flags (a
+ * category's three, a project's weekend source) turn *off* on an item that is
+ * already on, since turning on is a no-op there.
  */
 type ActiveField =
   | { kind: 'task'; id: BackfillFieldId }
@@ -502,12 +509,12 @@ export function BackfillScreen() {
     [tasks, active, fromScratch, skippedIds, categories]
   );
   const categoryQueue = useMemo(
-    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id).filter(c => !skippedIds.has(c.id)) : [],
-    [categories, active, skippedIds]
+    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id, { fromScratch }).filter(c => !skippedIds.has(c.id)) : [],
+    [categories, active, fromScratch, skippedIds]
   );
   const projectQueue = useMemo(
-    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id).filter(p => !skippedIds.has(p.id)) : [],
-    [projects, active, skippedIds]
+    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    [projects, active, fromScratch, skippedIds]
   );
   const currentTask = active?.kind === 'task'
     ? (manualCurrentId ? tasks.find(t => t.id === manualCurrentId) ?? (taskQueue[0] ?? null) : (taskQueue[0] ?? null))
@@ -516,18 +523,18 @@ export function BackfillScreen() {
     ? (manualCurrentId ? categories.find(c => c.id === manualCurrentId) ?? (categoryQueue[0] ?? null) : (categoryQueue[0] ?? null))
     : null;
   const personQueue = useMemo(
-    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id).filter(p => !skippedIds.has(p.id)) : [],
-    [people, active, skippedIds]
+    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    [people, active, fromScratch, skippedIds]
   );
   const itemQueue = useMemo(
     () => active?.kind === 'item'
-      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles).filter(i => !skippedIds.has(i.id))
+      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }).filter(i => !skippedIds.has(i.id))
       : [],
-    [groceryItems, active, skippedIds, itemSubs, nonFoodAisles]
+    [groceryItems, active, fromScratch, skippedIds, itemSubs, nonFoodAisles]
   );
   const recipeQueue = useMemo(
-    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id).filter(r => !skippedIds.has(r.id)) : [],
-    [recipes, active, skippedIds]
+    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id, { fromScratch }).filter(r => !skippedIds.has(r.id)) : [],
+    [recipes, active, fromScratch, skippedIds]
   );
   const currentProject = active?.kind === 'project'
     ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
@@ -564,26 +571,45 @@ export function BackfillScreen() {
     [taskQueue, suggestions]
   );
 
-  // "Use this answer for everything in this list": a whole group (a project, or
-  // a kind of generated task) answered with one tap instead of one per task.
-  // Armed by a toggle on the card and spent by the next answer, so it can never
-  // stay on for a card the person didn't mean it for. Off in a redo-from-scratch
-  // run, where the queue holds tasks that already have a value it would replace.
-  const [groupApply, setGroupApply] = useState(false);
-  const groupMembers = useMemo(
-    () => active?.kind === 'task' && currentTask && !fromScratch && GROUP_APPLY_FIELDS.includes(active.id)
-      ? backfillGroupMembers(taskQueue, currentTask)
-      : [],
-    [active, currentTask, fromScratch, taskQueue],
-  );
-  const groupLabel = currentTask
-    ? currentTask.generatedKind
-      ? GENERATED_KIND_SPECS[currentTask.generatedKind].label
-      : currentTask.projectId ? projectNamesById.get(currentTask.projectId) ?? null : null
-    : null;
-  const groupApplies = groupApply && groupMembers.length > 1;
-  const currentGroupKey = currentTask ? backfillGroupKey(currentTask) : null;
-  useEffect(() => { setGroupApply(false); }, [currentGroupKey, active?.kind === 'task' ? active.id : null]);
+  // "Use this answer for everything in this set": a project, a category, a
+  // stack, a kind of generated task, a person's group, an aisle or a cookbook,
+  // answered with one tap instead of one per card. Armed by a toggle on the
+  // card and spent by the next answer, so it can never stay on for a card the
+  // person didn't mean it for. Off in a redo-from-scratch run, where the queue
+  // holds cards that already have a value it would replace. The sets are built
+  // in `backfillBatch.ts`; this only holds which one is armed.
+  const [batchScopeKey, setBatchScopeKey] = useState<string | null>(null);
+  const stacks = useTaskGroupStore(useShallow(s => s.groups));
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
+  const batchOptions = useMemo(() => {
+    // Categories and projects have no set to answer for: nothing ties one to another.
+    if (fromScratch || !active || active.kind === 'category' || active.kind === 'project') return [];
+    if (!canBatchApply(active.kind, active.id) && !canBatchDismiss(active.kind, active.id)) return [];
+    if (active.kind === 'task' && currentTask) return batchOptionsFor(taskQueue, currentTask, taskBatchScopes);
+    if (active.kind === 'person' && currentPerson) return batchOptionsFor(personQueue, currentPerson, personBatchScopes);
+    if (active.kind === 'item' && currentItem) return batchOptionsFor(itemQueue, currentItem, itemBatchScopes);
+    if (active.kind === 'recipe' && currentRecipe) return batchOptionsFor(recipeQueue, currentRecipe, recipeBatchScopes);
+    return [];
+  }, [fromScratch, active, currentTask, currentPerson, currentItem, currentRecipe, taskQueue, personQueue, itemQueue, recipeQueue]);
+  const activeBatch = batchOptions.find(o => o.scope.key === batchScopeKey) ?? null;
+  // Whether the armed set is answered with the card's own value (the next
+  // answer goes to all of them) or only dismissed (a field whose members would
+  // never share a value, like an aisle's nutrition panels).
+  const batchAnswers = !!active && active.kind !== 'category' && active.kind !== 'project'
+    && canBatchApply(active.kind, active.id);
+  const scopeLabelFor = (scope: BatchScope): string | null => {
+    switch (scope.kind) {
+      case 'generated': return GENERATED_KIND_SPECS[scope.id as keyof typeof GENERATED_KIND_SPECS]?.label ?? null;
+      case 'project': return projectNamesById.get(scope.id) ?? null;
+      case 'category': return categoryLabel(scope.id, getCategoryByName);
+      case 'stack': return stacks.find(g => g.id === scope.id)?.title ?? null;
+      case 'personGroup': return personGroups.find(g => g.id === scope.id)?.name ?? null;
+      case 'aisle': return scope.id;
+      case 'cookbook': return cookbooks.find(c => c.id === scope.id)?.title ?? null;
+    }
+  };
+  const groupLabel = activeBatch ? scopeLabelFor(activeBatch.scope) : null;
+  useEffect(() => { setBatchScopeKey(null); }, [currentId, active?.kind, active?.id]);
   const canSuggest = active?.kind === 'task' && isSuggestibleBackfillField(active.id)
     && suggestRoute !== 'unavailable';
   const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
@@ -783,14 +809,14 @@ export function BackfillScreen() {
     clearSuggestions();
   };
 
-  // Widens the task queue to every live task for the field, including ones
-  // that already have a value or were dismissed — nothing is cleared by this
-  // alone, it just puts every task back in front of you to confirm or
+  // Widens the queue to every live item for the field, including ones that
+  // already have a value or were dismissed — nothing is cleared by this
+  // alone, it just puts every item back in front of you to confirm or
   // replace one at a time (see apply/dismiss below for how each one leaves
-  // the queue once you've actually reached it). Category and project fields
-  // have no redo-from-scratch mode of their own yet.
+  // the queue once you've actually reached it). Every pool has it: the header's
+  // redo icon is the same button on all six.
   const startOver = () => {
-    if (active?.kind !== 'task') return;
+    if (!active) return;
     haptics.tap();
     setFromScratch(true);
     setSkippedIds(new Set());
@@ -802,15 +828,36 @@ export function BackfillScreen() {
     // built to exclude tasks that already had one — so the answers that batch
     // came back with are about a queue this one isn't.
     clearSuggestions();
-    setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
+    const opts = { fromScratch: true };
+    setSessionTotal(
+      active.kind === 'task' ? backfillCandidates(tasks, active.id, opts).length
+      : active.kind === 'category' ? categoryBackfillCandidates(categories, active.id, opts).length
+      : active.kind === 'project' ? projectBackfillCandidates(projects, active.id, opts).length
+      : active.kind === 'person' ? personBackfillCandidates(people, active.id, opts).length
+      : active.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, opts).length
+      : recipeBackfillCandidates(recipes, active.id, opts).length
+    );
   };
 
   const confirmStartOver = () => {
-    if (active?.kind !== 'task') return;
-    const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
+    if (!active) return;
+    const label =
+      active.kind === 'task' ? BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'category' ? CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'project' ? PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
+      : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    const noun =
+      active.kind === 'task' ? 'task'
+      : active.kind === 'category' ? 'category'
+      : active.kind === 'project' ? 'project'
+      : active.kind === 'person' ? 'person'
+      : active.kind === 'item' ? 'item'
+      : 'recipe';
     Alert.alert(
-      `Redo ${label} from scratch?`,
-      `Walks through every task again, one at a time, including ones that already have a ${label} set. Each task keeps its current value until you set a new one for it, so nothing is cleared upfront.`,
+      `Redo ${label.toLowerCase()} from scratch?`,
+      `Walks through every ${noun} again, one at a time, including ones that already have this set. Each ${noun} keeps its current value until you change it, so nothing is cleared upfront.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Start over', onPress: startOver },
@@ -830,8 +877,16 @@ export function BackfillScreen() {
   // item about to leave the front of the queue is captured regardless of
   // *how* it leaves (an explicit advance() vs. a category/project apply
   // that just mutates the store and lets the live filter drop it).
+  //
+  // In a from-scratch run it also advances for every pool but tasks (whose
+  // handlers call advance() themselves): the live filter that normally drops a
+  // category, project, person, item or recipe once it has a value keeps
+  // already-set ones, so without this the same card would stay at the front.
   const recordVisited = () => {
-    if (currentId) setHistory(prev => [...prev, currentId]);
+    if (!currentId) return;
+    setBatchScopeKey(null);
+    setHistory(prev => [...prev, currentId]);
+    if (fromScratch && active?.kind !== 'task') advance(currentId);
   };
 
   // Steps back to the item recorded just before the current one. It isn't
@@ -842,7 +897,7 @@ export function BackfillScreen() {
   const goBack = () => {
     if (history.length === 0) return;
     haptics.tap();
-    setGroupApply(false);
+    setBatchScopeKey(null);
     animateLayout();
     const prevId = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
@@ -860,6 +915,16 @@ export function BackfillScreen() {
   // its one line instead of leaving the earlier answer sitting above it.
   const logSession = (entry: SessionEntry) => {
     setSessionLog(prev => [...prev.filter(e => e.itemId !== entry.itemId), entry]);
+  };
+
+  // What every answer outside the task pool files: a line in the session review
+  // (its own Undo) and one shake-to-undo entry covering all of `entries`, which is
+  // the one place a batch shows up as a single step. Tasks do this inline because
+  // their undo also carries a redo.
+  const commit = (label: string, entries: SessionEntry | SessionEntry[]) => {
+    const list = Array.isArray(entries) ? entries : [entries];
+    list.forEach(logSession);
+    setLastAction({ label, undo: () => list.forEach(e => e.undo()) });
   };
 
   // The review step's own Undo: fires the entry's captured undo, drops its
@@ -888,7 +953,7 @@ export function BackfillScreen() {
   // and applyNudge below.
   const apply = (patch: Partial<Task>, valueText: string) => {
     if (!currentTask || active?.kind !== 'task') return;
-    if (groupApplies) { applyToGroup(task => patch, valueText); return; }
+    if (activeBatch && batchAnswers) { applyToGroup(task => patch, valueText); return; }
     haptics.tap();
     animateLayout();
     recordVisited();
@@ -929,14 +994,14 @@ export function BackfillScreen() {
    */
   const applyToGroup = (patchFor: (task: Task) => Partial<Task>, valueText: string, dismissed = false) => {
     if (active?.kind !== 'task') return;
-    const batch = groupMembers;
-    if (batch.length === 0) return;
+    if (!activeBatch) return;
+    const batch = activeBatch.members as Task[];
     const offerFor = batch[0];
     haptics.success();
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    setGroupApply(false);
+    setBatchScopeKey(null);
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
     const snapshots = batch.map(t => ({ ...t }));
     batch.forEach((task, i) => {
@@ -966,7 +1031,7 @@ export function BackfillScreen() {
       for (const task of batch) next.add(task.id);
       return next;
     });
-    offerGroupDefault(offerFor, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
+    offerGroupDefault(offerFor, activeBatch.scope, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed));
   };
 
   /**
@@ -975,10 +1040,13 @@ export function BackfillScreen() {
    * than part of the toggle, because answering the backlog and deciding what
    * future tasks start with are two different calls.
    */
-  const offerGroupDefault = (sample: Task, answer: Partial<TaskFieldDefaults> | null) => {
-    if (!answer) return;
-    const kind = sample.generatedKind;
-    const projectId = sample.projectId;
+  const offerGroupDefault = (sample: Task, scope: BatchScope, answer: Partial<TaskFieldDefaults> | null) => {
+    // Only the two sets that own a default can keep one: a category or a stack
+    // has nowhere to store it, and reading the sample's own project there would
+    // set a default for a set the person never chose.
+    if (!answer || (scope.kind !== 'generated' && scope.kind !== 'project')) return;
+    const kind = scope.kind === 'generated' ? sample.generatedKind : null;
+    const projectId = scope.kind === 'project' ? sample.projectId : null;
     const current = kind
       ? useSettingsStore.getState().generatedTaskDefaults[kind]
       : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
@@ -1161,25 +1229,25 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const categoryName = currentCategory.name;
     const fieldId = active.id;
-    switch (fieldId) {
-      case 'vacation': setCategoryHideOnVacation(categoryName, true); break;
-      case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, true); break;
-      case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, true); break;
-    }
-    // Always off before this fires (that's what made the category a
-    // candidate), so the undo is just the same setter with the value flipped
-    // back — no snapshot needed the way the project/person cases below take.
-    logSession({
+    // Off in the normal queue (that's what made the category a candidate), so
+    // the button turns it on. A redo also reaches categories that are already
+    // on, and for those the same button turns it off, so the undo is the same
+    // setter with the value flipped back either way.
+    const turnOn = isCategoryFieldMissing(currentCategory, fieldId);
+    const set = (value: boolean) => {
+      switch (fieldId) {
+        case 'vacation': setCategoryHideOnVacation(categoryName, value); break;
+        case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, value); break;
+        case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, value); break;
+      }
+    };
+    set(turnOn);
+    const fieldLabel = CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label;
+    commit(turnOn ? `${fieldLabel} turned on` : `${fieldLabel} turned off`, {
       itemId: currentCategory.id,
       title: categoryLabel(categoryName, getCategoryByName),
-      valueText: CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label,
-      undo: () => {
-        switch (fieldId) {
-          case 'vacation': setCategoryHideOnVacation(categoryName, false); break;
-          case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, false); break;
-          case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, false); break;
-        }
-      },
+      valueText: turnOn ? fieldLabel : `Turned off: ${fieldLabel}`,
+      undo: () => set(!turnOn),
     });
   };
 
@@ -1200,7 +1268,7 @@ export function BackfillScreen() {
     // what was actually committed, so the two can't disagree.
     const fields = nudgeFieldsFor('scheduled', fromCadenceParts(nudgeDraft));
     updateProject(projectId, fields);
-    logSession({
+    commit('Reminder cadence set', {
       itemId: projectId,
       title: currentProject.title,
       valueText: describeCadence(fields.nudgeCadenceDays),
@@ -1210,7 +1278,8 @@ export function BackfillScreen() {
 
   // A plain flag, so unlike applyNudge above there is no draft to commit and
   // the undo is the one field. Doesn't call advance() either: setting the value
-  // is what drops the project out of the live queue.
+  // is what drops the project out of the live queue (a redo run advances in
+  // recordVisited instead).
   const applyWeekendSource = () => {
     if (!currentProject) return;
     haptics.tap();
@@ -1219,11 +1288,14 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const projectId = currentProject.id;
     const before = { weekendSource: currentProject.weekendSource };
-    updateProject(projectId, { weekendSource: true });
-    logSession({
+    // On in the normal queue's sense of missing (off); a redo also reaches
+    // projects that already have it on, and for those the button turns it off.
+    const turnOn = !currentProject.weekendSource;
+    updateProject(projectId, { weekendSource: turnOn });
+    commit(turnOn ? 'Weekend suggestion turned on' : 'Weekend suggestion turned off', {
       itemId: projectId,
       title: currentProject.title,
-      valueText: 'Suggested for a free weekend',
+      valueText: turnOn ? 'Suggested for a free weekend' : 'No longer suggested for a free weekend',
       undo: () => updateProject(projectId, before),
     });
   };
@@ -1247,7 +1319,7 @@ export function BackfillScreen() {
     };
     updatePerson(personId, { birthdayMonth: month, birthdayDay: day, birthYear: year });
     const bDate = new Date(year ?? 2000, month - 1, day);
-    logSession({
+    commit('Birthday set', {
       itemId: personId,
       title: displayNameOf(currentPerson),
       valueText: year ? format(bDate, 'MMM d, yyyy') : format(bDate, 'MMM d'),
@@ -1304,7 +1376,7 @@ export function BackfillScreen() {
         updatePerson(mate.id, personCadencePatch(mate, days));
       }
     }
-    logSession({
+    commit('Reminder cadence set', {
       itemId: personId,
       title: displayNameOf(currentPerson),
       valueText: includeGroup
@@ -1327,7 +1399,7 @@ export function BackfillScreen() {
     const personId = currentPerson.id;
     const before = { askAbout: currentPerson.askAbout };
     updatePerson(personId, { askAbout: text });
-    logSession({
+    commit('Ask-about note set', {
       itemId: personId,
       title: displayNameOf(currentPerson),
       valueText: text,
@@ -1340,23 +1412,31 @@ export function BackfillScreen() {
     if (!currentPerson || !text) return;
     haptics.tap();
     animateLayout();
+    // The armed set (a person's group, often one household) gets the same
+    // place; the card's own person is always among its members.
+    const targets = activeBatch && batchAnswers ? (activeBatch.members as Person[]) : [currentPerson];
     recordVisited();
     setManualCurrentId(null);
-    const personId = currentPerson.id;
-    const before = { location: currentPerson.location };
-    updatePerson(personId, { location: text });
-    logSession({
-      itemId: personId,
-      title: displayNameOf(currentPerson),
-      valueText: text,
-      undo: () => updatePerson(personId, before),
+    const entries: SessionEntry[] = targets.map(person => {
+      const before = { location: person.location };
+      updatePerson(person.id, { location: text });
+      return {
+        itemId: person.id,
+        title: displayNameOf(person),
+        valueText: text,
+        undo: () => updatePerson(person.id, before),
+      };
     });
+    commit(targets.length > 1 ? `Location set for ${targets.length} people` : 'Location set', entries);
+    if (targets.length > 1) {
+      setSkippedIds(prev => new Set([...prev, ...targets.map(p => p.id)]));
+    }
   };
 
   const skip = () => {
     if (!currentId) return;
     haptics.tap();
-    setGroupApply(false);
+    setBatchScopeKey(null);
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
@@ -1371,7 +1451,7 @@ export function BackfillScreen() {
   // run of it).
   const dismiss = () => {
     if (!active) return;
-    if (active.kind === 'task' && currentTask && groupApplies) {
+    if (active.kind === 'task' && currentTask && activeBatch) {
       const fieldId = active.id;
       applyToGroup(task => dismissBackfillField(task, fieldId), 'Left unset', true);
       return;
@@ -1406,7 +1486,7 @@ export function BackfillScreen() {
         categoryName,
         dismissCategoryBackfillField(currentCategory, active.id).backfillDismissedFields
       );
-      logSession({
+      commit('Left unset', {
         itemId: currentCategory.id,
         title: categoryLabel(categoryName, getCategoryByName),
         valueText: "Won't ask again",
@@ -1417,48 +1497,45 @@ export function BackfillScreen() {
       const projectId = currentProject.id;
       const before = { backfillDismissedFields: currentProject.backfillDismissedFields };
       updateProject(projectId, dismissProjectBackfillField(currentProject, active.id));
-      logSession({
+      commit('Left unset', {
         itemId: projectId,
         title: currentProject.title,
         valueText: "Won't ask again",
         undo: () => updateProject(projectId, before),
       });
-    } else if (active.kind === 'person') {
-      if (!currentPerson) return;
-      const personId = currentPerson.id;
-      const before = { backfillDismissedFields: currentPerson.backfillDismissedFields };
-      updatePerson(personId, dismissPersonBackfillField(currentPerson, active.id));
-      logSession({
-        itemId: personId,
-        title: displayNameOf(currentPerson),
-        valueText: "Won't ask again",
-        undo: () => updatePerson(personId, before),
-      });
-    } else if (active.kind === 'item') {
-      if (!currentItem) return;
-      const itemId = currentItem.id;
-      const before = currentItem.backfillDismissedFields;
-      setItemBackfillDismissedFields(itemId, dismissItemBackfillField(currentItem, active.id).backfillDismissedFields);
-      logSession({
-        itemId,
-        title: currentItem.name,
-        valueText: "Won't ask again",
-        undo: () => setItemBackfillDismissedFields(itemId, before),
-      });
     } else {
-      if (!currentRecipe) return;
-      const recipeId = currentRecipe.id;
-      const before = currentRecipe.backfillDismissedFields;
-      setRecipeBackfillDismissedFields(
-        recipeId,
-        dismissRecipeBackfillField(currentRecipe, active.id).backfillDismissedFields
-      );
-      logSession({
-        itemId: recipeId,
-        title: currentRecipe.name,
-        valueText: "Won't ask again",
-        undo: () => setRecipeBackfillDismissedFields(recipeId, before),
-      });
+      // The other three pools can dismiss a whole armed set at once. Dismissing
+      // is about the field, never the card, so each member records it on itself.
+      const batch = activeBatch ? activeBatch.members : null;
+      let entries: SessionEntry[] = [];
+      if (active.kind === 'person') {
+        const fieldId = active.id;
+        const people = (batch as Person[] | null) ?? (currentPerson ? [currentPerson] : []);
+        entries = people.map(person => {
+          const before = { backfillDismissedFields: person.backfillDismissedFields };
+          updatePerson(person.id, dismissPersonBackfillField(person, fieldId));
+          return { itemId: person.id, title: displayNameOf(person), valueText: "Won't ask again", undo: () => updatePerson(person.id, before) };
+        });
+      } else if (active.kind === 'item') {
+        const fieldId = active.id;
+        const items = (batch as GroceryItem[] | null) ?? (currentItem ? [currentItem] : []);
+        entries = items.map(item => {
+          const before = item.backfillDismissedFields;
+          setItemBackfillDismissedFields(item.id, dismissItemBackfillField(item, fieldId).backfillDismissedFields);
+          return { itemId: item.id, title: item.name, valueText: "Won't ask again", undo: () => setItemBackfillDismissedFields(item.id, before) };
+        });
+      } else {
+        const fieldId = active.id;
+        const recipesToDismiss = (batch as Recipe[] | null) ?? (currentRecipe ? [currentRecipe] : []);
+        entries = recipesToDismiss.map(recipe => {
+          const before = recipe.backfillDismissedFields;
+          setRecipeBackfillDismissedFields(recipe.id, dismissRecipeBackfillField(recipe, fieldId).backfillDismissedFields);
+          return { itemId: recipe.id, title: recipe.name, valueText: "Won't ask again", undo: () => setRecipeBackfillDismissedFields(recipe.id, before) };
+        });
+      }
+      if (entries.length === 0) return;
+      commit(entries.length > 1 ? `Left unset for ${entries.length}` : 'Left unset', entries);
+      if (entries.length > 1) setSkippedIds(prev => new Set([...prev, ...entries.map(e => e.itemId)]));
     }
   };
 
@@ -1475,7 +1552,7 @@ export function BackfillScreen() {
     const before = currentItem.varietyOfKey;
     setVarietyOfKey(itemId, key);
     const label = groceryItems.find(i => i.nameKey === key)?.name ?? key;
-    logSession({
+    commit('Variety set', {
       itemId,
       title: currentItem.name,
       valueText: label,
@@ -1518,7 +1595,7 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const itemId = currentItem.id;
     const addedIds = added.map(s => s.item.id);
-    logSession({
+    commit('Substitutes added', {
       itemId,
       title: currentItem.name,
       valueText: describeSubstitutes(nowSubs)!,
@@ -1547,7 +1624,7 @@ export function BackfillScreen() {
     // item that already has a panel, and undo has to put that one back.
     const before = currentItem.nutrition;
     setItemNutrition(itemId, nutrition);
-    logSession({
+    commit(nutrition ? 'Nutrition figures set' : 'Nutrition figures cleared', {
       itemId,
       title,
       // The database's own name for the food when the search supplied one,
@@ -1621,7 +1698,7 @@ export function BackfillScreen() {
     recordVisited();
     setManualCurrentId(null);
     if (!renameItem(itemId, trimmed)) return;
-    logSession({
+    commit('Item renamed', {
       itemId,
       title,
       valueText: trimmed,
@@ -1650,51 +1727,44 @@ export function BackfillScreen() {
     if (!currentRecipe || active?.kind !== 'recipe' || recipeCountDraft == null) return;
     haptics.tap();
     animateLayout();
+    // The armed cookbook gets the same number; the card's own recipe is always
+    // among its members. Only the three fields a cookbook plausibly shares are
+    // batchable (`canBatchApply`), never the cooked weight of a particular dish.
+    const targets = activeBatch && batchAnswers ? (activeBatch.members as Recipe[]) : [currentRecipe];
     recordVisited();
     setManualCurrentId(null);
-    const recipeId = currentRecipe.id;
-    const title = currentRecipe.name;
     const value = recipeCountDraft;
-    if (active.id === 'servings') {
-      const before = currentRecipe.servings;
-      // Restored as a pair: the max is only ever meaningful alongside the
-      // count (see Recipe.servingsMax), and putting one back without the other
-      // would leave a range half-undone.
-      const beforeMax = currentRecipe.servingsMax;
-      setServings(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: `Serves ${value}`,
-        undo: () => setServings(recipeId, before, beforeMax),
-      });
-    } else if (active.id === 'cookTime') {
-      const before = currentRecipe.estimatedMinutes;
-      setEstimatedMinutes(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: formatDuration(value),
-        undo: () => setEstimatedMinutes(recipeId, before),
-      });
-    } else if (active.id === 'prepTime') {
-      const before = currentRecipe.prepMinutes;
-      setPrepMinutes(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: formatDuration(value),
-        undo: () => setPrepMinutes(recipeId, before),
-      });
-    } else {
-      const before = currentRecipe.cookedWeightG;
+    const fieldId = active.id;
+    const entries: SessionEntry[] = targets.map(recipe => {
+      const recipeId = recipe.id;
+      const title = recipe.name;
+      if (fieldId === 'servings') {
+        const before = recipe.servings;
+        // Restored as a pair: the max is only ever meaningful alongside the
+        // count (see Recipe.servingsMax), and putting one back without the other
+        // would leave a range half-undone.
+        const beforeMax = recipe.servingsMax;
+        setServings(recipeId, value);
+        return { itemId: recipeId, title, valueText: `Serves ${value}`, undo: () => setServings(recipeId, before, beforeMax) };
+      }
+      if (fieldId === 'cookTime') {
+        const before = recipe.estimatedMinutes;
+        setEstimatedMinutes(recipeId, value);
+        return { itemId: recipeId, title, valueText: formatDuration(value), undo: () => setEstimatedMinutes(recipeId, before) };
+      }
+      if (fieldId === 'prepTime') {
+        const before = recipe.prepMinutes;
+        setPrepMinutes(recipeId, value);
+        return { itemId: recipeId, title, valueText: formatDuration(value), undo: () => setPrepMinutes(recipeId, before) };
+      }
+      const before = recipe.cookedWeightG;
       setCookedWeight(recipeId, value);
-      logSession({
-        itemId: recipeId,
-        title,
-        valueText: `${value} g`,
-        undo: () => setCookedWeight(recipeId, before),
-      });
+      return { itemId: recipeId, title, valueText: `${value} g`, undo: () => setCookedWeight(recipeId, before) };
+    });
+    const fieldLabel = RECIPE_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label;
+    commit(targets.length > 1 ? `${fieldLabel} set for ${targets.length} recipes` : `${fieldLabel} set`, entries);
+    if (targets.length > 1) {
+      setSkippedIds(prev => new Set([...prev, ...targets.map(r => r.id)]));
     }
   };
 
@@ -1961,6 +2031,80 @@ export function BackfillScreen() {
 
   const doneCount = Math.max(0, sessionTotal - queueLength);
 
+  // The header's redo icon, the same on every pool's page. Defined once so the
+  // six headers can't drift, which is how only tasks came to have it.
+  const redoLabel =
+    active.kind === 'task' ? BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'category' ? CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'project' ? PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
+    : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+  const redoButton = (
+    <TouchableOpacity
+      onPress={confirmStartOver}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`Redo ${redoLabel.toLowerCase()} from scratch`}
+    >
+      <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+
+  // One row per set the card can be answered for, the same on every pool that
+  // has any (see `backfillBatch.ts`). Tapping a row arms that set and tapping
+  // it again disarms it; arming one disarms the others. It is spent by the next
+  // answer or skip, and the row says how many cards it will reach.
+  const scopePhrase = (scope: BatchScope): string => {
+    const name = scopeLabelFor(scope);
+    switch (scope.kind) {
+      case 'generated': return name ? `in ${name}` : 'of this kind';
+      case 'project': return name ? `in project ${name}` : 'in this project';
+      case 'category': return name ? `in category ${name}` : 'in this category';
+      case 'stack': return name ? `in stack ${name}` : 'in this stack';
+      case 'personGroup': return name ? `in group ${name}` : 'in this group';
+      case 'aisle': return name ? `in the ${name} aisle` : 'in this aisle';
+      case 'cookbook': return name ? `in cookbook ${name}` : 'in this cookbook';
+    }
+  };
+  const batchToggle = batchOptions.length === 0 ? null : (
+    <>
+      {batchOptions.map(option => {
+        const armed = option.scope.key === batchScopeKey;
+        const count = option.members.length;
+        const title = batchAnswers
+          ? `Use the next answer for all ${count} ${scopePhrase(option.scope)}`
+          : `Don't ask again for all ${count} ${scopePhrase(option.scope)}`;
+        return (
+          <PressableScale
+            key={option.scope.key}
+            style={styles.groupApplyRow}
+            onPress={() => { haptics.tap(); setBatchScopeKey(armed ? null : option.scope.key); }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: armed }}
+            accessibilityLabel={title}
+          >
+            <Ionicons
+              name={armed ? 'checkbox' : 'square-outline'}
+              size={iconSize.md}
+              color={armed ? colors.accent : colors.controlBorder}
+            />
+            <View style={styles.groupApplyBody}>
+              <Text style={styles.groupApplyTitle}>{title}</Text>
+              {armed && (
+                <Text style={styles.groupApplyHint}>
+                  {batchAnswers
+                    ? `Leaving it unset also applies to all ${count}. A shake undoes it.`
+                    : `Applies to all ${count} when you tap Don't ask again. A shake undoes it.`}
+                </Text>
+              )}
+            </View>
+          </PressableScale>
+        );
+      })}
+    </>
+  );
+
   if (active.kind === 'task') {
     const field = BACKFILL_FIELDS.find(f => f.id === active.id)!;
     // In a from-scratch run, "dismiss" often lands on a task that already has
@@ -1975,16 +2119,7 @@ export function BackfillScreen() {
           title={field.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={
-            <TouchableOpacity
-              onPress={confirmStartOver}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
-            >
-              <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
-          }
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2047,31 +2182,7 @@ export function BackfillScreen() {
               />
             )}
 
-            {groupMembers.length > 1 && (
-              <PressableScale
-                style={styles.groupApplyRow}
-                onPress={() => { haptics.tap(); setGroupApply(v => !v); }}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: groupApplies }}
-                accessibilityLabel={`Use the next answer for all ${groupMembers.length} tasks${groupLabel ? ` in ${groupLabel}` : ''}`}
-              >
-                <Ionicons
-                  name={groupApplies ? 'checkbox' : 'square-outline'}
-                  size={iconSize.md}
-                  color={groupApplies ? colors.accent : colors.controlBorder}
-                />
-                <View style={styles.groupApplyBody}>
-                  <Text style={styles.groupApplyTitle}>
-                    {`Use the next answer for all ${groupMembers.length}${groupLabel ? ` in ${groupLabel}` : ''}`}
-                  </Text>
-                  {groupApplies && (
-                    <Text style={styles.groupApplyHint}>
-                      {`Leaving it unset also applies to all ${groupMembers.length}. A shake undoes it.`}
-                    </Text>
-                  )}
-                </View>
-              </PressableScale>
-            )}
+            {batchToggle}
 
             <FieldControl
               field={active.id}
@@ -2155,6 +2266,7 @@ export function BackfillScreen() {
     const currentCategoryTaskCount = currentCategory
       ? tasks.filter(t => t.category === currentCategory.name && !t.completed && !t.archived).length
       : 0;
+    const currentCategoryIsOn = !!currentCategory && !isCategoryFieldMissing(currentCategory, active.id);
 
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -2162,6 +2274,7 @@ export function BackfillScreen() {
           title={categoryField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2212,10 +2325,12 @@ export function BackfillScreen() {
               style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={applyCategory}
               accessibilityRole="button"
-              accessibilityLabel={categoryField.label}
+              accessibilityLabel={currentCategoryIsOn ? `Turn off ${categoryField.label}` : categoryField.label}
             >
               <Ionicons name={CATEGORY_FIELD_ICONS[active.id].button} size={iconSize.md} color={colors.onAccent} />
-              <Text style={styles.toggleButtonText}>{categoryField.label}</Text>
+              <Text style={styles.toggleButtonText}>
+                {currentCategoryIsOn ? `Turn off: ${categoryField.label}` : categoryField.label}
+              </Text>
             </PressableScale>
 
             <View style={styles.actionRow}>
@@ -2275,6 +2390,7 @@ export function BackfillScreen() {
           title={personField.shortLabel}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2506,6 +2622,8 @@ export function BackfillScreen() {
               </View>
             )}
 
+            {batchToggle}
+
             <View style={styles.actionRow}>
               <PressableScale
                 style={styles.skipButton}
@@ -2571,6 +2689,7 @@ export function BackfillScreen() {
           title={projectField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2663,10 +2782,14 @@ export function BackfillScreen() {
                   style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
                   onPress={applyWeekendSource}
                   accessibilityRole="button"
-                  accessibilityLabel={`Let the weekend task name "${currentProject.title}"`}
+                  accessibilityLabel={currentProject.weekendSource
+                    ? `Stop letting the weekend task name "${currentProject.title}"`
+                    : `Let the weekend task name "${currentProject.title}"`}
                 >
                   <Ionicons name="sunny" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Suggest it for a free weekend</Text>
+                  <Text style={styles.toggleButtonText}>
+                    {currentProject.weekendSource ? 'Stop suggesting it for a free weekend' : 'Suggest it for a free weekend'}
+                  </Text>
                 </PressableScale>
               </View>
             )}
@@ -2718,6 +2841,7 @@ export function BackfillScreen() {
           title={recipeField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2802,6 +2926,8 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
 
+            {batchToggle}
+
             <View style={styles.actionRow}>
               <PressableScale
                 style={styles.skipButton}
@@ -2877,6 +3003,7 @@ export function BackfillScreen() {
         title={itemField.label}
         onBack={backToFields}
         backAccessibilityLabel="Back to fields"
+        actions={redoButton}
       />
       {sessionTotal > 0 && (
         <View style={styles.progressRow}>
@@ -3015,6 +3142,8 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
           )}
+
+          {batchToggle}
 
           <View style={styles.actionRow}>
             <PressableScale

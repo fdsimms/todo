@@ -68,9 +68,17 @@ export function isCategoryBackfillDismissed(category: Category, fieldId: Categor
 // Every category is a candidate — unlike tasks there's no subtask/completed/
 // archived state to exclude, and no recurrence gate: all three fields are
 // meaningful for any category regardless of what's filed under it.
-export function categoryBackfillCandidates(categories: Category[], fieldId: CategoryBackfillFieldId): Category[] {
+//
+// `fromScratch` is the screen's redo: every category, whether it already has the
+// flag on or was told never to be asked again. Nothing is written by being in
+// the queue; a value changes only when the card is answered.
+export function categoryBackfillCandidates(
+  categories: Category[],
+  fieldId: CategoryBackfillFieldId,
+  opts: { fromScratch?: boolean } = {}
+): Category[] {
   return categories
-    .filter(c => isCategoryFieldMissing(c, fieldId) && !isCategoryBackfillDismissed(c, fieldId))
+    .filter(c => opts.fromScratch || (isCategoryFieldMissing(c, fieldId) && !isCategoryBackfillDismissed(c, fieldId)))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

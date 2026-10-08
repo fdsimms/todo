@@ -110,6 +110,19 @@ export function isItemFieldMissing(
 }
 
 /**
+ * Whether `fieldId` is a question for this item at all, set or not. Only
+ * `nutrition` has a gate that is about the item rather than the value: a
+ * non-food row is an answer ("not food"), so a redo has no figures to ask it for.
+ */
+export function isItemFieldApplicable(
+  item: GroceryItem,
+  fieldId: ItemBackfillFieldId,
+  nonFoodAisles: readonly string[] = []
+): boolean {
+  return fieldId !== 'nutrition' || !isNonFoodAisle(item.aisle, nonFoodAisles);
+}
+
+/**
  * Whether the user has told the backfill screen not to ask about `fieldId`
  * on this item again — "this genuinely isn't a variety of anything", not
  * "not right now" (that's the screen's own session-only `skippedIds`, which
@@ -122,14 +135,20 @@ export function isItemBackfillDismissed(item: GroceryItem, fieldId: ItemBackfill
 // Every catalog row is a candidate — there's no `inCatalog`/archived state to
 // exclude any more (see GroceryItem's own note on why), so what's on the
 // shelf and what's only in history are the same pool.
+//
+// `fromScratch` is the screen's redo: every item the field applies to,
+// including ones that already have a value or were told never to be asked again.
 export function itemBackfillCandidates(
   items: GroceryItem[],
   fieldId: ItemBackfillFieldId,
   links: ItemSubLink[] = [],
-  nonFoodAisles: readonly string[] = []
+  nonFoodAisles: readonly string[] = [],
+  opts: { fromScratch?: boolean } = {}
 ): GroceryItem[] {
   return items
-    .filter(i => isItemFieldMissing(i, fieldId, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, fieldId))
+    .filter(i => opts.fromScratch
+      ? isItemFieldApplicable(i, fieldId, nonFoodAisles)
+      : isItemFieldMissing(i, fieldId, links, items, nonFoodAisles) && !isItemBackfillDismissed(i, fieldId))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
