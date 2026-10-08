@@ -44,6 +44,8 @@ import { WeightChart } from '../components/WeightChart';
 import { LogWeightSheet } from '../components/LogWeightSheet';
 import { WeightGoalSheet } from '../components/WeightGoalSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * How much of the fetched window the chart actually draws.
@@ -101,6 +103,7 @@ const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
 export function WeightScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -355,6 +358,8 @@ export function WeightScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
@@ -566,6 +571,7 @@ export function WeightScreen() {
         currentKg={latest?.kilograms ?? null}
         onLogWeight={openLog}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
   );

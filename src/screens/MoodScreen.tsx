@@ -67,6 +67,8 @@ import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -95,6 +97,7 @@ export function MoodScreen() {
   const screenSettings = useScreenSettings('Mood', 'Mood settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
 
   const logs = useMoodStore(s => s.logs);
@@ -454,6 +457,8 @@ export function MoodScreen() {
         />
       ) : (
         <ScrollView
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
@@ -965,6 +970,7 @@ export function MoodScreen() {
         milestone={editingMilestone}
         onClose={closeMilestoneSheet}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
   );

@@ -14,6 +14,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import {
   canClaimReward,
   coinBalance,
+  coinsForPrice,
   lastClaimedAt,
   latestLossFor,
   sortCoinEntries,
@@ -63,6 +64,12 @@ interface RewardStore {
    */
   addReward: (title: string, cost: number, details?: Partial<RewardDetails>) => Reward | null;
   updateReward: (id: string, patch: Partial<Pick<Reward, 'title' | 'cost'> & RewardDetails>) => void;
+  /**
+   * Rewrites the coin cost of every dollar-priced reward from its price at
+   * `rate` (coins per dollar). The one place a saved cost moves on its own,
+   * and only for a reward whose price is in dollars. Returns how many changed.
+   */
+  repriceDollarRewards: (rate: number) => number;
   /** Deletes the reward. Coins already spent on it stay spent. */
   deleteReward: (id: string) => void;
   /**
@@ -79,7 +86,7 @@ interface RewardStore {
 const ANNOUNCE_WINDOW_MS = 60_000;
 
 /** The optional half of a reward, as the form edits it. */
-export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId'>;
+export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor'>;
 
 /** Blank text is no value, so a cleared field stores null rather than "". */
 function cleanText(text: string | null | undefined): string | null {
@@ -173,6 +180,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         note: cleanText(details?.note),
         oneTime: !!taskId || !!details?.oneTime,
         taskId,
+        priceMinor: details?.priceMinor ?? null,
       };
       dbInsertReward(reward);
       set(s => ({ rewards: sortRewards([...s.rewards, reward]) }));
@@ -194,9 +202,26 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         note: patch.note !== undefined ? cleanText(patch.note) : current.note,
         oneTime: !!taskId || (patch.oneTime !== undefined ? patch.oneTime : current.oneTime),
         taskId,
+        priceMinor: patch.priceMinor !== undefined ? patch.priceMinor : current.priceMinor,
       };
       dbUpdateReward(next);
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));
+    },
+
+    repriceDollarRewards(rate) {
+      if (!(rate > 0)) return 0;
+      let changed = 0;
+      const next = get().rewards.map(r => {
+        if (r.priceMinor === null) return r;
+        const cost = coinsForPrice(r.priceMinor, rate);
+        if (cost === r.cost) return r;
+        changed += 1;
+        const updated = { ...r, cost };
+        dbUpdateReward(updated);
+        return updated;
+      });
+      if (changed > 0) set({ rewards: sortRewards(next) });
+      return changed;
     },
 
     deleteReward(id) {

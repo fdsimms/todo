@@ -190,7 +190,7 @@ only the fallback until the first sync.
 | `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
 | `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
-| `create_reward` | **Write.** Adds a reward at a cost in coins. Refused while rewards are off. |
+| `create_reward` | **Write.** Adds a reward at a cost in coins, or at a dollar `price` converted at the person's own rate (refused until they set a weekly reward budget). Refused while rewards are off. |
 | `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |
 | `delete_reward` | **Write.** Deletes a reward. Coins already spent on it stay spent. |
 | `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its item off, with no extra coins. |

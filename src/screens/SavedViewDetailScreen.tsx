@@ -36,6 +36,8 @@ import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { isHeldBack } from '../utils/visibilityUtils';
 import { describeSavedView, filterTasksForView } from '../utils/savedViews';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   SavedViewDetail: { viewId: string };
@@ -117,6 +119,7 @@ export function SavedViewDetailScreen() {
     });
   };
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
   const elevatedCell = useElevatedCellRenderer<Task>(t => t.id, expandedTaskId);
   // A RootStack card covers the tab bar entirely, so the bulk bar sits above
   // the home indicator rather than above a tab bar.
@@ -256,13 +259,14 @@ export function SavedViewDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            ref={scrollTop.ref}
             refreshControl={pullSearch.refreshControl}
-            ref={keyboardScroll.ref}
             scrollEnabled={!painting && !draggingSubtask}
             data={viewTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = subtasksOf(item.id);
@@ -344,6 +348,7 @@ export function SavedViewDetailScreen() {
             setExpandedTaskId(null);
           }}
         />
+        <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       </View>
     </SpotlightProvider>

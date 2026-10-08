@@ -25,6 +25,8 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
@@ -40,6 +42,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 export function ArchivedScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -148,9 +151,11 @@ export function ArchivedScreen() {
     if (!selectionMode) enterSelectionMode(taskId);
   }, [selectionMode, enterSelectionMode]);
 
+  // The tab bar floats over the screen rather than reserving space, so the
+  // list always clears it; selection mode stacks the bulk bar on top of that.
   const listBottomPadding = selectionMode
     ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-    : 40;
+    : tabBarHeight + spacing.md;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -183,6 +188,8 @@ export function ArchivedScreen() {
 
       <PaintSelectionProvider {...paintProps}>
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
           data={filtered}
           keyExtractor={item => item.id}
@@ -260,6 +267,7 @@ export function ArchivedScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
   );

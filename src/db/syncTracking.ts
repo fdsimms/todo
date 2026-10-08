@@ -415,6 +415,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // mean the same thing on every device.
   'rewardGoalId',
   'rewardListProjectId',
+  // The weekly spend that sets the coin-to-dollar rate. Synced because
+  // dollar-priced rewards rewrite their synced `cost` from it.
+  'rewardWeeklyBudgetMinor',
   // Synced with the bounties it limits, which ride on synced task rows.
   'bountyLimit',
   'autoRemoveExpiredTasks',

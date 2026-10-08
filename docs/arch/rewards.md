@@ -109,6 +109,25 @@ days at your current pace").
   frequency, not a price, so it's priced by the same rule; until there's a week of history that rule
   uses `DEFAULT_EARN_RATE_PER_DAY`, which prices ideas only and never describes a pace.
 
+## Pricing in dollars
+
+A reward that costs real money can carry a dollar price (`Reward.priceMinor`, minor units). The
+exchange rate is `coinsPerDollar`: the coins earned in a week (`earnRatePerDay` times 7) divided by
+the **weekly reward budget** the person types (`rewardWeeklyBudgetMinor`). Both halves are theirs,
+so the rate is never a number the app invented, and there is no rate until both exist.
+
+- **`cost` stays the one coin figure.** Claiming, sorting, the goal, the pace line and the MCP
+  replica all keep reading `cost`. A dollar-priced reward has its `cost` rewritten from the price by
+  `repriceDollarRewards` when the rate moves, so nothing downstream needed to learn about dollars.
+- **This is the one place a saved cost moves on its own**, and it was asked for: a dollar price
+  should follow what you earn. A reward priced in coins is never touched, which keeps "a price
+  never changes on its own" true for everything else in this file.
+- **Repricing runs from the Rewards screen** (an effect on the rate), so a phone that hasn't opened
+  it lately, or the MCP replica, can claim at the last repriced cost.
+- **A typed price replaces the coin field** in the form rather than sitting beside it, so there is
+  never a second answer to the same question. A price that can't be converted (no budget yet) blocks
+  saving and says why, instead of quietly saving the coin field's value.
+
 ## A reward's details
 
 - **Link and note** are plain optional fields. The link takes the same values as `Task.linkUrl` (a

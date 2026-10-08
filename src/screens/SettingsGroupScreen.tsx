@@ -28,6 +28,8 @@ import { DataResetSettings } from './settings/DataResetSettings';
 import { SyncSettings } from './settings/SyncSettings';
 import { AboutSettings } from './settings/AboutSettings';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   SettingsGroup: {
@@ -58,6 +60,7 @@ export function SettingsGroupScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { scrollRef, contentRef, reportRow, scrollProps } = useSettingsFocusScroll();
+  const scrollTop = useListScrollToTop({ ref: scrollRef });
 
   // Straight off the route param, not state: a search pushes this screen fresh
   // each time, so there is nothing to reset, and the highlight ends by fading
@@ -80,6 +83,7 @@ export function SettingsGroupScreen() {
       >
         <ScrollView
           ref={scrollRef}
+          {...scrollTop.listProps}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
           {...scrollProps}
@@ -116,6 +120,7 @@ export function SettingsGroupScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }
