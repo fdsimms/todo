@@ -2303,6 +2303,13 @@ export interface Task {
   // means the last day of the month. Mutually exclusive with
   // deadlineOffsetDays; recomputed the same way on every new occurrence.
   deadlineMonthDay: number | null;
+  // Optional "HH:MM" the deadline closes at on its day. Null is a deadline for
+  // the day as a whole (every deadline before this field existed). It is its
+  // own column rather than a time carried inside `deadline`, because `deadline`
+  // is a day stored as local noon and a relative rule (deadlineOffsetDays,
+  // deadlineMonthDay) recomputes that day each occurrence; the time rides
+  // unchanged through every recompute. Read it through `deadlineMoment`.
+  deadlineTime?: string | null;
   // Whether this deadline is mirrored as an all-day event on the calendar
   // picked in Settings › Calendar (useSettingsStore's deadlineCalendarId) —
   // opt-in per task, never a blanket export of every deadline in the app.

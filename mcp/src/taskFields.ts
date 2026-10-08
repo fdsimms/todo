@@ -169,6 +169,8 @@ export interface TaskFieldsInput {
   dueDate?: string | null;
   deferUntil?: string | null;
   deadline?: string | null;
+  /** HH:MM (24-hour) the deadline closes at on its day; null makes it a whole-day deadline. */
+  deadlineTime?: string | null;
   /**
    * Days from the project's event date (negative is before), resolved into
    * `dueDate` / `deadline` by the replica, which knows the project. Never
@@ -358,6 +360,12 @@ export function taskFieldsPatch(
     if (v === undefined) continue;
     if (v !== null && !isIsoDate(v)) errors.push(`${key} must be an ISO date-time, or null.`);
     else patch[key] = v === null ? null : localDateInput(v);
+  }
+  // Clearing the deadline takes its time with it, as the editor's clear does.
+  if (input.deadline === null && input.deadlineTime === undefined) patch.deadlineTime = null;
+  if (input.deadlineTime !== undefined) {
+    if (input.deadlineTime !== null && !HHMM.test(input.deadlineTime)) errors.push('deadlineTime must be a 24-hour "HH:MM" time, or null.');
+    else patch.deadlineTime = input.deadlineTime;
   }
   // A deadline worked out from the date (`deadlineOffsetDays`, or
   // `deadlineMonthDay` on a monthly repeat) is recomputed against every new

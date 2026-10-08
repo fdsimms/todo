@@ -235,6 +235,7 @@ export function seedDemoData(): void {
     effort: 2,
     dueDate: today.toISOString(),
     deadline: addDays(today, 2).toISOString(),
+    deadlineTime: '17:00',
     tags: ['admin'],
     pinned: true,
     // This is also the first task the seeded focus session below queues up —

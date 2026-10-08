@@ -944,6 +944,7 @@ describe('demo mode', () => {
 
     const roadmap = tasks.find(t => t.title === 'Send the Q3 roadmap to Priya');
     expect(roadmap?.logCompletionToCalendar).toBe(true);
+    expect(roadmap?.deadlineTime).toBe('17:00');
 
     useDemoStore.getState().exitDemoMode();
   });

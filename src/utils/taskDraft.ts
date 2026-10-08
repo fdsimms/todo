@@ -223,6 +223,7 @@ export function newTaskFromDraft(
     deadline: deadlineInstant(draft.deadline ?? null),
     deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
     deadlineMonthDay: draft.deadlineMonthDay ?? null,
+    deadlineTime: draft.deadlineTime ?? null,
     deferUntil: draft.deferUntil ?? null,
     timeSegments: seedFromCategory ? resolveTimeSegments(draft, defaults.timeSegment) : (draft.timeSegments ?? []),
     windowStart: draft.windowStart ?? null,

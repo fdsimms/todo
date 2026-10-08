@@ -1011,6 +1011,8 @@ const taskFieldsShape = {
   dueDate: isoDateTime.describe('YYYY-MM-DD (read as that day in their own time zone) or an ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
   deferUntil: isoDateTime.describe('YYYY-MM-DD or an ISO date-time. Hides the task until then.'),
   deadline: isoDateTime.describe('ISO date-time. Shown on the task; does not hide or move it.'),
+  deadlineTime: z.string().nullable().optional()
+    .describe('HH:MM (24-hour) the deadline closes at on its day, shown on the task row and counted late from that minute. null makes it a deadline for the whole day. Needs a deadline, or a deadlineRule.'),
   reminderTime: isoDateTime.describe('ISO date-time of a reminder.'),
   timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional()
     .describe('The part of the day it shows up in. Usually one.'),

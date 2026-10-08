@@ -28,6 +28,10 @@ import {
   seriesMonthDaysFrom,
   getNextSeriesDates,
   recurrenceAnchorDayFor,
+  deadlineMoment,
+  isDeadlineTimePassed,
+  formatDeadlineLabel,
+  formatHHMM,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -1760,5 +1764,46 @@ describe('liveStreakCount', () => {
     const old = new Date(2025, 5, 1);
     expect(liveStreakCount({ ...daily(old), polarity: 'negative' })).toBe(3);
     expect(liveStreakCount({ ...daily(old), chainItems: [{ title: 'a' }, { title: 'b' }] as Task['chainItems'], chainStepOnSchedule: false })).toBe(3);
+  });
+});
+
+describe('deadline time of day', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10 2025 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const noon = (d: number) => new Date(2025, 5, d, 12, 0, 0).toISOString();
+
+  it('has no moment without a time', () => {
+    expect(deadlineMoment(noon(10), null, '00:00')).toBeNull();
+    expect(isDeadlineTimePassed(noon(10), null, new Date(2025, 5, 10, 23, 0), '00:00')).toBe(false);
+  });
+
+  it('places the time on the deadline day', () => {
+    expect(deadlineMoment(noon(10), '17:30', '00:00')).toEqual(new Date(2025, 5, 10, 17, 30));
+  });
+
+  it('rolls a time before the day reset onto the next date', () => {
+    expect(deadlineMoment(noon(10), '01:00', '04:00')).toEqual(new Date(2025, 5, 11, 1, 0));
+  });
+
+  it('is passed from that minute and not before', () => {
+    expect(isDeadlineTimePassed(noon(10), '09:59', new Date(2025, 5, 10, 10, 0), '00:00')).toBe(true);
+    expect(isDeadlineTimePassed(noon(10), '17:00', new Date(2025, 5, 10, 10, 0), '00:00')).toBe(false);
+  });
+
+  it('adds the time to the day word', () => {
+    expect(formatDeadlineLabel(noon(10), '17:00', '00:00')).toBe(`Today ${formatHHMM('17:00')}`);
+    expect(formatDeadlineLabel(noon(11), '09:00', '00:00')).toBe(`Tomorrow ${formatHHMM('09:00')}`);
+  });
+
+  it('leaves the label alone without a time or once the day is past', () => {
+    expect(formatDeadlineLabel(noon(10), null, '00:00')).toBe('Today');
+    expect(formatDeadlineLabel(noon(8), '17:00', '00:00')).toBe('2d overdue');
   });
 });

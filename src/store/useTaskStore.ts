@@ -3174,6 +3174,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'deadline' in updates ||
         'deadlineOffsetDays' in updates ||
         'deadlineMonthDay' in updates ||
+        'deadlineTime' in updates ||
         'deadlineOnCalendar' in updates ||
         'completed' in updates ||
         'archived' in updates ||
@@ -7831,6 +7832,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deadline: null,
       deadlineOffsetDays: null,
       deadlineMonthDay: null,
+      deadlineTime: null,
       deferUntil: null,
       timeSegments: [],
       windowStart: null,
@@ -8055,6 +8057,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deadline: null,
       deadlineOffsetDays: null,
       deadlineMonthDay: null,
+      deadlineTime: null,
       deferUntil: null,
       timeSegments: [],
       windowStart: null,

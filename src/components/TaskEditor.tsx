@@ -89,7 +89,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
@@ -526,6 +526,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [deadlineMonthDay, setDeadlineMonthDay] = useState<number | null>(null);
   const [deadlineOnCalendar, setDeadlineOnCalendar] = useState(false);
+  const [deadlineTime, setDeadlineTime] = useState<string | null>(null);
+  const [deadlineTimePickerOpen, setDeadlineTimePickerOpen] = useState(false);
+  const [deadlineTimePickerDate, setDeadlineTimePickerDate] = useState(new Date());
   const [logCompletionToCalendar, setLogCompletionToCalendar] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
@@ -923,6 +926,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeadlineOffsetDays(task.deadlineOffsetDays ?? null);
       setDeadlineMonthDay(task.deadlineMonthDay ?? null);
       setDeadlineOnCalendar(task.deadlineOnCalendar ?? false);
+      setDeadlineTime(task.deadlineTime ?? null);
       setLogCompletionToCalendar(task.logCompletionToCalendar ?? false);
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
@@ -1017,7 +1021,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1111,6 +1115,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       deadlineMonthDay: task?.deadlineMonthDay ?? null,
       deadlineOnCalendar: task?.deadlineOnCalendar ?? false,
+      deadlineTime: task?.deadlineTime ?? null,
       logCompletionToCalendar: task?.logCompletionToCalendar ?? false,
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task ? (task.windowStart ?? null) : (initialDraft?.windowStart ?? null),
@@ -1562,6 +1567,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // task that no longer has one doesn't quietly keep the flag armed for
       // whenever a deadline comes back.
       deadlineOnCalendar: deadline ? deadlineOnCalendar : false,
+      // Like the calendar flag: a time with no deadline to close at is dropped.
+      deadlineTime: deadline ? deadlineTime : null,
       logCompletionToCalendar,
       timeSegments, windowStart, windowEnd, targetCount,
       penaltyMinutes,
@@ -2218,6 +2225,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setReminderTime(subMinutes(atTime, defaultReminderLeadMinutes));
   };
 
+  const openDeadlineTimePicker = () => {
+    setDeadlineTimePickerDate(hhmmToDate(deadlineTime ?? '17:00'));
+    setDeadlineTimePickerOpen(true);
+  };
+
+  const confirmDeadlineTimePicker = () => {
+    setDeadlineTime(dateToHHMM(deadlineTimePickerDate));
+    setDeadlineTimePickerOpen(false);
+  };
+
   const confirmWindowPicker = () => {
     if (windowPickerMode !== 'none') {
       commitWindowValue(windowPickerMode, windowPickerDate);
@@ -2335,6 +2352,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOffsetDays,
       deadlineMonthDay,
       deadlineOnCalendar,
+      deadlineTime: deadline ? deadlineTime : null,
       logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
@@ -2949,7 +2967,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             showTimeOfDay={false}
             showSuggest={false}
             onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
-            onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
+            onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
             onCancel={() => setShowDeadlinePicker(false)}
           />
           <TaskRelationPickerSheet
@@ -4633,15 +4651,50 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit, separate from Date' : undefined}
               value={
                 deadlineOffsetDays !== null
-                  ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
+                  ? (deadline ? `${formatDeadlineLabel(deadline.toISOString(), deadlineTime)} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
                   : deadlineMonthDay !== null
-                  ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
-                  : (deadline ? formatDeadlineDate(deadline.toISOString()) : undefined)
+                  ? (deadline ? `${formatDeadlineLabel(deadline.toISOString(), deadlineTime)} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
+                  : (deadline ? formatDeadlineLabel(deadline.toISOString(), deadlineTime) : undefined)
               }
               onPress={() => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); }}
-              onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); } : undefined}
+              onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); } : undefined}
             />
             {!!deadline && (
+              <>
+                <View style={styles.windowPillRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.timePill, styles.windowPill,
+                      !!deadlineTime && styles.timePillActive,
+                      deadlineTimePickerOpen && styles.timePillEditing,
+                    ]}
+                    onPress={openDeadlineTimePicker}
+                    accessibilityRole="button"
+                    accessibilityLabel={deadlineTime ? `Deadline time ${formatHHMM(deadlineTime)}` : 'Add a time to the deadline'}
+                  >
+                    <Text style={[styles.timePillText, !!deadlineTime && styles.timePillTextActive]}>
+                      {deadlineTime ? formatHHMM(deadlineTime) : 'Add a time'}
+                    </Text>
+                  </TouchableOpacity>
+                  {deadlineTime !== null && (
+                    <TouchableOpacity
+                      style={[styles.timePill, styles.windowPill]}
+                      onPress={() => { setDeadlineTime(null); setDeadlineTimePickerOpen(false); }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Make the deadline the whole day"
+                    >
+                      <Text style={styles.timePillText}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {deadlineTimePickerOpen && (
+                  <InlineTimePicker
+                    value={deadlineTimePickerDate}
+                    onChange={setDeadlineTimePickerDate}
+                    onCancel={() => setDeadlineTimePickerOpen(false)}
+                    onConfirm={confirmDeadlineTimePicker}
+                  />
+                )}
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => {
@@ -4678,6 +4731,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                 )}
               </TouchableOpacity>
+              </>
             )}
             {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) && (
               <>

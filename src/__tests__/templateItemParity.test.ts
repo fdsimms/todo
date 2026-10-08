@@ -72,7 +72,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   // quotaIntervalMinutes derives targetCount from the time window, which needs
   // the window and the interval edited together.
   'not offered on a template yet': [
-    'showStreak', 'streakRequiresWindow', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
+    'showStreak', 'streakRequiresWindow', 'deadlineMonthDay', 'deadlineTime', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
     'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',
