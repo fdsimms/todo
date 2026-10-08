@@ -4814,10 +4814,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.accent,
     overflow: 'hidden', // clips the fill to the circle
   },
-  // The brim. Matches circleCompleting so a met target ends on the same green a
+  // The brim. Matches circleCompleting so a met target ends on the same gold a
   // ticked checkbox does, with the fill already that colour underneath it.
   circleQuotaDone: {
-    borderColor: colors.green,
+    // The same gold the fill ends on (`colors.done`), on both the ring and the
+    // box's own background. A green ring around a gold fill left the row's
+    // background showing through the antialiased seam between them, and the
+    // box's own fill means nothing is left to peek through at the corners.
+    borderColor: colors.done,
+    backgroundColor: colors.done,
   },
   // A broken day on a negative habit. Filled rather than outlined because it is
   // the one state on this row that wants to be legible at a glance from the top
