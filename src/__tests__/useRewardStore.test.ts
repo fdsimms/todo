@@ -232,3 +232,38 @@ describe('rewards', () => {
     expect(state().balance()).toBe(2);
   });
 });
+
+describe('dollar-priced rewards', () => {
+  it('keeps the price beside the coin cost', () => {
+    const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    expect(r.priceMinor).toBe(450);
+    expect(state().addReward('Episode', 10)!.priceMinor).toBeNull();
+  });
+
+  it('rewrites only dollar-priced costs when the rate moves', () => {
+    const coffee = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    const episode = state().addReward('Episode', 10)!;
+    expect(state().repriceDollarRewards(20)).toBe(1);
+    expect(state().rewards.find(r => r.id === coffee.id)!.cost).toBe(90);
+    expect(state().rewards.find(r => r.id === episode.id)!.cost).toBe(10);
+  });
+
+  it('writes nothing when the clean cost is unchanged or there is no rate', () => {
+    state().addReward('Coffee', 45, { priceMinor: 450 });
+    expect(state().repriceDollarRewards(10)).toBe(0);
+    expect(state().repriceDollarRewards(0)).toBe(0);
+  });
+
+  it('claims at the repriced cost', () => {
+    state().recordEarn('t1', 100, 'Run', AT);
+    const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    state().repriceDollarRewards(20);
+    expect(state().claimReward(r.id)).toMatchObject({ amount: 90 });
+  });
+
+  it('clears the price when an edit passes null', () => {
+    const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    state().updateReward(r.id, { priceMinor: null });
+    expect(state().rewards[0].priceMinor).toBeNull();
+  });
+});
