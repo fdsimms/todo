@@ -244,7 +244,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, productsOutPlan, +16 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, NUMBER_WORDS, NUMBER_WORD_ALT, parseCount, +3 more
-- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +49 more
+- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +52 more
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
@@ -286,7 +286,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +5 more
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
-- `src/utils/rainSkip.ts` — RAIN_SKIP_PRESETS_MM, RAIN_SKIP_PRESETS_IN, RainUnit, rainUnitFor, rainPresetToMm, formatRain, rainSkipOptions, canSkipForRain, recentRainMm, shouldSkipForRain, +1 more
+- `src/utils/rainSkip.ts` — RAIN_SKIP_PRESETS_MM, RAIN_SKIP_PRESETS_IN, RainUnit, rainUnitFor, rainPresetToMm, formatRain, rainSkipOptions, defaultRainSkipMm, canSkipForRain, recentRainMm, +2 more
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring, MatchExcerpt, matchExcerpt
 - `src/utils/reachOutIntent.ts` — ReachOutKind, PendingReachOut, REACH_OUT_PROMPT_WINDOW_MS, serializePendingReachOut, parsePendingReachOut, isReachOutPromptLive, isStampFromEarlierLaunch, reachOutHistoryTitle, reachOutPromptMessage
 - `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, +9 more

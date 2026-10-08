@@ -232,6 +232,8 @@ export interface TaskDraft {
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceHolidays?: HolidayRule | null;
+  // Task.rainSkipMm, from quick add's "unless it rains" or a duplicate.
+  rainSkipMm?: number | null;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
@@ -1141,7 +1143,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
-      setRainSkipMm(null);
+      setRainSkipMm(initialDraft?.rainSkipMm ?? null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriorityTouched(initialDraft?.priority !== undefined);
@@ -1281,7 +1283,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceHolidays: task ? (task.recurrenceHolidays ?? null) : (initialDraft?.recurrenceHolidays ?? null),
-      rainSkipMm: task?.rainSkipMm ?? null,
+      rainSkipMm: task ? (task.rainSkipMm ?? null) : (initialDraft?.rainSkipMm ?? null),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
       recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),

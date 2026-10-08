@@ -1,6 +1,6 @@
 import {
   rainUnitFor, rainPresetToMm, formatRain, rainSkipOptions, canSkipForRain, recentRainMm,
-  shouldSkipForRain, describeRainSkip,
+  shouldSkipForRain, describeRainSkip, defaultRainSkipMm,
 } from '../utils/rainSkip';
 
 const water = {
@@ -26,6 +26,11 @@ describe('units', () => {
     expect(formatRain(25.4, 'in')).toBe('1 in');
     expect(formatRain(6.35, 'mm')).toBe('6.4 mm');
     expect(formatRain(12.7, 'mm')).toBe('13 mm');
+  });
+
+  it('defaults a bare "unless it rains" to the second preset in either unit', () => {
+    expect(defaultRainSkipMm('mm')).toBe(5);
+    expect(defaultRainSkipMm('in')).toBe(6.35);
   });
 
   it('offers four thresholds in the user\'s unit', () => {

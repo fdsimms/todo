@@ -309,6 +309,14 @@ describe('buildDraftsFromTemplate', () => {
     expect(weekly).toMatchObject({ recurrenceWeekOrdinal: null, quotaReminders: false, targetUnit: null, targetCount: null });
   });
 
+  it('seeds a rain skip only on a repeat with days to skip', () => {
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBe(5);
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'hours', rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBeNull();
+    expect(buildDraftsFromTemplate([makeItem({ rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBeNull();
+    // A template stored before the field reads as never skipping.
+    expect(normalizeTemplateItem({ id: 'x', title: 'Old' }).rainSkipMm).toBeNull();
+  });
+
   it('seeds a chain step per repeat only on a chain that repeats', () => {
     const chain = { chainEnabled: true, chainItems: [{ id: 'a', title: 'A', estimatedMinutes: null }, { id: 'b', title: 'B', estimatedMinutes: null }], chainStepOnSchedule: true };
     expect(buildDraftsFromTemplate([makeItem({ ...chain, recurrenceType: 'daily' })], noAnchors)[0].chainStepOnSchedule).toBe(true);

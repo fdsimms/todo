@@ -61,6 +61,15 @@ export function rainSkipOptions(unit: RainUnit): { mm: number; label: string }[]
   });
 }
 
+/**
+ * The threshold a bare "unless it rains" sets: the second preset in the
+ * person's unit (5 mm, or a quarter inch), enough to have soaked the ground
+ * rather than wet it.
+ */
+export function defaultRainSkipMm(unit: RainUnit): number {
+  return rainSkipOptions(unit)[1].mm;
+}
+
 /** Whether a task can skip for rain: a repeating one with days to skip. */
 export function canSkipForRain(
   task: Pick<Task, 'recurrenceType'> & Partial<Pick<Task, 'polarity' | 'parentId'>>,

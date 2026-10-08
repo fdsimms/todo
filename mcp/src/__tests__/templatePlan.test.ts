@@ -96,6 +96,14 @@ describe('what the normalizers would have swallowed', () => {
       .toContain('recurrenceType must be one of');
   });
 
+  it('holds a rain skip to the range and repeats a task can take', () => {
+    expect(errors(plan({ items: [{ title: 'Water', recurrenceType: 'daily', rainSkipMm: 5 }] }))).toEqual([]);
+    expect(errors(plan({ items: [{ title: 'Water', recurrenceType: 'daily', rainSkipMm: 0 }] })))
+      .toEqual(['item "Water" rainSkipMm must be more than 0 and at most 200 millimetres, or null.']);
+    expect(errors(plan({ items: [{ title: 'Water', recurrenceType: 'hours', rainSkipMm: 5 }] })))
+      .toEqual(['item "Water" repeats hourly, which has no days to skip, so it cannot take rainSkipMm.']);
+  });
+
   it('needs a completion choice to offer two options', () => {
     expect(errors(plan({ items: [{ title: 'Pick', deliverableKind: 'choice', deliverableOptions: ['Only'] }] }))[0])
       .toContain('needs at least two deliverableOptions');
@@ -407,8 +415,9 @@ describe('templateWarnings', () => {
       { title: 'C', dueOffsetDays: 0, deferOffsetDays: 2 },
       { title: 'D', windowStart: '22:00', windowEnd: '02:00' },
       { title: 'E', category: 'Nowhere' },
+      { title: 'F', rainSkipMm: 5 },
     ]), ['Home']);
-    expect(warnings.map(w => w.slice(0, 10))).toEqual(['item "A" h', 'item "B" w', 'item "C" i', 'item "D" h', 'item "E" i']);
+    expect(warnings.map(w => w.slice(0, 10))).toEqual(['item "A" h', 'item "B" w', 'item "C" i', 'item "D" h', 'item "E" i', 'item "F" s']);
   });
 
   it('is quiet for an ordinary template', () => {

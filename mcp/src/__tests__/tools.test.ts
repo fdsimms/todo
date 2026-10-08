@@ -272,7 +272,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
       dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationStart: null, vacationEnd: null, vacationDrivenBy: null, waterUnit: 'ml',
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
       kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, rewardGoalId: null, rewardWeeklyBudgetMinor: null, bountyLimit: 1, completedRetentionDays: null,
-      calendarRequestsOn: false,
+      calendarRequestsOn: false, unitSystem: 'metric', weatherTasks: true,
     }),
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),

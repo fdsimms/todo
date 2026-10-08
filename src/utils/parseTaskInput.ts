@@ -1423,6 +1423,73 @@ export function parseMeterInput(input: string): ParsedMeter | null {
   return { every, unit: match[2], meterName: match[3].trim(), cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedRainSkip {
+  /**
+   * The amount named, in millimetres ("unless it rains half an inch" isn't
+   * read, "unless it rains 10mm" is), or null for the bare phrase, which the
+   * caller fills with its default preset in the person's own unit.
+   */
+  mm: number | null;
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "water the garden unless it rains", "...unless it's rained 10mm". Only the
+// "unless"/"skip if" forms: a bare "rain" in a title ("buy a rain jacket") is
+// a word in the task's name, and "if it rains" alone reads as a plan for a wet
+// day ("bring the chairs in if it rains") rather than a reason to skip one.
+const RAIN_SKIP_PATTERN = /\b(?:unless|skip(?:\s+it)?\s+(?:if|when))\s+it(?:'s|’s|\s+has)?\s+rain(?:s|ed|ing)?(?:\s+(?:at\s+least\s+|more\s+than\s+|over\s+)?(\d+(?:\.\d+)?)\s*(mm|millimet(?:er|re)s?|cm|centimet(?:er|re)s?|in|inch(?:es)?|")(?=\s|$|[.,;!?]))?/i;
+
+/** The most a threshold can be: the bound the MCP server applies too. */
+const RAIN_SKIP_MAX_MM = 200;
+
+/**
+ * Pulls "unless it rains" out of a quick-add title, so a repeating task skips
+ * a day it rained (`Task.rainSkipMm`). Same shape as `parseWeatherWaitInput`;
+ * the caller offers it only on a repeat with days to skip (`canSkipForRain`).
+ */
+export function parseRainSkipInput(input: string): ParsedRainSkip | null {
+  const match = input.match(RAIN_SKIP_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  let mm: number | null = null;
+  if (match[1] !== undefined) {
+    const amount = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    const factor = unit.startsWith('m') ? 1 : unit.startsWith('c') ? 10 : 25.4;
+    mm = Math.round(amount * factor * 100) / 100;
+    if (!(mm > 0) || mm > RAIN_SKIP_MAX_MM) return null;
+  }
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { mm, cleanTitle, matchStart, matchEnd };
+}
+
+/**
+ * `parseTaskInput`, reading past a trailing "unless it rains". The schedule
+ * phrase has to reach the end of the title, so "water the garden every 2 days
+ * unless it rains" would offer nothing at all: the rain phrase blocks the
+ * repeat, and the rain phrase is only offered once there is a repeat. So when
+ * the line ends in one, the schedule is read from what comes before it and the
+ * phrase is kept on the clean title, where the rain tooltip finds it next.
+ * A one-off date is read the same way: the phrase then stays in the title,
+ * which is where it would have stayed anyway, and the date isn't lost to it.
+ */
+export function parseTaskInputAheadOfRainSkip(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
+  const direct = parseTaskInput(input, now, clockNow);
+  if (direct) return direct;
+  const rain = parseRainSkipInput(input);
+  if (!rain || input.slice(rain.matchEnd).trim()) return null;
+  const parsed = parseTaskInput(input.slice(0, rain.matchStart), now, clockNow);
+  if (!parsed) return null;
+  return { ...parsed, cleanTitle: `${parsed.cleanTitle} ${input.slice(rain.matchStart, rain.matchEnd)}` };
+}
+
 export interface ParsedSunWindow {
   /** Which bound of the time window the phrase sets. */
   bound: 'start' | 'end';

@@ -1789,6 +1789,7 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceHolidays: null,
+    rainSkipMm: null,
     recurrenceCount: null,
     vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, weatherWait: null, difficulty: null,
     estimatedMinutes: null,

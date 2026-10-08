@@ -4125,6 +4125,9 @@ export interface TemplateItem {
   // Task.recurrenceHolidays, carried through. Optional so a template stored
   // before it reads as happening anyway.
   recurrenceHolidays?: HolidayRule | null;
+  // Task.rainSkipMm, carried through. Optional, like recurrenceHolidays: a
+  // template stored before it reads as never skipping.
+  rainSkipMm?: number | null;
   recurrenceCount: number | null;
   // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
   // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the

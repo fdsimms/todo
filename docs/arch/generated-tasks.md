@@ -622,6 +622,12 @@ one. Those three rules and the reasoning behind them are in
     - It runs from the catch-up passes and again whenever a snapshot lands
       (`useWeatherWaitSync`), never in demo mode, and only does anything with the weather switch on,
       since nothing else fetches the rainfall.
+    - **Set from the editor's repeat, a template item, quick add or MCP.** Quick add's phrase is
+      `parseRainSkipInput` ("unless it rains", optionally with an amount); a bare one takes
+      `defaultRainSkipMm` in the person's unit. It is offered only once the repeat is set and the
+      weather switch is on. The schedule phrase must reach the end of the title, so
+      `parseTaskInputAheadOfRainSkip` reads the repeat past a trailing rain phrase and keeps the
+      phrase for the next tooltip; otherwise "every 2 days unless it rains" would offer neither.
   - **It ships off**, like `pantryCheck` and `pantryReview`, and for a reason of its own on top of
     theirs: it's the one generator that also wants a location fix, which is not something to start
     reading without being asked.
