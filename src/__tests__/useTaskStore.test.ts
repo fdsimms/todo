@@ -5063,13 +5063,13 @@ describe('checkPantryReviewTasks', () => {
 
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
-  /** A row still inside its purchase window: a `guessed` card, the common case. */
+  /** A row past half its purchase window but not lapsed: a `guessed` card, the common case. */
   const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
     nameFromScan: false,
     id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: i,
-    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), purchaseIntervalDays: null, createdAt: daysAgo(366),
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(70), purchaseIntervalDays: null, createdAt: daysAgo(366),
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,

@@ -1260,7 +1260,9 @@ write. "Computed first, corrected second" is the rule; this is the second half, 
   coat.
 - **A right swipe is not a no-op**, which is why `guessed` rows are in the deck rather than filtered
   out: confirming converts a guess with a shelf life into an explicit assertion, and renews the
-  window. **A `lapsed` row is not in `pantryEntries` at all** — `probablyHaveReason` has already
+  window. **A `guessed` row is carded only once `PANTRY_GUESS_DOUBT_FRACTION` (half) of its purchase
+  window has gone**, since a purchase from this morning is the strongest evidence the app ever has.
+  **A `lapsed` row is not in `pantryEntries` at all** — `probablyHaveReason` has already
   stopped answering for it — so the deck is built from the catalog directly rather than from that
   list, and it is the one population the pantry has no other way to show.
 - **Three exclusions, each of which would otherwise be a card with no honest answer.** A staple
