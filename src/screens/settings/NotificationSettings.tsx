@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Alert, AppState, Linking } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore, DEFAULT_REMINDER_LEAD_OPTIONS } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
@@ -25,11 +25,14 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
 import { alertPermissionOff } from '../../utils/permissionAlert';
+import { haptics } from '../../utils/haptics';
+import { navigateToSettingsEntry, openSettingsGroup } from '../../navigation/openSettings';
 
 const REMINDER_LEAD_OPTIONS: SegmentOption<number | null>[] =
   DEFAULT_REMINDER_LEAD_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 export function NotificationSettings() {
+  const navigation = useNavigation();
   const dailyAgendaEnabled = useSettingsStore(s => s.dailyAgendaEnabled);
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
@@ -404,6 +407,29 @@ export function NotificationSettings() {
           selected={defaultReminderLeadMinutes}
           onSelect={setDefaultReminderLeadMinutes}
           accessibilityLabelFor={o => `Default reminder lead time ${o.label}`}
+        />
+      </SettingsSection>
+
+      {/* Reminders and nudges come from more than this group: tasks the app
+          adds on its own, and projects that bring themselves back up, each
+          keep their own times where their feature lives. Links rather than
+          copies, so there is still one place each setting is changed. */}
+      <SettingsSection
+        label="Other reminders and nudges"
+        footer="Each of these has its own times and switches."
+      >
+        <SettingsRow
+          icon="sparkles-outline"
+          label="Tasks the app adds"
+          hint="Travel, birthdays, empty weekends, meals, journal and more, each with its own time of day."
+          onPress={() => { haptics.tap(); openSettingsGroup(navigation, 'generated'); }}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="folder-open-outline"
+          label="Project nudges"
+          hint="How often a quiet project is brought back up."
+          onPress={() => { haptics.tap(); navigateToSettingsEntry(navigation, 'defaultProjectNudgeCadence'); }}
         />
       </SettingsSection>
     </>

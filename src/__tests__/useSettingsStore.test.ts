@@ -192,6 +192,24 @@ describe('setDayResetTime', () => {
   });
 });
 
+describe('setMoodNudgeAfterDays', () => {
+  it('keeps a value in range and persists it', () => {
+    useSettingsStore.getState().setMoodNudgeAfterDays(5);
+    expect(useSettingsStore.getState().moodNudgeAfterDays).toBe(5);
+    expect(dbSetSetting).toHaveBeenCalledWith('moodNudgeAfterDays', '5');
+  });
+
+  it('floors at one day, since a nudge after none would fire on any logged day', () => {
+    useSettingsStore.getState().setMoodNudgeAfterDays(0);
+    expect(useSettingsStore.getState().moodNudgeAfterDays).toBe(1);
+  });
+
+  it('caps at two weeks, the longest run the setting row offers', () => {
+    useSettingsStore.getState().setMoodNudgeAfterDays(40);
+    expect(useSettingsStore.getState().moodNudgeAfterDays).toBe(14);
+  });
+});
+
 // ─── setThemeMode ─────────────────────────────────────────────────────────────
 
 describe('setThemeMode', () => {

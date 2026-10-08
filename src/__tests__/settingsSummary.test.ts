@@ -19,6 +19,8 @@ const defaults: SettingsSummaryInput = {
   calendarIds: [],
   healthReadEnabled: false,
   vacationMode: false,
+  writesCalendar: false,
+  appBlocking: false,
   autoRemoveExpiredTasks: null,
   autoCompleteProjectsOnDone: false,
   appLockEnabled: false,
@@ -93,7 +95,8 @@ describe('settingsSummaries', () => {
     // Eight lines all reading "Off" makes a screen look broken rather than
     // default, so a quiet group says what it covers instead.
     it('says what tasks & projects covers', () => {
-      expect(summarise().tasksProjects).toBe('Vacation, expiry, auto-complete');
+      expect(summarise().tasksProjects).toBe('New task defaults, rescheduling, projects');
+      expect(summarise().focus).toBe('Work stretches, breaks, blocking apps');
     });
 
     it('says what privacy & AI covers', () => {
@@ -101,11 +104,12 @@ describe('settingsSummaries', () => {
     });
 
     it('switches to naming what is on', () => {
-      expect(summarise({ vacationMode: true }).tasksProjects).toBe('Vacation on');
-      expect(summarise({ vacationMode: true, autoRemoveExpiredTasks: 0 }).tasksProjects)
-        .toBe('Vacation on · Expired tasks removed immediately');
-      expect(summarise({ vacationMode: true, autoRemoveExpiredTasks: 7 }).tasksProjects)
-        .toBe('Vacation on · Expired tasks removed after 7 days');
+      expect(summarise({ autoRemoveExpiredTasks: 0 }).tasksProjects)
+        .toBe('Expired tasks removed immediately');
+      expect(summarise({ autoRemoveExpiredTasks: 7 }).tasksProjects)
+        .toBe('Expired tasks removed after 7 days');
+      expect(summarise({ appBlocking: true }).focus).toBe('Blocking apps');
+      expect(summarise({ vacationMode: true }).dayTime).toContain('Vacation on');
       expect(summarise({ appLockEnabled: true, hasApiKey: true }).privacyAi)
         .toBe('App lock on · API key set');
     });
@@ -155,17 +159,23 @@ describe('settingsSummaries', () => {
   });
 
   it('counts the calendars being read', () => {
-    expect(summarise({ calendarReadEnabled: true, calendarIds: ['a'] }).capture)
+    expect(summarise({ calendarReadEnabled: true, calendarIds: ['a'] }).calendar)
       .toContain('Reading 1 calendar');
-    expect(summarise({ calendarReadEnabled: true, calendarIds: ['a', 'b'] }).capture)
+    expect(summarise({ calendarReadEnabled: true, calendarIds: ['a', 'b'] }).calendar)
       .toContain('Reading 2 calendars');
+  });
+
+  it('says so when events are written to a calendar even though none is read', () => {
+    expect(summarise({ writesCalendar: true }).calendar).toBe('Writing events');
+    expect(summarise({ writesCalendar: true, calendarReadEnabled: true, calendarIds: ['a'] }).calendar)
+      .toBe('Reading 1 calendar · Writing events');
   });
 
   it('says nothing about calendars when the switch is on but none is picked', () => {
     // The two can disagree — an unreadable calendarIds row parses to none —
     // and claiming a read that isn't happening is the failure to avoid.
     const none = summarise({ calendarReadEnabled: true, calendarIds: [] });
-    expect(none.capture).not.toContain('Reading');
-    expect(none.capture).toBe('Off. Say “Hey Siri, remind me to…”');
+    expect(none.calendar).not.toContain('Reading');
+    expect(none.calendar).toBe('Off. Your calendar is not read or written');
   });
 });

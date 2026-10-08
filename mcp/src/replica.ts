@@ -3333,7 +3333,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const where = group?.screen ? `Menu › ${group.title}` : `Settings › ${group?.title ?? r.entry.groupId}`;
         return {
           label: r.entry.label,
-          path: `${where} › ${r.entry.section} › ${r.entry.label}`,
+          // A setting that lives on its own screen has no Settings row: its
+          // section already says which screen and which button.
+          path: r.entry.screen
+            ? `${r.entry.section} › ${r.entry.label}`
+            : `${where} › ${r.entry.section} › ${r.entry.label}`,
           ...(r.matchedVia ? { matchedVia: r.matchedVia } : {}),
         };
       });
@@ -4057,7 +4061,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     requestCalendarEvent(input: CalendarRequestInput): CalendarRequest {
       if (!db.dbGetSetting('calendarRequestDeviceId')) {
         throw new Error(
-          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Reminders & Calendar › Add Claude’s events to.'
+          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Calendar › Add Claude’s events to.'
         );
       }
       const request: CalendarRequest = {

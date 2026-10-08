@@ -278,6 +278,7 @@ export function CalendarSettings() {
   const showCalendarsRow = permission === 'granted' && (calendarReadEnabled || pickerOpen);
 
   return (
+    <>
     <SettingsSection
       label="Calendar"
       footer="Reads the calendars you pick, so the app knows what else is on a day. Nothing is added, changed or deleted. This is read-only. A Google calendar shows up here once the account is added in the Settings app under Calendar › Accounts; it's read the same way as any other calendar. An event marked Free, and anything lasting all day, doesn't count as time taken."
@@ -553,9 +554,17 @@ export function CalendarSettings() {
         </>
       )}
 
-      {/* Shown whether or not the calendar is read: a task's own location has
-          the same directions button. */}
-      <View style={styles.sep} />
+    </SettingsSection>
+
+    {/* Shown whether or not the calendar is read: a task's own location has
+        the same directions button, and the event sheet's place lookup and
+        saved events work on events written from the app. A section of its own
+        so the rows that read the calendar and the rows that add to it aren't
+        one run of eighteen. */}
+    <SettingsSection
+      label="Adding events and directions"
+      footer="What the app uses when you add an event from it or tap directions on an event or task."
+    >
       <SettingsRow
         entryId="mapsApp"
         icon="navigate-outline"
@@ -587,5 +596,6 @@ export function CalendarSettings() {
       <SavedPlacesRows />
       <SavedEventsRows />
     </SettingsSection>
+    </>
   );
 }
