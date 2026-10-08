@@ -83,6 +83,11 @@ interface Props {
   /** Bulk selection is on: swiping stands down, same as every task row's. */
   selectionMode?: boolean;
   onPressEdit: (groupId: string) => void;
+  /**
+   * Opens the stack's whole roster on a screen of its own. Omitted, no button
+   * renders (a project's section has no such screen).
+   */
+  onPressOpen?: (groupId: string) => void;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
   /**
@@ -123,6 +128,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   onSwipeSelect,
   selectionMode = false,
   onPressEdit,
+  onPressOpen,
   onDrag,
   pinned = false,
   pinDisabled = false,
@@ -337,6 +343,17 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 )}
               </TouchableOpacity>
 
+              {onPressOpen && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); onPressOpen(group.id); }}
+                  hitSlop={8}
+                  style={styles.iconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${group.title} full screen`}
+                >
+                  <Ionicons name="expand-outline" size={iconSize.sm} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
               {onPressPin && (
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); onPressPin(group.id); }}
