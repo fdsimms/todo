@@ -539,6 +539,12 @@ export function LogbookScreen() {
     [navigation]
   );
 
+  const activeFilterCount =
+    [selectedCategory, selectedTag, selectedPerson, selectedProject].filter(Boolean).length;
+  const hasFilterOptions =
+    categoryChipItems.length > 0 || tagChipItems.length > 0 ||
+    peopleChipItems.length > 0 || projectChipItems.length > 0;
+
   const switchLens = (next: LogbookLens) => {
     if (next === lens) return;
     haptics.tap();
@@ -564,6 +570,18 @@ export function LogbookScreen() {
         // there shouldn't be: the cooking rows are a read over the meal plan and
         // the fridge, and clearing them would mean deleting the plan.
         actions={withScreenSettings(activeLens === 'tasks' && completedTasks.length > 0 ? [
+          ...(hasFilterOptions ? [{
+            icon: 'funnel-outline' as const,
+            onPress: () => {
+              haptics.tap();
+              setFilterVisible(true);
+            },
+            active: activeFilterCount > 0,
+            badge: activeFilterCount,
+            badgeColor: colors.accentFill,
+            disabled: selectionMode,
+            accessibilityLabel: 'Filter Logbook',
+          }] : []),
           {
             icon: 'trash-outline',
             onPress: handleClearLogbook,
@@ -602,7 +620,7 @@ export function LogbookScreen() {
             placeholder="Search the Logbook"
             field={searchFilter}
           />
-          {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
+          {activeFilterCount > 0 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -613,20 +631,6 @@ export function LogbookScreen() {
               style={styles.filterBarScroll}
               contentContainerStyle={styles.filterBar}
             >
-              <TouchableOpacity
-                style={styles.filterButton}
-                onPress={() => {
-                  haptics.tap();
-                  setFilterVisible(true);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Filter Logbook"
-              >
-                <Ionicons name="funnel-outline" size={13} color={colors.text} />
-                <Text style={styles.filterButtonText}>Filter</Text>
-                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
-              </TouchableOpacity>
               {selectedCategory && (
                 <ActiveFilterPill
                   label={categoryChipItems.find(c => c.key === selectedCategory)?.label ?? selectedCategory}
@@ -1291,7 +1295,7 @@ const KitchenRow = React.memo(function KitchenRow({
   );
 });
 
-// An applied filter, shown next to the Filter button so the current state is
+// An applied filter, shown under the header so the current state is
 // readable without opening the sheet. Tapping anywhere on it clears it.
 function ActiveFilterPill({
   label,
@@ -1344,20 +1348,6 @@ const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) 
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary,
-  },
-  filterButtonText: {
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
   },
   activePill: {
     flexDirection: 'row',
