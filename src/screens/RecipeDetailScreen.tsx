@@ -127,6 +127,8 @@ import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtil
 import { plannedMealLabel } from '../utils/recipePlanned';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   /**
@@ -492,6 +494,7 @@ export function RecipeDetailScreen() {
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const scrollTop = useListScrollToTop(keyboardScroll);
 
   // Bulk-selecting ingredients — same plain useRowSelection every non-task list
   // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
@@ -1830,13 +1833,14 @@ export function RecipeDetailScreen() {
           paints rather than scrolls, the trade every selectable list makes. */}
       <PaintSelectionProvider {...paintProps}>
       <ScrollView
-        ref={keyboardScroll.ref}
+        ref={scrollTop.ref}
         // Same while a paint gesture owns the touch: iOS has to be told
         // directly (see PaintSelectionProvider).
         scrollEnabled={!dragging && !painting}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
+        {...scrollTop.listProps}
       >
         {recipe.imagePath && photoOnDevice ? (
           <TouchableOpacity
@@ -2764,6 +2768,7 @@ export function RecipeDetailScreen() {
           answering. Cook mode mounts its own for its copy of the row; both
           being mounted at once is fine (see NumberPadAccessory). */}
       <NumberPadAccessory />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

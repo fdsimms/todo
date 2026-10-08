@@ -46,6 +46,8 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -55,6 +57,7 @@ export function TagsScreen() {
   const pullSearch = usePullToSearch();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -115,6 +118,7 @@ export function TagsScreen() {
   // or it reads its own sheet as a cover and switches keyboard handling off
   // for exactly as long as the sheet is open (see the hook's doc comment).
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, refreshing: pullSearch.pulling });
+  const sheetScrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — this list is a
   // genuine FlatList, unlike Today/Later/a project's own list, so the row
   // itself can't just carry a zIndex style the way ReorderableList's
@@ -244,6 +248,8 @@ export function TagsScreen() {
         <HubPills hub="organize" active="Tags" />
 
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
           data={allTags}
           keyExtractor={t => t}
@@ -349,12 +355,13 @@ export function TagsScreen() {
             >
             <PaintSelectionProvider {...paintProps}>
               <FlatList
-                ref={keyboardScroll.ref}
+                ref={sheetScrollTop.ref}
                 scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 CellRendererComponent={elevatedCell}
                 {...keyboardScroll.props}
+                {...sheetScrollTop.listProps}
                 contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
                 renderItem={({ item }) => {
                   const subs = subtasksOf(item.id);
@@ -392,6 +399,7 @@ export function TagsScreen() {
                 }
               />
             </PaintSelectionProvider>
+            <ScrollToTopButton {...sheetScrollTop.buttonProps} />
             </View>
 
             {selectionMode && (
@@ -438,6 +446,7 @@ export function TagsScreen() {
             }}
           />
         </SheetModal>
+        <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       </View>
     </SpotlightProvider>
