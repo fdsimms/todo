@@ -26,6 +26,7 @@ import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
 import { searchableSettingsEntries } from '../utils/settingsActiveRows';
 import { useFilterField } from '../hooks/useFilterField';
+import { hiddenResultsNote } from '../utils/simpleMode';
 
 /**
  * How the Groceries & meals line names the unit setting. Null for `asWritten`,
@@ -168,6 +169,7 @@ export function SettingsScreen() {
   }, [results, groups]);
 
   const searching = query.trim().length > 0;
+  const hiddenNote = hiddenResultsNote(settings, 'settings');
 
   const configureGroups = useMemo(() => groups.filter(g => g.tint !== 'neutral'), [groups]);
   const housekeepingGroups = useMemo(() => groups.filter(g => g.tint === 'neutral'), [groups]);
@@ -203,7 +205,10 @@ export function SettingsScreen() {
         )}
 
         {searching && resultsByGroup.length === 0 && (
-          <Text style={styles.noResults}>Nothing in Settings matches “{query.trim()}”.</Text>
+          <Text style={styles.noResults}>
+            Nothing in Settings matches “{query.trim()}”.
+            {hiddenNote ? `\n\n${hiddenNote}` : ''}
+          </Text>
         )}
 
         {searching && resultsByGroup.map(({ group, hits }) => (

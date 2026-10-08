@@ -432,8 +432,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 
   // Day & time
-  { id: 'dayReset', groupId: 'dayTime', label: 'Morning', section: 'When the day turns over',
-    keywords: ['day start', 'day reset', 'today', 'streaks', 'midnight'] },
+  { id: 'dayReset', groupId: 'dayTime', label: 'Day starts', section: 'When the day turns over',
+    keywords: ['morning', 'day reset', 'rollover', 'today', 'streaks', 'midnight'] },
   { id: 'afternoon', groupId: 'dayTime', label: 'Afternoon starts', section: 'When the day turns over' },
   { id: 'evening', groupId: 'dayTime', label: 'Evening starts', section: 'When the day turns over' },
   { id: 'night', groupId: 'dayTime', label: 'Night starts', section: 'When the day turns over' },

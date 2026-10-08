@@ -454,3 +454,30 @@ export function visibleLenses<T extends string>(
   return lenses.filter(lens =>
     lens === current || lens !== 'unscheduled' || (counts[lens] ?? 0) > 0);
 }
+
+/**
+ * The sentence under an empty search result that says why a result might not
+ * be there. A search that skips what Simplified mode or the Groceries & meals
+ * switch is hiding looks identical to one for something that doesn't exist,
+ * and the only way back is a Settings group the person never needed to find.
+ *
+ * `fields` (the task editor) is affected by Simplified mode alone; the
+ * Groceries & meals switch only takes away settings and screens. Null when
+ * nothing is being hidden, so the caller shows no extra line.
+ */
+export function hiddenResultsNote(
+  state: { simpleMode: boolean; kitchenEnabled: boolean },
+  subject: 'settings' | 'screens' | 'fields',
+): string | null {
+  const kitchenOff = !state.kitchenEnabled && subject !== 'fields';
+  if (state.simpleMode && kitchenOff) {
+    return `Simplified mode and the Groceries & meals switch are hiding some ${subject}. Change them in Settings › Feature areas.`;
+  }
+  if (state.simpleMode) {
+    return `Simplified mode hides some ${subject}. Turn it off in Settings › Feature areas to see them.`;
+  }
+  if (kitchenOff) {
+    return `Groceries & meals is off, which hides its ${subject}. Turn it on in Settings › Feature areas.`;
+  }
+  return null;
+}
