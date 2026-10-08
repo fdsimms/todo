@@ -230,31 +230,6 @@ export function describeTaskFieldDefaults(d: TaskFieldDefaults | null | undefine
 }
 
 /**
- * The fields the backfill screen can answer for a whole group at once. Only the
- * three a group default can hold: category, streak, vacation, reminder and
- * suggestions are about one task's own shape, not a group's.
- */
-export const GROUP_APPLY_FIELDS: readonly string[] = ['priority', 'difficulty', 'estimate'];
-
-/**
- * The group a task answers with: its kind of generated task, else its project.
- * Generated wins because that is the more specific of the two and it is the one
- * `newTaskFromDraft` reads first. Null for a loose task, which has no group.
- */
-export function backfillGroupKey(task: Pick<Task, 'generatedKind' | 'projectId'>): string | null {
-  if (task.generatedKind) return `generated:${task.generatedKind}`;
-  if (task.projectId) return `project:${task.projectId}`;
-  return null;
-}
-
-/** The queued tasks in the same group as `current`, `current` included. */
-export function backfillGroupMembers(queue: Task[], current: Task): Task[] {
-  const key = backfillGroupKey(current);
-  if (key === null) return [];
-  return queue.filter(t => backfillGroupKey(t) === key);
-}
-
-/**
  * The group default a backfill answer implies, for the "also use this for new
  * tasks" offer after a whole-group apply. `patch` is what was written to each
  * task. Leaving priority unset implies "no priority" (0) and leaving an estimate
