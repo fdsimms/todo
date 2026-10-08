@@ -1317,8 +1317,8 @@ export function GeneratedTasksSection() {
                   entryId={`gen:${spec.kind}:defaults`}
                   icon="options-outline"
                   label="Task defaults"
-                  hint="Priority, difficulty and time estimate these tasks start with, so they don't come up in Backfill."
-                  value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Ask each time'}
+                  hint="Priority, difficulty and time estimate these tasks start with, so they don't come up in Backfill. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
+                  value={describeTaskFieldDefaults(s.generatedTaskDefaults[spec.kind]) ?? 'Not set'}
                   tight
                 />
                 <View style={styles.pillGroupRow}>

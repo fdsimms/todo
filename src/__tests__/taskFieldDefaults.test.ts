@@ -21,7 +21,8 @@ describe('parseTaskFieldDefaults', () => {
   });
 
   it('drops one bad field without losing the others', () => {
-    expect(parseTaskFieldDefaults({ priority: 9, difficulty: 'hard', effort: 0 })).toEqual({ priority: null, difficulty: 'hard', effort: null });
+    expect(parseTaskFieldDefaults({ priority: 9, difficulty: 'hard', effort: 7 })).toEqual({ priority: null, difficulty: 'hard', effort: null });
+    expect(parseTaskFieldDefaults({ effort: 0 })).toEqual({ priority: null, difficulty: null, effort: 0 });
   });
 
   it('is null when nothing valid is left', () => {
@@ -98,6 +99,16 @@ describe('seedTaskFields', () => {
     expect(seedTaskFields({}, NO_TASK_FIELD_DEFAULTS, NO_GLOBAL, false).backfillDismissedFields).toEqual([]);
   });
 
+  it('stamps the estimate backfill as dismissed when the group answers "no estimate"', () => {
+    const group: TaskFieldDefaults = { priority: null, difficulty: null, effort: 0 };
+    expect(seedTaskFields({}, group, NO_GLOBAL, false)).toMatchObject({ effort: 0, estimatedMinutes: null, backfillDismissedFields: ['estimate'] });
+    // An estimate the draft chose over the group's "none" is a real one.
+    expect(seedTaskFields({ effort: 3 }, group, NO_GLOBAL, false).backfillDismissedFields).toEqual([]);
+    expect(seedTaskFields({ estimatedMinutes: 20 }, group, NO_GLOBAL, false).backfillDismissedFields).toEqual([]);
+    // Both "none" answers share one list.
+    expect(seedTaskFields({}, { priority: 0, difficulty: null, effort: 0 }, NO_GLOBAL, false).backfillDismissedFields).toEqual(['priority', 'estimate']);
+  });
+
   it('writes the minutes only when the effort is the default one', () => {
     const group: TaskFieldDefaults = { priority: null, difficulty: null, effort: 2 };
     expect(seedTaskFields({ effort: 4 }, group, NO_GLOBAL, false).estimatedMinutes).toBeNull();
@@ -124,6 +135,12 @@ describe('existingTaskPatch', () => {
     expect(patch).toEqual({ backfillDismissedFields: ['priority'] });
   });
 
+  it('records "no estimate" as a dismissal, and keeps it alongside "no priority"', () => {
+    expect(existingTaskPatch(task(), { priority: null, difficulty: null, effort: 0 })).toEqual({ backfillDismissedFields: ['estimate'] });
+    expect(existingTaskPatch(task(), { priority: 0, difficulty: null, effort: 0 })).toEqual({ backfillDismissedFields: ['priority', 'estimate'] });
+    expect(existingTaskPatch(task({ estimatedMinutes: 15 }), { priority: null, difficulty: null, effort: 0 })).toBeNull();
+  });
+
   it('skips a field already dismissed and an avoid-habit difficulty', () => {
     expect(existingTaskPatch(task({ backfillDismissedFields: ['priority'] }), { priority: 3, difficulty: null, effort: null })).toBeNull();
     expect(existingTaskPatch(task({ polarity: 'negative' }), { priority: null, difficulty: 'easy', effort: null })).toBeNull();
@@ -145,6 +162,7 @@ describe('describeTaskFieldDefaults', () => {
     expect(describeTaskFieldDefaults(null)).toBeNull();
     expect(describeTaskFieldDefaults({ priority: 0, difficulty: 'easy', effort: 2 })).toBe('No priority, Easy, 15m');
     expect(describeTaskFieldDefaults({ priority: 3, difficulty: null, effort: null })).toBe('High');
+    expect(describeTaskFieldDefaults({ priority: null, difficulty: null, effort: 0 })).toBe('No estimate');
   });
 });
 
@@ -166,13 +184,14 @@ describe('the "also use this for new tasks" offer', () => {
   it('turns an answer into a default, and leaving priority unset into "no priority"', () => {
     expect(defaultsFromAnswer('priority', { priority: 3 }, false)).toEqual({ priority: 3 });
     expect(defaultsFromAnswer('priority', {}, true)).toEqual({ priority: 0 });
+    expect(defaultsFromAnswer('estimate', {}, true)).toEqual({ effort: 0 });
     expect(defaultsFromAnswer('difficulty', { difficulty: 'hard' }, false)).toEqual({ difficulty: 'hard' });
     expect(defaultsFromAnswer('estimate', { effort: 2, estimatedMinutes: 15 }, false)).toEqual({ effort: 2 });
   });
 
   it('offers nothing where there is no "none" answer or no default field', () => {
     expect(defaultsFromAnswer('difficulty', {}, true)).toBeNull();
-    expect(defaultsFromAnswer('estimate', {}, true)).toBeNull();
+
     expect(defaultsFromAnswer('category', { category: 'Home' }, false)).toBeNull();
   });
 
