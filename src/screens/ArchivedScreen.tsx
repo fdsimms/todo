@@ -25,6 +25,8 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -38,6 +40,7 @@ import { useFilterField } from '../hooks/useFilterField';
 // archive date is a list you can't answer any question about.
 export function ArchivedScreen() {
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -181,6 +184,8 @@ export function ArchivedScreen() {
 
       <PaintSelectionProvider {...paintProps}>
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           data={filtered}
           keyExtractor={item => item.id}
           // A paint gesture owns the touch for its duration — see the note in
@@ -257,6 +262,7 @@ export function ArchivedScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

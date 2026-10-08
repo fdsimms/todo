@@ -14,6 +14,8 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import type { Cookbook } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * The shelf: every `Cookbook` a recipe has ever been linked to, with a
@@ -27,6 +29,7 @@ import type { Cookbook } from '../types';
  */
 export function CookbooksScreen() {
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
   const colors = useColors();
@@ -111,6 +114,8 @@ export function CookbooksScreen() {
         />
       ) : (
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           data={sorted}
           keyExtractor={c => c.id}
           renderItem={renderItem}
@@ -130,6 +135,7 @@ export function CookbooksScreen() {
         onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
         onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

@@ -45,6 +45,8 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
@@ -53,6 +55,7 @@ const NO_SUBTASKS: Task[] = [];
 export function TagsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -242,6 +245,8 @@ export function TagsScreen() {
         <HubPills hub="organize" active="Tags" />
 
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           data={allTags}
           keyExtractor={t => t}
           contentContainerStyle={allTags.length === 0 ? styles.emptyContainer : styles.list}
@@ -435,6 +440,7 @@ export function TagsScreen() {
             }}
           />
         </SheetModal>
+        <ScrollToTopButton {...scrollTop.buttonProps} />
       </View>
     </SpotlightProvider>
   );

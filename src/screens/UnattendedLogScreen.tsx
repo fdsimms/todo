@@ -5,6 +5,8 @@ import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useShallow } from 'zustand/react/shallow';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -64,6 +66,7 @@ import type { GeneratedKind, UnattendedEntry } from '../types';
 export function UnattendedLogScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('UnattendedLog', 'Activity settings');
   const entries = useUnattendedStore(useShallow(s => s.entries));
@@ -243,6 +246,8 @@ export function UnattendedLogScreen() {
       />
 
       <SectionList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
         sections={sections}
         keyExtractor={item => item.id}
         contentContainerStyle={
@@ -292,6 +297,7 @@ export function UnattendedLogScreen() {
           )
         }
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

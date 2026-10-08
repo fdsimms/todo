@@ -32,6 +32,8 @@ import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import { JournalText } from '../components/JournalText';
 import { journalPlainText } from '../utils/journalMarkdown';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * The journal, or the dream log: one screen over `useJournalStore`, split by
@@ -60,6 +62,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   const todayKey = dayKeyOf(getCurrentDayStart());
   const stats = useMemo(() => journalStats(entries, todayKey.slice(0, 7)), [entries, todayKey]);
   const keyboardScroll = useKeyboardInsetScroll<FlatList<JournalDay>>();
+  const scrollTop = useListScrollToTop(keyboardScroll);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<JournalEntry | null>(null);
@@ -184,8 +187,9 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
         style={styles.search}
       />
       <FlatList
-        ref={keyboardScroll.ref}
+        ref={scrollTop.ref}
         {...keyboardScroll.props}
+        {...scrollTop.listProps}
         style={styles.list}
         data={days}
         keyExtractor={day => day.dayKey}
@@ -216,6 +220,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
         )}
       />
       {sheet}
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

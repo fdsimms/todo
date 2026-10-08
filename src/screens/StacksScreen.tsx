@@ -35,6 +35,8 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Every stack, whether or not it has work today.
@@ -64,6 +66,7 @@ export function StacksScreen() {
   // The "New stack" name field, open at the end of the list.
   const [naming, setNaming] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const scrollTop = useListScrollToTop(keyboardScroll);
   const listRef = keyboardScroll.ref;
 
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -218,8 +221,9 @@ export function StacksScreen() {
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <FlatList
-            ref={keyboardScroll.ref}
+            ref={scrollTop.ref}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             data={groups}
             keyExtractor={g => g.id}
             // A paint gesture owns the touch for its duration — see the note
@@ -290,6 +294,7 @@ export function StacksScreen() {
         group={editingGroup}
         onClose={closeEditor}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

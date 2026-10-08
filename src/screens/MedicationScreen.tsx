@@ -27,6 +27,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /** How many recent doses the list shows before it stops. */
 const RECENT_LIMIT = 25;
@@ -58,6 +60,7 @@ export function MedicationScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const logs = useMedicationStore(s => s.logs);
   const archived = useMedicationStore(s => s.archived);
@@ -182,6 +185,8 @@ export function MedicationScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -260,6 +265,7 @@ export function MedicationScreen() {
         </View>
       </ScrollView>
       <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

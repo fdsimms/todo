@@ -512,6 +512,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useKeyboardHeight.ts` — useKeyboardHeight
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
 - `src/hooks/useKeyboardLift.ts` — useKeyboardLift
+- `src/hooks/useListScrollToTop.ts` — useListScrollToTop
 - `src/hooks/useLogicalDayKey.ts` — useLogicalDayKey
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth

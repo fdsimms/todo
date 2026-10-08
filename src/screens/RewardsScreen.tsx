@@ -57,6 +57,8 @@ import {
   suggestRewardCost,
 } from '../utils/rewards';
 import type { CoinEntry, Reward, Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -111,6 +113,7 @@ export function RewardsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const scrollTop = useListScrollToTop(keyboardScroll);
 
   const enabled = useSettingsStore(s => s.rewardsEnabled);
   const setEnabled = useSettingsStore(s => s.setRewardsEnabled);
@@ -609,11 +612,12 @@ export function RewardsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
       <ScrollView
-        ref={keyboardScroll.ref}
+        ref={scrollTop.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         {...keyboardScroll.props}
+        {...scrollTop.listProps}
       >
         <View style={styles.balanceCard}>
           <View
@@ -849,6 +853,7 @@ export function RewardsScreen() {
         title="Rewards from a list"
         noneLabel="No list"
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }
