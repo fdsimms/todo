@@ -26,10 +26,16 @@ export function useKeyboardHeight(active: boolean): number {
     setHeight(Keyboard.metrics()?.height ?? 0);
     const showSub = Keyboard.addListener('keyboardWillShow', update);
     const changeSub = Keyboard.addListener('keyboardWillChangeFrame', update);
+    // Focus can land a beat before this effect subscribes, so `keyboardWillShow`
+    // has already gone by and `Keyboard.metrics()` is still empty (RN fills it
+    // on `keyboardDidShow`). Without this the bar waited for another keyboard
+    // change before it appeared.
+    const didShowSub = Keyboard.addListener('keyboardDidShow', update);
     const hideSub = Keyboard.addListener('keyboardWillHide', () => setHeight(0));
     return () => {
       showSub.remove();
       changeSub.remove();
+      didShowSub.remove();
       hideSub.remove();
     };
   }, [active]);

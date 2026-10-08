@@ -558,6 +558,9 @@ describe('demo mode', () => {
     expect(s.completedTasks().length).toBeGreaterThan(0); // Logbook / Stats
     expect(useProjectStore.getState().projects.length).toBeGreaterThan(0);
     expect(useTaskGroupStore.getState().groups.length).toBeGreaterThan(0);
+    // A stack with enough tasks on one future day to fold into a row on Later.
+    const poconos = useTaskGroupStore.getState().groups.find(g => g.title === 'Pack for Poconos');
+    expect(s.deferredTasks().filter(t => t.groupId === poconos?.id).length).toBeGreaterThanOrEqual(3);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
     expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
@@ -1109,6 +1112,14 @@ describe('demo mode', () => {
     expect(finished).toBeDefined();
     expect(finished!.targetCount).toBe(8);
     expect(finished!.progressCount).toBe(8);
+  });
+
+  it('seeds a daily target with a countdown per unit', () => {
+    useDemoStore.getState().enterDemoMode();
+    const sit = useTaskStore.getState().tasks.find(t => t.title === 'Meditate');
+    expect(sit).toBeDefined();
+    expect(sit!.targetCount).toBe(3);
+    expect(sit!.timedMinutes).toBe(10);
   });
 
   it('seeds a daily target that stays visible on pace, on pace', () => {
@@ -2132,6 +2143,10 @@ describe('demo seed — people', () => {
     expect(journalStats(entriesOfKind(entries, 'dream'), month).dayCount).toBeGreaterThanOrEqual(2);
     // One uses the light formatting, so demo mode shows it drawn.
     expect(entries.some(e => parseJournalMarkdown(e.text).some(b => b.type === 'bullet'))).toBe(true);
+    // And one day written in several snippets, which the screen draws as one page.
+    const perDay = new Map<string, number>();
+    entriesOfKind(entries, 'journal').forEach(e => perDay.set(e.dayKey, (perDay.get(e.dayKey) ?? 0) + 1));
+    expect(Math.max(...perDay.values())).toBeGreaterThanOrEqual(3);
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {

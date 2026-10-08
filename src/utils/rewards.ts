@@ -242,6 +242,22 @@ export function canPostBounty(
   );
 }
 
+/** How many tasks the Rewards screen suggests posting a bounty on. */
+export const SUGGESTED_BOUNTY_COUNT = 3;
+
+/**
+ * Tasks worth offering a bounty on while none is posted: the ones already
+ * being put off (`drifting`, worst first, as `driftingTaskList` returns them)
+ * that a bounty can go on at all. The order is the caller's, so the task moved
+ * the most comes first; nothing here ranks by age or push count itself.
+ */
+export function suggestedBountyTasks<T extends Parameters<typeof canPostBounty>[0]>(
+  drifting: readonly T[],
+  max: number = SUGGESTED_BOUNTY_COUNT,
+): T[] {
+  return drifting.filter(canPostBounty).slice(0, max);
+}
+
 /**
  * The count after a schedule write. Only a push moves it, and it stops at the
  * expiry. Unlike `nextPostponeCount`, a pull back to today leaves it alone.
@@ -613,8 +629,36 @@ export function describeLastClaimed(at: string, now: Date): string {
   return `Last claimed ${days} days ago`;
 }
 
+/** The share of a goal bar's track that is always filled, so an empty goal still reads as a bar. */
+export const GOAL_BAR_MIN_FILL = 0.05;
+
+/**
+ * The width of a goal bar's fill, 0..1: `goalProgress` with a floor. Display
+ * only; the text beside the bar still states the real figures.
+ */
+export function goalBarFill(balance: number, cost: number): number {
+  return Math.max(goalProgress(balance, cost), GOAL_BAR_MIN_FILL);
+}
+
 /** How far the balance is toward a goal's cost, 0..1. */
 export function goalProgress(balance: number, cost: number): number {
   if (!(cost > 0)) return 0;
   return Math.min(1, Math.max(0, balance / cost));
+}
+
+/**
+ * The reward being saved for, if it can still be claimed: the `rewardGoalId`
+ * reward, ignored when it was claimed (one-time), deleted, or its wish list
+ * item is gone. Today's progress strip and the Rewards screen both read it.
+ */
+export function savingForGoal(
+  rewards: readonly Reward[],
+  entries: readonly CoinEntry[],
+  goalId: string | null,
+  sourceOf: (reward: Reward) => RewardSourceTask | null | undefined,
+): { reward: Reward; title: string } | null {
+  if (!goalId) return null;
+  const reward = rewards.find(r => r.id === goalId);
+  if (!reward || !rewardIsOpen(reward, entries, sourceOf(reward))) return null;
+  return { reward, title: rewardDisplay(reward, sourceOf(reward)).title };
 }

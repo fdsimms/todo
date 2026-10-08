@@ -39,6 +39,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/archiveMatch.ts` — findArchivedMatch
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, departureMoveFromAnswer, awaySpanOf, liveAwaySpans, isAwayDay, awayNights, +12 more
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, shiftDateOf, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember
+- `src/utils/backfillBatch.ts` — BatchScopeKind, BatchScope, BatchOption, batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes, canBatchApply, canBatchDismiss, +1 more
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
@@ -126,7 +127,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, firstRunSettings, FirstRunState, shouldOfferFirstRun
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +17 more
-- `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +14 more
+- `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +19 more
 - `src/utils/focusShield.ts` — shieldWanted
 - `src/utils/focusStats.ts` — MIN_ACCURACY_SAMPLES, FocusDayTotal, focusMinutesByDay, FocusSummary, focusSummary, focusRecordsSince, FocusAccuracy, focusAccuracy, BreakUse, breakUse
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
@@ -173,14 +174,14 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/id.ts` — generateId
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/ingredientGrams.ts` — volumeFromMass, hasKnownDensity, measureLineAmount, gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
-- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, isItemFieldMissing, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
+- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/itemVarieties.ts` — varietyIndex, NO_VARIETIES, coveringVariety, familyOnHand, varietyOfferFor, genericNameSuggestions, describeFamilyOnHand
-- `src/utils/journal.ts` — entriesOfKind, searchJournal, JournalDay, groupJournalByDay, JournalStats, journalStats, JOURNAL_PROMPTS, journalPromptAt, JOURNAL_KIND_COPY
+- `src/utils/journal.ts` — entriesOfKind, searchJournal, JournalDay, groupJournalByDay, entriesOnDay, JournalStats, journalStats, JOURNAL_PROMPTS, journalPromptAt, JOURNAL_KIND_COPY
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, journalExportCsv, journalExportFileName, journalExportSummary
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, toggleLinePrefix
-- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
+- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, shortcutById, shortcutKeys, describeShortcuts
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
@@ -247,7 +248,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
-- `src/utils/peopleBackfill.ts` — PersonBackfillFieldId, PersonBackfillFieldDef, PERSON_BACKFILL_FIELDS, isPersonFieldMissing, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField, personCadencePatch, groupmatesOf, +1 more
+- `src/utils/peopleBackfill.ts` — PersonBackfillFieldId, PersonBackfillFieldDef, PERSON_BACKFILL_FIELDS, isPersonFieldMissing, isPersonFieldApplicable, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField, personCadencePatch, +2 more
 - `src/utils/peopleLocations.ts` — peopleNearLocation, anyoneHasLocation
 - `src/utils/peopleRegistry.ts` — registerPersonSource, registerPersonGroupSource, registerPersonTaskSource, resolvePerson, peopleOn, contactDetailsFor, peoplePageLinkFor, tasksNaming, resolvePersonGroup, groupMembers, +1 more
 - `src/utils/peopleStats.ts` — timeTogetherInRange, describeTimeTogether, taskYearRange
@@ -321,7 +322,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
-- `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +48 more
+- `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +53 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MAX_ROTATION_PER_WEEK, rotationPerWeek, withPerWeek, RotationMemberInput, rotationMemberTitle, rotationItemFromInput, rotationMemberToInput, rotationItemsFrom, +26 more
@@ -372,6 +373,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +12 more
 - `src/utils/stepper.ts` — StepRange, clampCount, stepCount, canStep, holdRepeatDelay
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
+- `src/utils/streakLeaderboard.ts` — LEADERBOARD_SIZE, streakScore, rankStreaks
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
@@ -387,8 +389,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
 - `src/utils/taskDuplicate.ts` — duplicateRows
-- `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, previewSeededFields, +9 more
-- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +20 more
+- `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, previewSeededFields, +6 more
+- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, FlattenLaterOptions, +22 more
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice

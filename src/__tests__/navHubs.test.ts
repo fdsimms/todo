@@ -285,20 +285,26 @@ describe('tab slots', () => {
     for (const route of DEFAULT_TAB_ROUTES) expect(MENU_ROUTES).toContain(route);
   });
 
-  it('keeps an optional fourth tab, and never fills one in', () => {
-    expect(normalizeTabRoutes(['Weight', 'Mood', 'Stats', 'Tags', 'Logbook'])).toEqual(['Weight', 'Mood', 'Stats', 'Tags']);
+  it('keeps an optional fourth and fifth tab, and never fills one in', () => {
+    expect(normalizeTabRoutes(['Weight', 'Mood', 'Stats', 'Tags', 'Logbook', 'Search']))
+      .toEqual(['Weight', 'Mood', 'Stats', 'Tags', 'Logbook']);
     expect(normalizeTabRoutes(['Today', 'Groceries', 'Projects'])).toHaveLength(3);
   });
 
   it('adds a fourth tab only from a screen that is not already one', () => {
     expect(setTabSlot(['Today', 'Groceries', 'Projects'], 3, 'Weight')).toEqual(['Today', 'Groceries', 'Projects', 'Weight']);
     expect(setTabSlot(['Today', 'Groceries', 'Projects'], 3, 'Today')).toEqual(['Today', 'Groceries', 'Projects']);
+    expect(setTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 4, 'Mood'))
+      .toEqual(['Today', 'Groceries', 'Projects', 'Weight', 'Mood']);
+    // An empty fifth slot still joins right after the last tab.
+    expect(setTabSlot(['Today', 'Groceries', 'Projects'], 4, 'Mood')).toEqual(['Today', 'Groceries', 'Projects', 'Mood']);
     expect(setTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 3, 'Today'))
       .toEqual(['Weight', 'Groceries', 'Projects', 'Today']);
   });
 
   it('removes the fourth tab but never one of the first three', () => {
     expect(clearTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 3)).toEqual(['Today', 'Groceries', 'Projects']);
+    expect(clearTabSlot(['Today', 'Groceries', 'Projects', 'Weight', 'Mood'], 4)).toEqual(['Today', 'Groceries', 'Projects', 'Weight']);
     expect(clearTabSlot(['Today', 'Groceries', 'Projects', 'Weight'], 1)).toEqual(['Today', 'Groceries', 'Projects', 'Weight']);
   });
 

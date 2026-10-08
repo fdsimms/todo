@@ -40,8 +40,9 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
  * The journal, or the dream log: one screen over `useJournalStore`, split by
  * `kind` — see `docs/arch/journal.md`.
  *
- * Read as a diary: days newest first, each day's entries in the order they
- * were written, the words at body size. Counts only, and nothing derived from
+ * Read as a diary: days newest first, each day one page, its entries (the
+ * snippets the part-of-day reminders ask for) in the order they were written
+ * with only their time between them, the words at body size. Counts only, and nothing derived from
  * what was written.
  */
 function JournalLogScreen({ kind }: { kind: JournalKind }) {
@@ -250,16 +251,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
+  // One page per day: no rule between snippets, just their times, so a day
+  // written in three sittings reads as one entry.
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
-  firstRow: { borderTopWidth: 0 },
+  firstRow: { paddingTop: spacing.md },
   entryRow: {
-    paddingVertical: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
+    paddingTop: spacing.smd,
   },
   entryTime: {
     fontSize: font.xs,

@@ -163,8 +163,8 @@ export function StuckScreen() {
     () => new Map(projects.map(p => [p.id, p.title])),
     [projects],
   );
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { colors, shadows, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -370,7 +370,7 @@ export function StuckScreen() {
     if (section.kind === 'person') {
       const name = displayNameOf(section.person);
       return (
-        <TaskGroupTray>
+        <TaskGroupTray raised={isDark}>
           <View style={styles.blockerHeader}>
             {/* No checkbox: nobody completes a person, so there is no
                 "finish this and release them" here. The glyph is the
@@ -429,7 +429,7 @@ export function StuckScreen() {
     const releasing = section.data.filter(t =>
       liveBlockersOf(t, resolveBlocker).length === 1 && !isWaitingOnPerson(t, resolvePerson)).length;
     return (
-      <TaskGroupTray>
+      <TaskGroupTray raised={isDark}>
         <View style={styles.blockerHeader}>
           {blockedItself ? (
             <View style={styles.checkboxSlot}>
@@ -684,7 +684,7 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
   );
 });
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
@@ -765,7 +765,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md - 2,
     borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
+    // In the dark themes the tray is raised to bgSecondary (see the `raised`
+    // prop on TaskGroupTray), so the cards step up one more.
+    backgroundColor: isDark ? colors.bgTertiary : colors.bgSecondary,
   },
   cardBody: { flex: 1, minWidth: 0 },
   taskTitle: {

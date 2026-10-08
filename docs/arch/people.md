@@ -1180,10 +1180,14 @@ it lives and what it asks.
   friends. It carries no person and never appears on a card, which is the line
   `peopleStats.ts` draws one shelf over — aggregates about you are fine,
   aggregates about individual people are not.
-- **No redo-from-scratch mode**, unlike the task fields. Redoing a field
-  wholesale means being walked past everybody you know to reconsider a cadence
-  for each of them, which is precisely the afternoon above. The task side's
-  header refresh button is not rendered for this pool.
+- **Redo from scratch exists, behind a confirm.** It was left out at first,
+  because walking past everybody you know to reconsider a cadence for each of
+  them is the afternoon above, and added later on request so every Backfill pool
+  has the same header button. What keeps it from being that afternoon: it opens
+  only by choice (the button, then a confirm), nobody's value changes until
+  their own card is answered, the order is still your own hand order, and
+  nothing in it reads history or ranks anybody. A business is still left out of
+  the three fields that don't apply to one (`isPersonFieldApplicable`).
 - **A dismissal is about the field, not the person.**
   `Person.backfillDismissedFields` records "I'm not going to put a birthday on
   this one", the same session-outliving decision its three siblings hold. It is

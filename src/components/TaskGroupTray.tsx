@@ -45,6 +45,13 @@ interface Props {
    * Omitted (a tray with no stack header, like Stuck's), it never folds.
    */
   collapsed?: boolean;
+  /**
+   * Draw the tray one step lighter than the page instead of recessed. In the
+   * dark themes `bgSunken` is darker than the page, which on a screen with no
+   * stack header over it (Stuck's) reads as a black slab rather than a region.
+   * The cards inside must then step up again (`bgTertiary`) to stay visible.
+   */
+  raised?: boolean;
   children: React.ReactNode;
 }
 
@@ -80,7 +87,7 @@ interface Props {
  * hold them. Both run on AnimatedCollapsible's clock, so the deck forms as the
  * rows fold away under it.
  */
-export function TaskGroupTray({ collapsed = false, children }: Props) {
+export function TaskGroupTray({ collapsed = false, raised = false, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fold = useSharedValue(collapsed ? 1 : 0);
@@ -111,7 +118,7 @@ export function TaskGroupTray({ collapsed = false, children }: Props) {
           carries the tray's colour and rounds the scrim's corners to match,
           and fades out with both when the stack folds, since the page under
           a folded stack is dimmed already. */}
-      <Reanimated.View style={[styles.surface, surfaceStyle]} pointerEvents="none">
+      <Reanimated.View style={[styles.surface, raised && styles.surfaceRaised, surfaceStyle]} pointerEvents="none">
         <SpotlightScrim />
       </Reanimated.View>
       {children}
@@ -141,6 +148,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.bgSunken,
+  },
+  surfaceRaised: {
+    backgroundColor: colors.bgSecondary,
   },
   edgeRoom: {
     height: STACK_EDGE_DEPTH,

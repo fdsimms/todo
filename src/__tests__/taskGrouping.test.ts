@@ -541,8 +541,61 @@ const daySection = (title: string, label: string | null, segment: string | null,
 // Readable view of a flattened Later layout.
 const laterSeq = (items: ReturnType<typeof flattenLaterSections>) =>
   items.map(item =>
-    item.type === 'header' ? `#${item.label}` : item.type === 'subheader' ? `##${item.label}` : item.task.id,
+    item.type === 'header' ? `#${item.label}`
+      : item.type === 'subheader' ? `##${item.label}`
+      : item.type === 'stack' ? `[${item.group.id}:${item.tasks.map(t => t.id).join(',')}]`
+      : item.task.id,
   );
+
+describe('flattenLaterSections stack folding', () => {
+  const g = makeGroup({ id: 'g' });
+  const groupsById = new Map([['g', g]]);
+  const inG = (id: string) => makeTask({ id, groupId: 'g' });
+
+  it('folds three or more of one stack into a row at the first member', () => {
+    const flattened = flattenLaterSections(
+      [daySection('SAT', null, null, [makeTask({ id: 'x' }), inG('a'), makeTask({ id: 'y' }), inG('b'), inG('c')])],
+      { groupsById },
+    );
+    expect(laterSeq(flattened)).toEqual(['#SAT', 'x', '[g:a,b,c]', 'y']);
+  });
+
+  it('leaves two members as ordinary rows', () => {
+    const flattened = flattenLaterSections([daySection('SAT', null, null, [inG('a'), inG('b')])], { groupsById });
+    expect(laterSeq(flattened)).toEqual(['#SAT', 'a', 'b']);
+  });
+
+  it('counts per day, so a stack split across days folds only where it has three', () => {
+    const flattened = flattenLaterSections(
+      [
+        daySection('SAT', null, null, [inG('a'), inG('b'), inG('c')]),
+        daySection('SUN', null, null, [inG('d'), inG('e')]),
+      ],
+      { groupsById },
+    );
+    expect(laterSeq(flattened)).toEqual(['#SAT', '[g:a,b,c]', '#SUN', 'd', 'e']);
+  });
+
+  it('does not fold when fold is off or the stack is unknown', () => {
+    const day = [daySection('SAT', null, null, [inG('a'), inG('b'), inG('c')])];
+    expect(laterSeq(flattenLaterSections(day, { groupsById, fold: false }))).toEqual(['#SAT', 'a', 'b', 'c']);
+    expect(laterSeq(flattenLaterSections(day, { groupsById: new Map() }))).toEqual(['#SAT', 'a', 'b', 'c']);
+    expect(laterSeq(flattenLaterSections(day))).toEqual(['#SAT', 'a', 'b', 'c']);
+  });
+
+  it('keeps a folded stack\'s members in the order a reorder is numbered from', () => {
+    const flattened = flattenLaterSections(
+      [daySection('SAT', null, null, [makeTask({ id: 'x' }), inG('a'), inG('b'), inG('c'), makeTask({ id: 'y' })])],
+      { groupsById },
+    );
+    expect(laterTaskOrder(flattened)).toEqual(['x', 'a', 'b', 'c', 'y']);
+  });
+
+  it('gives a folded stack the day\'s drop zone like a task row', () => {
+    const flattened = flattenLaterSections([daySection('SAT', null, null, [inG('a'), inG('b'), inG('c')])], { groupsById });
+    expect(laterDropZones(flattened).map(z => z.kind)).toEqual(['header', 'task']);
+  });
+});
 
 describe('flattenLaterSections', () => {
   it('flattens day sections into header + task items in order', () => {
@@ -908,6 +961,19 @@ describe('laterDaySections task budget', () => {
     const result = laterDaySections([...day(1, 40), ...day(2, 40)], 60);
     expect(result.sections.map(s => s.segments[0].data.length)).toEqual([40, 40]);
     expect(result.hasMore).toBe(false);
+  });
+
+  // Cutting a day mid-way must not split a stack: it folds into one row with a
+  // count, and a count that grows when the rest loads reads as the list changing.
+  it('keeps the rest of a stack that a first-paint cut lands inside', () => {
+    const at = new Date(2025, 5, 11, 12, 0, 0);
+    const member = (id: string) => ({ task: makeTask({ id, groupId: 'g' }), visibleAt: at });
+    const loose = (id: string) => ({ task: makeTask({ id }), visibleAt: at });
+    const ordered = [member('a'), member('b'), loose('x'), member('c'), loose('y'), ...day(2, 3)];
+    const result = laterDaySections(ordered, 2, { cutMidDay: true });
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].segments[0].data.map(t => t.id)).toEqual(['a', 'b', 'c']);
+    expect(result.hasMore).toBe(true);
   });
 
   it('includes everything, and reports no more, when the budget exceeds the total', () => {

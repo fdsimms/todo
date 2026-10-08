@@ -261,7 +261,27 @@ export type LaterListItem =
       windowStart: string | null;
       windowEnd: string | null;
     }
-  | { type: 'task'; task: Task; key: string };
+  | { type: 'task'; task: Task; key: string }
+  /**
+   * Several tasks of one stack that fall in the same day (and sub-group), folded
+   * into one row. `tasks` keeps their Later order. See LATER_STACK_FOLD_MIN.
+   */
+  | { type: 'stack'; key: string; group: TaskGroup; tasks: Task[] };
+
+/**
+ * How many of one stack's tasks have to land in the same Later day before they
+ * fold into a single row. A template that creates dozens of tasks floods the
+ * list; one or two members read fine as ordinary rows, and folding them would
+ * only hide a task behind a tap.
+ */
+export const LATER_STACK_FOLD_MIN = 3;
+
+export interface FlattenLaterOptions {
+  /** Stacks by id. A task whose stack isn't here (or has none) is never folded. */
+  groupsById?: ReadonlyMap<string, TaskGroup>;
+  /** Off while selecting, so every task is a row the selection can reach. */
+  fold?: boolean;
+}
 
 /**
  * Flatten Later-view day sections into a single header+task list for
@@ -274,9 +294,10 @@ export type LaterListItem =
  * the same task id can occur more than once — each occurrence after the
  * first gets a suffixed key to keep list keys unique.
  */
-export function flattenLaterSections(days: LaterDaySection[]): LaterListItem[] {
+export function flattenLaterSections(days: LaterDaySection[], options?: FlattenLaterOptions): LaterListItem[] {
   const items: LaterListItem[] = [];
   const seen = new Map<string, number>();
+  const groupsById = options?.fold === false ? undefined : options?.groupsById;
   days.forEach(day => {
     items.push({ type: 'header', label: day.title, key: `h-${day.title}`, dateISO: day.dateISO });
     const showSubheaders = day.segments.length > 1;
@@ -292,7 +313,32 @@ export function flattenLaterSections(days: LaterDaySection[]): LaterListItem[] {
           windowEnd: segment.windowEnd ?? null,
         });
       }
+      // Members per stack within this sub-group; only those at or past the
+      // fold threshold leave the row-per-task layout, at their first member's
+      // position so the day's order is otherwise untouched.
+      const membersByGroup = new Map<string, Task[]>();
+      if (groupsById) {
+        segment.data.forEach(task => {
+          if (!task.groupId || !groupsById.has(task.groupId)) return;
+          const members = membersByGroup.get(task.groupId);
+          if (members) members.push(task);
+          else membersByGroup.set(task.groupId, [task]);
+        });
+      }
+      const emitted = new Set<string>();
       segment.data.forEach(task => {
+        const members = task.groupId ? membersByGroup.get(task.groupId) : undefined;
+        if (members && task.groupId && members.length >= LATER_STACK_FOLD_MIN) {
+          if (emitted.has(task.groupId)) return;
+          emitted.add(task.groupId);
+          items.push({
+            type: 'stack',
+            key: `stack-${day.title}-${segment.label ?? ''}-${task.groupId}`,
+            group: groupsById!.get(task.groupId)!,
+            tasks: members,
+          });
+          return;
+        }
         const count = (seen.get(task.id) ?? 0) + 1;
         seen.set(task.id, count);
         items.push({ type: 'task', task, key: count === 1 ? task.id : `${task.id}-${count}` });
@@ -308,14 +354,23 @@ export function flattenLaterSections(days: LaterDaySection[]): LaterListItem[] {
 export const isLaterHeader = (item: LaterListItem): boolean =>
   item.type === 'header' || item.type === 'subheader';
 
-/** Task ids in flattened order, deduped (a multi-segment task keeps its first position). */
+/**
+ * Task ids in flattened order, deduped (a multi-segment task keeps its first
+ * position). A folded stack contributes its members in place: a reorder is
+ * numbered from the ids it is handed, so leaving them out would give the rest
+ * of the list the same sort numbers the folded tasks already hold.
+ */
 export function laterTaskOrder(items: LaterListItem[]): string[] {
   const seen = new Set<string>();
   const ids: string[] = [];
+  const add = (task: Task) => {
+    if (seen.has(task.id)) return;
+    seen.add(task.id);
+    ids.push(task.id);
+  };
   for (const item of items) {
-    if (item.type !== 'task' || seen.has(item.task.id)) continue;
-    seen.add(item.task.id);
-    ids.push(item.task.id);
+    if (item.type === 'task') add(item.task);
+    else if (item.type === 'stack') item.tasks.forEach(add);
   }
   return ids;
 }
@@ -499,7 +554,7 @@ export function laterDaySections(
   const cutMidDay = options?.cutMidDay === true;
   const days = new Map<
     string,
-    { dayKeys: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
+    { dayKeys: Set<string>; groupIds: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
   >();
   // formatGroupHeader is the expensive call in this pass — a date-fns format()
   // plus its own "what is today" day-start computation — and it was being paid
@@ -532,8 +587,19 @@ export function laterDaySections(
     // yet; the caller goes back to whole days before it can be, since a
     // reorder only knows the rows it was handed.
     if (cutMidDay && taskLimit !== undefined && placed >= taskLimit) {
-      hasMore = true;
-      break;
+      // A stack folds into one row with a count, so cutting its tasks apart
+      // would show "20 tasks" now and "70" a moment later. The rest of a stack
+      // already in this day comes along for free (it mounts as one row); any
+      // other task ends the day, and a new day ends the pass.
+      const openDay = days.get(dayLabel);
+      if (!openDay) {
+        hasMore = true;
+        break;
+      }
+      if (!(task.groupId && openDay.groupIds.has(task.groupId))) {
+        hasMore = true;
+        continue;
+      }
     }
     if (!days.has(dayLabel)) {
       // The budget is checked only when a new day would open, so the day in
@@ -543,10 +609,11 @@ export function laterDaySections(
         hasMore = true;
         break;
       }
-      days.set(dayLabel, { dayKeys: new Set(), dateISO: dayKey, segMap: new Map() });
+      days.set(dayLabel, { dayKeys: new Set(), groupIds: new Set(), dateISO: dayKey, segMap: new Map() });
     }
     const day = days.get(dayLabel)!;
     day.dayKeys.add(dayKey);
+    if (task.groupId) day.groupIds.add(task.groupId);
     for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task, getDayStart(visibleAt))) {
       const key = label ?? '';
       if (!day.segMap.has(key)) day.segMap.set(key, { label, segment, windowStart, windowEnd, data: [] });

@@ -117,7 +117,7 @@ import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
-import { DREAM_LOG_TITLE, JOURNAL_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
+import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
@@ -3526,7 +3526,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.
     if (task.timerStartedAt !== null || task.timerElapsedSeconds > 0) {
-      get().stopTimer(id);
+      if (isQuotaTask(task)) {
+        // A target's countdown belongs to one unit, so the unit that completes
+        // it spends the clock like any other. Stopping would write that single
+        // unit's minutes over the task as its measured time.
+        get().resetTimer(id);
+      } else {
+        get().stopTimer(id);
+      }
       task = get().tasks.find(t => t.id === id)!;
     }
 
@@ -4352,7 +4359,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().completeTask(id);
       return;
     }
-    const updated = { ...task, progressCount: task.progressCount + 1 };
+    // A target with a per-unit countdown spends it on the unit just logged, so
+    // the next one starts from a full clock whether or not this one ran out.
+    // Logging never waits on the countdown, which only says when it's ready.
+    const hadCountdown = task.timerStartedAt !== null || task.timerElapsedSeconds > 0;
+    if (hadCountdown) cancelTimerAlarm(id);
+    const updated = {
+      ...task,
+      progressCount: task.progressCount + 1,
+      ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
+    };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // Same reasoning as the dose below: a daily target is several units, not
@@ -4738,6 +4754,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // where the task continues.
         priorBestStreak: nextStreakRecord(task, nextStreak),
         timerStartedAt: null,
+        // A target's per-unit countdown banked on the day it closes must not
+        // carry onto the next day's first unit.
+        timerElapsedSeconds: 0,
         previousOccurrenceId: task.id,
         seriesDefaults: null,
         // The rest of what buildCompletion resets on a successor, which this
@@ -7411,7 +7430,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     if (settings.journalLogTasks && settings.journalLogTaskCategory) {
       run('journal', settings.journalLogTaskCategory, settings.journalLogTimeSegments,
-        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey, JOURNAL_LOG_TITLE);
+        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey,
+        journalLogTitle(settings.journalLogTimeSegments));
     }
     if (settings.dreamLogTasks && settings.dreamLogTaskCategory) {
       run('dream', settings.dreamLogTaskCategory, [],
@@ -8146,7 +8166,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // clearing it: the split is gone, but the task is still a timed task of
     // that length, and a null here would quietly demote it to a plain one.
     const parent = subtask.parentId ? get().tasks.find(t => t.id === subtask.parentId) : undefined;
-    const retotal = parent != null && parent.timedMinutes != null && segmentMinutesOf(subtask) !== null;
+    // Not on a target, whose `timedMinutes` is the per-unit countdown rather
+    // than a total of its subtasks' stretches.
+    const retotal = parent != null && parent.timedMinutes != null && !isQuotaTask(parent) && segmentMinutesOf(subtask) !== null;
     const previousTotal = parent?.timedMinutes ?? null;
 
     dbDeleteTask(id);

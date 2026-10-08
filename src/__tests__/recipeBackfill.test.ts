@@ -122,6 +122,17 @@ describe('recipeBackfillCandidates', () => {
   });
 });
 
+describe('recipeBackfillCandidates fromScratch', () => {
+  it('includes recipes that already have the value or were dismissed', () => {
+    const set = makeRecipe('Set', { servings: 4 });
+    const dismissed = makeRecipe('Dismissed', { backfillDismissedFields: ['servings'] });
+    const missing = makeRecipe('Missing');
+    expect(recipeBackfillCandidates([set, dismissed, missing], 'servings').map(r => r.name)).toEqual(['Missing']);
+    expect(recipeBackfillCandidates([set, dismissed, missing], 'servings', { fromScratch: true }).map(r => r.name))
+      .toEqual(['Dismissed', 'Missing', 'Set']);
+  });
+});
+
 describe('recipeBackfillFieldCounts', () => {
   it('counts each field independently', () => {
     const recipes = [

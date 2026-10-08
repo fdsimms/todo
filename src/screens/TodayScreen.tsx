@@ -81,7 +81,7 @@ import { completionTapFor } from '../utils/completionTap';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
-import { coinBalance } from '../utils/rewards';
+import { coinBalance, goalBarFill, savingForGoal, formatCoins } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -103,6 +103,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
+import { LaterStackRow } from '../components/LaterStackRow';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -766,6 +767,8 @@ export function TodayScreen() {
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const coinEntries = useRewardStore(s => s.entries);
   const coinTotal = useMemo(() => coinBalance(coinEntries), [coinEntries]);
+  const rewardGoalId = useSettingsStore(s => s.rewardGoalId);
+  const allRewards = useRewardStore(s => s.rewards);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
@@ -4224,7 +4227,47 @@ export function TodayScreen() {
     [laterOrder, laterTaskLimit],
   );
 
-  const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
+  // Stacks with three or more tasks on one Later day fold into a row (see
+  // LATER_STACK_FOLD_MIN). Unfolded while selecting, so every task is a row the
+  // selection can reach and the paint drag can run down.
+  const laterGroupsById = useMemo(() => new Map(taskGroups.map(g => [g.id, g])), [taskGroups]);
+  const laterData = useMemo(
+    () => flattenLaterSections(visibleLaterSections, { groupsById: laterGroupsById, fold: !selectionMode }),
+    [visibleLaterSections, laterGroupsById, selectionMode],
+  );
+  // Session state, keyed by the folded row's own key (a stack can fold on
+  // several days, and opening one day's must not open the others).
+  const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+  const handleLaterStackToggle = useCallback((key: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setOpenLaterStacks(prev => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, [expandedTaskId]);
+  const handleLaterStackShowAll = useCallback((key: string) => {
+    setExpandedLaterStacks(prev => new Set(prev).add(key));
+  }, []);
+  // Scoped to the day's members the row holds, never the stack's roster: see
+  // LaterStackRow.
+  const handleLaterStackComplete = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    requestComplete({
+      ids,
+      complete: skipIds => bulkCompleteTasks(ids.filter(id => !skipIds.includes(id))),
+    });
+  }, [requestComplete, bulkCompleteTasks]);
+  const handleLaterStackDefer = useCallback((ids: string[], date: Date) => {
+    if (ids.length > 0) useTaskStore.getState().bulkDefer(ids, date);
+  }, []);
+  const handleLaterStackSelect = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    setExpandedTaskId(null);
+    enterSelectionMode(ids);
+  }, [enterSelectionMode]);
   // Synced during render (comparing against a ref), same as Today's own
   // draggableData above — a useEffect sync lands a frame late, which is what
   // made switching to Later always flash "Nothing deferred" (the stale,
@@ -4311,6 +4354,11 @@ export function TodayScreen() {
 
 
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
+  const savingGoal = useMemo(() => {
+    if (!showCoinPill) return null;
+    const byId = new Map(allTasks.map(t => [t.id, t]));
+    return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
+  }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
   const headerActions: ScreenHeaderAction[] = [
     // Sort and filter only apply to Today's own list.
     ...(viewMode === 'today' ? [{
@@ -4415,6 +4463,28 @@ export function TodayScreen() {
           styles={styles}
         />
 
+        {viewMode === 'today' && savingGoal && (
+          <TouchableOpacity
+            style={styles.goalStrip}
+            onPress={() => navigateToTab('Rewards')}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Saving for ${savingGoal.title}: ${Math.max(0, Math.min(coinTotal, savingGoal.reward.cost))} of ${formatCoins(savingGoal.reward.cost)}. Open Rewards`}
+          >
+            <View style={styles.goalStripTop}>
+              <Text style={styles.goalStripTitle} numberOfLines={1}>{`Saving for: ${savingGoal.title}`}</Text>
+              <Text style={styles.goalStripMeta}>
+                {coinTotal >= savingGoal.reward.cost
+                  ? 'Ready to claim'
+                  : `${Math.max(0, coinTotal)} of ${savingGoal.reward.cost}`}
+              </Text>
+            </View>
+            <View style={styles.goalStripTrack}>
+              <View style={[styles.goalStripFill, { width: `${goalBarFill(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
             not make it look as though it stopped. */}
@@ -4502,6 +4572,24 @@ export function TodayScreen() {
                     <Text style={styles.laterSubHeaderText}>{item.label}</Text>
                     <SpotlightScrim />
                   </Pressable>
+                );
+              } else if (item.type === 'stack') {
+                content = (
+                  <LaterStackRow
+                    itemKey={item.key}
+                    group={item.group}
+                    tasks={item.tasks}
+                    open={openLaterStacks.has(item.key)}
+                    showAll={expandedLaterStacks.has(item.key)}
+                    selectionMode={selectionMode}
+                    onToggle={handleLaterStackToggle}
+                    onShowAll={handleLaterStackShowAll}
+                    onCompleteIds={handleLaterStackComplete}
+                    onDeferIds={handleLaterStackDefer}
+                    onSelectIds={handleLaterStackSelect}
+                    onPressEdit={handleGroupPressEdit}
+                    renderTask={task => renderTaskRow(task, { indented: true })}
+                  />
                 );
               } else {
                 const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
@@ -5373,6 +5461,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
   coinPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary },
+  // The warm gold card the Rewards screen's balance uses, so the two read as one thing.
+  goalStrip: { marginHorizontal: spacing.md, marginBottom: spacing.smd, paddingHorizontal: spacing.smd, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: colors.brand + '29', gap: spacing.xsm },
+  goalStripTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  goalStripTitle: { flex: 1, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  goalStripMeta: { color: colors.textSecondary, fontSize: font.xs, fontVariant: ['tabular-nums'] },
+  goalStripTrack: { height: 6, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
+  goalStripFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
