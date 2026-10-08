@@ -20,6 +20,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -45,14 +46,18 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
 
 export function TagsScreen() {
+  const pullSearch = usePullToSearch();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -112,7 +117,8 @@ export function TagsScreen() {
   // renders itself, so the hook is called from outside that sheet: `ownsSheet`,
   // or it reads its own sheet as a cover and switches keyboard handling off
   // for exactly as long as the sheet is open (see the hook's doc comment).
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, refreshing: pullSearch.pulling });
+  const sheetScrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — this list is a
   // genuine FlatList, unlike Today/Later/a project's own list, so the row
   // itself can't just carry a zIndex style the way ReorderableList's
@@ -242,6 +248,9 @@ export function TagsScreen() {
         <HubPills hub="organize" active="Tags" />
 
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           data={allTags}
           keyExtractor={t => t}
           contentContainerStyle={allTags.length === 0 ? styles.emptyContainer : styles.list}
@@ -346,12 +355,13 @@ export function TagsScreen() {
             >
             <PaintSelectionProvider {...paintProps}>
               <FlatList
-                ref={keyboardScroll.ref}
+                ref={sheetScrollTop.ref}
                 scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 CellRendererComponent={elevatedCell}
                 {...keyboardScroll.props}
+                {...sheetScrollTop.listProps}
                 contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
                 renderItem={({ item }) => {
                   const subs = subtasksOf(item.id);
@@ -389,6 +399,7 @@ export function TagsScreen() {
                 }
               />
             </PaintSelectionProvider>
+            <ScrollToTopButton {...sheetScrollTop.buttonProps} />
             </View>
 
             {selectionMode && (
@@ -435,6 +446,8 @@ export function TagsScreen() {
             }}
           />
         </SheetModal>
+        <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

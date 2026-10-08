@@ -415,6 +415,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // mean the same thing on every device.
   'rewardGoalId',
   'rewardListProjectId',
+  // The weekly spend that sets the coin-to-dollar rate. Synced because
+  // dollar-priced rewards rewrite their synced `cost` from it.
+  'rewardWeeklyBudgetMinor',
   // Synced with the bounties it limits, which ride on synced task rows.
   'bountyLimit',
   'autoRemoveExpiredTasks',
@@ -537,6 +540,14 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Events kept for re-adding ("Optometrist"). The calendar is held by name,
   // not id, so an entry means the same on every device (`savedEvents.ts`).
   'savedEvents',
+  // Where sunrise and sunset are worked out for (sunTimes.ts). A sun-anchored
+  // window on a task syncs, so the place it is measured from has to as well,
+  // or one task would surface at two different times on two devices.
+  'sunLocation',
+  // Which days a recurring task treats as holidays (holidays.ts). A task that
+  // skips them has to skip the same days on every device.
+  'holidaySet',
+  'customHolidays',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',

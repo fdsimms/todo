@@ -1910,11 +1910,17 @@ export function initDatabase(): void {
     'ALTER TABLE task_groups ADD COLUMN hide_next_step INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing project: no event. See Project.eventDate.
     'ALTER TABLE projects ADD COLUMN event_date TEXT',
+    // Where the destination geocoded to; null until the trip page looks it up.
+    // See Project.destinationLatitude.
+    'ALTER TABLE projects ADD COLUMN destination_latitude REAL',
+    'ALTER TABLE projects ADD COLUMN destination_longitude REAL',
     // Off on every existing section. See TaskGroup.checklist.
     'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
     // Empty on every existing recipe: a method heading declared ahead of any
     // step is new. See Recipe.emptyStepSections.
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // NULL on every existing reward: priced in coins only. See Reward.priceMinor.
+    'ALTER TABLE rewards ADD COLUMN price_minor INTEGER',
     // Nullable with no default, for log_meal's reason: NULL is "the setting
     // decides", and a DEFAULT 0 would record every meal ever planned as having
     // declined a freezer reminder. See MealPlanEntry.thawTask.
@@ -1992,6 +1998,13 @@ export function initDatabase(): void {
     "ALTER TABLE calendar_requests ADD COLUMN action TEXT NOT NULL DEFAULT 'create'",
     'ALTER TABLE calendar_requests ADD COLUMN target_request_id TEXT',
     'ALTER TABLE calendar_requests ADD COLUMN changes TEXT',
+    // A window bound that follows the sun ("sunset-30"). NULL on every
+    // existing row: a clock time stays a clock time. See Task.windowStartSun.
+    'ALTER TABLE tasks ADD COLUMN window_start_sun TEXT',
+    'ALTER TABLE tasks ADD COLUMN window_end_sun TEXT',
+    // 'skip' / 'move' for an occurrence the rule lands on a holiday; NULL on
+    // every existing row, which happens anyway. See Task.recurrenceHolidays.
+    'ALTER TABLE tasks ADD COLUMN recurrence_holidays TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3383,6 +3396,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     timeSegments: parseTimeSegments(row.time_of_day),
     windowStart: (row.window_start as string) ?? null,
     windowEnd: (row.window_end as string) ?? null,
+    windowStartSun: (row.window_start_sun as string) ?? null,
+    windowEndSun: (row.window_end_sun as string) ?? null,
     recurrenceType: (row.recurrence_type as Task['recurrenceType']) ?? 'none',
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
@@ -3397,6 +3412,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
+    recurrenceHolidays: row.recurrence_holidays === 'skip' || row.recurrence_holidays === 'move' ? row.recurrence_holidays : null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -3607,8 +3623,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3734,6 +3750,8 @@ export function dbInsertTask(task: Task): void {
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
+      task.windowStartSun ?? null, task.windowEndSun ?? null,
+      task.recurrenceHolidays ?? null,
     ]
   );
 }
@@ -3770,7 +3788,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3897,6 +3915,8 @@ export function dbUpdateTask(task: Task): void {
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
+      task.windowStartSun ?? null, task.windowEndSun ?? null,
+      task.recurrenceHolidays ?? null,
       task.id,
     ]
   );
@@ -7020,6 +7040,7 @@ function rowToReward(row: Record<string, unknown>): Reward {
     note: (row.note as string | null) || null,
     oneTime: row.one_time === 1 || !!row.task_id,
     taskId: (row.task_id as string | null) || null,
+    priceMinor: row.price_minor == null ? null : Math.max(1, Math.round(Number(row.price_minor)) || 1),
   };
 }
 
@@ -7031,15 +7052,15 @@ export function dbGetAllRewards(): Reward[] {
 
 export function dbInsertReward(reward: Reward): void {
   db.runSync(
-    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId]
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor]
   );
 }
 
 export function dbUpdateReward(reward: Reward): void {
   db.runSync(
-    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=? WHERE id=?',
-    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.id]
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.id]
   );
 }
 
@@ -7686,6 +7707,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     awayListId: (row.away_list_id as string) ?? null,
     awayListDeclinedFor: (row.away_list_declined_for as string) ?? null,
     destination: (row.destination as string) ?? null,
+    destinationLatitude: (row.destination_latitude as number | null) ?? null,
+    destinationLongitude: (row.destination_longitude as number | null) ?? null,
     pausedUntil: (row.paused_until as string) ?? null,
     personIds: parseStringList(row.person_ids),
     links: parseProjectLinks(row.links),
@@ -7704,7 +7727,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, hide_next_step, event_date, task_defaults) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7718,13 +7741,14 @@ export function dbInsertProject(project: Project): void {
       JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
+      project.destinationLatitude ?? null, project.destinationLongitude ?? null,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, hide_next_step=?, event_date=?, task_defaults=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7738,6 +7762,7 @@ export function dbUpdateProject(project: Project): void {
       JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
+      project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.id,
     ]
   );

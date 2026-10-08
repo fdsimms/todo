@@ -401,8 +401,18 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
         }
       : undefined,
+    // Today's times, with a bound that follows the sun resolved for today, and
+    // the anchor itself as `startFollows`/`endFollows` so it can be read back.
     window: task.windowStart || task.windowEnd
-      ? { ...(task.windowStart ? { start: task.windowStart } : {}), ...(task.windowEnd ? { end: task.windowEnd } : {}) }
+      ? (() => {
+          const today = replica.windowToday(task);
+          return {
+            ...(today.start ? { start: today.start } : {}),
+            ...(today.end ? { end: today.end } : {}),
+            ...(task.windowStartSun ? { startFollows: task.windowStartSun } : {}),
+            ...(task.windowEndSun ? { endFollows: task.windowEndSun } : {}),
+          };
+        })()
       : undefined,
     habit: task.polarity === 'negative' ? 'avoid' : undefined,
     slipAllowance: task.polarity === 'negative' && negativeHabits.slipAllowanceOf(task) > 0 ? negativeHabits.slipAllowanceOf(task) : undefined,

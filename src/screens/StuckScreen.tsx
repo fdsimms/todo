@@ -21,6 +21,7 @@ import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { PostponeCheckActions, type PostponeCheckAction } from '../components/PostponeCheckBanner';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -36,6 +37,8 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
 import type { Person, Task } from '../types';
 import { resetToPeople } from '../navigation/navigationRef';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 const CHECKBOX_SIZE = 22;
 
@@ -120,7 +123,9 @@ function labelForCategory(
 }
 
 export function StuckScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Stuck', 'Stuck settings');
@@ -534,9 +539,12 @@ export function StuckScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         data={rows}
         keyExtractor={row => row.key}
-        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
         renderItem={({ item }) => {
           if (item.kind === 'heading') {
             return <Text style={styles.sectionHeading}>{item.label}</Text>;
@@ -585,6 +593,8 @@ export function StuckScreen() {
           onClose={() => setBreakdownId(null)}
         />
       )}
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

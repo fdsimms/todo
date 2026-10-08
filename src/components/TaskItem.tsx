@@ -43,6 +43,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { weatherWaitChipText } from '../utils/weatherWait';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
+import { negativeHoldOffered, runNegativeHold } from '../utils/negativeHold';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -55,7 +56,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
@@ -396,6 +397,8 @@ export const TaskItem = React.memo(function TaskItem({
     planRotationItem,
     logSlip,
     undoSlip,
+    closeNegativeDay,
+    reopenNegativeDay,
     startQuotaRun,
     holdQuotaOnToday,
     releaseQuotaHold,
@@ -564,6 +567,10 @@ export const TaskItem = React.memo(function TaskItem({
   // `pinWritesPending` counts taps whose write hasn't run, so a double tap
   // doesn't drop back to the stored value between its two writes.
   const [pinOverride, setPinOverride] = useState<boolean | null>(null);
+  // A pin on a pinEachOccurrence row that isn't due yet is stored but unlit, and
+  // there is nothing on this row to change until it is, so no button either.
+  const pinLit = isPinnedOnToday(task);
+  const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
@@ -1488,6 +1495,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const slipped = isNegative && isFailedToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
+  const negativeHoldAvailable = isNegative && negativeHoldOffered(task, getCurrentDayStart());
 
   // A quota task is logged a unit at a time rather than ticked off once, so
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
@@ -1999,20 +2007,10 @@ export const TaskItem = React.memo(function TaskItem({
     confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
   };
 
-  const handleSlipUndo = async () => {
-    if (slipsLoggedToday === 0) return;
-    await haptics.tap();
-    // Same reasoning as handleQuotaUndo: a stray long press shouldn't change the
-    // record silently. Note undoSlip doesn't refund a charge (penaltyShield.ts).
-    Alert.alert(
-      'Take back a slip?',
-      `Remove the most recent slip logged for "${displayTitleFor(task)}" today?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Take back', style: 'destructive', onPress: () => undoSlip(task.id) },
-      ],
-    );
-  };
+  // A long press on an avoid-task: take a slip back, or count today clean now
+  // (or reopen it). See runNegativeHold for which, and why.
+  const handleNegativeHold = () =>
+    runNegativeHold(task, getCurrentDayStart(), { undoSlip, closeDay: closeNegativeDay, reopenDay: reopenNegativeDay });
 
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
@@ -2536,7 +2534,7 @@ export const TaskItem = React.memo(function TaskItem({
           : handleComplete
         }
         onLongPress={
-          isNegative ? (slipsLoggedToday > 0 ? handleSlipUndo : undefined)
+          isNegative ? (negativeHoldAvailable ? handleNegativeHold : undefined)
           : meterInteractive ? handleQuotaUndo
           : completionMenuOffered ? openCompletionMenu
           : undefined
@@ -2598,7 +2596,7 @@ export const TaskItem = React.memo(function TaskItem({
         }
         accessibilityHint={
           isNegative
-            ? (slipsLoggedToday > 0 ? 'Double tap and hold to take one back' : undefined)
+            ? (negativeHoldAvailable ? 'Double tap and hold to count today as clean, or take a slip back' : undefined)
             : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined
         }
       >
@@ -3041,7 +3039,7 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   timerReady
-                    ? 'Timer done, ready to complete'
+                    ? (isQuota ? 'Timer done, ready to log' : 'Timer done, ready to complete')
                     : timerRunning
                       ? `${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
                       : timerPaused
@@ -3230,7 +3228,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.windowLabelExpired} numberOfLines={1}>
-                  Expired at {formatHHMM(task.windowEnd!)}
+                  Expired at {formatHHMM(windowEnd ?? task.windowEnd!)}
                 </Text>
               </View>
             )}
@@ -3599,11 +3597,11 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && !notice && (
+      {!selectionMode && showActions && showPin && !notice && !pinWaiting && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            setPinOverride(!(pinOverride ?? task.pinned));
+            setPinOverride(!(pinOverride ?? pinLit));
             pinWritesPending.current += 1;
             // A frame later, so the glyph commits and paints before the
             // screen-wide render the write causes. animateLayout goes with the
@@ -3619,15 +3617,15 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.pinBtn}
           accessibilityRole="button"
-          accessibilityState={{ selected: pinOverride ?? task.pinned }}
+          accessibilityState={{ selected: pinOverride ?? pinLit }}
           accessibilityLabel={
-            (pinOverride ?? task.pinned) ? `Unpin ${task.title}` : `Pin ${task.title}`
+            (pinOverride ?? pinLit) ? `Unpin ${task.title}` : `Pin ${task.title}`
           }
         >
           <PinIcon
-            filled={pinOverride ?? task.pinned}
+            filled={pinOverride ?? pinLit}
             size={iconSize.sm}
-            color={(pinOverride ?? task.pinned) ? colors.orangeText : colors.textSecondary}
+            color={(pinOverride ?? pinLit) ? colors.orangeText : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
@@ -4040,7 +4038,7 @@ export const TaskItem = React.memo(function TaskItem({
                     />
                     <Text style={styles.expandMeta}>
                       {timerReady
-                        ? `Ready to complete · ${formatDuration(task.timedMinutes!)} done`
+                        ? `${isQuota ? 'Ready to log' : 'Ready to complete'} · ${formatDuration(task.timedMinutes!)} done`
                         : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
                     </Text>
                   </View>

@@ -90,7 +90,7 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
-import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit } from '../utils/rewards';
+import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
   parseFocusDefaultWorkMinutes,
@@ -107,6 +107,8 @@ import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
+import { parseSunLocation, roundSunLocation, type SunLocation } from '../utils/sunTimes';
+import { parseCustomHolidays, parseHolidaySet, type HolidaySet } from '../utils/holidays';
 import {
   parseEventRules,
   defaultEventRules,
@@ -328,7 +330,6 @@ interface SettingsStore {
   // between them, so flipping through them with this on is a real answer to
   // "which of my tasks have one", not a partial one. Same persisted-view-state
   // reasoning as filterPriorities/filterEfforts above.
-  filterHasReminder: boolean;
   // Recipes' own sort & filter, same persisted-view-state reasoning as
   // sortOption/filterPriorities/filterEfforts above — RecipeSortFilterSheet is
   // the recipe box's counterpart to Today's SortFilterSheet. 'default' keeps
@@ -531,6 +532,11 @@ interface SettingsStore {
   // src/utils/rewards.ts). Few on purpose: a bounty on every task is just a
   // bigger base rate.
   bountyLimit: number;
+  // What you'd spend on rewards in a week, in minor units (cents), or null for
+  // unset. Divides the weekly earning rate into the coins-per-dollar exchange
+  // rate that prices dollar-priced rewards (see `coinsPerDollar` in
+  // src/utils/rewards.ts).
+  rewardWeeklyBudgetMinor: number | null;
   // Keep those same apps blocked while a task marked as a gate is outstanding.
   // The other direction from the penalty: not what failing costs afterwards,
   // but what has to happen before the apps unblock at all. See
@@ -1514,6 +1520,15 @@ interface SettingsStore {
   // from, or null for where the phone is. Read through travelOriginFor, which
   // also answers null for a place that was removed or has no map pin.
   travelOriginPlaceId: string | null;
+  // Where sunrise and sunset are worked out for, for a time window that follows
+  // the sun (Task.windowStartSun). Rounded to about a kilometer, set only from
+  // a tap, and null until then: a sun anchor needs one to resolve.
+  sunLocation: SunLocation | null;
+  // Which public holidays a recurring task set to skip or move off them
+  // treats as holidays, plus the user's own days off (YYYY-MM-DD keys). Both
+  // sync: a task skips the same days on every device. See src/utils/holidays.ts.
+  holidaySet: HolidaySet;
+  customHolidays: string[];
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -1839,7 +1854,6 @@ interface SettingsStore {
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
-  setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
   setProjectSortOption: (sort: ProjectSortOption) => void;
   setRecipeLovedOnly: (lovedOnly: boolean) => void;
@@ -1872,6 +1886,7 @@ interface SettingsStore {
   setRewardGoalId: (id: string | null) => void;
   setRewardListProjectId: (id: string | null) => void;
   setBountyLimit: (count: number) => void;
+  setRewardWeeklyBudgetMinor: (minor: number | null) => void;
   setGateShieldEnabled: (on: boolean) => void;
   setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
@@ -2012,6 +2027,9 @@ interface SettingsStore {
   setTravelEstimates: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
+  setSunLocation: (location: SunLocation | null) => void;
+  setHolidaySet: (set: HolidaySet) => void;
+  setCustomHolidays: (dayKeys: string[]) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelEventPref: (eventId: string, pref: TravelEventPref | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
@@ -2147,6 +2165,7 @@ const DEFAULT_SETTINGS = {
   rewardGoalId: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
+  rewardWeeklyBudgetMinor: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2539,7 +2558,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
-  filterHasReminder: false,
   recipeSortOption: 'default',
   recipeLovedOnly: false,
   projectSortOption: 'manual',
@@ -2579,6 +2597,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   rewardGoalId: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
+  rewardWeeklyBudgetMinor: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2711,6 +2730,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelEstimates: false,
   travelMode: 'driving',
   travelOriginPlaceId: null,
+  sunLocation: null,
+  holidaySet: 'us',
+  customHolidays: [],
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -2827,7 +2849,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
-    const filterHasReminder = dbGetSetting('filterHasReminder') === 'true';
     const storedProjectSort = dbGetSetting('projectSortOption') as ProjectSortOption | null;
     const projectSortOption: ProjectSortOption =
       storedProjectSort && PROJECT_SORT_VALUES.includes(storedProjectSort) ? storedProjectSort : 'manual';
@@ -2874,6 +2895,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const rewardGoalId = dbGetSetting('rewardGoalId') || null;
     const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
     const bountyLimit = parseBountyLimit(dbGetSetting('bountyLimit'));
+    const rewardWeeklyBudgetMinor = parseWeeklyBudget(dbGetSetting('rewardWeeklyBudgetMinor'));
     const gateShieldEnabled = dbGetSetting('gateShieldEnabled') === 'true';
     const penaltyShieldUntil = dbGetSetting('penaltyShieldUntil') || null;
     const penaltyShieldReason = dbGetSetting('penaltyShieldReason') || null;
@@ -3170,6 +3192,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const travelOriginPlaceId = dbGetSetting('travelOriginPlaceId') || null;
+    const sunLocation = parseSunLocation(dbGetSetting('sunLocation'));
+    const holidaySet = parseHolidaySet(dbGetSetting('holidaySet'));
+    const customHolidays = parseCustomHolidays(dbGetSetting('customHolidays'));
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3389,6 +3414,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       confirmBeforeDeleting,
       cookRecapEnabled,
       currencySymbol,
+      customHolidays,
       dailyAgendaEnabled,
       dailyAgendaSpoken,
       dailyAgendaTime,
@@ -3407,7 +3433,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       eventTasks,
       fabHand,
       filterEfforts,
-      filterHasReminder,
       filterPriorities,
       firstRunDone,
       focusBreaksEnabled,
@@ -3445,6 +3470,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       hideCategories,
       hideHelpText,
       hideListPreviews,
+      holidaySet,
       householdServings,
       journalLogLastDayKey,
       journalLogTaskCategory,
@@ -3531,6 +3557,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       rewardGoalId,
       rewardListProjectId,
       rewardsEnabled,
+      rewardWeeklyBudgetMinor,
       runningLowAddsToList,
       screenTimeRules,
       screenTimeTaskCategory,
@@ -3546,6 +3573,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      sunLocation,
       supplyReorderTaskCategory,
       supplyReorderTasks,
       tabRoutes,
@@ -3774,10 +3802,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ filterEfforts: efforts });
   },
 
-  setFilterHasReminder(on: boolean) {
-    dbSetSetting('filterHasReminder', on ? 'true' : 'false');
-    set({ filterHasReminder: on });
-  },
 
   setProjectSortOption(sort: ProjectSortOption) {
     dbSetSetting('projectSortOption', sort);
@@ -4170,6 +4194,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ travelOriginPlaceId: id });
   },
 
+  setHolidaySet(holidaySet: HolidaySet) {
+    dbSetSetting('holidaySet', holidaySet);
+    set({ holidaySet });
+  },
+
+  setCustomHolidays(dayKeys: string[]) {
+    const clean = parseCustomHolidays(JSON.stringify(dayKeys));
+    dbSetSetting('customHolidays', JSON.stringify(clean));
+    set({ customHolidays: clean });
+  },
+
+  setSunLocation(location: SunLocation | null) {
+    const rounded = location ? roundSunLocation(location) : null;
+    dbSetSetting('sunLocation', rounded ? JSON.stringify(rounded) : '');
+    set({ sunLocation: rounded });
+  },
+
   // Null puts the calendar back on the default lead, by removing its entry
   // rather than storing the default: a stored copy would stop following the
   // default when the user next changed it.
@@ -4531,6 +4572,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = parseBountyLimit(String(count));
     dbSetSetting('bountyLimit', String(clamped));
     set({ bountyLimit: clamped });
+  },
+
+  setRewardWeeklyBudgetMinor(minor: number | null) {
+    const next = minor !== null && minor > 0 ? Math.round(minor) : null;
+    dbSetSetting('rewardWeeklyBudgetMinor', next === null ? '' : String(next));
+    set({ rewardWeeklyBudgetMinor: next });
   },
 
   setGateShieldEnabled(on: boolean) {

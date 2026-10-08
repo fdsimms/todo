@@ -22,6 +22,7 @@ import {
   withPlaceholder,
   withoutPlaceholder,
   substitutePlaceholders,
+  describePlaceholderTokens,
   substituteDraftPlaceholders,
   declaresRunPlaceholder,
   usesItemGroups,
@@ -260,6 +261,15 @@ describe('buildDraftsFromTemplate', () => {
     expect(timed.deadlineTime).toBe('17:00');
     const [noDeadline] = buildDraftsFromTemplate([makeItem({ dueOffsetDays: 3, deadlineTime: '17:00' })], { start, end });
     expect(noDeadline.deadlineTime).toBeNull();
+  });
+
+  it('carries a window that follows the sun onto the task, beside its clock fallback', () => {
+    const [draft] = buildDraftsFromTemplate(
+      [makeItem({ windowStart: '15:00', windowEnd: '18:40', windowEndSun: 'sunset-30' })], { start, end },
+    );
+    expect(draft).toMatchObject({ windowStart: '15:00', windowEnd: '18:40', windowStartSun: null, windowEndSun: 'sunset-30' });
+    // A template stored before the fields existed reads as a plain clock window.
+    expect(normalizeTemplateItem({ windowStart: '08:00' })).toMatchObject({ windowStartSun: null, windowEndSun: null });
   });
 
   it('normalizes a deadline time away when the item has no deadline', () => {
@@ -1274,6 +1284,34 @@ describe('describeMissingRefs', () => {
       { kind: 'tag', name: 'x' },
       { kind: 'tag', name: 'y' },
     ])).toBe('Categories "A", "B" and tags "x", "y" no longer exist');
+  });
+});
+
+describe('describePlaceholderTokens', () => {
+  it('spells out a choice switch with its cap', () => {
+    expect(describePlaceholderTokens('Socks x{laundry access = Yes ? days / 2 : days + 1 max 5}'))
+      .toBe('Socks x (days ÷ 2 if laundry access is Yes, otherwise days + 1, up to 5)');
+  });
+
+  it('spells out a sum and a bare cap', () => {
+    expect(describePlaceholderTokens('Shirts x{days + 1 max 7}')).toBe('Shirts x (days + 1, up to 7)');
+    expect(describePlaceholderTokens('Shirts {days max 7}')).toBe('Shirts (days, up to 7)');
+    expect(describePlaceholderTokens('Pairs {guests * 2}')).toBe('Pairs (guests × 2)');
+  });
+
+  it('reads a literal branch as its number', () => {
+    expect(describePlaceholderTokens('Towels {pool = Yes ? 2 : days}'))
+      .toBe('Towels (2 if pool is Yes, otherwise days)');
+  });
+
+  it('does not double a space and handles a token that starts the text', () => {
+    expect(describePlaceholderTokens('{days + 1} shirts')).toBe('(days + 1) shirts');
+    expect(describePlaceholderTokens('Shirts {days + 1}')).toBe('Shirts (days + 1)');
+  });
+
+  it('returns text with no computed token byte for byte', () => {
+    expect(describePlaceholderTokens('Pack for {where}')).toBe('Pack for {where}');
+    expect(describePlaceholderTokens('Plain  title')).toBe('Plain  title');
   });
 });
 

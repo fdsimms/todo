@@ -82,6 +82,9 @@ Rewards screen.
 - **It belongs to the occurrence**, like `postponeCount`: every successor and skip writes it null.
 - **Few at once** (`bountyLimit`, 1 by default, up to 5). Bounties on everything would just be a
   higher base rate. An expired bounty frees its slot.
+- **With none posted, the Rewards screen offers up to three** (`suggestedBountyTasks`): the Stuck
+  screen's drifting tasks, most-moved first, that `canPostBounty` allows. Offered, never posted
+  unasked; the Post button goes through `postBounty` like the editor does.
 - **A miss costs the base value only.** The bounty rides on the completion's own entry, so the undo
   takes it back with no extra bookkeeping.
 
@@ -90,7 +93,9 @@ Rewards screen.
 A typed number is a guess, and a wrong guess is how this kind of system goes stale: too cheap and a
 reward stops meaning anything, too dear and it's never reached. So the add/edit form prices a reward
 in **time**: pick how often you want it (`REWARD_FREQUENCIES`) and the cost is `earnRatePerDay` times
-that, rounded by `suggestRewardCost`. Each reward then shows `describeRewardPace` ("about every 6
+that, rounded by `suggestRewardCost`. A stepper and unit track under the presets take any whole number
+of days, weeks or months (the project nudge cadence's `CadenceUnit`s, a month being 30 days); like a
+preset it only fills the cost field and stores nothing. Each reward then shows `describeRewardPace` ("about every 6
 days at your current pace").
 
 - **The rate comes from completed tasks, not the ledger**, run through the same coin rules, so it
@@ -108,6 +113,25 @@ days at your current pace").
   with their own, and two devices each seeding one list would sync into duplicates. An idea carries a
   frequency, not a price, so it's priced by the same rule; until there's a week of history that rule
   uses `DEFAULT_EARN_RATE_PER_DAY`, which prices ideas only and never describes a pace.
+
+## Pricing in dollars
+
+A reward that costs real money can carry a dollar price (`Reward.priceMinor`, minor units). The
+exchange rate is `coinsPerDollar`: the coins earned in a week (`earnRatePerDay` times 7) divided by
+the **weekly reward budget** the person types (`rewardWeeklyBudgetMinor`). Both halves are theirs,
+so the rate is never a number the app invented, and there is no rate until both exist.
+
+- **`cost` stays the one coin figure.** Claiming, sorting, the goal, the pace line and the MCP
+  replica all keep reading `cost`. A dollar-priced reward has its `cost` rewritten from the price by
+  `repriceDollarRewards` when the rate moves, so nothing downstream needed to learn about dollars.
+- **This is the one place a saved cost moves on its own**, and it was asked for: a dollar price
+  should follow what you earn. A reward priced in coins is never touched, which keeps "a price
+  never changes on its own" true for everything else in this file.
+- **Repricing runs from the Rewards screen** (an effect on the rate), so a phone that hasn't opened
+  it lately, or the MCP replica, can claim at the last repriced cost.
+- **A typed price replaces the coin field** in the form rather than sitting beside it, so there is
+  never a second answer to the same question. A price that can't be converted (no budget yet) blocks
+  saving and says why, instead of quietly saving the coin field's value.
 
 ## A reward's details
 

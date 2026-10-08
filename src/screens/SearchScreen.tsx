@@ -56,6 +56,8 @@ import {
   describeElsewhere, sectionPreview, type ElsewhereResult, type ElsewhereSections,
 } from '../utils/searchElsewhere';
 import { LazySheet } from '../components/LazySheet';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 // How long the field waits for typing to pause before the expensive
 // fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
@@ -449,6 +451,7 @@ const NO_ROSTERS = new Map<string, Task[]>();
 
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const navigation = useNavigation();
   const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
@@ -867,6 +870,8 @@ export function SearchScreen() {
           )
         ) : (
           <FlatList
+            ref={scrollTop.ref}
+            {...scrollTop.listProps}
             data={listData}
             keyExtractor={(item, i) => {
               if (item.type === 'sectionHeader') return `h-${item.label}`;
@@ -906,6 +911,7 @@ export function SearchScreen() {
           initialTitle={query}
         />
       </LazySheet>
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

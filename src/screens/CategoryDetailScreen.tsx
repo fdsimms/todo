@@ -19,6 +19,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -36,6 +37,8 @@ import { haptics } from '../utils/haptics';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   CategoryDetail: { category: string };
@@ -46,6 +49,7 @@ type RootStackParamList = {
 const NO_SUBTASKS: Task[] = [];
 
 export function CategoryDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'CategoryDetail'>>();
@@ -104,7 +108,8 @@ export function CategoryDetailScreen() {
       },
     });
   };
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — see
   // useElevatedCellRenderer for why a genuine FlatList needs this and
   // ReorderableList's own lists don't.
@@ -258,12 +263,14 @@ export function CategoryDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
-            ref={keyboardScroll.ref}
+            ref={scrollTop.ref}
+            refreshControl={pullSearch.refreshControl}
             scrollEnabled={!painting && !draggingSubtask}
             data={categoryTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = subtasksOf(item.id);
@@ -358,6 +365,8 @@ export function CategoryDetailScreen() {
           seed={quickAddSeed}
           seedLabel={category}
         />
+        <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

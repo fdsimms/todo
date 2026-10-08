@@ -140,6 +140,8 @@ import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
@@ -1022,6 +1024,7 @@ export function TodayScreen() {
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -1198,10 +1201,10 @@ export function TodayScreen() {
   // their own way.
   const scrollToFlatViewTask = (task: Task, view: 'unscheduled' | 'inbox'): boolean => {
     if (view === 'unscheduled') {
-      // Indexed against what's actually rendered (filteredUnscheduledTasks) —
+      // Indexed against what's actually rendered (unscheduledTasks) —
       // with the reminder filter on, a task carrying no reminder has no row to
       // scroll to at all.
-      const index = filteredUnscheduledTasks.findIndex(t => t.id === task.id);
+      const index = unscheduledTasks.findIndex(t => t.id === task.id);
       if (index < 0) return false;
       setPendingUnscheduledJump({ index, n: jumpCount.current++ });
       return true;
@@ -1450,6 +1453,9 @@ export function TodayScreen() {
         // routine that just finished. Idempotent and self-clearing: the
         // completion it writes is what stops it matching again.
         useTaskStore.getState().sweepFinishedQuotaRuns();
+        // And for an avoid-task's end time, which counts the day clean the
+        // moment it passes. Idempotent: the anchor it moves is what stops it.
+        useTaskStore.getState().rolloverNegativeStreaks();
         // Same reasoning as the quota sweep above, for a health rule's own
         // checkpoint hour: "under 2,006mg sodium, from 12 PM" can go from
         // not-yet-judgeable to judgeable by noon simply arriving while the
@@ -1824,8 +1830,6 @@ export function TodayScreen() {
   const setFilterPriorities = useSettingsStore(s => s.setFilterPriorities);
   const filterEfforts = useSettingsStore(useShallow(s => s.filterEfforts));
   const setFilterEfforts = useSettingsStore(s => s.setFilterEfforts);
-  const filterHasReminder = useSettingsStore(s => s.filterHasReminder);
-  const setFilterHasReminder = useSettingsStore(s => s.setFilterHasReminder);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -1873,13 +1877,13 @@ export function TodayScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
 
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (filterHasReminder ? 1 : 0);
-  // Only priority/effort/reminder filters narrow which tasks render — sort
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
+  // Only priority/effort filters narrow which tasks render — sort
   // just reorders them — so only those should suppress a stack's "N/M" tally
   // (see the filtered prop on TaskGroupHeader). Later Today's groups don't go
   // through this filter at all (upcomingTaskIds is unfiltered), so this only
   // applies to the main Today list's group rows below.
-  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterHasReminder;
+  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
 
   // Both close the filter sheet first: a sheet raised while it is still
   // visible would be a second Modal presented from a view controller already
@@ -1889,9 +1893,8 @@ export function TodayScreen() {
     setSaveViewClauses(clausesFromFilters({
       priorities: filterPriorities,
       efforts: filterEfforts,
-      hasReminder: filterHasReminder,
     }));
-  }, [filterPriorities, filterEfforts, filterHasReminder]);
+  }, [filterPriorities, filterEfforts]);
 
   const handleOpenSavedViews = useCallback(() => {
     setFilterVisible(false);
@@ -1904,24 +1907,6 @@ export function TodayScreen() {
   // to it, rather than having it hidden with no way to reach it.
   const savedViewCount = useSavedViewStore(s => s.views.length);
   const savedViewsShown = featureShown('savedViews', simpleMode, savedViewCount > 0);
-
-  // Later, Unscheduled and Inbox get the reminder filter too (#1798), but not
-  // priority/effort or sort — those stay Today-only, since Later/Unscheduled
-  // already have their own date-driven order and Inbox's whole premise is
-  // tasks with no metadata to sort or filter by. Same shape as `filtered`
-  // above, minus everything that doesn't apply here.
-  const filteredDeferredTasks = useMemo(
-    () => (filterHasReminder ? deferredTasks.filter(t => t.reminderTime !== null) : deferredTasks),
-    [deferredTasks, filterHasReminder]
-  );
-  const filteredUnscheduledTasks = useMemo(
-    () => (filterHasReminder ? unscheduledTasks.filter(t => t.reminderTime !== null) : unscheduledTasks),
-    [unscheduledTasks, filterHasReminder]
-  );
-  const filteredInboxTasks = useMemo(
-    () => (filterHasReminder ? inboxTasks.filter(t => t.reminderTime !== null) : inboxTasks),
-    [inboxTasks, filterHasReminder]
-  );
 
   // Every view here stays current on its own (see the tick effect above for
   // Today's), so pulling down on any of the four doesn't refresh anything —
@@ -2168,7 +2153,6 @@ export function TodayScreen() {
     let result = visibleTasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
-    if (filterHasReminder) result = result.filter(t => t.reminderTime !== null);
     switch (sort) {
       case 'priority': return [...result].sort((a, b) => b.priority - a.priority);
       case 'effort-asc': return [...result].sort((a, b) => (a.effort || 99) - (b.effort || 99));
@@ -2182,18 +2166,18 @@ export function TodayScreen() {
       case 'streak': return [...result].sort((a, b) => liveStreakCount(b) - liveStreakCount(a));
       default: return result;
     }
-  }, [visibleTasks, sort, filterPriorities, filterEfforts, filterHasReminder]);
+  }, [visibleTasks, sort, filterPriorities, filterEfforts]);
 
   // The rows the current sub-view is actually showing — what "select all" and
   // the bulk bar's tally operate on.
   const visibleForMode = useMemo(() => {
     switch (viewMode) {
-      case 'later': return filteredDeferredTasks;
-      case 'unscheduled': return filteredUnscheduledTasks;
-      case 'inbox': return filteredInboxTasks;
+      case 'later': return deferredTasks;
+      case 'unscheduled': return unscheduledTasks;
+      case 'inbox': return inboxTasks;
       default: return filtered;
     }
-  }, [viewMode, filteredDeferredTasks, filteredUnscheduledTasks, filteredInboxTasks, filtered]);
+  }, [viewMode, deferredTasks, unscheduledTasks, inboxTasks, filtered]);
 
   // The pinned block is not in here: it renders above the list as its own
   // header (see pinnedBlock), and a pinned task keeps its ordinary row in this
@@ -2339,12 +2323,12 @@ export function TodayScreen() {
   // and it should sit under its stack's header, the same as everywhere else,
   // rather than loose among the untriaged rows.
   //
-  // Built from filteredInboxTasks (not childrenByGroupId) so the children come
+  // Built from inboxTasks (not childrenByGroupId) so the children come
   // out in the Inbox's own sortOrder and drop out with the rest of the row
   // when the reminder filter (#1798) doesn't match them.
   const inboxGroupItems = useMemo(() => {
     const byGroup = new Map<string, Task[]>();
-    for (const t of filteredInboxTasks) {
+    for (const t of inboxTasks) {
       if (!t.groupId) continue;
       const list = byGroup.get(t.groupId);
       if (list) list.push(t);
@@ -2353,7 +2337,7 @@ export function TodayScreen() {
     return taskGroups
       .map(group => ({ group, children: byGroup.get(group.id) ?? [] }))
       .filter(g => g.children.length > 0);
-  }, [taskGroups, filteredInboxTasks]);
+  }, [taskGroups, inboxTasks]);
 
   // The Inbox list itself: one row per untriaged task, with each stack's
   // header taking the slot of its first member and that member's siblings
@@ -2366,13 +2350,13 @@ export function TodayScreen() {
       for (const child of item.children) inGroup.add(child.id);
     }
     const items: ListItem[] = [];
-    for (const task of filteredInboxTasks) {
+    for (const task of inboxTasks) {
       const header = headerAt.get(task.id);
       if (header) items.push({ type: 'group', group: header.group, children: header.children });
       if (!inGroup.has(task.id)) items.push({ type: 'task', task });
     }
     return items;
-  }, [filteredInboxTasks, inboxGroupItems]);
+  }, [inboxTasks, inboxGroupItems]);
 
   const upcomingUngroupedTasks = useMemo(
     () => upcomingTodayTasks.filter(t => !t.groupId),
@@ -3009,11 +2993,11 @@ export function TodayScreen() {
   // (#1798), matching listItems' own filtered-not-raw drop zones on Today.
   const unscheduledZoneByKey = useMemo(() => {
     const map = new Map<string, DropZone>();
-    filteredUnscheduledTasks.forEach(task => {
+    unscheduledTasks.forEach(task => {
       map.set(task.id, { kind: 'task', key: task.id, category: null });
     });
     return map;
-  }, [filteredUnscheduledTasks]);
+  }, [unscheduledTasks]);
 
   /**
    * Give the freshly created task the position it was dropped at.
@@ -3087,7 +3071,7 @@ export function TodayScreen() {
   };
 
   const placeCreatedUnscheduledTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
-    placeCreatedInFlatOrder(filteredUnscheduledTasks.map(t => t.id), intent.anchorKey, task.id, intent.before);
+    placeCreatedInFlatOrder(unscheduledTasks.map(t => t.id), intent.anchorKey, task.id, intent.before);
   };
 
   const openQuickAddForDrop = (intent: FabDropIntent) => {
@@ -3720,11 +3704,7 @@ export function TodayScreen() {
   // dueTodayOverride here, unlike Later Today: these children are undated,
   // so the honest "N/M today" tally is the one TaskGroupHeader computes from
   // the full roster — 0 for an all-Inbox stack, which hides the badge, and
-  // the real count for a stack that also has members due today. `filtered`
-  // is the reminder filter (#1798): with it on, `children` below is a subset
-  // of the roster the tally is computed from, so the badge would misstate
-  // what's actually rendered underneath it — same call groupTallyFiltered
-  // makes for Today's own stacks.
+  // the real count for a stack that also has members due today.
   const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
@@ -3734,7 +3714,6 @@ export function TodayScreen() {
           selectionMode={selectionMode}
           group={group}
           allChildren={allChildren}
-          filtered={filterHasReminder}
           pinned={groupPinInfo.get(group.id)?.pinned ?? false}
           pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
           onToggleCollapse={handleGroupToggleCollapse}
@@ -4197,7 +4176,7 @@ export function TodayScreen() {
   // row budget below and reruns each time that budget grows a page. Grouping
   // used to run over everything and be truncated afterwards, so the budget
   // bounded how many rows mounted but not what it cost to work out which.
-  const laterOrder = useMemo(() => laterVisibleOrder(filteredDeferredTasks), [filteredDeferredTasks]);
+  const laterOrder = useMemo(() => laterVisibleOrder(deferredTasks), [deferredTasks]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
   // ReorderableList renders every row unmounted-free (no virtualization — see
@@ -4371,21 +4350,17 @@ export function TodayScreen() {
           .join('\n')
       : undefined;
 
-  // Later, Unscheduled and Inbox share Today's filter icon and sheet (#1798),
-  // but only the reminder filter applies there — sort and priority/effort stay
-  // Today-only (see filteredDeferredTasks and friends above) — so their badge
-  // is just that one chip, not the combined Today count.
-  const viewFilterCount = viewMode === 'today' ? activeFilterCount : (filterHasReminder ? 1 : 0);
 
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
   const headerActions: ScreenHeaderAction[] = [
-    {
+    // Sort and filter only apply to Today's own list.
+    ...(viewMode === 'today' ? [{
       icon: 'funnel' as const,
       onPress: () => setFilterVisible(true),
-      active: viewFilterCount > 0,
-      badge: viewFilterCount,
+      active: activeFilterCount > 0,
+      badge: activeFilterCount,
       accessibilityLabel: 'Sort and filter',
-    },
+    }] : []),
     ...(viewMode === 'today' && !featureHidden('suggestedPins', simpleMode)
       && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
@@ -4652,9 +4627,7 @@ export function TodayScreen() {
                   icon="moon"
                   title="Nothing for later"
                   subtitle={
-                    filterHasReminder && deferredTasks.length > 0
-                      ? 'No tasks match this filter'
-                      : 'Swipe a task right and pick a later day to move it here.'
+                    'Swipe a task right and pick a later day to move it here.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -4896,7 +4869,7 @@ export function TodayScreen() {
           <FlatList
             ref={unscheduledScroll.ref}
             scrollEnabled={!painting && !draggingSubtask}
-            data={filteredUnscheduledTasks}
+            data={unscheduledTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedUnscheduledCell}
             // No getItemLayout (rows are variable-height), so a target past
@@ -4943,7 +4916,7 @@ export function TodayScreen() {
               );
             }}
             contentContainerStyle={
-              filteredUnscheduledTasks.length === 0
+              unscheduledTasks.length === 0
                 ? styles.emptyContainer
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
@@ -4962,9 +4935,7 @@ export function TodayScreen() {
                   icon="calendar-clear-outline"
                   title="Nothing unscheduled"
                   subtitle={
-                    filterHasReminder && unscheduledTasks.length > 0
-                      ? 'No tasks match this filter'
-                      : 'Tasks with no date land here once they have a category, tag, or priority.'
+                    'Tasks with no date land here once they have a category, tag, or priority.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -4972,12 +4943,12 @@ export function TodayScreen() {
             }
             ListFooterComponent={
               <TouchableOpacity
-                style={[styles.listFooter, filteredUnscheduledTasks.length === 0 && styles.listFooterFixed]}
+                style={[styles.listFooter, unscheduledTasks.length === 0 && styles.listFooterFixed]}
                 activeOpacity={1}
                 onPress={() => setExpandedTaskId(null)}
               />
             }
-            ListFooterComponentStyle={filteredUnscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+            ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
             refreshControl={
               <RefreshControl
                 refreshing={pullingToSearch}
@@ -5047,9 +5018,7 @@ export function TodayScreen() {
                   icon="file-tray-outline"
                   title="Nothing in the Inbox"
                   subtitle={
-                    filterHasReminder && inboxTasks.length > 0
-                      ? 'No tasks match this filter'
-                      : 'Voice-added and quick tasks land here to be sorted.'
+                    'Voice-added and quick tasks land here to be sorted.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -5178,7 +5147,11 @@ export function TodayScreen() {
             visible={applyTemplate !== null}
             template={applyTemplate}
             onClose={() => setApplyTemplate(null)}
-            onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+            onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
           />
         </LazySheet>
 
@@ -5186,7 +5159,11 @@ export function TodayScreen() {
           <TemplateAppliedToast
             count={templateAppliedCount}
             bottom={fabBottom + FAB_SIZE + spacing.md}
-            onDismiss={() => setTemplateAppliedCount(null)}
+            goTo={templateAppliedDest && !(templateAppliedDest.kind === 'view' && templateAppliedDest.mode === viewMode) ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
           />
         )}
 
@@ -5211,15 +5188,12 @@ export function TodayScreen() {
           <SortFilterSheet
             visible={filterVisible}
             onClose={() => setFilterVisible(false)}
-            remindersOnly={viewMode !== 'today'}
             sort={sort}
             onSortChange={setSort}
             priorities={filterPriorities}
             onPrioritiesChange={setFilterPriorities}
             efforts={filterEfforts}
             onEffortsChange={setFilterEfforts}
-            hasReminder={filterHasReminder}
-            onHasReminderChange={setFilterHasReminder}
             onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
             onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
           />

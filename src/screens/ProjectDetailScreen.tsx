@@ -92,8 +92,9 @@ import { useTitleSelection } from '../hooks/useTitleSelection';
 import { TitleTokenAccessory } from '../components/TitleTokenAccessory';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { awayNights, awaySpanOf } from '../utils/awayDates';
+import { awayNights, awaySpanOf, destinationPinUpdate } from '../utils/awayDates';
 import { useDestinationForecast } from '../hooks/useDestinationForecast';
+import type { GeocodedPlace } from '../services/geocode';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
@@ -109,6 +110,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
@@ -377,6 +379,7 @@ function NewLineField({
 }
 
 export function ProjectDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
   const navigation = useNavigation();
@@ -615,8 +618,17 @@ export function ProjectDetailScreen() {
   const destination = project?.destination ?? null;
   const spanStartKey = awaySpan ? dayKeyOf(awaySpan.start) : null;
   const spanEndKey = awaySpan?.end ? dayKeyOf(addDays(awaySpan.end, -1)) : spanStartKey;
+  // The geocode behind it also pins the trip's coordinates on the project, so
+  // sunrise and sunset can follow the trip (Project.destinationLatitude). Re-read
+  // rather than taken from this render, and only written while the destination
+  // is still the one asked about and the place has actually moved.
+  const pinDestination = useCallback((place: GeocodedPlace, askedFor: string) => {
+    const current = useProjectStore.getState().projects.find(p => p.id === projectId);
+    const pin = current ? destinationPinUpdate(current, askedFor, place) : null;
+    if (pin) useProjectStore.getState().updateProject(projectId, pin);
+  }, [projectId]);
   const { line: forecastLine, gap: forecastGap } = useDestinationForecast(
-    destination, spanStartKey, spanEndKey, awayNights(awaySpan),
+    destination, spanStartKey, spanEndKey, awayNights(awaySpan), pinDestination,
   );
   // One row per member, as progress counts them — see projectCompletedRows.
   const completedProjectTasks = useMemo(() => {
@@ -1782,6 +1794,7 @@ export function ProjectDetailScreen() {
           scroller={scrollControl}
         >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // scrollControl below.
@@ -2671,6 +2684,7 @@ export function ProjectDetailScreen() {
             setExpandedTaskId(null);
           }}
         />
+        {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

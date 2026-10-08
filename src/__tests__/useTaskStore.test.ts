@@ -9256,6 +9256,21 @@ describe('pinned ordering', () => {
     expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'b']);
   });
 
+  it('keeps a pin-each-occurrence successor out of the Pinned block until it is due', () => {
+    // The successor of a pinEachOccurrence task is spawned pinned, so without a
+    // clock gate it sat at the top of Today for the whole of its wait.
+    const later = new Date(2999, 0, 1, 9).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'future', pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: later }),
+        makeTask({ id: 'due', pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2020, 0, 1, 9).toISOString() }),
+        makeTask({ id: 'manual', pinned: true, dueDate: later }),
+      ],
+    });
+    // The manual pin still ignores the clock, as it always has.
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['due', 'manual']);
+  });
+
   it('keeps unpinning free of ranks', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: true, pinnedOrder: 3 })] });
     useTaskStore.getState().togglePin('a');
@@ -13344,6 +13359,37 @@ describe('quota tasks', () => {
       expect(task.progressCount).toBe(4);
       expect(task.completed).toBe(false);
       expect(dbUpdateTask).toHaveBeenCalled();
+    });
+
+    it('restarts a per-unit countdown when a unit is logged', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 3, timedMinutes: 10, timerStartedAt: new Date().toISOString(), timerElapsedSeconds: 120 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.progressCount).toBe(4);
+      expect(task.timerStartedAt).toBeNull();
+      expect(task.timerElapsedSeconds).toBe(0);
+      expect(task.timedMinutes).toBe(10);
+    });
+
+    it('logs a unit without waiting for its countdown to run out', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 0, timedMinutes: 10 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.progressCount).toBe(1);
+    });
+
+    it('does not record the last unit\'s countdown as the task\'s measured time', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 7, timedMinutes: 10, timerStartedAt: null, timerElapsedSeconds: 240 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.timerElapsedSeconds).toBe(0);
+      expect(done.actualMinutes ?? null).toBeNull();
     });
 
     it('completes the task on the unit that reaches the target', () => {
@@ -18599,6 +18645,50 @@ describe('negative habits', () => {
     });
   });
 
+  describe('closeNegativeDay', () => {
+    it('counts today now, offers an undo, and the rollover does not count it twice', () => {
+      seed(avoid({ streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(get().streakCount).toBe(4);
+      expect(useTaskStore.getState().lastAction?.label).toBe('Day logged, streak 4');
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(4);
+      useTaskStore.getState().lastAction?.undo();
+      expect(get().streakCount).toBe(3);
+    });
+
+    it('ignores a positive task and a day that is already closed', () => {
+      seed(makeTask({ id: 'ordinary', streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().closeNegativeDay('ordinary');
+      expect(get('ordinary').streakCount).toBe(3);
+      seed(avoid({ streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().closeNegativeDay('smoke');
+      useTaskStore.getState().closeNegativeDay('smoke');
+      expect(get().streakCount).toBe(4);
+    });
+  });
+
+  describe('an end time on an avoid-task', () => {
+    it('counts the day clean once it passes, and not before', () => {
+      seed(avoid({ windowEnd: '22:00', streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(3); // 10:00
+      jest.setSystemTime(new Date(2026, 0, 10, 22, 30));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(4);
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(4);
+    });
+
+    it('does not count it after a slip', () => {
+      seed(avoid({ windowEnd: '22:00', streakCount: 3, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      jest.setSystemTime(new Date(2026, 0, 10, 22, 30));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(0);
+    });
+  });
+
   describe('rolloverNegativeStreaks', () => {
     it('credits the clean days that have gone by', () => {
       seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
@@ -18633,6 +18723,54 @@ describe('negative habits', () => {
       jest.setSystemTime(new Date(2026, 0, 13, 10, 0, 0));
       useTaskStore.getState().rolloverNegativeStreaks();
       expect(get().streakCount).toBe(2); // Jan 11 and 12
+    });
+
+    // A "don't" habit is never completed, so the rollover is the only thing that
+    // can move its date. Left alone it read "2d ago" beside a running streak.
+    describe('its date', () => {
+      const daily = (over: Partial<Task> = {}) =>
+        avoid({ recurrenceType: 'daily', recurrenceInterval: 1, ...over });
+
+      it('moves a daily habit from a past day onto today', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        seed(daily({ dueDate: new Date(2026, 0, 8, 9, 0, 0).toISOString() }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 0, 0, 0));
+      });
+
+      it('leaves a date that is already today alone', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        const due = new Date(2026, 0, 10, 9, 0, 0).toISOString();
+        seed(daily({ dueDate: due }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(get().dueDate).toBe(due);
+      });
+
+      it('keeps a slip on today until the day turns', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        const due = new Date(2026, 0, 10, 9, 0, 0).toISOString();
+        seed(daily({ dueDate: due, streakCount: 4, streakDate: new Date(2026, 0, 9).toISOString() }));
+        useTaskStore.getState().logSlip('smoke');
+        expect(get().dueDate).toBe(due);
+        jest.setSystemTime(new Date(2026, 0, 11, 9, 0, 0));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 11, 0, 0, 0));
+      });
+
+      it('moves a from-completion habit onto today rather than tomorrow', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        seed(daily({ recurrenceFromCompletion: true, dueDate: new Date(2026, 0, 7, 9, 0, 0).toISOString() }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(new Date(get().dueDate!)).toEqual(new Date(2026, 0, 10, 0, 0, 0));
+      });
+
+      it('leaves a one-off habit alone', () => {
+        jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+        const due = new Date(2026, 0, 2, 9, 0, 0).toISOString();
+        seed(avoid({ dueDate: due }));
+        useTaskStore.getState().rolloverNegativeStreaks();
+        expect(get().dueDate).toBe(due);
+      });
     });
   });
 });
