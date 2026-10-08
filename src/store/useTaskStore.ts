@@ -8830,6 +8830,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       inOrder: source.inOrder,
       showChecked: source.showChecked,
       hideNextStep: source.hideNextStep,
+      groupOnToday: source.groupOnToday,
     });
 
     const sectionFor = new Map<string, string>();

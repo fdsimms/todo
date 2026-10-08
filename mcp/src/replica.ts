@@ -806,6 +806,8 @@ export interface ProjectPatch {
   showChecked?: boolean;
   /** Leave the "Next:" line off its card on the Projects screen. */
   hideNextStep?: boolean;
+  /** Today gathers its tasks for the day under its name, at the top. */
+  groupOnToday?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -6423,6 +6425,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
           personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked, hideNextStep: source.hideNextStep,
+          groupOnToday: source.groupOnToday,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {

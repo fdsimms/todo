@@ -1472,6 +1472,16 @@ export interface Project {
    */
   hideNextStep?: boolean;
   /**
+   * Gathers what this project has on Today under its own name, at the top of
+   * the Today view below the pinned block, rather than leaving its tasks and
+   * stacks in their category sections (`buildTodayProjectBands`). A trip's
+   * packing day is the case it exists for: its sections arrive as stacks,
+   * and without it nothing on Today said they were one trip's. Presentation
+   * only: what is on the day is decided exactly as before, and Later,
+   * Unscheduled and Inbox ignore it. Optional for rows built before it existed.
+   */
+  groupOnToday?: boolean;
+  /**
    * Where the trip goes, as free text.
    *
    * `Task.location` carries a note saying nothing in the app plots it and that
