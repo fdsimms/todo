@@ -338,7 +338,6 @@ export function parseSavedViewClauses(raw: string | null | undefined): SavedView
 export function clausesFromFilters(filters: {
   priorities: readonly Priority[];
   efforts: readonly Effort[];
-  hasReminder: boolean;
 }): SavedViewClause[] {
   const clauses: SavedViewClause[] = [];
   if (filters.priorities.length > 0) {
@@ -346,9 +345,6 @@ export function clausesFromFilters(filters: {
   }
   if (filters.efforts.length > 0) {
     clauses.push({ kind: 'effort', values: [...filters.efforts] });
-  }
-  if (filters.hasReminder) {
-    clauses.push({ kind: 'hasReminder', hasReminder: true });
   }
   return clauses;
 }
