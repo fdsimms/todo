@@ -934,6 +934,8 @@ const itemSchema = z.object({
   recurrenceFromCompletion: z.boolean().optional(),
   recurrenceHolidays: z.enum(['skip', 'move']).nullable().optional()
     .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day. Holidays are the set and days off chosen in Settings. Null or absent: it happens anyway.'),
+  rainSkipMm: z.number().positive().max(200).nullable().optional()
+    .describe('Repeating only, not hourly: skip a day\'s occurrence when at least this many millimetres of rain fell yesterday and today ("water the garden unless it rained"). Needs the weather switch on in the app. Null or absent: never skips.'),
   recurrenceWeekOrdinal: z.number().int().min(-1).max(4).refine(n => n !== 0).nullable().optional()
     .describe('Monthly only: "the 2nd Tuesday" is 2 with recurrenceDays [2]; -1 is the last. Not with recurrenceMonthDay.'),
   targetCount: z.number().int().min(2).nullable().optional().describe('A counted target: done N times a day (or a week with quotaPeriod). null for an ordinary task.'),
@@ -1075,6 +1077,8 @@ const taskFieldsShape = {
     count: z.number().int().nullable().optional().describe('Stop after this many more times, this one included. Give endDate or count, not both.'),
     holidays: z.enum(['skip', 'move']).nullable().optional()
       .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day (a trash pickup after a holiday). Holidays are the set and days off chosen in the app\'s Settings. Omit for "happens anyway". Not for hourly.'),
+    skipAfterRainMm: z.number().positive().max(200).nullable().optional()
+      .describe('Skip the day\'s occurrence when at least this much rain (millimetres, 25.4 to the inch) fell yesterday and today, e.g. 5 for "water the garden unless it rained". The phone reads the rainfall when the person has Weather-based tasks on; it does the skipping, so it can take until the next sync. Not for hourly.'),
   }).optional().describe('How it repeats. Replaces the whole rule. The first occurrence sits on dueDate; the rule places the ones after it, so set dueDate to the first matching day.'),
   chain: z.object({
     steps: z.array(z.object({
@@ -2057,7 +2061,7 @@ function registerWriteTools(
 
   server.tool(
     'quick_add',
-    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, +project and an estimate are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
     {
       lines: z.array(z.string()).min(1),
       apply: z.boolean().optional(),

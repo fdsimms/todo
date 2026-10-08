@@ -53,8 +53,9 @@ export const UNATTENDED_ACTION_SPECS: Record<UnattendedAction, UnattendedActionS
   cleared: { action: 'cleared', verb: 'Cleared', icon: 'close-circle-outline', adds: false },
   expired: { action: 'expired', verb: 'Expired', icon: 'hourglass-outline', adds: false },
   purged: { action: 'purged', verb: 'Purged', icon: 'trash-outline', adds: false },
-  // The four only an agent writes (see UnattendedActor). An edit or a move
-  // neither adds nor takes away, so neither is drawn as news.
+  // Only an agent writes these, but for one: the rain skip writes `moved` (see
+  // UnattendedActor). An edit or a move neither adds nor takes away, so
+  // neither is drawn as news.
   edited: { action: 'edited', verb: 'Edited', icon: 'create-outline', adds: false },
   moved: { action: 'moved', verb: 'Moved', icon: 'calendar-outline', adds: false },
   completed: { action: 'completed', verb: 'Completed', icon: 'checkmark-circle-outline', adds: false },
@@ -94,7 +95,10 @@ export function unattendedIcon(entry: Pick<UnattendedEntry, 'action' | 'kind'> &
 export function unattendedSource(entry: Pick<UnattendedEntry, 'action' | 'kind'> & Partial<Pick<UnattendedEntry, 'actor'>>): string {
   if (entry.actor === 'agent') return AGENT_SOURCE;
   if (entry.kind !== null) return isKnownKind(entry.kind) ? GENERATED_KIND_SPECS[entry.kind].label : 'Automatic task';
-  return entry.action === 'purged' ? 'Completed task cleanup' : 'Expired task sweep';
+  if (entry.action === 'purged') return 'Completed task cleanup';
+  // The one app-written move: an occurrence skipped because it rained (rainSkip.ts).
+  if (entry.action === 'moved') return 'Skipped after rain';
+  return 'Expired task sweep';
 }
 
 /**

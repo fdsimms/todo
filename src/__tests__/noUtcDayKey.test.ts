@@ -1,5 +1,5 @@
 /**
- * Nothing in `src/` may cut a day key out of `toISOString()`.
+ * Nothing in `src/` or `mcp/src/` may cut a day key out of `toISOString()`.
  *
  * `toISOString()` is UTC, and every day key in the app (`dayKeyOf`,
  * `getLogicalDayKey`, the `YYYY-MM-DD` columns) is local. The two agree only
@@ -13,11 +13,17 @@
  * A behavioural test can't hold the line here: Jest's sandbox doesn't pick up a
  * `process.env.TZ` written at runtime, so a suite run in UTC can never see the
  * difference. This check is mechanical for the same reason `noRawModal` is.
+ *
+ * The MCP server is scanned too: it runs the app's own day rules in Node, on a
+ * host whose zone is whatever the deploy gave it, and answers in the person's
+ * zone (`timeZone.ts`), so a UTC slice there is the same bug one step removed.
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 const SRC = join(__dirname, '..');
+const ROOT = join(SRC, '..');
+const MCP_SRC = join(ROOT, 'mcp', 'src');
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -33,11 +39,14 @@ function sourceFiles(dir: string, found: string[] = []): string[] {
 /** `.toISOString().slice(0, 10)` and its `substring`/`substr`/`split('T')` spellings. */
 const UTC_DAY_KEY = /toISOString\(\)\s*\.(?:(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)|split\(\s*['"]T['"]\s*\))/;
 
-const files = sourceFiles(SRC).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
+const read = (f: string) => ({ rel: f.slice(ROOT.length + 1), src: readFileSync(f, 'utf8') });
+const files = sourceFiles(SRC).map(read);
+const mcpFiles = sourceFiles(MCP_SRC).map(read);
 
 describe('UTC day keys', () => {
   it('scans a realistic number of files', () => {
     expect(files.length).toBeGreaterThan(200);
+    expect(mcpFiles.length).toBeGreaterThan(30);
   });
 
   it('matches every spelling it is meant to catch', () => {
@@ -49,7 +58,7 @@ describe('UTC day keys', () => {
   });
 
   it('keys no day off a UTC timestamp (use dayKeyOf or getLogicalDayKey)', () => {
-    const offenders = files.filter(f => UTC_DAY_KEY.test(f.src)).map(f => f.rel);
+    const offenders = [...files, ...mcpFiles].filter(f => UTC_DAY_KEY.test(f.src)).map(f => f.rel);
     expect(offenders).toEqual([]);
   });
 });

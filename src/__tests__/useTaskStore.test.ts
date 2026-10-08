@@ -6268,6 +6268,105 @@ describe('applyWeatherWaits', () => {
   });
 });
 
+// ─── applyRainSkips ─────────────────────────────────────────────────────────
+
+describe('applyRainSkips', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as {
+    useWeatherStore: { getState: jest.Mock };
+  };
+  const { useUnattendedStore } = require('../store/useUnattendedStore') as typeof import('../store/useUnattendedStore');
+
+  const NOW = new Date(2026, 9, 8, 9, 0, 0);
+  const TODAY_KEY = '2026-10-08';
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  const withRain = (yesterday: number | null, today: number | null, dayKey = TODAY_KEY) =>
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: { yesterdayPrecipitationMm: yesterday, todayPrecipitationMm: today, forecast: [] },
+      snapshotDayKey: dayKey,
+    });
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+    });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  });
+
+  const addWatering = (overrides: Record<string, unknown> = {}) => {
+    const task = useTaskStore.getState().addTask({ title: 'Water the garden' });
+    useTaskStore.getState().updateTask(task.id, {
+      recurrenceType: 'daily', recurrenceInterval: 2,
+      dueDate: new Date(2026, 9, 8).toISOString(),
+      rainSkipMm: 5, ...overrides,
+    });
+    return task.id;
+  };
+  const read = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('skips today\'s occurrence to the next date once the rain reaches the threshold', () => {
+    withRain(3.5, 2);
+    const id = addWatering();
+    useTaskStore.getState().applyRainSkips();
+    expect(dayKeyOf(new Date(read(id).dueDate!))).toBe('2026-10-10');
+    expect(read(id).rainSkippedOn).toBe(TODAY_KEY);
+    expect(read(id).completed).toBe(false);
+  });
+
+  it('leaves it when it didn\'t rain enough, or there is no figure, or the reading is yesterday\'s', () => {
+    const id = addWatering();
+    withRain(1, 2);
+    useTaskStore.getState().applyRainSkips();
+    withRain(null, null);
+    useTaskStore.getState().applyRainSkips();
+    withRain(10, 10, '2026-10-07');
+    useTaskStore.getState().applyRainSkips();
+    expect(dayKeyOf(new Date(read(id).dueDate!))).toBe(TODAY_KEY);
+  });
+
+  it('never skips a row twice in a day, so pulling it back onto Today sticks', () => {
+    withRain(8, 0);
+    const id = addWatering();
+    useTaskStore.getState().applyRainSkips();
+    useTaskStore.getState().updateTask(id, { dueDate: new Date(2026, 9, 8).toISOString() });
+    useTaskStore.getState().applyRainSkips();
+    expect(dayKeyOf(new Date(read(id).dueDate!))).toBe(TODAY_KEY);
+  });
+
+  it('forgives the streak rather than breaking it', () => {
+    withRain(8, 0);
+    const id = addWatering({ streakCount: 6, streakDate: new Date(2026, 9, 6).toISOString() });
+    useTaskStore.getState().applyRainSkips();
+    expect(read(id).streakCount).toBe(6);
+    expect(read(id).streakDate).toBe(new Date(2026, 9, 8).toISOString());
+  });
+
+  it('records each skip in Activity', () => {
+    withRain(8, 0);
+    const before = useUnattendedStore.getState().entries.length;
+    addWatering();
+    useTaskStore.getState().applyRainSkips();
+    const entries = useUnattendedStore.getState().entries;
+    expect(entries.length).toBe(before + 1);
+    expect(entries[0]).toMatchObject({ action: 'moved', kind: null, title: 'Water the garden' });
+  });
+});
+
 // ─── applyMeterHolds ────────────────────────────────────────────────────────
 
 describe('a task due at a meter reading', () => {

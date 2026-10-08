@@ -951,6 +951,14 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds a repeating task that skips after rain', () => {
+    useDemoStore.getState().enterDemoMode();
+    const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
+    expect(garden?.rainSkipMm).toBe(5);
+    expect(garden?.recurrenceType).toBe('daily');
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a task due at a meter reading, held on the estimate its readings give', () => {
     useDemoStore.getState().enterDemoMode();
     const oil = useTaskStore.getState().tasks.find(t => t.title === 'Change the oil');

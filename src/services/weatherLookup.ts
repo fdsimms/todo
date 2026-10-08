@@ -104,6 +104,16 @@ export interface WeatherSnapshot {
    * same terms as the fields above.
    */
   forecast: ForecastDay[] | null;
+  /**
+   * Rain (and melted snow) over yesterday and today, in millimetres, for a
+   * repeating task that skips a day it rained (`Task.rainSkipMm`, see
+   * `rainSkip.ts`). Yesterday's is the model's record of the day just gone;
+   * today's is the whole day's forecast, so before evening it is partly a
+   * prediction. Null when the response didn't carry a figure, which a reader
+   * takes as "don't know", never as dry.
+   */
+  yesterdayPrecipitationMm: number | null;
+  todayPrecipitationMm: number | null;
 }
 
 /**
@@ -142,19 +152,89 @@ function parseHoursOn(hourly: unknown, date: string | null): WeatherHour[] | nul
   return out.length > 0 ? out : null;
 }
 
-/** The `daily` block as forecast days, dropping any day missing a field. */
-function parseForecastDays(daily: any): ForecastDay[] | null {
+/**
+ * The `daily` block as forecast days from `fromIndex` on, dropping any day
+ * missing a field. A day's rainfall rides along when the response has it and
+ * is left off when it doesn't: a missing figure is not a dry day.
+ */
+function parseForecastDays(daily: any, fromIndex = 0): ForecastDay[] | null {
   const days: unknown[] = Array.isArray(daily?.time) ? daily.time : [];
   const out: ForecastDay[] = [];
   days.forEach((dayKey, i) => {
+    if (i < fromIndex) return;
     const weatherCode = daily?.weather_code?.[i];
     const highF = daily?.temperature_2m_max?.[i];
     const lowF = daily?.temperature_2m_min?.[i];
     if (typeof dayKey !== 'string') return;
     if (typeof weatherCode !== 'number' || typeof highF !== 'number' || typeof lowF !== 'number') return;
-    out.push({ dayKey, weatherCode, highF, lowF });
+    const precipitationMm = daily?.precipitation_sum?.[i];
+    out.push(typeof precipitationMm === 'number'
+      ? { dayKey, weatherCode, highF, lowF, precipitationMm }
+      : { dayKey, weatherCode, highF, lowF });
   });
   return out.length > 0 ? out : null;
+}
+
+/** How many days before today the request asks for: yesterday, for its rainfall. */
+const PAST_DAYS = 1;
+
+/**
+ * Where today sits in the `daily` block. The request asks for yesterday too
+ * (`past_days`), so today is normally index 1, but it is found by date rather
+ * than assumed: `current.time` is the location's own "now", and a response
+ * that came back without the past day still lines up. Falls back to 0, the
+ * old assumption, when there is no date to go on.
+ */
+function todayIndexOf(body: any): number {
+  const now = body?.current?.time;
+  const times: unknown[] = Array.isArray(body?.daily?.time) ? body.daily.time : [];
+  if (typeof now !== 'string') return 0;
+  const i = times.indexOf(now.slice(0, 10));
+  return i >= 0 ? i : 0;
+}
+
+/**
+ * An Open-Meteo forecast response as a snapshot, or null when it has no
+ * current reading. Pure, and exported for the tests: every field is
+ * typeof-checked where it's read, and each block degrades on its own.
+ */
+export function snapshotFromResponse(body: any, fetchedAt: string): WeatherSnapshot | null {
+  const weatherCode = body?.current?.weather_code;
+  const tempF = body?.current?.temperature_2m;
+  if (typeof weatherCode !== 'number' || typeof tempF !== 'number') return null;
+
+  // The forecast is a bonus on top of the reading above — a rule only ever
+  // matches on that, so a daily block that's missing or short (Open-Meteo
+  // declining `forecast_days`, an older cached response) degrades to no
+  // forecast rather than no snapshot.
+  const daily = body?.daily;
+  const dailyCodes = daily?.weather_code;
+  const dailyHighs = daily?.temperature_2m_max;
+  const dailyLows = daily?.temperature_2m_min;
+  const hasDailyDay = (i: number) =>
+    typeof dailyCodes?.[i] === 'number' && typeof dailyHighs?.[i] === 'number' && typeof dailyLows?.[i] === 'number';
+  const t = todayIndexOf(body);
+  const precipitationAt = (i: number) => (i >= 0 && typeof daily?.precipitation_sum?.[i] === 'number' ? daily.precipitation_sum[i] : null);
+
+  const dayDate = (i: number) => (typeof daily?.time?.[i] === 'string' ? daily.time[i] : null);
+  return {
+    weatherCode,
+    tempF,
+    isDay: typeof body?.current?.is_day === 'number' ? body.current.is_day === 1 : undefined,
+    fetchedAt,
+    todayHighF: hasDailyDay(t) ? dailyHighs[t] : null,
+    todayLowF: hasDailyDay(t) ? dailyLows[t] : null,
+    todayWeatherCode: hasDailyDay(t) ? dailyCodes[t] : null,
+    todayHours: parseHoursOn(body?.hourly, dayDate(t)),
+    tomorrow: hasDailyDay(t + 1)
+      ? { weatherCode: dailyCodes[t + 1], highF: dailyHighs[t + 1], lowF: dailyLows[t + 1] }
+      : null,
+    tomorrowHours: parseHoursOn(body?.hourly, dayDate(t + 1)),
+    forecast: parseForecastDays(daily, t),
+    // Only a day that is really the one before today counts as yesterday.
+    yesterdayPrecipitationMm: t > 0 ? precipitationAt(t - 1) : null,
+    todayPrecipitationMm: precipitationAt(t),
+  };
 }
 
 /**
@@ -173,11 +253,13 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    // precipitation_sum and one past day feed a repeating task that skips a
+    // day it rained (rainSkip.ts): the same request, two more fields.
     const url = `${FORECAST_URL}?latitude=${location.latitude}&longitude=${location.longitude}` +
       '&current=temperature_2m,weather_code,is_day' +
-      '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum' +
       '&hourly=weather_code,temperature_2m,is_day' +
-      '&forecast_days=14&temperature_unit=fahrenheit&timezone=auto';
+      `&past_days=${PAST_DAYS}&forecast_days=14&temperature_unit=fahrenheit&timezone=auto`;
     // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
     // against Node's AbortSignal, which disagrees with React Native's.
     const response = await fetch(url, { signal: controller.signal as unknown as RequestInit['signal'] });
@@ -185,42 +267,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
     // Untyped on purpose: every field is typeof-checked where it's read, and this
     // is what React Native's own `json()` returns (Node's says `unknown`).
     const body: any = await response.json();
-    const weatherCode = body?.current?.weather_code;
-    const tempF = body?.current?.temperature_2m;
-    if (typeof weatherCode !== 'number' || typeof tempF !== 'number') return null;
-
-    // The forecast is a bonus on top of the reading above — a rule only ever
-    // matches on that, so a daily block that's missing or short (Open-Meteo
-    // declining `forecast_days`, an older cached response) degrades to no
-    // forecast rather than no snapshot.
-    const daily = body?.daily;
-    const dailyCodes = daily?.weather_code;
-    const dailyHighs = daily?.temperature_2m_max;
-    const dailyLows = daily?.temperature_2m_min;
-    const hasDailyDay = (i: number) =>
-      typeof dailyCodes?.[i] === 'number' && typeof dailyHighs?.[i] === 'number' && typeof dailyLows?.[i] === 'number';
-
-    const dayDate = (i: number) => (typeof daily?.time?.[i] === 'string' ? daily.time[i] : null);
-    const todayHighF = hasDailyDay(0) ? dailyHighs[0] : null;
-    const todayLowF = hasDailyDay(0) ? dailyLows[0] : null;
-    const todayWeatherCode = hasDailyDay(0) ? dailyCodes[0] : null;
-    const tomorrow = hasDailyDay(1)
-      ? { weatherCode: dailyCodes[1], highF: dailyHighs[1], lowF: dailyLows[1] }
-      : null;
-
-    return {
-      weatherCode,
-      tempF,
-      isDay: typeof body?.current?.is_day === 'number' ? body.current.is_day === 1 : undefined,
-      fetchedAt: new Date().toISOString(),
-      todayHighF,
-      todayLowF,
-      todayWeatherCode,
-      todayHours: parseHoursOn(body?.hourly, dayDate(0)),
-      tomorrow,
-      tomorrowHours: parseHoursOn(body?.hourly, dayDate(1)),
-      forecast: parseForecastDays(daily),
-    };
+    return snapshotFromResponse(body, new Date().toISOString());
   } catch {
     return null;
   } finally {
@@ -235,6 +282,8 @@ export interface ForecastDay {
   weatherCode: number;
   lowF: number;
   highF: number;
+  /** The day's rain and melted snow in millimetres, when the response carried it. */
+  precipitationMm?: number;
 }
 
 /**

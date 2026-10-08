@@ -13,6 +13,7 @@ import { haptics } from '../utils/haptics';
 import { ordinal } from '../utils/ordinal';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { HOLIDAY_SET_LABELS, hasAnyHolidays } from '../utils/holidays';
+import { formatRain, rainSkipOptions, rainUnitFor } from '../utils/rainSkip';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -109,6 +110,12 @@ interface Props {
    */
   recurrenceHolidays?: HolidayRule | null;
   onChangeHolidays?: (rule: HolidayRule | null) => void;
+  /**
+   * The rain that skips an occurrence, in millimetres (Task.rainSkipMm), or
+   * null for never. Omit `onChangeRainSkip` to leave the group out.
+   */
+  rainSkipMm?: number | null;
+  onChangeRainSkip?: (mm: number | null) => void;
 }
 
 const HOLIDAY_OPTIONS: { value: HolidayRule | null; label: string }[] = [
@@ -186,6 +193,7 @@ export function RecurrencePicker({
   endDate,
   previewNextDate,
   recurrenceHolidays, onChangeHolidays,
+  rainSkipMm, onChangeRainSkip,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -200,6 +208,24 @@ export function RecurrencePicker({
         holidaySet !== 'none' ? `${HOLIDAY_SET_LABELS[holidaySet]} holidays` : null,
         customHolidays.length > 0 ? `${customHolidays.length} day${customHolidays.length === 1 ? '' : 's'} off of your own` : null,
       ].filter(Boolean).join(' and ')}, set in Settings, Day & time.`;
+
+  // The rain thresholds in the user's own unit. A stored value that isn't a
+  // preset (one picked under the other unit) keeps a segment of its own, so
+  // the track never shows a selection the task doesn't have.
+  const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
+  const rainOptions = useMemo(() => {
+    const presets = rainSkipOptions(rainUnit);
+    const extra = typeof rainSkipMm === 'number' && rainSkipMm > 0 && !presets.some(p => p.mm === rainSkipMm)
+      ? [{ mm: rainSkipMm, label: formatRain(rainSkipMm, rainUnit) }] : [];
+    return [
+      { value: null as number | null, label: 'Off' },
+      ...[...presets, ...extra].sort((a, b) => a.mm - b.mm).map(p => ({ value: p.mm as number | null, label: p.label })),
+    ];
+  }, [rainUnit, rainSkipMm]);
+  const rainHint = weatherTasksOn
+    ? 'Skips the day\'s occurrence when this much rain fell yesterday and today, counting today\'s forecast.'
+    : 'Turn on Weather-based tasks in Settings, with location access, so the app can read rainfall. Until then this does nothing.';
 
   const endMode: 'never' | 'date' | 'count' =
     endDate?.value ? 'date' : recurrenceCount !== null ? 'count' : 'never';
@@ -413,6 +439,16 @@ export function RecurrencePicker({
             value={recurrenceHolidays ?? null}
             onChange={onChangeHolidays}
             options={HOLIDAY_OPTIONS}
+          />
+        </Group>
+      )}
+      {recurrenceType !== 'hours' && !!onChangeRainSkip && (
+        <Group label="When it rains" hint={rainHint} styles={styles}>
+          <SegmentedControl
+            label="Skip after this much rain"
+            value={typeof rainSkipMm === 'number' && rainSkipMm > 0 ? rainSkipMm : null}
+            onChange={onChangeRainSkip}
+            options={rainOptions}
           />
         </Group>
       )}

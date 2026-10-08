@@ -73,7 +73,12 @@ describe('describeEffects', () => {
 });
 
 describe('describeEffects, field changes', () => {
-  const dayOf = (iso: string) => iso.slice(0, 10);
+  // The replica's dayKeyOf, as above: a local day, never a cut of the UTC
+  // string, or the day and the clock time disagree away from Greenwich.
+  const dayOf = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const entry = (before: Record<string, unknown>, after: Record<string, unknown>) => ({
     action: 'edited' as const, subject: 'task' as const, title: 'Pay rent', taskId: 't1', revert: { before, after },
   });
@@ -87,7 +92,7 @@ describe('describeEffects, field changes', () => {
   it('names fields it used to drop, and labels weekdays, priority and a reminder time', () => {
     const lines = describeEffects([entry(
       { weatherWait: null, recurrenceDays: [1], priority: 1, reminderTime: null },
-      { weatherWait: 'sunny', recurrenceDays: [1, 5], priority: 3, reminderTime: '2026-10-09T13:30:00.000Z' },
+      { weatherWait: 'sunny', recurrenceDays: [1, 5], priority: 3, reminderTime: new Date(2026, 9, 9, 9, 30).toISOString() },
     )], dayOf);
     expect(lines[0]).toContain('waits for weather from nothing to "sunny"');
     expect(lines[0]).toContain('repeat days from Monday to Monday, Friday');

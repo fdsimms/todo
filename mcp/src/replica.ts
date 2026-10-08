@@ -247,6 +247,10 @@ export interface ReplicaSettings {
    * (`calendarRequestDeviceId`). Without one, a request would wait for ever.
    */
   calendarRequestsOn: boolean;
+  /** How amounts show (asWritten, metric or us); a rain threshold reads millimetres only on metric. */
+  unitSystem: 'asWritten' | 'metric' | 'us';
+  /** The weather switch. Off, nothing reads a forecast, so a rain skip never fires. */
+  weatherTasks: boolean;
 }
 
 /** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
@@ -3379,6 +3383,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         completedRetentionDays: s.completedRetentionDays,
         // Read off the table, as requestCalendarEvent does, so the two agree.
         calendarRequestsOn: !!db.dbGetSetting('calendarRequestDeviceId'),
+        unitSystem: s.unitSystem,
+        weatherTasks: s.weatherTasks,
       };
     },
 

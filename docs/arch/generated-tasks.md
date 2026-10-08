@@ -603,6 +603,31 @@ one. Those three rules and the reasoning behind them are in
       only while the weather switch is on, since accepting it with nothing reading the forecast
       would be a field dropped without saying so. The MCP write only records the want: the phone
       holds the forecast, so the task leaves Today at its next sync.
+  - **A repeating task can skip a day it rained, and that is not a rule either.**
+    `Task.rainSkipMm` (`src/utils/rainSkip.ts`, applied by `applyRainSkips` in `useTaskStore`) is a
+    threshold in millimetres on one repeating task ("water the garden unless it rained 5 mm").
+    - **Rain is yesterday plus today**, from the same Open-Meteo request (`precipitation_sum` and
+      one `past_days`; `snapshotFromResponse` finds today by date, so day 0 is no longer assumed).
+      Today's figure is the day's forecast, so a morning look is partly a prediction. That reads
+      the ground rather than a calendar day, which is the question a watering task asks.
+    - **No figure decides nothing.** Neither day's rainfall is never read as dry or as wet, and a
+      snapshot from an earlier logical day is refused on its day key, like every weather pass.
+    - **It skips, never misses or completes**, through `skipPatch`: a miss is a claim about the
+      person in their Logbook. The streak is forgiven the way vacation forgives one (re-dated to
+      today, nothing credited), because the rain did the job.
+    - **Only today's occurrence, once a day.** `rainSkippedOn` is the pass's mark, so an occurrence
+      pulled back onto Today after a skip stays. A withheld task (`isWithheld`) is left alone.
+    - **It is recorded in Activity** as an app-written `moved` entry ("Skipped after rain"), the
+      only one an unattended pass writes, so a skip nobody saw has somewhere to be found.
+    - It runs from the catch-up passes and again whenever a snapshot lands
+      (`useWeatherWaitSync`), never in demo mode, and only does anything with the weather switch on,
+      since nothing else fetches the rainfall.
+    - **Set from the editor's repeat, a template item, quick add or MCP.** Quick add's phrase is
+      `parseRainSkipInput` ("unless it rains", optionally with an amount); a bare one takes
+      `defaultRainSkipMm` in the person's unit. It is offered only once the repeat is set and the
+      weather switch is on. The schedule phrase must reach the end of the title, so
+      `parseTaskInputAheadOfRainSkip` reads the repeat past a trailing rain phrase and keeps the
+      phrase for the next tooltip; otherwise "every 2 days unless it rains" would offer neither.
   - **It ships off**, like `pantryCheck` and `pantryReview`, and for a reason of its own on top of
     theirs: it's the one generator that also wants a location fix, which is not something to start
     reading without being asked.

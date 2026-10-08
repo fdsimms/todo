@@ -1199,6 +1199,19 @@ export function seedDemoData(): void {
   });
   completeTask(trash.id, { byOther: true });
 
+  // A repeating task the rain can skip (Task.rainSkipMm): 5 mm over yesterday
+  // and today and the watering is moved on. The pass never runs in demo mode
+  // (it reads the real forecast), so this shows the setting and its caption.
+  addTask({
+    title: 'Water the garden',
+    category: 'Home',
+    effort: 1,
+    recurrenceType: 'daily',
+    recurrenceInterval: 2,
+    dueDate: today.toISOString(),
+    rainSkipMm: 5,
+  });
+
   // --- A monthly repeat on the Nth weekday ----------------------------------
   // recurrenceWeekOrdinal, otherwise invisible until a task uses it: "the
   // second Tuesday" rather than a day of the month. Dated onto the grid's own

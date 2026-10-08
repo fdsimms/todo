@@ -106,6 +106,15 @@ describe('repeat', () => {
     expect(errorsOf({ repeat: { every: 'hours', interval: 4, holidays: 'skip' } })).toMatch(/no days to skip/);
   });
 
+  it('takes a rain threshold, reads it back, and refuses one on an hourly repeat', () => {
+    const written = ok({ repeat: { every: 'day', interval: 2, skipAfterRainMm: 5 } });
+    expect(written).toMatchObject({ recurrenceType: 'daily', rainSkipMm: 5 });
+    expect(describeRepeat({ ...written, recurrenceDays: [] } as unknown as Task)).toMatchObject({ skipAfterRainMm: 5 });
+    expect(ok({ repeat: { every: 'day' } })).toMatchObject({ rainSkipMm: null });
+    expect(errorsOf({ repeat: { every: 'hours', interval: 4, skipAfterRainMm: 5 } })).toMatch(/no days to skip/);
+    expect(errorsOf({ repeat: { every: 'day', skipAfterRainMm: 0 } })).toMatch(/skipAfterRainMm/);
+  });
+
   it('counts hourly and daily repeats from completion, as the picker does, unless told otherwise', () => {
     expect(ok({ repeat: { every: 'hours', interval: 3 } })).toMatchObject({ recurrenceType: 'hours', recurrenceInterval: 3, recurrenceFromCompletion: true });
     expect(ok({ repeat: { every: 'day' } }).recurrenceFromCompletion).toBe(true);
