@@ -5948,7 +5948,7 @@ describe('answerPantryReview', () => {
     expect(useGroceryStore.getState().items[0].runningLowAt).not.toBeNull();
   });
 
-  // "Got new maple syrup": the packet the card asked about is gone, so what was
+  // "I restocked the maple syrup": the packet the card asked about is gone, so what was
   // said about it (frozen, opened, running low) goes with it, and the row comes
   // off the list that "running low" had put it on.
   it('clears the old packet\'s claims and the home list entry for "new"', () => {

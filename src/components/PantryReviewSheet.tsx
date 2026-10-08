@@ -454,7 +454,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                           <Text style={[styles.stampText, { color: colors.orangeText }]}>Running low</Text>
                         </Animated.View>
                         <Animated.View style={[styles.stamp, styles.stampNew, { opacity: stampOpacity('new') }]}>
-                          <Text style={[styles.stampText, { color: colors.accentText }]}>Got new</Text>
+                          <Text style={[styles.stampText, { color: colors.accentText }]}>Restocked</Text>
                         </Animated.View>
                         <CardBody card={entry} styles={styles} />
                       </>
@@ -504,7 +504,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
               />
               <Action
                 icon="add"
-                label="Got new"
+                label="Restocked"
                 tint={colors.accentText}
                 background={colors.accent + '26'}
                 onPress={() => flingOut('new')}
@@ -562,7 +562,7 @@ const ANSWER_META: Record<
   out: { icon: 'close', label: 'Out of it', colorKey: 'red' },
   low: { icon: 'contrast-outline', label: 'Running low', colorKey: 'orange' },
   have: { icon: 'checkmark', label: 'Still have it', colorKey: 'green' },
-  new: { icon: 'add', label: 'Got new', colorKey: 'accent' },
+  new: { icon: 'add', label: 'Restocked', colorKey: 'accent' },
 };
 
 /**
@@ -671,7 +671,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 
-/** Whether a drag reads as the up ("running low") or down ("got new") one rather than a sideways answer. */
+/** Whether a drag reads as the up ("running low") or down ("restocked") one rather than a sideways answer. */
 function isVertical(dx: number, dy: number): boolean {
   return Math.abs(dy) > Math.abs(dx);
 }
