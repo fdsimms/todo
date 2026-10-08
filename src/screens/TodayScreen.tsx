@@ -4686,10 +4686,20 @@ export function TodayScreen() {
                 onPress={() => navigateToTab('Rewards')}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={`${coinTotal} coins. Open Rewards`}
+                accessibilityLabel={savingGoal
+                  ? `${coinTotal} coins. Saving for ${savingGoal.title}: ${Math.max(0, Math.min(coinTotal, savingGoal.reward.cost))} of ${formatCoins(savingGoal.reward.cost)}${coinTotal >= savingGoal.reward.cost ? ', ready to claim' : ''}. Open Rewards`
+                  : `${coinTotal} coins. Open Rewards`}
               >
-                <CoinIcon size={iconSize.sm} color={colors.done} filled />
-                <Text style={styles.coinPillText}>{coinTotal}</Text>
+                <View style={styles.coinPillTop}>
+                  <CoinIcon size={iconSize.sm} color={colors.done} filled />
+                  <Text style={styles.coinPillText}>{coinTotal}</Text>
+                  {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
+                </View>
+                {savingGoal && (
+                  <View style={styles.coinPillTrack}>
+                    <View style={[styles.coinPillFill, { width: `${goalBarFill(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
+                  </View>
+                )}
               </TouchableOpacity>
             ) : undefined
           }
@@ -4705,28 +4715,6 @@ export function TodayScreen() {
           switchChannel={viewSwitchChannel}
           styles={styles}
         />
-
-        {viewMode === 'today' && savingGoal && (
-          <TouchableOpacity
-            style={styles.goalStrip}
-            onPress={() => navigateToTab('Rewards')}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`Saving for ${savingGoal.title}: ${Math.max(0, Math.min(coinTotal, savingGoal.reward.cost))} of ${formatCoins(savingGoal.reward.cost)}. Open Rewards`}
-          >
-            <View style={styles.goalStripTop}>
-              <Text style={styles.goalStripTitle} numberOfLines={1}>{`Saving for: ${savingGoal.title}`}</Text>
-              <Text style={styles.goalStripMeta}>
-                {coinTotal >= savingGoal.reward.cost
-                  ? 'Ready to claim'
-                  : `${Math.max(0, coinTotal)} of ${savingGoal.reward.cost}`}
-              </Text>
-            </View>
-            <View style={styles.goalStripTrack}>
-              <View style={[styles.goalStripFill, { width: `${goalBarFill(coinTotal, savingGoal.reward.cost) * 100}%` }]} />
-            </View>
-          </TouchableOpacity>
-        )}
 
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
@@ -5703,14 +5691,12 @@ export function TodayScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
-  coinPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary },
-  // The warm gold card the Rewards screen's balance uses, so the two read as one thing.
-  goalStrip: { marginHorizontal: spacing.md, marginBottom: spacing.smd, paddingHorizontal: spacing.smd, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: colors.brand + '29', gap: spacing.xsm },
-  goalStripTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  goalStripTitle: { flex: 1, color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
-  goalStripMeta: { color: colors.textSecondary, fontSize: font.xs, fontVariant: ['tabular-nums'] },
-  goalStripTrack: { height: 6, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  goalStripFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
+  // Column so the saving-for bar can sit under the count; with no goal it is one row, as before.
+  coinPill: { paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary, gap: spacing.xxs },
+  coinPillTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
+  coinPillTrack: { height: 4, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
+  coinPillFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.done },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
