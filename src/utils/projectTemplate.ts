@@ -200,6 +200,7 @@ export function templateFromProject(
     anchor,
     dueOffsetDays: offsetOf(task.dueDate),
     deadlineOffsetDays: offsetOf(task.deadline),
+    deadlineTime: task.deadline ? (task.deadlineTime ?? null) : null,
     tags: task.tags,
     category: task.category,
     priority: task.priority,

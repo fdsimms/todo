@@ -254,6 +254,18 @@ describe('buildDraftsFromTemplate', () => {
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
 
+  it('carries a deadline time onto the task, and only with a deadline', () => {
+    const [timed] = buildDraftsFromTemplate([makeItem({ dueOffsetDays: 3, deadlineOffsetDays: 1, deadlineTime: '17:00' })], { start, end });
+    expect(timed.deadlineTime).toBe('17:00');
+    const [noDeadline] = buildDraftsFromTemplate([makeItem({ dueOffsetDays: 3, deadlineTime: '17:00' })], { start, end });
+    expect(noDeadline.deadlineTime).toBeNull();
+  });
+
+  it('normalizes a deadline time away when the item has no deadline', () => {
+    expect(normalizeTemplateItem({ deadlineOffsetDays: 2, deadlineTime: '09:30' }).deadlineTime).toBe('09:30');
+    expect(normalizeTemplateItem({ deadlineTime: '09:30' }).deadlineTime).toBeNull();
+  });
+
   // completeTask carries a deadline only as an offset and moves a reminder by
   // whole days, so a repeating item's fixed dates alone stop at the first one.
   it('gives a repeating item a deadline and reminder that carry to later occurrences', () => {

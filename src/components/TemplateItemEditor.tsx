@@ -215,6 +215,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [dueOffsetDays, setDueOffsetDays] = useState<number | null>(null);
   const [deferOffsetDays, setDeferOffsetDays] = useState<number | null>(null);
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
+  const [deadlineTime, setDeadlineTime] = useState<string | null>(null);
+  const [deadlineTimePickerOpen, setDeadlineTimePickerOpen] = useState(false);
+  const [deadlineTimePickerDate, setDeadlineTimePickerDate] = useState(new Date());
   const [windowStart, setWindowStart] = useState<string | null>(null);
   // Task.linkUrl as typed: read the way a list line is ("Booking https://…"
   // keeps the url), and a bare domain gets its https://.
@@ -317,6 +320,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDueOffsetDays(item?.dueOffsetDays ?? draft?.dueOffsetDays ?? null);
     setDeferOffsetDays(item?.deferOffsetDays ?? draft?.deferOffsetDays ?? null);
     setDeadlineOffsetDays(item?.deadlineOffsetDays ?? draft?.deadlineOffsetDays ?? null);
+    setDeadlineTime(item?.deadlineTime ?? null);
+    setDeadlineTimePickerOpen(false);
     setWindowStart(item?.windowStart ?? draft?.windowStart ?? null);
     setLinkText(item?.linkUrl ?? draft?.linkUrl ?? '');
     setLocationText(item?.location ?? draft?.location ?? '');
@@ -421,6 +426,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPenaltyPickerOpen(false);
   };
 
+  // 17:00 rather than the current time, as the cutoff picker above does: this
+  // is a time of day somebody means, not whenever the sheet was opened.
+  const openDeadlineTimePicker = () => {
+    setDeadlineTimePickerDate(hhmmToDate(deadlineTime ?? '17:00'));
+    setDeadlineTimePickerOpen(true);
+  };
+
+  const confirmDeadlineTimePicker = () => {
+    setDeadlineTime(dateToHHMM(deadlineTimePickerDate));
+    setDeadlineTimePickerOpen(false);
+  };
+
   const openWindowPicker = (which: 'start' | 'end') => {
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
@@ -492,6 +509,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       dueOffsetDays,
       deferOffsetDays,
       deadlineOffsetDays,
+      deadlineTime: deadlineOffsetDays !== null ? deadlineTime : null,
       windowStart,
       windowEnd,
       linkUrl: parseLabelledLink(linkText)?.url ?? null,
@@ -916,10 +934,65 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           offset={deadlineOffsetDays}
           anchor={anchor}
           away={tripTemplate}
-          onChange={setDeadlineOffsetDays}
+          onChange={v => { setDeadlineOffsetDays(v); if (v === null) { setDeadlineTime(null); setDeadlineTimePickerOpen(false); } }}
           colors={colors}
           styles={styles}
         />
+        {deadlineOffsetDays !== null && (
+          <>
+            <View style={styles.timePillRow}>
+              <TouchableOpacity
+                style={[styles.timePill, !!deadlineTime && styles.timePillActive]}
+                onPress={openDeadlineTimePicker}
+                accessibilityRole="button"
+                accessibilityLabel={deadlineTime ? `Deadline time ${formatHHMM(deadlineTime)}` : 'Add a time to the deadline'}
+              >
+                <Text style={[styles.timePillText, !!deadlineTime && styles.timePillTextActive]}>
+                  {deadlineTime ? formatHHMM(deadlineTime) : 'Add a time'}
+                </Text>
+              </TouchableOpacity>
+              {deadlineTime !== null && (
+                <TouchableOpacity
+                  style={styles.timePill}
+                  onPress={() => { setDeadlineTime(null); setDeadlineTimePickerOpen(false); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Make the deadline the whole day"
+                >
+                  <Text style={styles.timePillText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {deadlineTimePickerOpen && (
+              <>
+                <DateTimePicker
+                  value={deadlineTimePickerDate}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_e, d) => d && setDeadlineTimePickerDate(d)}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                />
+                <View style={styles.intervalRow}>
+                  <TouchableOpacity hitSlop={8}
+                    style={styles.intervalBtn}
+                    onPress={() => setDeadlineTimePickerOpen(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel deadline time"
+                  >
+                    <Ionicons name="close" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity hitSlop={8}
+                    style={styles.intervalBtn}
+                    onPress={confirmDeadlineTimePicker}
+                    accessibilityRole="button"
+                    accessibilityLabel="Confirm deadline time"
+                  >
+                    <Ionicons name="checkmark" size={16} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </>
+        )}
         <View style={styles.sep} />
         <EditorRow
           icon="time-outline"

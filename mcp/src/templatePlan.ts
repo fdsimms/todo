@@ -557,7 +557,7 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   for (const day of item.recurrenceDays ?? []) {
     if (day < 0 || day > 6) errors.push(`item "${label}" recurrenceDays must be 0 to 6.`);
   }
-  for (const field of ['windowStart', 'windowEnd'] as const) {
+  for (const field of ['windowStart', 'windowEnd', 'deadlineTime'] as const) {
     const value = item[field];
     if (value != null && !HHMM.test(value)) errors.push(`item "${label}" ${field} must be HH:MM.`);
   }
@@ -742,6 +742,9 @@ export function templateWarnings(
     }
     if (item.dueOffsetDays != null && item.deadlineOffsetDays != null && item.deadlineOffsetDays < item.dueOffsetDays) {
       warnings.push(`${label(item)} has a deadline before its due date.`);
+    }
+    if (item.deadlineTime && item.deadlineOffsetDays == null) {
+      warnings.push(`${label(item)} has a deadlineTime but no deadlineOffsetDays, so the time is dropped.`);
     }
     if (item.windowStart && item.windowEnd && item.windowEnd <= item.windowStart) {
       warnings.push(`${label(item)} has a time window that ends before it starts, so the end is ignored.`);

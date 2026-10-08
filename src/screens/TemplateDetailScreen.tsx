@@ -37,6 +37,7 @@ import { spacing, font, radius, iconSize, interaction, flattenOverlay, type Colo
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
+import { formatHHMM } from '../utils/dateUtils';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs } from '../utils/templateUtils';
 import { liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
@@ -51,7 +52,7 @@ function itemHint(item: TemplateItem, away = false): string | null {
   const parts: string[] = [];
   if (item.dueOffsetDays !== null) parts.push(`Due ${lower(formatOffsetLabel(item.dueOffsetDays))}`);
   if (item.deferOffsetDays !== null) parts.push(`shows ${lower(formatOffsetLabel(item.deferOffsetDays))}`);
-  if (item.deadlineOffsetDays !== null) parts.push(`deadline ${lower(formatOffsetLabel(item.deadlineOffsetDays))}`);
+  if (item.deadlineOffsetDays !== null) parts.push(`deadline ${lower(formatOffsetLabel(item.deadlineOffsetDays))}${item.deadlineTime ? ` at ${formatHHMM(item.deadlineTime)}` : ''}`);
   if (parts.length > 0) parts.push(`from ${anchorLabel(item.anchor, away).toLowerCase()}`);
   if (item.timeSegments.length > 0) parts.push(item.timeSegments.join(', '));
   return parts.length > 0 ? parts.join(' · ') : null;
