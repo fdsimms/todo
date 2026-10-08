@@ -514,7 +514,7 @@ export function RewardsScreen() {
           </View>
         </>
       )}
-      <View style={styles.rewardActions}>
+      <View style={[styles.rewardActions, styles.draftActions]}>
         <InlineAction label={draft?.mode === 'edit' ? 'Save' : 'Add'} icon="checkmark" onPress={saveDraft} disabled={!canSave} />
         <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
         {draft?.mode === 'edit' && (() => {
@@ -910,6 +910,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   note: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  // The form's Add/Cancel row sits under the One time only switch, which has no bottom margin of its own.
+  draftActions: { marginTop: spacing.md },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
