@@ -93,7 +93,9 @@ Rewards screen.
 A typed number is a guess, and a wrong guess is how this kind of system goes stale: too cheap and a
 reward stops meaning anything, too dear and it's never reached. So the add/edit form prices a reward
 in **time**: pick how often you want it (`REWARD_FREQUENCIES`) and the cost is `earnRatePerDay` times
-that, rounded by `suggestRewardCost`. Each reward then shows `describeRewardPace` ("about every 6
+that, rounded by `suggestRewardCost`. A stepper and unit track under the presets take any whole number
+of days, weeks or months (the project nudge cadence's `CadenceUnit`s, a month being 30 days); like a
+preset it only fills the cost field and stores nothing. Each reward then shows `describeRewardPace` ("about every 6
 days at your current pace").
 
 - **The rate comes from completed tasks, not the ledger**, run through the same coin rules, so it

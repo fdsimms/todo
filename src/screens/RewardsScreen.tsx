@@ -15,6 +15,15 @@ import { CoinIcon } from '../components/CoinIcon';
 import { CoinBurst } from '../components/CoinBurst';
 import { TARGET_ICON } from '../components/TargetIcon';
 import { CountStepper } from '../components/CountStepper';
+import { SegmentedControl } from '../components/SegmentedControl';
+import {
+  CADENCE_UNITS,
+  CADENCE_UNIT_MAX,
+  cadenceUnitLabel,
+  fromCadenceParts,
+  withCadenceUnit,
+  type CadenceUnit,
+} from '../utils/nudgeCadence';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -256,6 +265,19 @@ export function RewardsScreen() {
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
+  // The "every N days/weeks/months" stepper beside the presets. It only fills
+  // the cost field, the same as a preset does, so nothing about it is stored.
+  const [customCount, setCustomCount] = useState<number | null>(null);
+  const [customUnit, setCustomUnit] = useState<CadenceUnit>('weeks');
+  const applyCustomFrequency = (count: number | null, unit: CadenceUnit = customUnit) => {
+    setCustomCount(count);
+    const cost = count === null || rate === null
+      ? null
+      : suggestRewardCost(rate, fromCadenceParts({ count, unit }));
+    if (cost === null) return;
+    setDraftCost(String(cost));
+    setDraftPrice('');
+  };
   // A dollar price, when one is typed, decides the cost: the coin field gives
   // way to the converted figure rather than holding a second answer.
   const parsedPrice = parsePriceInput(draftPrice);
@@ -283,6 +305,7 @@ export function RewardsScreen() {
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
+    setCustomCount(null);
   }, []);
 
   const openDraft = useCallback((next: Draft, reward?: Reward) => {
@@ -293,6 +316,7 @@ export function RewardsScreen() {
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
+    setCustomCount(null);
   }, []);
 
   const saveDraft = useCallback(() => {
@@ -451,6 +475,7 @@ export function RewardsScreen() {
           After a week of completed tasks, this can suggest a price from how fast you earn coins.
         </Text>
       ) : (
+        <>
         <View style={styles.presetRow}>
           {REWARD_FREQUENCIES.map(f => {
             const cost = suggestRewardCost(rate, f.days);
@@ -477,6 +502,33 @@ export function RewardsScreen() {
             );
           })}
         </View>
+        <View style={styles.customRow}>
+          <CountStepper
+            value={customCount}
+            onChange={applyCustomFrequency}
+            min={1}
+            max={CADENCE_UNIT_MAX[customUnit]}
+            allowNull
+            start={1}
+            emptyLabel="Custom"
+            format={n => `Every ${n}`}
+            label="Custom reward frequency"
+            describeValue={n => (n === null ? 'Not set' : `Every ${n} ${customUnit}`)}
+          />
+          <View style={styles.customUnit}>
+            <SegmentedControl
+              label="Custom reward frequency unit"
+              options={CADENCE_UNITS.map(unit => ({ value: unit, label: cadenceUnitLabel(unit) }))}
+              value={customUnit}
+              onChange={unit => {
+                const next = withCadenceUnit({ count: customCount, unit }, unit);
+                setCustomUnit(unit);
+                applyCustomFrequency(next.count, unit);
+              }}
+            />
+          </View>
+        </View>
+        </>
       )}
       <Text style={styles.fieldLabel}>Price</Text>
       <TextField
@@ -1056,6 +1108,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Quick add's preset chips: shortcuts that fill the field beside them, not a
   // segmented control, because the field can hold any value (see SegmentedControl).
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  customRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, marginTop: spacing.sm,
+  },
+  customUnit: { flexGrow: 1, flexBasis: 200 },
   presetChip: {
     paddingHorizontal: 14,
     minHeight: interaction.pillHeight,
