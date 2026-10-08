@@ -24,9 +24,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
-import { nextPullCandidate } from '../utils/projectPull';
 import { isPausedOn, isPlanning } from '../utils/projectPause';
-import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
@@ -1538,14 +1536,6 @@ export function ProjectDetailScreen() {
     ? `Away ${format(new Date(project.awayStart), 'MMM d')}${project.awayEnd ? ` to ${format(new Date(project.awayEnd), 'MMM d')}` : ''}`
       + (project.destination ? ` · ${project.destination}` : '')
     : null;
-  // What a pull scoped to this project would offer first; the button that
-  // opens that sheet only shows when there is something to offer. The sheet
-  // was reachable only from Today's menu.
-  const pullable = useMemo(
-    () => (project && !project.completed && !project.archived ? nextPullCandidate(project, allTasks) : null),
-    [project, allTasks],
-  );
-  const [pullOpen, setPullOpen] = useState(false);
   const [lookAheadOpen, setLookAheadOpen] = useState(false);
   const tripAhead = !!awaySpan && !project?.completed && !project?.archived
     && awaySpan.start.getTime() > Date.now();
@@ -1596,13 +1586,13 @@ export function ProjectDetailScreen() {
     () => projectAnswerTallies(projectId, allTasks).map(answerTallyParts).filter(parts => parts.length > 0),
     [projectId, allTasks],
   );
-  const showSummary = !!project && (routinesToCatchUp.length > 0 || summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null || answerTallies.length > 0);
+  const showSummary = !!project && (routinesToCatchUp.length > 0 || summaryProgress !== null || summaryCaption !== null || tripLine !== null || paused || activityLine !== null || answerTallies.length > 0);
   // A list whose summary is only its count (and a date, if it has one) draws it
   // as a caption over the items rather than as a card, so the page doesn't open
   // on the same stats card a project does. Anything that needs the card (a
   // button, a trip, a pause, a tally) keeps it.
   const summaryCaptionOnly = isList && showSummary && routinesToCatchUp.length === 0 && tripLine === null
-    && !pullable && !paused && activityLine === null && answerTallies.length === 0
+    && !paused && activityLine === null && answerTallies.length === 0
     && !project!.archived && !project!.completed;
 
   /**
@@ -1968,7 +1958,7 @@ export function ProjectDetailScreen() {
                         </View>
                       </>
                     )}
-                    {!selectionMode && (!!pullable || tripAhead || paused) && (
+                    {!selectionMode && (tripAhead || paused) && (
                       <View style={styles.summaryActions}>
                         {paused && (
                           <InlineAction
@@ -1979,15 +1969,6 @@ export function ProjectDetailScreen() {
                             accessibilityLabel={planning
                               ? 'Mark this project ready, so its tasks show up in your lists'
                               : 'Resume this project now'}
-                          />
-                        )}
-                        {!!pullable && (
-                          <InlineAction
-                            icon="arrow-down-circle-outline"
-                            label="Pull a task"
-                            variant="neutral"
-                            onPress={() => { haptics.tap(); setPullOpen(true); }}
-                            accessibilityLabel="Pull a task from this project into your days"
                           />
                         )}
                         {tripAhead && (
@@ -2628,15 +2609,6 @@ export function ProjectDetailScreen() {
             onCancel={() => setAnswerTaskId(null)}
           />
         )}
-
-        <ProjectPullSheet
-          visible={pullOpen}
-          // Read only while open: it filters the whole list, and this screen
-          // renders on every row tap.
-          todaysTasks={pullOpen ? useTaskStore.getState().visibleTasks() : NO_SUBTASKS}
-          scopeProjectIds={project ? [project.id] : undefined}
-          onClose={() => setPullOpen(false)}
-        />
 
         <LookAheadSheet
           visible={lookAheadOpen}
