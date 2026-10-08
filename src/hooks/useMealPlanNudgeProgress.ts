@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
+import { openTasksOf } from '../utils/openTasks';
 
 /**
  * Keeps `useMealPlanStore.plannedSlotCounts` in step with whatever the weekly
@@ -42,20 +43,18 @@ export function useMealPlanNudgeProgress(): void {
   // range read, since the window is whichever week the meal plan screen last
   // showed, which needn't be the one being nudged.
   const entries = useMealPlanStore(useShallow(s => s.entries));
-  const tasks = useTaskStore(useShallow(s => s.tasks));
 
-  const dayKeys = useMemo(
-    () =>
-      liveGeneratedTasksOfKind(tasks, 'mealPlanNudge')
-        .map(mealPlanNudgeDayKey)
-        .filter((key): key is string => !!key),
-    [tasks]
+  // Selected as the joined day keys rather than the task array, so the store
+  // write that changes nothing here doesn't re-render the caller (Today) or
+  // re-query: the contents are the dependency, not the array, which is rebuilt
+  // on every completion, edit and reorder anywhere in the app. Open rows only,
+  // since a live nudge is never a completed one (see openTasksOf).
+  const signature = useTaskStore(s =>
+    liveGeneratedTasksOfKind(openTasksOf(s.tasks), 'mealPlanNudge')
+      .map(mealPlanNudgeDayKey)
+      .filter((key): key is string => !!key)
+      .join(','),
   );
-
-  // Depend on the contents rather than the array, which is rebuilt on every
-  // task-store change — otherwise this re-queries on every completion, edit and
-  // reorder anywhere in the app.
-  const signature = dayKeys.join(',');
 
   const run = useCallback(() => {
     refresh(signature ? signature.split(',') : []);

@@ -87,6 +87,7 @@ import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } fr
 import { tagColor } from '../utils/tagColor';
 import { useFilterField } from '../hooks/useFilterField';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * The recipe box.
@@ -1027,77 +1028,93 @@ export function RecipesScreen() {
         />
       )}
 
-      <QuickAddNameSheet
-        visible={addVisible}
-        placeholder="New recipe…"
-        noun="recipe"
-        onSubmit={createRecipe}
-        onClose={() => { setAddVisible(false); pendingMealTypeRef.current = null; }}
-      />
+      <LazySheet open={addVisible}>
+        <QuickAddNameSheet
+          visible={addVisible}
+          placeholder="New recipe…"
+          noun="recipe"
+          onSubmit={createRecipe}
+          onClose={() => { setAddVisible(false); pendingMealTypeRef.current = null; }}
+        />
+      </LazySheet>
 
-      <RecipeCreateSheet
-        visible={importVisible}
-        initialMode={importMode}
-        initialUrl={importUrl}
-        onClose={() => setImportVisible(false)}
-        onCreated={handleCreated}
-        keyless={!canImport}
-      />
+      <LazySheet open={importVisible}>
+        <RecipeCreateSheet
+          visible={importVisible}
+          initialMode={importMode}
+          initialUrl={importUrl}
+          onClose={() => setImportVisible(false)}
+          onCreated={handleCreated}
+          keyless={!canImport}
+        />
+      </LazySheet>
 
-      <InventRecipeSheet
-        visible={inventVisible}
-        onClose={() => setInventVisible(false)}
-        onCreated={recipeId => handleCreated(recipeId, null)}
-      />
+      <LazySheet open={inventVisible}>
+        <InventRecipeSheet
+          visible={inventVisible}
+          onClose={() => setInventVisible(false)}
+          onCreated={recipeId => handleCreated(recipeId, null)}
+        />
+      </LazySheet>
 
-      <RecipeTagFilterSheet
-        visible={tagFilterVisible}
-        onClose={() => setTagFilterVisible(false)}
-        tags={tagVocabulary}
-        counts={tagCounts}
-        selected={activeTags}
-        onChange={next => { animateLayout(); setSelectedTags(next); }}
-      />
+      <LazySheet open={tagFilterVisible}>
+        <RecipeTagFilterSheet
+          visible={tagFilterVisible}
+          onClose={() => setTagFilterVisible(false)}
+          tags={tagVocabulary}
+          counts={tagCounts}
+          selected={activeTags}
+          onChange={next => { animateLayout(); setSelectedTags(next); }}
+        />
+      </LazySheet>
 
       {/* Discovery only — this screen has no week to land picks on, so they
           go to the meal plan. See useOverlapPicker. */}
-      <OverlapPickerSheet
-        visible={overlap !== null}
-        matches={overlap?.matches ?? []}
-        seedLabel={overlap?.seedLabel ?? ''}
-        onHandOff={handOffOverlap}
-        onOpenRecipe={other => {
-          closeOverlap();
-          openRecipe(other);
-        }}
-        onClose={closeOverlap}
-      />
+      <LazySheet open={overlap !== null}>
+        <OverlapPickerSheet
+          visible={overlap !== null}
+          matches={overlap?.matches ?? []}
+          seedLabel={overlap?.seedLabel ?? ''}
+          onHandOff={handOffOverlap}
+          onOpenRecipe={other => {
+            closeOverlap();
+            openRecipe(other);
+          }}
+          onClose={closeOverlap}
+        />
+      </LazySheet>
 
-      <CookWithSheet
-        visible={cookWithVisible}
-        onClose={() => setCookWithVisible(false)}
-        onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
-        onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
-      />
-      <RecipeSortFilterSheet
-        visible={sortFilterVisible}
-        onClose={() => setSortFilterVisible(false)}
-        sort={recipeSort}
-        onSortChange={s => { animateLayout(); setRecipeSort(s); }}
-        lovedOnly={recipeLovedOnly}
-        onLovedOnlyChange={v => { animateLayout(); setRecipeLovedOnly(v); }}
-      />
+      <LazySheet open={cookWithVisible}>
+        <CookWithSheet
+          visible={cookWithVisible}
+          onClose={() => setCookWithVisible(false)}
+          onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+          onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
+        />
+      </LazySheet>
+      <LazySheet open={sortFilterVisible}>
+        <RecipeSortFilterSheet
+          visible={sortFilterVisible}
+          onClose={() => setSortFilterVisible(false)}
+          sort={recipeSort}
+          onSortChange={s => { animateLayout(); setRecipeSort(s); }}
+          lovedOnly={recipeLovedOnly}
+          onLovedOnlyChange={v => { animateLayout(); setRecipeLovedOnly(v); }}
+        />
+      </LazySheet>
 
-      <PlanMealSheet
-        visible={planningRecipe !== null}
-        title={planningRecipe?.name ?? null}
-        defaultSlot={earliestUnplannedSlotToday()}
-        onPlan={(dateKey, slot) =>
-          planningRecipe ? planRecipe(planningRecipe, dateKey, slot) : null}
-        // After the dismissal, never before — see PlanMealSheet.onPlanned.
-        onPlanned={offerPrepTasks}
-        onClose={() => setPlanningRecipe(null)}
-      />
+      <LazySheet open={planningRecipe !== null}>
+        <PlanMealSheet
+          visible={planningRecipe !== null}
+          title={planningRecipe?.name ?? null}
+          defaultSlot={earliestUnplannedSlotToday()}
+          onPlan={(dateKey, slot) =>
+            planningRecipe ? planRecipe(planningRecipe, dateKey, slot) : null}
+          // After the dismissal, never before — see PlanMealSheet.onPlanned.
+          onPlanned={offerPrepTasks}
+          onClose={() => setPlanningRecipe(null)}
+        />
+      </LazySheet>
     </View>
   );
 }

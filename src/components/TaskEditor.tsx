@@ -145,6 +145,7 @@ import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { capitalize } from '../utils/capitalize';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
+import { LazySheet } from './LazySheet';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -370,7 +371,16 @@ function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters
 }
 
 
-export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
+/**
+ * Memoized because it is mounted for the life of the screen that owns it, and
+ * closed is how it spends almost all of that: unmemoized, every render of the
+ * screen (every task write on Today) ran its forty-odd hooks and rebuilt its
+ * whole tree, only for the closed sheet to draw nothing. The callers that
+ * render it from a busy screen pass a stable `onClose` so this holds.
+ */
+export const TaskEditor = React.memo(TaskEditorSheet);
+
+function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
   const addTask = useTaskStore(s => s.addTask);
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);
@@ -891,12 +901,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   });
 
   // ==== effects: loading a task into the draft, and keeping fields in step ====
+  // The draft is loaded during the render that opens the sheet (or hands it a
+  // different task), rather than from an effect after it. From an effect the
+  // whole editor first mounted holding the previous draft and then rendered
+  // all over again with the right one, inside the commit the sheet's slide-in
+  // was waiting on; as a render-phase update React re-runs only this function
+  // before anything below it renders, so the form mounts once, already
+  // filled. `draftLoadedFor` is what the draft was last loaded for, including
+  // the close, so reopening on the same task object still starts afresh.
+  const [draftLoadedFor, setDraftLoadedFor] = useState<{ visible: boolean; task: Task | null | undefined }>(
+    { visible: false, task: undefined },
+  );
+  if (draftLoadedFor.visible !== visible || (visible && draftLoadedFor.task !== task)) {
+    setDraftLoadedFor({ visible, task });
+    if (visible) loadDraft();
+  }
+  // The one part that touches a native view, so it waits for the commit.
   useEffect(() => {
-    if (!visible) return;
+    if (visible) searchFilter.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, task]);
+
+  // Everything the draft starts from. Only state setters and this
+  // component's own refs, which is what makes it safe to run while rendering.
+  function loadDraft() {
     // A search belongs to the trip you made to find one field, not to the
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
-    searchFilter.clear();
     // Same for a dismissed schedule phrase — belongs to this trip through
     // the title, not to the sheet.
     setDismissedScheduleSignature(null);
@@ -1219,7 +1250,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       followUpTaskOneAtATime: task?.followUpTaskOneAtATime ?? false,
       followUpTaskAtEnd: task?.followUpTaskAtEnd ?? false,
     });
-  }, [visible, task]);
+  }
 
   // Relative deadline ("N days before due" or "day of month") tracks the Date
   // field live in the editor too, so the preview shown here always matches
@@ -2850,87 +2881,96 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       }
       footer={
         <>
-          <RemindMePicker
-            visible={pickerMode !== 'none'}
-            value={pickerDate}
-            kind={reminderKind}
-            dueDate={dueDate}
-            offsetDays={reminderOffsetDays}
-            canTrackVisibility={canTrackVisibility}
-            tracksVisibility={reminderTracksVisibility}
-            visiblePreview={visiblePreview}
-            anchor={reminderTimeAnchor}
-            onConfirm={confirmPicker}
-            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
-            onCancel={() => setPickerMode('none')}
-          />
-          <WhenPicker
-            visible={showWhenPicker}
-            value={dueDate}
-            timeSegments={timeSegments}
-            // Only the Date row opts in — the deadline and recurrence-end
-            // pickers below mount the same component and have nothing to do
-            // with pushing a task out.
-            postponeTaskId={task?.id}
-            // "2 weeks before the party": offered for a task in a project
-            // that has a deadline or a trip ahead of it.
-            projectAnchor={projectDateAnchor(projects.find(p => p.id === project), getLogicalToday())}
-            taskId={task?.id}
-            taskTitle={title}
-            taskNotes={notes}
-            taskTags={tags}
-            taskCategory={category}
-            taskPriority={priority}
-            taskEffort={effort}
-            taskEstimatedMinutes={estimatedMinutes}
-            onConfirm={(date, segs) => {
-              if (date) {
-                const noon = new Date(date);
-                noon.setHours(12, 0, 0, 0);
-                setDueDate(noon);
-              } else {
+          {/* Each picker below mounts the first time it opens in this editing
+              session, rather than all sixteen in the commit that opens the
+              editor, which most edits then never touch. See LazySheet. */}
+          <LazySheet open={pickerMode !== 'none'}>
+            <RemindMePicker
+              visible={pickerMode !== 'none'}
+              value={pickerDate}
+              kind={reminderKind}
+              dueDate={dueDate}
+              offsetDays={reminderOffsetDays}
+              canTrackVisibility={canTrackVisibility}
+              tracksVisibility={reminderTracksVisibility}
+              visiblePreview={visiblePreview}
+              anchor={reminderTimeAnchor}
+              onConfirm={confirmPicker}
+              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
+              onCancel={() => setPickerMode('none')}
+            />
+          </LazySheet>
+          <LazySheet open={showWhenPicker}>
+            <WhenPicker
+              visible={showWhenPicker}
+              value={dueDate}
+              timeSegments={timeSegments}
+              // Only the Date row opts in — the deadline and recurrence-end
+              // pickers below mount the same component and have nothing to do
+              // with pushing a task out.
+              postponeTaskId={task?.id}
+              // "2 weeks before the party": offered for a task in a project
+              // that has a deadline or a trip ahead of it.
+              projectAnchor={projectDateAnchor(projects.find(p => p.id === project), getLogicalToday())}
+              taskId={task?.id}
+              taskTitle={title}
+              taskNotes={notes}
+              taskTags={tags}
+              taskCategory={category}
+              taskPriority={priority}
+              taskEffort={effort}
+              taskEstimatedMinutes={estimatedMinutes}
+              onConfirm={(date, segs) => {
+                if (date) {
+                  const noon = new Date(date);
+                  noon.setHours(12, 0, 0, 0);
+                  setDueDate(noon);
+                } else {
+                  setDueDate(null);
+                }
+                // A stale deferUntil from an earlier push-out reschedule would
+                // otherwise survive this edit and keep hiding the task past the
+                // date just picked here — this row is a plain reschedule, which
+                // always takes effect immediately.
+                setDeferUntil(null);
+                setTimeSegments(segs);
+                setShowWhenPicker(false);
+              }}
+              onClear={() => {
                 setDueDate(null);
-              }
-              // A stale deferUntil from an earlier push-out reschedule would
-              // otherwise survive this edit and keep hiding the task past the
-              // date just picked here — this row is a plain reschedule, which
-              // always takes effect immediately.
-              setDeferUntil(null);
-              setTimeSegments(segs);
-              setShowWhenPicker(false);
-            }}
-            onClear={() => {
-              setDueDate(null);
-              setDeferUntil(null);
-              setTimeSegments([]);
-              setShowWhenPicker(false);
-            }}
-            onCancel={() => setShowWhenPicker(false)}
-          />
-          <CalendarPicker
-            visible={showDatesPicker}
-            value={null}
-            multiple
-            values={[...(dueDate ? [dueDate] : []), ...extraDates].sort((a, b) => +a - +b)}
-            mode="date"
-            title="Dates"
-            onConfirm={() => {}}
-            onConfirmMultiple={(dates) => {
-              // The earliest becomes the Date row; the rest hang off it. Times
-              // are normalised to noon like the When picker does, so a date's
-              // own day is unambiguous either side of a dayResetTime.
-              const noons = dates.map(d => { const n = new Date(d); n.setHours(12, 0, 0, 0); return n; });
-              setDueDate(noons[0] ?? null);
-              setExtraDates(noons.slice(1));
-              // Same reasoning as the Date row's own onConfirm: a stale
-              // deferUntil from an earlier push-out reschedule must not
-              // outlive a set of dates just picked here.
-              setDeferUntil(null);
-              if (noons.length < 2) setSeriesRepeats(false);
-              setShowDatesPicker(false);
-            }}
-            onCancel={() => setShowDatesPicker(false)}
-          />
+                setDeferUntil(null);
+                setTimeSegments([]);
+                setShowWhenPicker(false);
+              }}
+              onCancel={() => setShowWhenPicker(false)}
+            />
+          </LazySheet>
+          <LazySheet open={showDatesPicker}>
+            <CalendarPicker
+              visible={showDatesPicker}
+              value={null}
+              multiple
+              values={[...(dueDate ? [dueDate] : []), ...extraDates].sort((a, b) => +a - +b)}
+              mode="date"
+              title="Dates"
+              onConfirm={() => {}}
+              onConfirmMultiple={(dates) => {
+                // The earliest becomes the Date row; the rest hang off it. Times
+                // are normalised to noon like the When picker does, so a date's
+                // own day is unambiguous either side of a dayResetTime.
+                const noons = dates.map(d => { const n = new Date(d); n.setHours(12, 0, 0, 0); return n; });
+                setDueDate(noons[0] ?? null);
+                setExtraDates(noons.slice(1));
+                // Same reasoning as the Date row's own onConfirm: a stale
+                // deferUntil from an earlier push-out reschedule must not
+                // outlive a set of dates just picked here.
+                setDeferUntil(null);
+                if (noons.length < 2) setSeriesRepeats(false);
+                setShowDatesPicker(false);
+              }}
+              onCancel={() => setShowDatesPicker(false)}
+            />
+          </LazySheet>
           {/*
             A single plain date, so WhenPicker rather than the CalendarPicker
             this used to be — that one is only for a completion timestamp or a
@@ -2939,150 +2979,176 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             three-way mode, and a clear here would leave the mode saying "on a
             date" with no date to end on.
           */}
-          <WhenPicker
-            visible={showEndDatePicker}
-            value={recurrenceEndDate}
-            title="End date"
-            showTimeOfDay={false}
-            showSuggest={false}
-            onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
-            onCancel={() => setShowEndDatePicker(false)}
-          />
-          <WhenPicker
-            visible={showFollowUpPicker}
-            value={followUpOn}
-            title="Follow up on"
-            showTimeOfDay={false}
-            showSuggest={false}
-            // A day to chase somebody is ahead, never behind.
-            allowPast={false}
-            onConfirm={(date) => { setFollowUpOn(date); setShowFollowUpPicker(false); }}
-            onClear={() => { setFollowUpOn(null); setShowFollowUpPicker(false); }}
-            onCancel={() => setShowFollowUpPicker(false)}
-          />
-          <WhenPicker
-            visible={showDeadlinePicker}
-            value={deadline}
-            title="Deadline"
-            showTimeOfDay={false}
-            showSuggest={false}
-            onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
-            onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
-            onCancel={() => setShowDeadlinePicker(false)}
-          />
-          <TaskRelationPickerSheet
-            relation="waitingOn"
-            visible={showBlockerPicker}
-            taskId={task?.id ?? null}
-            context={{ groupId, projectId: project, category }}
-            // A task staged as blocked by this one can't also be what it waits
-            // on — that's the one-hop loop, and neither draft is saved yet for
-            // the sheet's own cycle check to see.
-            excludeIds={blocksExcludeIds}
-            onClose={() => setShowBlockerPicker(false)}
-            onSelect={id => setBlockerIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
-          />
-          <TaskRelationPickerSheet
-            relation="answer"
-            visible={showAnswerGatePicker}
-            taskId={task?.id ?? null}
-            context={{ groupId, projectId: project, category }}
-            onClose={() => setShowAnswerGatePicker(false)}
-            // A new question starts with nothing ticked: which answers show
-            // this task is the next thing to say, and the row opens to say it.
-            onSelect={id => {
-              setAnswerGate(prev => (prev?.taskId === id ? prev : { taskId: id, answers: [] }));
-              setShowAnswerGate(true);
-            }}
-          />
-          <TaskRelationPickerSheet
-            relation="blocks"
-            visible={showBlocksPicker}
-            taskId={task?.id ?? null}
-            context={{ groupId, projectId: project, category }}
-            excludeIds={blocksExcludeIds}
-            onClose={() => setShowBlocksPicker(false)}
-            onSelect={id => setBlocksIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
-          />
-          <ChainStepQuestionSheet
-            visible={questionStepId !== null}
-            step={chainItems.find(c => c.id === questionStepId) ?? null}
-            nextStepTitle={nextChainStepTitle(chainItems, questionStepId)}
-            onSave={patch => setChainItems(prev => prev.map(
-              c => (c.id === questionStepId ? { ...c, ...patch } : c),
-            ))}
-            onClose={() => setQuestionStepId(null)}
-          />
-          <ChainStepMedicationSheet
-            visible={medicationStepId !== null}
-            step={chainItems.find(c => c.id === medicationStepId) ?? null}
-            taskMedicationName={medicationName}
-            onSave={patch => setChainItems(prev => prev.map(
-              c => (c.id === medicationStepId ? { ...c, ...patch } : c),
-            ))}
-            onClose={() => setMedicationStepId(null)}
-          />
-          <ChainStepLinkSheet
-            visible={linkStepId !== null}
-            step={chainItems.find(c => c.id === linkStepId) ?? null}
-            taskLinkUrl={linkUrl}
-            kitchenEnabled={kitchenEnabled}
-            onSave={patch => setChainItems(prev => prev.map(
-              c => (c.id === linkStepId ? { ...c, ...patch } : c),
-            ))}
-            onClose={() => setLinkStepId(null)}
-          />
+          <LazySheet open={showEndDatePicker}>
+            <WhenPicker
+              visible={showEndDatePicker}
+              value={recurrenceEndDate}
+              title="End date"
+              showTimeOfDay={false}
+              showSuggest={false}
+              onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
+              onCancel={() => setShowEndDatePicker(false)}
+            />
+          </LazySheet>
+          <LazySheet open={showFollowUpPicker}>
+            <WhenPicker
+              visible={showFollowUpPicker}
+              value={followUpOn}
+              title="Follow up on"
+              showTimeOfDay={false}
+              showSuggest={false}
+              // A day to chase somebody is ahead, never behind.
+              allowPast={false}
+              onConfirm={(date) => { setFollowUpOn(date); setShowFollowUpPicker(false); }}
+              onClear={() => { setFollowUpOn(null); setShowFollowUpPicker(false); }}
+              onCancel={() => setShowFollowUpPicker(false)}
+            />
+          </LazySheet>
+          <LazySheet open={showDeadlinePicker}>
+            <WhenPicker
+              visible={showDeadlinePicker}
+              value={deadline}
+              title="Deadline"
+              showTimeOfDay={false}
+              showSuggest={false}
+              onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
+              onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
+              onCancel={() => setShowDeadlinePicker(false)}
+            />
+          </LazySheet>
+          <LazySheet open={showBlockerPicker}>
+            <TaskRelationPickerSheet
+              relation="waitingOn"
+              visible={showBlockerPicker}
+              taskId={task?.id ?? null}
+              context={{ groupId, projectId: project, category }}
+              // A task staged as blocked by this one can't also be what it waits
+              // on — that's the one-hop loop, and neither draft is saved yet for
+              // the sheet's own cycle check to see.
+              excludeIds={blocksExcludeIds}
+              onClose={() => setShowBlockerPicker(false)}
+              onSelect={id => setBlockerIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
+            />
+          </LazySheet>
+          <LazySheet open={showAnswerGatePicker}>
+            <TaskRelationPickerSheet
+              relation="answer"
+              visible={showAnswerGatePicker}
+              taskId={task?.id ?? null}
+              context={{ groupId, projectId: project, category }}
+              onClose={() => setShowAnswerGatePicker(false)}
+              // A new question starts with nothing ticked: which answers show
+              // this task is the next thing to say, and the row opens to say it.
+              onSelect={id => {
+                setAnswerGate(prev => (prev?.taskId === id ? prev : { taskId: id, answers: [] }));
+                setShowAnswerGate(true);
+              }}
+            />
+          </LazySheet>
+          <LazySheet open={showBlocksPicker}>
+            <TaskRelationPickerSheet
+              relation="blocks"
+              visible={showBlocksPicker}
+              taskId={task?.id ?? null}
+              context={{ groupId, projectId: project, category }}
+              excludeIds={blocksExcludeIds}
+              onClose={() => setShowBlocksPicker(false)}
+              onSelect={id => setBlocksIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
+            />
+          </LazySheet>
+          <LazySheet open={questionStepId !== null}>
+            <ChainStepQuestionSheet
+              visible={questionStepId !== null}
+              step={chainItems.find(c => c.id === questionStepId) ?? null}
+              nextStepTitle={nextChainStepTitle(chainItems, questionStepId)}
+              onSave={patch => setChainItems(prev => prev.map(
+                c => (c.id === questionStepId ? { ...c, ...patch } : c),
+              ))}
+              onClose={() => setQuestionStepId(null)}
+            />
+          </LazySheet>
+          <LazySheet open={medicationStepId !== null}>
+            <ChainStepMedicationSheet
+              visible={medicationStepId !== null}
+              step={chainItems.find(c => c.id === medicationStepId) ?? null}
+              taskMedicationName={medicationName}
+              onSave={patch => setChainItems(prev => prev.map(
+                c => (c.id === medicationStepId ? { ...c, ...patch } : c),
+              ))}
+              onClose={() => setMedicationStepId(null)}
+            />
+          </LazySheet>
+          <LazySheet open={linkStepId !== null}>
+            <ChainStepLinkSheet
+              visible={linkStepId !== null}
+              step={chainItems.find(c => c.id === linkStepId) ?? null}
+              taskLinkUrl={linkUrl}
+              kitchenEnabled={kitchenEnabled}
+              onSave={patch => setChainItems(prev => prev.map(
+                c => (c.id === linkStepId ? { ...c, ...patch } : c),
+              ))}
+              onClose={() => setLinkStepId(null)}
+            />
+          </LazySheet>
           {/* Its own instance rather than sharing linkStepId with the chain's:
               the two lists have separate id spaces, and one piece of state
               would let a member id resolve against chainItems. */}
-          <ChainStepLinkSheet
-            visible={linkMemberId !== null}
-            step={rotationItems.find(r => r.id === linkMemberId) ?? null}
-            // Null on purpose: a rotation's members are siblings pointing at
-            // different places, so one without a link of its own has none,
-            // where a chain step sensibly inherits the task's.
-            taskLinkUrl={null}
-            kitchenEnabled={kitchenEnabled}
-            onSave={patch => setRotationItems(prev => prev.map(
-              r => (r.id === linkMemberId ? { ...r, ...patch } : r),
-            ))}
-            onClose={() => setLinkMemberId(null)}
-          />
-          <FollowUpTaskSheet
-            visible={showFollowUpTaskSheet}
-            taskTitle={followUpTaskTitle}
-            draft={followUpTaskDraft}
-            onSave={setFollowUpTaskDraft}
-            onClose={() => setShowFollowUpTaskSheet(false)}
-          />
-          <QuickEventSheet
-            visible={timeBlockOpen && timeBlockPlan !== null}
-            onClose={() => setTimeBlockOpen(false)}
-            seed={timeBlockPlan?.mode === 'create'
-              ? { title: timeBlockPlan.fields.title, start: timeBlockPlan.fields.start, end: timeBlockPlan.fields.end }
-              : null}
-            editing={timeBlockPlan?.mode === 'edit' ? { eventId: timeBlockPlan.eventId } : null}
-            onSaved={eventId => { if (task && timeBlockPlan?.mode === 'create') linkTimeBlock(task.id, eventId); }}
-            onDeleted={() => { if (task) unlinkTimeBlock(task.id); }}
-          />
-          <CalendarChoiceSheet
-            visible={calendarPickerFor !== null}
-            title={calendarPickerFor === 'deadline' ? 'Add deadlines to' : 'Log completions to'}
-            selectedId={calendarPickerFor === 'deadline' ? deadlineCalendarId : completionCalendarId}
-            onSelect={id => {
-              if (calendarPickerFor === 'deadline') {
-                setDeadlineCalendarId(id);
-                // Picking one is the answer to the row that asked, so the
-                // toggle it was gating turns on rather than needing a second
-                // tap on the row they just tapped.
-                setDeadlineOnCalendar(id !== null);
-              } else {
-                setCompletionCalendarId(id);
-                setLogCompletionToCalendar(id !== null);
-              }
-            }}
-            onClose={() => setCalendarPickerFor(null)}
-          />
+          <LazySheet open={linkMemberId !== null}>
+            <ChainStepLinkSheet
+              visible={linkMemberId !== null}
+              step={rotationItems.find(r => r.id === linkMemberId) ?? null}
+              // Null on purpose: a rotation's members are siblings pointing at
+              // different places, so one without a link of its own has none,
+              // where a chain step sensibly inherits the task's.
+              taskLinkUrl={null}
+              kitchenEnabled={kitchenEnabled}
+              onSave={patch => setRotationItems(prev => prev.map(
+                r => (r.id === linkMemberId ? { ...r, ...patch } : r),
+              ))}
+              onClose={() => setLinkMemberId(null)}
+            />
+          </LazySheet>
+          <LazySheet open={showFollowUpTaskSheet}>
+            <FollowUpTaskSheet
+              visible={showFollowUpTaskSheet}
+              taskTitle={followUpTaskTitle}
+              draft={followUpTaskDraft}
+              onSave={setFollowUpTaskDraft}
+              onClose={() => setShowFollowUpTaskSheet(false)}
+            />
+          </LazySheet>
+          <LazySheet open={timeBlockOpen && timeBlockPlan !== null}>
+            <QuickEventSheet
+              visible={timeBlockOpen && timeBlockPlan !== null}
+              onClose={() => setTimeBlockOpen(false)}
+              seed={timeBlockPlan?.mode === 'create'
+                ? { title: timeBlockPlan.fields.title, start: timeBlockPlan.fields.start, end: timeBlockPlan.fields.end }
+                : null}
+              editing={timeBlockPlan?.mode === 'edit' ? { eventId: timeBlockPlan.eventId } : null}
+              onSaved={eventId => { if (task && timeBlockPlan?.mode === 'create') linkTimeBlock(task.id, eventId); }}
+              onDeleted={() => { if (task) unlinkTimeBlock(task.id); }}
+            />
+          </LazySheet>
+          <LazySheet open={calendarPickerFor !== null}>
+            <CalendarChoiceSheet
+              visible={calendarPickerFor !== null}
+              title={calendarPickerFor === 'deadline' ? 'Add deadlines to' : 'Log completions to'}
+              selectedId={calendarPickerFor === 'deadline' ? deadlineCalendarId : completionCalendarId}
+              onSelect={id => {
+                if (calendarPickerFor === 'deadline') {
+                  setDeadlineCalendarId(id);
+                  // Picking one is the answer to the row that asked, so the
+                  // toggle it was gating turns on rather than needing a second
+                  // tap on the row they just tapped.
+                  setDeadlineOnCalendar(id !== null);
+                } else {
+                  setCompletionCalendarId(id);
+                  setLogCompletionToCalendar(id !== null);
+                }
+              }}
+              onClose={() => setCalendarPickerFor(null)}
+            />
+          </LazySheet>
           <NumberPadAccessory />
           <TitleTokenAccessory onInsert={insertTitleToken} floating focused={titleFocused} />
         </>

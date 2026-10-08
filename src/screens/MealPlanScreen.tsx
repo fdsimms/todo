@@ -19,7 +19,7 @@ import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
-import { MEAL_SLOTS, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
+import { MEAL_SLOTS, type FoodLogEntry, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -77,7 +77,8 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useTaskStore } from '../store/useTaskStore';
-import { useFoodLogStore } from '../store/useFoodLogStore';
+import { sameEntries, useFoodLogStore } from '../store/useFoodLogStore';
+import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -144,6 +145,7 @@ import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { busyEveningOn, describeBusyEvening } from '../utils/busyEvenings';
 import { isDemoModeActive } from '../utils/demoState';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -332,6 +334,8 @@ const COPY_LOOKBACK_WEEKS = 4;
 /** How far a lifted fridge row swells. Deliberately SortableList's LIFT_SCALE. */
 const DRAG_LIFT_SCALE = 1.03;
 
+const NO_FOOD_LOG: FoodLogEntry[] = [];
+
 export function MealPlanScreen() {
   // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
@@ -515,20 +519,19 @@ export function MealPlanScreen() {
    * Read straight from SQLite for `loggedEntry`'s own reason (the store's
    * loaded window follows the Food Log screen, not this one), and re-read on
    * two signals rather than by subscribing to that window: `totalCount`, which
-   * moves on every add and delete anywhere in the app, and a focus nonce, which
-   * catches the rest — a row re-filed into another meal from the day view
+   * moves on every add and delete anywhere in the app, and a re-read on focus
+   * (useFocusRefreshedRead), which catches the rest — a row re-filed into
+   * another meal from the day view
    * changes which slots are covered without changing how many rows exist.
    * Subscribing to `entries` instead would re-render this whole screen every
    * time the food log's own day view changed, which it does not need to.
    */
   const foodLogCount = useFoodLogStore(s => s.totalCount);
   const offerMealLog = useFoodLogStore(s => s.offerMealLog);
-  const [foodLogNonce, setFoodLogNonce] = useState(0);
-  useFocusEffect(useCallback(() => { setFoodLogNonce(n => n + 1); }, []));
-  const weekFoodLog = useMemo(
-    () => (range ? recentFoodLogEntries(range.startKey, range.endKey) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [range?.startKey, range?.endKey, recentFoodLogEntries, foodLogCount, foodLogNonce]
+  const weekFoodLog = useFocusRefreshedRead(
+    () => (range ? recentFoodLogEntries(range.startKey, range.endKey) : NO_FOOD_LOG),
+    [range?.startKey, range?.endKey, recentFoodLogEntries, foodLogCount],
+    sameEntries,
   );
   const coverageByDay = useMemo(() => {
     const byDay = new Map<string, Map<MealSlot, SlotCoverage>>();
@@ -2306,58 +2309,64 @@ export function MealPlanScreen() {
         the one CLAUDE.md's rule actually names. Time of day and Suggest are
         off: neither date is a task's own schedule.
       */}
-      <WhenPicker
-        visible={bulkMoveVisible}
-        value={null}
-        title={`Move ${selectedIds.size} meal${selectedIds.size === 1 ? '' : 's'}`}
-        showTimeOfDay={false}
-        showSuggest={false}
-        nlEnabled
-        onConfirm={date => { if (date) handleBulkMove(date); }}
-        onCancel={() => setBulkMoveVisible(false)}
-      />
+      <LazySheet open={bulkMoveVisible}>
+        <WhenPicker
+          visible={bulkMoveVisible}
+          value={null}
+          title={`Move ${selectedIds.size} meal${selectedIds.size === 1 ? '' : 's'}`}
+          showTimeOfDay={false}
+          showSuggest={false}
+          nlEnabled
+          onConfirm={date => { if (date) handleBulkMove(date); }}
+          onCancel={() => setBulkMoveVisible(false)}
+        />
+      </LazySheet>
 
       {/*
         Two callers, never both at once: the bulk bar only exists in selection
         mode, and a meal's own sheet only opens outside it. `replacingId` is
         what makes this a replace of one.
       */}
-      <MealReplaceItemSheet
-        visible={bulkReplaceVisible || replacingId !== null}
-        count={replacingId ? 1 : selectedIds.size}
-        title={replacing ? (isTypedEntry(replacing) ? 'Choose a recipe' : 'Replace meal') : undefined}
-        hint={replacing
-          ? isTypedEntry(replacing)
-            ? `Pick the recipe for ${replacing.title}, or type a new name.`
-            : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
-          : undefined}
-        onReplace={replacement => {
-          if (replacingId) replaceOne(replacingId, replacement);
-          else handleBulkReplace(replacement);
-        }}
-        onClose={() => {
-          setBulkReplaceVisible(false);
-          setReplacingId(null);
-        }}
-      />
+      <LazySheet open={bulkReplaceVisible || replacingId !== null}>
+        <MealReplaceItemSheet
+          visible={bulkReplaceVisible || replacingId !== null}
+          count={replacingId ? 1 : selectedIds.size}
+          title={replacing ? (isTypedEntry(replacing) ? 'Choose a recipe' : 'Replace meal') : undefined}
+          hint={replacing
+            ? isTypedEntry(replacing)
+              ? `Pick the recipe for ${replacing.title}, or type a new name.`
+              : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+            : undefined}
+          onReplace={replacement => {
+            if (replacingId) replaceOne(replacingId, replacement);
+            else handleBulkReplace(replacement);
+          }}
+          onClose={() => {
+            setBulkReplaceVisible(false);
+            setReplacingId(null);
+          }}
+        />
+      </LazySheet>
 
-      <RecipePickerSheet
-        visible={planningDay !== null}
-        dayKey={planningDay ?? ''}
-        dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
-        // The earliest of the day's meals with nothing planned yet — the chips
-        // are right there to say otherwise, and a meal task's link *has* said,
-        // which is what planningSlot carries.
-        defaultSlot={planningDay ? earliestUnplannedSlot(entries, planningDay, mealSlotsEnabled) : 'dinner'}
-        forceSlot={planningSlot}
-        onPlan={planFromPicker}
-        onPlanned={offerPrepTasksForEach}
-        onUnplan={removeEntry}
-        onClose={() => {
-          setPlanningDay(null);
-          setPlanningSlot(null);
-        }}
-      />
+      <LazySheet open={planningDay !== null}>
+        <RecipePickerSheet
+          visible={planningDay !== null}
+          dayKey={planningDay ?? ''}
+          dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
+          // The earliest of the day's meals with nothing planned yet — the chips
+          // are right there to say otherwise, and a meal task's link *has* said,
+          // which is what planningSlot carries.
+          defaultSlot={planningDay ? earliestUnplannedSlot(entries, planningDay, mealSlotsEnabled) : 'dinner'}
+          forceSlot={planningSlot}
+          onPlan={planFromPicker}
+          onPlanned={offerPrepTasksForEach}
+          onUnplan={removeEntry}
+          onClose={() => {
+            setPlanningDay(null);
+            setPlanningSlot(null);
+          }}
+        />
+      </LazySheet>
 
       {/*
         The way past the sheet's seven day chips, for Move to and for Also on
@@ -2365,142 +2374,146 @@ export function MealPlanScreen() {
         once — and lands on the same WhenPicker the bulk move uses, natural
         language included.
       */}
-      <WhenPicker
-        visible={movingFurtherId !== null || copyingFurtherId !== null}
-        value={null}
-        title={furtherMode === 'copy' ? 'Also on' : 'Move to'}
-        showTimeOfDay={false}
-        showSuggest={false}
-        nlEnabled
-        onConfirm={date => {
-          if (movingFurtherId && date) {
-            animateLayout();
-            moveEntry(movingFurtherId, { date: dayKeyOf(date) });
-          }
-          if (copyingFurtherId && date) copyToDate(copyingFurtherId, dayKeyOf(date));
-          setMovingFurtherId(null);
-          setCopyingFurtherId(null);
-        }}
-        onCancel={() => {
-          setMovingFurtherId(null);
-          setCopyingFurtherId(null);
-        }}
-      />
+      <LazySheet open={movingFurtherId !== null || copyingFurtherId !== null}>
+        <WhenPicker
+          visible={movingFurtherId !== null || copyingFurtherId !== null}
+          value={null}
+          title={furtherMode === 'copy' ? 'Also on' : 'Move to'}
+          showTimeOfDay={false}
+          showSuggest={false}
+          nlEnabled
+          onConfirm={date => {
+            if (movingFurtherId && date) {
+              animateLayout();
+              moveEntry(movingFurtherId, { date: dayKeyOf(date) });
+            }
+            if (copyingFurtherId && date) copyToDate(copyingFurtherId, dayKeyOf(date));
+            setMovingFurtherId(null);
+            setCopyingFurtherId(null);
+          }}
+          onCancel={() => {
+            setMovingFurtherId(null);
+            setCopyingFurtherId(null);
+          }}
+        />
+      </LazySheet>
 
-      <MealEntrySheet
-        visible={selected !== null}
-        entry={selected}
-        title={selected ? titleForEntry(selected, recipesById) : ''}
-        weekDays={days}
-        onMove={to => selected && moveEntry(selected.id, to)}
-        onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
-        onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
-        onCopyFurther={selected && !selected.leftoverId ? () => setCopyingFurtherId(selected.id) : undefined}
-        copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
-        onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
-        onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
-        onSaveAsRecipe={selected && isTypedEntry(selected) ? () => saveAsRecipe(selected.id) : undefined}
-        matchingRecipeName={selected && isTypedEntry(selected)
-          ? recipeNamedLike(selected.title, recipes)?.name ?? null
-          : null}
-        onRemove={() => {
-          if (!selected) return;
-          animateLayout();
-          removeEntry(selected.id);
-          setSelectedId(null);
-          offerListCleanup([selected]);
-        }}
-        onRename={
-          // A meal whose recipe was deleted reads as its typed title and gets
-          // the free-text pencil on its row, so it renames like one too (the
-          // store clears the dead pointer as it does).
-          selected && isTypedEntry(selected)
-            ? newTitle => renameEntry(selected.id, newTitle)
-            : undefined
-        }
-        choiceGroups={selectedChoiceGroups}
-        onChoose={(group, componentId) => {
-          if (!selected) return;
-          setRecipeChoices(
-            selected.id,
-            applyChoice(selected.recipeChoices, group, componentId)
-          );
-        }}
-        onScale={
-          // Simplified mode takes the chips away unless this meal is already
-          // scaled, the rule RecipeDetail's own chips follow.
-          selected?.recipeId && recipesById.has(selected.recipeId)
-            && featureShown('recipeScaling', simpleMode, selected.recipeScale !== 1)
-            ? factor => selected && setRecipeScale(selected.id, factor)
-            : undefined
-        }
-        baseServings={selectedRecipe?.servings}
-        baseServingsMax={selectedRecipe?.servingsMax}
-        onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
-        onViewFoodLogEntry={
-          viewEntry
-            ? () => navigation.navigate('FoodLog', {
-                openEntry: { dayKey: viewEntry.dayKey, entryId: viewEntry.id, nonce: Date.now() },
-              })
-            : undefined
-        }
-        onLogMeal={
-          // Offered only while this meal's slot has nothing in it — the same
-          // reading the completion prompt and the nudge task now use, so the
-          // sheet can't invite a second log of a dinner already recorded.
-          selected && (coverageByDay.get(selected.date)?.get(selected.slot)?.logged.length ?? 0) === 0
-            ? () => offerMealLog(selected, { asked: true })
-            : undefined
-        }
-        onOpenRecipe={
-          selected?.recipeId && recipesById.has(selected.recipeId)
-            // The meal's own picks and scale travel with it, so cooking from
-            // here opens on the side and amount this night is having (see
-            // RecipeDetail's `choices` and `scale` params).
-            ? () => navigation.navigate('RecipeDetail', {
-                recipeId: selected.recipeId,
-                choices: selected.recipeChoices,
-                scale: selected.recipeScale,
-              })
-            : undefined
-        }
-        onAddToList={
-          selectedRecipe
-            ? () => {
-                setMealShop({
-                  recipe: selectedRecipe,
-                  choices: selected?.recipeChoices ?? [],
-                  scale: selected?.recipeScale ?? 1,
-                });
-                setMealShopVisible(true);
-              }
-            : undefined
-        }
-        onAddPrepTasks={
-          selectedPrepTaskCount > 0
-            ? () => selected && setReviewingPrepTasksFor(selected.id)
-            : undefined
-        }
-        onLogLeftovers={
-          selected && !selected.leftoverId && couldHaveLeftovers(selected)
-            ? () => logLeftoversFor(selected)
-            : undefined
-        }
-        onFinishLeftover={
-          selected?.leftoverId && liveLeftoverFor(selected.leftoverId)
-            ? () => finishLeftover(selected.leftoverId!, 'eaten')
-            : undefined
-        }
-        // Absent once the meal is cooked: its task has already been ticked (or
-        // deliberately left), and either way scheduling the past is nonsense.
-        onSetCookTask={
-          selected && !selected.cookedAt
-            ? want => setCookTask(selected.id, want)
-            : undefined
-        }
-        hasCookTask={!!selected && selectedHasCookTask}
-        onClose={() => setSelectedId(null)}
-      />
+      <LazySheet open={selected !== null}>
+        <MealEntrySheet
+          visible={selected !== null}
+          entry={selected}
+          title={selected ? titleForEntry(selected, recipesById) : ''}
+          weekDays={days}
+          onMove={to => selected && moveEntry(selected.id, to)}
+          onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
+          onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+          onCopyFurther={selected && !selected.leftoverId ? () => setCopyingFurtherId(selected.id) : undefined}
+          copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
+          onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+          onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+          onSaveAsRecipe={selected && isTypedEntry(selected) ? () => saveAsRecipe(selected.id) : undefined}
+          matchingRecipeName={selected && isTypedEntry(selected)
+            ? recipeNamedLike(selected.title, recipes)?.name ?? null
+            : null}
+          onRemove={() => {
+            if (!selected) return;
+            animateLayout();
+            removeEntry(selected.id);
+            setSelectedId(null);
+            offerListCleanup([selected]);
+          }}
+          onRename={
+            // A meal whose recipe was deleted reads as its typed title and gets
+            // the free-text pencil on its row, so it renames like one too (the
+            // store clears the dead pointer as it does).
+            selected && isTypedEntry(selected)
+              ? newTitle => renameEntry(selected.id, newTitle)
+              : undefined
+          }
+          choiceGroups={selectedChoiceGroups}
+          onChoose={(group, componentId) => {
+            if (!selected) return;
+            setRecipeChoices(
+              selected.id,
+              applyChoice(selected.recipeChoices, group, componentId)
+            );
+          }}
+          onScale={
+            // Simplified mode takes the chips away unless this meal is already
+            // scaled, the rule RecipeDetail's own chips follow.
+            selected?.recipeId && recipesById.has(selected.recipeId)
+              && featureShown('recipeScaling', simpleMode, selected.recipeScale !== 1)
+              ? factor => selected && setRecipeScale(selected.id, factor)
+              : undefined
+          }
+          baseServings={selectedRecipe?.servings}
+          baseServingsMax={selectedRecipe?.servingsMax}
+          onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
+          onViewFoodLogEntry={
+            viewEntry
+              ? () => navigation.navigate('FoodLog', {
+                  openEntry: { dayKey: viewEntry.dayKey, entryId: viewEntry.id, nonce: Date.now() },
+                })
+              : undefined
+          }
+          onLogMeal={
+            // Offered only while this meal's slot has nothing in it — the same
+            // reading the completion prompt and the nudge task now use, so the
+            // sheet can't invite a second log of a dinner already recorded.
+            selected && (coverageByDay.get(selected.date)?.get(selected.slot)?.logged.length ?? 0) === 0
+              ? () => offerMealLog(selected, { asked: true })
+              : undefined
+          }
+          onOpenRecipe={
+            selected?.recipeId && recipesById.has(selected.recipeId)
+              // The meal's own picks and scale travel with it, so cooking from
+              // here opens on the side and amount this night is having (see
+              // RecipeDetail's `choices` and `scale` params).
+              ? () => navigation.navigate('RecipeDetail', {
+                  recipeId: selected.recipeId,
+                  choices: selected.recipeChoices,
+                  scale: selected.recipeScale,
+                })
+              : undefined
+          }
+          onAddToList={
+            selectedRecipe
+              ? () => {
+                  setMealShop({
+                    recipe: selectedRecipe,
+                    choices: selected?.recipeChoices ?? [],
+                    scale: selected?.recipeScale ?? 1,
+                  });
+                  setMealShopVisible(true);
+                }
+              : undefined
+          }
+          onAddPrepTasks={
+            selectedPrepTaskCount > 0
+              ? () => selected && setReviewingPrepTasksFor(selected.id)
+              : undefined
+          }
+          onLogLeftovers={
+            selected && !selected.leftoverId && couldHaveLeftovers(selected)
+              ? () => logLeftoversFor(selected)
+              : undefined
+          }
+          onFinishLeftover={
+            selected?.leftoverId && liveLeftoverFor(selected.leftoverId)
+              ? () => finishLeftover(selected.leftoverId!, 'eaten')
+              : undefined
+          }
+          // Absent once the meal is cooked: its task has already been ticked (or
+          // deliberately left), and either way scheduling the past is nonsense.
+          onSetCookTask={
+            selected && !selected.cookedAt
+              ? want => setCookTask(selected.id, want)
+              : undefined
+          }
+          hasCookTask={!!selected && selectedHasCookTask}
+          onClose={() => setSelectedId(null)}
+        />
+      </LazySheet>
 
       {addToListScope && (
         <AddMealsToListSheet
@@ -2514,22 +2527,24 @@ export function MealPlanScreen() {
         />
       )}
 
-      <SuggestMealsSheet
-        visible={suggesting !== null}
-        recipes={suggesting?.recipes ?? []}
-        cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
-        leftovers={suggesting?.leftovers ?? []}
-        pantryByRecipeId={suggestionPantryCoverage}
-        openDays={suggesting?.days ?? []}
-        aiIdeasEnabled={mealIdeasRoute !== 'unavailable'}
-        plannedTitles={plannedMealTitles}
-        recentTitles={recentMealTitles}
-        expiringItemHints={expiringMealHints}
-        slotsToFill={suggesting?.days.length ?? 0}
-        onPlan={planSuggestion}
-        onPlanLeftover={planLeftoverSuggestion}
-        onClose={() => setSuggesting(null)}
-      />
+      <LazySheet open={suggesting !== null}>
+        <SuggestMealsSheet
+          visible={suggesting !== null}
+          recipes={suggesting?.recipes ?? []}
+          cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
+          leftovers={suggesting?.leftovers ?? []}
+          pantryByRecipeId={suggestionPantryCoverage}
+          openDays={suggesting?.days ?? []}
+          aiIdeasEnabled={mealIdeasRoute !== 'unavailable'}
+          plannedTitles={plannedMealTitles}
+          recentTitles={recentMealTitles}
+          expiringItemHints={expiringMealHints}
+          slotsToFill={suggesting?.days.length ?? 0}
+          onPlan={planSuggestion}
+          onPlanLeftover={planLeftoverSuggestion}
+          onClose={() => setSuggesting(null)}
+        />
+      </LazySheet>
 
       {/*
         Never open at the same time as SuggestMealsSheet above: two sibling
@@ -2537,15 +2552,17 @@ export function MealPlanScreen() {
         second one silently fails (see SheetModal). Nothing sets both — each
         InlineAction clears its own state only — but that's the rule to keep.
       */}
-      <OverlapPickerSheet
-        visible={overlap !== null}
-        matches={overlap?.matches ?? []}
-        seedLabel={overlap?.seedLabel ?? "this week's meals"}
-        openDays={overlap?.days ?? []}
-        initialSelected={overlap?.initialSelected}
-        onPlan={planSuggestion}
-        onClose={() => setOverlap(null)}
-      />
+      <LazySheet open={overlap !== null}>
+        <OverlapPickerSheet
+          visible={overlap !== null}
+          matches={overlap?.matches ?? []}
+          seedLabel={overlap?.seedLabel ?? "this week's meals"}
+          openDays={overlap?.days ?? []}
+          initialSelected={overlap?.initialSelected}
+          onPlan={planSuggestion}
+          onClose={() => setOverlap(null)}
+        />
+      </LazySheet>
 
       {/*
         One meal's shop, asked for from its own sheet. `initialSelection` is
@@ -2553,23 +2570,27 @@ export function MealPlanScreen() {
         need starts ticked — where the restock offer below has to stay inside
         what its banner counted.
       */}
-      <RecipeToListSheet
-        visible={mealShopVisible}
-        recipe={mealShop?.recipe ?? null}
-        recipesById={recipesById}
-        initialChoices={mealShop?.choices}
-        initialScale={mealShop?.scale}
-        onClose={() => setMealShopVisible(false)}
-      />
+      <LazySheet open={mealShopVisible}>
+        <RecipeToListSheet
+          visible={mealShopVisible}
+          recipe={mealShop?.recipe ?? null}
+          recipesById={recipesById}
+          initialChoices={mealShop?.choices}
+          initialScale={mealShop?.scale}
+          onClose={() => setMealShopVisible(false)}
+        />
+      </LazySheet>
 
-      <PrepTasksReviewSheet
-        visible={reviewingPrepTasksFor !== null}
-        recipe={reviewingRecipe}
-        recipesById={recipesById}
-        resolution={{ chosen: reviewingEntry?.recipeChoices ?? [], onHand }}
-        onAdd={addChosenPrepTasks}
-        onClose={() => setReviewingPrepTasksFor(null)}
-      />
+      <LazySheet open={reviewingPrepTasksFor !== null}>
+        <PrepTasksReviewSheet
+          visible={reviewingPrepTasksFor !== null}
+          recipe={reviewingRecipe}
+          recipesById={recipesById}
+          resolution={{ chosen: reviewingEntry?.recipeChoices ?? [], onHand }}
+          onAdd={addChosenPrepTasks}
+          onClose={() => setReviewingPrepTasksFor(null)}
+        />
+      </LazySheet>
 
       {/* Closes itself before handing a row over, so the two sheets are never
           up at once — the history's rows lead into LeftoverSheet, which is
@@ -2581,59 +2602,65 @@ export function MealPlanScreen() {
         plan time exactly as the picker's own leftover path does — see
         mealTitleForLeftover.
       */}
-      <PlanMealSheet
-        visible={planningLeftover !== null}
-        title={planningLeftover?.title ?? null}
-        defaultSlot={earliestUnplannedSlotToday()}
-        onPlan={(dateKey, slot) => planningLeftover ? planMeal({
-          date: dateKey,
-          slot,
-          leftoverId: planningLeftover.id,
-          title: mealTitleForLeftover(planningLeftover),
-        }) : null}
-        onClose={() => setPlanningLeftover(null)}
-      />
+      <LazySheet open={planningLeftover !== null}>
+        <PlanMealSheet
+          visible={planningLeftover !== null}
+          title={planningLeftover?.title ?? null}
+          defaultSlot={earliestUnplannedSlotToday()}
+          onPlan={(dateKey, slot) => planningLeftover ? planMeal({
+            date: dateKey,
+            slot,
+            leftoverId: planningLeftover.id,
+            title: mealTitleForLeftover(planningLeftover),
+          }) : null}
+          onClose={() => setPlanningLeftover(null)}
+        />
+      </LazySheet>
 
-      <FridgeHistorySheet
-        visible={historyVisible}
-        leftovers={leftovers}
-        weekStartsOn={weekStartsOn}
-        onOpen={l => setEditingLeftoverId(l.id)}
-        onClose={() => setHistoryVisible(false)}
-      />
+      <LazySheet open={historyVisible}>
+        <FridgeHistorySheet
+          visible={historyVisible}
+          leftovers={leftovers}
+          weekStartsOn={weekStartsOn}
+          onOpen={l => setEditingLeftoverId(l.id)}
+          onClose={() => setHistoryVisible(false)}
+        />
+      </LazySheet>
 
-      <LeftoverSheet
-        visible={editingLeftover !== null || loggingLeftover !== null}
-        leftover={editingLeftover}
-        seed={loggingLeftover ?? undefined}
-        // The seed's own `title`/`recipeId` are deliberately not spread back in
-        // — they were only ever the sheet's starting point, and by the time
-        // this fires the user may have typed over the name or ticked the mash
-        // instead of the meal. `sourceEntryId` is the one thing the sheet
-        // can't have changed: every container here came out of that cooking,
-        // whichever part of it it is.
-        onLog={(picks, storedAt, keepDays, weightG) => picks.forEach(pick => logLeftover({
-          title: pick.title,
-          storedAt,
-          keepDays,
-          frozen: pick.frozen,
-          recipeId: pick.recipeId,
-          sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
-          // Only ever set when the sheet wrote exactly one container, which is
-          // the only case it offers the field in.
-          weightG,
-        }))}
-        onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
-        onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
-        onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
-        onSetWeight={grams => editingLeftover && setLeftoverWeight(editingLeftover.id, grams)}
-        onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
-        onSetFrozen={frozen => editingLeftover && setLeftoverFrozen(editingLeftover.id, frozen)}
-        onSplit={() => editingLeftover && splitLeftover(editingLeftover.id)}
-        onReopen={() => editingLeftover && reopenLeftover(editingLeftover.id)}
-        onDelete={() => editingLeftover && deleteLeftover(editingLeftover.id)}
-        onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}
-      />
+      <LazySheet open={editingLeftover !== null || loggingLeftover !== null}>
+        <LeftoverSheet
+          visible={editingLeftover !== null || loggingLeftover !== null}
+          leftover={editingLeftover}
+          seed={loggingLeftover ?? undefined}
+          // The seed's own `title`/`recipeId` are deliberately not spread back in
+          // — they were only ever the sheet's starting point, and by the time
+          // this fires the user may have typed over the name or ticked the mash
+          // instead of the meal. `sourceEntryId` is the one thing the sheet
+          // can't have changed: every container here came out of that cooking,
+          // whichever part of it it is.
+          onLog={(picks, storedAt, keepDays, weightG) => picks.forEach(pick => logLeftover({
+            title: pick.title,
+            storedAt,
+            keepDays,
+            frozen: pick.frozen,
+            recipeId: pick.recipeId,
+            sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
+            // Only ever set when the sheet wrote exactly one container, which is
+            // the only case it offers the field in.
+            weightG,
+          }))}
+          onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
+          onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
+          onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
+          onSetWeight={grams => editingLeftover && setLeftoverWeight(editingLeftover.id, grams)}
+          onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
+          onSetFrozen={frozen => editingLeftover && setLeftoverFrozen(editingLeftover.id, frozen)}
+          onSplit={() => editingLeftover && splitLeftover(editingLeftover.id)}
+          onReopen={() => editingLeftover && reopenLeftover(editingLeftover.id)}
+          onDelete={() => editingLeftover && deleteLeftover(editingLeftover.id)}
+          onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}
+        />
+      </LazySheet>
     </View>
   );
 }

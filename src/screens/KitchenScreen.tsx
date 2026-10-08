@@ -76,6 +76,7 @@ import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
 import { isPortionBox } from '../types';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -914,46 +915,52 @@ export function KitchenScreen() {
         }
       />
 
-      <GroceryItemSheet
-        visible={openItemId !== null}
-        itemId={openItemId}
-        onClose={() => {
-          setOpenItemId(null);
-          setOpenItemField('pantry');
-        }}
-        onOpenRecipe={recipeId => {
-          setOpenItemId(null);
-          setOpenItemField('pantry');
-          navigation.navigate('RecipeDetail', { recipeId });
-        }}
-        onOpenSettings={entryId => {
-          setOpenItemId(null);
-          setOpenItemField('pantry');
-          navigateToFoodSearchSettings(navigation, entryId);
-        }}
-        recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
-        // Opened on the Pantry pills, since that's what a catalog row here is:
-        // the sheet is dense enough that a collapsed "Pantry" field halfway
-        // down it was, in practice, no way to say you're out of something. The
-        // repeat-waste offer is the one thing that opens it anywhere else, and
-        // it lands on the field it's actually asking about.
-        initialField={openItemField}
-      />
+      <LazySheet open={openItemId !== null}>
+        <GroceryItemSheet
+          visible={openItemId !== null}
+          itemId={openItemId}
+          onClose={() => {
+            setOpenItemId(null);
+            setOpenItemField('pantry');
+          }}
+          onOpenRecipe={recipeId => {
+            setOpenItemId(null);
+            setOpenItemField('pantry');
+            navigation.navigate('RecipeDetail', { recipeId });
+          }}
+          onOpenSettings={entryId => {
+            setOpenItemId(null);
+            setOpenItemField('pantry');
+            navigateToFoodSearchSettings(navigation, entryId);
+          }}
+          recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
+          // Opened on the Pantry pills, since that's what a catalog row here is:
+          // the sheet is dense enough that a collapsed "Pantry" field halfway
+          // down it was, in practice, no way to say you're out of something. The
+          // repeat-waste offer is the one thing that opens it anywhere else, and
+          // it lands on the field it's actually asking about.
+          initialField={openItemField}
+        />
+      </LazySheet>
 
-      <BarcodeScanSheet
-        visible={scanOpen}
-        context="pantry"
-        onClose={() => setScanOpen(false)}
-        onApply={handleScanApply}
-      />
+      <LazySheet open={scanOpen}>
+        <BarcodeScanSheet
+          visible={scanOpen}
+          context="pantry"
+          onClose={() => setScanOpen(false)}
+          onApply={handleScanApply}
+        />
+      </LazySheet>
 
-      <CookWithSheet
-        visible={cookWithOpen}
-        initialMode="have"
-        onClose={() => setCookWithOpen(false)}
-        onOpenRecipe={id => { setCookWithOpen(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
-        onOpenCookbook={id => { setCookWithOpen(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
-      />
+      <LazySheet open={cookWithOpen}>
+        <CookWithSheet
+          visible={cookWithOpen}
+          initialMode="have"
+          onClose={() => setCookWithOpen(false)}
+          onOpenRecipe={id => { setCookWithOpen(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+          onOpenCookbook={id => { setCookWithOpen(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
+        />
+      </LazySheet>
       <ReceiptImportSheet
         visible={receiptOpen}
         context="pantry"
@@ -961,31 +968,35 @@ export function KitchenScreen() {
         onApply={handleReceiptApply}
       />
 
-      <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
+      <LazySheet open={reviewOpen}>
+        <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
+      </LazySheet>
 
-      <LeftoverSheet
-        visible={openLeftover !== null}
-        leftover={openLeftover}
-        // Never called: this sheet only ever opens an existing container, and
-        // the log flow that would need it belongs to the meal plan, where a
-        // cooking is what leaves something behind.
-        onLog={() => {}}
-        onRename={title => openLeftover && renameLeftover(openLeftover.id, title)}
-        onSetStoredAt={storedAt => openLeftover && setLeftoverStoredAt(openLeftover.id, storedAt)}
-        onSetKeepDays={days => openLeftover && setLeftoverKeepDays(openLeftover.id, days)}
-        onSetWeight={grams => openLeftover && setLeftoverWeight(openLeftover.id, grams)}
-        onFinish={outcome => openLeftover && finishLeftover(openLeftover.id, outcome)}
-        onSetFrozen={frozen => openLeftover && setLeftoverFrozen(openLeftover.id, frozen)}
-        onSplit={() => openLeftover && splitLeftover(openLeftover.id)}
-        onReopen={() => openLeftover && reopenLeftover(openLeftover.id)}
-        onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
-        onClose={() => setOpenLeftoverId(null)}
-        onOpenRecipe={
-          openLeftover?.recipeId && recipes.some(r => r.id === openLeftover.recipeId)
-            ? () => navigation.navigate('RecipeDetail', { recipeId: openLeftover.recipeId })
-            : undefined
-        }
-      />
+      <LazySheet open={openLeftover !== null}>
+        <LeftoverSheet
+          visible={openLeftover !== null}
+          leftover={openLeftover}
+          // Never called: this sheet only ever opens an existing container, and
+          // the log flow that would need it belongs to the meal plan, where a
+          // cooking is what leaves something behind.
+          onLog={() => {}}
+          onRename={title => openLeftover && renameLeftover(openLeftover.id, title)}
+          onSetStoredAt={storedAt => openLeftover && setLeftoverStoredAt(openLeftover.id, storedAt)}
+          onSetKeepDays={days => openLeftover && setLeftoverKeepDays(openLeftover.id, days)}
+          onSetWeight={grams => openLeftover && setLeftoverWeight(openLeftover.id, grams)}
+          onFinish={outcome => openLeftover && finishLeftover(openLeftover.id, outcome)}
+          onSetFrozen={frozen => openLeftover && setLeftoverFrozen(openLeftover.id, frozen)}
+          onSplit={() => openLeftover && splitLeftover(openLeftover.id)}
+          onReopen={() => openLeftover && reopenLeftover(openLeftover.id)}
+          onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
+          onClose={() => setOpenLeftoverId(null)}
+          onOpenRecipe={
+            openLeftover?.recipeId && recipes.some(r => r.id === openLeftover.recipeId)
+              ? () => navigation.navigate('RecipeDetail', { recipeId: openLeftover.recipeId })
+              : undefined
+          }
+        />
+      </LazySheet>
     </View>
   );
 }

@@ -68,6 +68,7 @@ import { SearchField } from '../components/SearchField';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import type { Project } from '../types';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * How many projects a list holds before it grows a search bar. Below this the
@@ -707,43 +708,51 @@ export function ProjectsScreen() {
         />
       )}
 
-      <ProjectsOptionsMenu
-        visible={optionsMenuVisible}
-        onClose={() => setOptionsMenuVisible(false)}
-        filter={projectFilter}
-        onFilterChange={setProjectFilter}
-        completedCount={completedCount}
-        archivedCount={archivedCount}
-        categoryCount={projectCategories.length}
-        onManageCategories={() => setCategoriesSheetVisible(true)}
-        sort={projectSort}
-        onSortChange={setProjectSort}
-        anchor={optionsMenuAnchor}
-        onOpenSettings={screenSettings.hasSettings ? () => screenSettings.open(optionsMenuAnchor) : undefined}
-        settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
-      />
+      <LazySheet open={optionsMenuVisible}>
+        <ProjectsOptionsMenu
+          visible={optionsMenuVisible}
+          onClose={() => setOptionsMenuVisible(false)}
+          filter={projectFilter}
+          onFilterChange={setProjectFilter}
+          completedCount={completedCount}
+          archivedCount={archivedCount}
+          categoryCount={projectCategories.length}
+          onManageCategories={() => setCategoriesSheetVisible(true)}
+          sort={projectSort}
+          onSortChange={setProjectSort}
+          anchor={optionsMenuAnchor}
+          onOpenSettings={screenSettings.hasSettings ? () => screenSettings.open(optionsMenuAnchor) : undefined}
+          settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+        />
+      </LazySheet>
       <ScreenSettingsSheet {...screenSettings.sheet} />
 
-      <ProjectCategoriesSheet
-        visible={categoriesSheetVisible}
-        onClose={() => setCategoriesSheetVisible(false)}
-      />
+      <LazySheet open={categoriesSheetVisible}>
+        <ProjectCategoriesSheet
+          visible={categoriesSheetVisible}
+          onClose={() => setCategoriesSheetVisible(false)}
+        />
+      </LazySheet>
 
-      <QuickAddProjectModal
-        visible={quickAddVisible}
-        onClose={closeQuickAdd}
-        onOpenFull={handleQuickAddOpenFull}
-        onCreated={handleProjectCreated}
-        seed={quickAddSeed}
-        seedLabel={quickAddSeedLabel}
-      />
+      <LazySheet open={quickAddVisible}>
+        <QuickAddProjectModal
+          visible={quickAddVisible}
+          onClose={closeQuickAdd}
+          onOpenFull={handleQuickAddOpenFull}
+          onCreated={handleProjectCreated}
+          seed={quickAddSeed}
+          seedLabel={quickAddSeedLabel}
+        />
+      </LazySheet>
 
-      <ProjectEditor
-        visible={editingProject !== null}
-        project={editingProject}
-        isNew={newProjectIdRef.current !== null}
-        onClose={handleEditorClose}
-      />
+      <LazySheet open={editingProject !== null}>
+        <ProjectEditor
+          visible={editingProject !== null}
+          project={editingProject}
+          isNew={newProjectIdRef.current !== null}
+          onClose={handleEditorClose}
+        />
+      </LazySheet>
     </View>
   );
 }

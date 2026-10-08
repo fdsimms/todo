@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Dimensions,
   Keyboard,
@@ -181,13 +181,36 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
     fieldAbove = false,
     accessoryHeight = 0,
     refreshing = false,
-  }: { ownsSheet?: boolean; fieldAbove?: boolean; accessoryHeight?: number; refreshing?: boolean } = {},
+    listMounted = true,
+  }: {
+    ownsSheet?: boolean;
+    fieldAbove?: boolean;
+    accessoryHeight?: number;
+    refreshing?: boolean;
+    /**
+     * False while the list this hook serves isn't on screen at all (Today's
+     * Inbox list while the Today view is showing). It stops the hook
+     * re-rendering its caller each time a sheet opens or closes, which for a
+     * screen-level caller is the whole screen, for a list that isn't there.
+     * The covered state is still read fresh on every render, so the list gets
+     * the right answer from the render that mounts it.
+     */
+    listMounted?: boolean;
+  } = {},
 ) {
   const routeFocused = useIsFocused();
   const level = useContext(PresentationLevelContext);
-  const [, forceRecheck] = useState(0);
-  useEffect(() => subscribeSheetCover(level, () => forceRecheck(n => n + 1)), [level]);
-  const covered = ownsSheet ? sheetCovered(level) : level.presented.size > 0;
+  // A snapshot rather than a bare re-render on every notification, so the
+  // caller re-renders only when the answer flips. Every sheet opening or
+  // closing notifies, including one raised inside another (a picker in the
+  // editor), and the unconditional version re-rendered every caller (Today's
+  // whole screen among them) for each, with nothing changed for most of them.
+  const subscribeCover = useCallback(
+    (onChange: () => void) => (listMounted ? subscribeSheetCover(level, onChange) : () => {}),
+    [level, listMounted],
+  );
+  const readCovered = () => (ownsSheet ? sheetCovered(level) : level.presented.size > 0);
+  const covered = useSyncExternalStore(subscribeCover, readCovered);
   const focused = routeFocused && !covered;
   const ref = useRef<T | null>(null);
   // Everything the clamp needs, read off the last scroll event rather than

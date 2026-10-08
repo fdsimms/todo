@@ -55,6 +55,7 @@ import { openElsewhereResult } from '../navigation/openSearchResult';
 import {
   describeElsewhere, sectionPreview, type ElsewhereResult, type ElsewhereSections,
 } from '../utils/searchElsewhere';
+import { LazySheet } from '../components/LazySheet';
 
 // How long the field waits for typing to pause before the expensive
 // fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
@@ -434,6 +435,8 @@ const ProjectResultItem = React.memo(function ProjectResultItem({ result, onPres
   );
 });
 
+const NO_ROSTERS = new Map<string, Task[]>();
+
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -451,6 +454,8 @@ export function SearchScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  // Stable, so the memoized editor isn't re-rendered on every keystroke here.
+  const closeEditor = useCallback(() => { setEditorVisible(false); setEditorInitialDraft(null); }, []);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
@@ -508,10 +513,16 @@ export function SearchScreen() {
     [projects]
   );
 
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+
   // Same collapse StacksScreen uses for its own rows: the roster (one entry
   // per series, no completion tombstones), never the raw groupId-matching
-  // rows — see groupRoster.
+  // rows — see groupRoster. Only built once there is a query for it to
+  // answer: a stack's whole history is in here, and the screen sat building it
+  // on every task write and every return to the tab with nothing typed.
+  const hasQuery = debouncedQuery.trim() !== '';
   const rosterByGroupId = useMemo(() => {
+    if (!hasQuery) return NO_ROSTERS;
     const children = new Map<string, Task[]>();
     for (const t of tasks) {
       if (!t.groupId) continue;
@@ -524,9 +535,7 @@ export function SearchScreen() {
       rosters.set(groupId, groupRoster(list));
     }
     return rosters;
-  }, [tasks]);
-
-  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  }, [tasks, hasQuery]);
 
   // Tasks ticked from these results, kept in the Active section so the tick
   // reads as one — the same hold Today's list keeps over a just-completed row
@@ -544,7 +553,10 @@ export function SearchScreen() {
     (taskId: string) => setHeldIds(prev => new Set(prev).add(taskId)),
     []
   );
-  useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
+  // The same set back when it is already empty, which it nearly always is: this
+  // also runs each time the tab is shown again, and a fresh empty set re-ran
+  // the whole search below for nothing.
+  useEffect(() => setHeldIds(prev => (prev.size === 0 ? prev : new Set())), [debouncedQuery]);
 
   // Collapsed the same way the quick-search card collapses, and for the same
   // reason: a daily task is one thing on many days, and reading its rows back
@@ -581,7 +593,7 @@ export function SearchScreen() {
   // Which of those sections the user opened past their first few rows. A new
   // query is a new set of results, so it starts folded again.
   const [expandedSections, setExpandedSections] = useState<ReadonlySet<keyof ElsewhereSections>>(new Set());
-  useEffect(() => setExpandedSections(new Set()), [debouncedQuery]);
+  useEffect(() => setExpandedSections(prev => (prev.size === 0 ? prev : new Set())), [debouncedQuery]);
   const expandSection = useCallback((section: keyof ElsewhereSections) => {
     setExpandedSections(prev => new Set(prev).add(section));
   }, []);
@@ -865,21 +877,25 @@ export function SearchScreen() {
         visible={editorVisible}
         task={editingTask}
         initialDraft={editorInitialDraft}
-        onClose={() => { setEditorVisible(false); setEditorInitialDraft(null); }}
+        onClose={closeEditor}
       />
 
-      <TaskGroupEditor
-        visible={groupEditorVisible}
-        group={editingGroup}
-        onClose={() => { setGroupEditorVisible(false); setEditingGroup(null); }}
-      />
+      <LazySheet open={groupEditorVisible}>
+        <TaskGroupEditor
+          visible={groupEditorVisible}
+          group={editingGroup}
+          onClose={() => { setGroupEditorVisible(false); setEditingGroup(null); }}
+        />
+      </LazySheet>
 
-      <QuickAddModal
-        visible={quickAddVisible}
-        onClose={onQuickAddClose}
-        onOpenFull={onQuickAddOpenFull}
-        initialTitle={query}
-      />
+      <LazySheet open={quickAddVisible}>
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          initialTitle={query}
+        />
+      </LazySheet>
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation, currentTabName } from './navigationRef';
@@ -90,6 +90,11 @@ import { useMoodStore } from '../store/useMoodStore';
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
 const EDGE_WIDTH = 20;
+// How long after a navigation its bookkeeping waits (see handleStateChange):
+// long enough to land after the destination's first frames rather than among
+// them, short enough that nothing reading it (the menu's Recent row, the
+// screen a cold launch reopens) can be looked at first.
+const SCREEN_BOOKKEEPING_DELAY_MS = 300;
 
 // Screens only reachable via the drawer — hidden from the tab bar. There are
 // seventeen of these against four visible tabs, so how they're hidden matters.
@@ -243,6 +248,17 @@ const styles = StyleSheet.create({
   },
 });
 
+// Whether the side menu is open, for the More button's tint and nothing else.
+// A context rather than a prop on MainTabs: as a prop it broke that memo, so
+// opening or closing the menu re-rendered the whole tab navigator and, through
+// it, the screen on show, all while the drawer was animating.
+const MenuOpenContext = React.createContext(false);
+
+function MoreMenuGlyph({ color, accentColor }: { color: string; accentColor: string }) {
+  const menuOpen = useContext(MenuOpenContext);
+  return <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />;
+}
+
 function TabIconPlate({ focused, children }: { focused: boolean; children: React.ReactNode }) {
   const colors = useColors();
   return (
@@ -256,7 +272,6 @@ interface MainTabsProps {
   initialRouteName: string;
   screenOptions: any;
   tabPressHaptic: { tabPress: () => void };
-  menuOpen: boolean;
   accentColor: string;
   onOpenMenu: () => void;
 }
@@ -266,7 +281,7 @@ interface MainTabsProps {
 // re-render and recompute its derived task lists — that recompute was
 // blocking the settings modal's open animation.
 const MainTabs = React.memo(function MainTabs({
-  initialRouteName, screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
+  initialRouteName, screenOptions, tabPressHaptic, accentColor, onOpenMenu,
 }: MainTabsProps) {
   const colors = useColors();
   // Recipes and meal plan live behind the drawer with no tab of their own, so
@@ -341,7 +356,7 @@ const MainTabs = React.memo(function MainTabs({
           tabBarIcon: ({ color, focused }) => (
             <TabIconPlate focused={focused}>
               <View>
-                <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
+                <MoreMenuGlyph color={color} accentColor={accentColor} />
                 {timerRunning && <View style={[styles.timerDot, { backgroundColor: colors.orange }]} />}
               </View>
             </TabIconPlate>
@@ -451,19 +466,46 @@ export default function AppNavigator() {
     }
   }, []);
 
+  // The bookkeeping a tab switch does, run just after it rather than inside
+  // it. Each of these is a synchronous database write and a store write that
+  // every settings subscriber on screen is asked about, plus a render of this
+  // navigator and everything it overlays, and none of it is anything the
+  // screen being switched to needs to draw. Queued in order and flushed
+  // together, so a quick run of switches still records every screen.
+  const pendingScreensRef = useRef<string[]>([]);
+  const screenFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushScreenBookkeeping = useCallback(() => {
+    screenFlushRef.current = null;
+    const screens = pendingScreensRef.current;
+    pendingScreensRef.current = [];
+    if (screens.length === 0) return;
+    const latest = screens[screens.length - 1];
+    // Remembered so the next cold launch reopens here instead of always on
+    // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
+    // so no further check is needed on write.
+    setLastVisitedScreen(latest);
+    // The side menu's Recent row, and which screen a hub row opens.
+    screens.forEach(pushRecentScreen);
+    setActiveTab(latest);
+  }, [setLastVisitedScreen, pushRecentScreen]);
+  useEffect(() => () => {
+    if (screenFlushRef.current) clearTimeout(screenFlushRef.current);
+  }, []);
+
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
     if (currentName) setOnToday(currentName === 'Today');
     if (!currentName || currentName === 'More' || PUSHED_ROUTES.has(currentName)) return;
-    // Remembered so the next cold launch reopens here instead of always on
-    // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
-    // so no further check is needed on write.
-    setLastVisitedScreen(currentName);
+    // Not deferred with the rest: the launch guard has to hear about a screen
+    // before anything slow it does can crash, and it only matters at all
+    // alongside lastVisitedScreen, which a deferred write leaves pointing at
+    // the screen before (so a crash in between restores that one instead).
     markScreenUnproven(currentName);
-    // The side menu's Recent row, and which screen a hub row opens.
-    pushRecentScreen(currentName);
-    setActiveTab(currentName);
-  }, [setLastVisitedScreen, pushRecentScreen]);
+    pendingScreensRef.current.push(currentName);
+    if (!screenFlushRef.current) {
+      screenFlushRef.current = setTimeout(flushScreenBookkeeping, SCREEN_BOOKKEEPING_DELAY_MS);
+    }
+  }, [flushScreenBookkeeping]);
 
   const screenOptions = useMemo(() => ({
     headerShown: false,
@@ -514,6 +556,7 @@ export default function AppNavigator() {
 
   return (
     <>
+      <MenuOpenContext.Provider value={menuOpen}>
       <NavigationContainer
         ref={navRef}
         onStateChange={handleStateChange}
@@ -530,7 +573,6 @@ export default function AppNavigator() {
                 initialRouteName={initialRouteName}
                 screenOptions={screenOptions}
                 tabPressHaptic={tabPressHaptic}
-                menuOpen={menuOpen}
                 accentColor={colors.accent}
                 onOpenMenu={openMenu}
               />
@@ -610,6 +652,7 @@ export default function AppNavigator() {
             mounted across every screen exactly as before. */}
         <LogMealEntrySheet />
       </NavigationContainer>
+      </MenuOpenContext.Provider>
       {/* TEMPORARY: the blank-tab diagnostic, drawn outside every tab. */}
       <BlankTabDiagnostic currentTab={currentTabName} />
 

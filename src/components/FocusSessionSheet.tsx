@@ -76,6 +76,8 @@ interface Props {
  * screen true rather than a reconstruction of what would have happened if the
  * phone had been in front of you the whole time.
  */
+const NO_TASKS: Task[] = [];
+
 export function FocusSessionSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -87,7 +89,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   // commit `visible` drops, and a sheet torn out of the tree can't hold its own
   // close back (see noUnmountedSheet.test.ts).
   const session = useSheetSubject(liveSession);
-  const tasks = useTaskStore(s => s.tasks);
+  // Only while there is a session: this sheet is mounted for the life of
+  // Today, and with nothing to show, a subscription to every task re-rendered
+  // it and rebuilt the lookup below on every store write.
+  const tasks = useTaskStore(s => (session ? s.tasks : NO_TASKS));
   const completeTask = useTaskStore(s => s.completeTask);
   const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
   const { enqueue, queueProps } = useAnswerFirstCompletion();

@@ -56,6 +56,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded } from '../utils/visibilityUtils';
+import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
@@ -269,6 +270,14 @@ interface Props {
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
+   * Takes the `autoComplete` request for this task, answering whether this row
+   * is the one to play it. The first row to ask gets true and the request is
+   * spent, so a row whose effects run again (the tab it's on hidden and shown,
+   * the row remounted by an undo) or the pinned copy beside it doesn't complete
+   * or log the task a second time. Without it, `autoComplete` alone decides.
+   */
+  claimAutoComplete?: (taskId: string) => boolean;
+  /**
    * Fires true/false around a drag of the row's inline subtask list. The
    * enclosing list has to switch its own `scrollEnabled` off for the duration:
    * a native scroll view only stands down for a JS responder that is one of
@@ -343,6 +352,7 @@ export const TaskItem = React.memo(function TaskItem({
   onSubmitLine,
   swipeDeletes = false,
   autoComplete = false,
+  claimAutoComplete,
   hidesWhenOnPace = false,
   onApplyImport,
   onDismissImport,
@@ -362,7 +372,7 @@ export const TaskItem = React.memo(function TaskItem({
   // finishing or adding a date updates the line.
   const otherSeriesDates = useTaskStore(s =>
     task.seriesId
-      ? s.tasks
+      ? openTasksOf(s.tasks)
           .filter(t => t.seriesId === task.seriesId && t.id !== task.id && !t.completed && !t.archived && t.dueDate)
           .map(t => t.dueDate!)
           .sort()
@@ -760,6 +770,11 @@ export const TaskItem = React.memo(function TaskItem({
   // agrees and the extra layer is invisible.
   const [collapsing, setCollapsing] = useState(false);
   const wasExpandedRef = useRef(expanded);
+  // Whether the expanded panel has been built yet: false until the row first
+  // expands, true from then on (see `expandedPanel`). Set during render, so
+  // the panel mounts in the same commit as the expansion it is for.
+  const [panelMounted, setPanelMounted] = useState(expanded);
+  if (expanded && !panelMounted) setPanelMounted(true);
   // The completion sequences below await animations before they ask the parent
   // to collapse this row, and `onPress` is a toggle. Reading `expanded` from
   // their closure would see the value at tap time: unfocus the row mid-send-off
@@ -780,10 +795,15 @@ export const TaskItem = React.memo(function TaskItem({
 
   // ==== effects: the completion hold, collapse animation, and now-tick ====
   useEffect(() => {
+    // Nothing to do while `expanded` is where it was last applied: the row
+    // mounting (the shared value starts there) or its effects running again
+    // because the tab it's on was hidden and shown. That used to start an
+    // animation and a JS callback on every row each time Today came back.
+    if (wasExpandedRef.current === expanded) return;
     // Only a row coming *down* from expanded has a collapse to wait out; a row
     // that merely mounted collapsed must keep drawing its scrim right away, or
     // it would sit undimmed under a mask that is already up.
-    if (!expanded && wasExpandedRef.current) setCollapsing(true);
+    if (!expanded) setCollapsing(true);
     wasExpandedRef.current = expanded;
     // Timing rather than a spring: a spring is underdamped, so it overshoots
     // past 0 on collapse (clamped by the height interpolation), which reads as
@@ -2080,7 +2100,15 @@ export const TaskItem = React.memo(function TaskItem({
   // undo, a fresh occurrence at zero — slides the fill to its new level from
   // this one place, so nothing has to remember to animate it. The completion
   // run-up owns the value while it's playing and is left alone.
+  //
+  // Keyed on what it last ran for, so effects re-running with nothing changed
+  // (the tab hidden and shown again, or the row mounting with the fill already
+  // at its level) start no JS-driven animation on every quota row.
+  const quotaFillRanFor = useRef(`${isQuota}|${task.progressCount}|${task.targetCount}|${reduceMotion}`);
   useEffect(() => {
+    const ranFor = `${isQuota}|${task.progressCount}|${task.targetCount}|${reduceMotion}`;
+    if (quotaFillRanFor.current === ranFor) return;
+    quotaFillRanFor.current = ranFor;
     if (!isQuota || completingRef.current || pacingOutRef.current) return;
     const level = quotaFraction(task);
     if (reduceMotion) { quotaFill.setValue(level); return; }
@@ -2318,6 +2346,7 @@ export const TaskItem = React.memo(function TaskItem({
   // widgetQuietTaps.ts).
   useEffect(() => {
     if (!autoComplete) return;
+    if (claimAutoComplete && !claimAutoComplete(task.id)) return;
     if (isRotation) handleRotationTap();
     else if (showQuotaMeter) handleQuotaTap();
     else handleComplete();
@@ -3603,7 +3632,16 @@ export const TaskItem = React.memo(function TaskItem({
       {/* Absolutely positioned so it always lays out at natural height for
           measurement, independent of the animated clipping height above.
           Top-anchored: the growing card uncovers the content in place, and
-          cardClip keeps the slice edge's corners rounded. */}
+          cardClip keeps the slice edge's corners rounded.
+
+          Built the first time the row expands and kept from then on, rather
+          than for every row: it is most of a row's views (the subtask list,
+          the add field, the action buttons), and neither list virtualizes, so
+          every collapsed row on Today and Later used to carry a full panel
+          nobody had opened, through every mount, render and tab return. The
+          first expand measures it a frame in, while the eased height is
+          still near zero. */}
+      {panelMounted && (
       <View
         style={styles.panelMeasure}
         // Guarded like AnimatedCollapsible's: this feeds the animated height
@@ -4382,6 +4420,7 @@ export const TaskItem = React.memo(function TaskItem({
         )}
       </View>
       </View>
+      )}
       {/* Continues the urgency bar from the row down through the expanded
           panel, so it reads as one strip along the whole card's left edge
           instead of stopping at the collapsed row's height. Sized against
