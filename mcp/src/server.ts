@@ -954,6 +954,7 @@ const itemSchema = z.object({
   location: z.string().nullable().optional(),
   weatherWait: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).nullable().optional().describe('Hold the task until the next day with this forecast. Only for a one-off item.'),
   pinEachOccurrence: z.boolean().optional(),
+  medicationChecklist: z.boolean().optional().describe('When the template runs, add one subtask per medication the person currently takes (their medication log, archived medicines left out) after the item\'s own subtasks. Turn it on for an item like "Medications"; the list is read at run time, never stored.'),
   chain: z.object({
     steps: z.array(z.object({
       title: z.string().min(1),

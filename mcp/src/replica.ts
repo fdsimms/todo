@@ -2352,7 +2352,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     let created: Task[] = [];
     try {
       db.dbTransaction(() => {
-        created = templateApply.applyTemplateRun(template, byId, selected, anchors, options, {
+        // The medicines taken as of this run, for an item marked medicationChecklist.
+        const medications = medication.medicationVocabulary(
+          db.dbGetAllMedicationLogs(),
+          medication.parseArchivedMedications(db.dbGetSetting(medication.ARCHIVED_MEDICATIONS_SETTING_KEY)),
+        );
+        created = templateApply.applyTemplateRun(template, byId, selected, anchors, { medications, ...options }, {
           addTask: draft => replica.createTask(draft as Partial<TaskDraft>),
           // A stub is a checklist line: no title rules, no category, no time-of-day seeding.
           addSubtask: (parentId, title) => {

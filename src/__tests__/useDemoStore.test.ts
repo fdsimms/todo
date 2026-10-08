@@ -4422,6 +4422,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(tpl!.applyContainer).toBe('project');
   });
 
+  it('seeds a template item that turns into a checklist of your medicines', () => {
+    const tpl = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+    expect(tpl!.items.some(i => i.medicationChecklist === true)).toBe(true);
+  });
+
   it('seeds a trip carrying away dates', () => {
     // The span is invisible until a project has one: with no trip seeded, the
     // editor's two rows read as a feature the app doesn't have.

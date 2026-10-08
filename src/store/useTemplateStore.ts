@@ -27,6 +27,8 @@ import {
 } from '../utils/templateQuestions';
 import { blockerFields } from '../utils/blocking';
 import { applyTemplateRun } from '../utils/templateApply';
+import { medicationVocabulary } from '../utils/medicationLog';
+import { useMedicationStore } from './useMedicationStore';
 import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -448,8 +450,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const projects = useProjectStore.getState();
     const groups = useTaskGroupStore.getState();
     let createdTasks: Task[] = [];
+    // What "your medicines" means on the day of the run, for an item marked
+    // medicationChecklist. Read here rather than by each caller so the apply
+    // sheet and a scheduled run agree.
+    const medications = medicationVocabulary(useMedicationStore.getState().logs, useMedicationStore.getState().archived);
     dbTransaction(() => {
-      createdTasks = applyTemplateRun(template, templatesById, selectedItemIds, anchors, options, {
+      createdTasks = applyTemplateRun(template, templatesById, selectedItemIds, anchors, { medications, ...options }, {
         addTask: draft => tasks.addTask(draft),
         addSubtask: (parentId, title) => tasks.addSubtask(parentId, title),
         createStack: (title, category) => groups.createGroup(title, category),
