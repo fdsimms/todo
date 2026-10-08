@@ -2,7 +2,14 @@ import {
   DEFAULT_FOOD_LOG_PINNED_NUTRIENTS,
   DEFAULT_HEALTH_WRITE_NUTRIENTS,
   NUTRITION_TARGET_RANGES,
+  activeLimits,
   describeAgainstTarget,
+  describeLimit,
+  describeLimitImpact,
+  limitImpact,
+  limitStatus,
+  parseNutritionLimits,
+  serializeNutritionLimits,
   parseFoodLogPinnedNutrients,
   parseHealthWriteNutrients,
   parseNutritionTargets,
@@ -222,5 +229,75 @@ describe('targetStatus', () => {
 
   it('reads under when there is no target, so a caller with no track drawn gets a harmless default', () => {
     expect(targetStatus('calorieKcal', 1840, {})).toBe('under');
+  });
+});
+
+describe('limits', () => {
+  it('ships with none, and reads back what somebody chose in label order', () => {
+    expect(parseNutritionLimits(null)).toEqual([]);
+    expect(parseNutritionLimits(serializeNutritionLimits(['sugarG', 'satFatG']))).toEqual(['satFatG', 'sugarG']);
+  });
+
+  it('drops water, unknown keys and a malformed blob', () => {
+    expect(parseNutritionLimits('["waterMl","nope","sodiumMg"]')).toEqual(['sodiumMg']);
+    expect(parseNutritionLimits('{')).toEqual([]);
+    expect(parseNutritionLimits('{"a":1}')).toEqual([]);
+  });
+
+  it('is only active where a target is set', () => {
+    expect(activeLimits({ satFatG: 16 }, ['satFatG', 'sugarG'])).toEqual(['satFatG']);
+  });
+
+  it('has no met band: anything past the limit is over', () => {
+    expect(limitStatus('satFatG', 16.5, { satFatG: 16 })).toBe('over');
+    expect(limitStatus('satFatG', 16, { satFatG: 16 })).toBe('near');
+    expect(limitStatus('satFatG', 11.9, { satFatG: 16 })).toBe('within');
+    expect(limitStatus('satFatG', 12, { satFatG: 16 })).toBe('near');
+    expect(limitStatus('satFatG', 12, { satFatG: 16 }, 90)).toBe('within');
+    expect(limitStatus('satFatG', undefined, { satFatG: 16 })).toBe('within');
+  });
+
+  it('reads a limit of zero as passed by any amount', () => {
+    expect(limitStatus('caffeineMg', 0, { caffeineMg: 0 })).toBe('within');
+    expect(limitStatus('caffeineMg', 5, { caffeineMg: 0 })).toBe('over');
+  });
+
+  it('says what is left, or how far over', () => {
+    expect(describeLimit('satFatG', 12, { satFatG: 16 })).toBe('4g left');
+    expect(describeLimit('satFatG', 19.25, { satFatG: 16 })).toBe('3.3g over');
+    expect(describeLimit('satFatG', 16, { satFatG: 16 })).toBe('At the limit');
+    expect(describeLimit('calorieKcal', 1500, { calorieKcal: 2000 })).toBe('500 cal left');
+    expect(describeLimit('satFatG', 12, {})).toBeNull();
+  });
+});
+
+describe('limitImpact', () => {
+  const targets = { satFatG: 16, sugarG: 35, proteinG: 150 };
+  const limits = ['satFatG', 'sugarG'] as const;
+
+  it('reports only the limits the entry states', () => {
+    const impacts = limitImpact({ satFatG: 5, proteinG: 20 }, { satFatG: 4, sugarG: 30 }, targets, [...limits]);
+    expect(impacts).toEqual([{ key: 'satFatG', after: 9, target: 16, status: 'within', crosses: false }]);
+  });
+
+  it('marks the entry that takes the day past a limit', () => {
+    const [impact] = limitImpact({ satFatG: 6 }, { satFatG: 12 }, targets, [...limits]);
+    expect(impact).toMatchObject({ after: 18, status: 'over', crosses: true });
+    expect(describeLimitImpact(impact)).toBe('Puts you at 18 of 16g saturated fat, 2g over');
+  });
+
+  it('does not call a day already over a crossing', () => {
+    const [impact] = limitImpact({ sugarG: 5 }, { sugarG: 40 }, targets, [...limits]);
+    expect(impact).toMatchObject({ status: 'over', crosses: false });
+  });
+
+  it('ignores a stated zero and an unset target', () => {
+    expect(limitImpact({ satFatG: 0 }, {}, targets, [...limits])).toEqual([]);
+    expect(limitImpact({ sodiumMg: 900 }, {}, targets, ['sodiumMg'])).toEqual([]);
+  });
+
+  it('reads plainly below the limit', () => {
+    const [impact] = limitImpact({ sugarG: 10 }, { sugarG: 5 }, targets, [...limits]);
+    expect(describeLimitImpact(impact)).toBe('Puts you at 15 of 35g total sugars');
   });
 });
