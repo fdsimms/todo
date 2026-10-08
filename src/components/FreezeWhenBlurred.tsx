@@ -1,4 +1,4 @@
-import React, { Activity, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { Activity, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useNavigationState, useRoute } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
@@ -55,6 +55,15 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
   const existing = wrapped.get(Screen);
   if (existing) return existing as React.ComponentType<P>;
 
+  // The navigator renders every tab's screen element afresh each time it
+  // renders (any navigation, every tab switch), with a new props object
+  // holding the same `navigation` and `route`. Memoized on those, a tab's
+  // screen re-renders when what it was given changes rather than whenever
+  // the navigator does: on a switch that was the tab being left, re-rendering
+  // in full while the destination was trying to draw, and every frozen tab
+  // queued for a hidden re-render behind it.
+  const MemoScreen = React.memo(Screen) as unknown as React.ComponentType<P>;
+
   function FreezeWhenBlurred(props: P) {
     const route = useRoute();
     // The tab navigator's own state, not `useIsFocused`: that one is false for
@@ -85,9 +94,9 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
       const timer = setTimeout(() => setSettled(true), TAB_FREEZE_DELAY_MS);
       return () => clearTimeout(timer);
     }, [wantFrozen, settled]);
-    // The same element while the props are, so this wrapper re-rendering on a
-    // sheet opening somewhere does not re-render the screen inside it.
-    const screen = useMemo(() => <Screen {...props} />, [props]);
+    // A screen that ignores this wrapper re-rendering (a sheet opening
+    // somewhere flips `sheetPresented`), since its props haven't changed.
+    const screen = <MemoScreen {...props} />;
     const mode = wantFrozen && settled ? 'hidden' : 'visible';
 
     // ==== TEMPORARY blank-tab diagnostic ====

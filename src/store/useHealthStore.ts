@@ -268,6 +268,15 @@ const historyGuard = createRefreshGuard();
 const weightGuard = createRefreshGuard();
 const sleepGuard = createRefreshGuard();
 
+/** Whether a re-read of the history window came back with the days already held. */
+export function sameHealthHistory(held: readonly HealthDayInput[] | null, read: readonly HealthDayInput[]): boolean {
+  if (!held || held.length !== read.length) return false;
+  return held.every((d, i) => {
+    const r = read[i];
+    return d.dayKey === r.dayKey && d.steps === r.steps && d.sleepHours === r.sleepHours;
+  });
+}
+
 export const useHealthStore = create<HealthState>((set, get) => ({
   today: null,
   refreshing: false,
@@ -407,7 +416,9 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           sleepHours: reading.sleepMinutes === null ? null : reading.sleepMinutes / 60,
         });
       }
-      set({ history });
+      // The Mood screen re-reads this on every return to it, and a fresh array
+      // of the same days re-ran every insight keyed on it for nothing.
+      if (!sameHealthHistory(get().history, history)) set({ history });
     } finally {
       set({ loadingHistory: false });
     }

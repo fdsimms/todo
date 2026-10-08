@@ -165,6 +165,12 @@ interface CalendarState {
 // different windows could otherwise interleave their writes, and a read still
 // in flight when the feature was switched off would put the events back after
 // `clear` had dropped them.
+/** Whether a re-read came back with exactly the events already held. */
+export function sameBusyEvents(held: readonly BusyEvent[], read: readonly BusyEvent[]): boolean {
+  if (held.length !== read.length) return false;
+  return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
+}
+
 const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
 const aheadGuard = createRefreshGuard();
@@ -295,7 +301,14 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       set({ aheadLoaded: false });
       return;
     }
-    set({ aheadEvents: result.events.filter(spansDays), aheadLoaded: true, aheadWindowEnd: end.toISOString() });
+    const aheadEvents = result.events.filter(spansDays);
+    const aheadWindowEnd = end.toISOString();
+    const held = get();
+    // The calendar screen calls this on every return to it, and a fresh array
+    // of the same events re-rendered the screen and rebuilt every day's
+    // timeline for nothing.
+    if (held.aheadLoaded && held.aheadWindowEnd === aheadWindowEnd && sameBusyEvents(held.aheadEvents, aheadEvents)) return;
+    set({ aheadEvents, aheadLoaded: true, aheadWindowEnd });
   },
 
   async refreshFollowUp() {

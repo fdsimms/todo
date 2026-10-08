@@ -6,7 +6,7 @@
 //
 // The parsing itself lives in src/utils/parseTaskInput.ts and parseNaturalDate.ts;
 // this file only decides what to do with what they return.
-import React, { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import {
   Alert,
   View,
@@ -311,6 +311,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // when newTaskDefaults.openEditorAfterQuickAdd is on (see createTask below).
   // ==== sheet-level state (keyboard, panels, post-create follow-ups) ====
   const [postCreateTask, setPostCreateTask] = useState<Task | null>(null);
+  const closePostCreateEditor = useCallback(() => setPostCreateTask(null), []);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -3557,7 +3558,7 @@ parsed
     <TaskEditor
       visible={postCreateTask !== null}
       task={postCreateTask}
-      onClose={() => setPostCreateTask(null)}
+      onClose={closePostCreateEditor}
     />
     </>
   );

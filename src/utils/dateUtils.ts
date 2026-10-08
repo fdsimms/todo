@@ -60,7 +60,17 @@ export function getLogicalDayKey(date: Date, dayResetTime?: string): string {
  * a plain `date >= ? AND date <= ?`.
  */
 export function dayKeyOf(date: Date): string {
-  return format(date, 'yyyy-MM-dd');
+  // Built from the date's own fields rather than through date-fns `format`,
+  // which re-reads its pattern on every call and was about thirty times
+  // slower. That mattered because this sits under `getLogicalDayKey`, which
+  // screens call once per completion there has ever been. The answer is the
+  // same; `format` still handles what this doesn't (a year outside four
+  // digits, and an invalid date, which it refuses with a RangeError).
+  const y = date.getFullYear();
+  if (!(y >= 1000 && y <= 9999)) return format(date, 'yyyy-MM-dd');
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  return `${y}-${m < 10 ? '0' : ''}${m}-${d < 10 ? '0' : ''}${d}`;
 }
 
 /**

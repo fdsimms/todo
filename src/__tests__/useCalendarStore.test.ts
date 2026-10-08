@@ -194,6 +194,23 @@ describe('refreshAhead', () => {
     expect(useCalendarStore.getState().aheadEvents).toEqual([]);
   });
 
+  // The calendar screen reads this on every return to it, and EventKit hands
+  // back fresh objects each time.
+  it('keeps the trips it holds when a re-read finds the same ones', async () => {
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([trip]));
+    await useCalendarStore.getState().refreshAhead();
+    const held = useCalendarStore.getState().aheadEvents;
+
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([{ ...trip }]));
+    await useCalendarStore.getState().refreshAhead();
+    expect(useCalendarStore.getState().aheadEvents).toBe(held);
+
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([{ ...trip, title: 'Lisbon' }]));
+    await useCalendarStore.getState().refreshAhead();
+    expect(useCalendarStore.getState().aheadEvents).not.toBe(held);
+    expect(useCalendarStore.getState().aheadEvents[0].title).toBe('Lisbon');
+  });
+
   it('keeps the last trips when a read fails, but says so', async () => {
     useCalendarStore.setState({ aheadEvents: [trip], aheadLoaded: true });
     (fetchEvents as jest.Mock).mockResolvedValue(null);

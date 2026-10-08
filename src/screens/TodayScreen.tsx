@@ -33,6 +33,7 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
@@ -207,6 +208,7 @@ import { stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
 import { emitNowTick } from '../utils/nowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
+import { LazySheet } from '../components/LazySheet';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -711,7 +713,7 @@ export function TodayScreen() {
   // on the generator is already the ranking, the same way pinnedTasks() is
   // for its own seed above.
   const reachOutTasks = useMemo(
-    () => liveGeneratedTasksOfKind(allTasks, 'reachOut'),
+    () => liveGeneratedTasksOfKind(openTasksOf(allTasks), 'reachOut'),
     [allTasks],
   );
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -793,6 +795,23 @@ export function TodayScreen() {
   >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
+  // The requests in `autoCompletingIds` no row has played yet, mirrored in a
+  // ref so the first row to ask takes one synchronously (see TaskItem's
+  // `claimAutoComplete`). Spent requests used to stay in the set for good, so
+  // the row's effect replayed them each time Today was hidden and shown again
+  // (logging another unit of a target), and a pinned task's two rows both
+  // played the same one.
+  const pendingAutoCompleteRef = useRef(new Set<string>());
+  const claimAutoComplete = useCallback((taskId: string): boolean => {
+    if (!pendingAutoCompleteRef.current.delete(taskId)) return false;
+    setAutoCompletingIds(prev => {
+      if (!prev.has(taskId)) return prev;
+      const next = new Set(prev);
+      next.delete(taskId);
+      return next;
+    });
+    return true;
+  }, []);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
@@ -839,6 +858,12 @@ export function TodayScreen() {
   const [pullOnDay, setPullOnDay] = useState<string | null>(null);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // Stable, so the memoized editor sitting closed under this screen isn't
+  // re-rendered by every render of it (see TaskEditor).
+  const closeEditor = useCallback(() => {
+    setEditorVisible(false);
+    setExpandedTaskId(null);
+  }, []);
   const {
     selectionMode,
     selectedIds,
@@ -877,8 +902,16 @@ export function TodayScreen() {
   // One per view mode: only ever one of these lists is mounted at a time, but
   // each needs its own ref and its own record of where it last settled.
   // Both carry the pull-to-search RefreshControl; see the hook's `refreshing`.
-  const unscheduledScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullingToSearch });
-  const inboxScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullingToSearch });
+  // `listMounted` keeps the one whose list isn't showing from re-rendering
+  // this whole screen each time a sheet opens or closes.
+  const unscheduledScroll = useKeyboardInsetScroll<FlatList>({
+    refreshing: pullingToSearch,
+    listMounted: viewMode === 'unscheduled',
+  });
+  const inboxScroll = useKeyboardInsetScroll<FlatList>({
+    refreshing: pullingToSearch,
+    listMounted: viewMode === 'inbox',
+  });
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
@@ -1109,6 +1142,7 @@ export function TodayScreen() {
         useTaskStore.getState().completeTask(id);
         return;
       }
+      pendingAutoCompleteRef.current.add(id);
       setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
     });
   }, [widgetCompletionIds]);
@@ -1665,7 +1699,7 @@ export function TodayScreen() {
   const morningCheckInLastDayKey = useSettingsStore(s => s.morningCheckInLastDayKey);
   const setMorningCheckInLastDayKey = useSettingsStore(s => s.setMorningCheckInLastDayKey);
   const morningCheckInCandidates = useMemo(
-    () => morningCheckInTasks(allTasks, dayResetTime),
+    () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime),
     [allTasks, dayResetTime]
   );
   useEffect(() => {
@@ -1760,7 +1794,7 @@ export function TodayScreen() {
   // that reads the list (same trade inboxTasks makes above). A scalar, so it
   // can't churn renders — this recomputes on every store write and re-renders
   // only when the number itself moves.
-  const unscheduledCount = useTaskStore(s => s.tasks.filter(isUnscheduledTask).length);
+  const unscheduledCount = useTaskStore(s => openTasksOf(s.tasks).filter(isUnscheduledTask).length);
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
@@ -2163,15 +2197,32 @@ export function TodayScreen() {
   // once per group here rather than inline at each of the four header call
   // sites — main list, Later Today, Inbox, and the pinned block's own
   // grouped headers all need the same answer to "is this stack pinned".
+  //
+  // Each stack's roster is worked out once per render here and shared with the
+  // two memos below, which used to each collapse every stack's whole history
+  // again on every task write. It can't be kept across renders keyed on the
+  // children alone: whether a row is relevant to today moves with the clock.
+  const rosterByGroupId = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const group of taskGroups) {
+      map.set(group.id, groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN));
+    }
+    return map;
+    // `filtered` and `upcomingTaskIds` are deliberately here though unread:
+    // they are what moves when the clock does, and the visible and Later Today
+    // pairings below recomputed their rosters on each change of theirs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskGroups, childrenByGroupId, filtered, upcomingTaskIds]);
+
   const groupPinInfo = useMemo(() => {
     const map = new Map<string, { pinnable: boolean; pinned: boolean }>();
     for (const group of taskGroups) {
-      const roster = groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN);
+      const roster = rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
       const eligible = roster.filter(c => !c.completed && isRelevantToGroupToday(c));
       map.set(group.id, { pinnable: eligible.length > 0, pinned: eligible.length > 0 && eligible.every(c => c.pinned) });
     }
     return map;
-  }, [taskGroups, childrenByGroupId]);
+  }, [taskGroups, rosterByGroupId]);
 
   // Groups with at least one currently-visible child, each paired with just
   // that visible-and-filtered subset — a group with nothing left to show
@@ -2196,10 +2247,10 @@ export function TodayScreen() {
         // fresh occurrence it just spawned can both land in `filtered` at
         // once (see groupRoster's own note on why that pair can look
         // "relevant today" together) and the tray renders both.
-        children: groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => filteredIds.has(t.id)),
+        children: (rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => filteredIds.has(t.id)),
       }))
       .filter(g => g.children.length > 0);
-  }, [taskGroups, childrenByGroupId, filtered]);
+  }, [taskGroups, rosterByGroupId, filtered]);
 
   // Same pairing as visibleGroupItems, but for tasks deferred to later today
   // rather than currently visible — so a stack whose children are all still
@@ -2210,10 +2261,10 @@ export function TodayScreen() {
       .map(group => ({
         group,
         // Rostered first, same reason visibleGroupItems is — see its comment.
-        children: groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id)),
+        children: (rosterByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id)),
       }))
       .filter(g => g.children.length > 0);
-  }, [taskGroups, childrenByGroupId, upcomingTaskIds]);
+  }, [taskGroups, rosterByGroupId, upcomingTaskIds]);
 
   // Which stacks are on Today at all — a visible child or a Later Today one,
   // since both draw a header on this screen and a stack crossing from one to
@@ -2537,8 +2588,8 @@ export function TodayScreen() {
         // fold. Captioning a meal that already has a task in the list is the
         // duplication this whole arrangement removed.
         hasCookTask: entry =>
-          !!liveGeneratedTask(allTasks, 'mealSlot', mealSlotSourceId(entry.date, entry.slot))
-          || !!liveGeneratedTask(allTasks, 'mealCook', entry.id),
+          !!liveGeneratedTask(openTasksOf(allTasks), 'mealSlot', mealSlotSourceId(entry.date, entry.slot))
+          || !!liveGeneratedTask(openTasksOf(allTasks), 'mealCook', entry.id),
       }));
     }
     return rows;
@@ -2746,17 +2797,27 @@ export function TodayScreen() {
   }, [viewMode]);
   const mountedData = useMemo(() => limitTodayItems(data, todayTaskLimit), [data, todayTaskLimit]);
 
-  const [draggableData, setDraggableData] = useState<ListItem[]>(mountedData);
+  //
+  // A drop's settled layout is shown until the store-derived data next
+  // changes, and is worked out here rather than copied into state during
+  // render: a render-phase setState runs this whole component a second time
+  // before anything below it renders, and the copy did that on every store
+  // write (and every minute tick) for a value that was only ever `mountedData`
+  // again. Keyed on the data the drop was made against, so the preview drops
+  // away the moment the store moves, exactly as the copy was overwritten.
+  const [dropPreview, setDropPreview] = useState<{ base: ListItem[]; data: ListItem[] } | null>(null);
+  const mountedDataRef = useRef(mountedData);
+  mountedDataRef.current = mountedData;
+  const setDraggableData = useCallback(
+    (data: ListItem[]) => setDropPreview({ base: mountedDataRef.current, data }),
+    [],
+  );
+  const draggableData = dropPreview !== null && dropPreview.base === mountedData ? dropPreview.data : mountedData;
   // Where each readout falls in its run, so a run draws as one joined card.
   // Read off what the list is actually showing, so a collapsed section (whose
   // rows are gone from it) can't leave a row rounded for neighbours it no
   // longer has.
   const contextPositions = useMemo(() => contextCardPositions(draggableData), [draggableData]);
-  const syncedDataRef = useRef(mountedData);
-  if (syncedDataRef.current !== mountedData) {
-    syncedDataRef.current = mountedData;
-    setDraggableData(mountedData);
-  }
 
   // The settled layout a drop hands back, with the day's context rows put back
   // into it. resolveDrop is deliberately blind to them (they carry no order to
@@ -3365,6 +3426,7 @@ export function TodayScreen() {
         onSwipeSelect={handleRowSwipeSelect}
         highlighted={task.id === flashTaskId}
         autoComplete={autoCompletingIds.has(task.id)}
+        claimAutoComplete={claimAutoComplete}
         // This list is `filtered`, i.e. visibleTasks — a row leaves it the
         // moment it stops being visible, which is what logging a unit does to
         // a daily target that's back on pace. The pinned block passes false:
@@ -4140,12 +4202,17 @@ export function TodayScreen() {
   // still-empty laterDraggableData from before the switch) alongside a
   // correctly-computed "Loading more" footer (already reflecting the real,
   // paginated laterData) for one frame before the effect caught up.
-  const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
-  const syncedLaterDataRef = useRef(laterData);
-  if (syncedLaterDataRef.current !== laterData) {
-    syncedLaterDataRef.current = laterData;
-    setLaterDraggableData(laterData);
-  }
+  //
+  // Derived the way Today's draggableData is, for its reason.
+  const [laterDropPreview, setLaterDropPreview] = useState<{ base: LaterListItem[]; data: LaterListItem[] } | null>(null);
+  const laterDataRef = useRef(laterData);
+  laterDataRef.current = laterData;
+  const setLaterDraggableData = useCallback(
+    (data: LaterListItem[]) => setLaterDropPreview({ base: laterDataRef.current, data }),
+    [],
+  );
+  const laterDraggableData =
+    laterDropPreview !== null && laterDropPreview.base === laterData ? laterDropPreview.data : laterData;
 
   // One zone per row, keyed the same way ReorderableList's own keyExtractor
   // reads them (item.key) — see laterDropZones for what a header/subheader/
@@ -4964,30 +5031,36 @@ export function TodayScreen() {
 
         {/* Opened by pulling any of the four lists down — Today, Later,
             Unscheduled and Inbox all wire the same refreshControl to it. */}
-        <QuickSearchModal
-          visible={quickSearchVisible}
-          onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
-          onShown={endPullToSearch}
-          onSelectTask={openEditor}
-          onSelectGroup={group => handleGroupPressEdit(group.id)}
-          onSelectProject={handleOpenProject}
-          onSelectElsewhere={handleOpenElsewhere}
-          onOpenFullSearch={handleOpenFullSearch}
-        />
+        <LazySheet open={quickSearchVisible}>
+          <QuickSearchModal
+            visible={quickSearchVisible}
+            onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
+            onShown={endPullToSearch}
+            onSelectTask={openEditor}
+            onSelectGroup={group => handleGroupPressEdit(group.id)}
+            onSelectProject={handleOpenProject}
+            onSelectElsewhere={handleOpenElsewhere}
+            onOpenFullSearch={handleOpenFullSearch}
+          />
+        </LazySheet>
 
         {/* Add from a template: pick one here, then the apply sheet below. */}
-        <TemplatePickerSheet
-          visible={templatePickerVisible}
-          onClose={() => setTemplatePickerVisible(false)}
-          onSelect={setApplyTemplate}
-        />
+        <LazySheet open={templatePickerVisible}>
+          <TemplatePickerSheet
+            visible={templatePickerVisible}
+            onClose={() => setTemplatePickerVisible(false)}
+            onSelect={setApplyTemplate}
+          />
+        </LazySheet>
 
-        <ApplyTemplateSheet
-          visible={applyTemplate !== null}
-          template={applyTemplate}
-          onClose={() => setApplyTemplate(null)}
-          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
-        />
+        <LazySheet open={applyTemplate !== null}>
+          <ApplyTemplateSheet
+            visible={applyTemplate !== null}
+            template={applyTemplate}
+            onClose={() => setApplyTemplate(null)}
+            onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+          />
+        </LazySheet>
 
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
@@ -4997,11 +5070,13 @@ export function TodayScreen() {
           />
         )}
 
-        <EventImportSheet
-          visible={eventImportVisible}
-          onClose={() => setEventImportVisible(false)}
-          onImported={handleEventsImported}
-        />
+        <LazySheet open={eventImportVisible}>
+          <EventImportSheet
+            visible={eventImportVisible}
+            onClose={() => setEventImportVisible(false)}
+            onImported={handleEventsImported}
+          />
+        </LazySheet>
 
         <DeliverablePromptQueue {...queueProps} />
 
@@ -5009,174 +5084,199 @@ export function TodayScreen() {
           visible={editorVisible}
           task={editingTask}
           initialDraft={editorInitialDraft}
-          onClose={() => {
-            setEditorVisible(false);
-            setExpandedTaskId(null);
-          }}
+          onClose={closeEditor}
         />
 
-        <SortFilterSheet
-          visible={filterVisible}
-          onClose={() => setFilterVisible(false)}
-          remindersOnly={viewMode !== 'today'}
-          sort={sort}
-          onSortChange={setSort}
-          priorities={filterPriorities}
-          onPrioritiesChange={setFilterPriorities}
-          efforts={filterEfforts}
-          onEffortsChange={setFilterEfforts}
-          hasReminder={filterHasReminder}
-          onHasReminderChange={setFilterHasReminder}
-          onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
-          onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
-        />
+        <LazySheet open={filterVisible}>
+          <SortFilterSheet
+            visible={filterVisible}
+            onClose={() => setFilterVisible(false)}
+            remindersOnly={viewMode !== 'today'}
+            sort={sort}
+            onSortChange={setSort}
+            priorities={filterPriorities}
+            onPrioritiesChange={setFilterPriorities}
+            efforts={filterEfforts}
+            onEffortsChange={setFilterEfforts}
+            hasReminder={filterHasReminder}
+            onHasReminderChange={setFilterHasReminder}
+            onSaveAsView={savedViewsShown ? handleSaveAsView : undefined}
+            onOpenSavedViews={savedViewsShown ? handleOpenSavedViews : undefined}
+          />
+        </LazySheet>
 
         {/* Opened from the filter sheet, which closes in the same commit:
             two sibling Modals visible at once is the presentation trap. */}
-        <SavedViewEditorSheet
-          visible={saveViewClauses !== null}
-          view={null}
-          initialClauses={saveViewClauses ?? undefined}
-          onClose={() => setSaveViewClauses(null)}
-          onCreated={viewId => navigation.navigate({ name: 'SavedViewDetail', params: { viewId } } as never)}
-        />
+        <LazySheet open={saveViewClauses !== null}>
+          <SavedViewEditorSheet
+            visible={saveViewClauses !== null}
+            view={null}
+            initialClauses={saveViewClauses ?? undefined}
+            onClose={() => setSaveViewClauses(null)}
+            onCreated={viewId => navigation.navigate({ name: 'SavedViewDetail', params: { viewId } } as never)}
+          />
+        </LazySheet>
 
-        <TodayOptionsMenu
-          visible={optionsMenuVisible}
-          onClose={() => setOptionsMenuVisible(false)}
-          hideCategories={hideCategories}
-          onHideCategoriesChange={setHideCategories}
-          onLightenDay={visibleTasks.length > 0 && !featureHidden('deload', simpleMode) ? () => {
-            setOptionsMenuVisible(false);
-            setDeloadVisible(true);
-          } : undefined}
-          plannedLabel={plannedLabel}
-          lightenNote={deloadNotes[0] ?? null}
-          onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {
-            setOptionsMenuVisible(false);
-            setLookAheadVisible(true);
-          }}
-          onPullFromProjects={() => {
-            setOptionsMenuVisible(false);
-            setPullScopeProjectIds(undefined);
-            setPullVisible(true);
-          }}
-          onBatchReachOuts={reachOutTasks.length > 0 && !focusSession ? () => {
-            setOptionsMenuVisible(false);
-            setFocusFromPinned(false);
-            setFocusFromReachOuts(true);
-            setFocusSetupVisible(true);
-          } : undefined}
-          reachOutCount={reachOutTasks.length}
-          onReorderCategories={() => {
-            setOptionsMenuVisible(false);
-            setCategoryOrderVisible(true);
-          }}
-          categoryCount={allCategories.length}
-          onManageEvents={calendarReadEnabled && calendarLoaded && !demoActive ? () => {
-            setOptionsMenuVisible(false);
-            setEventsSheetFor(null);
-            setEventsSheetVisible(true);
-          } : undefined}
-          eventCount={todayCalendarEvents.length}
-          anchor={optionsMenuAnchor}
-          onOpenSettings={screenSettings.hasSettings ? () => {
-            setOptionsMenuVisible(false);
-            screenSettings.open(optionsMenuAnchor);
-          } : undefined}
-          settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
-        />
+        <LazySheet open={optionsMenuVisible}>
+          <TodayOptionsMenu
+            visible={optionsMenuVisible}
+            onClose={() => setOptionsMenuVisible(false)}
+            hideCategories={hideCategories}
+            onHideCategoriesChange={setHideCategories}
+            onLightenDay={visibleTasks.length > 0 && !featureHidden('deload', simpleMode) ? () => {
+              setOptionsMenuVisible(false);
+              setDeloadVisible(true);
+            } : undefined}
+            plannedLabel={plannedLabel}
+            lightenNote={deloadNotes[0] ?? null}
+            onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {
+              setOptionsMenuVisible(false);
+              setLookAheadVisible(true);
+            }}
+            onPullFromProjects={() => {
+              setOptionsMenuVisible(false);
+              setPullScopeProjectIds(undefined);
+              setPullVisible(true);
+            }}
+            onBatchReachOuts={reachOutTasks.length > 0 && !focusSession ? () => {
+              setOptionsMenuVisible(false);
+              setFocusFromPinned(false);
+              setFocusFromReachOuts(true);
+              setFocusSetupVisible(true);
+            } : undefined}
+            reachOutCount={reachOutTasks.length}
+            onReorderCategories={() => {
+              setOptionsMenuVisible(false);
+              setCategoryOrderVisible(true);
+            }}
+            categoryCount={allCategories.length}
+            onManageEvents={calendarReadEnabled && calendarLoaded && !demoActive ? () => {
+              setOptionsMenuVisible(false);
+              setEventsSheetFor(null);
+              setEventsSheetVisible(true);
+            } : undefined}
+            eventCount={todayCalendarEvents.length}
+            anchor={optionsMenuAnchor}
+            onOpenSettings={screenSettings.hasSettings ? () => {
+              setOptionsMenuVisible(false);
+              screenSettings.open(optionsMenuAnchor);
+            } : undefined}
+            settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+          />
+        </LazySheet>
         <ScreenSettingsSheet {...screenSettings.sheet} />
 
-        <CategoryOrderSheet
-          visible={categoryOrderVisible}
-          onClose={() => setCategoryOrderVisible(false)}
-        />
+        <LazySheet open={categoryOrderVisible}>
+          <CategoryOrderSheet
+            visible={categoryOrderVisible}
+            onClose={() => setCategoryOrderVisible(false)}
+          />
+        </LazySheet>
 
-        <QuickEventSheet
-          visible={quickEventVisible}
-          seed={quickEventSeed}
-          onClose={() => { setQuickEventVisible(false); setQuickEventSeed(null); }}
-        />
+        <LazySheet open={quickEventVisible}>
+          <QuickEventSheet
+            visible={quickEventVisible}
+            seed={quickEventSeed}
+            onClose={() => { setQuickEventVisible(false); setQuickEventSeed(null); }}
+          />
+        </LazySheet>
 
-        <TodayEventsSheet
-          visible={eventsSheetVisible}
-          onClose={() => setEventsSheetVisible(false)}
-          events={eventsSheetFor ? [eventsSheetFor] : todayCalendarEvents}
-          calendarsById={eventCalendarTags}
-          title={eventsSheetFor
-            ? new Date(eventsSheetFor.start).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-            : undefined}
-          day={eventsSheetFor ? new Date(eventsSheetFor.start) : undefined}
-        />
+        <LazySheet open={eventsSheetVisible}>
+          <TodayEventsSheet
+            visible={eventsSheetVisible}
+            onClose={() => setEventsSheetVisible(false)}
+            events={eventsSheetFor ? [eventsSheetFor] : todayCalendarEvents}
+            calendarsById={eventCalendarTags}
+            title={eventsSheetFor
+              ? new Date(eventsSheetFor.start).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+              : undefined}
+            day={eventsSheetFor ? new Date(eventsSheetFor.start) : undefined}
+          />
+        </LazySheet>
 
-        <DeloadSheet
-          visible={deloadVisible}
-          todaysTasks={visibleTasks}
-          notes={deloadNotes}
-          onClose={() => setDeloadVisible(false)}
-        />
+        <LazySheet open={deloadVisible}>
+          <DeloadSheet
+            visible={deloadVisible}
+            todaysTasks={visibleTasks}
+            notes={deloadNotes}
+            onClose={() => setDeloadVisible(false)}
+          />
+        </LazySheet>
 
-        <LookAheadSheet
-          visible={lookAheadVisible}
-          onClose={() => setLookAheadVisible(false)}
-        />
+        <LazySheet open={lookAheadVisible}>
+          <LookAheadSheet
+            visible={lookAheadVisible}
+            onClose={() => setLookAheadVisible(false)}
+          />
+        </LazySheet>
 
-        <MorningCheckInSheet
-          visible={morningCheckInVisible}
-          onClose={() => setMorningCheckInVisible(false)}
-          tasks={morningCheckInCandidates}
-        />
+        <LazySheet open={morningCheckInVisible}>
+          <MorningCheckInSheet
+            visible={morningCheckInVisible}
+            onClose={() => setMorningCheckInVisible(false)}
+            tasks={morningCheckInCandidates}
+          />
+        </LazySheet>
 
-        <SuggestedPinsSheet
-          visible={suggestedPinsVisible}
-          tasks={visibleTasks}
-          pinnedTasks={pinnedTasks}
-          onClose={() => setSuggestedPinsVisible(false)}
-          onConfirm={handleSuggestedPins}
-        />
+        <LazySheet open={suggestedPinsVisible}>
+          <SuggestedPinsSheet
+            visible={suggestedPinsVisible}
+            tasks={visibleTasks}
+            pinnedTasks={pinnedTasks}
+            onClose={() => setSuggestedPinsVisible(false)}
+            onConfirm={handleSuggestedPins}
+          />
+        </LazySheet>
 
-        <FocusSetupSheet
-          visible={focusSetupVisible}
-          tasks={visibleTasks}
-          allTasks={allTasks}
-          pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
-          reachOutSeed={focusFromReachOuts ? reachOutTasks : undefined}
-          onClose={() => setFocusSetupVisible(false)}
-          onStart={(queue, options, hideTimers) => {
-            startFocusSession(queue, options, hideTimers);
-            setFocusSetupVisible(false);
-            setFocusSessionVisible(true);
-          }}
-        />
+        <LazySheet open={focusSetupVisible}>
+          <FocusSetupSheet
+            visible={focusSetupVisible}
+            tasks={visibleTasks}
+            allTasks={allTasks}
+            pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
+            reachOutSeed={focusFromReachOuts ? reachOutTasks : undefined}
+            onClose={() => setFocusSetupVisible(false)}
+            onStart={(queue, options, hideTimers) => {
+              startFocusSession(queue, options, hideTimers);
+              setFocusSetupVisible(false);
+              setFocusSessionVisible(true);
+            }}
+          />
+        </LazySheet>
 
-        <FocusSessionSheet
-          visible={focusSessionVisible && focusSession !== null}
-          onClose={() => setFocusSessionVisible(false)}
-        />
+        <LazySheet open={focusSessionVisible && focusSession !== null}>
+          <FocusSessionSheet
+            visible={focusSessionVisible && focusSession !== null}
+            onClose={() => setFocusSessionVisible(false)}
+          />
+        </LazySheet>
 
-        <ProjectPullSheet
-          visible={pullVisible}
-          todaysTasks={visibleTasks}
-          scopeProjectIds={pullScopeProjectIds}
-          landOnDayKey={pullOnDay}
-          onOpenProject={projectId => navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never)}
-          onClose={() => {
-            setPullVisible(false);
-            setPullScopeProjectIds(undefined);
-            setPullOnDay(null);
-          }}
-        />
+        <LazySheet open={pullVisible}>
+          <ProjectPullSheet
+            visible={pullVisible}
+            todaysTasks={visibleTasks}
+            scopeProjectIds={pullScopeProjectIds}
+            landOnDayKey={pullOnDay}
+            onOpenProject={projectId => navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never)}
+            onClose={() => {
+              setPullVisible(false);
+              setPullScopeProjectIds(undefined);
+              setPullOnDay(null);
+            }}
+          />
+        </LazySheet>
 
-        <TaskGroupEditor
-          visible={groupEditorVisible}
-          group={editingGroup}
-          onClose={() => {
-            setGroupEditorVisible(false);
-            setEditingGroup(null);
-          }}
-          onCompleteToday={handleGroupComplete}
-        />
+        <LazySheet open={groupEditorVisible}>
+          <TaskGroupEditor
+            visible={groupEditorVisible}
+            group={editingGroup}
+            onClose={() => {
+              setGroupEditorVisible(false);
+              setEditingGroup(null);
+            }}
+            onCompleteToday={handleGroupComplete}
+          />
+        </LazySheet>
 
         {selectionMode && (
           <BulkActionBar

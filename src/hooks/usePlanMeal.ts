@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
@@ -34,11 +34,7 @@ export function usePlanMeal() {
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
   const finishCookForRecipe = useMealPlanStore(s => s.finishCookForRecipe);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
-  const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const addTask = useTaskStore(s => s.addTask);
-  const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
 
   /**
    * `PlanMealSheet`'s smart slot default (see `RecipePickerSheet`'s own
@@ -76,6 +72,12 @@ export function usePlanMeal() {
    * to chain onto and can leave it off.
    */
   const offerPrepTasks = useCallback((entry: MealPlanEntry, onDone?: () => void) => {
+    // The recipes and the pantry are read at the moment of asking rather than
+    // subscribed to. Every task row and checkbox mounts this hook, so a
+    // subscription re-rendered every row on screen for each grocery or recipe
+    // write, for an offer made only when a meal is planned.
+    const recipesById = recipeIndex(useRecipeStore.getState().recipes);
+    const { items: groceryItems, itemProducts } = useGroceryStore.getState();
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     if (!recipe) { onDone?.(); return; }
     // A freshly planned entry has never had a choice made against it, so this
@@ -106,7 +108,7 @@ export function usePlanMeal() {
         },
       ]
     );
-  }, [recipesById, addTask, groceryItems, itemProducts]);
+  }, [addTask]);
 
   /**
    * The same offer, over a batch planned in one sitting — RecipePickerSheet's

@@ -370,7 +370,16 @@ function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters
 }
 
 
-export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
+/**
+ * Memoized because it is mounted for the life of the screen that owns it, and
+ * closed is how it spends almost all of that: unmemoized, every render of the
+ * screen (every task write on Today) ran its forty-odd hooks and rebuilt its
+ * whole tree, only for the closed sheet to draw nothing. The callers that
+ * render it from a busy screen pass a stable `onClose` so this holds.
+ */
+export const TaskEditor = React.memo(TaskEditorSheet);
+
+function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
   const addTask = useTaskStore(s => s.addTask);
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);

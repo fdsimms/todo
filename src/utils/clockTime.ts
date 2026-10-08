@@ -18,6 +18,23 @@ export function hhmmToDate(hhmm: string, base: Date = new Date()): Date {
 }
 
 /**
+ * The reset time's hour and minute, a missing or unreadable part read as 0.
+ *
+ * Remembered for the last string asked about, because the two day-start
+ * helpers below run once per task in every list pass and the reset time is
+ * nearly always the same one setting: splitting and parsing it on every call
+ * was a measurable share of building Today.
+ */
+let lastReset: { text: string; h: number; m: number } = { text: '00:00', h: 0, m: 0 };
+function resetHourMinute(dayResetTime: string): { h: number; m: number } {
+  if (lastReset.text !== dayResetTime) {
+    const [h, m] = dayResetTime.split(':').map(Number);
+    lastReset = { text: dayResetTime, h: h || 0, m: m || 0 };
+  }
+  return lastReset;
+}
+
+/**
  * The start of the logical day a moment falls in: the most recent dayResetTime
  * at or before it. Before the reset hour, that's yesterday's — 1:30 AM on a
  * 2 AM reset still belongs to the day before.
@@ -28,9 +45,9 @@ export function hhmmToDate(hhmm: string, base: Date = new Date()): Date {
  * `node` environment — can do logical-day math without forking this.
  */
 export function logicalDayStart(date: Date, dayResetTime: string): Date {
-  const [h, m] = dayResetTime.split(':').map(Number);
+  const { h, m } = resetHourMinute(dayResetTime);
   const resetOnDate = new Date(date);
-  resetOnDate.setHours(h || 0, m || 0, 0, 0);
+  resetOnDate.setHours(h, m, 0, 0);
   if (date < resetOnDate) {
     resetOnDate.setDate(resetOnDate.getDate() - 1);
   }
@@ -48,11 +65,11 @@ export function logicalDayStart(date: Date, dayResetTime: string): Date {
  * importing dateUtils pulls in useSettingsStore and blows up on expo-sqlite.
  */
 export function taskDayStart(date: Date, dayResetTime: string): Date {
-  const [h, m] = dayResetTime.split(':').map(Number);
+  const { h, m } = resetHourMinute(dayResetTime);
   const result = new Date(date);
   // setHours writes h/m/s/ms in one call, so this lands on the same instant the
   // old startOfDay-then-setHours pair did.
-  result.setHours(h || 0, m || 0, 0, 0);
+  result.setHours(h, m, 0, 0);
   return result;
 }
 

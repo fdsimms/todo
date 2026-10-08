@@ -28,7 +28,10 @@ export function useWeatherWaitSync(): void {
     });
 
     let signature = waitSignature(useTaskStore.getState().tasks);
-    const unsubscribeTasks = useTaskStore.subscribe(state => {
+    const unsubscribeTasks = useTaskStore.subscribe((state, prev) => {
+      // Most writes to this store aren't to the task list (a completion's
+      // hold, the undo bar), and the signature is a pass over every task.
+      if (state.tasks === prev.tasks) return;
       const next = waitSignature(state.tasks);
       if (next === signature) return;
       signature = next;

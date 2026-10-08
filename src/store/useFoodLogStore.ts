@@ -622,7 +622,7 @@ function healthFiguresDiffer(before: FoodLogEntry, after: FoodLogEntry): boolean
  * memory with its keys in another order merely reads as changed, which costs
  * the re-render this exists to skip and nothing worse.
  */
-export function sameEntries(held: FoodLogEntry[], read: FoodLogEntry[]): boolean {
+export function sameEntries(held: readonly FoodLogEntry[], read: readonly FoodLogEntry[]): boolean {
   if (held.length !== read.length) return false;
   return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
 }
@@ -661,11 +661,11 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   loadRange(startKey, endKey) {
-    set({
-      entries: dbGetFoodLogEntries(startKey, endKey),
-      rangeStart: startKey,
-      rangeEnd: endKey,
-    });
+    const entries = dbGetFoodLogEntries(startKey, endKey);
+    const s = get();
+    // Called on every return to the food log, for loadWindow's reason.
+    if (s.rangeStart === startKey && s.rangeEnd === endKey && sameEntries(s.entries, entries)) return;
+    set({ entries, rangeStart: startKey, rangeEnd: endKey });
   },
 
   entriesSince(fromKey) {

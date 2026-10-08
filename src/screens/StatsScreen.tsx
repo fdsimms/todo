@@ -60,7 +60,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
-import { dayKeyOf, getDayStart, getLogicalDayKey, getLogicalToday, liveStreakCount } from '../utils/dateUtils';
+import { dayKeyOf, getDayStart, getLogicalDayKey, getLogicalToday, getTaskDayStart, liveStreakCount } from '../utils/dateUtils';
 import {
   describeTimeTogether,
   taskYearRange,
@@ -187,10 +187,26 @@ export function StatsScreen() {
     [tasks],
   );
 
-  const todayCount = useMemo(
-    () => done.filter(t => getLogicalDayKey(new Date(t.completedAt!), dayResetTime) === todayKey).length,
-    [done, dayResetTime, todayKey],
-  );
+  // Completions per logical day over the chart's seven days, today last. Only
+  // a completion at or after the first day's start can land on one of them
+  // (a logical day never starts later than a later moment's does), so the day
+  // key, which is the expensive part, is worked out for the last week's rows
+  // rather than for every completion there has ever been. One pass, where the
+  // chart used to filter the whole history once per bar.
+  const chartDays = useMemo(() => Array.from({ length: 7 }, (_, i) => subDays(today, 6 - i)), [today]);
+  const recentCounts = useMemo(() => {
+    const windowStart = getTaskDayStart(chartDays[0], dayResetTime).getTime();
+    const counts = new Map<string, number>();
+    for (const t of done) {
+      const at = Date.parse(t.completedAt!);
+      if (at < windowStart) continue;
+      const key = getLogicalDayKey(new Date(at), dayResetTime);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [done, chartDays, dayResetTime]);
+
+  const todayCount = recentCounts.get(todayKey) ?? 0;
 
   // Was hardcoded to Monday while the calendar grid and the Later labels ran
   // Sunday-first, so a Sunday completion counted in a different week depending
@@ -199,23 +215,21 @@ export function StatsScreen() {
   const weekCount = useMemo(() => {
     // The week's first logical day start, so the small hours before the reset
     // on the week's first date still count toward the week before.
-    const weekStart = getDayStart(startOfWeek(today, { weekStartsOn }), dayResetTime);
-    return done.filter(t => new Date(t.completedAt!) >= weekStart).length;
+    const weekStart = getDayStart(startOfWeek(today, { weekStartsOn }), dayResetTime).getTime();
+    return done.filter(t => Date.parse(t.completedAt!) >= weekStart).length;
   }, [done, today, weekStartsOn, dayResetTime]);
 
   const chartBars = useMemo(() =>
-    Array.from({ length: 7 }, (_, i) => {
-      const day = subDays(today, 6 - i);
+    chartDays.map(day => {
       const dayKey = dayKeyOf(day);
-      const count = done.filter(t => getLogicalDayKey(new Date(t.completedAt!), dayResetTime) === dayKey).length;
       return {
         key: dayKey,
         label: format(day, 'EEE'),
-        count,
+        count: recentCounts.get(dayKey) ?? 0,
         today: dayKey === todayKey,
       };
     }),
-    [done, today, todayKey, dayResetTime],
+    [chartDays, recentCounts, todayKey],
   );
 
   const barMax = useMemo(() => Math.max(1, ...chartBars.map(b => b.count)), [chartBars]);

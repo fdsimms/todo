@@ -11,7 +11,8 @@ import { useColors } from '../theme/ThemeContext';
 import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
-import { useMealPlanStore } from '../store/useMealPlanStore';
+import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
+import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import {
   describeDayCoverage,
   describePlannedSlot,
@@ -96,6 +97,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { CountStepper } from '../components/CountStepper';
 import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { LazySheet } from '../components/LazySheet';
 
 /**
  * A day of eating, read back.
@@ -370,12 +372,6 @@ export function FoodLogScreen() {
     }, [route.params?.openEntry, handledOpenEntry]),
   );
 
-  // The other half of the day-plan read below: `mealPlanCount` misses a meal
-  // planned into a week the meal plan store wasn't holding, and coming back to
-  // this screen is exactly when that would show.
-  const [planNonce, setPlanNonce] = useState(0);
-  useFocusEffect(useCallback(() => { setPlanNonce(n => n + 1); }, []));
-
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
   /**
    * What the meal plan says this day was meant to be, and which of those meals
@@ -391,12 +387,14 @@ export function FoodLogScreen() {
    * `mealPlanCount` is in the deps as the same kind of cheap change signal the
    * Meal Plan screen reads the food log through: planning a meal elsewhere
    * moves it, and a day key alone would leave this stale until the day
-   * changed. `planNonce` covers what it can't — see just above.
+   * changed. The re-read on focus covers what it can't: a meal planned into
+   * a week the meal plan store wasn't holding, which coming back to this
+   * screen is exactly when that would show (see useFocusRefreshedRead).
    */
-  const dayPlan = useMemo(
+  const dayPlan = useFocusRefreshedRead(
     () => entriesForDayLive(dayKey),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dayKey, entriesForDayLive, mealPlanCount, planNonce],
+    [dayKey, entriesForDayLive, mealPlanCount],
+    sameMealPlanEntries,
   );
   const plannedOpen = useMemo(
     () => unloggedPlannedSlots(dayPlan, dayEntries, dayKey),
@@ -1356,173 +1354,193 @@ export function FoodLogScreen() {
         />
       )}
 
-      <FoodLogEntrySheet
-        ref={addSheetRef}
-        visible={addOpen}
-        slot={addingSlot}
-        at={loggingAt}
-        allowBurst
-        onClose={() => setAddOpen(false)}
-        canEstimate={estimateRoute !== 'unavailable'}
-        onScan={scanShown ? () => setScanOpen(true) : undefined}
-        onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
-        // Inside that sheet's own Modal, not beside it: as siblings these
-        // presented from the root view controller, which was already
-        // presenting the sheet, so iOS refused and Scan/Describe/Saved meals
-        // silently did nothing and wedged the screen. See `overlays`' own note
-        // on `FoodLogEntrySheet`. The sheet stays visible underneath, so
-        // cancelling any of them returns to it with the query still typed.
-        overlays={
-          <>
-            <ScanToLogFlow
-              visible={scanOpen}
-              slot={addingSlot}
-              at={loggingAt}
-              onClose={() => setScanOpen(false)}
-              // Closes the "What did you eat?" sheet underneath too, only once
-              // a scan actually logs something — cancelling leaves it open,
-              // same as backing out of its own database search does.
-              onLogged={labels => keepAddSheetOrClose(labels)}
-            />
-            <SavedMealsSheet
-              visible={savedMealsOpen}
-              meals={savedMeals}
-              onLog={meal => {
-                logSavedMeal(meal, addingSlot, loggingAt);
-                setSavedMealsOpen(false);
-                keepAddSheetOrClose([meal.name]);
-              }}
-              onDelete={meal => removeSavedMeal(meal.id)}
-              onClose={() => setSavedMealsOpen(false)}
-            />
-          </>
-        }
-      />
+      <LazySheet open={addOpen}>
+        <FoodLogEntrySheet
+          ref={addSheetRef}
+          visible={addOpen}
+          slot={addingSlot}
+          at={loggingAt}
+          allowBurst
+          onClose={() => setAddOpen(false)}
+          canEstimate={estimateRoute !== 'unavailable'}
+          onScan={scanShown ? () => setScanOpen(true) : undefined}
+          onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
+          // Inside that sheet's own Modal, not beside it: as siblings these
+          // presented from the root view controller, which was already
+          // presenting the sheet, so iOS refused and Scan/Describe/Saved meals
+          // silently did nothing and wedged the screen. See `overlays`' own note
+          // on `FoodLogEntrySheet`. The sheet stays visible underneath, so
+          // cancelling any of them returns to it with the query still typed.
+          overlays={
+            <>
+              <ScanToLogFlow
+                visible={scanOpen}
+                slot={addingSlot}
+                at={loggingAt}
+                onClose={() => setScanOpen(false)}
+                // Closes the "What did you eat?" sheet underneath too, only once
+                // a scan actually logs something — cancelling leaves it open,
+                // same as backing out of its own database search does.
+                onLogged={labels => keepAddSheetOrClose(labels)}
+              />
+              <SavedMealsSheet
+                visible={savedMealsOpen}
+                meals={savedMeals}
+                onLog={meal => {
+                  logSavedMeal(meal, addingSlot, loggingAt);
+                  setSavedMealsOpen(false);
+                  keepAddSheetOrClose([meal.name]);
+                }}
+                onDelete={meal => removeSavedMeal(meal.id)}
+                onClose={() => setSavedMealsOpen(false)}
+              />
+            </>
+          }
+        />
+      </LazySheet>
       {/* The same sheet, reopened on an entry rather than on an empty form. A
           second mount rather than a flag on the one above, so an add halfway
           through and a correction can't share a set of fields. It offers
           neither Describe nor Scan: both are ways of answering "what did you
           eat" from scratch, and this already has that answer. */}
-      <FoodLogEntrySheet
-        visible={editingEntry !== null}
-        editing={editingEntry}
-        slot={editingEntry?.slot ?? null}
-        at={loggingAt}
-        onClose={() => setEditingEntry(null)}
-      />
+      <LazySheet open={editingEntry !== null}>
+        <FoodLogEntrySheet
+          visible={editingEntry !== null}
+          editing={editingEntry}
+          slot={editingEntry?.slot ?? null}
+          at={loggingAt}
+          onClose={() => setEditingEntry(null)}
+        />
+      </LazySheet>
       {/* Provenance only: the entry's own figures are a snapshot of what was
           eaten and must not follow the pointer. See `FoodLogPatch`. */}
-      <CatalogLinkSheet
-        visible={linkingEntry !== null}
-        subject={linkingEntry?.label ?? ''}
-        items={items}
-        products={itemProducts}
-        initialQuery={linkingEntry?.label ?? ''}
-        currentItemId={linkingEntry?.itemId ?? null}
-        currentProductId={linkingEntry?.productId ?? null}
-        onClose={() => setLinkingEntry(null)}
-        onPick={(item, product) => {
-          // Both, together. The sheet has just asked each question in turn, so
-          // a box left over from the previous item can't survive here — and
-          // where the item has no boxes at all, `product` is null, which is the
-          // same answer the old single-step pick wrote.
-          if (linkingEntry) {
-            updateEntry(linkingEntry.id, { itemId: item.id, productId: product?.id ?? null });
-          }
-          setLinkingEntry(null);
-        }}
-      />
+      <LazySheet open={linkingEntry !== null}>
+        <CatalogLinkSheet
+          visible={linkingEntry !== null}
+          subject={linkingEntry?.label ?? ''}
+          items={items}
+          products={itemProducts}
+          initialQuery={linkingEntry?.label ?? ''}
+          currentItemId={linkingEntry?.itemId ?? null}
+          currentProductId={linkingEntry?.productId ?? null}
+          onClose={() => setLinkingEntry(null)}
+          onPick={(item, product) => {
+            // Both, together. The sheet has just asked each question in turn, so
+            // a box left over from the previous item can't survive here — and
+            // where the item has no boxes at all, `product` is null, which is the
+            // same answer the old single-step pick wrote.
+            if (linkingEntry) {
+              updateEntry(linkingEntry.id, { itemId: item.id, productId: product?.id ?? null });
+            }
+            setLinkingEntry(null);
+          }}
+        />
+      </LazySheet>
       {/* Through reviseEntry, since the figures change and Health holds them:
           the old samples come out and the new amount goes in. */}
-      <EstimateAmountSheet
-        visible={amountEntry !== null}
-        entry={amountEntry}
-        onSave={patch => {
-          if (amountEntry) reviseEntry(amountEntry.id, patch);
-        }}
-        onClose={() => setAmountEntry(null)}
-      />
-      <NutrientContributorsSheet
-        visible={contributorsKey !== null}
-        nutrientKey={contributorsKey}
-        entries={dayEntries}
-        total={contributorsKey && totals.total[contributorsKey] !== undefined ? totalText(contributorsKey) : null}
-        // Closes this sheet and opens the editor in one commit. They are
-        // siblings, and `SheetModal` holds the open until the close has landed.
-        onEdit={entry => { setContributorsKey(null); setEditingEntry(entry); }}
-        onClose={() => setContributorsKey(null)}
-      />
-      <NutritionTargetsSheet
-        visible={targetsOpen}
-        onClose={() => setTargetsOpen(false)}
-      />
-      <CsvExportSheet
-        visible={exportOpen}
-        onClose={() => setExportOpen(false)}
-        hint={'A spreadsheet file of your entries: the day, the time, the meal, what you '
-          + 'ate and how much, where the figures came from, and each nutrient. A figure that '
-          + 'was never recorded is left blank. Nothing else from the app is included.'}
-        dialogTitle="Share your food log"
-        select={entriesSince}
-        toCsv={foodLogExportCsv}
-        fileName={foodLogExportFileName}
-        summary={foodLogExportSummary}
-      />
+      <LazySheet open={amountEntry !== null}>
+        <EstimateAmountSheet
+          visible={amountEntry !== null}
+          entry={amountEntry}
+          onSave={patch => {
+            if (amountEntry) reviseEntry(amountEntry.id, patch);
+          }}
+          onClose={() => setAmountEntry(null)}
+        />
+      </LazySheet>
+      <LazySheet open={contributorsKey !== null}>
+        <NutrientContributorsSheet
+          visible={contributorsKey !== null}
+          nutrientKey={contributorsKey}
+          entries={dayEntries}
+          total={contributorsKey && totals.total[contributorsKey] !== undefined ? totalText(contributorsKey) : null}
+          // Closes this sheet and opens the editor in one commit. They are
+          // siblings, and `SheetModal` holds the open until the close has landed.
+          onEdit={entry => { setContributorsKey(null); setEditingEntry(entry); }}
+          onClose={() => setContributorsKey(null)}
+        />
+      </LazySheet>
+      <LazySheet open={targetsOpen}>
+        <NutritionTargetsSheet
+          visible={targetsOpen}
+          onClose={() => setTargetsOpen(false)}
+        />
+      </LazySheet>
+      <LazySheet open={exportOpen}>
+        <CsvExportSheet
+          visible={exportOpen}
+          onClose={() => setExportOpen(false)}
+          hint={'A spreadsheet file of your entries: the day, the time, the meal, what you '
+            + 'ate and how much, where the figures came from, and each nutrient. A figure that '
+            + 'was never recorded is left blank. Nothing else from the app is included.'}
+          dialogTitle="Share your food log"
+          select={entriesSince}
+          toCsv={foodLogExportCsv}
+          fileName={foodLogExportFileName}
+          summary={foodLogExportSummary}
+        />
+      </LazySheet>
       {/* The app's own date picker, as CLAUDE.md's note on it says to reach for
           any time a feature asks "what date?". Time of day and Suggest are off:
           this picks which day to read, not a task's schedule. allowFuture is
           off too — a food log entry records what was eaten, which a day that
           hasn't happened yet has no answer for, same reasoning
           MoodLogSheet's own allowFuture={false} rests on. */}
-      <WhenPicker
-        visible={dayPickerOpen}
-        value={dayDate}
-        title="Which day"
-        showTimeOfDay={false}
-        showSuggest={false}
-        allowFuture={false}
-        onConfirm={date => {
-          setDayPickerOpen(false);
-          if (!date) return;
-          haptics.tap();
-          exitSelection();
-          setDayKey(dayKeyOf(date));
-        }}
-        onCancel={() => setDayPickerOpen(false)}
-      />
+      <LazySheet open={dayPickerOpen}>
+        <WhenPicker
+          visible={dayPickerOpen}
+          value={dayDate}
+          title="Which day"
+          showTimeOfDay={false}
+          showSuggest={false}
+          allowFuture={false}
+          onConfirm={date => {
+            setDayPickerOpen(false);
+            if (!date) return;
+            haptics.tap();
+            exitSelection();
+            setDayKey(dayKeyOf(date));
+          }}
+          onCancel={() => setDayPickerOpen(false)}
+        />
+      </LazySheet>
       {/* Re-dating an entry moves it rather than editing it in place — see
           `moveEntry`'s own doc comment for why. Seeded on the entry's current
           day, same as the header's own picker seeds on the day on screen. */}
-      <WhenPicker
-        visible={redatingEntry !== null}
-        value={redatingEntry ? dayKeyToDate(redatingEntry.dayKey) : new Date()}
-        title="Re-date entry"
-        showTimeOfDay={false}
-        showSuggest={false}
-        allowFuture={false}
-        onConfirm={date => {
-          const entry = redatingEntry;
-          setRedatingEntry(null);
-          if (!date || !entry) return;
-          handleRedate(entry, date);
-        }}
-        onCancel={() => setRedatingEntry(null)}
-      />
-      <WhenPicker
-        visible={duplicatingEntry !== null}
-        value={getLogicalToday()}
-        title="Duplicate to"
-        showTimeOfDay={false}
-        showSuggest={false}
-        allowFuture={false}
-        onConfirm={date => {
-          const entry = duplicatingEntry;
-          setDuplicatingEntry(null);
-          if (!date || !entry) return;
-          handleDuplicate(entry, date);
-        }}
-        onCancel={() => setDuplicatingEntry(null)}
-      />
+      <LazySheet open={redatingEntry !== null}>
+        <WhenPicker
+          visible={redatingEntry !== null}
+          value={redatingEntry ? dayKeyToDate(redatingEntry.dayKey) : new Date()}
+          title="Re-date entry"
+          showTimeOfDay={false}
+          showSuggest={false}
+          allowFuture={false}
+          onConfirm={date => {
+            const entry = redatingEntry;
+            setRedatingEntry(null);
+            if (!date || !entry) return;
+            handleRedate(entry, date);
+          }}
+          onCancel={() => setRedatingEntry(null)}
+        />
+      </LazySheet>
+      <LazySheet open={duplicatingEntry !== null}>
+        <WhenPicker
+          visible={duplicatingEntry !== null}
+          value={getLogicalToday()}
+          title="Duplicate to"
+          showTimeOfDay={false}
+          showSuggest={false}
+          allowFuture={false}
+          onConfirm={date => {
+            const entry = duplicatingEntry;
+            setDuplicatingEntry(null);
+            if (!date || !entry) return;
+            handleDuplicate(entry, date);
+          }}
+          onCancel={() => setDuplicatingEntry(null)}
+        />
+      </LazySheet>
     </SafeAreaView>
   );
 }

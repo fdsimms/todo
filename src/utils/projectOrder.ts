@@ -1,4 +1,5 @@
 import type { Task } from '../types';
+import { openTasksOf } from './openTasks';
 
 /**
  * A project's hand-sorted order.
@@ -17,7 +18,10 @@ import type { Task } from '../types';
  * through, not wait on a row nobody can see.
  */
 export function liveProjectSteps(projectId: string, tasks: readonly Task[]): Task[] {
-  return tasks
+  // Open rows only, so the shared open-row filter does the bulk of the work:
+  // the Projects screen asks this once per project per task write, and
+  // completed history is most of the array (see openTasksOf).
+  return openTasksOf(tasks)
     .filter(t => t.projectId === projectId && t.parentId === null && !t.completed && !t.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
