@@ -55,6 +55,7 @@ import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore
 import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
+import { sunLocationOn } from '../utils/visibilityUtils';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
@@ -326,8 +327,10 @@ export function CalendarScreen() {
   const dayTimeline = useMemo(() => {
     // A task can be in more than one of the three lists (due today with a
     // deadline today), and it is still one row on the axis.
-    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents, sunLocation });
-  }, [detail, selectedDayStart, dayEvents, sunLocation]);
+    // The day's own sun: a trip's destination on a day it covers, else home.
+    // `sunLocation` and `projects` are deps because sunLocationOn reads both.
+    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents, sunLocation: sunLocationOn(selectedDayStart) });
+  }, [detail, selectedDayStart, dayEvents, sunLocation, projects]);
 
   const dayMeals = selectedExtras?.meals ?? NO_MEALS;
 

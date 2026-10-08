@@ -6,7 +6,7 @@ import { effectiveWindowEndTime, onLogicalDay } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { isAwayPauseInForce } from './awayDates';
+import { isAwayPauseInForce, tripSunLocationOn } from './awayDates';
 import { activeChainStep } from './chain';
 import { blockerIdsOf, isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
@@ -15,7 +15,7 @@ import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
 import { isRotationTask } from './rotation';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
-import { windowBounds, type WindowFields } from './sunTimes';
+import { windowBounds, type SunLocation, type WindowFields } from './sunTimes';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -346,7 +346,20 @@ export function windowBoundsFor(
   if (!task.windowStartSun && !task.windowEndSun) {
     return { start: task.windowStart, end: task.windowEnd };
   }
-  return windowBounds(task, dayStart, useSettingsStore.getState().sunLocation);
+  return windowBounds(task, dayStart, sunLocationOn(dayStart));
+}
+
+/**
+ * Where sunrise and sunset are worked out for on the logical day starting at
+ * `dayStart`: a trip's destination while a trip with one covers that day
+ * (`tripSunLocationOn`), otherwise the saved home location, otherwise null.
+ * Every reader resolving a sun anchor asks this rather than the setting, so a
+ * walk "before dark" in Lisbon goes by Lisbon's sunset on those days and by
+ * home's on the rest.
+ */
+export function sunLocationOn(dayStart: Date = getCurrentDayStart()): SunLocation | null {
+  const { dayResetTime, sunLocation } = useSettingsStore.getState();
+  return tripSunLocationOn(dayStart, dayResetTime) ?? sunLocation;
 }
 
 // Whether `deferUntil` still holds a task back right now. Every other

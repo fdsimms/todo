@@ -1452,6 +1452,10 @@ export function seedDemoData(): void {
   // trip three weeks out shows the setting without a demo session ever waking
   // up with half its tasks hidden.
   updateProject(lisbon.id, { awayPauses: true });
+  // Where Lisbon is, as the trip page's lookup would have left it, so a
+  // sun-timed window on those days goes by Lisbon's sunset. Written directly
+  // because that lookup never runs in demo mode (see destination above).
+  updateProject(lisbon.id, { destinationLatitude: 38.72, destinationLongitude: -9.14 });
   ['Renew passport', 'Book the airport parking', 'Set up data roaming'].forEach((title, i) => {
     const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });
     addExistingToProject(t.id, lisbon.id);

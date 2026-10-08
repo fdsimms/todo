@@ -257,6 +257,7 @@ import {
   getVisibleAt,
   beginVisibleAtPass,
   windowBoundsFor,
+  sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
@@ -3102,14 +3103,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
-    const { activeHoursStart, activeHoursEnd, dayResetTime, sunLocation } = useSettingsStore.getState();
+    const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
-    const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
+    const blockTask = get().tasks.find(t => t.id === id) ?? task;
+    const fields = timeBlockFieldsFor(blockTask, {
       now: new Date(),
       dayResetTime,
       activeHoursStart,
       activeHoursEnd,
-      sunLocation,
+      // The day the block is proposed on, which is the day proposeTimeBlockStart picks.
+      sunLocation: sunLocationOn(blockTask.dueDate ? getTaskDayStart(new Date(blockTask.dueDate), dayResetTime) : getCurrentDayStart()),
       events: loaded ? events : null,
     });
     return fields ? { mode: 'create', fields } : null;

@@ -1910,6 +1910,10 @@ export function initDatabase(): void {
     'ALTER TABLE task_groups ADD COLUMN hide_next_step INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing project: no event. See Project.eventDate.
     'ALTER TABLE projects ADD COLUMN event_date TEXT',
+    // Where the destination geocoded to; null until the trip page looks it up.
+    // See Project.destinationLatitude.
+    'ALTER TABLE projects ADD COLUMN destination_latitude REAL',
+    'ALTER TABLE projects ADD COLUMN destination_longitude REAL',
     // Off on every existing section. See TaskGroup.checklist.
     'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
     // Empty on every existing recipe: a method heading declared ahead of any
@@ -7694,6 +7698,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     awayListId: (row.away_list_id as string) ?? null,
     awayListDeclinedFor: (row.away_list_declined_for as string) ?? null,
     destination: (row.destination as string) ?? null,
+    destinationLatitude: (row.destination_latitude as number | null) ?? null,
+    destinationLongitude: (row.destination_longitude as number | null) ?? null,
     pausedUntil: (row.paused_until as string) ?? null,
     personIds: parseStringList(row.person_ids),
     links: parseProjectLinks(row.links),
@@ -7712,7 +7718,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, hide_next_step, event_date, task_defaults) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked, hide_next_step, event_date, task_defaults, destination_latitude, destination_longitude) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7726,13 +7732,14 @@ export function dbInsertProject(project: Project): void {
       JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
+      project.destinationLatitude ?? null, project.destinationLongitude ?? null,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, hide_next_step=?, event_date=?, task_defaults=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=?, hide_next_step=?, event_date=?, task_defaults=?, destination_latitude=?, destination_longitude=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -7746,6 +7753,7 @@ export function dbUpdateProject(project: Project): void {
       JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0, project.hideNextStep ? 1 : 0,
       project.eventDate ?? null,
       serializeTaskFieldDefaults(project.taskDefaults),
+      project.destinationLatitude ?? null, project.destinationLongitude ?? null,
       project.id,
     ]
   );

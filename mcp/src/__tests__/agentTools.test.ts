@@ -120,6 +120,28 @@ describe('quickAdd', () => {
   });
 });
 
+describe('quickAdd and the sun', () => {
+  afterEach(() => {
+    mockRaw.runSync("DELETE FROM settings WHERE key = 'sunLocation'");
+    replica.refresh();
+  });
+
+  it('leaves "after sunset" in the title, and says why, with no location saved', () => {
+    const [row] = quickAdd(replica, { lines: ['Porch lights after sunset'] }).rows;
+    expect(row.title).toBe('Porch lights after sunset');
+    expect(row.window).toBeUndefined();
+    expect(row.notes?.join(' ')).toMatch(/needs a location/);
+  });
+
+  it('reads it as a window start that follows the sun once one is saved', () => {
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('sunLocation', '{\"latitude\":40.71,\"longitude\":-74.01}')");
+    replica.refresh();
+    const [row] = quickAdd(replica, { lines: ['Porch lights after sunset'] }).rows;
+    expect(row.title).toBe('Porch lights');
+    expect(row.window).toMatchObject({ startFollows: 'sunset', start: expect.stringMatching(/^\d{2}:\d{2}$/) });
+  });
+});
+
 describe('planDay', () => {
   it('orders the day around busy time, pinned first, and says what will not fit', () => {
     replica.createTask({ title: 'Report', dueDate: day(0), estimatedMinutes: 90, priority: 3 });

@@ -901,6 +901,10 @@ const itemSchema = z.object({
   deadlineTime: z.string().nullable().optional().describe('HH:MM (24-hour) the deadline closes at on its day. Needs deadlineOffsetDays; dropped without one.'),
   windowStart: z.string().nullable().optional().describe('HH:MM.'),
   windowEnd: z.string().nullable().optional().describe('HH:MM.'),
+  windowStartSun: z.string().nullable().optional()
+    .describe('Makes the window start follow the sun: "sunrise", "sunset", or either with a minutes offset of up to 180 ("sunset-30"). Needs windowStart beside it, the clock time to fall back to (roughly that event\'s time now).'),
+  windowEndSun: z.string().nullable().optional()
+    .describe('The same for the window end ("sunset" for "before dark"). Needs windowEnd beside it.'),
   reminderOffsetMinutes: z.number().int().nullable().optional(),
   timeSegments: z.array(z.enum(TIME_SEGMENTS as unknown as [TimeOfDay, ...TimeOfDay[]])).optional(),
   tags: z.array(z.string()).optional(),

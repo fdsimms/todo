@@ -178,7 +178,7 @@ export function DayTimeSettings() {
 
       <SettingsSection
         label="Sunrise and sunset"
-        footer="A task's time window can start or end at sunrise or sunset, or up to three hours either side. The times are worked out on this phone from the location saved here, which is never sent anywhere."
+        footer="A task's time window can start or end at sunrise or sunset, or up to three hours either side. The times are worked out on this phone from the location saved here, which is never sent anywhere. On the days of a trip, the destination's times are used instead once its page has looked it up (with Destination forecast on)."
       >
         <SettingsRow
           entryId="sunLocation"

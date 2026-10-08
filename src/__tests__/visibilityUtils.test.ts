@@ -38,6 +38,7 @@ import {
   currentTimeSegment,
   timeSegmentThreshold,
   windowBoundsFor,
+  sunLocationOn,
 } from '../utils/visibilityUtils';
 import { sunAnchorHHMM } from '../utils/sunTimes';
 import { registerTaskSource } from '../utils/blockerRegistry';
@@ -2622,6 +2623,23 @@ describe('a window bound that follows the sun', () => {
     };
     const [h, m] = sunAnchorHHMM('sunset', later, north)!.split(':').map(Number);
     expect(getVisibleAt(task)).toEqual(new Date(2025, 11, 10, h, m, 0));
+  });
+
+  it('uses a trip\'s destination on the days the trip covers, and home on the rest', () => {
+    const away = { latitude: 60, longitude };
+    registerAwayProjectSource(() => [{
+      awayStart: new Date(2025, 5, 9, 12).toISOString(), awayEnd: new Date(2025, 5, 12, 12).toISOString(),
+      awayPauses: false, awayPauseDeclinedFor: null, archived: false, completed: false,
+      destinationLatitude: away.latitude, destinationLongitude: away.longitude,
+    }]);
+    try {
+      expect(sunLocationOn(day)).toEqual(away);
+      expect(windowBoundsFor({ ...dueToday, windowStart: '08:00', windowStartSun: 'sunset' }, day).start)
+        .toBe(sunAnchorHHMM('sunset', day, away));
+      expect(sunLocationOn(new Date(2025, 5, 13))).toEqual(here);
+    } finally {
+      registerAwayProjectSource(null);
+    }
   });
 
   it('leaves a plain window untouched', () => {

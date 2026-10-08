@@ -1761,6 +1761,8 @@ describe('Templates', () => {
     deadlineTime: null,
     windowStart: null,
     windowEnd: null,
+    windowStartSun: null,
+    windowEndSun: null,
     linkUrl: null,
     location: null,
     recurrenceWeekOrdinal: null,

@@ -1477,12 +1477,25 @@ export interface Project {
    * is the one thing packing actually turns on. It also gives a trip template's
    * `{destination}` blank somewhere to live between runs.
    *
-   * Free text, and geocoded only when the reader asks (see
-   * `src/services/geocode.ts`) — never stored back as coordinates. "Mum's" is a
-   * destination and is not a place any gazetteer knows, and a field that only
-   * accepted what a geocoder recognised would refuse half the trips people take.
+   * Free text, geocoded when a reader asks (see `src/services/geocode.ts`).
+   * "Mum's" is a destination and is not a place any gazetteer knows, and a
+   * field that only accepted what a geocoder recognised would refuse half the
+   * trips people take.
    */
   destination: string | null;
+  /**
+   * Where `destination` geocoded to, kept so sunrise and sunset can follow the
+   * trip (`tripSunLocationOn`): those are worked out synchronously in every
+   * list pass, which can't wait on a request. Rounded like `sunLocation`.
+   *
+   * **A cache of the text, never a second answer to it.** Written only by the
+   * trip page's own geocode, against the destination it asked about, and
+   * cleared whenever the destination changes (`destinationPinFields`), so it
+   * can't outlive the words it came from. Null for a place no geocoder knows
+   * ("Mum's"), and until the page has looked it up; sun times then use home.
+   */
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
 }
 
 /**
@@ -3982,6 +3995,11 @@ export interface TemplateItem {
   deadlineTime?: string | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
+  // Task.windowStartSun / windowEndSun, carried through unchanged beside the
+  // clock fallback above. Optional so a template stored before them reads as
+  // a plain clock window.
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
   // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
   // Optional so a template stored before it reads as having none.
   linkUrl?: string | null;

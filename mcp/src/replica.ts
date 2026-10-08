@@ -930,6 +930,12 @@ export interface Replica {
    * only the time an anchor resolved to when it was set.
    */
   windowToday(task: Task): { start: string | null; end: string | null };
+  /**
+   * The "HH:MM" a sun anchor comes to on a task's day (its due date, else
+   * today), at the trip's destination on a trip day and home otherwise; null
+   * with no location saved, or on a day the sun doesn't rise or set.
+   */
+  sunAnchorClock(anchor: string, dueDate: string | null): string | null;
   /** Shifts a day key by whole days. Used to default a range to "the last N days". */
   shiftDayKey(key: string, days: number): string;
 
@@ -1935,6 +1941,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { completesMealSlot, mealSlotSourceId, parseMealSlotSource } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
   const mealPlanGroceries = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries');
 
+  /** See Replica.sunAnchorClock. One copy, for the patch and the quick-add reader both. */
+  const sunAnchorClock = (anchor: string, dueDate: string | null): string | null => {
+    const dayStart = dueDate ? dates.getTaskDayStart(new Date(dueDate)) : dates.getCurrentDayStart();
+    return sunAnchorHHMM(anchor, dayStart, visibility.sunLocationOn(dayStart));
+  };
+
   // ---- recipes ------------------------------------------------------------
 
   // ---- the food log -------------------------------------------------------
@@ -2681,11 +2693,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // The clock time a sun anchor resolves to on the task's day, which is
       // what the task keeps as its fallback (see Task.windowStartSun). Null
       // with no location saved, which the patch refuses with the reason.
-      sunClockFor: (anchor, dueDate) => {
-        const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
-        const dayStart = dueDate ? dates.getTaskDayStart(new Date(dueDate)) : dates.getCurrentDayStart();
-        return sunAnchorHHMM(anchor, dayStart, useSettingsStore.getState().sunLocation);
-      },
+      sunClockFor: sunAnchorClock,
     }, { isSubtask });
     errors.unshift(...eventErrors);
 
@@ -3219,6 +3227,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
     windowToday: (task: Task) => visibility.windowBoundsFor(task),
+    sunAnchorClock,
     shiftDayKey: (key: string, days: number) =>
       dates.dayKeyOf(addDays(dates.dayKeyToDate(key), days)),
 

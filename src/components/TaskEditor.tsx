@@ -132,7 +132,7 @@ import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
@@ -821,7 +821,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
-  const sunLocation = useSettingsStore(s => s.sunLocation);
+  // Subscribed for the re-render alone: the location itself is read per day
+  // through sunLocationOn (see daySunLocation).
+  useSettingsStore(s => s.sunLocation);
   const setSunLocation = useSettingsStore(s => s.setSunLocation);
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -2261,6 +2263,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
 
   /** The day a sun bound is resolved on for the editor: the due day, else today. */
   const windowDayStart = () => (dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart());
+  // Where that day's sun is worked out for: a trip's destination on a day a
+  // trip covers, else home (sunLocationOn). Read each render; the editor
+  // subscribes to `sunLocation` so a location saved from the panel below
+  // re-renders it.
+  const daySunLocation = sunLocationOn(windowDayStart());
 
   const commitWindowSun = (which: 'start' | 'end', anchor: SunAnchor, loc: SunLocation) => {
     const text = formatSunAnchor(anchor);
@@ -2296,25 +2303,25 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     }
     // With no location saved, the panel offers to save one first, and nothing
     // is written until there is one.
-    if (!sunLocation) return;
+    if (!daySunLocation) return;
     const existing = parseSunAnchor(windowSunOf(which));
-    commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, sunLocation);
+    commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, daySunLocation);
   };
 
   /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
   const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
-    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !daySunLocation) return;
     const existing = parseSunAnchor(windowSunOf(windowPickerMode));
     const minutes = Math.abs(existing?.offsetMinutes ?? 0) || 30;
     const offsetMinutes = side === 'at' ? 0 : side === 'before' ? -minutes : minutes;
-    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes }, sunLocation);
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes }, daySunLocation);
   };
 
   const setWindowSunMinutes = (minutes: number) => {
-    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !daySunLocation) return;
     const existing = parseSunAnchor(windowSunOf(windowPickerMode));
     const sign = (existing?.offsetMinutes ?? 0) < 0 ? -1 : 1;
-    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes: sign * minutes }, sunLocation);
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes: sign * minutes }, daySunLocation);
   };
 
   // What the location read below was started for, so the answer is applied
@@ -5199,7 +5206,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     dayLabel={dueDate && getTaskDayStart(dueDate, dayResetTime).getTime() !== getCurrentDayStart().getTime()
                       ? `On ${format(dueDate, 'MMM d')}`
                       : 'Today'}
-                    hasLocation={!!sunLocation}
+                    hasLocation={!!daySunLocation}
                     locationStatus={sunLocationStatus}
                     unavailable={sunUnavailable}
                     onSide={setWindowSunSide}

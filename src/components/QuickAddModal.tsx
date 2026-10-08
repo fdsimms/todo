@@ -77,7 +77,7 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -101,6 +101,8 @@ import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, getTaskDayStart, formatTimeOfDay, formatHHMM } from '../utils/dateUtils';
+import { sunLocationOn } from '../utils/visibilityUtils';
+import { describeSunAnchor, parseSunAnchor, sunAnchorHHMM } from '../utils/sunTimes';
 import { blockerFields } from '../utils/blocking';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
@@ -459,6 +461,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // "only today" / "expires friday" off the schedule tooltip, and "don't …"
   // off the avoid tooltip. Same applied-line treatment as the two above.
   const [titleWindowEnd, setTitleWindowEnd] = useState<string | null>(null);
+  // "after sunset" / "expires at dark" off the sun tooltip: the anchor each
+  // bound follows, beside the clock time it resolved to in titleWindowStart /
+  // titleWindowEnd (see Task.windowStartSun). Cleared with its clock time.
+  const [titleWindowStartSun, setTitleWindowStartSun] = useState<string | null>(null);
+  const [titleWindowEndSun, setTitleWindowEndSun] = useState<string | null>(null);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [subtaskTitles, setSubtaskTitles] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -503,6 +510,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // "on the next sunny day" off the title tooltip (Task.weatherWait).
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
+  // Read for the re-render alone: the sun tooltip resolves through
+  // sunLocationOn, which reads the setting itself.
+  const sunLocationSetting = useSettingsStore(s => s.sunLocation);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // The step being renamed in the chain list, and what's typed so far.
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -613,10 +623,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setQuotaPeriod('day');
     setWeatherWait(null);
     setTitleWindowStart(null);
+    setTitleWindowStartSun(null);
     setTitleSeries(null);
     setBlockerIds([]);
     setSubtaskTitles([]);
     setTitleWindowEnd(null);
+    setTitleWindowEndSun(null);
     setPolarity('positive');
     setChainItems([]);
     setEditingStepId(null);
@@ -1030,6 +1042,25 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ? parseWeatherWaitInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherTasksOn, type, recurrenceType, titleSeries, chainItems, weatherWait]
   );
+  // "porch lights after sunset" / "walk the dog expires at dark" — a window
+  // bound that follows the sun. After the weather wait in the chain.
+  //
+  // Offered only where it can be honoured, the weather phrase's rule: the
+  // time has to be worked out from somewhere (a saved location, or the trip
+  // covering that day), and a polar day with no sunset offers nothing rather
+  // than an anchor that would fall back to a guess. The clock time resolved
+  // here rides beside the anchor, as the editor writes it.
+  const sunDayStart = dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart();
+  const sunParsed = useMemo(() => {
+    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
+      || durationParsed || supplyParsed || targetParsed || estimateParsed || weatherParsed || !title.trim()) return null;
+    const hit = parseSunWindowInput(title);
+    if (!hit) return null;
+    const clock = sunAnchorHHMM(hit.anchor, sunDayStart, sunLocationOn(sunDayStart));
+    return clock ? { ...hit, clock } : null;
+    // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, type, sunDayStart.getTime(), sunLocationSetting]);
   // "file taxes after get W-2" — waiting on another task. Matched strictly
   // (see parseWaitingOnInput) against live top-level tasks, one row per
   // series so a dated set doesn't read as several tasks of the same name.
@@ -1049,17 +1080,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   }, [tasks, visible]);
   const waitingParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && title.trim()
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && title.trim()
       ? parseWaitingOnInput(title, waitCandidates) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, waitCandidates]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, waitCandidates]
   );
   // "pack: socks, charger, passport" — subtasks. Last of all: a colon list is
   // the loosest shape here, so anything more specific in the line wins first.
   const subtasksParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !waitingParsed && title.trim()
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !waitingParsed && title.trim()
       ? parseSubtasksInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, waitingParsed]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, waitingParsed]
   );
   // "Don't check Twitter", "No snacking" — a habit to avoid. Strips nothing
   // (the words are its name), so it stops being offered once accepted rather
@@ -1067,10 +1098,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // control in the editor.
   const avoidParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !waitingParsed && !subtasksParsed
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !waitingParsed && !subtasksParsed
       && type === 'task' && polarity !== 'negative' && title.trim()
       ? parseAvoidInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, waitingParsed, subtasksParsed, type, polarity]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, waitingParsed, subtasksParsed, type, polarity]
   );
   // Whether the task being built is an avoid-task: the flag, on the one kind
   // that can hold it (a later switch to Timed or Target leaves it unset).
@@ -1134,6 +1165,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       ? {
                           matchStart: weatherParsed.matchStart,
                           matchedText: title.slice(weatherParsed.matchStart, weatherParsed.matchEnd),
+                        }
+                    : sunParsed
+                      ? {
+                          matchStart: sunParsed.matchStart,
+                          matchedText: title.slice(sunParsed.matchStart, sunParsed.matchEnd),
                         }
                     : waitingParsed
                       ? {
@@ -1280,6 +1316,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDeadline(parsed.schedule.deadline ?? null);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
     setTitleWindowEnd(parsed.schedule.windowEnd ?? null);
+    setTitleWindowStartSun(null);
+    setTitleWindowEndSun(null);
     setTitleSeries(parsed.schedule.extraDates?.length
       ? { anchor: parsed.schedule.dueDate, extraDates: parsed.schedule.extraDates }
       : null);
@@ -1522,6 +1560,24 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setWeatherWait(weatherParsed.condition);
   };
 
+  // Sets one bound of the window to follow the sun, with the clock time it
+  // comes to on the task's day beside it. The applied line says which.
+  const applySun = () => {
+    if (!sunParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(sunParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    if (sunParsed.bound === 'start') {
+      setTitleWindowStart(sunParsed.clock);
+      setTitleWindowStartSun(sunParsed.anchor);
+    } else {
+      setTitleWindowEnd(sunParsed.clock);
+      setTitleWindowEndSun(sunParsed.anchor);
+    }
+  };
+
   const applyProject = () => {
     if (!projectParsed) return;
     haptics.success();
@@ -1579,6 +1635,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (targetParsed) applyTarget();
     else if (estimateParsed) applyEstimate();
     else if (weatherParsed) applyWeather();
+    else if (sunParsed) applySun();
     else if (waitingParsed) applyWaiting();
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
@@ -1794,9 +1851,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
       ...(seedActive && seed?.windowStart ? { windowStart: seed.windowStart, windowEnd: seed.windowEnd ?? null } : {}),
       // After the seed's, so the title's own "after 3pm" wins over a drop.
-      ...(titleWindowStart ? { windowStart: titleWindowStart } : {}),
+      ...(titleWindowStart ? { windowStart: titleWindowStart, windowStartSun: titleWindowStartSun } : {}),
       ...(blockerIds.length > 0 ? blockerFields(blockerIds) : {}),
-      ...(titleWindowEnd ? { windowEnd: titleWindowEnd } : {}),
+      ...(titleWindowEnd ? { windowEnd: titleWindowEnd, windowEndSun: titleWindowEndSun } : {}),
       ...(weatherWaitHere ? { weatherWait } : {}),
       // Plain kind only, the editor's rule: every other kind is a way of
       // completing something, and an avoid-task is never completed.
@@ -1991,10 +2048,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       extraDates: seriesExtraDates,
       timeSegments,
       windowStart: titleWindowStart,
+      windowStartSun: titleWindowStart ? titleWindowStartSun : null,
       weatherWait: weatherWaitHere ? weatherWait : null,
       blockerIds,
       subtaskTitles,
       windowEnd: titleWindowEnd,
+      windowEndSun: titleWindowEnd ? titleWindowEndSun : null,
       polarity: avoidsHere ? 'negative' : 'positive',
       reminderTime,
       tags: resolveTags(),
@@ -2563,6 +2622,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                                 ? 'barbell'
                                                 : weatherParsed
                                                 ? 'partly-sunny-outline'
+                                                : sunParsed
+                                                ? (sunParsed.anchor === 'sunrise' ? 'sunny-outline' : 'moon-outline')
                                                 : waitingParsed
                                                   ? 'hourglass-outline'
                                                   : subtasksParsed
@@ -2596,6 +2657,8 @@ parsed
                                               ? `Estimate · ${formatDuration(estimateParsed.minutes)}`
                                               : weatherParsed
                                               ? `Wait for a ${weatherParsed.condition} day`
+                                              : sunParsed
+                                              ? `${sunParsed.bound === 'start' ? 'Hidden until' : 'Expires at'} ${sunParsed.anchor} · ${formatHHMM(sunParsed.clock)} that day`
                                               : waitingParsed
                                                 ? `Waiting on · ${waitingParsed.title}`
                                                 : subtasksParsed
@@ -2664,9 +2727,11 @@ parsed
               Same row as the reminder above, and the same way out. */}
           {!!titleWindowStart && appliedLine(
             'time-outline',
-            `Hidden until ${formatHHMM(titleWindowStart)}`,
+            titleWindowStartSun
+              ? `Hidden until ${describeSunAnchor(parseSunAnchor(titleWindowStartSun)!).toLowerCase()} (${formatHHMM(titleWindowStart)} on its day)`
+              : `Hidden until ${formatHHMM(titleWindowStart)}`,
             'Remove the start time',
-            () => setTitleWindowStart(null),
+            () => { setTitleWindowStart(null); setTitleWindowStartSun(null); },
           )}
           {weatherWaitHere && appliedLine(
             'partly-sunny-outline',
@@ -2682,9 +2747,11 @@ parsed
           )}
           {!!titleWindowEnd && appliedLine(
             'alarm-outline',
-            titleWindowEnd === '23:59' ? 'Expires at the end of its day' : `Expires at ${formatHHMM(titleWindowEnd)}`,
+            titleWindowEndSun
+              ? `Expires at ${describeSunAnchor(parseSunAnchor(titleWindowEndSun)!).toLowerCase()} (${formatHHMM(titleWindowEnd)} on its day)`
+              : titleWindowEnd === '23:59' ? 'Expires at the end of its day' : `Expires at ${formatHHMM(titleWindowEnd)}`,
             'Remove the expiry',
-            () => setTitleWindowEnd(null),
+            () => { setTitleWindowEnd(null); setTitleWindowEndSun(null); },
           )}
           {avoidsHere && appliedLine(
             'shield-checkmark-outline',

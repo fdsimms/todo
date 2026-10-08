@@ -4337,6 +4337,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // in demo mode regardless.
     expect(trip!.destination).toBe('Lisbon');
     expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
+    // Where it is, so sun-timed windows follow the trip on those days.
+    expect([trip!.destinationLatitude, trip!.destinationLongitude]).toEqual([38.72, -9.14]);
     // And it buys from the away list, the other half of a nomination that is
     // invisible without one. Inert for awayPauses' reason: the trip is ahead,
     // so the demo opens on Groceries rather than on somebody else's trolley.

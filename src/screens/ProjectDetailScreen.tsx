@@ -94,7 +94,7 @@ import { useTitleSelection } from '../hooks/useTitleSelection';
 import { TitleTokenAccessory } from '../components/TitleTokenAccessory';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { awayNights, awaySpanOf } from '../utils/awayDates';
+import { awayNights, awaySpanOf, destinationPinUpdate } from '../utils/awayDates';
 import { geocodePlace } from '../services/geocode';
 import { fetchDestinationForecast } from '../services/weatherLookup';
 import {
@@ -647,6 +647,13 @@ export function ProjectDetailScreen() {
     void (async () => {
       const place = await geocodePlace(destination);
       if (!live || !place) return;
+      // Kept on the project so sunrise and sunset can follow the trip
+      // (Project.destinationLatitude). Re-read rather than taken from this
+      // render, and only written while the destination is still the one asked
+      // about and the place has actually moved.
+      const current = useProjectStore.getState().projects.find(p => p.id === projectId);
+      const pin = current ? destinationPinUpdate(current, destination, place) : null;
+      if (pin) useProjectStore.getState().updateProject(projectId, pin);
       const days = await fetchDestinationForecast(place, spanStartKey, spanEndKey);
       if (!live || !days) return;
       const summary = summarizeTripForecast(days);
@@ -655,7 +662,7 @@ export function ProjectDetailScreen() {
       setForecastGap(describeForecastGap(summary, nights));
     })();
     return () => { live = false; };
-  }, [destinationForecastEnabled, destination, spanStartKey, spanEndKey, unitSystem]);
+  }, [destinationForecastEnabled, destination, spanStartKey, spanEndKey, unitSystem, projectId]);
   // One row per member, as progress counts them — see projectCompletedRows.
   const completedProjectTasks = useMemo(() => {
     if (!project) return [];
