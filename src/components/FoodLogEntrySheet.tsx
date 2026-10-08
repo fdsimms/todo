@@ -48,6 +48,7 @@ import {
   foodUnitOptionsFor,
   helpingNutrition,
   keptDatabasePanel,
+  panelToKeep,
   wholeEstimate,
   type EstimateAmountPatch,
   matchMealPlanEntry,
@@ -1172,7 +1173,7 @@ export function FoodLogEntrySheet({
       // Null for everything else, which on a correction also clears one that
       // no longer describes how the helping was measured: it was re-measured
       // against a row, or it is a different food now.
-      sourcePanel: picked.fromDatabase && picked.itemId === null ? picked.panel : null,
+      sourcePanel: picked.fromDatabase && picked.panel ? panelToKeep(picked.panel, picked.itemId !== null) : null,
       slot: chosenSlot,
       recipeId: picked.recipeId,
       itemId: picked.itemId,

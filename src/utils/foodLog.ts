@@ -993,6 +993,16 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
 
 const WHOLE_PACKAGE_LABEL = /^the whole package \((\d+(?:\.\d+)?) servings\)$/i;
 
+/**
+ * The panel an entry keeps so its amount can be corrected later: the database's
+ * own record while no catalog row holds it, else null (a linked entry is
+ * re-measured against its row, and a stale kept panel is cleared). The one rule
+ * `FoodLogEntrySheet.handleSave` and `remeasureEntry` both apply.
+ */
+export function panelToKeep(panel: FoodNutrition, linked: boolean): FoodNutrition | null {
+  return linked ? null : panel;
+}
+
 /** The fields a re-measured entry takes, the ones `FoodLogEntrySheet.handleSave` hands `reviseEntry`. */
 export interface RemeasuredFields {
   quantity: string;
@@ -1037,7 +1047,7 @@ export function remeasureEntry(
   if (!scaled) return { ok: false, reason: `"${typed}" cannot be measured against this food's record. Try grams, or a portion it lists.` };
   return {
     ok: true,
-    fields: { quantity: typed, grams: scaled.grams, nutrition: scaled.nutrition, sourcePanel: linked ? null : panel },
+    fields: { quantity: typed, grams: scaled.grams, nutrition: scaled.nutrition, sourcePanel: panelToKeep(panel, linked) },
     // A drink measured by assuming water's density; the sheet shows a
     // disclaimer beside it, so a caller has to be able to say so too.
     approximate: scaled.approximate,
