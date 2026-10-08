@@ -75,6 +75,20 @@ describe('projectBackfillCandidates', () => {
   });
 });
 
+describe('projectBackfillCandidates fromScratch', () => {
+  it('includes set and dismissed projects but still not completed or archived ones', () => {
+    const projects: Project[] = [
+      { ...baseProject, id: 'a', nudgeOptIn: true },
+      { ...baseProject, id: 'b', backfillDismissedFields: ['nudge'] },
+      { ...baseProject, id: 'c', completed: true },
+      { ...baseProject, id: 'd', archived: true },
+    ];
+    expect(projectBackfillCandidates(projects, 'nudge').map(p => p.id)).toEqual([]);
+    expect(projectBackfillCandidates(projects, 'nudge', { fromScratch: true }).map(p => p.id).sort())
+      .toEqual(['a', 'b']);
+  });
+});
+
 describe('isProjectBackfillDismissed / dismissProjectBackfillField', () => {
   it('is false until the field has been dismissed', () => {
     expect(isProjectBackfillDismissed(baseProject, 'nudge')).toBe(false);

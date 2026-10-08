@@ -2,7 +2,7 @@ import {
   parseTaskFieldDefaults, parseGeneratedTaskDefaults, serializeTaskFieldDefaults, hasTaskFieldDefaults,
   resolveFieldDefaults, seedTaskFields, existingTaskPatch, tasksNeedingDefaults, describeTaskFieldDefaults,
   previewSeededFields, previewCategoryDefault,
-  backfillGroupKey, backfillGroupMembers, NO_TASK_FIELD_DEFAULTS, defaultsFromAnswer, defaultsDiffer,
+  NO_TASK_FIELD_DEFAULTS, defaultsFromAnswer, defaultsDiffer,
 } from '../utils/taskFieldDefaults';
 import type { Effort, Priority, Task, TaskFieldDefaults } from '../types';
 
@@ -198,20 +198,6 @@ describe('describeTaskFieldDefaults', () => {
     expect(describeTaskFieldDefaults({ priority: 0, difficulty: 'easy', effort: 2 })).toBe('No priority, Easy, 15m');
     expect(describeTaskFieldDefaults({ priority: 3, difficulty: null, effort: null })).toBe('High');
     expect(describeTaskFieldDefaults({ priority: null, difficulty: null, effort: 0 })).toBe('No estimate');
-  });
-});
-
-describe('backfill groups', () => {
-  it('groups by generated kind first, then project, and a loose task has none', () => {
-    expect(backfillGroupKey(task({ generatedKind: 'birthday', projectId: 'p1' }))).toBe('generated:birthday');
-    expect(backfillGroupKey(task({ projectId: 'p1' }))).toBe('project:p1');
-    expect(backfillGroupKey(task())).toBeNull();
-  });
-
-  it('finds the queued members of the current task\'s group', () => {
-    const queue = [task({ id: 'a', projectId: 'p1' }), task({ id: 'b', projectId: 'p2' }), task({ id: 'c', projectId: 'p1' })];
-    expect(backfillGroupMembers(queue, queue[0]).map(t => t.id)).toEqual(['a', 'c']);
-    expect(backfillGroupMembers(queue, task())).toEqual([]);
   });
 });
 
