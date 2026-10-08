@@ -4459,6 +4459,78 @@ describe('dbApplySyncChanges', () => {
     expect(rowOf('p1')?.title).toBe('Peer wins');
   });
 
+  describe('an item preferring a brand that was deleted elsewhere', () => {
+    const groceryRow = (id: string) =>
+      mockRawDb.prepare('SELECT preferred_product_id, updated_at FROM grocery_items WHERE id = ?').get(id) as
+        { preferred_product_id: string | null; updated_at: string };
+
+    const breadPreferring = (productId: string) => {
+      const item = makeGroceryItem({ id: 'g1', name: 'Bread', nameKey: 'bread' });
+      insertListedGroceryItem(item);
+      dbSetItemProduct(makeProduct({ id: productId, itemId: 'g1', brand: "Arnold's", variant: null }));
+      dbUpdateGroceryItem({ ...item, preferredProductId: productId });
+      mockRawDb.prepare("UPDATE grocery_items SET updated_at = '2026-07-01T00:00:00.000Z' WHERE id = 'g1'").run();
+      mockRawDb.prepare("UPDATE grocery_item_products SET updated_at = '2026-01-01T00:00:00.000Z'").run();
+      return item;
+    };
+
+    // The peer cleared the preference when it deleted the box, but its copy of
+    // the item lost to this device's newer edit, so only the tombstone landed.
+    it('clears the preference when the box’s tombstone lands, keeping the item’s stamp', () => {
+      breadPreferring('p1');
+
+      dbApplySyncChanges(payload({
+        deletions: [{ table: 'grocery_item_products', rowKey: 'p1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+      }));
+
+      // Not restamped: a cleanup is not an edit, and a fresh stamp would win
+      // last-writer-wins against a peer's real edit that hasn't arrived yet.
+      expect(groceryRow('g1')).toEqual({ preferred_product_id: null, updated_at: '2026-07-01T00:00:00.000Z' });
+    });
+
+    // The other direction: this device deleted the box, and a peer's newer
+    // edit of the item arrives still naming it.
+    it('clears a preference that arrives naming a box already deleted here', () => {
+      const item = breadPreferring('p1');
+      const peerRow = {
+        ...(mockRawDb.prepare('SELECT * FROM grocery_items WHERE id = ?').get('g1') as Record<string, unknown>),
+        quantity: '2 loaves',
+        updated_at: '2029-01-01T00:00:00.000Z',
+      };
+      dbDeleteItemProduct('p1');
+      expect(dbGetAllGroceryItems().find(i => i.id === item.id)!.preferredProductId).toBeNull();
+
+      dbApplySyncChanges(payload({ tables: { grocery_items: [peerRow] } }));
+
+      expect(groceryRow('g1')).toEqual({ preferred_product_id: null, updated_at: '2029-01-01T00:00:00.000Z' });
+    });
+
+    // A box folded into its duplicate is tombstoned too, but it has a survivor.
+    it('follows a folded box to its survivor rather than dropping the preference', () => {
+      breadPreferring('p1');
+      dbSetItemProduct(makeProduct({ id: 'p0', itemId: 'g1', brand: "Dave's", variant: null }));
+      mockRawDb.prepare('DELETE FROM grocery_item_products WHERE id = ?').run('p1');
+      mockRawDb.prepare(
+        "INSERT INTO sync_aliases (table_name, loser_id, winner_id, created_at) VALUES ('grocery_item_products', 'p1', 'p0', '2026-06-01T00:00:00.000Z')"
+      ).run();
+
+      dbApplySyncChanges(payload({}));
+
+      expect(groceryRow('g1')).toEqual({ preferred_product_id: 'p0', updated_at: '2026-07-01T00:00:00.000Z' });
+    });
+
+    // A box that hasn't arrived yet is not a deleted one: the item can land a
+    // batch ahead of its box, and clearing then would lose the preference.
+    it('leaves a preference naming a box this device has not seen yet', () => {
+      breadPreferring('p1');
+      mockRawDb.prepare("UPDATE grocery_items SET preferred_product_id = 'p-later' WHERE id = 'g1'").run();
+
+      dbApplySyncChanges(payload({}));
+
+      expect(groceryRow('g1').preferred_product_id).toBe('p-later');
+    });
+  });
+
   it('keeps a local row edited after the peer copy', () => {
     const remote = peerTaskRow('p1', 'Stale peer', '2026-01-01T00:00:00.000Z');
     dbInsertTask(makeTask({ id: 'p1', title: 'Local wins' }));

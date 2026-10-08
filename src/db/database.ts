@@ -3276,10 +3276,46 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
       report.deleted++;
     }
 
+    clearDeletedPreferredProducts();
     for (const id of groceryItemIds) resyncGroceryHomeColumns(id);
   });
 
   return report;
+}
+
+/**
+ * Drops an item's preference for a box this device knows was deleted.
+ *
+ * `dbDeleteItemProduct` clears the pointer where the delete happens, but the
+ * cleared item row and the box's tombstone travel separately, and item rows are
+ * last-writer-wins. A peer that edited the item later keeps the box's id while
+ * accepting its tombstone, then sends that id back to the device that deleted
+ * it. Nothing else would ever clear it.
+ *
+ * A box folded into a duplicate leaves a tombstone too, and an alias naming
+ * the survivor, so that preference follows the alias instead of being dropped.
+ *
+ * Only a tombstoned id counts. A box that simply hasn't arrived yet (the item
+ * can land a batch, or a transport, ahead of it) is not a deleted one. The
+ * stamp is put back, as `fillCalendarExternalIds` does, because this cleanup is
+ * not an edit and a fresh stamp would win against a peer's real one.
+ */
+function clearDeletedPreferredProducts(): void {
+  const rows = db.getAllSync<{ id: string; updated_at: string | null; winner: string | null }>(
+    `SELECT id, updated_at,
+            (SELECT a.winner_id FROM ${SYNC_ALIASES_TABLE} a
+              WHERE a.table_name = 'grocery_item_products' AND a.loser_id = i.preferred_product_id
+                AND EXISTS (SELECT 1 FROM grocery_item_products w WHERE w.id = a.winner_id)) AS winner
+       FROM grocery_items i
+      WHERE preferred_product_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM grocery_item_products p WHERE p.id = i.preferred_product_id)
+        AND EXISTS (SELECT 1 FROM ${SYNC_DELETIONS_TABLE} d
+                     WHERE d.table_name = 'grocery_item_products' AND d.row_key = i.preferred_product_id)`
+  );
+  for (const row of rows) {
+    db.runSync('UPDATE grocery_items SET preferred_product_id = ? WHERE id = ?', [row.winner, row.id]);
+    db.runSync('UPDATE grocery_items SET updated_at = ? WHERE id = ?', [row.updated_at, row.id]);
+  }
 }
 
 /**
