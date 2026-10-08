@@ -50,32 +50,43 @@ export function classifyWeather(weatherCode: number, tempF: number, isDay: boole
   return conditions;
 }
 
+/** Partly cloudy: Open-Meteo's code 2. Code 3 is overcast, which stays plain "cloudy". */
+const PARTLY_CLOUDY_CODES = new Set([2]);
+/** "Mainly clear": the sky is clear for most of the hour but not all of it. */
+const MOSTLY_CLEAR_CODES = new Set([1]);
+
 /**
  * The glyph for `weatherCode`, used for Today's header weather reading
  * (`TodayScreen.tsx`). Sky only, in the same priority `classifyWeather`
  * checks in — cold/hot have no icon of their own, since the header is
  * already stating the temperature as a number and a second, wordless way of
- * saying "cold" would just be a thermometer next to one.
+ * saying "cold" would just be a thermometer next to one. After dark a clear
+ * sky is a moon and partly cloudy is a cloud with a moon, as weather apps draw them.
  */
 export function weatherIconFor(
   weatherCode: number,
   isDay: boolean = true,
-): 'sunny-outline' | 'moon-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
+): 'sunny-outline' | 'moon-outline' | 'partly-sunny-outline' | 'cloudy-night-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
   if (SNOWY_CODES.has(weatherCode)) return 'snow-outline';
   if (RAINY_CODES.has(weatherCode)) return 'rainy-outline';
   if (SUNNY_CODES.has(weatherCode)) return isDay ? 'sunny-outline' : 'moon-outline';
+  if (PARTLY_CLOUDY_CODES.has(weatherCode)) return isDay ? 'partly-sunny-outline' : 'cloudy-night-outline';
   return 'cloud-outline';
 }
 
 /**
- * "sunny", "rainy", "snowy", or "cloudy" for anything outside those three
- * groups. A clear sky after dark is "clear", as weather apps say it: the sun
- * isn't out to be sunny.
+ * "sunny", "mostly sunny", "partly cloudy", "rainy", "snowy", or "cloudy" for
+ * anything else. After dark a clear sky is "clear" and a mainly clear one is
+ * "mostly clear", as weather apps say it: the sun isn't out to be sunny.
  */
 export function weatherConditionAdjective(weatherCode: number, isDay: boolean = true): string {
   if (SNOWY_CODES.has(weatherCode)) return 'snowy';
   if (RAINY_CODES.has(weatherCode)) return 'rainy';
-  if (SUNNY_CODES.has(weatherCode)) return isDay ? 'sunny' : 'clear';
+  if (SUNNY_CODES.has(weatherCode)) {
+    const clear = isDay ? 'sunny' : 'clear';
+    return MOSTLY_CLEAR_CODES.has(weatherCode) ? `mostly ${clear}` : clear;
+  }
+  if (PARTLY_CLOUDY_CODES.has(weatherCode)) return 'partly cloudy';
   return 'cloudy';
 }
 

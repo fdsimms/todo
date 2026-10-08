@@ -72,6 +72,8 @@ describe('weatherIconFor', () => {
 describe('weatherConditionAdjective / weatherConditionNoun', () => {
   it('describe the same three sky groups as weatherIconFor, plus a cloudy fallback', () => {
     expect(weatherConditionAdjective(0)).toBe('sunny');
+    expect(weatherConditionAdjective(1)).toBe('mostly sunny');
+    expect(weatherConditionAdjective(2)).toBe('partly cloudy');
     expect(weatherConditionAdjective(61)).toBe('rainy');
     expect(weatherConditionAdjective(71)).toBe('snowy');
     expect(weatherConditionAdjective(3)).toBe('cloudy');
@@ -84,8 +86,12 @@ describe('weatherConditionAdjective / weatherConditionNoun', () => {
 
   it('calls a clear sky "clear" with a moon after dark, and leaves other skies alone', () => {
     expect(weatherConditionAdjective(0, false)).toBe('clear');
-    expect(weatherConditionAdjective(1, false)).toBe('clear');
+    expect(weatherConditionAdjective(1, false)).toBe('mostly clear');
+    expect(weatherConditionAdjective(2, false)).toBe('partly cloudy');
     expect(weatherIconFor(0, false)).toBe('moon-outline');
+    expect(weatherIconFor(1, false)).toBe('moon-outline');
+    expect(weatherIconFor(2, false)).toBe('cloudy-night-outline');
+    expect(weatherIconFor(2)).toBe('partly-sunny-outline');
     expect(weatherConditionAdjective(61, false)).toBe('rainy');
     expect(weatherIconFor(61, false)).toBe('rainy-outline');
     expect(weatherConditionAdjective(3, false)).toBe('cloudy');
