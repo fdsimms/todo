@@ -185,6 +185,9 @@ export function normalizeTemplateQuestion(raw: Partial<TemplateQuestion>): Templ
     // load-bearing rather than incidental — see personIdsForAnswers.
     defaultValue: kind === 'choice' || kind === 'people' ? '' : (raw.defaultValue ?? ''),
     fromDates,
+    // Only a choice has several answers to pick from.
+    multiple: kind === 'choice' && raw.multiple === true,
+    showForecast: raw.showForecast === true,
   };
 }
 

@@ -986,6 +986,8 @@ const questionsSchema = z.array(z.object({
   defaultValue: z.string().optional(),
   fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
     .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. Only a choice question can gate an item through conditions, so a number cannot express "only if days > 5": add a choice question for that.'),
+  multiple: z.boolean().optional().describe('A choice question only: a run may pick several answers. An item with a condition on it is ticked when any picked answer is one of its values, and a variant applies when its answer is among those picked. A title shows the picks joined with ", ". Starts on the first option, and one pick always stays.'),
+  showForecast: z.boolean().optional().describe('A choice question only: the apply sheet states the destination forecast for the run\'s dates under this question ("Paris, 48 to 66°F, rain on 2 of 7 days"), to help whoever answers it. It only states; it never answers the question or ticks anything. Needs a destination and dates, and the Destination forecast setting on.'),
 })).optional();
 const scheduleSchema = z.object({
   frequency: z.enum(SCHEDULE_FREQUENCIES as unknown as [string, ...string[]]),
@@ -2069,7 +2071,7 @@ function registerWriteTools(
       runName: z.string().optional().describe('Names the run, e.g. "Lisbon trip". Needed for the template to create its stack, project or parent task; without it the tasks are loose.'),
       startDate: z.string().optional().describe('YYYY-MM-DD: the anchor items count their start offsets from. For a trip, the first day away.'),
       endDate: z.string().optional().describe('YYYY-MM-DD: the end anchor. For a trip, the last day away.'),
-      answers: z.record(z.string()).optional().describe('Answers by question name, e.g. { "trip": "Work", "nights": "7" }. A number question left out is read off the dates.'),
+      answers: z.record(z.string()).optional().describe('Answers by question name, e.g. { "trip": "Work", "nights": "7" }. A number question left out is read off the dates. A question that allows several answers takes them joined with commas, e.g. "Outdoors, Camping".'),
       include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item). A nested template\'s own item id switches on everything inside it.'),
       leaveOut: z.array(z.string()).optional().describe('Item ids to switch off. A nested template\'s own item id switches off everything inside it.'),
       projectId: z.string().optional().describe('An existing project to put the tasks in.'),

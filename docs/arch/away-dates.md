@@ -585,6 +585,9 @@ reading and the destination's `daily=` forecast. Three rules hold it:
   decisions on a ten-day forecast. `lookAhead`'s own rule is the right one here:
   *a cue may rank; a sentence may only state.* Let the reader draw the conclusion
   and the reliability objection disappears.
+- **A template question can ask for the line** (`TemplateQuestion.showForecast`), so the forecast is
+  on screen where "What's the weather like?" is answered. Same sentence, same rule: it states and
+  never answers. See `docs/arch/template-questions.md`; both readers use `useDestinationForecast`.
 - **Geocoding is a new keyless outbound service and needs its own switch.**
   Turning "Tokyo" into coordinates is a network call the app does not currently
   make. `productLookupEnabled` is the precedent and the reason: once something

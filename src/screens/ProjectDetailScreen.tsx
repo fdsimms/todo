@@ -95,13 +95,7 @@ import { TitleTokenAccessory } from '../components/TitleTokenAccessory';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { awayNights, awaySpanOf } from '../utils/awayDates';
-import { geocodePlace } from '../services/geocode';
-import { fetchDestinationForecast } from '../services/weatherLookup';
-import {
-  describeForecastGap,
-  describeTripForecast,
-  summarizeTripForecast,
-} from '../utils/tripForecast';
+import { useDestinationForecast } from '../hooks/useDestinationForecast';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
@@ -616,46 +610,15 @@ export function ProjectDetailScreen() {
   // Presentation only — see Project.kind.
   const isList = project?.kind === 'list';
 
-  /**
-   * The destination forecast line, fetched on open and never stored.
-   *
-   * A read with no store, the shape `useWeatherStore`'s own daily snapshot
-   * takes one feature over: a forecast written onto the project would go stale
-   * and then be believed. Held in component state so it lives exactly as long
-   * as the screen does.
-   *
-   * Every refusal upstream (the switch off, demo mode, no network, a place no
-   * gazetteer knows, a trip further out than the forecast reaches) comes back
-   * as null and draws nothing. There is no error state, deliberately: a line
-   * that could not be fetched has nothing to say, and saying so would be a
-   * second row about the app rather than about the trip.
-   */
-  const [forecastLine, setForecastLine] = useState<string | null>(null);
-  const [forecastGap, setForecastGap] = useState<string | null>(null);
-  const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
-  const unitSystem = useSettingsStore(s => s.unitSystem);
+  // The destination forecast line (see useDestinationForecast): fetched on
+  // open and never stored.
   const awaySpan = project ? awaySpanOf(project) : null;
   const destination = project?.destination ?? null;
   const spanStartKey = awaySpan ? dayKeyOf(awaySpan.start) : null;
   const spanEndKey = awaySpan?.end ? dayKeyOf(addDays(awaySpan.end, -1)) : spanStartKey;
-
-  useEffect(() => {
-    setForecastLine(null);
-    setForecastGap(null);
-    if (!destinationForecastEnabled || !destination || !spanStartKey || !spanEndKey) return;
-    let live = true;
-    void (async () => {
-      const place = await geocodePlace(destination);
-      if (!live || !place) return;
-      const days = await fetchDestinationForecast(place, spanStartKey, spanEndKey);
-      if (!live || !days) return;
-      const summary = summarizeTripForecast(days);
-      const nights = awayNights(awaySpan);
-      setForecastLine(describeTripForecast(summary, place.name, unitSystem === 'metric'));
-      setForecastGap(describeForecastGap(summary, nights));
-    })();
-    return () => { live = false; };
-  }, [destinationForecastEnabled, destination, spanStartKey, spanEndKey, unitSystem]);
+  const { line: forecastLine, gap: forecastGap } = useDestinationForecast(
+    destination, spanStartKey, spanEndKey, awayNights(awaySpan),
+  );
   // One row per member, as progress counts them — see projectCompletedRows.
   const completedProjectTasks = useMemo(() => {
     if (!project) return [];
