@@ -57,6 +57,8 @@ import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICUL
 import { medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
+import { confirmDeleteGenerated } from '../utils/confirmDeleteGenerated';
+import { stoppableGenerator } from '../utils/generatedTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
@@ -2517,6 +2519,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               onClose();
             },
           },
+          ...(stoppableGenerator(task, useSettingsStore.getState()) ? [{
+            text: 'Delete and turn off',
+            style: 'destructive' as const,
+            onPress: () => {
+              haptics.success();
+              deleteTask(task.id, { stopGenerator: true });
+              onClose();
+            },
+          }] : []),
         ],
       );
       return;
@@ -2553,6 +2564,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           },
         ],
       );
+      return;
+    }
+    if (task.generatedKind) {
+      confirmDeleteGenerated(task, () => {
+        haptics.success();
+        onClose();
+      });
       return;
     }
     confirmDelete({

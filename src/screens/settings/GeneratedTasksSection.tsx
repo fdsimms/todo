@@ -4,8 +4,9 @@ import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
+import { setGeneratorEnabled } from '../../store/generatorSwitch';
 import { useCalendarStore } from '../../store/useCalendarStore';
-import { ensureGeneratedTaskCategory, useCategoryStore } from '../../store/useCategoryStore';
+import { useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
@@ -317,52 +318,7 @@ export function GeneratedTasksSection() {
       );
       return;
     }
-    const next = !enabledOf(kind);
-    switch (kind) {
-      case 'mealSlot':
-      case 'mealCook': s.setMealCookTasks(next); break;
-      case 'groceryUseUp': s.setGroceryUseUpTasks(next); break;
-      case 'leftoverUseUp': s.setLeftoverUseUpTasks(next); break;
-      case 'mealPlanNudge': s.setMealPlanNudgeEnabled(next); break;
-      case 'projectReview': s.setProjectReviewTasks(next); break;
-      case 'pantryCheck': s.setPantryCheckTasks(next); break;
-      case 'pantryReview': s.setPantryReviewTasks(next); break;
-      case 'mealShortfall': s.setMealShortfallTasks(next); break;
-      case 'mealThaw': s.setMealThawTasks(next); break;
-      case 'mealLogNudge': s.setMealLogNudgeTasks(next); break;
-      case 'supplyReorder': s.setSupplyReorderTasks(next); break;
-      case 'calendarReview': s.setCalendarReviewTasks(next); break;
-      case 'birthday': s.setBirthdayTasks(next); break;
-      case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
-      case 'reachOut': s.setReachOutTasks(next); break;
-      case 'waitingFollowUp': s.setWaitingFollowUpTasks(next); break;
-      case 'weather': s.setWeatherTasks(next); break;
-      case 'eventTask': s.setEventTasks(next); break;
-      case 'travel': s.setTravelTasks(next); break;
-      case 'screenTime': s.setScreenTimeTasks(next); break;
-      case 'health': s.setHealthTasks(next); break;
-      case 'moodLog': s.setMoodLogTasks(next); break;
-      case 'moodNudge': s.setMoodNudgeTasks(next); break;
-      case 'journalLog': s.setJournalLogTasks(next); break;
-      case 'dreamLog': s.setDreamLogTasks(next); break;
-      case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
-      case 'weighIn': s.setWeighInTasks(next); break;
-      case 'waterShortfall': s.setWaterShortfallTasks(next); break;
-      case 'snackNudge': s.setSnackNudgeTasks(next); break;
-      case 'bookEvent': s.setBookEventTasks(next); break;
-      // Exhaustive for setCategory's reason below: this returns void, so a
-      // missing arm would be a switch that silently does nothing.
-      default: {
-        const exhaustive: never = kind;
-        void exhaustive;
-      }
-    }
-    // Switching one on gives it somewhere to file, so the "File them under"
-    // row that appears directly below already has an answer in it rather than
-    // reading "None" — which is the value that puts these tasks loose at the
-    // top of Today. Only ever fills an unanswered setting; see
-    // ensureGeneratedTaskCategory.
-    if (next) ensureGeneratedTaskCategory(kind, { force: true });
+    setGeneratorEnabled(kind, !enabledOf(kind));
   };
 
   const categoryOf = (kind: GeneratedKind): string | null => {
