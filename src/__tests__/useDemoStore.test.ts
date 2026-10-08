@@ -1150,6 +1150,16 @@ describe('demo mode', () => {
     expect(isTaskVisible(alwaysVisible!)).toBe(true);
   });
 
+  it('seeds a target that ramps up', () => {
+    useDemoStore.getState().enterDemoMode();
+    const pushUps = useTaskStore.getState().tasks.find(t => t.title === 'Push-ups');
+    expect(pushUps).toBeDefined();
+    expect(pushUps!.targetCount).toBe(10);
+    expect(pushUps!.quotaRampStep).toBe(2);
+    expect(pushUps!.quotaRampEvery).toBe(3);
+    expect(pushUps!.quotaRampGoal).toBe(30);
+  });
+
   // The same counting mechanism over a week — "three times a week, any days".
   // Invisible as a capability unless something is actually using it, and a
   // 0/3 would be indistinguishable from an unstarted daily target.

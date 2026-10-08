@@ -66,6 +66,7 @@ import { normalizeTitle } from './taskInstances';
 import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, type DeliverableReasoning } from './deliverables';
 import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
+import { advanceQuotaRamp } from './quotaRamp';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
 
 /** The five things a caller can say about a completion. Identical to `completeTask`'s. */
@@ -640,6 +641,12 @@ export function buildCompletion(
         // otherwise. The inherited pinnedOrder keeps its place in the section.
         pinned: chainStepStaysPinned || (recurs && !!task.pinEachOccurrence),
         progressCount: 0, // a quota starts the new day empty
+        // A ramp-up target steps on the closing of an occurrence that met it, and
+        // only that: a miss, a neutral close or somebody else's completion leaves
+        // the count and the run of hits exactly as they were (src/utils/quotaRamp.ts).
+        ...(isQuotaTask(task) && task.quotaRampStep
+          ? advanceQuotaRamp(effective, !missed && !neutral)
+          : {}),
         // The ledger is per-period, so it does not ride `...effective` onto the
         // next one. `activeRotationLog` would ignore a stale stamp anyway
         // (that is what makes a missed week self-clean), but leaving one on a

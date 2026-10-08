@@ -2676,6 +2676,25 @@ export interface Task {
   quotaPeriod: QuotaPeriod;
 
   /**
+   * Ramp up — a plain daily or weekly target that raises its own `targetCount`
+   * ("add 1 after every 7 days you hit it, up to 20"). The rule is
+   * `src/utils/quotaRamp.ts`; `completeTask` applies it when it spawns the next
+   * occurrence. All four are optional and absent reads as off, like `rainSkipMm`.
+   *
+   * `quotaRampStep` is the amount added (null/0 = no ramp). `quotaRampEvery` is
+   * how many occurrences that met the target it takes, counted in the task's own
+   * period (days, or weeks for a weekly target). `quotaRampGoal` is the ceiling
+   * (null = climb to the app's maximum). `quotaRampHits` is the running count
+   * toward the next step, and rides each successor.
+   *
+   * A missed or short occurrence neither steps nor resets it: the ramp waits.
+   */
+  quotaRampStep?: number | null;
+  quotaRampEvery?: number | null;
+  quotaRampGoal?: number | null;
+  quotaRampHits?: number;
+
+  /**
    * Rotation — the set of named things a quota is counting, when the units are
    * distinguishable from each other. Five languages to listen to once each per
    * week; four bathrooms; three instruments. Empty (the default) = an ordinary
