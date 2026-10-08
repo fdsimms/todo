@@ -993,6 +993,57 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
 
 const WHOLE_PACKAGE_LABEL = /^the whole package \((\d+(?:\.\d+)?) servings\)$/i;
 
+/** The fields a re-measured entry takes, the ones `FoodLogEntrySheet.handleSave` hands `reviseEntry`. */
+export interface RemeasuredFields {
+  quantity: string;
+  grams: number | null;
+  nutrition: FoodNutrition;
+  sourcePanel: FoodNutrition | null;
+}
+
+/**
+ * What an entry becomes when its amount is changed to `amount` ("23 g",
+ * "2 servings"), for a caller with no sheet to type into: the same arithmetic
+ * "Edit" runs, so an agent's correction and a thumb's land on the same figures.
+ *
+ * **The sheet's own steps, in its order.** `foodLogEntryEdit` decides whether
+ * the app would reopen this entry at all; the panel is the linked row's
+ * (`linkedPanel`, which the caller reads from the catalog because it holds the
+ * rows) or else the one the entry kept (`keptDatabasePanel`); and
+ * `scalePanelToAmount` measures the amount against that panel, never against
+ * the figures already on the entry. Scaling the stored helping instead would
+ * compound its rounding, and a helping has no portions to resolve "1 slice" by.
+ * `sourcePanel` follows `handleSave`: kept only while no row holds the panel.
+ *
+ * A dish (`recipeId`) is refused: its helping is rebuilt from the recipe's
+ * ingredients and the servings it makes, which this has no way to see.
+ *
+ * Returns the reason in words when it cannot, since each refusal is a different
+ * thing for a person to do next.
+ */
+export function remeasureEntry(
+  entry: FoodLogEntry,
+  linkedPanel: FoodNutrition | null,
+  amount: string,
+  now: Date = new Date(),
+): { ok: true; fields: RemeasuredFields; approximate: boolean } | { ok: false; reason: string } {
+  if (entry.recipeId) return { ok: false, reason: 'This entry is a dish, whose amount is rebuilt from its recipe. Change it in the app.' };
+  if (!foodLogEntryEdit(entry)) return { ok: false, reason: 'This entry has no food record to measure a new amount against (it was described rather than looked up, or answers extra lines). Change it in the app.' };
+  const linked = !!(entry.itemId || entry.productId);
+  const panel = linked ? linkedPanel : keptDatabasePanel(entry);
+  if (!panel) return { ok: false, reason: 'The food record this entry was measured against is no longer there. Change it in the app.' };
+  const typed = amount.trim();
+  const scaled = typed ? scalePanelToAmount(panel, typed, null, now, entry.label) : null;
+  if (!scaled) return { ok: false, reason: `"${typed}" cannot be measured against this food's record. Try grams, or a portion it lists.` };
+  return {
+    ok: true,
+    fields: { quantity: typed, grams: scaled.grams, nutrition: scaled.nutrition, sourcePanel: linked ? null : panel },
+    // A drink measured by assuming water's density; the sheet shows a
+    // disclaimer beside it, so a caller has to be able to say so too.
+    approximate: scaled.approximate,
+  };
+}
+
 /**
  * The panel an entry kept that a new amount can be re-measured against, or
  * null when it kept none or kept an estimate's whole.

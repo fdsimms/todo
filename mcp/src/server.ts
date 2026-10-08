@@ -1464,14 +1464,16 @@ function registerWriteTools(
 
   server.tool(
     'duplicate_food_entry',
-    'Log the same food again ("had the same lunch today"): a copy of an entry at another moment, default now. The original stays.',
+    'Log the same food again ("had the same lunch today"): a copy of an entry at another moment, default now. The original stays. For "the same food, a different amount" give grams (or quantity, e.g. "2 servings") and the copy is re-measured from the food\'s own database or catalog record, exactly as changing the amount in the app does, so the nutrients are scaled for the new amount rather than copied. That works for a measured entry (list_food_log shows grams and a database-style label); an estimated entry has no record to measure against, so it can only be copied as it is. Leave both out to copy at the original amount.',
     {
       id: z.string().min(1),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for noon that day. Default now.'),
+      grams: z.number().positive().optional().describe('Weight of the new helping in grams. Give this or quantity.'),
+      quantity: z.string().min(1).optional().describe('The new amount as the app\'s amount field takes it, e.g. "2 servings" or "1 slice". Give this or grams.'),
     },
-    async ({ id, at }) => {
+    async ({ id, at, grams, quantity }) => {
       try {
-        return json(await withWrite(() => duplicateFoodEntry(replica, id, at)));
+        return json(await withWrite(() => duplicateFoodEntry(replica, id, at, { grams, quantity })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not log that again.' });
       }
@@ -1627,11 +1629,12 @@ function registerWriteTools(
 
   server.tool(
     'update_food_entry',
-    'Correct a food log entry: its name, its meal slot, and, for an entry that was estimated, its quantity and figures (amounts replaces every figure, so give the full set). An entry measured against a food\'s own label or database record is corrected in the app, which re-measures it, and one already written to Apple Health only on the phone.' + dayNote,
+    'Correct a food log entry: its name, its meal slot, and its amount. Two kinds of entry take an amount differently, so check list_food_log first. An entry that was estimated takes quantity and amounts (amounts replaces every figure, so give the full set). An entry measured against a food\'s own label or database record (it has grams and a database-style label) takes grams, or quantity such as "2 servings", and its nutrients are re-measured from that record, as changing the amount in the app does; do not restate its amounts. A dish logged from a recipe, and an entry whose record is gone, are changed in the app. One already written to Apple Health is changed only on the phone. To log a different amount as a new entry instead of changing this one, use duplicate_food_entry with grams.' + dayNote,
     {
       id: entryId,
       label: z.string().min(1).optional(),
-      quantity: z.string().optional(),
+      quantity: z.string().optional().describe('Estimated entry: the amount in words. Measured entry: the new amount to re-measure ("2 servings").'),
+      grams: z.number().positive().optional().describe('Measured entry only: the new weight in grams. The nutrients are re-scaled from its food record.'),
       amounts: z.record(z.number().nonnegative()).optional(),
       slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
     },

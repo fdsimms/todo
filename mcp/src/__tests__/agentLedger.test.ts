@@ -162,6 +162,34 @@ describe('the preview lines a write produces', () => {
     return describeEffects(entries, replica.dayKeyOf);
   };
 
+  it('a changed food amount says the new amount and what it comes to, and an estimate still reads as before', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { scalePanelToAmount } = require('../../../src/utils/foodLog') as typeof import('../../../src/utils/foodLog');
+    const record: import('../../../src/types').FoodNutrition = {
+      basis: 'per100g', servingGrams: null, servingText: null, amounts: { calorieKcal: 500, proteinG: 10 },
+      source: 'fdc', sourceId: '1', portions: [], recordedAt: '2026-01-01T00:00:00.000Z',
+    };
+    db.dbInsertFoodLogEntry({
+      id: 'choc', dayKey: '2030-03-10', atISO: '2030-03-10T12:00:00.000Z', slot: null, label: 'Milk chocolate bar',
+      recipeId: null, itemId: null, productId: null, mealPlanEntryId: null, quantity: '10 g', grams: 10,
+      nutrition: scalePanelToAmount(record, '10 g', null)!.nutrition, sourcePanel: record, healthSampleIds: [], sortOrder: 0,
+      createdAt: '2030-03-10T12:00:00.000Z',
+    });
+    replica.refresh();
+    expect(lines(r => r.updateFoodEntry('choc', { grams: 23 })))
+      .toEqual(['Change the amount of "Milk chocolate bar" in the food log on 2030-03-10 from 10 g to 23 g (50 to 115 kcal)']);
+    expect(lines(r => r.duplicateFoodEntry('choc', new Date(2030, 2, 11, 12), { grams: 40 })))
+      .toEqual(['Copy "Milk chocolate bar" in the food log to 2030-03-11 at 40 g (200 kcal)']);
+    expect(lines(r => r.duplicateFoodEntry('choc', new Date(2030, 2, 12, 12))))
+      .toEqual(['Copy "Milk chocolate bar" in the food log to 2030-03-12']);
+
+    const burrito = replica.logFood({ label: 'Burrito', quantity: '1', amounts: { calorieKcal: 600 }, at: new Date(2030, 2, 10, 13) });
+    expect(lines(r => r.updateFoodEntry(burrito.id, { quantity: '2', amounts: { calorieKcal: 1200 } })))
+      .toEqual([`Correct the food log entry "Burrito" from ${burrito.dayKey}: quantity from "1" to "2"; amounts changed`]);
+  });
+
   it('describePatch shows short values against the old ones, and only names long text', () => {
     expect(describePatch({ name: 'B', ingredients: [1, 2, 3], notes: 'x'.repeat(60), emoji: null }, { name: 'A', ingredients: [1] }))
       .toBe('name from "A" to "B"; ingredients from 1 to 3; notes changed; emoji cleared');

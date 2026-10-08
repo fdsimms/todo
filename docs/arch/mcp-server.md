@@ -1159,6 +1159,19 @@ the Settings stepper's range (`NUTRITION_TARGET_RANGES`); `list_food_log` return
 tool says to set only figures the person gives, since the app ships with none and never suggests
 one. Its Activity entry is titled "Food log targets", not by the figures.
 
+**A measured entry's amount is changed by re-measuring, never by restating figures.**
+`update_food_entry`'s `grams` (or `quantity` on a measured entry) and `duplicate_food_entry`'s
+`grams`/`quantity` run `remeasureEntry` (`src/utils/foodLog.ts`), which is the arithmetic the food
+log sheet's Edit runs: `foodLogEntryEdit` decides whether the app would reopen the entry, the panel
+is the linked item's or product's (the replica reads the catalog) or else the one the entry kept
+(`keptDatabasePanel`), and `scalePanelToAmount` measures the new amount against that panel, not
+against the stored helping, so a round trip loses nothing to rounding. All of it is pure, so it runs
+here unchanged. What the server cannot do is the half that needs HealthKit: the app's `reviseEntry`
+retracts and rewrites the Health samples, so an update is still refused once an entry is in Health,
+while a copy is a new row and is not. A dish, an estimate and an entry whose record is gone are
+refused with the reason, as the app offers no re-measure for them. The preview's line names the
+amount and the calories before and after, which is the check on the new figure.
+
 ### Changing the meal plan
 
 `update_meal` moves a planned meal (another day or slot), swaps what it is (another recipe, or a

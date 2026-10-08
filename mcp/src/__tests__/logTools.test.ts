@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateMoodLog } from '../logTools';
+import { atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMoodTag, saveMealFromEntries, saveRecipe, setMedicationArchived, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -208,5 +208,101 @@ describe('moving, copying and saving food', () => {
     expect(setNutritionTargets(replica, { proteinG: null }).targets.proteinG).toBeUndefined();
     expect(() => setNutritionTargets(replica, { calorieKcal: 90000 })).toThrow(/from 0 to 6000/);
     expect(() => setNutritionTargets(replica, { vibes: 3 })).toThrow(/not a nutrient/);
+  });
+});
+
+describe('changing the amount of a measured food entry', () => {
+  const choc: import('../../../src/types').FoodNutrition = {
+    basis: 'per100g', servingGrams: null, servingText: null,
+    amounts: { calorieKcal: 500, proteinG: 10, fatG: 30 },
+    source: 'fdc', sourceId: '1', portions: [], recordedAt: '2026-01-01T00:00:00.000Z',
+  };
+  const all = () => replica.foodLogEntries('2000-01-01', '2100-01-01');
+
+  /** An entry measured at `grams` against a database record it kept, as a lookup in the app logs one. */
+  function logMeasured(grams: number, extra: Partial<import('../../../src/types').FoodLogEntry> = {}) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const db = require('../../../src/db/database') as typeof import('../../../src/db/database');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { scalePanelToAmount } = require('../../../src/utils/foodLog') as typeof import('../../../src/utils/foodLog');
+    const helping = scalePanelToAmount(choc, `${grams} g`, null)!;
+    const entry = {
+      id: `measured-${Math.random().toString(36).slice(2)}`, dayKey: '2030-03-10', atISO: '2030-03-10T12:00:00.000Z', slot: null,
+      label: 'FILLED milk chocolate bar, TONY\'S CHOCOLONELY', recipeId: null, itemId: null, productId: null, mealPlanEntryId: null,
+      quantity: `${grams} g`, grams, nutrition: helping.nutrition, sourcePanel: choc, healthSampleIds: [], sortOrder: 0,
+      createdAt: '2030-03-10T12:00:00.000Z', ...extra,
+    } as import('../../../src/types').FoodLogEntry;
+    db.dbInsertFoodLogEntry(entry);
+    replica.refresh();
+    return entry;
+  }
+
+  it('re-measures a measured entry from its record when grams change: 10 g to 23 g is 2.3 times the nutrients', () => {
+    const entry = logMeasured(10);
+    const out = updateFoodEntry(replica, entry.id, { grams: 23 });
+    expect(out).toMatchObject({ quantity: '23 g', grams: 23, calorieKcal: 115 });
+    const saved = all().find(e => e.id === entry.id)!;
+    expect(saved.nutrition.amounts).toEqual({ calorieKcal: 115, proteinG: 2.3, fatG: 6.9 });
+    expect(entry.nutrition.amounts).toEqual({ calorieKcal: 50, proteinG: 1, fatG: 3 });
+    // Still re-measurable afterwards, and still the database's own record.
+    expect(saved.sourcePanel).toMatchObject({ source: 'fdc' });
+    expect(saved.id).toBe(entry.id);
+  });
+
+  it('takes quantity as the amount on a measured entry, and refuses grams together with amounts or quantity', () => {
+    const entry = logMeasured(10);
+    expect(updateFoodEntry(replica, entry.id, { quantity: '40 g' })).toMatchObject({ grams: 40, calorieKcal: 200 });
+    expect(() => updateFoodEntry(replica, entry.id, { grams: 5, quantity: '6 g' })).toThrow(/grams or as quantity/);
+    expect(() => updateFoodEntry(replica, entry.id, { grams: 5, amounts: { calorieKcal: 1 } })).toThrow(/not both/);
+    expect(() => updateFoodEntry(replica, entry.id, { amounts: { calorieKcal: 1 } })).toThrow(/measured/);
+    expect(() => updateFoodEntry(replica, entry.id, { grams: 0 })).toThrow(/positive/);
+    expect(() => updateFoodEntry(replica, entry.id, { quantity: 'a handful' })).toThrow(/cannot be measured/);
+  });
+
+  it('refuses an entry already in Apple Health, and one with no record to measure against', () => {
+    const synced = logMeasured(10, { healthSampleIds: ['s1'] });
+    expect(() => updateFoodEntry(replica, synced.id, { grams: 23 })).toThrow(/Apple Health/);
+    const bare = logMeasured(10, { sourcePanel: null });
+    expect(() => updateFoodEntry(replica, bare.id, { grams: 23 })).toThrow(/no food record/);
+  });
+
+  it('leaves estimated entries as they were: quantity and amounts still restate, grams is refused', () => {
+    const logged = logFood(replica, { label: 'Burrito', quantity: '1', amounts: { calorieKcal: 600 }, at: '2030-03-10', apply: true });
+    expect(updateFoodEntry(replica, logged.id!, { quantity: '2', amounts: { calorieKcal: 1200 } })).toEqual(
+      { id: logged.id, day: '2030-03-10', label: 'Burrito', quantity: '2', slot: undefined },
+    );
+    expect(() => updateFoodEntry(replica, logged.id!, { grams: 200 })).toThrow(/estimated entry has none/);
+    expect(all().find(e => e.id === logged.id)!.nutrition.amounts.calorieKcal).toBe(1200);
+  });
+
+  it('measures an entry linked to a catalog item against that item\'s panel', () => {
+    const added = replica.addGroceryItem('Dark chocolate');
+    mockRaw.runSync('UPDATE grocery_items SET nutrition = ? WHERE id = ?', [JSON.stringify(choc), (added as { item: { id: string } }).item.id]);
+    replica.refresh();
+    const entry = logMeasured(10, { itemId: (added as { item: { id: string } }).item.id, sourcePanel: null, label: 'Dark chocolate' });
+    expect(updateFoodEntry(replica, entry.id, { grams: 23 })).toMatchObject({ grams: 23, calorieKcal: 115 });
+    expect(all().find(e => e.id === entry.id)!.sourcePanel).toBeNull();
+  });
+
+  it('copies a measured entry at a new amount, scaled from the record, and leaves the original', () => {
+    const entry = logMeasured(10);
+    const out = duplicateFoodEntry(replica, entry.id, '2030-03-11', { grams: 23 });
+    expect(out.logged).toMatchObject({ day: '2030-03-11', quantity: '23 g', grams: 23, calorieKcal: 115 });
+    const rows = all();
+    expect(rows).toHaveLength(2);
+    expect(rows.find(e => e.id === entry.id)!.nutrition.amounts.calorieKcal).toBe(50);
+    const copy = rows.find(e => e.id === out.logged.id)!;
+    expect(copy.nutrition.amounts).toEqual({ calorieKcal: 115, proteinG: 2.3, fatG: 6.9 });
+    expect(copy.sourcePanel).toMatchObject({ source: 'fdc' });
+    expect(copy.healthWritePending).toBe(true);
+  });
+
+  it('copies at the original amount when none is given, and refuses an amount for an estimate', () => {
+    const entry = logMeasured(10);
+    expect(duplicateFoodEntry(replica, entry.id, '2030-03-11').logged).toMatchObject({ quantity: '10 g' });
+    expect(all().find(e => e.dayKey === '2030-03-11')!.nutrition.amounts.calorieKcal).toBe(50);
+    const est = logFood(replica, { label: 'Soup', amounts: { calorieKcal: 300 }, at: '2030-03-10', apply: true });
+    expect(() => duplicateFoodEntry(replica, est.id!, '2030-03-11', { grams: 100 })).toThrow(/no food record/);
+    expect(() => duplicateFoodEntry(replica, entry.id, '2030-03-11', { grams: 5, quantity: '6 g' })).toThrow(/grams or as quantity/);
   });
 });

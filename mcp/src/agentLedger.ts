@@ -680,6 +680,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     updateFoodEntry(id, patch) {
       const was = replica.foodLogEntries('0000-01-01', '9999-12-31').find(e => e.id === id) ?? null;
       const entry = replica.updateFoodEntry(id, patch);
+      // A re-measured amount is said as the amount and what it came to, not as
+      // a bare "grams to 23": the calories are the check on the new figure.
+      const remeasured = was != null && was.nutrition.source !== 'estimated' && (patch.grams !== undefined || patch.quantity !== undefined);
+      if (remeasured) {
+        const { grams: _grams, quantity: _quantity, ...rest } = patch;
+        const others = describePatch(rest, was);
+        const kcal = (e: { nutrition: { amounts: { calorieKcal?: number } } }) => e.nutrition.amounts.calorieKcal;
+        const from = kcal(was), to = kcal(entry);
+        const cal = to === undefined ? '' : from === undefined ? ` (${to} kcal)` : ` (${from} to ${to} kcal)`;
+        log({ action: 'edited', subject: 'food', title: entry.label, taskId: null, note: `Change the amount of "${entry.label}" in the food log on ${entry.dayKey} from ${was.quantity || 'its logged amount'} to ${entry.quantity}${cal}${others ? `; ${others}` : ''}` });
+        return entry;
+      }
       log({ action: 'edited', subject: 'food', title: entry.label, taskId: null, note: `Correct the food log entry "${entry.label}" from ${entry.dayKey}: ${describePatch(patch, was)}` });
       return entry;
     },
@@ -696,9 +708,11 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
-    duplicateFoodEntry(id, at) {
-      const entry = replica.duplicateFoodEntry(id, at);
-      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Copy "${entry.label}" in the food log to ${entry.dayKey}${entry.slot ? ` for ${entry.slot}` : ''}` });
+    duplicateFoodEntry(id, at, amount) {
+      const entry = replica.duplicateFoodEntry(id, at, amount);
+      const kcal = entry.nutrition.amounts.calorieKcal;
+      const asAmount = amount ? ` at ${entry.quantity}${kcal !== undefined ? ` (${kcal} kcal)` : ''}` : '';
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Copy "${entry.label}" in the food log to ${entry.dayKey}${entry.slot ? ` for ${entry.slot}` : ''}${asAmount}` });
       return entry;
     },
 
