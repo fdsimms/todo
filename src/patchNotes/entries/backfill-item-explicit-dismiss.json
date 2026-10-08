@@ -1,4 +1,4 @@
 {
-  "message": "When filling in item details, the Counts as step now has a \"Mark as generic item\" button for an item that isn't a kind of anything else, and the Substitutes step has \"No substitutes\", instead of a generic \"Don't ask again\"",
+  "message": "Backfill's dismiss buttons now say what you're choosing instead of \"Don't ask again\", like \"No reminder\", \"No substitutes\", \"Keep visible on vacation\" and \"Mark as generic item\"",
   "date": "2026-10-08"
 }
