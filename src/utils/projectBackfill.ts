@@ -75,11 +75,18 @@ export function isProjectBackfillDismissed(project: Project, fieldId: ProjectBac
 // A completed or archived project is finished/filed away, not something to
 // keep chasing — same exclusion `classifyProject` (projectPull.ts) already
 // makes before it ever offers a project up.
-export function projectBackfillCandidates(projects: Project[], fieldId: ProjectBackfillFieldId): Project[] {
+//
+// `fromScratch` is the screen's redo: every live project, including ones that
+// already have the field set or were told never to be asked again.
+export function projectBackfillCandidates(
+  projects: Project[],
+  fieldId: ProjectBackfillFieldId,
+  opts: { fromScratch?: boolean } = {}
+): Project[] {
   return projects
     .filter(p =>
       !p.archived && !p.completed &&
-      isProjectFieldMissing(p, fieldId) && !isProjectBackfillDismissed(p, fieldId)
+      (opts.fromScratch || (isProjectFieldMissing(p, fieldId) && !isProjectBackfillDismissed(p, fieldId)))
     )
     .sort((a, b) => a.title.localeCompare(b.title));
 }
