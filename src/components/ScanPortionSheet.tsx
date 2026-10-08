@@ -278,7 +278,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             surface="page"
           />
 
-          {foods.map(food => {
+          {foods.map((food, foodIndex) => {
             const panel = panelFor(food);
             const answer = answers[food.key] ?? '';
             // Only the whole package is still a tap: the panel's own serving is
@@ -331,6 +331,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     // no way off it, same accessory `FoodLogEntrySheet` wires up.
                     inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
                     accessibilityLabel={`Amount of ${food.label}`}
+                    autoFocus={foodIndex === 0}
                   />
                   {/* The unit lives in the chip rather than a row of pills:
                       nearly every amount is a serving or grams, and the rest
