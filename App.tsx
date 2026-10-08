@@ -45,6 +45,7 @@ import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/mainte
 import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
+import { animation } from './src/theme';
 import { AppState, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
 
@@ -52,6 +53,10 @@ import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites'
 // loaded, so the first frame the user ever sees is already in the right
 // typeface instead of a system-font flash that swaps a few frames later.
 SplashScreen.preventAutoHideAsync().catch(() => {});
+// The splash is full-bleed gold in Light, so a cut to the page reads as a
+// flash; fading lets it hand over to the first screen. iOS only (Android's
+// system splash has its own exit).
+SplashScreen.setOptions({ fade: true, duration: animation.duration.normal });
 
 // Disables react-native-screens' native optimizations app-wide, called once
 // before any navigator mounts. Workaround for a crash in
