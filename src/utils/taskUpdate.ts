@@ -438,6 +438,10 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
       && (QUOTA_SPAN_FIELDS.some(f => f in updates) || ROTATION_TARGET_FIELDS.some(f => f in updates))
       ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
       : {}),
+    // A rotation counts across a week whatever the span it was saved with.
+    ...(ROTATION_TARGET_FIELDS.some(f => f in updates) && !('quotaPeriod' in updates) && isRotationTask({ ...t, ...updates })
+      ? { quotaPeriod: 'week' as const }
+      : {}),
     // Changing polarity restarts the run, because the two polarities count
     // different things: a positive streak is completions and a negative one
     // is days survived, so carrying the number across would relabel history
