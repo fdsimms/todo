@@ -187,6 +187,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
+// Rows are shorter than the columns are wide: a square cell made the month
+// grid taller than the controls above it. The circle is sized from the row.
+const ROW_HEIGHT = 40;
+const DAY_CIRCLE = 32;
 
 // How long the selection "pop" plays before the modal commits and closes.
 const CONFIRM_DELAY_MS = 320;
@@ -881,7 +885,7 @@ export function WhenPicker({
                         isPending && { transform: [{ scale: popAnim }] },
                       ]}>
                         {isPending ? (
-                          <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color={colors.onAccent} />
+                          <Ionicons name="checkmark-sharp" size={DAY_CIRCLE * 0.5} color={colors.onAccent} />
                         ) : (
                           <Text maxFontSizeMultiplier={textScale.badge} style={[
                             styles.dayText,
@@ -1151,7 +1155,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
   },
   navBtn: {
     width: 30,
@@ -1167,12 +1170,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayHeaders: {
     flexDirection: 'row',
-    marginBottom: spacing.xxs,
   },
   dayHeaderCell: {
     width: CELL_SIZE,
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: spacing.xxs,
   },
   dayHeaderText: {
     color: colors.textSecondary,
@@ -1182,11 +1184,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    height: CELL_SIZE * 6,
+    height: ROW_HEIGHT * 6,
   },
   dayCell: {
     width: CELL_SIZE,
-    height: CELL_SIZE,
+    height: ROW_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1194,9 +1196,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   dayCircle: {
-    width: CELL_SIZE - 6,
-    height: CELL_SIZE - 6,
-    borderRadius: (CELL_SIZE - 6) / 2,
+    width: DAY_CIRCLE,
+    height: DAY_CIRCLE,
+    borderRadius: DAY_CIRCLE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1205,7 +1207,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // the row it sits under" rather than in red or orange.
   weightSlot: {
     height: 3,
-    marginTop: spacing.xxs,
+    marginTop: 1,
     justifyContent: 'center',
   },
   weightBar: {
