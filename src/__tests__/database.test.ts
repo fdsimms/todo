@@ -354,6 +354,14 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('initDatabase', () => {
+  // A commit waits on no disk sync under WAL with NORMAL, which is the whole
+  // point of setting it. Per connection, so initDatabase is where it belongs.
+  it('turns the per-write disk sync down to NORMAL', () => {
+    initDatabase();
+    // better-sqlite3 reports 1 for NORMAL (0 OFF, 2 FULL, 3 EXTRA).
+    expect(mockRawDb.pragma('synchronous', { simple: true })).toBe(1);
+  });
+
   it('creates the tasks table', () => {
     const row = mockRawDb
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")

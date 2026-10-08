@@ -238,8 +238,17 @@ export function isUsingDemoDatabase(): boolean {
 }
 
 export function initDatabase(): void {
+  // synchronous = NORMAL is the setting WAL is designed around: a commit is
+  // still atomic and the file can't be corrupted, and an app being killed
+  // loses nothing, but the commit no longer waits on a disk sync. The default,
+  // FULL, synced on every write, and nearly every tap writes (a completion, a
+  // tab switch remembering where it was). What it gives up is the last moments
+  // of writes if the phone itself loses power or the OS crashes. Set per
+  // connection, so it is here, where both the real and the demo database are
+  // set up.
   db.execSync(`
     PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
 
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY NOT NULL,
