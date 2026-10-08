@@ -32,9 +32,11 @@ import { COIN_ICON } from '../constants/coinIcon';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
+import { driftingTaskList } from '../utils/postpone';
 import {
   MAX_BOUNTY_LIMIT,
   MIN_BOUNTY_LIMIT,
+  suggestedBountyTasks,
   bountyCoinsFor,
   describeBounty,
   isBountyLive,
@@ -134,6 +136,8 @@ export function RewardsScreen() {
   const setBudgetMinor = useSettingsStore(s => s.setRewardWeeklyBudgetMinor);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const withdrawBounty = useTaskStore(s => s.withdrawBounty);
+  const postBounty = useTaskStore(s => s.postBounty);
+  const driftThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const entries = useRewardStore(s => s.entries);
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
@@ -222,6 +226,16 @@ export function RewardsScreen() {
     () => tasks.filter(t => !t.parentId && isBountyLive(t)).sort((a, b) => bountyCoinsFor(b) - bountyCoinsFor(a)),
     [tasks],
   );
+  // With none posted, offer the tasks already being put off (the ones the
+  // Stuck screen lists), most-moved first.
+  const suggestedBounties = useMemo(
+    () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold)) : []),
+    [bounties.length, tasks, driftThreshold],
+  );
+  const postSuggestedBounty = (task: Task) => {
+    const result = postBounty(task.id);
+    if (result === 'posted') haptics.success();
+  };
   const confirmWithdraw = (task: Task) => {
     Alert.alert(
       'Withdraw bounty?',
@@ -805,9 +819,35 @@ export function RewardsScreen() {
           Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
         </Text>
         {bounties.length === 0 ? (
-          <View style={styles.emptyNote}>
-            <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
-          </View>
+          <>
+            <View style={styles.emptyNote}>
+              <EmptyNote icon={COIN_ICON}>
+                {suggestedBounties.length > 0
+                  ? 'No bounties posted. These tasks have been moved the most.'
+                  : 'No bounties posted.'}
+              </EmptyNote>
+            </View>
+            {suggestedBounties.length > 0 && (
+              <View style={styles.historyCard}>
+                {suggestedBounties.map((task, i) => (
+                  <View key={task.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                    <View style={styles.historyText}>
+                      <Text style={styles.historyLabel}>{task.title}</Text>
+                      <Text style={styles.historyMeta}>
+                        {`Moved ${task.postponeCount} times · +${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done`}
+                      </Text>
+                    </View>
+                    <InlineAction
+                      label="Post"
+                      icon="add"
+                      onPress={() => postSuggestedBounty(task)}
+                      accessibilityLabel={`Post a bounty on ${task.title}`}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
         ) : (
           <View style={styles.historyCard}>
             {bounties.map((task, i) => (

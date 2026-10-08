@@ -82,6 +82,9 @@ Rewards screen.
 - **It belongs to the occurrence**, like `postponeCount`: every successor and skip writes it null.
 - **Few at once** (`bountyLimit`, 1 by default, up to 5). Bounties on everything would just be a
   higher base rate. An expired bounty frees its slot.
+- **With none posted, the Rewards screen offers up to three** (`suggestedBountyTasks`): the Stuck
+  screen's drifting tasks, most-moved first, that `canPostBounty` allows. Offered, never posted
+  unasked; the Post button goes through `postBounty` like the editor does.
 - **A miss costs the base value only.** The bounty rides on the completion's own entry, so the undo
   takes it back with no extra bookkeeping.
 
