@@ -97,18 +97,6 @@ func widgetRowDone(_ task: WidgetTask, entry: TodoEntry) -> Bool {
     return entry.pendingCompletionIds.contains(task.id)
 }
 
-/// The colours of the app's priority bar (`PRIORITY_COLORS` in
-/// src/types/index.ts), low to urgent. Nil for no priority.
-func priorityColor(_ priority: Int) -> Color? {
-    switch priority {
-    case 1: return Color(hex: "30D158")
-    case 2: return Color(hex: "FFD60A")
-    case 3: return Color(hex: "FF9F0A")
-    case 4: return Color(hex: "FF453A")
-    default: return nil
-    }
-}
-
 /// The next meeting, in the grid's last row slot: same height as a task row,
 /// so the layout math in `WidgetLayout` is untouched. The glyph sits where a
 /// checkbox would, since there is nothing to tick.
@@ -186,15 +174,6 @@ struct TaskRowView: View {
         // target doesn't shrink with the row on a smaller device.
         .padding(.horizontal, 6)
         .frame(height: height)
-        // The app's priority bar, at the row's leading edge. Inside
-        // the checkbox's padding, so it moves nothing.
-        .overlay(alignment: .leading) {
-            if let color = priorityColor(task.priority) {
-                Capsule()
-                    .fill(color)
-                    .frame(width: 2.5, height: min(14, height * 0.6))
-            }
-        }
         .contentShape(Rectangle())
     }
 
