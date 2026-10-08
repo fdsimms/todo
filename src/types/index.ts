@@ -775,6 +775,9 @@ export interface TaskGroup {
   // a project's section; ignored anywhere else. Optional for rows built before
   // it existed.
   checklist?: boolean;
+  // Leaves the "Next: ..." part off this stack's collapsed header.
+  // Presentation only. Optional for rows built before it existed.
+  hideNextStep?: boolean;
 }
 
 /**
@@ -1460,6 +1463,11 @@ export interface Project {
    * list is read with what's already packed in view. Presentation only.
    */
   showChecked: boolean;
+  /**
+   * Leaves the "Next: ..." line off this project's card on the Projects
+   * screen. Presentation only. Optional for rows built before it existed.
+   */
+  hideNextStep?: boolean;
   /**
    * Where the trip goes, as free text.
    *
@@ -3893,6 +3901,16 @@ export interface TemplateQuestion {
   // 'number' only: fill the answer from the run's anchor dates. A typed answer
   // always wins — this is where the field starts, not what it's pinned to.
   fromDates: TemplateQuestionSource;
+  // 'choice' only: more than one answer may be picked. The run's answer is then
+  // a JSON array of the picked options (the way a 'people' answer is a set of
+  // ids), and a condition or variant naming any one of them matches. Still
+  // starts on the first option, and at least one stays picked. See
+  // `answerValues` in templateQuestions.ts.
+  multiple?: boolean;
+  // Show the destination's forecast for the run's dates under this question
+  // ("What's the weather like?"). A sentence only: it never answers the
+  // question, ticks anything or conditions an item. See docs/arch/away-dates.md.
+  showForecast?: boolean;
 }
 
 /** A template item's answer gate: the item that asks, and the answers that show this one. See `TemplateItem.answerGate`. */

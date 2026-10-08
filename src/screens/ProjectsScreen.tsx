@@ -52,7 +52,7 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -177,7 +177,7 @@ export function ProjectsScreen() {
       progress: projectProgress(p.id, allTasks),
       // Not for a list: "Next" reads as an order to work in, and a list of
       // books or gift ideas has none.
-      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
+      next: projectFilter === 'active' && p.kind !== 'list' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
       // A list shows its first lines instead, which is what it's for.
       preview: projectFilter === 'active' && p.kind === 'list' && !hideListPreviews
         ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
@@ -721,11 +721,12 @@ export function ProjectsScreen() {
           sort={projectSort}
           onSortChange={setProjectSort}
           anchor={optionsMenuAnchor}
-          onOpenSettings={screenSettings.hasSettings ? () => screenSettings.open(optionsMenuAnchor) : undefined}
-          settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
+          onOpenSettings={screenSettings.link
+            ? () => navigateToSettingsEntry(navigation, screenSettings.link!.entryId)
+            : undefined}
+          settingsHint={screenSettings.link?.hint}
         />
       </LazySheet>
-      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <LazySheet open={categoriesSheetVisible}>
         <ProjectCategoriesSheet

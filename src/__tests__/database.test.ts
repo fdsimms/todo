@@ -1893,6 +1893,18 @@ describe('Templates', () => {
       options: [],
       defaultValue: '',
       fromDates: 'nights' as const,
+      multiple: false,
+      showForecast: false,
+    }, {
+      id: 'q2',
+      name: 'weather',
+      prompt: "What's the weather like?",
+      kind: 'choice' as const,
+      options: ['Mild', 'Cold'],
+      defaultValue: '',
+      fromDates: 'none' as const,
+      multiple: true,
+      showForecast: true,
     }];
     dbInsertTemplate(makeTemplate({ questions }));
     expect(dbGetAllTemplates()[0].questions).toEqual(questions);
@@ -1920,6 +1932,8 @@ describe('Templates', () => {
       options: [],
       defaultValue: '',
       fromDates: 'none',
+      multiple: false,
+      showForecast: false,
     });
   });
 

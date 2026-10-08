@@ -126,6 +126,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // that one is the screen the sheet was opened from.
   const [homeProjectId, setHomeProjectId] = useState<string | null>(null);
   const [checklist, setChecklist] = useState(false);
+  const [hideNextStep, setHideNextStep] = useState(false);
 
   // Set while a member row is being dragged, purely to take the sheet's own
   // ScrollView out of the running for the touch (see SortableList's
@@ -171,6 +172,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
     setCategory(group.category);
     setHomeProjectId(group.projectId);
     setChecklist(group.checklist ?? false);
+    setHideNextStep(group.hideNextStep ?? false);
     setShowExistingPicker(false);
     clearExistingSearch();
     setOpenFields({});
@@ -296,6 +298,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
       // says which project's page shows the stack when it has nothing in it.
       projectId: homeProjectId,
       checklist,
+      hideNextStep,
     });
     // The stack owns its members' category, so changing it here re-files
     // them. Deliberately on save rather than as the pills are tapped: the
@@ -489,6 +492,30 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           </TouchableOpacity>
         </View>
       )}
+
+      <View style={styles.sectionCard}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setHideNextStep(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Hide next task"
+          accessibilityState={{ checked: hideNextStep }}
+        >
+          <Ionicons name="eye-off-outline" size={18} color={hideNextStep ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Hide next task</Text>
+            <Text style={styles.optionHint}>
+              {hideNextStep
+                ? `The ${sectionWord} header does not show its next open task`
+                : `The ${sectionWord} header shows its next open task`}
+            </Text>
+          </View>
+          <View style={[styles.toggle, hideNextStep && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, hideNextStep && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
 
       {!(isNew && projectId) && (
       <View style={styles.sectionCard}>
