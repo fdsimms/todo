@@ -31,7 +31,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { describeConditions, describeVariants, questionLabel, setVariantText, toggleItemCondition, variantText } from '../utils/templateQuestions';
+import { describeConditions, describeVariants, questionLabel, setItemConditionRange, setVariantText, toggleItemCondition, variantText } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -91,6 +91,7 @@ import { TextField } from './TextField';
 // at, and an unbounded stepper is one a long press can run to nonsense.
 const MAX_REMINDER_OFFSET_MINUTES = 10080;   // a week, in 15-minute steps
 const MAX_CUSTOM_ESTIMATE_MINUTES = 600;     // ten hours
+const MAX_CONDITION_NUMBER = 999;            // a number question's range bound
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60; // matches TaskEditor's own ceiling
 // The same three bounds TaskEditor uses for a penalty, and for the same
@@ -145,10 +146,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
   const tripTemplate = useTemplateStore(s => s.templates.find(t => t.id === templateId)?.anchorsAreAway ?? false);
-  // Only a choice can gate an item: a number or a free-text answer has no
-  // fixed set to pick from, so there's nothing an author could tick.
+  // A choice gates an item by which options are ticked, a number by a range
+  // ("at least 5"). Free text and people answers have neither a fixed set nor
+  // an order to compare, so there's nothing an author could set on them.
   const choiceQuestions = useTemplateStore(
     useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
+  );
+  const numberQuestions = useTemplateStore(
+    useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'number'))
+  );
+  const conditionQuestions = useMemo(
+    () => [...choiceQuestions, ...numberQuestions],
+    [choiceQuestions, numberQuestions],
   );
   // TemplateItem.answerGate: "only if <another item> is answered …".
   const [answerGate, setAnswerGate] = useState<TemplateAnswerGate | null>(null);
@@ -222,6 +231,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
+  const [conditionsMatch, setConditionsMatch] = useState<'all' | 'any'>('all');
   const [variants, setVariants] = useState<TemplateItemVariant[]>([]);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
@@ -344,6 +354,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
+    setConditionsMatch(item?.conditionsMatch ?? 'all');
     setVariants(item?.variants ?? draft?.variants ?? []);
     setAnswerGate(item?.answerGate ?? draft?.answerGate ?? null);
     setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
@@ -426,7 +437,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setShowTimeWindow(false);
   }, [visible, item, initialDraft]);
 
-  const conditionSummary = describeConditions(conditions, choiceQuestions);
+  const conditionSummary = describeConditions(conditions, conditionQuestions, conditionsMatch);
   const variantSummary = describeVariants(variants, choiceQuestions);
 
   /**
@@ -438,6 +449,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const toggleCondition = (questionId: string, option: string) => {
     haptics.tap();
     setConditions(prev => toggleItemCondition(prev, questionId, option));
+  };
+
+  /** Set one end of a number question's range, leaving the other as it was. */
+  const setConditionBound = (questionId: string, end: 'min' | 'max', value: number | null) => {
+    setConditions(prev => {
+      const existing = prev.find(c => c.questionId === questionId);
+      const min = end === 'min' ? value : existing?.min ?? null;
+      const max = end === 'max' ? value : existing?.max ?? null;
+      return setItemConditionRange(prev, questionId, min, max);
+    });
   };
 
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
@@ -608,6 +629,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       notes,
       optional,
       conditions,
+      conditionsMatch,
       variants,
       // A gate with no answers ticked would rule the task out whatever the
       // answer, so it's dropped rather than saved.
@@ -924,17 +946,40 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           template asks nothing to condition on: an empty picker of answers
           that don't exist explains itself to nobody, and the place to write
           one is the template's own editor. */}
-      {choiceQuestions.length > 0 && (
+      {conditionQuestions.length > 0 && (
         <View style={styles.sectionCard}>
           <CollapsibleField
             label="Checked by default for"
             summary={conditionSummary ?? undefined}
             emptySummary="Every run"
-            hint="Arrives pre-checked when the run's answer is one of these. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
+            hint="Arrives pre-checked when the run's answer is one of these, or inside the range for a number. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
             expanded={fieldOpen('conditions', conditionSummary !== null)}
             onToggle={() => toggleField('conditions', conditionSummary !== null)}
           >
-            {choiceQuestions.map(question => (
+            {conditionQuestions.map(question => question.kind === 'number' ? (
+              <View key={question.id} style={styles.conditionBlock}>
+                <Text style={styles.conditionLabel} numberOfLines={1}>{questionLabel(question)}</Text>
+                {(['min', 'max'] as const).map(end => {
+                  const current = conditions.find(c => c.questionId === question.id)?.[end] ?? null;
+                  const noun = end === 'min' ? 'At least' : 'At most';
+                  return (
+                    <View key={end} style={styles.blankRow}>
+                      <Text style={styles.conditionLabel}>{noun}</Text>
+                      <CountStepper
+                        value={current}
+                        onChange={v => setConditionBound(question.id, end, v)}
+                        min={0}
+                        max={MAX_CONDITION_NUMBER}
+                        allowNull
+                        start={end === 'min' ? 1 : 7}
+                        emptyLabel="No limit"
+                        label={`${noun.toLowerCase()} ${questionLabel(question)}`}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
               <View key={question.id} style={styles.conditionBlock}>
                 <Text style={styles.conditionLabel} numberOfLines={1}>{questionLabel(question)}</Text>
                 <View style={styles.blankRow}>
@@ -957,6 +1002,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 </View>
               </View>
             ))}
+            {conditions.length >= 2 && (
+              <View style={styles.conditionBlock}>
+                <SegmentedControl
+                  label="When there is more than one"
+                  value={conditionsMatch}
+                  onChange={setConditionsMatch}
+                  options={[
+                    { value: 'all', label: 'All of these' },
+                    { value: 'any', label: 'Any of these' },
+                  ]}
+                />
+              </View>
+            )}
           </CollapsibleField>
         </View>
       )}

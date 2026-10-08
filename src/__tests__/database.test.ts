@@ -1791,7 +1791,7 @@ describe('Templates', () => {
     recurrenceHolidays: null,
     rainSkipMm: null,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, weatherWait: null, difficulty: null,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, medicationChecklist: false, conditionsMatch: 'all', weatherWait: null, difficulty: null,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,

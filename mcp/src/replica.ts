@@ -2555,7 +2555,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         ...(waitsOn !== undefined ? { blockedByItemIds: waitsOn.map(k => itemIds.get(k)).filter((id): id is string => !!id) } : {}),
         conditions: (conditions ?? []).map(c => ({
           questionId: questionIds.get(c.question) ?? '',
-          values: c.values,
+          values: c.values ?? [],
+          ...(c.min !== undefined ? { min: c.min } : {}),
+          ...(c.max !== undefined ? { max: c.max } : {}),
         })),
         variants: (variants ?? []).map(v => ({
           questionId: questionIds.get(v.question) ?? '',

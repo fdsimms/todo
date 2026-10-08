@@ -50,7 +50,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatHHMM } from '../utils/dateUtils';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs, describePlaceholderTokens, placeItemAtDrop } from '../utils/templateUtils';
-import { liveConditions } from '../utils/templateQuestions';
+import { describeConditionAnswers, liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
@@ -364,7 +364,7 @@ export function TemplateDetailScreen() {
   }, [template, hiddenByCollapse, firstOfGroup]);
 
   const conditionLabelsFor = (item: TemplateItem) =>
-    liveConditions(item.conditions, template?.questions ?? []).map(c => c.values.join(' or '));
+    liveConditions(item.conditions, template?.questions ?? []).map(describeConditionAnswers);
 
   return (
     <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>

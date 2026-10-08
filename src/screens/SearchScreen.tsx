@@ -51,6 +51,11 @@ import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
+import { useSearchActionReceipts, useSearchActions } from '../hooks/useSearchActions';
+import { SearchActionRow } from '../components/SearchActionRow';
+import { openMoodLogFor } from '../utils/searchActionRun';
+import { haptics } from '../utils/haptics';
+import type { SearchAction } from '../utils/searchActions';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import {
   describeElsewhere, sectionPreview, type ElsewhereResult, type ElsewhereSections,
@@ -613,6 +618,20 @@ export function SearchScreen() {
   const elsewhereCount = elsewhere.goTo.length + elsewhere.people.length
     + elsewhere.recipes.length + elsewhere.groceries.length;
 
+  // Things the query can do rather than find ("take aleve", "buy milk"); see
+  // searchActions.ts. A row that ran stays put with an Undo, cleared with the
+  // query.
+  const { actions, onSubmit: submitAction, descriptions: actionDescriptions } = useSearchActions(debouncedQuery, true);
+  const { receipts, run: runReceipt, undo: undoAction } = useSearchActionReceipts(debouncedQuery);
+  const runAction = useCallback((action: SearchAction) => {
+    if (action.kind === 'mood') {
+      haptics.tap();
+      openMoodLogFor(action);
+      return;
+    }
+    void runReceipt(action);
+  }, [runReceipt]);
+
   const isActive = (r: SearchResult) => ranksAsActive(r.task, heldIds);
   const activeResults = results.filter(isActive);
   // Open but on a branch that wasn't taken (Task.answerGate): their own
@@ -626,13 +645,21 @@ export function SearchScreen() {
     | { type: 'groupResult'; result: GroupSearchResult }
     | { type: 'projectResult'; result: ProjectSearchResult }
     | { type: 'elsewhere'; result: ElsewhereResult }
-    | { type: 'showMore'; section: keyof ElsewhereSections; hidden: number };
+    | { type: 'showMore'; section: keyof ElsewhereSections; hidden: number }
+    | { type: 'action'; action: SearchAction };
 
   const listData: ListItem[] = useMemo(() => {
-    if (results.length === 0 && groupResults.length === 0 && projectResults.length === 0 && elsewhereCount === 0) {
+    if (results.length === 0 && groupResults.length === 0 && projectResults.length === 0
+      && elsewhereCount === 0 && actions.length === 0) {
       return [];
     }
     const items: ListItem[] = [];
+    // Ahead of everything: a query that reads as something to do ("buy milk")
+    // was typed to do it, and there are never more than a few.
+    if (actions.length > 0) {
+      items.push({ type: 'sectionHeader', label: 'Actions' });
+      actions.forEach(action => items.push({ type: 'action', action }));
+    }
     const pushSection = (section: keyof ElsewhereSections, label: string) => {
       const all = elsewhere[section];
       if (all.length === 0) return;
@@ -678,7 +705,7 @@ export function SearchScreen() {
     }
     return items;
     // heldIds too: it's what decides which section a completed row sits in.
-  }, [results, groupResults, projectResults, heldIds, elsewhere, elsewhereCount, expandedSections]);
+  }, [results, groupResults, projectResults, heldIds, elsewhere, elsewhereCount, expandedSections, actions]);
 
   // A query is worth keeping once it has actually found something: recorded
   // when a result is opened, and when the field is submitted. Deliberately not
@@ -686,6 +713,15 @@ export function SearchScreen() {
   // character, and storing those would fill the list with the prefixes of one
   // word ("m", "mi", "mil", "milk") instead of the searches themselves.
   const rememberQuery = useCallback(() => pushRecentSearch(query), [query]);
+  // Return runs a lone action the query asked for in words, once the debounce
+  // has caught up so it can't run one for a query already typed past.
+  const handleSubmit = () => {
+    if (submitAction && query === debouncedQuery && !receipts.has(submitAction.key)) {
+      runAction(submitAction);
+      return;
+    }
+    rememberQuery();
+  };
 
   // The three below are handed to memoized rows, so they have to keep their
   // identity across a render the query didn't change — see the note on
@@ -735,6 +771,18 @@ export function SearchScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionHeaderText}>{item.label}</Text>
         </View>
+      );
+    }
+    if (item.type === 'action') {
+      return (
+        <SearchActionRow
+          action={item.action}
+          description={actionDescriptions.get(item.action.key)!}
+          receipt={receipts.get(item.action.key) ?? null}
+          layout="list"
+          onRun={runAction}
+          onUndo={undoAction}
+        />
       );
     }
     if (item.type === 'elsewhere') {
@@ -794,7 +842,8 @@ export function SearchScreen() {
   };
 
   const showEmpty = query.trim().length > 0 && results.length === 0
-    && groupResults.length === 0 && projectResults.length === 0 && elsewhereCount === 0;
+    && groupResults.length === 0 && projectResults.length === 0 && elsewhereCount === 0
+    && actions.length === 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -804,7 +853,7 @@ export function SearchScreen() {
         style={styles.searchBar}
         placeholder="Search everything"
         field={searchFilter}
-        onSubmitEditing={rememberQuery}
+        onSubmitEditing={handleSubmit}
       />
 
       {/* EmptyState centers its "Create task" button vertically in whatever
@@ -879,9 +928,13 @@ export function SearchScreen() {
               if (item.type === 'projectResult') return `p-${item.result.project.id}`;
               if (item.type === 'elsewhere') return `e-${item.result.key}`;
               if (item.type === 'showMore') return `m-${item.section}`;
+              if (item.type === 'action') return `a-${item.action.key}`;
               return item.result.task.id;
             }}
             renderItem={renderItem}
+            // The action rows' receipts live outside `listData`, and a row that
+            // just ran has to redraw as "Recorded …" with its Undo.
+            extraData={receipts}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           />

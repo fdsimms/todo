@@ -53,6 +53,7 @@ import { KitchenScreen } from '../screens/KitchenScreen';
 import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
 import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
+import { StackDetailScreen } from '../screens/StackDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
@@ -195,7 +196,7 @@ const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
 // A new pushed route missing from here highlights nothing and blanks the
 // drawer's current selection.
 const PUSHED_ROUTES = new Set([
-  'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
+  'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail', 'StackDetail',
   // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
   // from Today's filter sheet, and from the drawer's find field, which is why
   // handleDrawerNavigate below has to leave the tab highlight alone for these.
@@ -618,6 +619,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="CategoryDetail"
             component={CategoryDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="StackDetail"
+            component={StackDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

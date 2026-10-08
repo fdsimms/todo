@@ -3424,6 +3424,10 @@ export function TodayScreen() {
     setGroupEditorVisible(true);
   }, []);
 
+  const handleGroupOpen = useCallback((groupId: string) => {
+    (navigation as any).navigate('StackDetail', { groupId });
+  }, [navigation]);
+
   // The TaskGroupHeader callbacks below are identical across every place a
   // stack header renders (main list, Later Today, Inbox) — only
   // onToggleCollapse differs per site, so it stays out of this helper. Each
@@ -3435,6 +3439,7 @@ export function TodayScreen() {
     onDefer: handleGroupDefer,
     onSwipeSelect: handleGroupSwipeSelect,
     onPressEdit: handleGroupPressEdit,
+    onPressOpen: handleGroupOpen,
     onPressPin: handleGroupPin,
   };
 

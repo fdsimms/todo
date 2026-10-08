@@ -890,8 +890,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
  * The two are kept in step by `templatePlan.test.ts` exercising the same shapes.
  */
 const conditionSchema = z.object({
-  question: z.string().describe('The name of a choice question defined in this plan.'),
-  values: z.array(z.string()).min(1).describe('Which of that question\'s options switch this item on. Any one of them is enough.'),
+  question: z.string().describe('The name of a choice or number question defined in this plan.'),
+  values: z.array(z.string()).min(1).optional().describe('A choice question: which of its options switch this item on. Any one of them is enough.'),
+  min: z.number().optional().describe('A number question: the item is ticked when the answer is at least this. "More than 4 days" is min 5.'),
+  max: z.number().optional().describe('A number question: the item is ticked when the answer is at most this. Give min, max or both.'),
 });
 
 const variantSchema = z.object({
@@ -969,7 +971,8 @@ const itemSchema = z.object({
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().nullable().optional().describe('The key of a group defined in this plan. null takes the item out of its group.'),
   conditions: z.array(conditionSchema).optional()
-    .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND), and there is no OR across questions: to tick an item for either of two questions, list it twice, once per question. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. Only choice questions can be named, and an unanswered question matches nothing.'),
+    .describe('Which answers to the run\'s questions tick this item by default. Several values in one entry mean any of them (OR). Entries on different questions must ALL match (AND) by default; set conditionsMatch to "any" to tick the item when any one entry matches. An item with no matching answer stays in the run unticked and can still be ticked by hand; conditions never remove it. An item with conditions ignores its optional flag. A choice question takes values, a number question takes min and/or max (both inclusive), so one item can need both a choice and a number (laundry line: laundry access = No and days min 5). Free-text and people questions cannot be named, and an unanswered question matches nothing.'),
+  conditionsMatch: z.enum(['all', 'any']).optional().describe('How several conditions on this item combine: "all" (the default) needs every one to match, "any" needs just one, so a passport for "flying or international" is one item with two conditions and conditionsMatch "any". Does nothing with fewer than two conditions.'),
   variants: z.array(variantSchema).optional().describe('A different title and/or notes for particular answers of a choice question, so one item can say "Pack 4 shirts" for one answer and "Pack 8" for another instead of two items. The item\'s own text is used for every other answer. Blanks work in it. With update_template, variants replace the item\'s whole list.'),
   key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
@@ -1006,7 +1009,7 @@ const questionsSchema = z.array(z.object({
   options: z.array(z.string()).optional().describe('Required for a choice, at least two. The first is the default.'),
   defaultValue: z.string().optional(),
   fromDates: z.enum(QUESTION_SOURCES as unknown as [string, ...string[]]).optional()
-    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. Only a choice question can gate an item through conditions, so a number cannot express "only if days > 5": add a choice question for that.'),
+    .describe('A number question can take its answer off the anchor dates. nights is end minus start (the 3rd to the 10th is 7); days counts both end days (8). A typed answer wins over the dates. An item can be conditioned on a number with min/max ("only if days > 5" is min 6).'),
   multiple: z.boolean().optional().describe('A choice question only: a run may pick several answers. An item with a condition on it is ticked when any picked answer is one of its values, and a variant applies when its answer is among those picked. A title shows the picks joined with ", ". Starts on the first option, and one pick always stays.'),
   showForecast: z.boolean().optional().describe('A choice question only: the apply sheet states the destination forecast for the run\'s dates under this question ("Paris, 48 to 66°F, rain on 2 of 7 days"), to help whoever answers it. It only states; it never answers the question or ticks anything. Needs a destination and dates, and the Destination forecast setting on.'),
 })).optional();

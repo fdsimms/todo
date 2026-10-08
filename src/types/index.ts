@@ -4078,7 +4078,15 @@ export interface TemplateItemCondition {
   questionId: string;
   // Which answers include the item. An empty list is inert (it would
   // otherwise mean "no answer includes this", which nothing can act on).
+  // Empty on a condition over a number question, which uses min/max instead.
   values: string[];
+  // A number question has no fixed set of answers to tick, so a condition on
+  // one is a range: the item matches when the answer is at least `min` and at
+  // most `max` (both inclusive, either may be left off). "Longer than 4 days"
+  // is `min: 5`. Neither set is inert, like an empty `values`. Ignored on a
+  // condition over a choice question.
+  min?: number;
+  max?: number;
 }
 
 /**
@@ -4311,6 +4319,13 @@ export interface TemplateItem {
   // suppresses what's under it (its items answer to their own template's
   // questions, not to this one's).
   conditions: TemplateItemCondition[];
+  // How several conditions combine: 'all' (every one must match, the default
+  // and what an item stored before this reads as) or 'any' (one is enough),
+  // so "bring a passport if flying or international" is one item rather than
+  // two. One switch over the whole list rather than nested groups: it covers
+  // every case an item has asked for, and "this and (that or the other)" is a
+  // second item. Meaningless with fewer than two live conditions.
+  conditionsMatch?: 'all' | 'any';
 
   // Alternative title/notes for particular answers; see TemplateItemVariant.
   // Empty for every item stored before this shipped, which is "no variants".

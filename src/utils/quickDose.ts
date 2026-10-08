@@ -37,11 +37,14 @@ const AMOUNT_RE = new RegExp(
 const LEAD_RE = /^\s*took\s+/i;
 const FILLER = new Set(['a', 'an', 'my', 'some', 'of', 'the']);
 
-/** The dose a quick-add line records, or null when the line is a task. */
-export function parseQuickDose(text: string, vocabulary: readonly string[]): MedicationDose | null {
-  if (!LEAD_RE.test(text)) return null;
-  let rest = text.replace(LEAD_RE, '');
-
+/**
+ * The words of a dose phrase once its verb is gone: the amount in a dose unit
+ * if one is stated, and what is left of the name with the filler words
+ * trimmed off either end. Shared with the search card's dose action
+ * (`searchActions.ts`), so "aleve 440mg" reads the same in both places.
+ */
+export function readDoseWords(text: string): { typed: string; amount: number | null; unit: string | null } {
+  let rest = text;
   let amount: number | null = null;
   let unit: string | null = null;
   const match = rest.match(AMOUNT_RE);
@@ -58,7 +61,13 @@ export function parseQuickDose(text: string, vocabulary: readonly string[]): Med
     .filter(Boolean);
   while (words.length > 0 && FILLER.has(words[0].toLowerCase())) words.shift();
   while (words.length > 0 && FILLER.has(words[words.length - 1].toLowerCase())) words.pop();
-  const typed = words.join(' ').trim();
+  return { typed: words.join(' ').trim(), amount, unit };
+}
+
+/** The dose a quick-add line records, or null when the line is a task. */
+export function parseQuickDose(text: string, vocabulary: readonly string[]): MedicationDose | null {
+  if (!LEAD_RE.test(text)) return null;
+  const { typed, amount, unit } = readDoseWords(text.replace(LEAD_RE, ''));
   if (!typed) return null;
 
   const known = vocabulary.find(v => medicationKey(v) === medicationKey(typed));
