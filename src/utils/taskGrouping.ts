@@ -548,7 +548,7 @@ export function laterDaySections(
   const cutMidDay = options?.cutMidDay === true;
   const days = new Map<
     string,
-    { dayKeys: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
+    { dayKeys: Set<string>; groupIds: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
   >();
   // formatGroupHeader is the expensive call in this pass — a date-fns format()
   // plus its own "what is today" day-start computation — and it was being paid
@@ -581,8 +581,19 @@ export function laterDaySections(
     // yet; the caller goes back to whole days before it can be, since a
     // reorder only knows the rows it was handed.
     if (cutMidDay && taskLimit !== undefined && placed >= taskLimit) {
-      hasMore = true;
-      break;
+      // A stack folds into one row with a count, so cutting its tasks apart
+      // would show "20 tasks" now and "70" a moment later. The rest of a stack
+      // already in this day comes along for free (it mounts as one row); any
+      // other task ends the day, and a new day ends the pass.
+      const openDay = days.get(dayLabel);
+      if (!openDay) {
+        hasMore = true;
+        break;
+      }
+      if (!(task.groupId && openDay.groupIds.has(task.groupId))) {
+        hasMore = true;
+        continue;
+      }
     }
     if (!days.has(dayLabel)) {
       // The budget is checked only when a new day would open, so the day in
@@ -592,10 +603,11 @@ export function laterDaySections(
         hasMore = true;
         break;
       }
-      days.set(dayLabel, { dayKeys: new Set(), dateISO: dayKey, segMap: new Map() });
+      days.set(dayLabel, { dayKeys: new Set(), groupIds: new Set(), dateISO: dayKey, segMap: new Map() });
     }
     const day = days.get(dayLabel)!;
     day.dayKeys.add(dayKey);
+    if (task.groupId) day.groupIds.add(task.groupId);
     for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task)) {
       const key = label ?? '';
       if (!day.segMap.has(key)) day.segMap.set(key, { label, segment, windowStart, windowEnd, data: [] });

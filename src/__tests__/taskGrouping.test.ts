@@ -963,6 +963,19 @@ describe('laterDaySections task budget', () => {
     expect(result.hasMore).toBe(false);
   });
 
+  // Cutting a day mid-way must not split a stack: it folds into one row with a
+  // count, and a count that grows when the rest loads reads as the list changing.
+  it('keeps the rest of a stack that a first-paint cut lands inside', () => {
+    const at = new Date(2025, 5, 11, 12, 0, 0);
+    const member = (id: string) => ({ task: makeTask({ id, groupId: 'g' }), visibleAt: at });
+    const loose = (id: string) => ({ task: makeTask({ id }), visibleAt: at });
+    const ordered = [member('a'), member('b'), loose('x'), member('c'), loose('y'), ...day(2, 3)];
+    const result = laterDaySections(ordered, 2, { cutMidDay: true });
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].segments[0].data.map(t => t.id)).toEqual(['a', 'b', 'c']);
+    expect(result.hasMore).toBe(true);
+  });
+
   it('includes everything, and reports no more, when the budget exceeds the total', () => {
     const result = laterDaySections([...day(1, 10), ...day(2, 10)], 60);
     expect(result.sections).toHaveLength(2);

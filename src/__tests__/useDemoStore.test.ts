@@ -557,6 +557,9 @@ describe('demo mode', () => {
     expect(s.completedTasks().length).toBeGreaterThan(0); // Logbook / Stats
     expect(useProjectStore.getState().projects.length).toBeGreaterThan(0);
     expect(useTaskGroupStore.getState().groups.length).toBeGreaterThan(0);
+    // A stack with enough tasks on one future day to fold into a row on Later.
+    const poconos = useTaskGroupStore.getState().groups.find(g => g.title === 'Pack for Poconos');
+    expect(s.deferredTasks().filter(t => t.groupId === poconos?.id).length).toBeGreaterThanOrEqual(3);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
     expect(useSavedViewStore.getState().views.length).toBeGreaterThan(0);
