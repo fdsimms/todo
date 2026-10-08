@@ -31,6 +31,7 @@ import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
 import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
+import { reuseUnchangedLists } from '../utils/stableLists';
 import { Alert, InteractionManager, Linking, Share } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
@@ -350,7 +351,7 @@ function NewLineField({
           activeOpacity={interaction.activeOpacity}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={`Add ${placeholder === 'New item' ? 'item' : 'line'}`}
+          accessibilityLabel={`Add ${placeholder.replace(/^New /, '')}`}
         >
           <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.accent} />
         </TouchableOpacity>
@@ -399,7 +400,6 @@ export function ProjectDetailScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
   const updateProject = useProjectStore(s => s.updateProject);
   const allTasks = useTaskStore(s => s.tasks);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const addTask = useTaskStore(s => s.addTask);
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
@@ -499,6 +499,9 @@ export function ProjectDetailScreen() {
   // time. Null when closed; a number otherwise, bumped on every add so the
   // field remounts empty and focused for the next one.
   const [topLineOpen, setTopLineOpen] = useState<number | null>(null);
+  // A task project's own field, at the foot of the page where a new task
+  // lands. Counts up like topLineOpen so each add remounts it empty.
+  const [taskLineOpen, setTaskLineOpen] = useState<number | null>(null);
   // From a list card's "+": the field opens once the push has finished, so
   // the keyboard doesn't ride in on top of the transition.
   useEffect(() => {
@@ -729,6 +732,10 @@ export function ProjectDetailScreen() {
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
+  // Each map below keeps last time's array for any key whose members didn't
+  // change (reuseUnchangedLists), so adding one task re-renders the rows and
+  // headers it touched rather than every one on the page.
+  const subtasksPrev = useRef<Map<string, Task[]> | null>(null);
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -737,7 +744,7 @@ export function ProjectDetailScreen() {
       if (list) list.push(t);
       else map.set(t.parentId, [t]);
     }
-    return map;
+    return (subtasksPrev.current = reuseUnchangedLists(subtasksPrev.current, map));
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 
@@ -746,6 +753,7 @@ export function ProjectDetailScreen() {
   // TaskGroupHeader's "N/M done today" tally needs the stack's whole roster
   // regardless of which project happens to hold a given member. Same
   // computation as TodayScreen's own childrenByGroupId.
+  const groupChildrenPrev = useRef<Map<string, Task[]> | null>(null);
   const childrenByGroupId = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const t of allTasks) {
@@ -755,7 +763,7 @@ export function ProjectDetailScreen() {
       else map.set(t.groupId, [t]);
     }
     for (const list of map.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
-    return map;
+    return (groupChildrenPrev.current = reuseUnchangedLists(groupChildrenPrev.current, map));
   }, [allTasks]);
 
   // Stacked tasks collapsed into a single 'group' entry, plus any stack built
@@ -818,12 +826,13 @@ export function ProjectDetailScreen() {
   // Each section's roster in this project, done and undone, for its header's
   // tally. Built once, so the memoized headers get the same array until a task
   // actually changes.
+  const sectionRosterPrev = useRef<Map<string, Task[]> | null>(null);
   const sectionRosterById = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const [groupId, children] of childrenByGroupId) {
       map.set(groupId, groupRoster(children.filter(t => t.projectId === projectId && !t.archived && t.parentId === null)));
     }
-    return map;
+    return (sectionRosterPrev.current = reuseUnchangedLists(sectionRosterPrev.current, map));
   }, [childrenByGroupId, projectId]);
 
   const selectableTasks = useMemo(() => {
@@ -946,21 +955,16 @@ export function ProjectDetailScreen() {
   }, [completeGroup, requestComplete, projectId]);
 
   const openAddToSection = (group: TaskGroup) => {
-    // A list item or checklist line is typed where it goes, not in a sheet:
-    // the field opens at the section's foot, as it does under a line on
-    // Return. Every other way onto a list (the top field, Return, a new
-    // section, a FAB drop) is this field, so a section's button opening the
-    // full quick add instead made one list behave two ways.
-    if (isList || group.checklist) {
-      setExpandedTaskId(null);
-      setInsertAfterId(null);
-      if (group.collapsed) setGroupCollapsed(group.id, false);
-      setSectionLine({ groupId: group.id, n: 0 });
-      return;
-    }
-    setQuickAddSeed({ groupId: group.id });
-    setQuickAddSeedLabel(group.title.trim() || 'Section');
-    setQuickAddVisible(true);
+    // Typed where it goes, not in a sheet: the field opens at the section's
+    // foot, as it does under a list line on Return, and Return adds the task
+    // and opens the next field. A task section used to open the full quick
+    // add, which cost a sheet's round trip per task when filling a section
+    // with several; anything the field can't set is a tap on the row away.
+    // Dropping the add button on a section still opens the sheet.
+    setExpandedTaskId(null);
+    setInsertAfterId(null);
+    if (group.collapsed) setGroupCollapsed(group.id, false);
+    setSectionLine({ groupId: group.id, n: 0 });
   };
 
   // Stable, and a no-op on an empty section. An empty one always draws open
@@ -1046,7 +1050,7 @@ export function ProjectDetailScreen() {
       // A list's item is typed in its own field, which takes no dates or
       // categories and adds on return, not in the task sheet.
       if (isList) { listScroller.current?.scrollToTop(); setTopLineOpen(v => v ?? 0); return; }
-      setQuickAddVisible(true);
+      openTaskLine();
       return;
     }
     if (key === 'template') {
@@ -1067,6 +1071,19 @@ export function ProjectDetailScreen() {
     }
     searchFilter.clear();
     setShowExistingPicker(true);
+  };
+
+  /**
+   * A task project's add field, at the foot of the list. Typed in place like
+   * a section's: Return adds the task and opens the next field, where quick
+   * add cost a sheet per task. Dropping the add button still opens the sheet.
+   */
+  const openTaskLine = () => {
+    setExpandedTaskId(null);
+    setInsertAfterId(null);
+    setSectionLine(null);
+    setTaskLineOpen(v => v ?? 0);
+    listScroller.current?.scrollToEnd();
   };
 
   /** A section named from the foot of the list, placed after what's there. */
@@ -1174,9 +1191,11 @@ export function ProjectDetailScreen() {
    * field on the page: its `#` and `@` markers, whatever the keyboard bar's
    * Confirm set on it, and a link at the end kept on the task with the words
    * as its title. No title rules and no default category: a line is what was
-   * typed, plus only what its own markers say.
+   * typed, plus only what its own markers say. A task (`asTask`, a task
+   * section's field) keeps both, the way quick add and the project's own
+   * suggestions do.
    */
-  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING): Task => {
+  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING, asTask = false): Task => {
     const context: LineParseContext = {
       categories: useCategoryStore.getState().categories.map(c => c.name),
       tags: useTaskStore.getState().allTags(),
@@ -1198,15 +1217,35 @@ export function ProjectDetailScreen() {
         ...(link ? { linkUrl: link.url } : {}),
       },
       undefined,
-      { skipTitleRules: true, skipCategoryDefault: true },
+      { skipTitleRules: !asTask, skipCategoryDefault: !asTask },
     );
     // "On the 10th and the 15th": the rest of the set, not just its first date.
     if (seriesDates) useTaskStore.getState().applyTaskDates(task.id, seriesDates);
     return task;
   };
 
+  /** Tasks from the foot field, at the end of the project as quick add put them. */
+  const addTaskLines = (raw: string[], pending?: LinePending) => {
+    const lines = cleanPastedLines(raw);
+    if (lines.length === 0 || !project) return;
+    animateLayout();
+    let last: Task | null = null;
+    for (const line of lines) {
+      last = createLine(line, { projectId: project.id }, lines.length === 1 ? pending : undefined, true);
+    }
+    if (last) {
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      setFlashTaskId(last.id);
+      flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 1200);
+    }
+    haptics.tap();
+    lineFilter.clear();
+    setTaskLineOpen(v => (v ?? 0) + 1);
+    listScroller.current?.scrollToEnd();
+  };
+
   const addLineToSection = (group: TaskGroup, text: string, pending?: LinePending) => {
-    const task = createLine(text, { projectId, groupId: group.id }, pending);
+    const task = createLine(text, { projectId, groupId: group.id }, pending, !isList && !group.checklist);
     const siblings = useTaskStore.getState().tasks
       .filter(t => t.groupId === group.id && t.projectId === projectId && !t.parentId && !t.completed && !t.archived && t.id !== task.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1471,7 +1510,8 @@ export function ProjectDetailScreen() {
   };
 
   const eligibleForAdd = useMemo(() => {
-    if (!project) return [];
+    // Nothing to sort while the picker is shut, and this ran on every add.
+    if (!project || !showExistingPicker) return [];
     const q = existingSearch.trim().toLowerCase();
     // Newest first, so the task just written somewhere else is at the top
     // rather than wherever it fell in store order.
@@ -1484,7 +1524,7 @@ export function ProjectDetailScreen() {
         (q === '' || t.title.toLowerCase().includes(q))
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [allTasks, existingSearch, project]);
+  }, [allTasks, existingSearch, project, showExistingPicker]);
   const shownForAdd = useMemo(() => eligibleForAdd.slice(0, EXISTING_PICKER_LIMIT), [eligibleForAdd]);
 
   // Where the bulk bar can move a selection: every other active project.
@@ -2174,7 +2214,7 @@ export function ProjectDetailScreen() {
                           onDone={() => setSectionLine(null)}
                           styles={styles}
                           placeholderColor={colors.textTertiary}
-                          placeholder={isList ? 'New item' : 'New line'}
+                          placeholder={isList ? 'New item' : group.checklist ? 'New line' : 'New task'}
                           inTray
                         />
                       ) : empty ? (
@@ -2215,9 +2255,9 @@ export function ProjectDetailScreen() {
                         )}
                         {checkedHere.map(task => renderCheckedRow(task, true))}
                         {/* Every open section can take another task from
-                            here, not only an empty one. The quick add it
-                            opens can stay open ("Add another"), and each
-                            task joins this section. */}
+                            here, not only an empty one. Return adds what's
+                            typed and opens the next field, and each task
+                            joins this section. */}
                         {!selectionMode && sectionLine?.groupId === group.id && (
                           <NewLineField
                             key={`section-${group.id}-${sectionLine.n}`}
@@ -2229,7 +2269,7 @@ export function ProjectDetailScreen() {
                             onDone={() => setSectionLine(null)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
-                            placeholder={isList ? 'New item' : 'New line'}
+                            placeholder={isList ? 'New item' : group.checklist ? 'New line' : 'New task'}
                             inTray
                           />
                         )}
@@ -2282,7 +2322,7 @@ export function ProjectDetailScreen() {
                   title={isList ? 'Nothing on this list yet' : 'No tasks yet'}
                   subtitle={isList ? 'Add an item above. Paste several at once to add them all' : "Add a new task, or pull in one you've already written down"}
                   actionLabel={isList ? 'Add an item' : 'New task'}
-                  onAction={() => isList ? setTopLineOpen(v => v ?? 0) : setQuickAddVisible(true)}
+                  onAction={() => isList ? setTopLineOpen(v => v ?? 0) : openTaskLine()}
                 />
               ) : null
             }
@@ -2290,7 +2330,7 @@ export function ProjectDetailScreen() {
             // completed the footer is bare padding — and that padding comes off
             // the box the empty state centres in.
             ListFooterComponent={
-              completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection ? null : (
+              completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection && taskLineOpen === null ? null : (
               <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
                 {/* Where the new section will land: after everything else. */}
                 {namingSection && (
@@ -2305,12 +2345,22 @@ export function ProjectDetailScreen() {
                 {/* One tap to a new task from wherever the list ends. A
                     list's own add field is reached from the FAB instead —
                     see the top of the screen. */}
-                {showInlineNewTask && !isList && (
+                {!isList && !selectionMode && taskLineOpen !== null ? (
+                  <NewLineField
+                    key={`task-line-${taskLineOpen}`}
+                    onAdd={(text, pending) => addTaskLines([text], pending)}
+                    onAddMany={addTaskLines}
+                    onDone={() => setTaskLineOpen(null)}
+                    styles={styles}
+                    placeholderColor={colors.textTertiary}
+                    placeholder="New task"
+                  />
+                ) : showInlineNewTask && !isList && (
                   <View style={styles.inlineNewTask}>
                     <InlineAction
                       icon="add"
                       label="New task"
-                      onPress={() => setQuickAddVisible(true)}
+                      onPress={openTaskLine}
                     />
                   </View>
                 )}
@@ -2395,7 +2445,10 @@ export function ProjectDetailScreen() {
           <BulkActionBar
             selectedCount={selectedIds.size}
             totalCount={selectableTasks.length}
-            existingTags={allTags}
+            // Read here rather than subscribed: the selector walks every
+            // task's tags on every store write, for a bar that's only up
+            // while selecting (and re-renders with the page anyway).
+            existingTags={useTaskStore.getState().allTags()}
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
