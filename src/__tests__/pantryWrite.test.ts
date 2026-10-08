@@ -102,6 +102,26 @@ describe('reviewedRow', () => {
     expect(reviewedRow(base, 'have', NOW).onHandUntil).not.toBeNull();
     expect(reviewedRow(base, 'out', NOW)).toMatchObject({ onHandUntil: OUT_OF_IT_UNTIL, expiresAt: null, openedAt: null, pantryReviewedAt: iso(NOW) });
   });
+
+  it('treats new as a fresh packet: the old one\'s claims go and the window renews', () => {
+    const base = item({
+      name: 'Maple syrup',
+      openedAt: iso(NOW),
+      frozenAt: iso(NOW),
+      runningLowAt: iso(NOW),
+      expiresAt: '2026-09-01',
+      onHandUntil: OUT_OF_IT_UNTIL,
+    });
+    const row = reviewedRow(base, 'new', NOW);
+    expect(row).toMatchObject({ openedAt: null, frozenAt: null, runningLowAt: null, expiresAt: null, pantryReviewedAt: iso(NOW) });
+    expect(new Date(row.onHandUntil!).getTime()).toBeGreaterThan(NOW.getTime());
+  });
+
+  it('stamps and renews a new on a row with nothing to clear', () => {
+    const row = reviewedRow(item({ name: 'Rice', onHandUntil: null }), 'new', NOW);
+    expect(row.pantryReviewedAt).toBe(iso(NOW));
+    expect(row.onHandUntil).not.toBeNull();
+  });
 });
 
 describe('runningLowRow', () => {

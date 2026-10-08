@@ -5948,6 +5948,36 @@ describe('answerPantryReview', () => {
     expect(useGroceryStore.getState().items[0].runningLowAt).not.toBeNull();
   });
 
+  // "Got new maple syrup": the packet the card asked about is gone, so what was
+  // said about it (frozen, opened, running low) goes with it, and the row comes
+  // off the list that "running low" had put it on.
+  it('clears the old packet\'s claims and the home list entry for "new"', () => {
+    const syrup = makeItem({ name: 'Maple syrup', onList: false });
+    seed([syrup]);
+    useGroceryStore.getState().answerPantryReview(syrup.id, 'low');
+    useGroceryStore.getState().setOpened(syrup.id, true);
+    expect(entryFor(useGroceryStore.getState().listEntries, syrup.id, null)).not.toBeNull();
+
+    useGroceryStore.getState().answerPantryReview(syrup.id, 'new');
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.runningLowAt).toBeNull();
+    expect(updated.openedAt).toBeNull();
+    expect(updated.onList).toBe(false);
+    expect(entryFor(useGroceryStore.getState().listEntries, syrup.id, null)).toBeNull();
+    expect(new Date(updated.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+    expect(updated.pantryReviewedAt).not.toBeNull();
+  });
+
+  it('leaves a list entry the user added by hand alone when "new" is not about running low', () => {
+    const syrup = makeItem({ name: 'Maple syrup', onList: true });
+    seed([syrup]);
+
+    useGroceryStore.getState().answerPantryReview(syrup.id, 'new');
+
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
+  });
+
   it('does nothing for an item that has gone', () => {
     seed([makeItem({ name: 'Flour' })]);
     expect(() => useGroceryStore.getState().answerPantryReview('missing', 'out')).not.toThrow();
@@ -5956,7 +5986,7 @@ describe('answerPantryReview', () => {
   // Without the stamp the deck deals the same card again the next time it
   // opens: every answer leaves the row still qualifying for it. See
   // GroceryItem.pantryReviewedAt.
-  it.each(['have', 'low', 'out'] as const)('stamps the answer (%s)', answer => {
+  it.each(['have', 'low', 'out', 'new'] as const)('stamps the answer (%s)', answer => {
     const flour = makeItem({ name: 'Flour', pantryReviewedAt: null });
     seed([flour]);
 
@@ -6014,6 +6044,23 @@ describe('revertPantryAnswer', () => {
 
     expect(entryFor(useGroceryStore.getState().listEntries, flour.id, null)).toBeNull();
     expect(useGroceryStore.getState().items[0].onList).toBe(false);
+  });
+
+  it('puts the old packet and its list entry back after "new"', () => {
+    const syrup = makeItem({ name: 'Maple syrup', onList: false });
+    seed([syrup]);
+    useGroceryStore.getState().answerPantryReview(syrup.id, 'low');
+    useGroceryStore.getState().setOpened(syrup.id, true);
+    const before = useGroceryStore.getState().items[0];
+    const entry = entryFor(useGroceryStore.getState().listEntries, syrup.id, null);
+    useGroceryStore.getState().answerPantryReview(syrup.id, 'new');
+
+    useGroceryStore.getState().revertPantryAnswer(before, entry);
+
+    const restored = useGroceryStore.getState().items[0];
+    expect(restored.runningLowAt).not.toBeNull();
+    expect(restored.openedAt).not.toBeNull();
+    expect(entryFor(useGroceryStore.getState().listEntries, syrup.id, null)).not.toBeNull();
   });
 
   it('takes the stamp back with the answer', () => {

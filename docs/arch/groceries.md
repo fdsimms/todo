@@ -1237,7 +1237,7 @@ right shape for one or two doubtful items and the wrong shape for eleven, which 
 near-identical questions about the cupboard. `src/utils/pantryReview.ts` is the other way round —
 the user opens it on purpose, standing in front of the cupboard, and is asked about everything at
 once, one card at a time. Swipe right for "still have it", left for "out of it", up for "running
-low".
+low", down for "got new".
 
 **It is a correction pass, not the inventory this doc rules out.** The note above on `KitchenScreen`
 still stands word for word: don't grow quantities, per-row expiry editing or a check-in gesture onto
@@ -1289,6 +1289,13 @@ write. "Computed first, corrected second" is the rule; this is the second half, 
   "Got it"/"Out of it" pair was missing, and it is the one answer with an outlet — it puts the row on
   the shopping list. That is what gives a review pass something to show for itself rather than being
   pure bookkeeping.
+- **"Got new" is the one answer about a different packet.** Everything else asks about the packet the
+  card was already holding; this says it has been replaced. So it is "still have it" over the row
+  `acquiredRow` leaves (the same clear a receipt or scan does): frozen, opened and running low go,
+  and the window is measured on what is left. A running-low row also comes off the **home** list,
+  the same scope "running low" joins it at, and the use-up task follows the row. It bumps no
+  purchase count and mints no store link, for the reason `addManyToPantry`'s `acquired` doesn't.
+  The Describe and scan sheets' pantry control stays three-way: a restock is said at the cupboard.
 - **The left swipe raises no disposal question.** A single-row `markOutOfMany` normally asks "Used it
   up" / "Went bad", and that is a good question after one deliberate ✕. Asked eleven times in a row it
   is the "recall five kitchens" a batch already declines (see `CookRecapSheet` and `bulkSetCooked`),
