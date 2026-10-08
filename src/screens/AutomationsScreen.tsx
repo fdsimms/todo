@@ -16,6 +16,7 @@ import {
 } from '../utils/generatedTasks';
 import { GeneratedTasksSection } from './settings/GeneratedTasksSection';
 import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 type AutomationsParams = {
   Automations: {
@@ -41,6 +42,7 @@ type AutomationsParams = {
  * which links back here. The two are the switch and its log.
  */
 export function AutomationsScreen() {
+  const pullSearch = usePullToSearch();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -83,6 +85,7 @@ export function AutomationsScreen() {
         }]}
       />
       <ScrollView
+        refreshControl={pullSearch.refreshControl}
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
@@ -96,6 +99,7 @@ export function AutomationsScreen() {
           </SettingsFocusProvider>
         </View>
       </ScrollView>
+      {pullSearch.sheet}
     </View>
   );
 }

@@ -19,6 +19,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -60,6 +61,7 @@ const NO_SUBTASKS: Task[] = [];
  * Later, Unscheduled and Inbox — see the note on filterTasksForView.
  */
 export function SavedViewDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
@@ -116,7 +118,7 @@ export function SavedViewDetailScreen() {
       },
     });
   };
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
   const scrollTop = useListScrollToTop(keyboardScroll);
   const elevatedCell = useElevatedCellRenderer<Task>(t => t.id, expandedTaskId);
   // A RootStack card covers the tab bar entirely, so the bulk bar sits above
@@ -258,6 +260,7 @@ export function SavedViewDetailScreen() {
         <PaintSelectionProvider {...paintProps}>
           <FlatList
             ref={scrollTop.ref}
+            refreshControl={pullSearch.refreshControl}
             scrollEnabled={!painting && !draggingSubtask}
             data={viewTasks}
             keyExtractor={t => t.id}
@@ -346,6 +349,7 @@ export function SavedViewDetailScreen() {
           }}
         />
         <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

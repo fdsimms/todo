@@ -1,5 +1,6 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
 import type { JournalKind, MealSlot } from '../types';
+import type { TemplateRunDestination } from '../utils/templateRunDestination';
 
 // Shared with AppNavigator's <NavigationContainer ref={navigationRef}>, so
 // code outside the component tree (deep link handling) can navigate without
@@ -232,9 +233,11 @@ export function openQuickSearchFromKeyboard(): void {
   runWhenReady(() => navigateToTab('Today', { openQuickSearch: Date.now() }));
 }
 
-export function showTodayViewModeFromKeyboard(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
+export function showTodayViewMode(mode: 'today' | 'later' | 'unscheduled' | 'inbox'): void {
   runWhenReady(() => navigateToTab('Today', { showViewMode: mode, showViewModeAt: Date.now() }));
 }
+
+export const showTodayViewModeFromKeyboard = showTodayViewMode;
 
 // `dundundun://addevent` — the Today widget's event shortcut. The event
 // counterpart of openQuickAddFromShortcut above: lands on Today and pops
@@ -445,4 +448,10 @@ export function resetToProject(projectId: string): void {
   runWhenReady(() => {
     navigateToTab('ProjectDetail', { projectId });
   });
+}
+
+/** Where a template run landed: its project's page, or the Today sub-view holding it. */
+export function goToTemplateRun(destination: TemplateRunDestination): void {
+  if (destination.kind === 'project') resetToProject(destination.projectId);
+  else showTodayViewMode(destination.mode);
 }

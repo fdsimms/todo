@@ -24,6 +24,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ActivitySourceSheet } from '../components/ActivitySourceSheet';
@@ -64,6 +65,7 @@ import type { GeneratedKind, UnattendedEntry } from '../types';
  * `UnattendedEntry` in types holds the three rules deciding what gets one.
  */
 export function UnattendedLogScreen() {
+  const pullSearch = usePullToSearch();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
@@ -248,6 +250,7 @@ export function UnattendedLogScreen() {
       <SectionList
         ref={scrollTop.ref}
         {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         sections={sections}
         keyExtractor={item => item.id}
         contentContainerStyle={
@@ -298,6 +301,7 @@ export function UnattendedLogScreen() {
         }
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

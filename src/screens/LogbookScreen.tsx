@@ -88,6 +88,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 interface LogbookSection {
   title: string;
@@ -220,6 +221,7 @@ function formatTime(iso: string): string {
 }
 
 export function LogbookScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const kitchenScrollTop = useListScrollToTop();
@@ -686,6 +688,7 @@ export function LogbookScreen() {
         <SectionList
           ref={kitchenScrollTop.ref}
           {...kitchenScrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           sections={kitchenSections}
           keyExtractor={item => item.key}
           getItemLayout={getItemLayout}
@@ -742,6 +745,7 @@ export function LogbookScreen() {
       <SectionList
         ref={scrollTop.ref}
         {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         sections={sections}
         keyExtractor={item => item.id}
         getItemLayout={getItemLayout}
@@ -912,6 +916,7 @@ export function LogbookScreen() {
         onSelectProject={setSelectedProject}
       />
       <ScrollToTopButton {...(activeLens === 'cooking' ? kitchenScrollTop : scrollTop).buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

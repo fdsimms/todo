@@ -18,6 +18,7 @@ import { TIPS, TIP_AREAS, filterTips, tipsFor, type Tip } from '../utils/tips';
 import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 /**
  * Everything the app can do, in one list.
@@ -40,13 +41,14 @@ type Row =
   | { type: 'tip'; key: string; tip: Tip; seen: boolean };
 
 export function TipsScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Tips', 'Tip settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
   const scrollTop = useListScrollToTop(keyboardScroll);
 
   const seenTips = useSettingsStore(useShallow(s => s.seenTips));
@@ -171,6 +173,7 @@ export function TipsScreen() {
       ) : (
         <FlatList
           ref={scrollTop.ref}
+          refreshControl={pullSearch.refreshControl}
           data={rows}
           keyExtractor={row => row.key}
           renderItem={renderRow}
@@ -182,6 +185,7 @@ export function TipsScreen() {
         />
       )}
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

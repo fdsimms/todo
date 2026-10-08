@@ -15,6 +15,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
@@ -28,6 +29,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { formatCategorySchedule } from '../utils/categorySchedule';
 
 export function CategoriesScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
@@ -77,6 +79,7 @@ export function CategoriesScreen() {
         />
       ) : (
         <ReorderableList
+          refreshControl={pullSearch.refreshControl}
           data={allCategories}
           keyExtractor={c => c}
           scrollToTop={{ bottom: fabBottom }}
@@ -195,6 +198,7 @@ export function CategoriesScreen() {
         category={editingCategory}
         onClose={() => setEditingCategory(null)}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

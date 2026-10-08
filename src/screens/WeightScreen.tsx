@@ -37,6 +37,7 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { WeightChart } from '../components/WeightChart';
@@ -100,6 +101,7 @@ const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
  */
 
 export function WeightScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
@@ -358,6 +360,7 @@ export function WeightScreen() {
       <ScrollView
         ref={scrollTop.ref}
         {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -569,6 +572,7 @@ export function WeightScreen() {
         onLogWeight={openLog}
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

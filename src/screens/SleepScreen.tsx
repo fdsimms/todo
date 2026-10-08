@@ -32,6 +32,7 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -66,6 +67,7 @@ const SLEEP_RANGES: { days: SleepRangeDays; label: string; spoken: string }[] = 
 const DEFAULT_RANGE_DAYS: SleepRangeDays = 14;
 
 export function SleepScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
@@ -217,6 +219,7 @@ export function SleepScreen() {
       <ScrollView
         ref={scrollTop.ref}
         {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -377,6 +380,7 @@ export function SleepScreen() {
       </ScrollView>
       <SleepGoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

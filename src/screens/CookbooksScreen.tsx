@@ -16,6 +16,7 @@ import { haptics } from '../utils/haptics';
 import type { Cookbook } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 /**
  * The shelf: every `Cookbook` a recipe has ever been linked to, with a
@@ -28,6 +29,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
  * the shelf yet to attach it to.
  */
 export function CookbooksScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
@@ -116,6 +118,7 @@ export function CookbooksScreen() {
         <FlatList
           ref={scrollTop.ref}
           {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           data={sorted}
           keyExtractor={c => c.id}
           renderItem={renderItem}
@@ -136,6 +139,7 @@ export function CookbooksScreen() {
         onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

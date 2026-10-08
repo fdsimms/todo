@@ -18,6 +18,7 @@ import { CountStepper } from '../components/CountStepper';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -108,11 +109,12 @@ function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () =>
 }
 
 export function RewardsScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ refreshing: pullSearch.pulling });
   const scrollTop = useListScrollToTop(keyboardScroll);
 
   const enabled = useSettingsStore(s => s.rewardsEnabled);
@@ -517,7 +519,7 @@ export function RewardsScreen() {
           </View>
         </>
       )}
-      <View style={styles.rewardActions}>
+      <View style={[styles.rewardActions, styles.draftActions]}>
         <InlineAction label={draft?.mode === 'edit' ? 'Save' : 'Add'} icon="checkmark" onPress={saveDraft} disabled={!canSave} />
         <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
         {draft?.mode === 'edit' && (() => {
@@ -613,6 +615,7 @@ export function RewardsScreen() {
       <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
       <ScrollView
         ref={scrollTop.ref}
+        refreshControl={pullSearch.refreshControl}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -637,7 +640,7 @@ export function RewardsScreen() {
               accessible
               accessibilityLabel={`Saving for ${goalShown.title}: ${Math.max(0, Math.min(balance, goal.cost))} of ${formatCoins(goal.cost)}`}
             >
-              <Text style={styles.goalLabel}>{`Saving for ${goalShown.title}`}</Text>
+              <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
               <View style={styles.goalTrack}>
                 <View style={[styles.goalFill, { width: `${goalProgress(balance, goal.cost) * 100}%` }]} />
               </View>
@@ -854,6 +857,7 @@ export function RewardsScreen() {
         noneLabel="No list"
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }
@@ -915,6 +919,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   note: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  // The form's Add/Cancel row sits under the One time only switch, which has no bottom margin of its own.
+  draftActions: { marginTop: spacing.md },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,

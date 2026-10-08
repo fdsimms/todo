@@ -12,6 +12,7 @@ import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
@@ -36,6 +37,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
  * drift apart.
  */
 export function RemindersScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
@@ -79,6 +81,7 @@ export function RemindersScreen() {
       <FlatList
         ref={scrollTop.ref}
         {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         data={reminders}
         keyExtractor={item => item.id}
         contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : styles.listContent}
@@ -109,6 +112,7 @@ export function RemindersScreen() {
         onClose={() => setEditorVisible(false)}
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

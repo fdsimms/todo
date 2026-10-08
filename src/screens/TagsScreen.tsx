@@ -20,6 +20,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -53,6 +54,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 const NO_SUBTASKS: Task[] = [];
 
 export function TagsScreen() {
+  const pullSearch = usePullToSearch();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
@@ -115,7 +117,7 @@ export function TagsScreen() {
   // renders itself, so the hook is called from outside that sheet: `ownsSheet`,
   // or it reads its own sheet as a cover and switches keyboard handling off
   // for exactly as long as the sheet is open (see the hook's doc comment).
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, refreshing: pullSearch.pulling });
   const sheetScrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — this list is a
   // genuine FlatList, unlike Today/Later/a project's own list, so the row
@@ -248,6 +250,7 @@ export function TagsScreen() {
         <FlatList
           ref={scrollTop.ref}
           {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           data={allTags}
           keyExtractor={t => t}
           contentContainerStyle={allTags.length === 0 ? styles.emptyContainer : styles.list}
@@ -444,6 +447,7 @@ export function TagsScreen() {
           />
         </SheetModal>
         <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

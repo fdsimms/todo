@@ -203,9 +203,14 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             }),
           ]
         : [
-            Animated.spring(translateX, {
+            // A timed curve, not a spring: a spring only reports done once it
+            // has fully settled, and this callback is what unmounts the Modal.
+            // Until then the (invisible) Modal swallows every touch, so the tab
+            // bar was dead for a second or two after the menu looked closed.
+            // Same reasoning as `useSheetMotion`'s exit.
+            Animated.timing(translateX, {
               toValue: -DRAWER_WIDTH,
-              ...animation.spring.snappy,
+              duration: animation.duration.sheetExit,
               useNativeDriver: true,
             }),
             Animated.timing(backdropOpacity, {

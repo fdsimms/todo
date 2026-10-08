@@ -27,6 +27,7 @@ import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -39,6 +40,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 // selection mode and the per-row context are for — a hundred rows of title and
 // archive date is a list you can't answer any question about.
 export function ArchivedScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
@@ -186,6 +188,7 @@ export function ArchivedScreen() {
         <FlatList
           ref={scrollTop.ref}
           {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           data={filtered}
           keyExtractor={item => item.id}
           // A paint gesture owns the touch for its duration — see the note in
@@ -263,6 +266,7 @@ export function ArchivedScreen() {
         onClose={() => setEditorVisible(false)}
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

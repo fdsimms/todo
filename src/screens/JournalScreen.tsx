@@ -27,6 +27,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
@@ -44,6 +45,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
  * what was written.
  */
 function JournalLogScreen({ kind }: { kind: JournalKind }) {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -61,7 +63,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   );
   const todayKey = dayKeyOf(getCurrentDayStart());
   const stats = useMemo(() => journalStats(entries, todayKey.slice(0, 7)), [entries, todayKey]);
-  const keyboardScroll = useKeyboardInsetScroll<FlatList<JournalDay>>();
+  const keyboardScroll = useKeyboardInsetScroll<FlatList<JournalDay>>({ refreshing: pullSearch.pulling });
   const scrollTop = useListScrollToTop(keyboardScroll);
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -188,6 +190,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
       />
       <FlatList
         ref={scrollTop.ref}
+        refreshControl={pullSearch.refreshControl}
         {...keyboardScroll.props}
         {...scrollTop.listProps}
         style={styles.list}
@@ -221,6 +224,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
       />
       {sheet}
       <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }
