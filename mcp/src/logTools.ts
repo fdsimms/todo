@@ -208,10 +208,16 @@ export function logMedication(
 export function updateFoodEntry(
   replica: Replica,
   id: string,
-  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; slot?: MealSlot | null },
+  patch: { label?: string; quantity?: string; amounts?: Record<string, number>; slot?: MealSlot | null; grams?: number },
 ) {
   const entry = replica.updateFoodEntry(id, patch);
-  return { id: entry.id, day: entry.dayKey, label: entry.label, quantity: entry.quantity || undefined, slot: entry.slot ?? undefined };
+  // A re-measured entry says what it came to, so the preview and the person
+  // can check the figure the new amount produced.
+  const remeasured = entry.nutrition.source !== 'estimated' && (patch.grams !== undefined || patch.quantity !== undefined);
+  return {
+    id: entry.id, day: entry.dayKey, label: entry.label, quantity: entry.quantity || undefined, slot: entry.slot ?? undefined,
+    ...(remeasured ? { grams: entry.grams ?? undefined, calorieKcal: entry.nutrition.amounts.calorieKcal } : {}),
+  };
 }
 
 export function deleteFoodEntry(replica: Replica, id: string) {
@@ -231,8 +237,13 @@ export function moveFoodEntry(replica: Replica, id: string, at: string) {
   return { moved: foodRow(to), fromDay: from.dayKey, note: `It has a new id. ${NOT_IN_HEALTH_YET}` };
 }
 
-export function duplicateFoodEntry(replica: Replica, id: string, at: string | undefined) {
-  return { logged: foodRow(replica.duplicateFoodEntry(id, atFrom(at) ?? new Date())), note: NOT_IN_HEALTH_YET };
+export function duplicateFoodEntry(replica: Replica, id: string, at: string | undefined, amount?: { grams?: number; quantity?: string }) {
+  const entry = replica.duplicateFoodEntry(id, atFrom(at) ?? new Date(), amount?.grams !== undefined || amount?.quantity !== undefined ? amount : undefined);
+  const measured = amount?.grams !== undefined || amount?.quantity !== undefined;
+  return {
+    logged: { ...foodRow(entry), ...(measured ? { grams: entry.grams ?? undefined, calorieKcal: entry.nutrition.amounts.calorieKcal } : {}) },
+    note: NOT_IN_HEALTH_YET,
+  };
 }
 
 export function listSavedMeals(replica: Replica) {

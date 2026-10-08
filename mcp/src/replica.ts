@@ -515,6 +515,18 @@ export interface FoodPatch {
   /** Replaces every figure. Only an estimated entry has figures an agent may restate. */
   amounts?: Record<string, number>;
   slot?: MealSlot | null;
+  /**
+   * A new weight for an entry measured against a food record. The figures are
+   * re-measured from that record (`remeasureEntry`), not scaled off the old ones.
+   * On a measured entry `quantity` is re-measured the same way ("2 servings").
+   */
+  grams?: number;
+}
+
+/** A new amount for a copy of a measured entry. One of the two. */
+export interface FoodAmount {
+  grams?: number;
+  quantity?: string;
 }
 
 export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
@@ -1182,7 +1194,7 @@ export interface Replica {
    */
   moveFoodEntry(id: string, at: Date): { from: FoodLogEntry; to: FoodLogEntry };
   /** Log a copy of an entry at another moment, as `duplicateEntry`: a new meal, not tied to a planned one. */
-  duplicateFoodEntry(id: string, at: Date): FoodLogEntry;
+  duplicateFoodEntry(id: string, at: Date, amount?: FoodAmount): FoodLogEntry;
   /** Saved meals: several foods logged together under a name, newest first. */
   savedMeals(): SavedMeal[];
   /** A saved meal from logged entries, as the bulk bar's "Save as meal". */
@@ -2006,6 +2018,32 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const flagged = { ...entry, healthWritePending: true };
     db.dbInsertFoodLogEntry(flagged);
     return flagged;
+  }
+
+  /** The amount text a grams or quantity asks for, as the app's amount field would hold it. */
+  function foodAmountText(a: { grams?: number; quantity?: string }): string {
+    if (a.grams !== undefined && a.quantity !== undefined) throw new Error('Give a new amount as grams or as quantity, one of the two.');
+    if (a.grams !== undefined) {
+      if (!Number.isFinite(a.grams) || a.grams <= 0) throw new Error('grams is a positive number.');
+      return `${a.grams} g`;
+    }
+    return a.quantity ?? '';
+  }
+
+  /**
+   * The fields `entry` takes at a new amount, re-measured against its food
+   * record by `remeasureEntry` (the arithmetic the app's Edit runs). The linked
+   * row's panel is read here because the catalog is: a product's own panel when
+   * the entry names one, else the item's.
+   */
+  function remeasuredFields(entry: FoodLogEntry, amount: string): Pick<FoodLogEntry, 'quantity' | 'grams' | 'nutrition' | 'sourcePanel'> {
+    const { nutritionFor } = require('../../src/utils/foodNutrition') as typeof import('../../src/utils/foodNutrition'); // eslint-disable-line @typescript-eslint/no-require-imports
+    let linkedPanel: import('../../src/types').FoodNutrition | null = null;
+    if (entry.productId) linkedPanel = db.dbGetAllItemProducts().find(p => p.id === entry.productId)?.nutrition ?? null;
+    else if (entry.itemId) linkedPanel = nutritionFor(db.dbGetAllGroceryItems().find(i => i.id === entry.itemId));
+    const result = foodLog.remeasureEntry(entry, linkedPanel, amount);
+    if (!result.ok) throw new Error(result.reason);
+    return result.fields;
   }
 
   /** An entry that can be moved or copied: not water, which is one entry a day stepped up a glass at a time. */
@@ -3995,17 +4033,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const entry = db.dbGetFoodLogEntry(id);
       if (!entry) throw new Error(`No food entry with id ${id}.`);
       const estimated = entry.nutrition.source === 'estimated';
+      if (patch.grams !== undefined && estimated) {
+        throw new Error('grams re-measures an entry against a food record, and an estimated entry has none. Restate its quantity and amounts instead.');
+      }
+      const remeasures = !estimated && (patch.grams !== undefined || patch.quantity !== undefined);
+      if (remeasures && patch.amounts !== undefined) {
+        throw new Error('A measured entry\'s figures come from its food record, so give a new amount (grams or quantity) or new amounts, not both.');
+      }
       const touchesFigures = patch.amounts !== undefined || patch.quantity !== undefined;
-      if (touchesFigures && !estimated) {
+      if (touchesFigures && !estimated && !remeasures) {
         throw new Error('Only an estimated entry has figures to restate. This one was measured against a food\'s own label or database record, so correct it in the app, which re-measures it.');
       }
-      if (touchesFigures && entry.healthSampleIds.length > 0) {
+      if ((touchesFigures || patch.grams !== undefined) && entry.healthSampleIds.length > 0) {
         throw new Error('That entry was written to Apple Health, which only the phone can correct. Edit it in the app.');
       }
       if (patch.label !== undefined && !patch.label.trim()) throw new Error('A food entry needs a name.');
 
       let nutrition = entry.nutrition;
-      if (patch.amounts !== undefined) {
+      let measured: Partial<FoodLogEntry> = {};
+      if (remeasures) {
+        measured = remeasuredFields(entry, foodAmountText(patch));
+        nutrition = measured.nutrition!;
+      } else if (patch.amounts !== undefined) {
         const estimate = require('../../src/utils/nutritionEstimate') as typeof import('../../src/utils/nutritionEstimate'); // eslint-disable-line @typescript-eslint/no-require-imports
         const read = estimate.readNutritionEstimate({ label: patch.label ?? entry.label, quantity: patch.quantity ?? entry.quantity, amounts: patch.amounts, basis: 'typical', confidence: 'medium' });
         const panel = read && estimate.estimateToPanel(read);
@@ -4014,8 +4063,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       const updated: FoodLogEntry = {
         ...entry,
+        ...measured,
         label: patch.label !== undefined ? patch.label.trim() : entry.label,
-        quantity: patch.quantity !== undefined ? patch.quantity.trim() : entry.quantity,
+        quantity: remeasures ? measured.quantity! : patch.quantity !== undefined ? patch.quantity.trim() : entry.quantity,
         slot: patch.slot === undefined ? entry.slot : patch.slot,
         nutrition,
       };
@@ -4036,9 +4086,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return { from: entry, to: moved! };
     },
 
-    duplicateFoodEntry(id: string, at: Date): FoodLogEntry {
+    duplicateFoodEntry(id: string, at: Date, amount?: FoodAmount): FoodLogEntry {
       const entry = foodEntryToCopy(id);
-      return insertFoodCopy(entry, at, entry.slot, null);
+      // The copy is a new row, so Health and the original's samples are not in
+      // play; only the figures change, re-measured as an edit would.
+      const copy = amount ? { ...entry, ...remeasuredFields(entry, foodAmountText(amount)) } : entry;
+      return insertFoodCopy(copy, at, entry.slot, null);
     },
 
     savedMeals(): SavedMeal[] {

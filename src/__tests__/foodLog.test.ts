@@ -30,6 +30,7 @@ import {
   portionExamples,
   recallAmount,
   recipeHelpingNutrition,
+  remeasureEntry,
   resolveFoodLogDrop,
   savedMealCalories,
   scalePanelToAmount,
@@ -1385,5 +1386,68 @@ describe('logInstantFor', () => {
     const at = logInstantFor('2026-09-27', '2026-09-27', now);
     at.setHours(0);
     expect(now.getHours()).toBe(19);
+  });
+});
+
+describe('remeasureEntry', () => {
+  const chocolate = panel({
+    amounts: { calorieKcal: 500, proteinG: 10, fatG: 30, sugarG: 50 },
+    portions: [{ amount: 1, label: 'square', grams: 5 }],
+  });
+  const at = (grams: number) => {
+    const helping = scalePanelToAmount(chocolate, `${grams} g`, null, NOW)!;
+    return entry({
+      label: 'FILLED milk chocolate bar, TONY\'S CHOCOLONELY', quantity: `${grams} g`, grams,
+      nutrition: helping.nutrition, sourcePanel: chocolate,
+    });
+  };
+
+  it('scales an unfiled database food from its kept panel: 10 g to 23 g is 2.3 times the nutrients', () => {
+    const before = at(10);
+    const result = remeasureEntry(before, null, '23 g', NOW);
+    if (!result.ok) throw new Error(result.reason);
+    const { fields } = result;
+    expect(before.nutrition.amounts).toEqual({ calorieKcal: 50, proteinG: 1, fatG: 3, sugarG: 5 });
+    expect(fields.nutrition.amounts).toEqual({ calorieKcal: 115, proteinG: 2.3, fatG: 6.9, sugarG: 11.5 });
+    for (const key of ['calorieKcal', 'proteinG', 'fatG', 'sugarG'] as const) {
+      expect(fields.nutrition.amounts[key]! / before.nutrition.amounts[key]!).toBeCloseTo(2.3, 5);
+    }
+    expect(fields).toMatchObject({ quantity: '23 g', grams: 23, sourcePanel: chocolate });
+    expect(result.approximate).toBe(false);
+  });
+
+  it('measures against the record, not the stored helping, so a round trip loses nothing', () => {
+    const there = remeasureEntry(at(10), null, '23 g', NOW);
+    if (!there.ok) throw new Error(there.reason);
+    const back = remeasureEntry({ ...at(10), ...there.fields }, null, '10 g', NOW);
+    expect(back.ok && back.fields.nutrition.amounts).toEqual(at(10).nutrition.amounts);
+  });
+
+  it('measures a portion the record lists', () => {
+    const result = remeasureEntry(at(10), null, '2 square', NOW);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.fields.grams).toBe(10);
+    expect(result.fields.nutrition.amounts.calorieKcal).toBe(50);
+  });
+
+  it('measures a linked entry against its catalog panel and drops the kept one, as Save does', () => {
+    const linked = entry({ itemId: 'item-choc', quantity: '10 g', grams: 10, sourcePanel: null });
+    const result = remeasureEntry(linked, chocolate, '23 g', NOW);
+    expect(result.ok && result.fields.nutrition.amounts.calorieKcal).toBe(115);
+    expect(result.ok && result.fields.sourcePanel).toBeNull();
+  });
+
+  it('refuses what the app would not reopen, each with its own reason', () => {
+    const why = (r: ReturnType<typeof remeasureEntry>) => (r.ok ? 'ok' : r.reason);
+    expect(why(remeasureEntry(entry({ recipeId: 'r1', quantity: '2 servings' }), null, '100 g', NOW))).toMatch(/dish/);
+    expect(why(remeasureEntry(entry({ quantity: 'a bowl of ramen', sourcePanel: null }), null, '100 g', NOW))).toMatch(/no food record/);
+    expect(why(remeasureEntry(entry({ itemId: 'gone', quantity: '10 g' }), null, '23 g', NOW))).toMatch(/no longer there/);
+    expect(why(remeasureEntry(at(10), null, 'a handful', NOW))).toMatch(/cannot be measured/);
+    expect(why(remeasureEntry(at(10), null, '  ', NOW))).toMatch(/cannot be measured/);
+  });
+
+  it('never keeps an estimate\'s whole as a record to measure against', () => {
+    const estimate = entry({ quantity: '1 bowl', sourcePanel: panel({ source: 'estimated', basis: 'perServing' }) });
+    expect(remeasureEntry(estimate, null, '200 g', NOW).ok).toBe(false);
   });
 });

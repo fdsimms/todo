@@ -133,7 +133,7 @@ only the fallback until the first sync.
 | `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
 | `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. |
 | `list_saved_meals` | Foods the person logs together under one name. |
-| `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again. |
+| `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again; the copy can take `grams` or `quantity` and is re-measured from the food's record. |
 | `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |
 | `set_nutrition_targets` | **Write.** The daily figures the food log reads totals against, only as the person gives them. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
@@ -158,7 +158,7 @@ only the fallback until the first sync.
 | `save_meal_as_recipe` / `copy_meals` | **Write.** Saves a typed meal as a recipe; copies a week, a slot of a week, or one meal onto other days. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
-| `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures). |
+| `update_food_entry` | **Write.** Corrects a food log entry (estimated ones can restate figures; measured ones take `grams` or `quantity` and are re-measured from the food's record). |
 | `delete_food_entry` | **Write.** Deletes a food log entry not yet written to Apple Health. |
 | `update_mood_log` | **Write.** Corrects a mood check-in. |
 | `delete_mood_log` | **Write.** Deletes a mood check-in. |
