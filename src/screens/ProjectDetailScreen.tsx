@@ -2329,8 +2329,11 @@ export function ProjectDetailScreen() {
                     {/* A packing list is checked off and then used again, so a
                         list can put every line back in one go, without opening
                         the checked lines first. Several at once raises the
-                        Undo bar (bulkUncompleteTasks). */}
-                    {isList && !selectionMode && (
+                        Undo bar (bulkUncompleteTasks). Both act on the checked
+                        lines, so they appear only while those lines are shown:
+                        collapsed, the buttons would act on rows the person
+                        can't see. */}
+                    {isList && !selectionMode && completedShown && (
                       <View style={styles.uncheckAllRow}>
                         <InlineAction
                           icon="refresh"
