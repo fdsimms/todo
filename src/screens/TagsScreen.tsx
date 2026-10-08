@@ -116,6 +116,7 @@ export function TagsScreen() {
   // or it reads its own sheet as a cover and switches keyboard handling off
   // for exactly as long as the sheet is open (see the hook's doc comment).
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
+  const sheetScrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — this list is a
   // genuine FlatList, unlike Today/Later/a project's own list, so the row
   // itself can't just carry a zIndex style the way ReorderableList's
@@ -351,12 +352,13 @@ export function TagsScreen() {
             >
             <PaintSelectionProvider {...paintProps}>
               <FlatList
-                ref={keyboardScroll.ref}
+                ref={sheetScrollTop.ref}
                 scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 CellRendererComponent={elevatedCell}
                 {...keyboardScroll.props}
+                {...sheetScrollTop.listProps}
                 contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
                 renderItem={({ item }) => {
                   const subs = subtasksOf(item.id);
@@ -394,6 +396,7 @@ export function TagsScreen() {
                 }
               />
             </PaintSelectionProvider>
+            <ScrollToTopButton {...sheetScrollTop.buttonProps} />
             </View>
 
             {selectionMode && (
