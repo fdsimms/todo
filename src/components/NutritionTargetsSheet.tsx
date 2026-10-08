@@ -32,6 +32,7 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SegmentedControl } from './SegmentedControl';
 
 /** Every nutrient the Food log's own card can show — water has its own card. */
 const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
@@ -59,10 +60,23 @@ const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
  * lose and no unsaved-changes guard. That is the other valid answer to the
  * `pageSheet` `onRequestClose` rule, not a workaround.
  *
- * All ten are listed rather than hidden behind an "add one" picker: the set is
- * closed and short, and a picker would make the nine somebody has not set
- * invisible rather than merely empty.
+ * Every nutrient is listed rather than hidden behind an "add one" picker: the
+ * set is closed and short, and a picker would make the ones somebody has not
+ * set invisible rather than merely empty.
+ *
+ * **A set target says which way it points** ("Aim for" / "Stay under"), and
+ * only once it is set, since a direction with no number is nothing to read.
+ * Stay under is what lets the Food log say what's left and draw past the limit
+ * in red; see the Limits section of `nutritionTargets.ts`. Marking one also
+ * pins it on the Food log, because a limit nobody can see without tapping
+ * "Show every nutrient" can't be kept.
  */
+
+type TargetDirection = 'reach' | 'limit';
+const DIRECTION_OPTIONS: { value: TargetDirection; label: string }[] = [
+  { value: 'reach', label: 'Aim for' },
+  { value: 'limit', label: 'Stay under' },
+];
 
 interface Props {
   visible: boolean;
@@ -80,6 +94,8 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const setNutritionTargets = useSettingsStore(s => s.setNutritionTargets);
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
+  const limits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const setNutritionLimits = useSettingsStore(s => s.setNutritionLimits);
   const waterUnit = useSettingsStore(s => s.waterUnit);
   // Whether the weight goal keeps the calorie target in step
   // (autoCalorieTargetKcal): a goal and a complete profile. The row says so,
@@ -170,6 +186,16 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
     const values: NutritionTargets = {};
     for (const key of unsetKeys) values[key] = NUTRITION_TARGET_RANGES[key].default;
     setNutritionTargets(values);
+  };
+
+  const setDirection = (key: NutrientKey, direction: TargetDirection) => {
+    haptics.tap();
+    if (direction === 'limit') {
+      if (!limits.includes(key)) setNutritionLimits([...limits, key]);
+      if (!pinnedNutrients.includes(key)) setFoodLogPinnedNutrients([...pinnedNutrients, key]);
+    } else if (limits.includes(key)) {
+      setNutritionLimits(limits.filter(k => k !== key));
+    }
   };
 
   const togglePinned = (key: NutrientKey) => {
@@ -298,6 +324,15 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   />
                 )}
                 </View>
+                {!isWater && targets[key] !== undefined && (
+                  <SegmentedControl
+                    options={DIRECTION_OPTIONS}
+                    value={limits.includes(key) ? 'limit' : 'reach'}
+                    onChange={direction => setDirection(key, direction)}
+                    label={`${NUTRIENT_LABEL[key].label} target direction`}
+                    surface="card"
+                  />
+                )}
                 {key === 'calorieKcal' && calorieFollowsGoal && (
                   <Text style={styles.boostHint}>
                     This follows your weight goal. It is worked out again each time the

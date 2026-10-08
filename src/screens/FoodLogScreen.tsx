@@ -55,7 +55,16 @@ import {
 } from '../utils/produceServings';
 import { recipeProduceResolver } from '../utils/recipeProduce';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { describeAgainstTarget, targetProgress, targetStatus, type TargetStatus } from '../utils/nutritionTargets';
+import {
+  describeAgainstTarget,
+  describeLimit,
+  isActiveLimit,
+  limitStatus,
+  targetProgress,
+  targetStatus,
+  type LimitStatus,
+  type TargetStatus,
+} from '../utils/nutritionTargets';
 import { effectiveWaterTargetMl, waterExerciseBoostApplies } from '../utils/waterExerciseBoost';
 import { activeEnergyBoostKcal } from '../utils/activeEnergyBoost';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -211,6 +220,8 @@ export function FoodLogScreen() {
   const logSavedMeal = useSavedMealsStore(s => s.logMeal);
   const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const foodLogPinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
@@ -1061,7 +1072,9 @@ export function FoodLogScreen() {
             tracking sodium wants to stay under it), so `under` and
             `over` get different but equally neutral colors and only
             `met` — landing on the number chosen — gets green. See
-            `targetStatus`. */}
+            `targetStatus`. The exception is a target the person
+            marked Stay under: they told the app the direction, so
+            it reads through `limitStatus` and goes red past it. */}
         {effectiveTargets[key] !== undefined && (
           <View style={styles.targetTrack}>
             <View
@@ -1069,14 +1082,23 @@ export function FoodLogScreen() {
                 styles.targetFill,
                 {
                   width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
-                  backgroundColor: targetStatusColor(
-                    targetStatus(key, totals.total[key], effectiveTargets),
-                    colors,
-                  ),
+                  backgroundColor: isActiveLimit(key, effectiveTargets, nutritionLimits)
+                    ? limitStatusColor(limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent), colors)
+                    : targetStatusColor(targetStatus(key, totals.total[key], effectiveTargets), colors),
                 },
               ]}
             />
           </View>
+        )}
+        {isActiveLimit(key, effectiveTargets, nutritionLimits) && (
+          <Text
+            style={[
+              styles.limitNote,
+              limitStatus(key, totals.total[key], effectiveTargets, limitWarnPercent) === 'over' && styles.limitNoteOver,
+            ]}
+          >
+            {describeLimit(key, totals.total[key], effectiveTargets)}
+          </Text>
         )}
         {/* Said out loud rather than folded silently into the figure
             above: a target that moved is one the person should be
@@ -1593,6 +1615,17 @@ function targetStatusColor(status: TargetStatus, colors: Colors): string {
   return colors.accent;
 }
 
+/**
+ * The bar's fill for a nutrient the person marked Stay under: the usual accent
+ * while there's room, orange once the day is close (`limitWarnPercent`), red
+ * past it. Theirs to have asked for, unlike `targetStatusColor`'s neutrality.
+ */
+function limitStatusColor(status: LimitStatus, colors: Colors): string {
+  if (status === 'over') return colors.red;
+  if (status === 'near') return colors.orange;
+  return colors.accent;
+}
+
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
@@ -1689,6 +1722,8 @@ function makeStyles(colors: Colors) {
     waterUnitTextOn: { fontWeight: fontWeight.semibold },
     waterTarget: { color: colors.textSecondary, fontSize: font.xs },
     boostNote: { color: colors.textSecondary, fontSize: font.xs },
+    limitNote: { color: colors.textSecondary, fontSize: font.xs },
+    limitNoteOver: { color: colors.redText, fontWeight: fontWeight.semibold },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },

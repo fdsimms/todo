@@ -402,6 +402,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'weighInTasks',
   'waterShortfallTasks',
   'snackNudgeTasks',
+  'limitWarningTasks',
   'bookEventTasks',
 
   // Behaviour.
@@ -506,6 +507,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'snackNudgeTaskCategory',
   'snackNudgeFromHour',
   'snackNudgeSharePercent',
+  'limitWarningTaskCategory',
   'supplyReorderTaskCategory',
   'travelTaskCategory',
   'travelLeadMinutes',
@@ -524,6 +526,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // health record (HEALTH_SYNC_SETTING_KEYS), since a calorie target says
   // something about a body.
   'nutritionTargets',
+  // Which of those targets are ceilings, and how close counts as close.
+  // Travels with the targets, and with the health record for the same reason.
+  'nutritionLimits',
+  'limitWarnPercent',
   'waterUnit',
 
   // Vocabularies the user builds. These are data as much as preference — a
@@ -678,7 +684,7 @@ export function isSyncedSettingKey(key: string): boolean {
 export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_settings', 'medication_summary_last',
-  'medication_milestone_dismissed', 'nutritionTargets',
+  'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',
 ];
 
 /**

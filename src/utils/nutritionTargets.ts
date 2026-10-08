@@ -284,6 +284,16 @@ export type LimitStatus = 'within' | 'near' | 'over';
 
 /** The share of a limit at which a day counts as close to it, as a percent. */
 export const DEFAULT_LIMIT_WARN_PERCENT = 75;
+export const LIMIT_WARN_PERCENT_MIN = 50;
+export const LIMIT_WARN_PERCENT_MAX = 100;
+export const LIMIT_WARN_PERCENT_STEP = 5;
+
+/** Snaps to the step and clamps to the range; anything unreadable is the default. */
+export function clampLimitWarnPercent(percent: number): number {
+  if (!Number.isFinite(percent)) return DEFAULT_LIMIT_WARN_PERCENT;
+  const snapped = Math.round(percent / LIMIT_WARN_PERCENT_STEP) * LIMIT_WARN_PERCENT_STEP;
+  return Math.min(LIMIT_WARN_PERCENT_MAX, Math.max(LIMIT_WARN_PERCENT_MIN, snapped));
+}
 
 export function limitStatus(
   key: NutrientKey,

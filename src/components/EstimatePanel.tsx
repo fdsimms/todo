@@ -61,6 +61,8 @@ import { recipeInBook } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CountStepper } from './CountStepper';
+import { LimitImpactLines } from './LimitImpactLines';
+import { useLimitImpact } from '../hooks/useLimitImpact';
 import { ESTIMATE_AMOUNT_OPTIONS, UNIT_OPTIONS, amountRefusal, amountText, factorFromTyped, type AmountUnit } from './EstimateAmountSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
@@ -862,6 +864,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // Everything stated beyond the headline number and the tiles, for the one
   // line that says the rest exists (and that the unstated rest is unknown).
   const otherStated = shown.filter(k => k !== 'calorieKcal' && !MACRO_KEYS.includes(k)).length;
+  // What logging this estimate would do to a Stay under limit.
+  const limitImpacts = useLimitImpact(estimate?.amounts, at);
 
   const staged: PendingRecallLog[] = [
     ...recalled.map(r => ({ kind: 'recall' as const, food: r.food, clause: r.clause })),
@@ -1223,6 +1227,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
               )}
               {/* What the figures claim, stated rather than implied. */}
               <Text style={styles.claim}>{describeEstimate(estimate)}</Text>
+              <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
 
               <TouchableOpacity
                 style={styles.disclosure}
@@ -1452,6 +1457,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
     },
     claim: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+    limitImpacts: { marginTop: spacing.sm },
     figure: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     figureLabel: { color: colors.text, fontSize: font.sm },
     figureValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
