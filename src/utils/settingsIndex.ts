@@ -357,6 +357,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
     'generated', 'automatic'],
+  limitWarning: ['limit', 'stay under', 'saturated fat', 'sugar', 'cholesterol', 'sodium', 'over',
+    'food log', 'generated', 'automatic'],
   bookEvent: ['appointment', 'checkup', 'doctor', 'dentist', 'optometrist', 'remind', 'yearly',
     'generated', 'automatic'],
   journalLog: ['diary', 'write', 'writing', 'reflect', 'entry', 'track', 'generated', 'automatic'],

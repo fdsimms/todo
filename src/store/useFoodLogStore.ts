@@ -497,6 +497,7 @@ function restoreEntries(rows: FoodLogEntry[], get: () => FoodLogStore, set: Food
   if (rows.some(r => r.dayKey === todayKey)) {
     useTaskStore.getState().syncWaterQuotaTasks();
     useTaskStore.getState().syncSnackNudgeTasks();
+    useTaskStore.getState().syncLimitWarningTasks();
   }
 }
 
@@ -513,6 +514,8 @@ function syncWaterQuotaTasksIfToday(dayKey: string): void {
   // The snack suggestion reads the same log, so a write that lands is also the
   // moment it should come on or go away.
   useTaskStore.getState().syncSnackNudgeTasks();
+  // And the Stay under warnings, off the same totals.
+  useTaskStore.getState().syncLimitWarningTasks();
   // And the meal's own task: food logged into lunch answers "Choose lunch".
   useTaskStore.getState().syncLoggedMealSlotTasks();
 }
@@ -946,6 +949,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (removed.some(e => e.dayKey === todayKey)) {
       useTaskStore.getState().syncWaterQuotaTasks();
       useTaskStore.getState().syncSnackNudgeTasks();
+      useTaskStore.getState().syncLimitWarningTasks();
     }
     if (removed.length > 0) {
       get().setLastAction({

@@ -361,6 +361,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': return s.weighInTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
       case 'snackNudge': return s.snackNudgeTaskCategory;
+      case 'limitWarning': return s.limitWarningTaskCategory;
       case 'bookEvent': return s.bookEventTaskCategory;
     }
   };
@@ -398,6 +399,7 @@ export function GeneratedTasksSection() {
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'snackNudge': s.setSnackNudgeTaskCategory(category); break;
+      case 'limitWarning': s.setLimitWarningTaskCategory(category); break;
       case 'bookEvent': s.setBookEventTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive

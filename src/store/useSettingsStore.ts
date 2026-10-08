@@ -1378,6 +1378,13 @@ interface SettingsStore {
    * appear. One number for all three so they never disagree about "close".
    */
   limitWarnPercent: number;
+  /**
+   * The category Today files a row per limit under ("Sat fat 9 of 16g, 7g
+   * left"), or null for no rows. Same double duty `healthCategory` does: the
+   * section and the off switch. Off by default; the Nutrition sheet's "Show on
+   * Today" sets it. See `limitContextRows`.
+   */
+  limitsTodayCategory: string | null;
   // Opt-in, off by default: a task the first time a day's food log passes
   // limitWarnPercent of a limit. See src/utils/limitWarningTasks.ts.
   limitWarningTasks: boolean;
@@ -2029,6 +2036,7 @@ interface SettingsStore {
   /** Replaces the whole set of nutrients whose target is a limit. */
   setNutritionLimits: (keys: NutrientKey[]) => void;
   setLimitWarnPercent: (percent: number) => void;
+  setLimitsTodayCategory: (category: string | null) => void;
   setLimitWarningTasks: (on: boolean) => void;
   setLimitWarningTaskCategory: (category: string | null) => void;
   setLimitWarningDeclinedDayKey: (dayKey: string | null) => void;
@@ -2676,6 +2684,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   foodLogPinnedNutrients: [...DEFAULT_FOOD_LOG_PINNED_NUTRIENTS],
   nutritionLimits: [],
   limitWarnPercent: DEFAULT_LIMIT_WARN_PERCENT,
+  limitsTodayCategory: null,
   limitWarningTasks: false,
   limitWarningTaskCategory: null,
   limitWarningDeclinedDayKey: null,
@@ -3155,6 +3164,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const nutritionLimits = parseNutritionLimits(dbGetSetting('nutritionLimits'));
     const limitWarnPercent = clampLimitWarnPercent(parseInt(dbGetSetting('limitWarnPercent') ?? '', 10));
     const limitWarningTasks = dbGetSetting('limitWarningTasks') === 'true';
+    const limitsTodayCategory = dbGetSetting('limitsTodayCategory') || null;
     const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
     const limitWarningDeclinedDayKey = dbGetSetting('limitWarningDeclinedDayKey') || null;
     const healthWriteNutrients = parseHealthWriteNutrients(dbGetSetting('healthWriteNutrients'));
@@ -3492,6 +3502,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       limitWarningDeclinedDayKey,
       limitWarningTaskCategory,
       limitWarningTasks,
+      limitsTodayCategory,
       nutritionLimits,
       gateShieldEnabled,
       generatedTaskDefaults,
@@ -4092,6 +4103,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampLimitWarnPercent(percent);
     dbSetSetting('limitWarnPercent', String(clamped));
     set({ limitWarnPercent: clamped });
+  },
+
+  setLimitsTodayCategory(category: string | null) {
+    dbSetSetting('limitsTodayCategory', category ?? '');
+    set({ limitsTodayCategory: category });
   },
 
   setLimitWarningTasks(on: boolean) {

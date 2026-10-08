@@ -164,7 +164,7 @@ import {
 import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
+import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
 import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -332,6 +332,11 @@ import {
 import {
   loggedKcalToday, snackNudgeApplies, snackNudgeTitle, SNACK_NUDGE_NOTES,
 } from '../utils/snackNudgeTasks';
+import {
+  limitWarningsFor, limitWarningSourceId, limitWarningDayOf, limitWarningKeyOf, limitWarningTitle,
+  LIMIT_WARNING_NOTES,
+} from '../utils/limitWarningTasks';
+import { foodLogTotals } from '../utils/foodLog';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
 import {
@@ -732,6 +737,10 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'snackNudge':
       useSettingsStore.getState()
         .setSnackNudgeDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
+    case 'limitWarning':
+      useSettingsStore.getState()
+        .setLimitWarningDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
     // On the saved event itself, scoped to the cycle the task was for: the
     // next appointment added from it starts a fresh one. Undo clears it.
@@ -1796,6 +1805,8 @@ interface TaskStore extends UndoHistoryActions {
   syncWaterQuotaTasks: () => void;
   /** The `snackNudge` pass, called from the food log's writes and the catch-up sweep. */
   syncSnackNudgeTasks: () => void;
+  /** The `limitWarning` pass, called beside the snack one. */
+  syncLimitWarningTasks: () => void;
   /** The `bookEvent` pass: "Book <saved event>" once its interval is nearly up. */
   checkBookEventTasks: () => void;
   /**
@@ -2481,6 +2492,60 @@ function reconcileSnackNudge(tasks: Task[]): void {
       ...generatedBy('snackNudge', todayKey),
     }),
   });
+}
+
+/**
+ * The `limitWarning` generator's whole pass. See `src/utils/limitWarningTasks.ts`.
+ *
+ * Run beside the snack one, on every food log write for today and on every
+ * catch-up sweep, so a task appears as soon as an entry takes a limit close and
+ * goes away if that entry is deleted.
+ */
+function reconcileLimitWarnings(tasks: Task[]): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.limitWarningTasks || !settings.limitWarningTaskCategory) return;
+  if (generatorPausedForVacation('limitWarning', settings.vacationMode)) return;
+  // The demo seed's warning has no food log behind it; see reconcileSnackNudge.
+  if (isDemoModeActive()) return;
+
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const declined = settings.limitWarningDeclinedDayKey === todayKey;
+  const totals = foodLogTotals(dbGetFoodLogEntries(todayKey, todayKey)).total;
+  const warnings = limitWarningsFor(
+    totals, settings.nutritionTargets, settings.nutritionLimits, settings.limitWarnPercent,
+  );
+  const wantedKeys = new Set(warnings.map(w => w.key as string));
+
+  // Another day's, or a nutrient that is no longer a limit: dropped without an
+  // opt-out, since nobody declined it.
+  liveGeneratedTasksOfKind(tasks, 'limitWarning')
+    .filter(t => limitWarningDayOf(t.generatedSourceId) !== todayKey
+      || !settings.nutritionLimits.includes(limitWarningKeyOf(t.generatedSourceId) as NutrientKey))
+    .forEach(t => dropGeneratedTask('limitWarning', t.generatedSourceId));
+
+  const dueDate = getCurrentDayStart().toISOString();
+  for (const key of settings.nutritionLimits) {
+    const warning = warnings.find(w => w.key === key);
+    reconcileGeneratedTask({
+      kind: 'limitWarning',
+      sourceId: limitWarningSourceId(todayKey, key),
+      wanted: !declined && wantedKeys.has(key),
+      // Ticked off ends it for the day, even once the total climbs past the limit.
+      blocksOnFinished: true,
+      drift: existing => {
+        if (!warning) return null;
+        const title = limitWarningTitle(warning);
+        return existing.title === title ? null : { title };
+      },
+      draft: () => ({
+        title: warning ? limitWarningTitle(warning) : '',
+        notes: LIMIT_WARNING_NOTES,
+        dueDate,
+        category: settings.limitWarningTaskCategory,
+        ...generatedBy('limitWarning', limitWarningSourceId(todayKey, key)),
+      }),
+    });
+  }
 }
 
 /**
@@ -4586,6 +4651,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   syncSnackNudgeTasks() {
     reconcileSnackNudge(get().tasks);
+  },
+
+  syncLimitWarningTasks() {
+    reconcileLimitWarnings(get().tasks);
   },
 
   checkBookEventTasks() {
@@ -9894,6 +9963,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const settings = useSettingsStore.getState();
     if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
     if (settings.healthCategory === name) settings.setHealthCategory(trimmed);
+    if (settings.limitsTodayCategory === name) settings.setLimitsTodayCategory(trimmed);
     if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
     const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
     if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);

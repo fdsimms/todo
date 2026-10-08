@@ -530,6 +530,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Travels with the targets, and with the health record for the same reason.
   'nutritionLimits',
   'limitWarnPercent',
+  'limitsTodayCategory',
   'waterUnit',
 
   // Vocabularies the user builds. These are data as much as preference — a

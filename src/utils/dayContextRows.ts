@@ -7,6 +7,9 @@ import { LATER_TODAY_LABEL } from './taskGrouping';
 import { formatTimeOfDay } from './dateUtils';
 import { titleForEntry } from './mealPlan';
 import { ringsSummaryLine, type ActivityRings } from './activityRings';
+import type { NutrientKey } from '../types';
+import { NUTRIENT_LABEL } from './foodNutrition';
+import { activeLimits, describeLimit, limitStatus, type NutritionTargets } from './nutritionTargets';
 
 /**
  * The day's calendar events and planned meals, as rows in the task list
@@ -307,6 +310,56 @@ export function healthContextRows(
   }
 
   return rows;
+}
+
+/** The short names a limit row uses, so a folded section's one-line summary fits. */
+const LIMIT_ROW_NAME: Partial<Record<NutrientKey, string>> = {
+  satFatG: 'Sat fat',
+  transFatG: 'Trans fat',
+  sugarG: 'Sugar',
+  addedSugarG: 'Added sugar',
+  calorieKcal: 'Calories',
+  carbsG: 'Carbs',
+  fatG: 'Fat',
+};
+
+/**
+ * Today's food log against each Stay under limit, one row per limit: "Sat fat 9
+ * of 16g, 7g left".
+ *
+ * A fourth source beside the calendar, the menu and Health, and filed as a
+ * `health` row because it is the same kind of thing: a reading about the day,
+ * with nothing to tick and nowhere for a tap to go. Unlike a step count it is
+ * drawn at zero, since "16g left" before breakfast is the budget the day starts
+ * with, which is the point of showing it. The category is the person's
+ * (`limitsTodayCategory`), which is also the off switch.
+ */
+export function limitContextRows(
+  totals: Partial<Record<NutrientKey, number>>,
+  targets: NutritionTargets,
+  limits: readonly NutrientKey[],
+  opts: { category: string | null; warnPercent: number },
+): ContextRow[] {
+  return activeLimits(targets, limits).map(key => {
+    const total = totals[key] ?? 0;
+    const target = targets[key]!;
+    const unit = NUTRIENT_LABEL[key].unit;
+    const suffix = unit === 'cal' ? ' cal' : unit;
+    const name = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
+    const status = limitStatus(key, total, targets, opts.warnPercent);
+    const rounded = Math.round(total * 10) / 10;
+    return {
+      id: `limit-${key}`,
+      sourceId: '',
+      kind: 'health' as const,
+      title: `${name} ${rounded.toLocaleString()} of ${target.toLocaleString()}${suffix}, ${describeLimit(key, total, targets)!.replace('At the limit', 'at the limit')}`,
+      caption: '',
+      category: opts.category,
+      now: false,
+      calendarTag: null,
+      ...(status === 'within' ? {} : { tone: status }),
+    };
+  });
 }
 
 /**

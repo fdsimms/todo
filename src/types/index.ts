@@ -2276,6 +2276,10 @@ export type GeneratedKind =
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
   | 'snackNudge'
+  // A task the first time a day's food log gets close to a Stay under limit —
+  // see src/utils/limitWarningTasks.ts. Day-and-nutrient keyed with no source
+  // row; deleting one stamps limitWarningDeclinedDayKey for the rest of the day.
+  | 'limitWarning'
   // "Book Optometrist" once a saved event's own interval has nearly passed
   // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved
   // event and the cycle (`key|day`), and declined on the saved event itself.
@@ -7808,6 +7812,12 @@ export interface ContextRow {
    * hours (`startsInLabel`). Absent on every other row.
    */
   startsIn?: string | null;
+  /**
+   * How a Stay under limit's row reads against it (`limitContextRows`): the
+   * glyph goes orange once the day is close and the row red once it is past.
+   * Absent on every other row.
+   */
+  tone?: 'near' | 'over';
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

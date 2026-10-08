@@ -13998,6 +13998,75 @@ describe('quota tasks', () => {
         });
       });
 
+      describe('the limit warning', () => {
+        const fatEntry = (satFatG: number, id = 'f1'): FoodLogEntry => ({
+          ...waterEntry(0),
+          id,
+          label: 'Ice cream',
+          nutrition: { ...panel(0), amounts: { satFatG } },
+        });
+        const warnings = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'limitWarning' && !t.completedAt);
+        const on = {
+          limitWarningTasks: true, limitWarningTaskCategory: 'Health', vacationMode: false,
+          nutritionTargets: { satFatG: 16, sugarG: 35 }, nutritionLimits: ['satFatG', 'sugarG'],
+          limitWarnPercent: 75, limitWarningDeclinedDayKey: null,
+        };
+        const run = () => useTaskStore.getState().syncLimitWarningTasks();
+
+        beforeEach(() => {
+          jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
+          useTaskStore.setState({ tasks: [] });
+        });
+        afterEach(() => jest.useRealTimers());
+
+        it('writes one once the log reaches the close share of a limit', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+          run();
+          expect(warnings().map(t => t.title)).toEqual(['Saturated fat at 12 of 16g today']);
+        });
+
+        it('writes nothing below it, or for a nutrient that is not a limit', () => {
+          withSettings({ ...on, nutritionLimits: ['sugarG'] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(15)]);
+          run();
+          expect(warnings()).toHaveLength(0);
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(11)]);
+          run();
+          expect(warnings()).toHaveLength(0);
+        });
+
+        it('retitles the same task once the day passes the limit, rather than adding one', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+          run();
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12), fatEntry(7, 'f2')]);
+          run();
+          expect(warnings().map(t => t.title)).toEqual(['Saturated fat at 19 of 16g today, over the limit']);
+        });
+
+        it('removes it when the entry behind it is deleted', () => {
+          withSettings(on);
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+          run();
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+          run();
+          expect(warnings()).toHaveLength(0);
+        });
+
+        it('does not write one back the day it was deleted, or while off', () => {
+          withSettings({ ...on, limitWarningDeclinedDayKey: dayKeyOf(getCurrentDayStart()) });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+          run();
+          expect(warnings()).toHaveLength(0);
+          withSettings({ ...on, limitWarningTasks: false });
+          run();
+          expect(warnings()).toHaveLength(0);
+        });
+      });
+
       it('leaves the count alone when the task does not follow', () => {
         withSettings({ nutritionTargets: { waterMl: 2500 } });
         useTaskStore.setState({ tasks: [waterQuota()] });

@@ -178,6 +178,8 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // part of the other, since one asks about water already owed and this about
   // the day's food.
   'snackNudge',
+  // Beside it, reading the same food log against a limit rather than a goal.
+  'limitWarning',
   // Appended: the one generator whose source is a calendar event the person
   // keeps for re-adding (savedEvents.ts).
   'bookEvent',
@@ -249,6 +251,7 @@ export type GeneratedEnabledKey =
   | 'weighInTasks'
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
+  | 'limitWarningTasks'
   | 'bookEventTasks'
   | 'journalLogTasks'
   | 'dreamLogTasks';
@@ -352,6 +355,9 @@ export interface GeneratedKindSpec {
    * pinned to an event's start, and leaving for it on Thursday instead has
    * nothing to mean. Its reminder and title are rewritten by every sweep, so an
    * edit would not survive one anyway.
+   *
+   * And `limitWarning` ("Sat fat at 12 of 16g today"): day-keyed, rewritten as
+   * the total moves, and about today's food log, which no other day can be.
    *
    * False everywhere else, and not because the rest are less automatic. A
    * pantry review deferred to Saturday is that generator working as designed,
@@ -994,6 +1000,25 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // Not a notice: eating the snack is the decision, and logging it removes the
     // task, so it is something to act on rather than something to tick.
     notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Ships off: Stay under limits are opt-in, and so is being told about one.
+  limitWarning: {
+    kind: 'limitWarning',
+    pausedOnVacation: true,
+    enabledKey: 'limitWarningTasks',
+    label: 'Warn near a limit',
+    onHint: 'Adds a task when the food log gets close to a Stay under limit',
+    offHint: 'No task when the food log nears a limit',
+    icon: 'nutrition-outline',
+    // Keyed by the day and the nutrient; limitWarningDeclinedDayKey is what
+    // stops a deleted one coming straight back the same day.
+    sourced: false,
+    // A notice: there is nothing to do but know, and ticking it off is the
+    // acknowledgement that ends it for the day.
+    notice: true,
     kitchen: false,
     categorized: true,
     defaultCategory: 'Health',

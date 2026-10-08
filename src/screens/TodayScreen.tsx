@@ -65,6 +65,7 @@ import {
   eventContextRows,
   mealContextRows,
   healthContextRows,
+  limitContextRows,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
@@ -171,6 +172,9 @@ import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { foodLogTotals } from '../utils/foodLog';
+import { activeLimits } from '../utils/nutritionTargets';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
 import { capitalize } from '../utils/capitalize';
@@ -1789,6 +1793,15 @@ export function TodayScreen() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const healthToday = useHealthStore(s => s.today);
+  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
+  const recentFoodEntries = useFoodLogStore(s => s.recentEntries);
+  // Read for their identity only: they change when an entry is added, removed
+  // or revised, which is when today's totals below go stale.
+  const foodLogCount = useFoodLogStore(s => s.totalCount);
+  const foodLogWindow = useFoodLogStore(s => s.entries);
 
   // Today's reading, shown as a concise "68° Sunny" next to the header title
   // rather than as a row in the list. Gated on `weatherTaskCategory` the same
@@ -2590,6 +2603,18 @@ export function TodayScreen() {
         category: healthCategory,
       }));
     }
+    // A row per Stay under limit, read off today's food log. Off until the
+    // Nutrition sheet's "Show on Today" files them under a category, for the
+    // reason Health's rows are gated on theirs.
+    if (limitsTodayCategory && activeLimits(nutritionTargets, nutritionLimits).length > 0) {
+      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+      rows.push(...limitContextRows(
+        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        nutritionTargets,
+        nutritionLimits,
+        { category: limitsTodayCategory, warnPercent: limitWarnPercent },
+      ));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -2631,6 +2656,8 @@ export function TodayScreen() {
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
+    limitsTodayCategory, nutritionTargets, nutritionLimits, limitWarnPercent,
+    recentFoodEntries, foodLogCount, foodLogWindow,
     minuteTick,
   ]);
 
