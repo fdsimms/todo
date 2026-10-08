@@ -37,6 +37,8 @@ export interface AgentLedgerEntry {
   count?: number;
   /** What the preview says for this effect, when the action and fields alone read too vaguely. Not recorded. */
   note?: string;
+  /** Appended to whatever the preview says for this effect, for a fact the fields can't carry. Not recorded. */
+  suffix?: string;
   revert?: UnattendedRevert | null;
 }
 
@@ -63,7 +65,8 @@ function hourLabel(h: number): string {
 
 /** One rule in the words its sheet would use: when it fires, then what it adds. */
 export function describeRule(type: string, rule: LooseRule): string {
-  const adds = typeof rule.title === 'string' && rule.title ? `add the task "${rule.title}"` : 'add a task';
+  const extras = [rule.category && `category ${rule.category}`, typeof rule.estimatedMinutes === 'number' && `${rule.estimatedMinutes} min`].filter(Boolean).join(', ');
+  const adds = `${typeof rule.title === 'string' && rule.title ? `add the task "${rule.title}"` : 'add a task'}${extras ? ` (${extras})` : ''}`;
   const off = rule.enabled === false ? ' (off)' : '';
   switch (type) {
     case 'health': {
@@ -80,8 +83,15 @@ export function describeRule(type: string, rule: LooseRule): string {
     }
     case 'title': {
       const words = Array.isArray(rule.keywords) ? rule.keywords.map(k => `"${k}"`).join(', ') : '';
-      const filed = [rule.category && `category ${rule.category}`, typeof rule.priority === 'number' && rule.priority > 0 && `priority ${rule.priority}`]
-        .filter(Boolean).join(', ');
+      const filed = [
+        rule.category && `category ${rule.category}`,
+        rule.projectId && 'a project',
+        Array.isArray(rule.tags) && rule.tags.length > 0 && `tags ${rule.tags.join(', ')}`,
+        typeof rule.priority === 'number' && rule.priority > 0 && `priority ${rule.priority}`,
+        typeof rule.effort === 'number' && rule.effort > 0 && `effort ${rule.effort}`,
+        rule.linkUrl && 'a link',
+        rule.stripKeyword && 'the word removed from the title',
+      ].filter(Boolean).join(', ');
       return `when a task title ${rule.match === 'startsWith' ? 'starts with' : 'contains'} ${words}${filed ? `, file it under ${filed}` : ''}${off}`;
     }
     default: return `${String(rule.title ?? rule.id ?? 'rule')}${off}`;
@@ -107,6 +117,32 @@ export function describeRuleListChange(type: string, before: readonly LooseRule[
   }
   for (const r of byId.values()) clauses.push(`Delete a ${label} rule: ${describeRule(type, r)}`);
   return clauses.length > 0 ? clauses.join('; ') : `Save the ${label} rules with no change`;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const humanize = (k: string) => k.replace(/([A-Z])/g, ' $1').toLowerCase();
+const clockOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const snippet = (text: string) => (text.length <= 30 ? `"${text}"` : `"${text.slice(0, 30)}..."`);
+
+/**
+ * What a patch changes, by field, for a preview line: a short value is shown,
+ * a list gives its length, anything longer just names the field. With `before`,
+ * a value is shown against what it replaces.
+ */
+export function describePatch(patch: object, before?: object | null): string {
+  const was = (before ?? {}) as Record<string, unknown>;
+  return Object.entries(patch as Record<string, unknown>).filter(([, v]) => v !== undefined).map(([k, v]) => {
+    const name = humanize(k);
+    const old = was[k];
+    if (Array.isArray(v)) return Array.isArray(old) ? `${name} from ${old.length} to ${v.length}` : `${name} replaced (${v.length})`;
+    if (v === null) return `${name} cleared`;
+    if (typeof v === 'string') {
+      if (v.length > 40) return `${name} changed`;
+      return typeof old === 'string' && old.length <= 40 ? `${name} from "${old}" to "${v}"` : `${name} to "${v}"`;
+    }
+    if (typeof v === 'number' || typeof v === 'boolean') return old === undefined || old === null ? `${name} to ${v}` : `${name} from ${String(old)} to ${v}`;
+    return `${name} changed`;
+  }).join('; ');
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -189,7 +225,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     createTask(draft) {
       const task = replica.createTask(draft);
-      log({ action: 'created', subject: 'task', title: task.title, taskId: task.id });
+      const details = [
+        task.dueDate && `on ${replica.dayKeyOf(task.dueDate)}`,
+        task.category && `in ${task.category}`,
+        task.recurrenceType !== 'none' && `repeating ${task.recurrenceType}`,
+        task.projectId && `in the project "${replica.projects().find(p => p.id === task.projectId)?.title ?? 'a project'}"`,
+      ].filter(Boolean).join(', ');
+      log({ action: 'created', subject: 'task', title: task.title, taskId: task.id, note: `Create the task "${task.title}"${details ? ` (${details})` : ''}` });
       return task;
     },
 
@@ -197,7 +239,10 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const before = snapshot(id);
       const result = replica.updateTask(id, patch);
       if (before) {
-        log({ action: 'edited', subject: 'task', title: result.task.title, taskId: id, revert: taskRevert(before, result.task) });
+        log({
+          action: 'edited', subject: 'task', title: result.task.title, taskId: id, revert: taskRevert(before, result.task),
+          suffix: result.alsoUpdated > 0 ? ` (also applies to ${plural(result.alsoUpdated, 'later date')})` : undefined,
+        });
       }
       return result;
     },
@@ -211,7 +256,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     completeTask(id, options) {
       const result = replica.completeTask(id, options);
-      log({ action: 'completed', subject: 'task', title: result.completed.title, taskId: id });
+      const c = result.completed;
+      const parts = [
+        result.nextTask ? `creates the next one${result.nextTask.dueDate ? ` for ${replica.dayKeyOf(result.nextTask.dueDate)}` : ''}` : null,
+        result.loggedDose ? `records a dose of ${c.medicationName ?? 'its medication'}` : null,
+        result.followUpTask ? `adds the follow-up "${result.followUpTask.title}"` : null,
+        result.rolledOver.length > 0 ? `starts the next set of dates (${plural(result.rolledOver.length, 'task')})` : null,
+        c.deliverableValue !== undefined && c.deliverableValue !== null && c.deliverableValue !== '' ? `records the answer ${snippet(String(c.deliverableValue))}` : null,
+      ].filter(Boolean);
+      log({ action: 'completed', subject: 'task', title: c.title, taskId: id, note: `Complete "${c.title}"${parts.length ? `; it ${parts.join(', ')}` : ''}` });
       return result;
     },
 
@@ -241,7 +294,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     setTaskArchived(id, archived) {
       const before = snapshot(id);
       const task = replica.setTaskArchived(id, archived);
-      if (before) log({ action: archived ? 'cleared' : 'edited', subject: 'task', title: task.title, taskId: id, revert: taskRevert(before, task) });
+      if (before) log({ action: archived ? 'cleared' : 'edited', subject: 'task', title: task.title, taskId: id, revert: taskRevert(before, task), note: archived ? `Archive "${task.title}"` : `Bring "${task.title}" back from the archive` });
       return task;
     },
 
@@ -250,9 +303,14 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     deleteTask(id) {
       const deleted = replica.deleteTask(id);
       const items = deleted.subtasks.length;
+      const parent = deleted.task.parentId ? replica.taskById(deleted.task.parentId)?.title : undefined;
+      const entryDay = deleted.task.completedAt ?? deleted.task.dueDate;
+      const what = parent !== undefined ? `the checklist item "${deleted.task.title}" of "${parent}"`
+        : deleted.task.completedAt && entryDay ? `the ${replica.dayKeyOf(entryDay)} entry of "${deleted.task.title}"`
+          : `"${deleted.task.title}"`;
       log({
         action: 'cleared', subject: 'task', title: deleted.task.title, taskId: id,
-        note: `Delete "${deleted.task.title}"${items > 0 ? ` and its ${items} checklist ${items === 1 ? 'item' : 'items'}` : ''}. It can be restored from Activity.`,
+        note: `Delete ${what}${items > 0 ? ` and its ${items} checklist ${items === 1 ? 'item' : 'items'}` : ''}. It can be restored from Activity.`,
         revert: deletedTaskRevert(deleted),
       });
       return deleted;
@@ -317,8 +375,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     addProjectSteps(projectId, steps) {
       const created = replica.addProjectSteps(projectId, steps);
+      const project = replica.projects().find(p => p.id === projectId)?.title ?? 'the project';
       for (const task of created) {
-        if (!task.parentId) log({ action: 'created', subject: 'task', title: task.title, taskId: task.id });
+        if (!task.parentId) log({ action: 'created', subject: 'task', title: task.title, taskId: task.id, note: `Add "${task.title}" to the project "${project}"${task.dueDate ? ` on ${replica.dayKeyOf(task.dueDate)}` : ''}` });
       }
       return created;
     },
@@ -335,7 +394,16 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     createProjectPlan(plan) {
       const result = replica.createProjectPlan(plan);
-      log({ action: 'created', subject: 'project', title: result.project.title, taskId: null, count: 1 + result.tasks.length });
+      const top = result.tasks.filter(t => !t.parentId).length;
+      const subs = result.tasks.length - top;
+      const p = result.project;
+      const extra = [
+        `${plural(top, 'task')}${subs > 0 ? ` and ${plural(subs, 'checklist item')}` : ''}`,
+        plan.planning === true ? 'in Planning, so its tasks stay hidden until it is marked ready' : null,
+        p.deadline ? `deadline ${replica.dayKeyOf(p.deadline)}` : null,
+        p.eventDate ? `event on ${replica.dayKeyOf(p.eventDate)}` : null,
+      ].filter(Boolean).join(', ');
+      log({ action: 'created', subject: 'project', title: p.title, taskId: null, count: 1 + result.tasks.length, note: `Create the project "${p.title}" with ${extra}` });
       return result;
     },
 
@@ -344,12 +412,25 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const project = replica.updateProject(id, patch);
       // A completion is a state change with no restore (the fields below cannot
       // reopen it), so only a plain edit carries a revert.
+      const dayish = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) ? replica.dayKeyOf(v) : v ?? 'no date');
+      const parts = Object.entries(patch as Record<string, unknown>).filter(([k, v]) => v !== undefined && k !== 'newCategory').map(([k, v]) => {
+        if (k === 'planning') return v ? 'put it in Planning (its tasks and reminders are hidden)' : 'mark it ready (its tasks appear)';
+        if (k === 'awayStart') return `away from ${dayish(v)}`;
+        if (k === 'awayEnd') return `away until ${dayish(v)}`;
+        if (k === 'pausedUntil') return v ? `held back until ${dayish(v)}` : 'no longer held back';
+        if (k === 'completed') return v ? 'mark it finished' : 'reopen it';
+        if (k === 'archived') return v ? 'archive it' : 'bring it back from the archive';
+        if (k === 'deadline' || k === 'eventDate') return `${humanize(k)} ${dayish(v)}`;
+        return describePatch({ [k]: v }, before);
+      });
+      const away = 'awayStart' in patch || 'awayEnd' in patch ? ' (vacation mode and the away grocery list follow the away dates, where they are turned on)' : '';
       log({
         action: patch.completed ? 'completed' : 'edited',
         subject: 'project',
         title: project.title,
         taskId: null,
         recordId: id,
+        note: `Change the project "${before?.title ?? project.title}": ${parts.join('; ')}${away}`,
         revert: before && !patch.completed
           ? projectRevert(before as unknown as Record<string, unknown>, project as unknown as Record<string, unknown>)
           : null,
@@ -359,7 +440,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     createStack(title, category, projectId) {
       const stack = replica.createStack(title, category, projectId);
-      log({ action: 'created', subject: 'stack', title: stack.title, taskId: null });
+      log({ action: 'created', subject: 'stack', title: stack.title, taskId: null, note: `Create the stack "${stack.title}"${stack.category ? ` under ${stack.category}` : ''}` });
       return stack;
     },
 
@@ -375,8 +456,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     updateStack(id, patch) {
       const before = replica.stacks().find(g => g.id === id);
       const result = replica.updateStack(id, patch);
-      const changes = Object.keys(patch).filter(k => k !== 'category').join(', ');
-      if (changes) log({ action: 'edited', subject: 'stack', title: result.stack.title, taskId: null, recordId: id, note: `Change the stack "${before?.title ?? result.stack.title}": ${changes}` });
+      const changes = describePatch(patch, before);
+      if (changes) {
+        log({
+          action: 'edited', subject: 'stack', title: result.stack.title, taskId: null, recordId: id,
+          note: `Change the stack "${before?.title ?? result.stack.title}": ${changes}${result.moved.length > 0 ? ` (re-files ${plural(result.moved.length, 'open task')})` : ''}`,
+        });
+      }
       for (const { before: b, after } of result.moved) {
         log({ action: 'edited', subject: 'task', title: after.title, taskId: after.id, note: `Move "${after.title}" to the stack's category, ${after.category ?? 'none'}`, revert: taskRevert(b, after) });
       }
@@ -402,7 +488,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     updateCategorySettings(name, patch) {
       const category = replica.updateCategorySettings(name, patch);
-      log({ action: 'edited', subject: 'category', title: category.name, taskId: null, note: `Change the category "${category.name}": ${Object.keys(patch).join(', ')}` });
+      log({ action: 'edited', subject: 'category', title: category.name, taskId: null, note: `Change the category "${category.name}": ${describePatch(patch)}` });
       return category;
     },
 
@@ -434,8 +520,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     reorderProjects(ids, categories) {
       replica.reorderProjects(ids, categories);
-      const parts = [ids.length > 0 ? `${ids.length} ${ids.length === 1 ? 'project' : 'projects'}` : null, categories?.length ? 'the project categories' : null].filter(Boolean);
-      log({ action: 'moved', subject: 'project', title: 'Projects', taskId: null, note: `Reorder ${parts.join(' and ')}` });
+      const nameOf = (pid: string) => replica.projects().find(x => x.id === pid)?.title ?? 'a project';
+      const parts = [ids.length > 0 ? `the projects (${ids.map(nameOf).join(', ')})` : null, categories?.length ? `the project categories (${categories.join(', ')})` : null].filter(Boolean);
+      log({ action: 'moved', subject: 'project', title: 'Projects', taskId: null, note: `Put ${parts.join(' and ')} in that order` });
     },
 
     startFreshProject(id) {
@@ -455,7 +542,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     setTaskStack(taskId, stackId) {
       const before = snapshot(taskId);
       const task = replica.setTaskStack(taskId, stackId);
-      if (before) log({ action: 'edited', subject: 'task', title: task.title, taskId, revert: taskRevert(before, task) });
+      if (before) {
+        const stackName = (sid: string | null | undefined) => (sid ? replica.stacks().find(g => g.id === sid)?.title ?? 'a stack' : null);
+        const to = stackName(stackId);
+        const moved = before.category !== task.category ? `, moving it from ${before.category ?? 'no category'} to ${task.category ?? 'no category'}` : '';
+        const note = to ? `File "${task.title}" in the stack "${to}"${moved}` : `Take "${task.title}" out of the stack "${stackName(before.groupId) ?? 'it was in'}"${moved}`;
+        log({ action: 'edited', subject: 'task', title: task.title, taskId, revert: taskRevert(before, task), note });
+      }
       return task;
     },
 
@@ -538,13 +631,17 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     createTemplate(plan) {
       const template = replica.createTemplate(plan);
-      log({ action: 'created', subject: 'template', title: template.name, taskId: null });
+      const bits = [plural(template.items.length, 'task'), template.questions.length > 0 ? plural(template.questions.length, 'question') : null, template.schedule ? 'runs on a schedule' : null].filter(Boolean).join(', ');
+      log({ action: 'created', subject: 'template', title: template.name, taskId: null, note: `Create the template "${template.name}" (${bits})` });
       return template;
     },
 
     updateTemplate(id, patch, expectedVersion) {
+      const was = replica.templates().find(t => t.id === id);
       const template = replica.updateTemplate(id, patch, expectedVersion);
-      log({ action: 'edited', subject: 'template', title: template.name, taskId: null });
+      const shown = { ...(patch as Record<string, unknown>) };
+      if ('schedule' in shown) shown.schedule = shown.schedule === null ? null : 'set';
+      log({ action: 'edited', subject: 'template', title: template.name, taskId: null, note: `Change the template "${was?.name ?? template.name}": ${describePatch(shown, was)}` });
       return template;
     },
 
@@ -561,25 +658,28 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     deleteTemplate(id) {
       const result = replica.deleteTemplate(id);
-      log({ action: 'cleared', subject: 'template', title: result.template.name, taskId: null });
+      const used = result.nestedIn.length > 0 ? `; it was used inside ${result.nestedIn.map(x => `"${x}"`).join(', ')}` : '';
+      log({ action: 'cleared', subject: 'template', title: result.template.name, taskId: null, note: `Delete the template "${result.template.name}" (${plural(result.template.items.length, 'task')})${used}. It cannot be restored from here.` });
       return result;
     },
 
     reorderTemplates(ids) {
       const ordered = replica.reorderTemplates(ids);
-      log({ action: 'moved', subject: 'template', title: `${ordered.length} templates`, taskId: null });
+      const nameOf = (tid: string) => replica.templates().find(t => t.id === tid)?.name ?? 'a template';
+      log({ action: 'moved', subject: 'template', title: `${ordered.length} templates`, taskId: null, note: `Put the templates in this order: ${ids.map(nameOf).join(', ')}` });
       return ordered;
     },
 
     updateFoodEntry(id, patch) {
+      const was = replica.foodLogEntries('0000-01-01', '9999-12-31').find(e => e.id === id) ?? null;
       const entry = replica.updateFoodEntry(id, patch);
-      log({ action: 'edited', subject: 'food', title: entry.label, taskId: null, note: `Correct the food log entry "${entry.label}"` });
+      log({ action: 'edited', subject: 'food', title: entry.label, taskId: null, note: `Correct the food log entry "${entry.label}" from ${entry.dayKey}: ${describePatch(patch, was)}` });
       return entry;
     },
 
     deleteFoodEntry(id) {
       const entry = replica.deleteFoodEntry(id);
-      log({ action: 'cleared', subject: 'food', title: entry.label, taskId: null, note: `Delete "${entry.label}" from the food log` });
+      log({ action: 'cleared', subject: 'food', title: entry.label, taskId: null, note: `Delete "${entry.label}"${entry.quantity ? ` (${entry.quantity})` : ''} from the food log on ${entry.dayKey}` });
       return entry;
     },
 
@@ -591,7 +691,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     duplicateFoodEntry(id, at) {
       const entry = replica.duplicateFoodEntry(id, at);
-      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Copy "${entry.label}" in the food log to ${entry.dayKey}${entry.slot ? ` for ${entry.slot}` : ''}` });
       return entry;
     },
 
@@ -603,7 +703,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     logSavedMeal(id, slot, at) {
       const entries = replica.logSavedMeal(id, slot, at);
-      for (const entry of entries) log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      for (const entry of entries) log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Log "${entry.label}"${entry.quantity ? ` (${entry.quantity})` : ''} from a saved meal${entry.slot ? ` for ${entry.slot}` : ''} on ${entry.dayKey}` });
       return entries;
     },
 
@@ -623,37 +723,37 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     updateMoodLog(id, patch) {
       const entry = replica.updateMoodLog(id, patch);
-      log({ action: 'edited', subject: 'mood', title: entry.dayKey, taskId: null, note: `Correct the mood check-in from ${entry.dayKey}` });
+      log({ action: 'edited', subject: 'mood', title: entry.dayKey, taskId: null, note: `Correct the mood check-in from ${entry.dayKey}: ${describePatch(patch)}` });
       return entry;
     },
 
     deleteMoodLog(id) {
       const entry = replica.deleteMoodLog(id);
-      log({ action: 'cleared', subject: 'mood', title: entry.dayKey, taskId: null, note: `Delete the mood check-in from ${entry.dayKey}` });
+      log({ action: 'cleared', subject: 'mood', title: entry.dayKey, taskId: null, note: `Delete the mood check-in from ${entry.dayKey}${entry.mood !== null ? ` (mood ${entry.mood})` : ''}` });
       return entry;
     },
 
     setMedicationArchived(name, archived) {
       const spelled = replica.setMedicationArchived(name, archived);
-      log({ action: 'edited', subject: 'medication', title: 'Medication', taskId: null, note: archived ? `Archive a medicine: it leaves "what you take", and no dose is deleted` : 'Bring an archived medicine back' });
+      log({ action: 'edited', subject: 'medication', title: 'Medication', taskId: null, note: archived ? `Archive ${spelled || name}: it leaves "what you take", and no dose is deleted` : `Bring ${spelled || name} back from the archive` });
       return spelled;
     },
 
     renameMoodTag(from, to) {
       const count = replica.renameMoodTag(from, to);
-      log({ action: 'edited', subject: 'mood', title: 'Mood log', taskId: null, note: `Rename a context tag on ${count} mood ${count === 1 ? 'check-in' : 'check-ins'}` });
+      log({ action: 'edited', subject: 'mood', title: 'Mood log', taskId: null, note: `Rename the context tag "${from}" to "${to}" on ${count} mood ${count === 1 ? 'check-in' : 'check-ins'}` });
       return count;
     },
 
     updateMedicationLog(id, patch) {
       const entry = replica.updateMedicationLog(id, patch);
-      log({ action: 'edited', subject: 'medication', title: entry.name, taskId: null, note: `Correct the ${entry.name} dose from ${entry.dayKey}` });
+      log({ action: 'edited', subject: 'medication', title: entry.name, taskId: null, note: `Correct the ${entry.name} dose from ${entry.dayKey}: ${describePatch(patch)}` });
       return entry;
     },
 
     deleteMedicationLog(id) {
       const entry = replica.deleteMedicationLog(id);
-      log({ action: 'cleared', subject: 'medication', title: entry.name, taskId: null, note: `Delete the ${entry.name} dose from ${entry.dayKey}` });
+      log({ action: 'cleared', subject: 'medication', title: entry.name, taskId: null, note: `Delete the ${entry.name} dose${entry.amount !== null ? ` (${entry.amount}${entry.unit ? ` ${entry.unit}` : ''})` : ''} from ${entry.dayKey} at ${clockOf(entry.takenAt)}` });
       return entry;
     },
 
@@ -663,7 +763,10 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const where = before && (before.date !== entry.date || before.slot !== entry.slot)
         ? `Move "${entry.title}" from ${before.slot} on ${before.date} to ${entry.slot} on ${entry.date}`
         : `Change the planned meal "${entry.title}"`;
-      log({ action: 'moved', subject: 'meal', title: entry.title, taskId: null, note: where });
+      const rest = describePatch({ ...patch, date: undefined, slot: undefined, choices: undefined }, before);
+      const choices = patch.choices && patch.choices.length > 0 ? `${plural(patch.choices.length, 'either/or answer')}` : '';
+      const detail = [rest, choices].filter(Boolean).join('; ');
+      log({ action: 'moved', subject: 'meal', title: entry.title, taskId: null, note: detail ? `${where}${where.startsWith('Move') ? ', and change' : ':'} ${detail}` : where });
       return entry;
     },
 
@@ -698,13 +801,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     copyMealWeek(fromDay, toDay, slot) {
       const created = replica.copyMealWeek(fromDay, toDay, slot);
       // One entry per meal, as planning one records, so each can be taken back on its own.
-      for (const entry of created) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      for (const entry of created) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id, note: `Plan "${entry.title}" for ${entry.slot} on ${entry.date}` });
       return created;
     },
 
     copyMealTo(id, dates) {
       const result = replica.copyMealTo(id, dates);
-      for (const entry of result.copied) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      for (const entry of result.copied) log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id, note: `Plan "${entry.title}" for ${entry.slot} on ${entry.date}` });
       return result;
     },
 
@@ -715,8 +818,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     updatePerson(id, fields) {
+      const was = replica.people().find(x => x.id === id) ?? null;
       const person = replica.updatePerson(id, fields);
-      log({ action: 'edited', subject: 'person', title: person.name, taskId: null, note: `Change ${person.name}'s details` });
+      log({ action: 'edited', subject: 'person', title: person.name, taskId: null, note: `Change ${was?.name ?? person.name}'s details: ${describePatch(fields)}` });
       return person;
     },
 
@@ -733,7 +837,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     reorderPeople(ids) {
       replica.reorderPeople(ids);
-      log({ action: 'moved', subject: 'person', title: 'People', taskId: null, note: `Reorder your people, starting with ${ids.length} named` });
+      const nameOf = (pid: string) => replica.people().find(x => x.id === pid)?.name ?? 'someone';
+      log({ action: 'moved', subject: 'person', title: 'People', taskId: null, note: `Put your people in this order: ${ids.map(nameOf).join(', ')}` });
     },
 
     savePersonGroup(name, change) {
@@ -758,26 +863,27 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     updatePersonNote(id, patch) {
       const note = replica.updatePersonNote(id, patch);
       const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
-      log({ action: 'edited', subject: 'person', title: who, taskId: null, note: `Change a ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      log({ action: 'edited', subject: 'person', title: who, taskId: null, note: `Change the ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} ${snippet(note.text)} for ${who}` });
       return note;
     },
 
     deletePersonNote(id) {
       const note = replica.deletePersonNote(id);
       const who = replica.people().find(p => p.id === note.personId)?.name ?? 'someone';
-      log({ action: 'cleared', subject: 'person', title: who, taskId: null, note: `Delete a ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} for ${who}` });
+      log({ action: 'cleared', subject: 'person', title: who, taskId: null, note: `Delete the ${note.kind === 'gift' ? 'gift idea' : note.kind === 'food' ? 'food note' : 'note'} ${snippet(note.text)} for ${who}` });
       return note;
     },
 
     updateRecipe(id, patch) {
+      const was = replica.recipes().find(r => r.id === id) ?? null;
       const recipe = replica.updateRecipe(id, patch);
-      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${recipe.name}"` });
+      log({ action: 'edited', subject: 'recipe', title: recipe.name, taskId: null, note: `Change the recipe "${was?.name ?? recipe.name}": ${describePatch(patch, was)}${was && was.name !== recipe.name ? ' (planned meals using it are retitled)' : ''}` });
       return recipe;
     },
 
     deleteRecipe(id) {
       const result = replica.deleteRecipe(id);
-      log({ action: 'cleared', subject: 'recipe', title: result.recipe.name, taskId: null, note: `Delete the recipe "${result.recipe.name}". It cannot be restored from here.` });
+      log({ action: 'cleared', subject: 'recipe', title: result.recipe.name, taskId: null, note: `Delete the recipe "${result.recipe.name}"${result.plannedMeals > 0 ? `; ${plural(result.plannedMeals, 'planned meal')} keep their title but lose the link` : ''}. It cannot be restored from here.` });
       return result;
     },
 
@@ -833,7 +939,11 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     addGroceryItem(name, opts) {
+      const priorAmounts = new Map(replica.groceryItems().map(i => [i.id, i.quantity]));
       const outcome = replica.addGroceryItem(name, opts);
+      if (outcome.wasOnList && priorAmounts.get(outcome.item.id) !== outcome.item.quantity) {
+        log({ action: 'edited', subject: 'catalog', title: outcome.item.name, taskId: null, recordId: outcome.item.id, note: `Change the amount of "${outcome.item.name}" on ${listLabel(opts?.listId ?? null)} from ${priorAmounts.get(outcome.item.id) || 'none'} to ${outcome.item.quantity || 'none'}` });
+      }
       if (!outcome.wasOnList) {
         // Undoing an add takes the item off the list at home, so one made on a
         // separate list is recorded without that undo.
@@ -844,9 +954,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     setGroceryChecked(id, checked, listId = null) {
+      const onList = (lid: string | null) => new Set(replica.groceryListEntries().filter(e => e.listId === lid).map(e => e.itemId));
+      const listed = onList(listId);
       const item = replica.setGroceryChecked(id, checked, listId);
-      if (listId === null) log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
-      else log({ action: 'edited', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `${checked ? 'Check off' : 'Uncheck'} "${item.name}" on ${listLabel(listId)}` });
+      const gone = [...listed].filter(x => !onList(listId).has(x) && x !== id).map(x => replica.groceryItems().find(i => i.id === x)?.name ?? 'an item');
+      const alsoOff = gone.length > 0 ? `, and take ${gone.map(g => `"${g}"`).join(', ')} off the list (the other options of its either/or)` : '';
+      if (listId === null) log({ action: checked ? 'completed' : 'edited', subject: 'grocery', title: item.name, taskId: null, recordId: item.id, ...(alsoOff ? { note: `${checked ? 'Check off' : 'Uncheck'} "${item.name}" on the grocery list${alsoOff}` } : {}) });
+      else log({ action: 'edited', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `${checked ? 'Check off' : 'Uncheck'} "${item.name}" on ${listLabel(listId)}${alsoOff}` });
       return item;
     },
 
@@ -874,9 +988,11 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     saveGroceryBox(itemId, input) {
       const item = replica.groceryItems().find(i => i.id === itemId);
+      const old = input.boxId ? replica.itemProducts().find(x => x.id === input.boxId) : undefined;
       const box = replica.saveGroceryBox(itemId, input);
       const verb = input.delete ? 'Delete a brand of' : input.boxId ? 'Change a brand of' : 'Add a brand to';
-      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'item', taskId: null, recordId: itemId, note: `${verb} "${item?.name ?? 'an item'}"${box ? `: ${[box.brand, box.variant].filter(Boolean).join(' ')}` : ''}` });
+      const shown = box ?? old;
+      log({ action: 'edited', subject: 'catalog', title: item?.name ?? 'item', taskId: null, recordId: itemId, note: `${verb} "${item?.name ?? 'an item'}"${shown ? `: ${[shown.brand, shown.variant].filter(Boolean).join(' ')}` : ''}` });
       return box;
     },
 
@@ -891,8 +1007,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     addPlannedToList(rows, listId) {
       const result = replica.addPlannedToList(rows, listId);
       for (const item of result.added) {
-        if (listId === null) log({ action: 'created', subject: 'grocery', title: item.name, taskId: null, recordId: item.id });
-        else log({ action: 'created', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `Put "${item.name}" on ${listLabel(listId)}` });
+        if (listId === null) log({ action: 'created', subject: 'grocery', title: item.name, taskId: null, recordId: item.id, ...(item.quantity ? { note: `Put "${item.name}" (${item.quantity}) on the grocery list` } : {}) });
+        else log({ action: 'created', subject: 'catalog', title: item.name, taskId: null, recordId: item.id, note: `Put "${item.name}"${item.quantity ? ` (${item.quantity})` : ''} on ${listLabel(listId)}` });
       }
       for (const item of result.toppedUp) {
         log({ action: 'edited', subject: 'catalog', title: item.name, taskId: null, note: `Raise the amount of "${item.name}" on ${listLabel(listId)} to ${item.quantity}` });
@@ -925,7 +1041,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const result = replica.clearGroceryList(listId);
       log({
         action: 'cleared', subject: 'catalog', title: 'Grocery list', taskId: null,
-        note: `Clear ${listLabel(listId)} (${result.cleared} ${result.cleared === 1 ? 'item' : 'items'})${result.deleted.length > 0 ? `, deleting ${result.deleted.length} with nothing recorded on ${result.deleted.length === 1 ? 'it' : 'them'}` : ''}. It cannot be restored from here.`,
+        note: `Clear ${listLabel(listId)} (${result.cleared} ${result.cleared === 1 ? 'item' : 'items'})${result.deleted.length > 0 ? `, deleting ${result.deleted.map(d => replica.groceryItems().find(i => i.id === d)?.name ?? d).map(d => `"${d}"`).join(', ')} outright (nothing recorded on ${result.deleted.length === 1 ? 'it' : 'them'})` : ''}. It cannot be restored from here.`,
       });
       return result;
     },
@@ -977,18 +1093,20 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     updateShopSettings(id, patch) {
       const shop = replica.updateShopSettings(id, patch);
-      log({ action: 'edited', subject: 'catalog', title: shop.name, taskId: null, recordId: id, note: `Change the store "${shop.name}": ${Object.keys(patch).join(', ')}` });
+      log({ action: 'edited', subject: 'catalog', title: shop.name, taskId: null, recordId: id, note: `Change the store "${shop.name}": ${describePatch(patch)}` });
       return shop;
     },
 
     reorderShops(ids) {
       replica.reorderShops(ids);
-      log({ action: 'moved', subject: 'catalog', title: 'Stores', taskId: null, note: 'Reorder the stores' });
+      const nameOf = (sid: string) => replica.shops().find(x => x.id === sid)?.name ?? 'a store';
+      log({ action: 'moved', subject: 'catalog', title: 'Stores', taskId: null, note: `Put the stores in this order: ${ids.map(nameOf).join(', ')}` });
     },
 
     reorderGroceryLists(ids) {
       replica.reorderGroceryLists(ids);
-      log({ action: 'moved', subject: 'catalog', title: 'Lists', taskId: null, note: 'Reorder the separate grocery lists' });
+      const nameOf = (lid: string) => replica.groceryLists().find(x => x.id === lid)?.name ?? 'a list';
+      log({ action: 'moved', subject: 'catalog', title: 'Lists', taskId: null, note: `Put the separate grocery lists in this order: ${ids.map(nameOf).join(', ')}` });
     },
 
     mergeGroceryItems(fromId, intoId) {
@@ -1026,13 +1144,24 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     finishGroceryTrip(input) {
       const result = replica.finishGroceryTrip(input);
-      log({ action: 'completed', subject: 'catalog', title: listLabel(input.listId), taskId: null, count: result.finished.length, note: `Finish the shopping trip on ${listLabel(input.listId)}: ${result.finished.length} items bought${result.away ? ' (a separate list records only that they left it)' : ''}` });
+      const shopName = replica.shops().find(x => x.id === (result.shopId ?? input.shopId))?.name;
+      const names = result.finished.map(f => replica.groceryItems().find(i => i.id === f)?.name ?? f);
+      const extras = [Object.keys(input.priceById ?? {}).length > 0 ? 'prices recorded' : null, (input.frozenIds ?? []).length > 0 ? `${plural(input.frozenIds!.length, 'item')} marked frozen` : null].filter(Boolean);
+      log({
+        action: 'completed', subject: 'catalog', title: listLabel(input.listId), taskId: null, count: result.finished.length,
+        note: `Finish the shopping trip on ${listLabel(input.listId)}${shopName ? ` at ${shopName}` : ''} on ${replica.dayKeyOf(input.purchasedAt)}: ${names.join(', ')} (${plural(result.finished.length, 'item')}) bought${extras.length ? `; ${extras.join(', ')}` : ''}${result.away ? ' (a separate list records only that they left it)' : ''}. It cannot be undone from here.`,
+      });
       return result;
     },
 
     importReceipt(input) {
       const result = replica.importReceipt(input);
-      log({ action: 'completed', subject: 'catalog', title: 'Receipt', taskId: null, count: result.lines.length, note: `Import a receipt of ${result.lines.length} lines ${input.context === 'pantry' ? 'into the pantry' : `as a trip on ${listLabel(input.listId)}`}${result.finished.length ? `, finishing ${result.finished.length} items` : ''}` });
+      const shopName = replica.shops().find(x => x.id === (result.shopId ?? input.shopId))?.name;
+      const created = result.lines.filter(l => l.created).length;
+      const aliases = result.lines.filter(l => l.aliasRemembered).length;
+      const total = result.lines.reduce((sum, l) => sum + (l.priceMinor ?? 0), 0);
+      const detail = [created > 0 ? `${plural(created, 'new item')} added to the catalog` : null, aliases > 0 ? `${plural(aliases, 'receipt name')} remembered` : null, total > 0 ? `total ${(total / 100).toFixed(2)}` : null].filter(Boolean);
+      log({ action: 'completed', subject: 'catalog', title: 'Receipt', taskId: null, count: result.lines.length, note: `Import a receipt${shopName ? ` from ${shopName}` : ''} of ${plural(result.lines.length, 'line')} dated ${replica.dayKeyOf(input.purchasedAt)} ${input.context === 'pantry' ? 'into the pantry' : `as a trip on ${listLabel(input.listId)}`}${result.finished.length ? `, finishing ${plural(result.finished.length, 'item')}` : ''}${detail.length ? `; ${detail.join(', ')}` : ''}. It cannot be undone from here.` });
       return result;
     },
 
@@ -1082,7 +1211,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     updateLeftover(id, change) {
       const prior = replica.leftovers().find(l => l.id === id);
       const row = replica.updateLeftover(id, change);
-      log({ action: 'edited', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, revert: prior ? pantryRevertOf(leftoverSnapshot(prior), leftoverSnapshot(row)) : null, note: `Change the leftover "${row.title}"` });
+      log({ action: 'edited', subject: 'pantry', title: row.title, taskId: null, recordId: row.id, revert: prior ? pantryRevertOf(leftoverSnapshot(prior), leftoverSnapshot(row)) : null, note: `Change the leftover "${prior?.title ?? row.title}": ${describePatch(change, prior)}` });
       return row;
     },
 
@@ -1106,19 +1235,19 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     planMeal(draft) {
       const entry = replica.planMeal(draft);
-      log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id });
+      log({ action: 'created', subject: 'meal', title: entry.title, taskId: null, recordId: entry.id, note: `Plan "${entry.title}" for ${entry.slot} on ${entry.date}` });
       return entry;
     },
 
     createRecipe(input) {
       const recipe = replica.createRecipe(input);
-      log({ action: 'created', subject: 'recipe', title: recipe.name, taskId: null });
+      log({ action: 'created', subject: 'recipe', title: recipe.name, taskId: null, note: `Create the recipe "${recipe.name}" (${plural(recipe.ingredients.length, 'ingredient')}, ${plural(recipe.steps.length, 'step')})` });
       return recipe;
     },
 
     logFood(input) {
       const entry = replica.logFood(input);
-      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id });
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Log "${entry.label}"${entry.quantity ? ` (${entry.quantity})` : ''}${entry.slot ? ` for ${entry.slot}` : ''} on ${entry.dayKey}, marked as estimated` });
       return entry;
     },
 
@@ -1126,7 +1255,11 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const outcome = replica.logWater(input);
       // Stepping the day's row is an edit of a record the person already has;
       // the first glass (or a second row beside one Health holds) is a new one.
-      log({ action: outcome.how === 'stepped' ? 'edited' : 'created', subject: 'food', title: outcome.entry.label, taskId: null, recordId: outcome.entry.id });
+      const total = `${outcome.dayTotalMl} mL`;
+      const note = outcome.how === 'stepped' ? `Add water to ${outcome.entry.dayKey}'s entry; the day's total becomes ${total}`
+        : outcome.how === 'added' ? `Log water on ${outcome.entry.dayKey} as a second entry (the first is already in Apple Health); the day's total becomes ${total}`
+          : `Log water on ${outcome.entry.dayKey}; the day's total becomes ${total}`;
+      log({ action: outcome.how === 'stepped' ? 'edited' : 'created', subject: 'food', title: outcome.entry.label, taskId: null, recordId: outcome.entry.id, note });
       return outcome;
     },
 
@@ -1134,7 +1267,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     // the Activity list would put somebody's health on a screen about the app.
     logMood(input) {
       const entry = replica.logMood(input);
-      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null, recordId: entry.id });
+      log({ action: 'created', subject: 'mood', title: 'Mood check-in', taskId: null, recordId: entry.id, note: `Record a mood check-in for ${entry.dayKey}${entry.mood !== null ? `: mood ${entry.mood}` : ''}${entry.symptoms.length > 0 ? `, ${plural(entry.symptoms.length, 'symptom')}` : ''}` });
       return entry;
     },
 
@@ -1189,7 +1322,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     createSavedView(name, icon, clauses) {
       const view = replica.createSavedView(name, icon, clauses);
-      log({ action: 'created', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Create the saved view "${view.name}"` });
+      log({ action: 'created', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Create the saved view "${view.name}" (${plural(clauses.length, 'filter')})` });
       return view;
     },
 
@@ -1202,7 +1335,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     updateSavedView(id, patch, position) {
       const before = replica.savedViews().find(v => v.id === id);
       const view = replica.updateSavedView(id, patch, position);
-      const what = [...Object.keys(patch), ...(position !== undefined ? ['its place in the list'] : [])].join(', ');
+      const what = [describePatch(patch, before), ...(position !== undefined ? [`its place in the list, to ${position}`] : [])].filter(Boolean).join('; ');
       log({ action: 'edited', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Change the saved view "${before?.name ?? view.name}": ${what}` });
       return view;
     },
@@ -1211,7 +1344,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const result = replica.applySettings(changes);
       const show = (v: unknown) => (v === null || v === undefined ? 'none' : typeof v === 'object' ? JSON.stringify(v) : String(v));
       for (const { key, before, after } of result) {
-        log({ action: 'edited', subject: 'automation', title: key, taskId: null, note: `Change the setting ${key} from ${show(before)} to ${show(after)}` });
+        if (same(before, after)) continue;
+        log({ action: 'edited', subject: 'automation', title: key, taskId: null, note: `Change the setting "${humanize(key)}" from ${show(before)} to ${show(after)}` });
       }
       return result;
     },
@@ -1231,7 +1365,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     logMedication(input) {
       const entry = replica.logMedication(input);
-      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null, recordId: entry.id });
+      log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null, recordId: entry.id, note: `Record ${entry.amount !== null ? `${entry.amount}${entry.unit ? ` ${entry.unit}` : ''} of ` : 'a dose of '}${entry.name} on ${entry.dayKey} at ${clockOf(entry.takenAt)}` });
       return entry;
     },
 
@@ -1240,7 +1374,10 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     // for the event once it lands.
     requestCalendarEvent(input) {
       const request = replica.requestCalendarEvent(input);
-      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id });
+      const when = request.allDay ? `${replica.dayKeyOf(request.startAt)}, all day`
+        : replica.dayKeyOf(request.startAt) === replica.dayKeyOf(request.endAt) ? `${replica.dayKeyOf(request.startAt)}, ${clockOf(request.startAt)} to ${clockOf(request.endAt)}`
+          : `${replica.dayKeyOf(request.startAt)} ${clockOf(request.startAt)} to ${replica.dayKeyOf(request.endAt)} ${clockOf(request.endAt)}`;
+      log({ action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id, note: `Ask the phone to add "${request.title}" to the calendar the next time it syncs: ${when}${request.location ? `, at ${request.location}` : ''}` });
       return request;
     },
 
@@ -1251,7 +1388,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
         action: 'created', subject: 'event', title: request.title, taskId: null, recordId: request.id,
         note: 'delete' in change
           ? `Ask the phone to remove "${target?.title ?? request.title}" from the calendar the next time it syncs`
-          : `Ask the phone to change "${target?.title ?? request.title}" on the calendar the next time it syncs`,
+          : `Ask the phone to change "${target?.title ?? request.title}" on the calendar the next time it syncs: ${describePatch((change as { changes: object }).changes, target)}`,
       });
       return request;
     },
@@ -1285,7 +1422,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     setGeneratorEnabled(key, on) {
       replica.setGeneratorEnabled(key, on);
       const spec = replica.lib().generatedTasks.GENERATED_KIND_LIST.find(s => s.enabledKey === key);
-      log({ action: 'edited', subject: 'automation', title: `${spec?.label ?? key} turned ${on ? 'on' : 'off'}`, taskId: null });
+      log({ action: 'edited', subject: 'automation', title: `${spec?.label ?? key} turned ${on ? 'on' : 'off'}`, taskId: null, note: `Turn the "${spec?.label ?? key}" automation ${on ? 'on, so it can add tasks on its own' : 'off, so it stops adding tasks'}` });
     },
 
     setGeneratorCategory(kind, category) {
@@ -1294,6 +1431,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       log({
         action: 'edited', subject: 'automation', title: `${spec?.label ?? kind} files under ${category ?? 'no category'}`,
         taskId: null, recordId: kind,
+        note: category ? `Make the "${spec?.label ?? kind}" automation file its tasks under ${category}` : `Make the "${spec?.label ?? kind}" automation file its tasks under no category, so they sit in the uncategorized block at the top of Today`,
       });
     },
 
@@ -1301,7 +1439,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const result = replica.deleteCategory(name, moveTo);
       log({
         action: 'cleared', subject: 'category', title: name, taskId: null,
-        note: `Delete the category "${name}"${result.tasksMoved > 0 ? `, moving ${result.tasksMoved} ${result.tasksMoved === 1 ? 'task' : 'tasks'} to ${moveTo ?? 'no category'}` : ''}. It cannot be restored from here.`,
+        note: `Delete the category "${name}"${result.tasksMoved > 0 || result.stacksMoved > 0 ? `, moving ${[result.tasksMoved > 0 ? plural(result.tasksMoved, 'task') : null, result.stacksMoved > 0 ? plural(result.stacksMoved, 'stack') : null].filter(Boolean).join(' and ')} to ${moveTo ?? 'no category'}` : ''}${result.automationsRepointed.length > 0 ? `, re-pointing the automations ${result.automationsRepointed.join(', ')} to ${moveTo ?? 'no category'}` : ''}${result.calendarEventsRepointed ? `, and re-pointing Today's calendar events section to ${moveTo ?? 'no category'}` : ''}. It cannot be restored from here.`,
       });
       return result;
     },
@@ -1316,7 +1454,8 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
 
     addPersonHistory(personIds, title, at) {
       const task = replica.addPersonHistory(personIds, title, at);
-      log({ action: 'created', subject: 'person', title: task.title, taskId: task.id });
+      const who = personIds.map(pid => replica.people().find(x => x.id === pid)?.name).filter(Boolean).join(' and ');
+      log({ action: 'created', subject: 'person', title: task.title, taskId: task.id, note: `Record "${task.title}" in ${who ? `${who}'s` : 'their'} history on ${replica.dayKeyOf(at.toISOString())}` });
       return task;
     },
   };

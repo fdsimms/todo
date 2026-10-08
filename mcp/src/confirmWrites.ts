@@ -97,25 +97,62 @@ const FIELD_NAMES: Record<string, string> = {
   supplyCount: 'supply left', supplyUnit: 'supply unit', supplyRefillCount: 'refill amount',
   supplyReorderAt: 'reorder at', supplyLeadDays: 'delivery days',
   deliverableValue: 'answer', deliverableWhy: 'reason for the answer', deliverableRevisitIf: 'revisit if',
+  weatherWait: 'waits for weather', linkUrl: 'link', phoneNumber: 'phone number', emailAddress: 'email', location: 'location',
+  personIds: 'people', deadlineTime: 'deadline time', vacationPause: 'hidden on vacation', pinEachOccurrence: 'pin each occurrence',
+  slipAllowance: 'slips allowed', targetUnit: 'target unit', allowOvershoot: 'allow going over the target', quotaPeriod: 'target period',
+  recurrenceEndDate: 'repeat ends on', recurrenceCount: 'repeat count', recurrenceMonthDay: 'repeat day of month',
+  recurrenceWeekOrdinal: 'repeat week of month', recurrenceFromCompletion: 'repeat from completion', groupId: 'stack',
+  answerGate: 'only if answered', followUpOn: 'follow-up date', medicationName: 'medication', completedAt: 'completed on',
 };
 
-function show(value: unknown, dayOf: (iso: string) => string): string {
+/** Words for the ids a field holds, so a line never prints an opaque id. */
+export interface NameLookup {
+  project(id: string): string | undefined;
+  task(id: string): string | undefined;
+  stack(id: string): string | undefined;
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+function show(value: unknown, dayOf: (iso: string) => string, key = '', names?: NameLookup): string {
   if (value === null || value === undefined || value === '') return 'nothing';
+  const named = (id: unknown, find?: (id: string) => string | undefined) =>
+    (typeof id === 'string' ? find?.(id) : undefined) ?? 'another item';
+  if (key === 'projectId') return `"${named(value, names?.project)}"`;
+  if (key === 'groupId') return `"${named(value, names?.stack)}"`;
+  if (key === 'blockedById') return `"${named(value, names?.task)}"`;
+  if (key === 'blockedByIds' && Array.isArray(value)) return value.length === 0 ? 'none' : value.map(v => `"${named(v, names?.task)}"`).join(', ');
+  if (key === 'recurrenceDays' && Array.isArray(value)) return value.length === 0 ? 'none' : value.map(d => WEEKDAYS[Number(d)] ?? String(d)).join(', ');
+  if (key === 'priority' && typeof value === 'number') return `${value} of 4`;
+  if (key === 'effort' && typeof value === 'number') return `${value} of 6`;
   if (typeof value === 'string') {
-    // An ISO instant reads as its day: the time part is machinery here. The
-    // day is the one the replica names for it, never the UTC date in the string.
-    return /^\d{4}-\d{2}-\d{2}T/.test(value) ? dayOf(value) : `"${value}"`;
+    // The day is the one the replica names for it, never the UTC date in the string.
+    // A reminder is an instant, so it keeps its clock time; other dates are days.
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return key === 'reminderTime' ? `${dayOf(value)} at ${clock(value)}` : dayOf(value);
+    return `"${value}"`;
   }
   if (Array.isArray(value)) return value.length === 0 ? 'none' : value.map(v => (typeof v === 'string' ? v : JSON.stringify(v))).join(', ');
   return String(value);
 }
 
-function fieldChanges(entry: AgentLedgerEntry, dayOf: (iso: string) => string): string[] {
+function fieldChanges(entry: AgentLedgerEntry, dayOf: (iso: string) => string, names?: NameLookup): string[] {
   const revert = entry.revert;
   if (!revert) return [];
   return Object.keys(revert.after)
     .filter(k => FIELD_NAMES[k])
-    .map(k => `${FIELD_NAMES[k]} from ${show(revert.before[k], dayOf)} to ${show(revert.after[k], dayOf)}`);
+    .map(k => `${FIELD_NAMES[k]} from ${show(revert.before[k], dayOf, k, names)} to ${show(revert.after[k], dayOf, k, names)}`);
+}
+
+/**
+ * Identical lines read as one with a count. A batch that does the same thing
+ * to many rows (clearing a habit's history) would otherwise repeat a line the
+ * confirming call must repeat verbatim; the count keeps every effect visible.
+ */
+function collapse(lines: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const l of lines) counts.set(l, (counts.get(l) ?? 0) + 1);
+  return [...counts].map(([l, n]) => (n > 1 ? `${l} (${n} times)` : l));
 }
 
 const SUBJECT_NOUN: Record<string, string> = {
@@ -127,8 +164,12 @@ const SUBJECT_NOUN: Record<string, string> = {
  * One line per effect, in the order they would happen. `dayOf` is the day a
  * person would name for an ISO instant (`Replica.dayKeyOf`).
  */
-export function describeEffects(effects: readonly AgentLedgerEntry[], dayOf: (iso: string) => string): string[] {
-  return effects.map(e => {
+export function describeEffects(effects: readonly AgentLedgerEntry[], dayOf: (iso: string) => string, names?: NameLookup): string[] {
+  return collapse(effects.map(e => describeOne(e, dayOf, names) + (e.suffix ?? '')));
+}
+
+function describeOne(e: AgentLedgerEntry, dayOf: (iso: string) => string, names?: NameLookup): string {
+  {
     if (e.note) return e.note;
     const t = `"${e.title}"`;
     switch (e.subject) {
@@ -153,7 +194,7 @@ export function describeEffects(effects: readonly AgentLedgerEntry[], dayOf: (is
       default: break;
     }
     const noun = SUBJECT_NOUN[e.subject] ?? e.subject;
-    const changes = fieldChanges(e, dayOf);
+    const changes = fieldChanges(e, dayOf, names);
     switch (e.action) {
       case 'created': {
         const steps = (e.count ?? 1) - 1;
@@ -168,5 +209,5 @@ export function describeEffects(effects: readonly AgentLedgerEntry[], dayOf: (is
       case 'edited': return changes.length ? `Change ${t}: ${changes.join('; ')}` : `Change the ${noun} ${t}`;
       default: return `${e.action} ${t}`;
     }
-  });
+  }
 }
