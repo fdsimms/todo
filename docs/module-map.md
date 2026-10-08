@@ -212,7 +212,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
-- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +14 more
+- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +15 more
 - `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, MedicationLimit, MedicationSupply, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, parseMedicationSettings, prefsFor, withPrefs, formatHours, +11 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed

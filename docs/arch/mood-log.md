@@ -527,7 +527,10 @@ hours, optionally a notification when the next dose is within it) and a
 - **Only doses with no `taskId` spend it.** A scheduled medicine already has a
   task supply (`supply.ts`) spent by the completion; counting the same dose here
   too would spend it twice. The detail page shows the task's count instead of
-  offering a second one.
+  offering a second one, and a dose recorded by hand for that medicine spends
+  one from the task's count (`taskSupplyFor`, in `recordDose`). Taking that
+  dose back returns it only on the same day: older, and the task's count has
+  been restocked and spent since.
 - **A dose uses its amount only when it is in the supply's own unit** ("2
   tablets" from a box of tablets). 400 mg uses one: the app can't know how many
   tablets make 400 mg, and guessing is the invented number this log refuses.

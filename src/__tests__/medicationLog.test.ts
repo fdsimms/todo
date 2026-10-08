@@ -17,6 +17,7 @@ import {
   milestoneOffers,
   parseArchivedMedications,
   repeatDose,
+  taskSupplyFor,
   type MedicationSource,
 } from '../utils/medicationLog';
 
@@ -411,5 +412,25 @@ describe('milestoneOffers', () => {
       dose({ name: 'Sertraline', dayKey: '2026-09-19' }),
     ];
     expect(milestoneOffers(logs, ['Started SERTRALINE'], ['dismissed'], today)).toEqual([]);
+  });
+});
+
+describe('taskSupplyFor', () => {
+  const task = (over: Record<string, unknown>) => ({
+    id: 't', completed: false, archived: false, parentId: null, supplyCount: 10, createdAt: '2026-09-01T00:00:00.000Z',
+    medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg', chainItems: [], chainIndex: 0,
+    ...over,
+  }) as unknown as Parameters<typeof taskSupplyFor>[0][number];
+
+  it('finds the newest live task counting this medication', () => {
+    const tasks = [
+      task({ id: 'old' }),
+      task({ id: 'new', createdAt: '2026-09-05T00:00:00.000Z' }),
+      task({ id: 'done', completed: true, createdAt: '2026-09-09T00:00:00.000Z' }),
+      task({ id: 'nosupply', supplyCount: null, createdAt: '2026-09-09T00:00:00.000Z' }),
+      task({ id: 'other', medicationName: 'Ibuprofen', createdAt: '2026-09-09T00:00:00.000Z' }),
+    ];
+    expect(taskSupplyFor(tasks, ' sertraline ')?.id).toBe('new');
+    expect(taskSupplyFor(tasks, 'Melatonin')).toBeNull();
   });
 });

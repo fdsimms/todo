@@ -3,8 +3,8 @@ import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
 import { useMedicationStore, type DoseInput } from '../store/useMedicationStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { getCurrentDayStart } from './dateUtils';
-import { medicationKey } from './medicationLog';
+import { dayKeyOf, getCurrentDayStart } from './dateUtils';
+import { medicationKey, taskSupplyFor } from './medicationLog';
 import {
   crossedRefill,
   describeLimit,
@@ -131,6 +131,12 @@ export function recordDose(input: DoseInput, opts: { quiet?: boolean } = {}): Me
   const log = store.addLog(input);
   if (!log) return null;
   syncOkAgainNotification(log.name);
+  // A scheduled medicine's supply lives on its task and a completion spends
+  // one; a dose recorded some other way spends one too.
+  const supplyTask = taskSupplyFor(useTaskStore.getState().tasks, log.name);
+  if (supplyTask && supplyTask.supplyCount !== null) {
+    useTaskStore.getState().updateTask(supplyTask.id, { supplyCount: Math.max(0, supplyTask.supplyCount - 1) });
+  }
   const after = supplyRemaining(useMedicationStore.getState().logs, log.name, supply);
   if (!opts.quiet && supply && after !== null && crossedRefill(before, after, supply)) {
     const unit = supply.unit;
@@ -139,8 +145,19 @@ export function recordDose(input: DoseInput, opts: { quiet?: boolean } = {}): Me
   return log;
 }
 
-/** Take a just-recorded dose back (the undo bar), keeping the notification honest. */
+/**
+ * Take a dose recorded by hand back (the undo bar, or deleting it), keeping the
+ * notification honest. A dose from today also returns the one it took from its
+ * task's supply. An older one doesn't: the task's count has been restocked and
+ * spent since, and adding one back for a dose from last month would put a
+ * number in it that no tablet in the box matches.
+ */
 export function unrecordDose(log: MedicationLog): void {
   useMedicationStore.getState().removeLog(log.id);
   syncOkAgainNotification(log.name);
+  if (log.taskId !== null || log.dayKey !== dayKeyOf(getCurrentDayStart())) return;
+  const supplyTask = taskSupplyFor(useTaskStore.getState().tasks, log.name);
+  if (supplyTask && supplyTask.supplyCount !== null) {
+    useTaskStore.getState().updateTask(supplyTask.id, { supplyCount: supplyTask.supplyCount + 1 });
+  }
 }

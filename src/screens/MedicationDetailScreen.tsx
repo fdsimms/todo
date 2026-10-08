@@ -13,9 +13,9 @@ import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import {
   dosesOnDay,
   formatDose,
-  medicationFor,
   medicationKey,
   medicationStats,
+  taskSupplyFor,
 } from '../utils/medicationLog';
 import {
   SUPPLY_UNITS,
@@ -77,10 +77,7 @@ export function MedicationDetailScreen() {
   const unarchiveMedication = useMedicationStore(s => s.unarchiveMedication);
   // A scheduled medicine whose task already counts a supply: that count is
   // the one to show, and offering a second one here would spend each pill twice.
-  const supplyTask = useTaskStore(s => s.tasks.find(
-    t => !t.completed && !t.archived && t.supplyCount !== null
-      && medicationKey(medicationFor(t)?.name ?? '') === key,
-  ) ?? null);
+  const supplyTask = useTaskStore(s => taskSupplyFor(s.tasks, key));
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
@@ -320,7 +317,7 @@ export function MedicationDetailScreen() {
         <View style={[styles.card, styles.formCard]}>
           {supplyTask ? (
             <Text style={styles.fieldNote}>
-              {describeSupply(supplyTask)}. Counted on the task "{supplyTask.title}"; change it in that task's editor.
+              {describeSupply(supplyTask)}. Counted on the task "{supplyTask.title}": checking it off or recording a dose here uses one. Change the count in that task's editor.
             </Text>
           ) : (
             <>

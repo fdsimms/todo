@@ -484,3 +484,24 @@ export function milestoneOffers(
   }
   return offers.sort((a, b) => b.firstDayKey.localeCompare(a.firstDayKey));
 }
+
+/**
+ * The live task that counts a medication's supply, when a scheduled medicine
+ * has one (`supply.ts`): top-level, open, not archived, carrying a supply, and
+ * recording this medication. The most recently created wins when several do.
+ *
+ * A dose recorded by hand for a scheduled medicine (a catch-up, an extra one)
+ * spends one from it, the same one a completion spends, so the count doesn't
+ * drift high every time a dose goes in some other way than the checkbox.
+ */
+export function taskSupplyFor<T extends MedicationSource & Pick<Task,
+  'id' | 'completed' | 'archived' | 'parentId' | 'supplyCount' | 'createdAt'>>(
+  tasks: readonly T[],
+  name: string,
+): T | null {
+  const key = medicationKey(name);
+  if (!key) return null;
+  const matches = tasks.filter(t => !t.completed && !t.archived && !t.parentId && t.supplyCount !== null
+    && medicationKey(medicationFor(t)?.name ?? '') === key);
+  return matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+}

@@ -18,10 +18,10 @@ import {
   formatDose,
   frequencyTrend,
   medicationFor,
-  medicationKey,
   medicationStats,
   milestoneOffers,
   repeatDose,
+  taskSupplyFor,
   type MedicationStat,
 } from '../utils/medicationLog';
 import {
@@ -118,7 +118,7 @@ export function MedicationScreen() {
   // Live medication tasks carrying a supply, so a scheduled medicine's row can
   // say what its task's own count is.
   const supplyTasks = useTaskStore(useShallow(s => s.tasks.filter(
-    t => !t.completed && !t.archived && t.supplyCount !== null && medicationFor(t) !== null,
+    t => !t.completed && !t.archived && !t.parentId && t.supplyCount !== null && medicationFor(t) !== null,
   )));
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -390,7 +390,7 @@ export function MedicationScreen() {
                   now={now}
                   logs={logs}
                   settings={settings}
-                  supplyTask={supplyTasks.find(t => medicationKey(medicationFor(t)!.name) === stat.key) ?? null}
+                  supplyTask={taskSupplyFor(supplyTasks, stat.name)}
                   first={index === 0}
                   styles={styles}
                   colors={colors}
