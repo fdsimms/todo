@@ -70,7 +70,7 @@ import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
 import type { HealthTargetMetric } from '../types';
-import { featureShown, taskKindsForMode } from '../utils/simpleMode';
+import { featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
@@ -803,6 +803,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const hiddenFieldsNote = hiddenResultsNote({ simpleMode, kitchenEnabled: true }, 'fields');
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
@@ -3193,7 +3194,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       )}
 
       {searching && totalMatches === 0 && (
-        <Text style={styles.searchEmpty}>No fields match “{searchQuery.trim()}”.</Text>
+        <Text style={styles.searchEmpty}>
+          No fields match “{searchQuery.trim()}”.
+          {hiddenFieldsNote ? `\n\n${hiddenFieldsNote}` : ''}
+        </Text>
       )}
 
       {titleVisible && (

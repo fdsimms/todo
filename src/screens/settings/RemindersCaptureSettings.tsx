@@ -21,6 +21,7 @@ import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
 import { ReminderCapturesSheet } from '../../components/ReminderCapturesSheet';
 import { activeReminderCaptures, captureListIds } from '../../utils/reminderCaptures';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 /**
  * Apple Reminders import — labelled in full throughout, because "reminders"
@@ -210,9 +211,9 @@ export function RemindersCaptureSettings() {
     }
     if (remindersPermission !== 'granted' && !(await requestRemindersPermission())) {
       refreshRemindersState();
-      Alert.alert(
+      alertPermissionOff(
         'Reminders access is off',
-        'Importing needs permission to read and delete reminders. Turn it on for this app in the Settings app, then try again.'
+        'Importing needs permission to read and delete reminders. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }
@@ -287,9 +288,9 @@ export function RemindersCaptureSettings() {
     }
     if (remindersPermission !== 'granted' && !(await requestRemindersPermission())) {
       refreshRemindersState();
-      Alert.alert(
+      alertPermissionOff(
         'Reminders access is off',
-        'Importing needs permission to read and delete reminders. Turn it on for this app in the Settings app, then try again.'
+        'Importing needs permission to read and delete reminders. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }

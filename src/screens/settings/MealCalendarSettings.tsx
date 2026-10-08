@@ -15,6 +15,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 /** The tray's explicit "no calendar" option — `''` because ids are never empty. */
 const OFF_OPTION = { id: '', title: 'Off' };
@@ -91,9 +92,9 @@ export function MealCalendarSettings() {
     }
     if (permission !== 'granted' && !(await requestCalendarPermission())) {
       refreshState();
-      Alert.alert(
+      alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to write to your calendar. Turn it on for this app in the Settings app, then try again.'
+        'This needs permission to write to your calendar. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }
@@ -103,7 +104,7 @@ export function MealCalendarSettings() {
     if (list.length === 0 && !mealCalendarId) {
       Alert.alert(
         'No calendar you can write to',
-        'Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts.'
+        'Every calendar on this device is read-only. Add or unlock one you can edit in the Settings app under Calendar › Accounts.',
       );
       return;
     }

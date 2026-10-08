@@ -24,6 +24,7 @@ import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 const REMINDER_LEAD_OPTIONS: SegmentOption<number | null>[] =
   DEFAULT_REMINDER_LEAD_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -158,9 +159,9 @@ export function NotificationSettings() {
       // still be showing whatever it read on focus — including the "Allow"
       // affordance for a prompt that has now been answered.
       refreshNotifPermission();
-      Alert.alert(
+      alertPermissionOff(
         'Notifications are turned off',
-        'The daily agenda needs notification permission. Turn it on for this app in the Settings app, then try again.'
+        'The daily agenda needs notification permission. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }
@@ -183,9 +184,9 @@ export function NotificationSettings() {
   const onToggleTripReminder = async (next: boolean) => {
     if (next && !(await requestNotificationPermissions())) {
       refreshNotifPermission();
-      Alert.alert(
+      alertPermissionOff(
         'Notifications are turned off',
-        'The trip reminder needs notification permission. Turn it on for this app in the Settings app, then try again.'
+        'The trip reminder needs notification permission. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }

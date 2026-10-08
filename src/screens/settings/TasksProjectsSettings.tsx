@@ -42,6 +42,7 @@ import {
   FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
   focusRestsDisabled,
 } from '../../utils/focusSettings';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -173,7 +174,7 @@ export function TasksProjectsSettings() {
     // — the same rule the weather rules sheet follows for location.
     const status = await bridge.requestScreenTimeAuthorization();
     if (status !== 'approved') {
-      Alert.alert(
+      alertPermissionOff(
         'Screen Time access needed',
         'Blocking apps during a focus session needs Screen Time access. You can grant it in Settings, under Screen Time.',
       );
@@ -210,7 +211,7 @@ export function TasksProjectsSettings() {
     if (!bridge) return;
     const status = await bridge.requestScreenTimeAuthorization();
     if (status !== 'approved') {
-      Alert.alert(
+      alertPermissionOff(
         'Screen Time access needed',
         'Blocking apps until a task is done needs Screen Time access. You can grant it in Settings, under Screen Time.',
       );
@@ -235,7 +236,7 @@ export function TasksProjectsSettings() {
     if (!bridge) return;
     const status = await bridge.requestScreenTimeAuthorization();
     if (status !== 'approved') {
-      Alert.alert(
+      alertPermissionOff(
         'Screen Time access needed',
         'Blocking apps when you fail a task needs Screen Time access. You can grant it in Settings, under Screen Time.',
       );

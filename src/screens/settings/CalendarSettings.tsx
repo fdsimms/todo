@@ -29,6 +29,7 @@ import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import { SavedPlacesRows } from './SavedPlacesRows';
 import { SavedEventsRows } from './SavedEventsRows';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 const MAPS_APP_OPTIONS: SegmentOption<MapsApp>[] = [
   { value: 'apple', label: 'Apple Maps', icon: 'map-outline' },
@@ -245,9 +246,9 @@ export function CalendarSettings() {
     }
     if (permission !== 'granted' && !(await requestCalendarPermission())) {
       refreshState();
-      Alert.alert(
+      alertPermissionOff(
         'Calendar access is off',
-        'This needs permission to read your calendars. Turn it on for this app in the Settings app, then try again.'
+        'This needs permission to read your calendars. Turn it on for this app in the Settings app, then try again.',
       );
       return;
     }
@@ -260,7 +261,7 @@ export function CalendarSettings() {
       // the device. There is nothing to pick, and no other screen will say why.
       Alert.alert(
         'No calendars on this device',
-        'To read a Google calendar here, add the account in the Settings app under Calendar › Accounts. Calendars from any account you add there show up in the list.'
+        'To read a Google calendar here, add the account in the Settings app under Calendar › Accounts. Calendars from any account you add there show up in the list.',
       );
       return;
     }
