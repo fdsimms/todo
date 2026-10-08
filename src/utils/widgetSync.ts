@@ -24,6 +24,10 @@ import { kitchenInventory } from './kitchenInventory';
 import { listedAnywhere } from './groceryLists';
 import { buildPantryIndex, parseQueuedDisposals, planQueuedDisposals } from './pantryIndex';
 import { widgetBridge } from './widgetBridge';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { buildMedicationIndex, parseQueuedDoses, resolveQueuedDoseName } from './medicationIndex';
+import { repeatDose } from './medicationLog';
+import { recordDose } from './doseRecording';
 import { haptics } from './haptics';
 
 const DEBOUNCE_MS = 300;
@@ -146,6 +150,48 @@ async function processPendingDisposals(): Promise<void> {
   }
 }
 
+// Records what LogMedicationIntent queued ("log ibuprofen", said to Siri).
+// The same drain shape and demo-mode reasoning as processPendingDisposals.
+// Each dose repeats the last one recorded for that medication, the way the
+// Medications screen's quick button does, at the moment Siri was asked, and
+// goes through `recordDose` so the "OK again" notification moves and a supply
+// that just ran low offers a refill. No limit question: the person already
+// asked for it, and asking again after the fact can't un-take a dose.
+async function processPendingDoses(): Promise<void> {
+  const bridge = widgetBridge();
+  // Optional on the bridge: a binary built before the intent has no drain.
+  if (!bridge?.drainPendingDoses) return;
+  try {
+    const queued = parseQueuedDoses(await bridge.drainPendingDoses());
+    if (queued.length === 0) return;
+    for (const dose of queued) {
+      const { logs } = useMedicationStore.getState();
+      const name = resolveQueuedDoseName(dose, logs);
+      recordDose({ ...repeatDose(logs, name), at: dose.at ?? undefined });
+    }
+    haptics.success();
+  } catch {
+    // A build predating drainPendingDoses — no-op.
+  }
+}
+
+// The medications LogMedicationIntent can hear (medicationIndex.ts). Its own
+// debounce rather than riding the widget snapshot's: a dose changes nothing on
+// a home screen, and the snapshot write reloads every widget timeline. Skipped
+// before the store has loaded, for the reason the pantry index is: an empty
+// file reads as "you take nothing" until the next dose.
+let medicationIndexTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleMedicationIndexWrite(): void {
+  if (medicationIndexTimer) clearTimeout(medicationIndexTimer);
+  medicationIndexTimer = setTimeout(() => {
+    const meds = useMedicationStore.getState();
+    if (!meds.initialized) return;
+    const bridge = widgetBridge();
+    bridge?.writeMedicationIndex?.(JSON.stringify(buildMedicationIndex(meds.logs, meds.archived))).catch(() => {});
+  }, DEBOUNCE_MS);
+}
+
 // Applies the taps the widget handled without opening the app (see
 // widgetQuietTaps.ts for which those are and why). Silent, unlike the
 // completion drain above: there is no animation to show and nothing to
@@ -254,6 +300,7 @@ function writeSnapshotNow(): void {
   const tasks = useTaskStore.getState();
   const settings = useSettingsStore.getState();
   const grocery = useGroceryStore.getState();
+  const medications = useMedicationStore.getState();
   const leftovers = useLeftoverStore.getState();
   const dayResetTime = settings.dayResetTime;
   const todayKey = getLogicalDayKey(now, dayResetTime);
@@ -296,6 +343,9 @@ function writeSnapshotNow(): void {
           )
         : null,
     events: widgetEvents(settings.calendarReadEnabled),
+    medications: medications.initialized
+      ? { logs: medications.logs, archived: medications.archived }
+      : null,
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
     upcoming: widgetUpcoming(tasks.deferredTasks(), now),
     mealLogPrompt: settings.mealLogPrompt,
@@ -375,6 +425,13 @@ function subscribeToStores(): () => void {
     useHiddenEventsStore.subscribe((s, p) => {
       if (s.hiddenByKey !== p.hiddenByKey) scheduleSnapshotWrite();
     }),
+    useMedicationStore.subscribe((s, p) => {
+      if (s.logs !== p.logs || s.archived !== p.archived || s.initialized !== p.initialized) {
+        // The Medications widget reads the snapshot, Siri reads the index.
+        scheduleSnapshotWrite();
+        scheduleMedicationIndexWrite();
+      }
+    }),
   ];
   return () => {
     for (const unsubscribe of unsubscribers) unsubscribe();
@@ -394,12 +451,14 @@ export function useWidgetSync(): void {
       processPendingWidgetCompletions(),
       processPendingAddTasks(),
       processPendingDisposals(),
+      processPendingDoses(),
       processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
       // making the very first native module call while the app (and its
       // native module registry) is still mid-launch.
       scheduleSnapshotWrite();
+      scheduleMedicationIndexWrite();
     });
 
     // Tapping a checkbox in the widget (CompleteTaskIntent, in
@@ -414,6 +473,7 @@ export function useWidgetSync(): void {
           processPendingWidgetCompletions(),
           processPendingAddTasks(),
           processPendingDisposals(),
+          processPendingDoses(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }

@@ -346,6 +346,7 @@ let mealPlanURL = URL(string: "dundundun://mealplan")!
 let kitchenURL = URL(string: "dundundun://kitchen")!
 let moodURL = URL(string: "dundundun://mood")!
 let foodLogURL = URL(string: "dundundun://foodlog")!
+let medicationsURL = URL(string: "dundundun://medications")!
 
 // ==== Formatting ====
 

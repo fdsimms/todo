@@ -16,6 +16,23 @@ import {
   medicationKey,
   parseArchivedMedications,
 } from '../utils/medicationLog';
+import {
+  MEDICATION_SETTINGS_KEY,
+  parseMedicationSettings,
+  prefsFor,
+  refilledSupply,
+  supplyRemaining,
+  withPrefs,
+  type MedicationLimit,
+  type MedicationSettingsMap,
+  type MedicationSupply,
+} from '../utils/medicationSettings';
+
+/** When a summary for a visit was last shared (synced, health-scoped). */
+export const SUMMARY_LAST_SETTING_KEY = 'medication_summary_last';
+
+/** Medication keys whose "mark the day you started" offer was turned down. */
+export const MILESTONE_DISMISSED_SETTING_KEY = 'medication_milestone_dismissed';
 
 /**
  * The medication log — see `src/utils/medicationLog.ts` for every rule,
@@ -71,8 +88,33 @@ interface MedicationStore {
   logs: MedicationLog[];
   /** `medicationKey`s you have archived. A set of names, not a flag on a dose. */
   archived: string[];
+  /**
+   * The limit and supply you set per medication, keyed by `medicationKey`.
+   * See `src/utils/medicationSettings.ts`.
+   */
+  settings: MedicationSettingsMap;
+  /** When a summary for a visit was last shared, as an ISO instant. */
+  lastSummaryAt: string | null;
+  /** `medicationKey`s whose milestone offer was turned down (`milestoneOffers`). */
+  milestoneDismissed: string[];
   initialized: boolean;
   initialize: () => void;
+  /**
+   * Set or clear a medication's limit. `since` is restamped whenever either
+   * cap changes, so a tightened limit never judges doses taken under the old
+   * one; toggling only the notification keeps it.
+   */
+  setLimit: (name: string, limit: Omit<MedicationLimit, 'since'> | null) => void;
+  /** Set or clear a medication's supply, counted from now. */
+  setSupply: (name: string, supply: Omit<MedicationSupply, 'since' | 'declinedAt'> | null) => void;
+  /** Add a refill to what's left. */
+  refillSupply: (name: string, added: number) => void;
+  /** Turn down the refill offer at the current count. */
+  declineRefill: (name: string) => void;
+  /** Stop offering to mark the day this medication was started. */
+  dismissMilestoneOffer: (name: string) => void;
+  /** Record that a summary was just shared. */
+  markSummaryShared: (at: Date) => void;
   /** Move a medication out of "what you take". Deletes no doses. */
   archiveMedication: (name: string) => void;
   /** Put an archived medication back. */
@@ -99,14 +141,80 @@ interface MedicationStore {
 export const useMedicationStore = create<MedicationStore>((set, get) => ({
   logs: [],
   archived: [],
+  settings: {},
+  lastSummaryAt: null,
+  milestoneDismissed: [],
   initialized: false,
 
   initialize() {
+    const logs = dbGetAllMedicationLogs();
+    const archived = parseArchivedMedications(dbGetSetting(ARCHIVED_MEDICATIONS_SETTING_KEY));
+    const settings = parseMedicationSettings(dbGetSetting(MEDICATION_SETTINGS_KEY));
+    const lastSummary = dbGetSetting(SUMMARY_LAST_SETTING_KEY);
+    const milestoneDismissed = parseArchivedMedications(dbGetSetting(MILESTONE_DISMISSED_SETTING_KEY));
     set({
-      logs: dbGetAllMedicationLogs(),
-      archived: parseArchivedMedications(dbGetSetting(ARCHIVED_MEDICATIONS_SETTING_KEY)),
+      milestoneDismissed,
+      logs,
+      archived,
+      settings,
+      lastSummaryAt: lastSummary && !Number.isNaN(Date.parse(lastSummary)) ? lastSummary : null,
       initialized: true,
     });
+  },
+
+  setLimit(name, limit) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    let next: MedicationLimit | null = null;
+    if (limit && (limit.minHours !== null || limit.maxPer24h !== null)) {
+      const capsUnchanged = current.limit
+        && current.limit.minHours === limit.minHours
+        && current.limit.maxPer24h === limit.maxPer24h;
+      next = {
+        ...limit,
+        since: capsUnchanged && current.limit ? current.limit.since : new Date().toISOString(),
+      };
+    }
+    writeSettings(set, withPrefs(get().settings, name, { ...current, limit: next }));
+  },
+
+  setSupply(name, supply) {
+    if (!medicationKey(name)) return;
+    const current = prefsFor(get().settings, name);
+    const next: MedicationSupply | null = supply
+      ? { ...supply, since: new Date().toISOString(), declinedAt: null }
+      : null;
+    writeSettings(set, withPrefs(get().settings, name, { ...current, supply: next }));
+  },
+
+  refillSupply(name, added) {
+    const current = prefsFor(get().settings, name);
+    if (!current.supply) return;
+    const remaining = supplyRemaining(get().logs, name, current.supply) ?? 0;
+    const supply = refilledSupply(current.supply, remaining, added, new Date());
+    writeSettings(set, withPrefs(get().settings, name, { ...current, supply }));
+  },
+
+  declineRefill(name) {
+    const current = prefsFor(get().settings, name);
+    if (!current.supply) return;
+    const remaining = supplyRemaining(get().logs, name, current.supply) ?? 0;
+    const supply = { ...current.supply, declinedAt: remaining };
+    writeSettings(set, withPrefs(get().settings, name, { ...current, supply }));
+  },
+
+  dismissMilestoneOffer(name) {
+    const key = medicationKey(name);
+    if (!key || get().milestoneDismissed.includes(key)) return;
+    const milestoneDismissed = [...get().milestoneDismissed, key];
+    dbSetSetting(MILESTONE_DISMISSED_SETTING_KEY, JSON.stringify(milestoneDismissed));
+    set({ milestoneDismissed });
+  },
+
+  markSummaryShared(at) {
+    const iso = at.toISOString();
+    dbSetSetting(SUMMARY_LAST_SETTING_KEY, iso);
+    set({ lastSummaryAt: iso });
   },
 
   archiveMedication(name) {
@@ -202,6 +310,14 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     get().removeLog(latest.id);
   },
 }));
+
+function writeSettings(
+  set: (partial: { settings: MedicationSettingsMap }) => void,
+  settings: MedicationSettingsMap,
+): void {
+  dbSetSetting(MEDICATION_SETTINGS_KEY, JSON.stringify(settings));
+  set({ settings });
+}
 
 function writeArchived(
   set: (partial: { archived: string[] }) => void,

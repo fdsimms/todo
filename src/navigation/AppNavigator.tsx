@@ -32,6 +32,7 @@ import { JournalScreen, DreamsScreen } from '../screens/JournalScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { MoodDayScreen } from '../screens/MoodDayScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
+import { MedicationDetailScreen } from '../screens/MedicationDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
 import { AutomationsScreen } from '../screens/AutomationsScreen';
@@ -203,6 +204,8 @@ const PUSHED_ROUTES = new Set([
   // and neither would survive a cold-launch restore with nothing to say what
   // it was showing.
   'MoodHistory', 'MoodDay', 'SymptomDetail',
+  // One medication's page, reached from Medications for the same reason.
+  'MedicationDetail',
 ]);
 
 function MorePlaceholder() {
@@ -636,6 +639,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="SymptomDetail"
             component={SymptomDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="MedicationDetail"
+            component={MedicationDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

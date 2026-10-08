@@ -230,7 +230,7 @@ export function hasDoseOnDay(
  * no amount looks like in its own row, instead of concatenating a blank into
  * the middle of a sentence.
  */
-export function formatDose(log: MedicationLog): string | null {
+export function formatDose(log: Pick<MedicationLog, 'amount' | 'unit'>): string | null {
   if (log.amount === null || !log.unit) return null;
   const spec = DOSE_UNITS.find(u => u.value === log.unit);
   const unit = log.amount !== 1 && spec?.plural ? spec.plural : log.unit;
@@ -414,4 +414,73 @@ export function frequencyTrend(
   if (recent + previous < MIN_TREND_DOSES) return null;
 
   return { recent, previous, days };
+}
+
+/**
+ * The dose a quick record repeats: the most recent one recorded for this
+ * medication, marked as needed. Most recent rather than most common, so the
+ * button does what the row's "last" says and a changed dose is picked up at
+ * once. As needed because the quick button is offered only on as-needed rows:
+ * a scheduled dose is recorded by checking off its task.
+ */
+export function repeatDose(logs: readonly MedicationLog[], name: string): MedicationDose & { asNeeded: true } {
+  const key = medicationKey(name);
+  const last = logs
+    .filter(l => medicationKey(l.name) === key)
+    .sort((a, b) => b.takenAt.localeCompare(a.takenAt))[0];
+  return {
+    name: last?.name.trim() ?? name.trim(),
+    amount: last?.amount ?? null,
+    unit: last?.unit ?? null,
+    asNeeded: true,
+  };
+}
+
+/** A medication started recently enough to offer marking the day as a milestone. */
+export interface MilestoneOffer {
+  key: string;
+  name: string;
+  /** The day of its first recorded dose. */
+  firstDayKey: string;
+}
+
+/** How long after a first dose the milestone offer stays up. */
+export const MILESTONE_OFFER_DAYS = 14;
+
+/**
+ * Medications whose first recorded dose was in the last `MILESTONE_OFFER_DAYS`
+ * days, with no milestone naming them and no "not now" yet.
+ *
+ * The before/after mood read (`milestoneMoodContrast`) is the honest way to
+ * look at a medicine's start: it compares two stretches of time rather than
+ * days taken against days not, so it is not the backwards comparison this file
+ * refuses. All it needs is the day, and the first dose is that day, so the
+ * Medications screen offers it rather than leaving somebody to remember the
+ * Mood screen has a milestone button. A milestone "names" a medication when
+ * its label contains the name, which is all a person writing "Started
+ * sertraline" or "sertraline 50mg" would do.
+ */
+export function milestoneOffers(
+  logs: readonly MedicationLog[],
+  milestoneLabels: readonly string[],
+  dismissed: readonly string[],
+  todayKey: string,
+): MilestoneOffer[] {
+  const first = new Map<string, { name: string; dayKey: string }>();
+  for (const log of logs) {
+    const key = medicationKey(log.name);
+    if (!key) continue;
+    const seen = first.get(key);
+    if (!seen || log.dayKey < seen.dayKey) first.set(key, { name: log.name.trim(), dayKey: log.dayKey });
+  }
+  const cutoff = format(subDays(keyToDate(todayKey), MILESTONE_OFFER_DAYS - 1), 'yyyy-MM-dd');
+  const labels = milestoneLabels.map(l => l.toLowerCase());
+  const offers: MilestoneOffer[] = [];
+  for (const [key, { name, dayKey }] of first) {
+    if (dayKey < cutoff || dayKey > todayKey) continue;
+    if (dismissed.includes(key)) continue;
+    if (labels.some(l => l.includes(key))) continue;
+    offers.push({ key, name, firstDayKey: dayKey });
+  }
+  return offers.sort((a, b) => b.firstDayKey.localeCompare(a.firstDayKey));
 }

@@ -14,7 +14,9 @@ import {
   medicationLogSummary,
   medicationStats,
   medicationVocabulary,
+  milestoneOffers,
   parseArchivedMedications,
+  repeatDose,
   type MedicationSource,
 } from '../utils/medicationLog';
 
@@ -373,5 +375,41 @@ describe('medicationFor', () => {
       chainIndex: 0,
       chainItems: [step({ id: 'a', medicationName: 'Ignored' }), step({ id: 'b' })],
     }))).toEqual({ name: 'Sertraline', amount: null, unit: null });
+  });
+});
+
+describe('repeatDose', () => {
+  it('repeats the most recent dose of that medication, as needed', () => {
+    const logs = [
+      dose({ takenAt: '2026-09-10T09:00:00.000Z', amount: 200, unit: 'mg' }),
+      dose({ takenAt: '2026-09-11T09:00:00.000Z', amount: 400, unit: 'mg', asNeeded: false }),
+      dose({ name: 'Other', takenAt: '2026-09-12T09:00:00.000Z', amount: 1, unit: 'tablet' }),
+    ];
+    expect(repeatDose(logs, 'ibuprofen')).toEqual({ name: 'Ibuprofen', amount: 400, unit: 'mg', asNeeded: true });
+  });
+
+  it('falls back to the name alone', () => {
+    expect(repeatDose([], ' Ibuprofen ')).toEqual({ name: 'Ibuprofen', amount: null, unit: null, asNeeded: true });
+  });
+});
+
+describe('milestoneOffers', () => {
+  const today = '2026-09-20';
+
+  it('offers a medication first taken in the last two weeks', () => {
+    const logs = [dose({ name: 'Sertraline', dayKey: '2026-09-15' }), dose({ name: 'Sertraline', dayKey: '2026-09-18' })];
+    expect(milestoneOffers(logs, [], [], today)).toEqual([
+      { key: 'sertraline', name: 'Sertraline', firstDayKey: '2026-09-15' },
+    ]);
+  });
+
+  it('skips one started longer ago, dismissed, or already named by a milestone', () => {
+    const logs = [
+      dose({ name: 'Old', dayKey: '2026-09-01' }),
+      dose({ name: 'Old', dayKey: '2026-09-19' }),
+      dose({ name: 'Dismissed', dayKey: '2026-09-19' }),
+      dose({ name: 'Sertraline', dayKey: '2026-09-19' }),
+    ];
+    expect(milestoneOffers(logs, ['Started SERTRALINE'], ['dismissed'], today)).toEqual([]);
   });
 });
