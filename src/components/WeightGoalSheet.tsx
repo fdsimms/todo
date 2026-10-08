@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
@@ -54,6 +54,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { TextField } from './TextField';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
 // The feet stepper's bounds, derived from the same cm bounds the kg stepper
 // uses — so the two units can't drift into disagreeing about the range.
@@ -435,6 +436,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       value={targetText}
                       onChangeText={setTargetText}
                       keyboardType="decimal-pad"
+                      inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                       placeholder={`e.g. ${suggestPlaceholder(startKg, direction, unit)}`}
                       placeholderTextColor={colors.textTertiary}
                       accessibilityLabel={`Target weight in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
@@ -761,6 +763,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
           )}
         </>
       )}
+      <NumberPadAccessory />
     </EditorSheet>
   );
 }
