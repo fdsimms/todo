@@ -22,6 +22,7 @@ import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
+import { rankStreaks } from '../utils/streakLeaderboard';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
@@ -322,14 +323,7 @@ export function StatsScreen() {
     }).start();
   }, [chartProgress, reduceMotion]);
 
-  const streaks = useMemo(
-    () =>
-      tasks
-        .filter(t => !t.parentId && !t.completed && t.recurrenceType !== 'none' && liveStreakCount(t) > 0)
-        .sort((a, b) => liveStreakCount(b) - liveStreakCount(a))
-        .slice(0, 10),
-    [tasks],
-  );
+  const streaks = useMemo(() => rankStreaks(tasks), [tasks]);
 
   const habits = useMemo(() => {
     const cutoff = subDays(now, HABIT_DAYS);
