@@ -787,7 +787,7 @@ export interface TaskGroup {
  * A saved view: a named, reusable lens over the task list (#2679).
  *
  * The filter state this joins was three settings on `useSettingsStore` —
- * `filterPriorities`, `filterEfforts`, `filterHasReminder` — plus a sort, all
+ * `filterPriorities`, `filterEfforts` — plus a sort, all
  * of them global and shared by Today, Later, Unscheduled and Inbox. One state,
  * no name, nothing kept, so "under 10 minutes and nothing blocked" had to be
  * re-derived by hand every time or never got asked at all.
