@@ -1065,8 +1065,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
         <CollapsibleField
           label="New task defaults"
           summary={describeTaskFieldDefaults(taskDefaults) ?? undefined}
-          emptySummary="Ask for each task"
-          hint="Tasks added to this project start with these answers, so they don't come up in Backfill. Anything set on a task itself wins."
+          emptySummary="Not set"
+          hint="Tasks added to this project start with these answers, so they don't come up in Backfill. Anything set on a task itself wins. Not set uses your app-wide default, and anything still unanswered shows up in Backfill."
           expanded={taskDefaultsOpen}
           onToggle={() => setTaskDefaultsOpen(v => !v)}
         >

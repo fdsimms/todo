@@ -18,21 +18,22 @@ interface Props {
 }
 
 // `null` in a segmented control can't be a "no answer" the way a missing field
-// is, so each set leads with it as a named option. "Ask each time" is the state
-// every field starts in: the backfill screen asks about it as before.
+// is, so each set leads with it as a named option. "Not set" is the state every
+// field starts in: the task takes the app-wide default if there is one, and
+// otherwise the backfill screen asks about it later.
 const PRIORITY_OPTIONS: SegmentOption<Priority | null>[] = [
-  { value: null, label: 'Ask each time' },
+  { value: null, label: 'Not set' },
   { value: 0, label: 'No priority' },
   ...PRIORITY_SEGMENTS.filter(s => s.value !== 0),
 ];
 
 const DIFFICULTY_OPTIONS: SegmentOption<Difficulty | null>[] = [
-  { value: null, label: 'Ask each time' },
+  { value: null, label: 'Not set' },
   ...DIFFICULTY_SEGMENTS,
 ];
 
 const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
-  { value: null, label: 'Ask each time' },
+  { value: null, label: 'Not set' },
   { value: 0, label: 'No estimate' },
   ...ESTIMATE_EFFORTS.map(e => ({
     value: e as Effort | null,
