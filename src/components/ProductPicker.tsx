@@ -1,11 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, iconSize, interaction, spacing, type Colors } from '../theme';
+import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import type { ItemProduct } from '../types';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
+import { InlineAction } from './InlineAction';
 
 /**
  * "Which box of it?" — one item's products, to pick one of or none.
@@ -37,8 +39,10 @@ import { haptics } from '../utils/haptics';
  * A rating sorts rather than filters here too — remembering that you hated a
  * box is worth most at the moment you are about to name it again.
  *
- * Renders nothing when the item has no boxes. A question with one answer is not
- * a question, and the caller should not have to check first.
+ * Renders nothing when the item has no boxes, unless the caller passes
+ * `onCreate`: then the list is just the way to add the first one. A question
+ * with one answer is not a question, and the caller should not have to check
+ * first.
  */
 interface Props {
   itemId: string | null;
@@ -51,9 +55,16 @@ interface Props {
   label?: string;
   /** Whether "just the food" is offered. See the note above before turning it off. */
   allowNone?: boolean;
+  /**
+   * Offers a form for a box the item doesn't have yet (brand, variant). The
+   * caller writes it (`addProduct`) and treats the result as a pick; the form
+   * stays open if the caller reports it couldn't, so nothing typed is lost.
+   * Returns whether the box was made.
+   */
+  onCreate?: (fields: { brand: string | null; variant: string | null }) => boolean;
 }
 
-export function ProductPicker({ itemId, products, value, onPick, label, allowNone = true }: Props) {
+export function ProductPicker({ itemId, products, value, onPick, label, allowNone = true, onCreate }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const boxes = useMemo(
@@ -61,7 +72,12 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
     [itemId, products]
   );
 
-  if (boxes.length === 0) return null;
+  const [adding, setAdding] = useState(false);
+  const [brand, setBrand] = useState('');
+  const [variant, setVariant] = useState('');
+  const [refused, setRefused] = useState(false);
+
+  if (boxes.length === 0 && !onCreate) return null;
 
   const row = (key: string, text: string, selected: boolean, onPress: () => void) => (
     <TouchableOpacity
@@ -90,6 +106,52 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
       {boxes.map(box =>
         row(box.id, describeProduct(box) ?? 'Unnamed box', value === box.id, () => onPick(box))
       )}
+      {!!onCreate && !adding && (
+        <View style={styles.addRow}>
+          <InlineAction
+            label="New product"
+            icon="add"
+            variant="neutral"
+            onPress={() => setAdding(true)}
+            accessibilityLabel="Add a new product to this item"
+          />
+        </View>
+      )}
+      {!!onCreate && adding && (
+        <View style={styles.form}>
+          <TextField
+            style={styles.input}
+            onChangeText={t => { setBrand(t); setRefused(false); }}
+            placeholder="Brand, e.g. Spindrift"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="words"
+            autoCorrect={false}
+            accessibilityLabel="Brand"
+          />
+          <TextField
+            style={styles.input}
+            onChangeText={t => { setVariant(t); setRefused(false); }}
+            placeholder="Flavor or type, e.g. Nojito"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="words"
+            autoCorrect={false}
+            accessibilityLabel="Flavor or type"
+          />
+          {refused && <Text style={styles.refused}>Enter a brand or a flavor.</Text>}
+          <View style={styles.addRow}>
+            <InlineAction
+              label="Add product"
+              icon="checkmark"
+              onPress={() => {
+                const made = onCreate({ brand: brand.trim() || null, variant: variant.trim() || null });
+                if (made) { setAdding(false); setBrand(''); setVariant(''); } else setRefused(true);
+              }}
+              accessibilityLabel="Save this product"
+            />
+            <InlineAction label="Cancel" variant="neutral" onPress={() => setAdding(false)} />
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -112,6 +174,18 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
+    addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingTop: spacing.sm },
+    form: { gap: spacing.sm, paddingTop: spacing.sm },
+    // No lineHeight on a TextInput (see CatalogLinkPicker).
+    input: {
+      fontSize: font.sm,
+      color: colors.text,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    refused: { fontSize: font.xs, color: colors.redText },
     rowText: { flex: 1, color: colors.text, fontSize: font.md },
     rowTextOn: { color: colors.accent, fontWeight: fontWeight.medium },
   });

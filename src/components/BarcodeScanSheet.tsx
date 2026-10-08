@@ -60,7 +60,7 @@ import {
 } from '../utils/scanResolve';
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
-import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { TextField } from './TextField';
 
@@ -384,6 +384,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const addProduct = useGroceryStore(s => s.addProduct);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const gtinItemFor = useGroceryStore(s => s.gtinItemFor);
   const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
@@ -678,7 +680,36 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     return candidate && candidate !== row.confirmedMatchId ? candidate : null;
   };
 
-  const handleApply = useCallback(() => {
+  /**
+   * Files a scanned row under a catalog item, from the picker's own results or
+   * from a row it just minted. One path for both so a new item behaves exactly
+   * like a picked one.
+   */
+  const pickItemFor = (row: ScanRow, item: GroceryItem) => {
+  setPicking(null);
+  patchRow(row.key, {
+    pickedItemId: item.id,
+    // The offer this replaces, dropped: leaving a yes to
+    // a row the user has just said no to would come back
+    // the moment the pick is undone.
+    confirmedMatchId: null,
+    // A box belongs to the item it hangs off, so a box
+    // chosen for the old item is not an answer about
+    // this one. `scanBoxFor` refuses it at apply time
+    // anyway; clearing here is what stops the row
+    // *saying* it while it does.
+    pickedProductId: null,
+    // Naming a row is what makes it recordable, and a
+    // pick is a stronger naming than typing one.
+    included: true,
+    // Only where there was nothing. A scan's own name is
+    // the words on the box being checked against the box,
+    // and overwriting them would take away the check.
+    name: row.name.trim() || item.name,
+  });
+  };
+
+  const applyNow = useCallback(() => {
     const itemIds: string[] = [];
     const toAdd: ReceiptAddDraft[] = [];
     const frozenItemIds = new Set<string>();
@@ -820,6 +851,33 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks, priceById);
   }, [rows, matches, items, itemProducts, onApply, rememberAliases, gtinProductFor]);
 
+  /**
+   * Whether the confirm is mid-flight. Applying is a run of synchronous
+   * catalog and database writes followed by the next sheet opening, and the
+   * button used to show nothing at all while that happened, so it was tapped
+   * again and each tap ran the whole apply again (duplicate aliases and
+   * boxes). Painting the pending state first, then doing the work, and
+   * ignoring taps while it runs, is what makes the wait readable.
+   */
+  const [applying, setApplying] = useState(false);
+  const applyingRef = useRef(false);
+  const handleApply = useCallback(() => {
+    if (applyingRef.current) return;
+    applyingRef.current = true;
+    setApplying(true);
+    haptics.tap();
+    // Two frames: one to commit the pending label, one to paint it, before the
+    // writes block the JS thread.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        applyNow();
+      } finally {
+        applyingRef.current = false;
+        setApplying(false);
+      }
+    }));
+  }, [applyNow]);
+
   /** What a row resolved to, or null when it has nothing to say yet. */
   const captionFor = (row: ScanRow, index: number): string | null => {
     if (row.pending) return 'Looking it up…';
@@ -926,9 +984,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />}
           right={
             <SheetHeaderButton
-              label={CONTEXT_COPY[context].confirmLabel}
+              label={applying ? 'Working\u2026' : CONTEXT_COPY[context].confirmLabel}
               onPress={handleApply}
-              disabled={includedCount === 0}
+              disabled={includedCount === 0 || applying}
               minWidth={64}
             />
           }
@@ -1103,16 +1161,18 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               style={styles.confirmPill}
                             />
                           )}
-                          {/* Only once the row has an item and that item has
-                              boxes. Before either, there is nothing to choose
-                              among and the barcode's own words are the answer. */}
-                          {boxCount > 0 && (
+                          {/* Once the row has an item. With boxes it is a choice
+                              among them; without, it is the way to name the
+                              first one, so the product's brand and flavor can
+                              be recorded from here rather than in the grocery
+                              screen afterwards. */}
+                          {!!rowItemId && (
                             <InlineAction
-                              label={boxLabel}
+                              label={boxCount > 0 ? boxLabel : 'Add a product'}
                               icon="cube-outline"
                               variant="neutral"
                               onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
-                              accessibilityLabel={`Choose which product of ${resolvedName ?? 'this item'} this is`}
+                              accessibilityLabel={boxCount > 0 ? `Choose which product of ${resolvedName ?? 'this item'} this is` : `Add a product to ${resolvedName ?? 'this item'}`}
                               style={styles.confirmPill}
                             />
                           )}
@@ -1189,28 +1249,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         // The source's own words when the row has no name of its
                         // own, which is the miss this exists for.
                         initialQuery={row.name.trim() || row.label}
-                        onPick={item => {
-                          setPicking(null);
-                          patchRow(row.key, {
-                            pickedItemId: item.id,
-                            // The offer this replaces, dropped: leaving a yes to
-                            // a row the user has just said no to would come back
-                            // the moment the pick is undone.
-                            confirmedMatchId: null,
-                            // A box belongs to the item it hangs off, so a box
-                            // chosen for the old item is not an answer about
-                            // this one. `scanBoxFor` refuses it at apply time
-                            // anyway; clearing here is what stops the row
-                            // *saying* it while it does.
-                            pickedProductId: null,
-                            // Naming a row is what makes it recordable, and a
-                            // pick is a stronger naming than typing one.
-                            included: true,
-                            // Only where there was nothing. A scan's own name is
-                            // the words on the box being checked against the box,
-                            // and overwriting them would take away the check.
-                            name: row.name.trim() || item.name,
-                          });
+                        onPick={item => pickItemFor(row, item)}
+                        onCreate={name => {
+                          const item = ensureCatalogItem(name);
+                          if (item) pickItemFor(row, item);
                         }}
                       />
                     </View>
@@ -1231,6 +1273,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         // the list shows as current rather than nothing.
                         value={row.pickedProductId ?? gtinProductFor(row.gtin)?.id ?? null}
                         allowNone={false}
+                        onCreate={fields => {
+                          if (!rowItemId) return false;
+                          const made = addProduct(rowItemId, fields, { promote: false });
+                          if (!made) return false;
+                          setPicking(null);
+                          patchRow(row.key, { pickedProductId: made.id });
+                          return true;
+                        }}
                         onPick={product => {
                           setPicking(null);
                           if (product) patchRow(row.key, { pickedProductId: product.id });

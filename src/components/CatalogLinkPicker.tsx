@@ -5,6 +5,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import type { GroceryItem } from '../types';
 import { rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -15,6 +16,14 @@ interface Props {
   /** The item this line already resolves to, if any — left out of its own results. */
   excludeItemId?: string | null;
   onPick: (item: GroceryItem) => void;
+  /**
+   * Offers "Add X as a new item" under the results when what was typed names
+   * nothing in the catalog. Omitted by the callers that can only tie a line to
+   * a row that already exists. Called with the name as typed; the caller mints
+   * the row (`ensureCatalogItem`, which resolves a name that is already there
+   * rather than duplicating it) and then treats it like a pick.
+   */
+  onCreate?: (name: string) => void;
 }
 
 /**
@@ -34,7 +43,7 @@ interface Props {
  * own add field — a second scoring function here would be a second one to
  * keep in step with it.
  */
-export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }: Props) {
+export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, onCreate }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { query, props: filterField } = useFilterField(initialQuery);
@@ -45,6 +54,13 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }
       .filter(item => item.id !== excludeItemId),
     [query, items, excludeItemId]
   );
+
+  // Offered only for a name the catalog doesn't already hold, judged by the
+  // key `ensureCatalogItem` files it under, so the row never offers a "new"
+  // item the store would resolve to an existing one.
+  const typed = query.trim();
+  const createKey = typed ? groceryNameKey(typed) : '';
+  const canCreate = !!onCreate && !!createKey && !items.some(i => i.nameKey === createKey);
 
   return (
     <View style={styles.wrap}>
@@ -82,6 +98,18 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }
             : 'Type to search your grocery catalog.'}
         </Text>
       )}
+      {canCreate && (
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); onCreate?.(typed); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${typed} as a new item`}
+        >
+          <Ionicons name="add-circle-outline" size={iconSize.sm} color={colors.accent} />
+          <Text style={styles.createText} numberOfLines={2}>{`Add \u201C${typed}\u201D as a new item`}</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -110,6 +138,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.xs,
     },
     rowName: { flex: 1, fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
+    createText: { flex: 1, fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.accentText },
     rowAisle: { fontSize: font.xs, color: colors.textTertiary },
     empty: {
       fontSize: font.xs,
