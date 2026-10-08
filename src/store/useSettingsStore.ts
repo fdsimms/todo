@@ -567,11 +567,6 @@ interface SettingsStore {
    * visible to someone it is a surprise for.
    */
   hideListPreviews: boolean;
-  /**
-   * Whether a project's card and a collapsed stack's header leave out the
-   * "Next: …" line naming the next open task.
-   */
-  hideNextStep: boolean;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
   /**
    * Trims quick add's chip toolbar and the task editor's open-by-default rows
@@ -1874,7 +1869,6 @@ interface SettingsStore {
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideListPreviews: (on: boolean) => void;
-  setHideNextStep: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
   setSimpleMode: (on: boolean) => void;
@@ -2148,7 +2142,6 @@ const DEFAULT_SETTINGS = {
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
   hideListPreviews: false,
-  hideNextStep: false,
   hideCategories: false,
   simpleTaskForm: false,
   simpleMode: false,
@@ -2583,7 +2576,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideListPreviews: false,
-  hideNextStep: false,
   hideCategories: false,
   simpleTaskForm: false,
   simpleMode: false,
@@ -2879,7 +2871,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const hideListPreviews = dbGetSetting('hideListPreviews') === 'true';
-    const hideNextStep = dbGetSetting('hideNextStep') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
     const collapsedGroceryGroups = parseCollapsedGroceryGroups(dbGetSetting('collapsedGroceryGroups'));
@@ -3442,7 +3433,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       hideCategories,
       hideHelpText,
       hideListPreviews,
-      hideNextStep,
       householdServings,
       journalLogLastDayKey,
       journalLogTaskCategory,
@@ -4566,11 +4556,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHideListPreviews(on: boolean) {
     dbSetSetting('hideListPreviews', on ? 'true' : 'false');
     set({ hideListPreviews: on });
-  },
-
-  setHideNextStep(on: boolean) {
-    dbSetSetting('hideNextStep', on ? 'true' : 'false');
-    set({ hideNextStep: on });
   },
 
   setHideCategories(on: boolean) {

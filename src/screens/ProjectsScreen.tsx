@@ -119,7 +119,6 @@ export function ProjectsScreen() {
   const setProjectSort = useSettingsStore(s => s.setProjectSortOption);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
-  const hideNextStep = useSettingsStore(s => s.hideNextStep);
   // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
   // becomes "Due today" without waiting for some unrelated store write.
   useLogicalDayKey();
@@ -178,14 +177,14 @@ export function ProjectsScreen() {
       progress: projectProgress(p.id, allTasks),
       // Not for a list: "Next" reads as an order to work in, and a list of
       // books or gift ideas has none.
-      next: projectFilter === 'active' && p.kind !== 'list' && !hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
+      next: projectFilter === 'active' && p.kind !== 'list' && !p.hideNextStep ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
       // A list shows its first lines instead, which is what it's for.
       preview: projectFilter === 'active' && p.kind === 'list' && !hideListPreviews
         ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
         : null,
     }));
     return map;
-  }, [listProjects, allTasks, projectFilter, taskGroups, hideListPreviews, hideNextStep]);
+  }, [listProjects, allTasks, projectFilter, taskGroups, hideListPreviews]);
   const progressByProject = useMemo(
     () => new Map(Array.from(cardFactsByProject, ([id, facts]) => [id, facts.progress])),
     [cardFactsByProject]

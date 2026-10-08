@@ -1,1 +1,1 @@
-{ "message": "New setting, Hide next task on cards, removes the \"Next:\" line from project cards and stack headers.", "date": "2026-10-08" }
+{ "message": "Projects, stacks and sections can now hide their next task. Turn on Hide next task in the editor to remove the \"Next:\" line from the card or header.", "date": "2026-10-08" }
