@@ -328,7 +328,6 @@ interface SettingsStore {
   // between them, so flipping through them with this on is a real answer to
   // "which of my tasks have one", not a partial one. Same persisted-view-state
   // reasoning as filterPriorities/filterEfforts above.
-  filterHasReminder: boolean;
   // Recipes' own sort & filter, same persisted-view-state reasoning as
   // sortOption/filterPriorities/filterEfforts above — RecipeSortFilterSheet is
   // the recipe box's counterpart to Today's SortFilterSheet. 'default' keeps
@@ -1839,7 +1838,6 @@ interface SettingsStore {
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
-  setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
   setProjectSortOption: (sort: ProjectSortOption) => void;
   setRecipeLovedOnly: (lovedOnly: boolean) => void;
@@ -2539,7 +2537,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
-  filterHasReminder: false,
   recipeSortOption: 'default',
   recipeLovedOnly: false,
   projectSortOption: 'manual',
@@ -2827,7 +2824,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
-    const filterHasReminder = dbGetSetting('filterHasReminder') === 'true';
     const storedProjectSort = dbGetSetting('projectSortOption') as ProjectSortOption | null;
     const projectSortOption: ProjectSortOption =
       storedProjectSort && PROJECT_SORT_VALUES.includes(storedProjectSort) ? storedProjectSort : 'manual';
@@ -3407,7 +3403,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       eventTasks,
       fabHand,
       filterEfforts,
-      filterHasReminder,
       filterPriorities,
       firstRunDone,
       focusBreaksEnabled,
@@ -3774,10 +3769,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ filterEfforts: efforts });
   },
 
-  setFilterHasReminder(on: boolean) {
-    dbSetSetting('filterHasReminder', on ? 'true' : 'false');
-    set({ filterHasReminder: on });
-  },
 
   setProjectSortOption(sort: ProjectSortOption) {
     dbSetSetting('projectSortOption', sort);
