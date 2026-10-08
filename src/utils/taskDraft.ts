@@ -161,6 +161,11 @@ export function applyTitleRulesToDraft(
 // unlike timeSegments, a cloned series row already carries its own category/
 // priority/effort explicitly (spread from the source row), so the ?? never
 // fires on a clone; it's only ever a fallback for an unanswered field.
+//
+// Fields are written one by one, never by spreading the draft, so a new Task
+// field has to be named here or it is dropped on every create:
+// taskDraftFieldCoverage.test.ts fails until it is, or is listed there with
+// the reason it isn't.
 export function newTaskFromDraft(
   draft: Partial<TaskDraft>,
   now: string,
