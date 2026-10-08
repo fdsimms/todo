@@ -1,5 +1,6 @@
 import {
   isTaskVisible,
+  isPinnedOnToday,
   isTaskDeferred,
   isTaskWindowActive,
   isTaskExpired,
@@ -2666,5 +2667,23 @@ describe('a window bound that follows the sun', () => {
   it('leaves a plain window untouched', () => {
     expect(windowBoundsFor({ ...baseTask, windowStart: '09:00', windowEnd: '17:00' }, day))
       .toEqual({ start: '09:00', end: '17:00' });
+  });
+});
+
+describe('isPinnedOnToday', () => {
+  const withTask = (o: Partial<Task>): Task => ({ ...baseTask, ...o });
+  it('lights a pin-each-occurrence pin only while its occurrence is visible', () => {
+    const later = withTask({ pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2999, 0, 1, 9).toISOString() });
+    const due = withTask({ pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2020, 0, 1, 9).toISOString() });
+    expect(isPinnedOnToday(later)).toBe(false);
+    expect(isPinnedOnToday(due)).toBe(true);
+  });
+
+  it('keeps a manual pin lit regardless of its date', () => {
+    expect(isPinnedOnToday(withTask({ pinned: true, dueDate: new Date(2999, 0, 1, 9).toISOString() }))).toBe(true);
+  });
+
+  it('is unlit when the task is not pinned', () => {
+    expect(isPinnedOnToday(withTask({ pinned: false }))).toBe(false);
   });
 });

@@ -769,6 +769,10 @@ the block would inherit none.
   person) and paused-project tasks. Pinning is an answer to "not yet *today*", not to "can't be done
   yet at all": a blocked pinned task would sit at the top of Today with nothing the user could do
   about it.
+- **A pin-each-occurrence pin is the one exception to the clock rule.** Its successor is spawned
+  pinned, so the pin answers the occurrence, not the schedule: it counts only while the task is
+  visible (`isPinnedOnToday`, which the block, the row's glyph and its pin button all read). A
+  not-yet-due occurrence shows an unlit pin and no pin button.
 - **One exception to that: a pinned daily target unpins itself once logging catches it up to pace.**
   Otherwise it would sit pinned at the top of Today, at quota, until the next unit falls due hours
   later — the exact "hidden until later" state pinning is supposed to override for a task that

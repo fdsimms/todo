@@ -55,7 +55,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded, isPinnedOnToday } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
@@ -564,6 +564,10 @@ export const TaskItem = React.memo(function TaskItem({
   // `pinWritesPending` counts taps whose write hasn't run, so a double tap
   // doesn't drop back to the stored value between its two writes.
   const [pinOverride, setPinOverride] = useState<boolean | null>(null);
+  // A pin on a pinEachOccurrence row that isn't due yet is stored but unlit, and
+  // there is nothing on this row to change until it is, so no button either.
+  const pinLit = isPinnedOnToday(task);
+  const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
@@ -3599,11 +3603,11 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && !notice && (
+      {!selectionMode && showActions && showPin && !notice && !pinWaiting && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            setPinOverride(!(pinOverride ?? task.pinned));
+            setPinOverride(!(pinOverride ?? pinLit));
             pinWritesPending.current += 1;
             // A frame later, so the glyph commits and paints before the
             // screen-wide render the write causes. animateLayout goes with the
@@ -3619,15 +3623,15 @@ export const TaskItem = React.memo(function TaskItem({
           hitSlop={8}
           style={styles.pinBtn}
           accessibilityRole="button"
-          accessibilityState={{ selected: pinOverride ?? task.pinned }}
+          accessibilityState={{ selected: pinOverride ?? pinLit }}
           accessibilityLabel={
-            (pinOverride ?? task.pinned) ? `Unpin ${task.title}` : `Pin ${task.title}`
+            (pinOverride ?? pinLit) ? `Unpin ${task.title}` : `Pin ${task.title}`
           }
         >
           <PinIcon
-            filled={pinOverride ?? task.pinned}
+            filled={pinOverride ?? pinLit}
             size={iconSize.sm}
-            color={(pinOverride ?? task.pinned) ? colors.orangeText : colors.textSecondary}
+            color={(pinOverride ?? pinLit) ? colors.orangeText : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
