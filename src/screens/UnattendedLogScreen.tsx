@@ -5,6 +5,8 @@ import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { useShallow } from 'zustand/react/shallow';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,6 +24,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ActivitySourceSheet } from '../components/ActivitySourceSheet';
@@ -32,16 +35,20 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { GENERATED_KIND_SPECS } from '../utils/generatedTasks';
 import { LEDGER_MAX_DAYS } from '../utils/retention';
 import {
+  AGENT_FILTER,
+  AGENT_SOURCE,
   UNATTENDED_ACTION_SPECS,
   describeUnattendedEntry,
   filterUnattended,
+  hasAgentEntries,
   unattendedDayLabel,
   unattendedDays,
   unattendedIcon,
   unattendedKinds,
   unattendedSummary,
 } from '../utils/unattendedLedger';
-import type { GeneratedKind, UnattendedEntry } from '../types';
+import type { ActivityFilter } from '../utils/unattendedLedger';
+import type { UnattendedEntry } from '../types';
 
 /**
  * What the app did while nobody was looking.
@@ -62,8 +69,10 @@ import type { GeneratedKind, UnattendedEntry } from '../types';
  * `UnattendedEntry` in types holds the three rules deciding what gets one.
  */
 export function UnattendedLogScreen() {
+  const pullSearch = usePullToSearch();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('UnattendedLog', 'Activity settings');
   const entries = useUnattendedStore(useShallow(s => s.entries));
@@ -72,14 +81,14 @@ export function UnattendedLogScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [kind, setKind] = useState<GeneratedKind | null>(null);
+  const [kind, setKind] = useState<ActivityFilter>(null);
   const [sourceOpen, setSourceOpen] = useState(false);
 
   // What an agent's entry is about is read back from the store that owns it, so
   // the undo is offered only while that record is still how the agent left it
   // (agentUndo.ts). The slices are subscribed to so a row re-judges itself when
   // one changes, and read only when an agent row is in the list.
-  const hasAgentRows = useMemo(() => entries.some(e => e.actor === 'agent'), [entries]);
+  const hasAgentRows = useMemo(() => hasAgentEntries(entries), [entries]);
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
   const groceryEntries = useGroceryStore(s => s.listEntries);
@@ -182,11 +191,18 @@ export function UnattendedLogScreen() {
   );
 
   // Only the generators actually present are offered: a filter listing all
-  // twenty would mostly be rows that select nothing.
+  // twenty would mostly be rows that select nothing. Claude's rows go first
+  // when there are any, since they are the ones with no generator to name.
   const sourceOptions = useMemo(
-    () => kinds.map(k => ({ key: k, label: GENERATED_KIND_SPECS[k].label })),
-    [kinds],
+    () => [
+      ...(hasAgentRows ? [{ key: AGENT_FILTER, label: AGENT_SOURCE }] : []),
+      ...kinds.map(k => ({ key: k, label: GENERATED_KIND_SPECS[k].label })),
+    ],
+    [kinds, hasAgentRows],
   );
+  const filterLabel = kind === null
+    ? 'All sources'
+    : kind === AGENT_FILTER ? AGENT_SOURCE : GENERATED_KIND_SPECS[kind].label;
 
   const navigation = useNavigation();
   const openAutomations = useCallback(() => {
@@ -217,32 +233,35 @@ export function UnattendedLogScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="UnattendedLog" />
 
-      {kinds.length > 1 && (
+      {sourceOptions.length > 1 && (
         <View style={styles.filter}>
           <TouchableOpacity
             style={[styles.sourceButton, kind !== null && styles.sourceButtonActive]}
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setSourceOpen(true); }}
             accessibilityRole="button"
-            accessibilityLabel={`Source: ${kind === null ? 'All sources' : GENERATED_KIND_SPECS[kind].label}`}
+            accessibilityLabel={`Source: ${filterLabel}`}
           >
             <Ionicons name="funnel-outline" size={iconSize.sm} color={kind === null ? colors.textSecondary : colors.accent} />
             <Text style={[styles.sourceText, kind !== null && styles.sourceTextActive]} numberOfLines={1}>
-              {kind === null ? 'All sources' : GENERATED_KIND_SPECS[kind].label}
+              {filterLabel}
             </Text>
             <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       )}
       <ActivitySourceSheet
-        visible={sourceOpen && kinds.length > 1}
+        visible={sourceOpen && sourceOptions.length > 1}
         onClose={() => setSourceOpen(false)}
         options={sourceOptions}
         selected={kind}
-        onSelect={key => setKind(key as GeneratedKind | null)}
+        onSelect={key => setKind(key as ActivityFilter)}
       />
 
       <SectionList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         sections={sections}
         keyExtractor={item => item.id}
         contentContainerStyle={
@@ -292,6 +311,8 @@ export function UnattendedLogScreen() {
           )
         }
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

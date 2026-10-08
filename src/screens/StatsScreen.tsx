@@ -25,6 +25,7 @@ import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { onTimeSummary } from '../utils/stats';
@@ -92,6 +93,8 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { capitalize } from '../utils/capitalize';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 const BAR_HEIGHT = 96;
 // The window the focus summary rows describe. Matches HABIT_DAYS below rather
@@ -164,7 +167,9 @@ function expectedCount(recurrenceType: string, interval: number): number {
 }
 
 export function StatsScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const colors = useColors();
@@ -528,6 +533,9 @@ export function StatsScreen() {
         />
       ) : (
         <ScrollView
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
+          refreshControl={pullSearch.refreshControl}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
         >
@@ -1238,6 +1246,8 @@ export function StatsScreen() {
 
         </ScrollView>
       )}
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

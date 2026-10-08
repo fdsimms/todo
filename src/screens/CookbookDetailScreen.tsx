@@ -24,6 +24,9 @@ import {
 import { entriesInCookbook } from '../utils/cookbookIndex';
 import type { CookbookIndexEntry, Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 type RootStackParamList = {
   CookbookDetail: { cookbookId: string };
@@ -38,7 +41,9 @@ type RootStackParamList = {
  * corrected.
  */
 export function CookbookDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'CookbookDetail'>>();
   const { cookbookId } = route.params;
@@ -179,6 +184,9 @@ export function CookbookDetailScreen() {
       </Text>
 
       <FlatList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         data={recipes}
         keyExtractor={r => r.id}
         renderItem={renderItem}
@@ -291,6 +299,8 @@ export function CookbookDetailScreen() {
           />
         </View>
       </SheetModal>
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

@@ -765,6 +765,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [locationText, setLocationText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
+  // The `task` prop is a snapshot taken when the sheet opened, and the streak
+  // is written straight to the store by Apply, so read it live or the row keeps
+  // showing the old count until the sheet is reopened.
+  const liveStreakTask = useTaskStore(s => (task ? s.tasks.find(t => t.id === task.id) ?? task : null));
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [slipAllowance, setSlipAllowance] = useState<number | null>(null);
@@ -1963,9 +1967,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // for the next real completion instead of leaving it to see a gap and
   // reset anyway. Reset always clears the anchor.
   const applyStreakChange = (rawCount: number) => {
-    if (!task) return;
+    if (!task || !liveStreakTask) return;
     const clamped = Math.max(0, Math.round(rawCount));
-    if (clamped === task.streakCount) {
+    if (clamped === liveStreakTask.streakCount) {
       setStreakEditorOpen(false);
       return;
     }
@@ -1975,18 +1979,18 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     let newStreakDate: string | null;
     if (clamped === 0) {
       newStreakDate = null;
-    } else if (task.streakDate) {
-      const delta = clamped - task.streakCount;
+    } else if (liveStreakTask.streakDate) {
+      const delta = clamped - liveStreakTask.streakCount;
       // streakDate is a stored anchor, not a fresh "now" moment — getTaskDayStart
       // is the one that doesn't second-guess it if dayResetTime has changed
       // since it was written (see getStreakOutcome in dateUtils.ts).
-      const shifted = addDays(getTaskDayStart(new Date(task.streakDate), dayResetTime), delta);
+      const shifted = addDays(getTaskDayStart(new Date(liveStreakTask.streakDate), dayResetTime), delta);
       newStreakDate = (shifted > yesterday ? yesterday : shifted).toISOString();
     } else {
       newStreakDate = yesterday.toISOString();
     }
 
-    const increasing = clamped > task.streakCount;
+    const increasing = clamped > liveStreakTask.streakCount;
     Alert.alert(
       clamped === 0 ? 'Reset streak?' : `Set streak to ${clamped} day${clamped === 1 ? '' : 's'}?`,
       clamped === 0
@@ -2006,7 +2010,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               // takes it like any other ending. Correcting up needs nothing:
               // bestStreakOf already counts the live run, so a streak set to 50
               // is a record of 50 the moment it lands.
-              priorBestStreak: nextStreakRecord(task, clamped),
+              priorBestStreak: nextStreakRecord(liveStreakTask, clamped),
             });
             setStreakEditorOpen(false);
           },
@@ -7118,14 +7122,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           ...(task && task.recurrenceType !== 'none' ? [{
-            key: 'streak', label: 'Streak', set: task.streakCount > 0,
+            key: 'streak', label: 'Streak', set: liveStreakTask!.streakCount > 0,
             keywords: ['run', 'days in a row', 'count'],
             node: (
               <>
                 <TouchableOpacity
                   style={styles.optionRow}
                   onPress={() => {
-                    setStreakDraft(task.streakCount);
+                    setStreakDraft(liveStreakTask!.streakCount);
                     setStreakEditorOpen(o => !o);
                   }}
                   activeOpacity={interaction.activeOpacity}
@@ -7134,15 +7138,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     name="flame-outline"
                     size={18}
                     color={
-                      isStreakAtRecord(task) ? colors.red
-                      : task.streakCount > 0 ? colors.orangeText
+                      isStreakAtRecord(liveStreakTask!) ? colors.red
+                      : liveStreakTask!.streakCount > 0 ? colors.orangeText
                       : colors.textSecondary
                     }
                   />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak</Text>
                     <Text style={styles.optionHint}>
-                      {streakHint(task)}
+                      {streakHint(liveStreakTask!)}
                     </Text>
                   </View>
                   <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
@@ -7158,11 +7162,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     />
                     <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
                     <TouchableOpacity
-                      style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
+                      style={[styles.streakApplyBtn, streakDraft === liveStreakTask!.streakCount && styles.streakApplyBtnDisabled]}
                       onPress={() => applyStreakChange(streakDraft)}
-                      disabled={streakDraft === task.streakCount}
+                      disabled={streakDraft === liveStreakTask!.streakCount}
                     >
-                      <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
+                      <Text style={[styles.streakApplyText, streakDraft === liveStreakTask!.streakCount && styles.streakApplyTextDisabled]}>
                         {streakDraft === 0 ? 'Reset' : 'Apply'}
                       </Text>
                     </TouchableOpacity>

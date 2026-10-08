@@ -34,6 +34,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -79,6 +80,7 @@ function AddPersonFabWithDropLabel({
 }
 
 export function PeopleScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
@@ -315,6 +317,7 @@ export function PeopleScreen() {
             scroller={scrollControl}
           >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             data={visiblePeople}
             keyExtractor={p => p.id}
             scrollToTop={{ bottom: fabBottom }}
@@ -462,6 +465,7 @@ export function PeopleScreen() {
         }}
         onClose={() => setTripPlannerVisible(false)}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

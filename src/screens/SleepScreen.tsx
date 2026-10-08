@@ -32,12 +32,15 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { SleepHoursChart, SleepStagesBar, SleepTimesChart } from '../components/SleepChart';
 import { SleepGoalSheet } from '../components/SleepGoalSheet';
 import { InlineAction } from '../components/InlineAction';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Sleep, as Apple Health recorded it: when each day's main sleep started and
@@ -64,7 +67,9 @@ const SLEEP_RANGES: { days: SleepRangeDays; label: string; spoken: string }[] = 
 const DEFAULT_RANGE_DAYS: SleepRangeDays = 14;
 
 export function SleepScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const screenSettings = useScreenSettings('Sleep', 'Sleep settings');
@@ -212,6 +217,9 @@ export function SleepScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -371,6 +379,8 @@ export function SleepScreen() {
         </TouchableOpacity>
       </ScrollView>
       <SleepGoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

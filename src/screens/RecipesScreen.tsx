@@ -87,6 +87,7 @@ import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } fr
 import { tagColor } from '../utils/tagColor';
 import { useFilterField } from '../hooks/useFilterField';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 
 /**
@@ -188,6 +189,7 @@ function usePantryCatalog() {
 }
 
 export function RecipesScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
@@ -902,6 +904,7 @@ export function RecipesScreen() {
               scroller={scrollControl}
             >
               <ReorderableList
+                refreshControl={pullSearch.refreshControl}
                 data={visibleDraggableData}
                 keyExtractor={recipeListItemKey}
                 scrollToTop={{ bottom: fabBottom }}
@@ -971,6 +974,7 @@ export function RecipesScreen() {
           ) : (
             <PaintSelectionProvider {...paintProps}>
             <FlatList
+              refreshControl={pullSearch.refreshControl}
               data={visible}
               keyExtractor={r => r.id}
               renderItem={renderFlatRecipe}
@@ -1115,6 +1119,7 @@ export function RecipesScreen() {
           onClose={() => setPlanningRecipe(null)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

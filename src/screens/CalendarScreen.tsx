@@ -53,6 +53,7 @@ import {
 import { useCalendarStore } from '../store/useCalendarStore';
 import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
 import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
 import { sunLocationOn } from '../utils/visibilityUtils';
@@ -141,6 +142,7 @@ const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
  * event card (`QuickEventSheet`) on the selected day.
  */
 export function CalendarScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -1197,6 +1199,7 @@ export function CalendarScreen() {
       )}
 
       <ScrollView
+        refreshControl={pullSearch.refreshControl}
         ref={detailScrollRef}
         style={[styles.detail, viewMode === 'week' && styles.weekList]}
         scrollEnabled={!draggingSubtask && draggingTask === null}
@@ -1313,6 +1316,7 @@ export function CalendarScreen() {
           day={dayKeyToDate(selectedKey)}
         />
       </LazySheet>
+      {pullSearch.sheet}
     </View>
   );
 }

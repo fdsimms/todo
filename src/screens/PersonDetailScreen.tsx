@@ -52,6 +52,8 @@ import {
   personUpcoming,
   type HistoryEntry,
 } from '../utils/personHistory';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   // `returnTo` is the tab a task row's people link was tapped from (see
@@ -98,6 +100,7 @@ const SUGGESTION_PREVIEW_COUNT = 5;
  */
 export function PersonDetailScreen() {
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'PersonDetail'>>();
   const colors = useColors();
@@ -379,7 +382,9 @@ export function PersonDetailScreen() {
         }
       />
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps} style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* The reach-them row. Only the ones they actually have. */}
         {(person.phoneNumber || person.email || person.linkUrl) && (
           <View style={styles.actionRow}>
@@ -681,6 +686,7 @@ export function PersonDetailScreen() {
         initialKind={noteSheet?.kind ?? 'note'}
         onClose={() => setNoteSheet(null)}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

@@ -30,6 +30,8 @@ import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
@@ -47,7 +49,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatHHMM } from '../utils/dateUtils';
-import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs, placeItemAtDrop } from '../utils/templateUtils';
+import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs, describePlaceholderTokens, placeItemAtDrop } from '../utils/templateUtils';
 import { liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
 
@@ -111,6 +113,7 @@ export function TemplateDetailScreen() {
   // its own to land the created tasks in, so without this the run leaves no
   // trace beyond wherever its container happens to be.
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
   // Snapshot rather than the live row, like TemplatesScreen does: the editor
   // seeds its fields off this object's identity, so handing it a value that
   // changes under it would reset them mid-edit.
@@ -600,7 +603,11 @@ export function TemplateDetailScreen() {
           visible={applyTemplateObj !== null}
           template={applyTemplateObj}
           onClose={() => setApplyTemplateId(null)}
-          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+          onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
         />
       )}
 
@@ -608,7 +615,11 @@ export function TemplateDetailScreen() {
         <TemplateAppliedToast
           count={templateAppliedCount}
           bottom={fabBottom + FAB_SIZE + spacing.md}
-          onDismiss={() => setTemplateAppliedCount(null)}
+          goTo={templateAppliedDest ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
         />
       )}
     </View>
@@ -672,7 +683,10 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
   const refCount = resolvedRefTemplate?.items.length ?? 0;
 
   // Shared by the swipe and the iPhone Mirroring button.
-  const swipeSelect = { onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` };
+  // The title as it reads, with a computed `{...}` token spelled out. Display
+  // only: the editor and the stored title keep the syntax.
+  const readableTitle = describePlaceholderTokens(item.title);
+  const swipeSelect = { onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${readableTitle}` };
 
   const rowBody = (
     <TouchableOpacity
@@ -692,7 +706,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             ? `Nested template ${refTitle}, ${refCount} item${refCount === 1 ? '' : 's'}`
             // The warning is its own Text node, but a label set on the row
             // overrides its children, so it has to be spelled out here too.
-            : `${item.title}${item.optional ? ', optional' : ''}${missingRefsLabel ? `, ${missingRefsLabel}` : ''}`
+            : `${readableTitle}${item.optional ? ', optional' : ''}${missingRefsLabel ? `, ${missingRefsLabel}` : ''}`
       }
       accessibilityHint={selectionMode ? 'Double tap to select item' : broken ? undefined : isRef ? 'Double tap to open the nested template' : 'Double tap to edit item'}
     >
@@ -721,7 +735,8 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
           </>
         ) : (
           <>
-            <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
+            {/* Two lines, since a spelled-out switch can't fit one and the title is what this row is for. */}
+            <Text style={styles.itemTitle} numberOfLines={2}>{readableTitle}</Text>
             {hint && <Text style={styles.itemHintText} numberOfLines={1}>{hint}</Text>}
             {/* Takes the category line's place rather than sitting beside it:
                 the missing name is already quoted in this sentence, so showing
