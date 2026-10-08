@@ -2222,6 +2222,7 @@ export function ProjectDetailScreen() {
                               label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
                               icon="add"
                               variant="neutral"
+                              surface="tray"
                               onPress={() => openAddToSection(group)}
                               accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
                             />
@@ -2234,6 +2235,7 @@ export function ProjectDetailScreen() {
                                 label="Sort A to Z"
                                 icon="swap-vertical-outline"
                                 variant="neutral"
+                                surface="tray"
                                 onPress={() => sortSectionAToZ(group, children)}
                                 accessibilityLabel={`Sort ${group.title.trim() || 'this section'} A to Z`}
                               />
