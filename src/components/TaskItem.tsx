@@ -2002,7 +2002,16 @@ export const TaskItem = React.memo(function TaskItem({
   const handleSlipUndo = async () => {
     if (slipsLoggedToday === 0) return;
     await haptics.tap();
-    undoSlip(task.id);
+    // Same reasoning as handleQuotaUndo: a stray long press shouldn't change the
+    // record silently. Note undoSlip doesn't refund a charge (penaltyShield.ts).
+    Alert.alert(
+      'Take back a slip?',
+      `Remove the most recent slip logged for "${displayTitleFor(task)}" today?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take back', style: 'destructive', onPress: () => undoSlip(task.id) },
+      ],
+    );
   };
 
   const handleComplete = async () => {
