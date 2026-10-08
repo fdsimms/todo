@@ -2020,7 +2020,7 @@ export function MealPlanScreen() {
         subtitle={subtitle}
         actions={withScreenSettings(headerActions, screenSettings.action)}
       />
-  const headerActions = useMemo<ScreenSettingsSheet {...screenSettings.sheet} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="MealPlan" />
       <TipHost screen="mealPlan" />
       {!selectionMode && !!activeTripShop && (
