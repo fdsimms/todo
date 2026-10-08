@@ -164,12 +164,14 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
       if (!draft.existingItemId && draft.gtin) {
         // Brand-only, matching what a minted row is named after: there is no
         // existing item name left for a variant to be the residue of.
-        if (draft.brand) addProduct(id, { brand: draft.brand, variant: null });
+        if (draft.brand) addProduct(id, { brand: draft.brand, variant: null }, { promote: false });
         mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
       }
     }
+    // Recorded, never preferred, for GroceryScreen.handleScanApply's reason:
+    // logging a packet you ate is not choosing it for the next shop.
     for (const product of products) {
-      addProduct(product.itemId, { brand: product.brand, variant: product.variant });
+      addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
     }
     linkScannedGtins([...gtinLinks, ...mintedLinks]);
 

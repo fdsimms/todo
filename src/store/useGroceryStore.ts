@@ -610,6 +610,8 @@ interface GroceryStore extends UndoHistoryActions {
        * own spelling into a rename queue on the strength of an unrelated scan.
        */
       nameFromScan?: boolean;
+      /** False files `brand`/`variant` without preferring it — see `GroceryAddOverride.preferBox`. */
+      preferBox?: boolean;
     },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
@@ -707,7 +709,8 @@ interface GroceryStore extends UndoHistoryActions {
      * user *chose*: a barcode scan knows a box came home, which is not the same
      * statement as naming one in the product sheet. Unpacking twenty bags would
      * otherwise decide twenty items' preferences nobody asked about (#1866).
-     * Defaults to promoting, which is every hand-driven caller.
+     * Every scan path passes it (the grocery scan, the pantry scan, the food
+     * log scan). Defaults to promoting, which is every hand-driven caller.
      */
     opts?: { promote?: boolean }
   ) => ItemProduct | null;
@@ -3273,8 +3276,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (frozenNames?.has(raw)) get().setFrozen(item.id, true);
       // Same reasoning: not part of the undo snapshot, matching addProduct's
       // own callers everywhere else — a box named is never itself undoable.
+      // Recorded without becoming the preference: a scan is what came home,
+      // not what the user is shopping for (GroceryScreen.handleScanApply).
       if (product && (product.brand || product.variant)) {
-        get().addProduct(item.id, { brand: product.brand, variant: product.variant });
+        get().addProduct(item.id, { brand: product.brand, variant: product.variant }, { promote: false });
       }
       // Only for a row this loop just minted (`!before`) — a found row already
       // has a filed aisle, and the barcode's read of the source is not grounds

@@ -241,6 +241,13 @@ export interface GroceryAddOverride {
   /** A barcode source's own category. The weakest of the three aisle opinions. */
   aisle?: string | null;
   nameFromScan?: boolean;
+  /**
+   * False files `brand`/`variant` as a box without making it the one the row
+   * asks for. The Brand chip is somebody saying what they're shopping for; a
+   * barcode is only what came home, and preferring it put a brand on the list
+   * every time the plain item was re-added. Defaults to true.
+   */
+  preferBox?: boolean;
 }
 
 /** Everything `planGroceryAdd` would otherwise have reached the store for. */
@@ -305,6 +312,7 @@ export function planGroceryAdd(
   const brand = override?.brand?.trim() || null;
   const variant = override?.variant?.trim() || null;
   const sourceAisle = override?.aisle?.trim() || null;
+  const preferBox = override?.preferBox !== false;
   // A name with no letters or digits ("???") normalises to an empty key.
   // Falling back to the raw text keeps the key unique, which matters: two such
   // rows would collide on the UNIQUE index and the *second* insert would throw
@@ -392,7 +400,7 @@ export function planGroceryAdd(
       // stale recipe (possibly cooked and forgotten) is actively misleading.
       sourceRecipeId: !onAnyList && source ? source.recipeId : existing.sourceRecipeId,
       sourceRecipeTitle: !onAnyList && source ? source.recipeTitle : existing.sourceRecipeTitle,
-      ...(ensured ? { preferredProductId: ensured.product.id } : {}),
+      ...(ensured && preferBox ? { preferredProductId: ensured.product.id } : {}),
     };
     return {
       item,
@@ -419,7 +427,7 @@ export function planGroceryAdd(
   // After the row exists, because a product hangs off an item id. Nothing is
   // ever parsed out of the typed name to get here — see ItemProduct.brand.
   const ensured = ensureProductFor(item.id, brand, variant, itemProducts, now);
-  if (ensured) item.preferredProductId = ensured.product.id;
+  if (ensured && preferBox) item.preferredProductId = ensured.product.id;
   return {
     item,
     isNew: true,

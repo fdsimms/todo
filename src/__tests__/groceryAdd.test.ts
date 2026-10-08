@@ -297,6 +297,26 @@ describe('planGroceryAdd', () => {
       expect(plan.product).toBeNull();
       expect(plan.item.preferredProductId).toBe(existing.id);
     });
+
+    // A barcode's brand: the box is filed, the row still asks for the item.
+    it('files the box without preferring it when preferBox is off', () => {
+      const plan = planGroceryAdd('bread', context(), {
+        name: 'Bread', quantity: null, brand: "Arnold's", preferBox: false,
+      });
+      expect(plan.product).toMatchObject({ brand: "Arnold's" });
+      expect(plan.item.preferredProductId).toBeNull();
+    });
+
+    it('leaves an existing row\'s preference alone when preferBox is off', () => {
+      const bread = row('Bread', 'bread', { id: 'b1' });
+      const plan = planGroceryAdd(
+        'bread',
+        context({ items: [bread] }),
+        { name: 'Bread', quantity: null, brand: "Arnold's", preferBox: false },
+      );
+      expect(plan.product).toMatchObject({ itemId: 'b1', brand: "Arnold's" });
+      expect(plan.item.preferredProductId).toBeNull();
+    });
   });
 });
 

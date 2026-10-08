@@ -1210,17 +1210,17 @@ export function GroceryScreen() {
    * and which one of the item it is. A row this session mints takes its brand
    * through `addByName`'s own override — the same one GroceryAddField's Brand
    * chip uses — so it files as that row's first `ItemProduct`. Deliberately not
-   * a follow-up `addProduct` call: one add should leave one row in one shape,
-   * and threading the brand through the add keeps the minted row identical to
-   * the one the Brand chip produces.
+   * a follow-up `addProduct` call: one add should leave one row in one shape.
    *
    * A row that matched an item the catalog already had travels in `products`
-   * instead, written through `addProduct`'s default rule: the scan
-   * can supply the very first answer to "which one?" for an item that has
-   * never had a box named, but — the whole point of #1866 — it never
-   * overrides a preference the user already chose. Unpacking twenty bags
-   * doesn't get to silently re-decide the one you picked on purpose; it only
-   * ever fills in the ones nobody's answered yet.
+   * instead, through `addProduct`.
+   *
+   * **Neither path makes the box the preference** (`preferBox: false`,
+   * `promote: false`). A scan says which box came home, not which one you're
+   * shopping for, and a preference shows on the list row under every later
+   * re-add of the plain item. Filling in "the ones nobody's answered yet" was
+   * the earlier rule (#1866) and it still decided for the user: nearly every
+   * branded item answered "which one?" with whatever was scanned first.
    */
   const handleScanApply = useCallback(
     (
@@ -1249,6 +1249,7 @@ export function GroceryScreen() {
             name: draft.name,
             quantity: draft.quantity || null,
             brand: draft.brand,
+            preferBox: false,
             aisle: draft.aisle,
             // Only true when the sheet's proposed name went through untouched
             // — see `nameFromScanFor`. It puts the row in the Backfill
@@ -1267,11 +1268,9 @@ export function GroceryScreen() {
         if (draft.priceMinor !== null) allPriceById[id] = draft.priceMinor;
       }
       // After the loop, so a row this session minted is already there to hang a
-      // box off. Default opts: addProduct only promotes when the item has no
-      // preference yet, so this fills in the ones nobody's answered without
-      // touching one the user already chose (#1866).
+      // box off. Recorded, never preferred: see this handler's doc comment.
       for (const product of products) {
-        addProduct(product.itemId, { brand: product.brand, variant: product.variant });
+        addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
       }
       // Last, because a link finds its box by the brand and variant the writes
       // above just filed. Running it earlier would land every scan on the
