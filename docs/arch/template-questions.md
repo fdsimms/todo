@@ -86,6 +86,39 @@ beside it.
 - **A choice defaults to its first option**, deliberately rather than to unanswered — the same call
   `RecipeComponent.choiceGroup` makes, so ordering the options *is* saying which is usual. An
   unanswered third state would be one every condition then had to have an opinion about.
+- **A choice can take several answers** (`TemplateQuestion.multiple`, an author's switch, off by
+  default so a Yes/No can't be given two). The run's answer is then a JSON array of the picked
+  options, the way a `'people'` answer is a set of ids, so the model stays one string per question.
+  `answerValues` reads either form without needing the question, which is what lets `applyItemVariant`
+  (answers by id only) match.
+  - **Any picked answer matches.** A condition lists values and matches when one is picked, and a
+    variant applies when its answer is among the picks (first variant wins, as before). Several
+    questions still AND.
+  - **It starts on the first option and the last pick can't be turned off.** An empty answer reads as
+    untouched and falls back to the first option (`resolveAnswers`), so letting the last one go would
+    look like a dead tap or quietly select something else. Same default rule as a single choice.
+  - **A title shows the picks joined with ", "** (`placeholderValuesFor`), never the stored JSON.
+  - **A `{x = Camping ? a : b}` switch matches any pick.** A multi-answer choice reaches the
+    placeholder engine in its stored form, and `readBlank` (`templateUtils`) decides how to read it: a
+    title gets the picks joined, a switch gets them as a set. A hand-typed blank that happens to be a
+    JSON array of strings reads the same way, the price of not threading a second map through every
+    substitution.
+  - Over MCP the answer is the picks joined with commas (`apply_template`), and `multiple` rides
+    `create_template`/`update_template` like any question field.
+- **A Yes/No pair is always shown Yes, then No** (`displayOptions`). The first option is the default,
+  so an author who wanted "International trip?" to start on No typed No first, which flipped that one
+  pair against every other. Only the display is reordered; the default is untouched.
+- **A question can show the destination's forecast under it** (`showForecast`, an author's switch).
+  It is the sentence `tripForecast.ts` already writes for the project page ("Paris, 48 to 66°F, rain
+  on 2 of 7 days"), fetched through `useDestinationForecast` for the run's place and dates, and
+  **it only states.** It never fills in the answer, ticks an item or becomes a condition, for the
+  reason `away-dates.md` gives: nobody should stake a coat on a ten-day forecast, and a reader
+  drawing their own conclusion from a range is both more useful and more honest.
+  - **Where and when.** The place is the project the run lands in (`Project.destination`), else a
+    `{destination}` blank the run answers (debounced, so typing doesn't geocode every key). The dates
+    are the two anchors picked above, else that project's away span. Neither: nothing is drawn.
+  - **No extra switch.** It rides `destinationForecastEnabled`, which the fetch already checks along
+    with demo mode, so nothing here adds a way to make that call.
 - **Answering re-decides the conditioned items and only those** (`reselectForAnswers`). Ticking one
   extra thing on by hand is safe whatever gets answered afterwards; a conditioned item is re-decided
   because that's what answering the question it rides on *means*.

@@ -49,6 +49,10 @@ list needed no visibility code of its own. What the kind does change:
   (`SwipeableRow`'s `deleteAction`, passed by `TaskItem`'s `swipeDeletes`), and
   only on a list item: a full swipe deletes, and the Undo bar takes it back.
   A checklist line in a project doesn't get it, and neither does a task.
+- **The count is a caption, not a card** (`summaryCaptionOnly` in
+  `ProjectDetailScreen`): a list whose summary is only its count draws it as an
+  uppercase caption over the items. Anything else that lives in the summary
+  (a trip, a pause, a tally, History, Pull a task) keeps the card.
 - **A find field once the list is long** (`LIST_FILTER_MIN_LINES`, 15 items),
   the same field a project's checklist sections get. It narrows the checked
   items too. Below the threshold it stays off, which is what keeps a short
