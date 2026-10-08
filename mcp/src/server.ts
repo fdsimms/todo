@@ -898,6 +898,7 @@ const itemSchema = z.object({
   dueOffsetDays: z.number().int().nullable().optional(),
   deferOffsetDays: z.number().int().nullable().optional(),
   deadlineOffsetDays: z.number().int().nullable().optional(),
+  deadlineTime: z.string().nullable().optional().describe('HH:MM (24-hour) the deadline closes at on its day. Needs deadlineOffsetDays; dropped without one.'),
   windowStart: z.string().nullable().optional().describe('HH:MM.'),
   windowEnd: z.string().nullable().optional().describe('HH:MM.'),
   reminderOffsetMinutes: z.number().int().nullable().optional(),

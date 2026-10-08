@@ -45,6 +45,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     dueOffsetDays: raw.dueOffsetDays ?? null,
     deferOffsetDays: raw.deferOffsetDays ?? null,
     deadlineOffsetDays: raw.deadlineOffsetDays ?? null,
+    deadlineTime: raw.deadlineOffsetDays != null ? (raw.deadlineTime ?? null) : null,
     windowStart: raw.windowStart ?? null,
     windowEnd: raw.windowEnd ?? null,
     linkUrl: raw.linkUrl ?? null,
@@ -246,6 +247,7 @@ export function buildDraftsFromTemplate(
       // stays the fixed date.
       deadlineOffsetDays: repeats && deadlineLead !== 0 ? deadlineLead : null,
       reminderOffsetDays: repeats && reminderLead > 0 ? reminderLead : null,
+      deadlineTime: item.deadlineOffsetDays !== null ? (item.deadlineTime ?? null) : null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
       linkUrl: item.linkUrl ?? null,

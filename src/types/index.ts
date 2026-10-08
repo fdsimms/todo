@@ -3952,6 +3952,9 @@ export interface TemplateItem {
   // analog of Task.deadlineOffsetDays, since a template can't bake in a fixed
   // calendar date.
   deadlineOffsetDays: number | null;
+  // "HH:MM" the deadline closes at on its day, carried through like windowStart.
+  // Meaningless without a deadlineOffsetDays, and dropped by the editor then.
+  deadlineTime?: string | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
   // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
