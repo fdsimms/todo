@@ -64,6 +64,8 @@ export interface SerializedProjectDetail {
   nudge?: { cadenceDays: number; autoSchedule: boolean; optIn: boolean; weekendSource: boolean };
   /** On a list: checked items stay on the page. */
   showChecked?: true;
+  /** Its card shows no "Next:" line. */
+  hideNextStep?: true;
   /** Members finished and in total, by the app's own reckoning (see list_projects). */
   done: number;
   total: number;
@@ -134,6 +136,7 @@ function serializeProject(replica: Replica, p: Project): SerializedProjectDetail
     ...((p.links ?? []).length > 0 ? { links: p.links.map(l => ({ label: l.label, url: l.url })) } : {}),
     nudge: { cadenceDays: p.nudgeCadenceDays, autoSchedule: p.autoSchedule, optIn: p.nudgeOptIn, weekendSource: p.weekendSource },
     ...(p.showChecked ? { showChecked: true as const } : {}),
+    ...(p.hideNextStep ? { hideNextStep: true as const } : {}),
     done,
     total,
   };
