@@ -86,6 +86,13 @@ describe('writableFoodAmounts', () => {
       .toEqual({ calorieKcal: 640, proteinG: 32, sodiumMg: 1100 });
   });
 
+  it('leaves out a nutrient HealthKit has no type for', () => {
+    // An entry stating only these would otherwise come back with no samples and
+    // read as Health refusing the write.
+    expect(writableFoodAmounts(nutrition({ satFatG: 4, transFatG: 0.5, cholesterolMg: 30, addedSugarG: 9 })))
+      .toEqual({ satFatG: 4 });
+  });
+
   it('leaves out a nutrient the entry does not state', () => {
     // The rule the whole tree is built on, at its highest stakes: writing a 0
     // would put into a medical record a claim that a meal contained none of

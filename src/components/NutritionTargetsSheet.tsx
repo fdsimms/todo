@@ -9,7 +9,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRITION_TARGET_RANGES, type NutritionTargets } from '../utils/nutritionTargets';
+import { NO_DAILY_VALUE, NUTRITION_TARGET_RANGES, type NutritionTargets } from '../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { describeWater, waterInUnit, waterTargetRange, waterToMl } from '../utils/waterLog';
 import {
@@ -164,7 +164,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
-  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined);
+  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined && !NO_DAILY_VALUE.has(key));
   const applyDailyValues = () => {
     haptics.tap();
     const values: NutritionTargets = {};
@@ -286,7 +286,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       : `${n} ${unit === 'cal' ? 'calories' : unit}`
                   }
                 />
-                {targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
+                {!NO_DAILY_VALUE.has(key) && targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
                   <InlineAction
                     label="Use Daily Value"
                     variant="neutral"

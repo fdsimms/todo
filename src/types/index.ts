@@ -4549,7 +4549,7 @@ export interface GroceryListEntry {
 }
 
 /**
- * The thirteen nutrients a food can be recorded as holding, keyed the way the
+ * The nutrients a food can be recorded as holding, keyed the way the
  * health rules already key theirs.
  *
  * **Eight of these are `HealthRuleMetric`'s own nutrient keys, character for
@@ -4601,27 +4601,50 @@ export interface GroceryListEntry {
  * meal reaching the Health app with the label's mineral block missing reads as
  * incomplete rather than deliberate.
  *
+ * **`transFatG`, `cholesterolMg` and `addedSugarG` are the three a person
+ * watching their cholesterol reads first**, and every US label prints them, so
+ * the barcode sources carry them about as often as saturated fat. They are
+ * recorded and never written to Health: HealthKit has no type at all for trans
+ * fat or added sugars, and cholesterol's would cost a new share type and a fresh
+ * permission sheet for a figure nothing else on the phone reads. So they sit
+ * outside `HEALTH_WRITABLE_NUTRIENTS` below, which is the list every
+ * Health-facing reader walks instead of this one.
+ *
  * The unit is in the name, the same convention the health metrics use, because
  * a figure stored in one unit and read in another is the bug with no symptom
  * until somebody's sodium reads a thousand times too high.
  */
 export type NutrientKey =
-  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG'
-  | 'fiberG' | 'sugarG' | 'sodiumMg'
+  | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG' | 'transFatG'
+  | 'cholesterolMg' | 'fiberG' | 'sugarG' | 'addedSugarG' | 'sodiumMg'
   | 'calciumMg' | 'ironMg' | 'potassiumMg'
   | 'caffeineMg' | 'waterMl';
 
 /**
- * Every `NutrientKey`, in the order a nutrition label prints them — which is
+ * Every `NutrientKey`, in the order a nutrition label prints them (trans fat
+ * and cholesterol under saturated fat, added sugars under total sugars), which is
  * why the three minerals sit together after sodium, where a US panel prints
  * its own mineral block, and why caffeine and water trail the lot: no label
  * prints either.
  */
 export const NUTRIENT_KEYS: readonly NutrientKey[] = [
-  'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg',
+  'calorieKcal', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg',
+  'carbsG', 'fiberG', 'sugarG', 'addedSugarG', 'proteinG', 'sodiumMg',
   'calciumMg', 'ironMg', 'potassiumMg',
   'caffeineMg', 'waterMl',
 ];
+
+/**
+ * The nutrients a logged meal can carry into Apple Health: one per row of the
+ * bridge's `nutrientWriteTable`, and so every key above except the three
+ * HealthKit gives no home here (see `NutrientKey`). The Health settings'
+ * per-nutrient choice, the default write selection, the write itself and a
+ * task's "log to Health" picker all walk this, so a key the native side would
+ * silently skip is never offered as though it were written.
+ */
+export const HEALTH_WRITABLE_NUTRIENTS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(
+  key => key !== 'transFatG' && key !== 'cholesterolMg' && key !== 'addedSugarG',
+);
 
 /**
  * Nothing but an identity, whose constraint does the work: it accepts a union

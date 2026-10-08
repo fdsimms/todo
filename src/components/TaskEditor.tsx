@@ -48,7 +48,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -352,8 +352,11 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   carbsG: { step: 5, max: 150 },
   fatG: { step: 5, max: 100 },
   satFatG: { step: 1, max: 50 },
+  transFatG: { step: 1, max: 20 },
+  cholesterolMg: { step: 10, max: 500 },
   fiberG: { step: 1, max: 30 },
   sugarG: { step: 1, max: 50 },
+  addedSugarG: { step: 1, max: 50 },
   sodiumMg: { step: 100, max: 3000 },
   calciumMg: { step: 50, max: 1500 },
   ironMg: { step: 1, max: 30 },
@@ -362,7 +365,8 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   waterMl: { step: 50, max: 1000 },
 };
 
-// The nutrient menu's sections. Anything in `NUTRIENT_KEYS` that no section
+// The nutrient menu's sections, over what a completion can write to Health
+// (`HEALTH_WRITABLE_NUTRIENTS`). Anything in it that no section
 // names lands in a trailing unlabelled one, so a nutrient added later is
 // offered here rather than silently missing.
 const LOG_NUTRIENT_SECTIONS: Array<{ heading: string; keys: NutrientKey[] }> = [
@@ -375,9 +379,9 @@ const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {
   const option = (key: NutrientKey) => ({ key, label: NUTRIENT_LABEL[key].label });
   const groups: ChoiceGroup[] = LOG_NUTRIENT_SECTIONS.map(sec => ({
     heading: sec.heading,
-    options: sec.keys.filter(k => NUTRIENT_KEYS.includes(k)).map(option),
+    options: sec.keys.filter(k => HEALTH_WRITABLE_NUTRIENTS.includes(k)).map(option),
   }));
-  const rest = NUTRIENT_KEYS.filter(k => !named.has(k));
+  const rest = HEALTH_WRITABLE_NUTRIENTS.filter(k => !named.has(k));
   return rest.length > 0 ? [...groups, { options: rest.map(option) }] : groups;
 })();
 

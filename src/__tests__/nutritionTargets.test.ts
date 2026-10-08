@@ -20,7 +20,7 @@ import {
   targetStatus,
   targetedNutrients,
 } from '../utils/nutritionTargets';
-import { NUTRIENT_KEYS } from '../types';
+import { HEALTH_WRITABLE_NUTRIENTS, NUTRIENT_KEYS } from '../types';
 
 describe('NUTRITION_TARGET_RANGES', () => {
   it('covers every nutrient, so no target is unsettable', () => {
@@ -136,10 +136,15 @@ describe('parseFoodLogPinnedNutrients', () => {
 });
 
 describe('parseHealthWriteNutrients', () => {
-  it('defaults to every nutrient for an install that never chose', () => {
+  it('defaults to every nutrient Health has a type for, for an install that never chose', () => {
     expect(parseHealthWriteNutrients(null)).toEqual(DEFAULT_HEALTH_WRITE_NUTRIENTS);
     expect(parseHealthWriteNutrients(undefined)).toEqual(DEFAULT_HEALTH_WRITE_NUTRIENTS);
-    expect(DEFAULT_HEALTH_WRITE_NUTRIENTS).toEqual(NUTRIENT_KEYS);
+    expect(DEFAULT_HEALTH_WRITE_NUTRIENTS).toEqual(HEALTH_WRITABLE_NUTRIENTS);
+    expect(DEFAULT_HEALTH_WRITE_NUTRIENTS).not.toContain('addedSugarG');
+  });
+
+  it('drops a nutrient Health has no type for', () => {
+    expect(parseHealthWriteNutrients('["transFatG","cholesterolMg","addedSugarG","satFatG"]')).toEqual(['satFatG']);
   });
 
   it('keeps a stored empty array empty, since that is a real choice', () => {

@@ -1,5 +1,5 @@
 import type { NutrientKey } from '../types';
-import { NUTRIENT_KEYS } from '../types';
+import { HEALTH_WRITABLE_NUTRIENTS, NUTRIENT_KEYS } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 
 /**
@@ -78,9 +78,14 @@ export const NUTRITION_TARGET_RANGES: Record<
   calorieKcal: { min: 0, max: 6000, step: 50, default: 2000 },
   fatG: { min: 0, max: 300, step: 5, default: 70 },
   satFatG: { min: 0, max: 100, step: 1, default: 20 },
+  // No Daily Value exists for trans fat, so this is only where the stepper
+  // opens, and `NO_DAILY_VALUE` keeps it out of "Set to U.S. Daily Value".
+  transFatG: { min: 0, max: 20, step: 1, default: 2 },
+  cholesterolMg: { min: 0, max: 1000, step: 25, default: 300 },
   carbsG: { min: 0, max: 800, step: 10, default: 250 },
   fiberG: { min: 0, max: 100, step: 1, default: 30 },
   sugarG: { min: 0, max: 300, step: 5, default: 50 },
+  addedSugarG: { min: 0, max: 200, step: 5, default: 50 },
   proteinG: { min: 0, max: 400, step: 5, default: 60 },
   sodiumMg: { min: 0, max: 6000, step: 100, default: 2300 },
   calciumMg: { min: 0, max: 3000, step: 50, default: 1300 },
@@ -89,6 +94,12 @@ export const NUTRITION_TARGET_RANGES: Record<
   caffeineMg: { min: 0, max: 1000, step: 10, default: 400 },
   waterMl: { min: 0, max: 6000, step: 250, default: 2000 },
 };
+
+/**
+ * The nutrients a label prints with no %DV, so "Use Daily Value" has no figure to
+ * offer and their `default` above is only where a stepper opens.
+ */
+export const NO_DAILY_VALUE: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['transFatG']);
 
 /** What a person has set, keyed by nutrient. Empty is the shipping state. */
 export type NutritionTargets = Partial<Record<NutrientKey, number>>;
@@ -406,10 +417,10 @@ export function serializeFoodLogPinnedNutrients(keys: NutrientKey[]): string {
 
 /**
  * Every nutrient a logged meal writes to Health, on an install that has never
- * chosen otherwise — all thirteen, matching what `healthFoodSync.ts` always
- * wrote before which ones to write became a choice.
+ * chosen otherwise — every one HealthKit has a type for, matching what
+ * `healthFoodSync.ts` always wrote before which ones to write became a choice.
  */
-export const DEFAULT_HEALTH_WRITE_NUTRIENTS: NutrientKey[] = [...NUTRIENT_KEYS];
+export const DEFAULT_HEALTH_WRITE_NUTRIENTS: NutrientKey[] = [...HEALTH_WRITABLE_NUTRIENTS];
 
 /**
  * The Health write-selection a stored blob actually carries.
@@ -425,7 +436,7 @@ export function parseHealthWriteNutrients(raw: string | null | undefined): Nutri
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
-    return parsed.filter((key): key is NutrientKey => NUTRIENT_KEYS.includes(key as NutrientKey));
+    return parsed.filter((key): key is NutrientKey => HEALTH_WRITABLE_NUTRIENTS.includes(key as NutrientKey));
   } catch {
     return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
   }

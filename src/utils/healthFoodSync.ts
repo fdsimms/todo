@@ -1,5 +1,5 @@
 import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
-import { NUTRIENT_KEYS } from '../types';
+import { HEALTH_WRITABLE_NUTRIENTS } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import { healthBridge } from './healthBridge';
@@ -27,7 +27,7 @@ import { healthBridge } from './healthBridge';
  * any of them may.** `healthWriteEnabled` is the "may this app write to
  * Health at all" switch; `healthWriteNutrients` (`useSettingsStore`, parsed by
  * `parseHealthWriteNutrients` in `nutritionTargets.ts`) is which of the
- * thirteen a meal is allowed to carry into a save, and defaults to all of
+ * nutrients a meal is allowed to carry into a save, and defaults to all of
  * them so an install that predates the choice keeps writing exactly what it
  * always did. Filtering happens here rather than in `writableFoodAmounts`
  * below, which stays about the absent-is-not-zero rule alone and nothing a
@@ -118,6 +118,9 @@ export interface FoodWriteResult {
  *   absence.
  * - **A non-finite or negative figure**, which is a broken row rather than a
  *   small one. There is no meal containing minus four grams of fat.
+ * - **A key HealthKit has no type for** (`HEALTH_WRITABLE_NUTRIENTS`). The
+ *   bridge would skip it anyway, but an entry stating only those would then
+ *   come back with no samples and read as Health refusing the write.
  * - **Nothing else.** A stated zero passes through, and so does a figure this
  *   app thinks is implausibly large: `nutritionParse.ts` already refuses the
  *   arithmetically impossible at the point figures enter, and a second opinion
@@ -131,7 +134,7 @@ export interface FoodWriteResult {
  */
 export function writableFoodAmounts(nutrition: FoodNutrition): Partial<Record<NutrientKey, number>> {
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of NUTRIENT_KEYS) {
+  for (const key of HEALTH_WRITABLE_NUTRIENTS) {
     const value = nutrition.amounts[key];
     if (value === undefined) continue;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue;

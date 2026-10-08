@@ -10,7 +10,7 @@ import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryS
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
-import { NUTRIENT_KEYS } from '../../types';
+import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
@@ -222,7 +222,7 @@ export function HealthSettings() {
     }
   };
 
-  const toggleWriteNutrient = (key: (typeof NUTRIENT_KEYS)[number]) => {
+  const toggleWriteNutrient = (key: (typeof HEALTH_WRITABLE_NUTRIENTS)[number]) => {
     haptics.tap();
     const next = healthWriteNutrients.includes(key)
       ? healthWriteNutrients.filter(k => k !== key)
@@ -456,7 +456,7 @@ export function HealthSettings() {
           <View style={styles.pillGroupRow}>
             <PillGroup
               noun="nutrient"
-              options={NUTRIENT_KEYS.map(key => ({
+              options={HEALTH_WRITABLE_NUTRIENTS.map(key => ({
                 key,
                 label: NUTRIENT_LABEL[key].label,
                 selected: healthWriteNutrients.includes(key),
