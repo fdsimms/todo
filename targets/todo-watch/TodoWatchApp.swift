@@ -11,6 +11,7 @@ import SwiftUI
 @main
 struct TodoWatchApp: App {
     @StateObject private var store = WatchStore.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         WatchStore.shared.activate()
@@ -24,6 +25,11 @@ struct TodoWatchApp: App {
             }
             .tabViewStyle(.verticalPage)
             .environmentObject(store)
+        }
+        // A tap held for its undo window goes as soon as the app leaves the
+        // screen: lowered wrist, Undo out of reach, nothing left to wait for.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { store.flush() }
         }
         // Lets WatchConnectivity wake the app in the background to hand over a
         // new snapshot, which is what keeps the complication current while

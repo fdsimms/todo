@@ -19,6 +19,7 @@ struct TodayView: View {
                     tasks(at: context.date)
                     addSection
                 }
+                .undoBar()
             }
             .navigationTitle("Today")
         }
@@ -143,6 +144,7 @@ struct GroceriesView: View {
                 List {
                     WatchNote(text: "Open dundundun on your iPhone to load your grocery list.")
                 }
+                .undoBar()
                 .navigationTitle("Groceries")
             }
         }
@@ -194,6 +196,7 @@ struct GroceryListView: View {
                 }
             }
         }
+        .undoBar()
         .navigationTitle(list.name)
         .alert("Choose on iPhone", isPresented: choiceShown, presenting: choiceRow) { _ in
             Button("OK", role: .cancel) {}
@@ -230,6 +233,36 @@ struct GroceryRowView: View {
         if checked { return "checkmark.circle.fill" }
         if row.choice { return "arrow.triangle.branch" }
         return "circle"
+    }
+}
+
+// ==== Undo ====
+
+/// The Undo button, pinned under a list while a tap is still being held (see
+/// WatchStore.undoWindow). It takes back the most recent one; each press
+/// takes back one more while any are held.
+struct UndoBar: ViewModifier {
+    @EnvironmentObject private var store: WatchStore
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom) {
+            if store.undoableTap != nil {
+                Button {
+                    store.undoLast()
+                } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(WidgetPalette.dark.accent)
+                .accessibilityLabel("Undo the last tap")
+            }
+        }
+    }
+}
+
+extension View {
+    func undoBar() -> some View {
+        modifier(UndoBar())
     }
 }
 

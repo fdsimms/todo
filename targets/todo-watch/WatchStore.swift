@@ -17,13 +17,26 @@ import WidgetKit
 // ids the phone has received and the ones still waiting in its queue. A tap
 // that has been received and isn't waiting any more is in the snapshot that
 // came with it, so it's dropped from the log; anything else stays drawn.
+//
+// **A tap is held for `undoWindow` before it is sent, and that is the undo.**
+// Once handed to WatchConnectivity a tap reaches the phone and is applied
+// there, and nothing on the watch can take it back. So it waits here first,
+// drawn as done, while the Undo button offers to drop it; it goes when the
+// window ends or as soon as the app leaves the screen (`flush`), whichever is
+// first, so a tap is never stranded on a wrist that has been lowered.
 final class WatchStore: NSObject, ObservableObject {
     static let shared = WatchStore()
+
+    /// How long a tap can still be undone before it is sent.
+    static let undoWindow: TimeInterval = 4
 
     @Published private(set) var snapshot: WidgetSnapshot? = nil
     @Published private(set) var taps: [WatchTap] = []
 
     var local: LocalTapState { LocalTapState(taps) }
+
+    /// The most recent tap still being held, which the Undo button removes.
+    var undoableTap: WatchTap? { taps.last { !$0.sent } }
 
     override init() {
         super.init()
@@ -81,22 +94,42 @@ final class WatchStore: NSObject, ObservableObject {
             sent: false
         )
         taps.append(tap)
-        sendUnsent()
+        WatchTapLog.save(taps)
+        WidgetCenter.shared.reloadAllTimelines()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.undoWindow) { [weak self] in
+            self?.sendDue(force: false)
+        }
+    }
+
+    /// Drops the most recent tap that hasn't been sent yet.
+    func undoLast() {
+        guard let index = taps.lastIndex(where: { !$0.sent }) else { return }
+        taps.remove(at: index)
+        WatchTapLog.save(taps)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    /// Hands every tap not yet sent to WatchConnectivity, which queues it and
-    /// delivers it once, in order, whenever the phone is reachable. A tap made
-    /// before the session finished activating waits here for the next call.
-    private func sendUnsent() {
+    /// Sends every held tap now. Called when the app leaves the screen, where
+    /// the Undo button can't be reached any more.
+    func flush() {
+        sendDue(force: true)
+    }
+
+    /// Hands each held tap whose undo window has passed (or every one, when
+    /// `force`) to WatchConnectivity, which queues it and delivers it once, in
+    /// order, whenever the phone is reachable. A tap due before the session
+    /// finished activating waits here for the next call.
+    private func sendDue(force: Bool) {
         let session = WCSession.default
-        if WCSession.isSupported() && session.activationState == .activated {
-            for index in taps.indices where !taps[index].sent {
-                _ = session.transferUserInfo(taps[index].userInfo)
-                taps[index].sent = true
-            }
+        guard WCSession.isSupported(), session.activationState == .activated else { return }
+        let due = Date().addingTimeInterval(-Self.undoWindow)
+        var changed = false
+        for index in taps.indices where !taps[index].sent && (force || taps[index].at <= due) {
+            _ = session.transferUserInfo(taps[index].userInfo)
+            taps[index].sent = true
+            changed = true
         }
-        WatchTapLog.save(taps)
+        if changed { WatchTapLog.save(taps) }
     }
 
     // ==== From the phone ====
@@ -145,7 +178,9 @@ extension WatchStore: WCSessionDelegate {
         guard activationState == .activated else { return }
         let context = session.receivedApplicationContext
         if !context.isEmpty { apply(context) }
-        DispatchQueue.main.async { self.sendUnsent() }
+        // Anything held past its window while the session was still coming up
+        // (a tap made at launch, or one left from before the app was closed).
+        DispatchQueue.main.async { self.sendDue(force: false) }
     }
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {

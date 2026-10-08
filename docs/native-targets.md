@@ -195,7 +195,9 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   clock.** Every tap carries a `watchTapId`. Each context lists the ids the phone has received
   and the ones still waiting (queued, or drained but not yet in a written snapshot); the watch
   drops a tap once it is received and no longer waiting, which is exactly when the snapshot in
-  that context includes it (`WatchStore.apply`).
+  that context includes it (`WatchStore.apply`). Before any of that, a tap is held on the watch
+  for `WatchStore.undoWindow` behind an Undo button, and sent early if the app leaves the
+  screen: once WatchConnectivity has it, the phone will apply it and the watch can't take it back.
 - **`TodoWidgetData.swift` is compiled into both watch targets unchanged.** The watch keeps the
   snapshot in its own App Group under the widget's file name, so `loadWidgetSnapshot()` and the
   time-passing helpers (`visibleTasks(at:)`, `isStale`, `changeDates`) work there as they do in
