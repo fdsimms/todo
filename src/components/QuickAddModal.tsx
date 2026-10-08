@@ -334,7 +334,16 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // than a dim gap. Only needs to be as tall as the keyboard itself.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
+  // Only while the sheet is open. It is mounted for the life of Today, and
+  // listening all the time re-rendered it (and the editor beside it) on every
+  // keyboard show and hide anywhere in the app: typing in the task editor's
+  // title, a search field, any sheet. Opening reads where the keyboard is
+  // now, which is what a listener that never stopped would have last heard.
   useEffect(() => {
+    if (!visible) return;
+    const openHeight = Keyboard.metrics()?.height ?? 0;
+    setKeyboardHeight(openHeight);
+    keyboardOffsetAnim.setValue(-openHeight / 2);
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const updateHeight = (e: { endCoordinates?: { height: number } }) => {
@@ -371,7 +380,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       changeFrameSub?.remove();
       hideSub.remove();
     };
-  }, []);
+  }, [visible]);
 
   // The sheet centers in the full screen and, once the keyboard is up,
   // re-centers in what's left above it (see keyboardOffsetAnim). Left

@@ -901,12 +901,33 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   });
 
   // ==== effects: loading a task into the draft, and keeping fields in step ====
+  // The draft is loaded during the render that opens the sheet (or hands it a
+  // different task), rather than from an effect after it. From an effect the
+  // whole editor first mounted holding the previous draft and then rendered
+  // all over again with the right one, inside the commit the sheet's slide-in
+  // was waiting on; as a render-phase update React re-runs only this function
+  // before anything below it renders, so the form mounts once, already
+  // filled. `draftLoadedFor` is what the draft was last loaded for, including
+  // the close, so reopening on the same task object still starts afresh.
+  const [draftLoadedFor, setDraftLoadedFor] = useState<{ visible: boolean; task: Task | null | undefined }>(
+    { visible: false, task: undefined },
+  );
+  if (draftLoadedFor.visible !== visible || (visible && draftLoadedFor.task !== task)) {
+    setDraftLoadedFor({ visible, task });
+    if (visible) loadDraft();
+  }
+  // The one part that touches a native view, so it waits for the commit.
   useEffect(() => {
-    if (!visible) return;
+    if (visible) searchFilter.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, task]);
+
+  // Everything the draft starts from. Only state setters and this
+  // component's own refs, which is what makes it safe to run while rendering.
+  function loadDraft() {
     // A search belongs to the trip you made to find one field, not to the
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
-    searchFilter.clear();
     // Same for a dismissed schedule phrase — belongs to this trip through
     // the title, not to the sheet.
     setDismissedScheduleSignature(null);
@@ -1229,7 +1250,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       followUpTaskOneAtATime: task?.followUpTaskOneAtATime ?? false,
       followUpTaskAtEnd: task?.followUpTaskAtEnd ?? false,
     });
-  }, [visible, task]);
+  }
 
   // Relative deadline ("N days before due" or "day of month") tracks the Date
   // field live in the editor too, so the preview shown here always matches
