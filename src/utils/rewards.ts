@@ -618,3 +618,20 @@ export function goalProgress(balance: number, cost: number): number {
   if (!(cost > 0)) return 0;
   return Math.min(1, Math.max(0, balance / cost));
 }
+
+/**
+ * The reward being saved for, if it can still be claimed: the `rewardGoalId`
+ * reward, ignored when it was claimed (one-time), deleted, or its wish list
+ * item is gone. Today's progress strip and the Rewards screen both read it.
+ */
+export function savingForGoal(
+  rewards: readonly Reward[],
+  entries: readonly CoinEntry[],
+  goalId: string | null,
+  sourceOf: (reward: Reward) => RewardSourceTask | null | undefined,
+): { reward: Reward; title: string } | null {
+  if (!goalId) return null;
+  const reward = rewards.find(r => r.id === goalId);
+  if (!reward || !rewardIsOpen(reward, entries, sourceOf(reward))) return null;
+  return { reward, title: rewardDisplay(reward, sourceOf(reward)).title };
+}

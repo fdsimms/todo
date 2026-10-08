@@ -10,6 +10,7 @@ import {
   rewardIdeas,
   describeLastClaimed,
   goalProgress,
+  savingForGoal,
   lastClaimedAt,
   rewardDisplay,
   rewardIsOpen,
@@ -550,5 +551,26 @@ describe('exchange rate', () => {
     expect(describeExchangeRate(4.24, '$')).toBe('About 4.2 coins per $1');
     expect(describeExchangeRate(12.4, '$')).toBe('About 12 coins per $1');
     expect(describeExchangeRate(1, '$')).toBe('About 1 coin per $1');
+  });
+});
+
+describe('savingForGoal', () => {
+  const r = (over = {}) => ({ id: 'g', title: 'Headphones', cost: 110, note: null, linkUrl: null, oneTime: true, taskId: null, ...over }) as never;
+  const none = () => null;
+
+  it('returns the chosen reward and its title', () => {
+    expect(savingForGoal([r()], [], 'g', none)?.title).toBe('Headphones');
+  });
+
+  it('returns null with no goal, an unknown id, or a claimed one-time reward', () => {
+    expect(savingForGoal([r()], [], null, none)).toBeNull();
+    expect(savingForGoal([r()], [], 'x', none)).toBeNull();
+    const spend = { id: 's', kind: 'spend', amount: -110, at: '2026-10-01T00:00:00.000Z', rewardId: 'g' } as never;
+    expect(savingForGoal([r()], [spend], 'g', none)).toBeNull();
+  });
+
+  it('reads a wish list reward title off its item', () => {
+    const task = { title: 'Fancy headphones', notes: '', linkUrl: null, completed: false, archived: false };
+    expect(savingForGoal([r({ taskId: 't' })], [], 'g', () => task)?.title).toBe('Fancy headphones');
   });
 });
