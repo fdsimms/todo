@@ -62,19 +62,22 @@ export function CollapsibleField({
   };
 
   if (locked) {
+    // The value centers against the label and its hint together, so it sits
+    // mid-height of the block rather than on the label's line.
     return (
       <View style={styles.section}>
         <View
-          style={[styles.header, !!lockedHint && styles.headerExpanded]}
+          style={styles.lockedRow}
           accessibilityLabel={`${label}: ${summary || emptySummary}. ${lockedHint ?? ''}`}
         >
-          <Text style={styles.label}>{label}</Text>
-          <View style={styles.spacer} />
+          <View style={styles.lockedText}>
+            <Text style={styles.label}>{label}</Text>
+            {!!lockedHint && <Text style={[styles.hint, styles.lockedHint]}>{lockedHint}</Text>}
+          </View>
           <Text style={[styles.summary, styles.summaryLocked, !summary && styles.summaryEmpty]} numberOfLines={1}>
             {summary || emptySummary}
           </Text>
         </View>
-        {!!lockedHint && <Text style={styles.hint}>{lockedHint}</Text>}
       </View>
     );
   }
@@ -123,6 +126,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // unconditionally would also pad a collapsed field's bottom, stacking with
   // `section`'s own paddingVertical.
   headerExpanded: { marginBottom: spacing.sm },
+  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  lockedText: { flex: 1 },
+  lockedHint: { marginTop: spacing.sm },
   label: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8,
