@@ -196,17 +196,31 @@ export function unattendedKinds(entries: readonly UnattendedEntry[]): GeneratedK
   return [...seen];
 }
 
+/** The Activity filter's key for Claude's rows. Not a `GeneratedKind`, and not shaped like one. */
+export const AGENT_FILTER = 'agent';
+
+/** What the Activity screen can narrow to: one generator, everything Claude did, or (null) nothing. */
+export type ActivityFilter = GeneratedKind | typeof AGENT_FILTER | null;
+
+/** Whether an agent wrote any of these, which is what decides if "Claude" is worth offering as a filter. */
+export function hasAgentEntries(entries: readonly UnattendedEntry[]): boolean {
+  return entries.some(e => e.actor === 'agent');
+}
+
 /**
- * Narrows a ledger to one generator, for the filter on the screen.
+ * Narrows a ledger to one generator, or to Claude's rows, for the filter on
+ * the screen.
  *
  * `null` means no filter rather than "the entries with no kind" — the two
  * sweeps are reached by their own action, not by a null kind, because a filter
- * offering "nothing" as a choice reads as a bug.
+ * offering "nothing" as a choice reads as a bug. Claude's rows are matched by
+ * `actor`, not `kind`, since an agent's entry has no generator.
  */
 export function filterUnattended(
   entries: readonly UnattendedEntry[],
-  kind: GeneratedKind | null,
+  filter: ActivityFilter,
 ): UnattendedEntry[] {
-  if (kind === null) return [...entries];
-  return entries.filter(e => e.kind === kind);
+  if (filter === null) return [...entries];
+  if (filter === AGENT_FILTER) return entries.filter(e => e.actor === 'agent');
+  return entries.filter(e => e.actor !== 'agent' && e.kind === filter);
 }

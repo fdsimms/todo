@@ -24,6 +24,8 @@ import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { SearchField } from '../components/SearchField';
 import { ChipFilterSheet, type ChipFilterGroup } from '../components/ChipFilterSheet';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Every mood entry there is, grouped by day and narrowable.
@@ -46,6 +48,7 @@ import { ChipFilterSheet, type ChipFilterGroup } from '../components/ChipFilterS
 export function MoodHistoryScreen() {
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void; goBack: () => void }>();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -217,6 +220,8 @@ export function MoodHistoryScreen() {
         />
       ) : (
         <SectionList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           sections={sections}
           keyExtractor={log => log.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + spacing.xl }]}
@@ -257,6 +262,7 @@ export function MoodHistoryScreen() {
         editing={editing}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

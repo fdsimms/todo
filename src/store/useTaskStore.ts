@@ -1747,16 +1747,6 @@ interface TaskStore extends UndoHistoryActions {
    */
   sweepTaskPenalties: () => void;
   /**
-   * Credits the clean days that have gone by since each negative habit was last
-   * accounted for.
-   *
-   * The one pass in the app that advances a streak without a completion, and it
-   * has to be: a negative streak is made of days on which nothing happened, so
-   * there is no event for the lazy gap check in `completeTask` to measure from.
-   * Runs alongside rolloverQuotas at day rollover and on launch, and is a no-op
-   * on almost every call — see cleanDayPatch.
-   */
-  /**
    * Counts today clean now rather than when the day ends: "after 10pm there is
    * no way I use the pots and pans". Credits every day since the anchor through
    * today and moves the anchor to today, so the next rollover adds nothing twice
@@ -1766,6 +1756,17 @@ interface TaskStore extends UndoHistoryActions {
   closeNegativeDay: (id: string) => void;
   /** Takes a closed day back, so it is credited by the rollover if it ends clean. */
   reopenNegativeDay: (id: string) => void;
+  /**
+   * Credits the clean days that have gone by since each negative habit was last
+   * accounted for, and moves a repeating one's date onto today once its day has
+   * passed (see negativeHabitDuePatch).
+   *
+   * The one pass in the app that advances a streak without a completion, and it
+   * has to be: a negative streak is made of days on which nothing happened, so
+   * there is no event for the lazy gap check in `completeTask` to measure from.
+   * Runs alongside rolloverQuotas at day rollover and on launch, and is a no-op
+   * on almost every call — see cleanDayPatch.
+   */
   rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
@@ -2495,6 +2496,31 @@ function syncGatedReminders(questionId: string, tasks: Task[]): void {
 export function redoRestoringRows(ids: string[]): () => void {
   const after = useTaskStore.getState().tasks.filter(t => ids.includes(t.id)).map(t => ({ ...t }));
   return () => after.forEach(t => useTaskStore.getState().updateTask(t.id, t));
+}
+
+/**
+ * The date a negative habit moves to once its day has gone by, or null when it
+ * should stay put. Used by `rolloverNegativeStreaks` only.
+ *
+ * A "don't" habit is never completed, so nothing else ever advances its date:
+ * left alone it sat on "2d ago" beside a streak that was running fine. Once the
+ * rollover reaches a new logical day the row is moved to the occurrence owed
+ * today, the same grid `redateRoutines` steps. A slip doesn't move it, so a
+ * habit slipped today reads as due today until the day turns. One-offs and
+ * hour-based repeats have no next day to move to, so they are left alone.
+ */
+function negativeHabitDuePatch(task: Task, todayStart: Date, resetTime: string): Partial<Task> | null {
+  if (!task.dueDate || task.recurrenceType === 'none' || task.recurrenceType === 'hours') return null;
+  if (getTaskDayStart(new Date(task.dueDate), resetTime) >= todayStart) return null;
+  // From-completion measures from the day it was last done rather than a grid,
+  // and a "don't" habit owes today's occurrence, not tomorrow's successor.
+  const next = task.recurrenceFromCompletion
+    ? (task.recurrenceEndDate && todayStart > new Date(task.recurrenceEndDate) ? null : todayStart)
+    : getNextDueDate(task, resetTime, { catchUp: true });
+  if (!next) return null;
+  // Written the way `updateTask` writes any dueDate: the pinned grid anchor
+  // belonged to the occurrence being left behind.
+  return { dueDate: next.toISOString(), recurrenceAnchorDate: null };
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -4261,6 +4287,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   rolloverNegativeStreaks() {
     const todayStart = getCurrentDayStart();
     const now = new Date();
+    const resetTime = useSettingsStore.getState().dayResetTime;
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
@@ -4268,14 +4295,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // paused for vacation, or a paused project, covers its habits too,
       // exactly as it does for the tasks the quota rollover skips.
       const paused = isWithheld(t);
-      const patch = cleanDayPatch(t, todayStart, { paused });
-      const rolled = patch ? { ...t, ...patch } : t;
+      const streak = cleanDayPatch(t, todayStart, { paused });
+      const rolled = streak ? { ...t, ...streak } : t;
       // The habit's own end time counts today as clean once it passes, on the
       // rolled row so a catch-up and a close land in one write.
       const end = effectiveWindowEnd(t);
       const closing = windowCloseDayPatch(rolled, todayStart, end ? onLogicalDay(todayStart, end) : null, now, { paused });
-      if (!patch && !closing) return [];
-      return [{ ...rolled, ...closing }];
+      const due = negativeHabitDuePatch(t, todayStart, resetTime);
+      if (!streak && !closing && !due) return [];
+      return [{ ...rolled, ...closing, ...due }];
     });
     if (patched.length === 0) return;
     dbTransaction(() => patched.forEach(dbUpdateTask));

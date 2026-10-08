@@ -86,6 +86,8 @@ import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 
 interface LogbookSection {
@@ -221,6 +223,8 @@ function formatTime(iso: string): string {
 export function LogbookScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
+  const kitchenScrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
@@ -682,6 +686,8 @@ export function LogbookScreen() {
         // have. What the two share is the metrics (see cellLayout) and the day
         // header, which is what makes them read as one screen.
         <SectionList
+          ref={kitchenScrollTop.ref}
+          {...kitchenScrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
           sections={kitchenSections}
           keyExtractor={item => item.key}
@@ -737,6 +743,8 @@ export function LogbookScreen() {
       ) : (
       <PaintSelectionProvider {...paintProps}>
       <SectionList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
         sections={sections}
         keyExtractor={item => item.id}
@@ -907,6 +915,7 @@ export function LogbookScreen() {
         selectedProject={selectedProject}
         onSelectProject={setSelectedProject}
       />
+      <ScrollToTopButton {...(activeLens === 'cooking' ? kitchenScrollTop : scrollTop).buttonProps} />
       {pullSearch.sheet}
     </View>
   );
