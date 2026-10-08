@@ -25,6 +25,8 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
@@ -40,6 +42,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 export function ArchivedScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -183,6 +186,8 @@ export function ArchivedScreen() {
 
       <PaintSelectionProvider {...paintProps}>
         <FlatList
+          ref={scrollTop.ref}
+          {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
           data={filtered}
           keyExtractor={item => item.id}
@@ -260,6 +265,7 @@ export function ArchivedScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
   );

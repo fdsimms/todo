@@ -28,6 +28,8 @@ import { EmptyState } from '../components/EmptyState';
 import { MoodEntryRow } from '../components/MoodEntryRow';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { ContrastBars } from '../components/ContrastBars';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   SymptomDetail: {
@@ -65,6 +67,7 @@ export function SymptomDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'SymptomDetail'>>();
   const key = route.params.symptomKey;
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -174,6 +177,8 @@ export function SymptomDetailScreen() {
       <DetailHeader title={stat.name} onBack={() => navigation.goBack()} />
 
       <ScrollView
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl }]}
       >
@@ -346,6 +351,7 @@ export function SymptomDetailScreen() {
         editing={editing}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
     </View>
   );
 }

@@ -37,6 +37,8 @@ import { haptics } from '../utils/haptics';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 type RootStackParamList = {
   CategoryDetail: { category: string };
@@ -107,6 +109,7 @@ export function CategoryDetailScreen() {
     });
   };
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullSearch.pulling });
+  const scrollTop = useListScrollToTop(keyboardScroll);
   // Lifts the expanded row's cell above the row below it — see
   // useElevatedCellRenderer for why a genuine FlatList needs this and
   // ReorderableList's own lists don't.
@@ -260,13 +263,14 @@ export function CategoryDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            ref={scrollTop.ref}
             refreshControl={pullSearch.refreshControl}
-            ref={keyboardScroll.ref}
             scrollEnabled={!painting && !draggingSubtask}
             data={categoryTasks}
             keyExtractor={t => t.id}
             CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
+            {...scrollTop.listProps}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = subtasksOf(item.id);
@@ -361,6 +365,7 @@ export function CategoryDetailScreen() {
           seed={quickAddSeed}
           seedLabel={category}
         />
+        <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
       </View>
     </SpotlightProvider>
