@@ -13346,6 +13346,37 @@ describe('quota tasks', () => {
       expect(dbUpdateTask).toHaveBeenCalled();
     });
 
+    it('restarts a per-unit countdown when a unit is logged', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 3, timedMinutes: 10, timerStartedAt: new Date().toISOString(), timerElapsedSeconds: 120 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.progressCount).toBe(4);
+      expect(task.timerStartedAt).toBeNull();
+      expect(task.timerElapsedSeconds).toBe(0);
+      expect(task.timedMinutes).toBe(10);
+    });
+
+    it('logs a unit without waiting for its countdown to run out', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 0, timedMinutes: 10 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.progressCount).toBe(1);
+    });
+
+    it('does not record the last unit\'s countdown as the task\'s measured time', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 7, timedMinutes: 10, timerStartedAt: null, timerElapsedSeconds: 240 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.timerElapsedSeconds).toBe(0);
+      expect(done.actualMinutes ?? null).toBeNull();
+    });
+
     it('completes the task on the unit that reaches the target', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
       useTaskStore.getState().logQuotaUnit('water');

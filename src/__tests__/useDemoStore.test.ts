@@ -1081,6 +1081,14 @@ describe('demo mode', () => {
     expect(finished!.progressCount).toBe(8);
   });
 
+  it('seeds a daily target with a countdown per unit', () => {
+    useDemoStore.getState().enterDemoMode();
+    const sit = useTaskStore.getState().tasks.find(t => t.title === 'Meditate');
+    expect(sit).toBeDefined();
+    expect(sit!.targetCount).toBe(3);
+    expect(sit!.timedMinutes).toBe(10);
+  });
+
   it('seeds a daily target that stays visible on pace, on pace', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();

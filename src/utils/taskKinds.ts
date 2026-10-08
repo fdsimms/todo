@@ -105,6 +105,9 @@ export function taskKindOf(v: {
   // type. The threshold is the runtime reader's own (`isRotationTask`), same
   // discipline as the three below.
   if (v.rotationEnabled) return 'rotation';
+  // A target may also carry `timedMinutes`, its per-unit countdown, and still
+  // reads as a target: the countdown is a modifier on the count, not a second
+  // kind. The same precedence also answers for older rows that held both.
   if (v.targetCount !== null && v.targetCount >= MIN_TARGET_COUNT) return 'target';
   if (v.timedMinutes !== null && v.timedMinutes > 0) return 'timed';
   // Last, because it is the thinnest of the lot: it changes neither what
@@ -239,6 +242,12 @@ export interface TypeValues {
   targetUnit: string | null;
   /** The stretch a target counts across. Omitted reads as 'day'. */
   quotaPeriod?: QuotaPeriod;
+  /**
+   * A target's countdown per logged unit, in minutes. Read by the target arm
+   * only, and omitted by a caller that doesn't track it, which is what keeps a
+   * duration typed in Timed mode from riding into a target after a switch.
+   */
+  unitMinutes?: number | null;
   healthMetric: HealthTargetMetric | null;
   healthTarget: number | null;
   chainItems: ChainItem[];
@@ -267,7 +276,7 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
           : 'Log it several times a week, on any days. Repeats weekly, and only shows up when you fall behind.';
       }
       return v.targetCount != null
-        ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a day. Repeats daily, and only shows up when you fall behind.`
+        ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a day${v.unitMinutes ? `, ${formatDuration(v.unitMinutes)} each` : ''}. Repeats daily, and only shows up when you fall behind.`
         : 'Log it several times a day. Repeats daily, and only shows up when you fall behind.';
     case 'health':
       // Says "ready to check off" rather than "checks itself off", because the
@@ -380,6 +389,10 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
     case 'target':
       return {
         ...base,
+        // The one kind that keeps a countdown beside its own shape: on a target
+        // `timedMinutes` is the length of each unit's countdown, not a whole-task
+        // duration (see docs/arch/timed-tasks.md).
+        timedMinutes: v.unitMinutes != null && v.unitMinutes > 0 ? v.unitMinutes : null,
         targetCount: v.targetCount,
         targetUnit: normalizeTargetUnit(v.targetUnit),
         quotaPeriod: v.quotaPeriod ?? 'day',
