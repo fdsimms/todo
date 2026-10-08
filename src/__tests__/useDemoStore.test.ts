@@ -937,6 +937,14 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds a repeating task that moves off holidays', () => {
+    useDemoStore.getState().enterDemoMode();
+    const trash = useTaskStore.getState().tasks.filter(t => t.title === 'Take out the trash' && !t.completed);
+    expect(trash).toHaveLength(1);
+    expect(trash[0].recurrenceHolidays).toBe('move');
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a time window that closes at sunset, with a location of its own', () => {
     useDemoStore.getState().enterDemoMode();
     const walk = useTaskStore.getState().tasks.find(t => t.title === 'Walk the dog before dark');

@@ -98,6 +98,14 @@ describe('repeat', () => {
     expect(ok({ repeat: { every: 'week', weekdays: [3, 1, 1] } })).toMatchObject({ recurrenceType: 'weekly', recurrenceDays: [1, 3] });
   });
 
+  it('takes a holiday rule, reads it back, and refuses one on an hourly repeat', () => {
+    const written = ok({ repeat: { every: 'week', weekdays: [2], holidays: 'move' } });
+    expect(written).toMatchObject({ recurrenceType: 'weekly', recurrenceHolidays: 'move' });
+    expect(describeRepeat({ ...written, recurrenceInterval: 1, recurrenceDays: [2] } as Task)).toMatchObject({ every: 'week', holidays: 'move' });
+    expect(ok({ repeat: { every: 'week', weekdays: [2] } })).toMatchObject({ recurrenceHolidays: null });
+    expect(errorsOf({ repeat: { every: 'hours', interval: 4, holidays: 'skip' } })).toMatch(/no days to skip/);
+  });
+
   it('counts hourly and daily repeats from completion, as the picker does, unless told otherwise', () => {
     expect(ok({ repeat: { every: 'hours', interval: 3 } })).toMatchObject({ recurrenceType: 'hours', recurrenceInterval: 3, recurrenceFromCompletion: true });
     expect(ok({ repeat: { every: 'day' } }).recurrenceFromCompletion).toBe(true);

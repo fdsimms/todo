@@ -209,7 +209,7 @@ import {
   supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
@@ -2508,9 +2508,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const snapshots = get().tasks.filter(t => taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
     if (snapshots.length === 0) return;
     for (const task of snapshots) {
-      const next = task.recurrenceFromCompletion ? today : getNextDueDate(task, resetTime, { catchUp: true });
-      if (!next) continue;
-      get().updateTask(task.id, { dueDate: next.toISOString(), deferUntil: null }, { skipPostponeCount: true });
+      const occurrence = task.recurrenceFromCompletion ? { date: today, gridDate: null } : getNextOccurrence(task, resetTime, { catchUp: true });
+      if (!occurrence) continue;
+      // The rule's own day as the anchor when a holiday moved this one off it.
+      get().updateTask(task.id, {
+        dueDate: occurrence.date.toISOString(),
+        recurrenceAnchorDate: occurrence.gridDate?.toISOString() ?? null,
+        deferUntil: null,
+      }, { skipPostponeCount: true });
     }
     get().setLastAction({
       label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,

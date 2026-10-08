@@ -93,7 +93,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
 - `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
-- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, deadlineInstant, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, +31 more
+- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, deadlineInstant, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, +34 more
 - `src/utils/dayContextRows.ts` — ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
@@ -167,6 +167,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthTarget.ts` — HEALTH_TARGET_METRICS, HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, followsRingGoal, effectiveHealthTarget, healthTargetProgress, isHealthTargetReady, +3 more
 - `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
+- `src/utils/holidays.ts` — HolidaySet, HOLIDAY_SETS, HOLIDAY_SET_LABELS, Holiday, HolidayConfig, holidaysInYear, holidayOn, hasAnyHolidays, nextHoliday, parseHolidaySet, +1 more
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, SYNC_BODY_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
 - `src/utils/id.ts` — generateId
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary

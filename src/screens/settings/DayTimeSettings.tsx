@@ -16,8 +16,14 @@ import { getCurrentDayStart } from '../../utils/dateUtils';
 import { dateToHHMM as clockOf } from '../../utils/clockTime';
 import { sunEventsForDay } from '../../utils/sunTimes';
 import { getCurrentLocation, requestLocationPermission } from '../../utils/weatherLocation';
+import { HOLIDAY_SET_LABELS, HOLIDAY_SETS, nextHoliday, type HolidaySet } from '../../utils/holidays';
+import { dayKeyOf, dayKeyToDate, getLogicalDayKey } from '../../utils/dateUtils';
+import { format } from 'date-fns/format';
+import { CalendarPicker } from '../../components/CalendarPicker';
 
 type SegmentKey = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd';
+
+const HOLIDAY_SET_OPTIONS: SegmentOption<HolidaySet>[] = HOLIDAY_SETS.map(value => ({ value, label: HOLIDAY_SET_LABELS[value] }));
 
 const WEEK_START_OPTIONS: SegmentOption<WeekStart>[] = [
   { value: 0, label: 'Sunday' },
@@ -35,7 +41,17 @@ export function DayTimeSettings() {
     use24HourTime, setUse24HourTime,
     weekStartsOn, setWeekStartsOn,
     sunLocation, setSunLocation,
+    holidaySet, setHolidaySet,
+    customHolidays, setCustomHolidays,
   } = useSettingsStore();
+  const [daysOffOpen, setDaysOffOpen] = useState(false);
+
+  // The next one coming, so the choice reads as dates rather than a label.
+  const upcomingHoliday = nextHoliday(getLogicalDayKey(new Date()), { set: holidaySet, custom: customHolidays });
+  const holidayFooter = upcomingHoliday
+    ? `A repeating task can skip these days or move to the next day, set under Repeat in the task editor. Next: ${upcomingHoliday.name}, ${format(dayKeyToDate(upcomingHoliday.dayKey), 'EEE, MMM d')}.`
+    : 'A repeating task can skip these days or move to the next day, set under Repeat in the task editor.';
+  const upcomingDaysOff = customHolidays.filter(k => k >= getLogicalDayKey(new Date())).length;
   const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
 
   // Read only from this tap (and the task editor's), never in the background.
@@ -202,6 +218,44 @@ export function DayTimeSettings() {
             />
           </>
         )}
+      </SettingsSection>
+
+      <SettingsSection label="Holidays" footer={holidayFooter}>
+        <SettingsRow
+          entryId="holidaySet"
+          icon="flag-outline"
+          iconColor={colors.accent}
+          label="Public holidays"
+          tight
+        />
+        <SettingsSegments
+          attached
+          options={HOLIDAY_SET_OPTIONS}
+          selected={holidaySet}
+          onSelect={setHolidaySet}
+          accessibilityLabelFor={o => `Public holidays: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="customHolidays"
+          icon="calendar-clear-outline"
+          iconColor={colors.accent}
+          label="Your own days off"
+          hint="Days a repeating task set to skip holidays treats as one, like a company holiday."
+          value={upcomingDaysOff === 0 ? 'None' : `${upcomingDaysOff} coming up`}
+          onPress={() => setDaysOffOpen(true)}
+        />
+        <CalendarPicker
+          visible={daysOffOpen}
+          value={null}
+          mode="date"
+          title="Days off"
+          multiple
+          values={customHolidays.map(dayKeyToDate)}
+          onConfirmMultiple={dates => { setCustomHolidays(dates.map(dayKeyOf)); setDaysOffOpen(false); }}
+          onConfirm={() => setDaysOffOpen(false)}
+          onCancel={() => setDaysOffOpen(false)}
+        />
       </SettingsSection>
 
       <SettingsSection

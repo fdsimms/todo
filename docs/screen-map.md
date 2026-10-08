@@ -86,7 +86,7 @@ Where each component can appear.
 - `src/components/BirthdayPicker.tsx` — on BackfillScreen, PeopleScreen, PersonDetailScreen
 - `src/components/BulkActionBar.tsx` — on CategoryDetailScreen, ProjectDetailScreen, SavedViewDetailScreen, TagsScreen, TodayScreen
 - `src/components/CalendarChoiceSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
-- `src/components/CalendarPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, +1 more
+- `src/components/CalendarPicker.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, SettingsGroupScreen, StacksScreen, StuckScreen, +2 more
 - `src/components/CardSheet.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MoodScreen, +22 more
 - `src/components/CatalogLinkPicker.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen, app shell
 - `src/components/CatalogLinkSheet.tsx` — on FoodLogScreen

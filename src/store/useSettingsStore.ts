@@ -108,6 +108,7 @@ import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import { parseSunLocation, roundSunLocation, type SunLocation } from '../utils/sunTimes';
+import { parseCustomHolidays, parseHolidaySet, type HolidaySet } from '../utils/holidays';
 import {
   parseEventRules,
   defaultEventRules,
@@ -1511,6 +1512,11 @@ interface SettingsStore {
   // the sun (Task.windowStartSun). Rounded to about a kilometer, set only from
   // a tap, and null until then: a sun anchor needs one to resolve.
   sunLocation: SunLocation | null;
+  // Which public holidays a recurring task set to skip or move off them
+  // treats as holidays, plus the user's own days off (YYYY-MM-DD keys). Both
+  // sync: a task skips the same days on every device. See src/utils/holidays.ts.
+  holidaySet: HolidaySet;
+  customHolidays: string[];
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -2009,6 +2015,8 @@ interface SettingsStore {
   setTravelMode: (mode: TravelMode) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
   setSunLocation: (location: SunLocation | null) => void;
+  setHolidaySet: (set: HolidaySet) => void;
+  setCustomHolidays: (dayKeys: string[]) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelEventPref: (eventId: string, pref: TravelEventPref | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
@@ -2708,6 +2716,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelMode: 'driving',
   travelOriginPlaceId: null,
   sunLocation: null,
+  holidaySet: 'us',
+  customHolidays: [],
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -3168,6 +3178,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const travelOriginPlaceId = dbGetSetting('travelOriginPlaceId') || null;
     const sunLocation = parseSunLocation(dbGetSetting('sunLocation'));
+    const holidaySet = parseHolidaySet(dbGetSetting('holidaySet'));
+    const customHolidays = parseCustomHolidays(dbGetSetting('customHolidays'));
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3386,6 +3398,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       confirmBeforeDeleting,
       cookRecapEnabled,
       currencySymbol,
+      customHolidays,
       dailyAgendaEnabled,
       dailyAgendaSpoken,
       dailyAgendaTime,
@@ -3441,6 +3454,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       hideCategories,
       hideHelpText,
       hideListPreviews,
+      holidaySet,
       householdServings,
       journalLogLastDayKey,
       journalLogTaskCategory,
@@ -4165,6 +4179,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTravelOriginPlaceId(id: string | null) {
     dbSetSetting('travelOriginPlaceId', id ?? '');
     set({ travelOriginPlaceId: id });
+  },
+
+  setHolidaySet(holidaySet: HolidaySet) {
+    dbSetSetting('holidaySet', holidaySet);
+    set({ holidaySet });
+  },
+
+  setCustomHolidays(dayKeys: string[]) {
+    const clean = parseCustomHolidays(JSON.stringify(dayKeys));
+    dbSetSetting('customHolidays', JSON.stringify(clean));
+    set({ customHolidays: clean });
   },
 
   setSunLocation(location: SunLocation | null) {

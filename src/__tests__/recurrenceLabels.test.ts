@@ -219,6 +219,13 @@ describe('describeTaskRecurrence', () => {
     expect(describeRecurrence({ type: 'daily', interval: 1 })).toBe('Every day');
   });
 
+  it('names a holiday rule after everything else', () => {
+    expect(describeTaskRecurrence({ ...rule({ recurrenceType: 'weekly', recurrenceDays: [2] }), recurrenceHolidays: 'move' }))
+      .toBe('Weekly on Tue · moves off holidays');
+    expect(describeTaskRecurrence({ ...rule({ recurrenceType: 'daily', recurrenceFromCompletion: true }), recurrenceHolidays: 'skip' }))
+      .toBe('Daily · from completion · skips holidays');
+  });
+
   it('reads the hours recurrence', () => {
     expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 1 })))
       .toBe('Hourly');

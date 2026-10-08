@@ -2000,6 +2000,9 @@ export function initDatabase(): void {
     // existing row: a clock time stays a clock time. See Task.windowStartSun.
     'ALTER TABLE tasks ADD COLUMN window_start_sun TEXT',
     'ALTER TABLE tasks ADD COLUMN window_end_sun TEXT',
+    // 'skip' / 'move' for an occurrence the rule lands on a holiday; NULL on
+    // every existing row, which happens anyway. See Task.recurrenceHolidays.
+    'ALTER TABLE tasks ADD COLUMN recurrence_holidays TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3407,6 +3410,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
+    recurrenceHolidays: row.recurrence_holidays === 'skip' || row.recurrence_holidays === 'move' ? row.recurrence_holidays : null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -3617,8 +3621,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3745,6 +3749,7 @@ export function dbInsertTask(task: Task): void {
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
+      task.recurrenceHolidays ?? null,
     ]
   );
 }
@@ -3781,7 +3786,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3909,6 +3914,7 @@ export function dbUpdateTask(task: Task): void {
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
+      task.recurrenceHolidays ?? null,
       task.id,
     ]
   );

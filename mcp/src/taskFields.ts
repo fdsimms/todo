@@ -89,6 +89,8 @@ export interface RepeatInput {
   /** 1-12. Yearly only. */
   month?: number;
   fromCompletion?: boolean;
+  /** An occurrence the rule lands on a holiday: left out, or moved to the next day. */
+  holidays?: 'skip' | 'move' | null;
   endDate?: string | null;
   count?: number | null;
 }
@@ -279,6 +281,7 @@ const NO_REPEAT: Partial<Task> = {
   recurrenceFromCompletion: false,
   recurrenceEndDate: null,
   recurrenceCount: null,
+  recurrenceHolidays: null,
   chainStepOnSchedule: false,
 };
 
@@ -318,6 +321,7 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
   if (r.endDate != null && r.count != null) errors.push('repeat.endDate and repeat.count are two ways to end a repeat; give one.');
   if (r.endDate != null && !isIsoDate(r.endDate)) errors.push('repeat.endDate must be an ISO date.');
   if (r.count != null && !inRange(r.count, LIMITS.count)) errors.push(`repeat.count must be ${LIMITS.count[0]} to ${LIMITS.count[1]}.`);
+  if (r.holidays != null && r.every === 'hours') errors.push('An hourly repeat has no days to skip, so it cannot take repeat.holidays.');
 
   return {
     recurrenceType: type,
@@ -334,6 +338,7 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
     recurrenceFromCompletion: r.every === 'hours' ? true : r.fromCompletion ?? r.every === 'day',
     recurrenceEndDate: r.endDate == null ? null : localDateInput(r.endDate),
     recurrenceCount: r.count ?? null,
+    recurrenceHolidays: r.every === 'hours' ? null : r.holidays ?? null,
   };
 }
 
@@ -863,6 +868,7 @@ export function describeRepeat(t: Task): RepeatInput | null {
   if (t.recurrenceFromCompletion) out.fromCompletion = true;
   if (t.recurrenceEndDate) out.endDate = t.recurrenceEndDate;
   if (t.recurrenceCount != null) out.count = t.recurrenceCount;
+  if (t.recurrenceHolidays) out.holidays = t.recurrenceHolidays;
   return out;
 }
 
