@@ -536,7 +536,7 @@ export function StuckScreen() {
       <FlatList
         data={rows}
         keyExtractor={row => row.key}
-        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
         renderItem={({ item }) => {
           if (item.kind === 'heading') {
             return <Text style={styles.sectionHeading}>{item.label}</Text>;

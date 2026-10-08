@@ -76,7 +76,7 @@ export function RemindersScreen() {
       <FlatList
         data={reminders}
         keyExtractor={item => item.id}
-        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
         renderItem={({ item }) => (
           <ReminderRow
             task={item}
