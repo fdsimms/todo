@@ -799,6 +799,7 @@ One walk draws every projection (`projectOccurrences` in `src/utils/calendarMont
 
 Every completion leaves its row behind, so a daily recurring task accumulates one tombstone a day forever. Two read-time collapses exist because of that (`groupRoster`, and `projectProgress`'s separate one); `completedRetentionDays` is what finally bounds it at the source — `null`/forever by default, so an existing install changes nothing until the user picks a window in Settings. Rules live in `src/utils/retention.ts`, the delete in `purgeOldCompletedTasks` (startup, after every other maintenance pass, and again when the window changes).
 
+- **A pass that only wants open rows starts from `openTasksOf`** (`src/utils/openTasks.ts`), never a scan of `tasks`. History is most of the array on a phone in use, and every list selector in `useTaskStore` reads from it, cached per task array.
 - **Archived rows are exempt.** Archiving is an explicit "keep this, out of my way"; the window is for tombstones piling up unasked.
 - **Only top-level rows are ever named.** A completed subtask under a *live* parent is a checked-off step, not history — `dbBulkDeleteTasks`' `parent_id` cascade takes the subtasks of a purged parent, so listing subtasks directly would be the bug, not the feature.
 - **Streaks are safe and that's structural**, not luck: `streakCount`/`streakDate` and their `previous*` snapshot live on the row still running the streak and are never summed back across the chain. The pointers that *do* cross rows (`previousOccurrenceId`, `blockedById`) are resolve-or-shrug at every reader — `canBlock(undefined)` is false, chain walks stop on a missed lookup — and already dangle this way after a manual Logbook delete, so a purge leaves them rather than rewriting rows it isn't deleting.
@@ -973,6 +974,9 @@ right.
   replacement taking the same props, which dismisses the keyboard before it lets the modal close
   (see the freeze note under list rows below). Rendering `react-native`'s `Modal` directly fails
   `noRawModal.test.ts`.
+- `LazySheet` (`src/components/LazySheet.tsx`) — a sheet on a screen that holds many: it mounts the
+  sheet the first time it opens and keeps it. A closed sheet still subscribes and re-renders, and on a
+  tab screen re-runs all its effects on every return to the tab, so the busy screens wrap theirs.
 - `TextField` (`src/components/TextField.tsx`) — **every** text field that takes a `value`. Same
   props and ref as `TextInput`, but the native field is the only writer while someone types, so the
   keystroke echo that drops the caret mid-word on iOS can't happen ("rutabaga" typed as
