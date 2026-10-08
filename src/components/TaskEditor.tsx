@@ -4,7 +4,8 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   <EditorGroup label=     the cards, in render order: Kind, Schedule,
-//                           Relationships, Organize, Priority & effort,
+//                           Organize (the Subtasks card follows it),
+//                           Priority & effort, Relationships, On completion,
 //                           Task actions, Streaks
 //   makeStyles              styles, at the bottom
 //
@@ -70,7 +71,7 @@ import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
 import type { HealthTargetMetric } from '../types';
-import { featureShown, taskKindsForMode } from '../utils/simpleMode';
+import { featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
@@ -89,6 +90,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { categoryLabel } from '../utils/categoryLabel';
+import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
@@ -98,7 +100,8 @@ import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMenti
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor, effortTimeLabel } from '../utils/effort';
+import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { PillGroup } from './PillGroup';
@@ -621,6 +624,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  // Whether the person has answered these two on a new task. An untouched row
+  // is an unanswered question, not an answer of None: it is left out of the
+  // draft on save so the project's, then Settings', default applies, the same
+  // way it does from quick add. A 0 sent with the draft would be an answer and
+  // beat every default behind it. Picking None is touching it.
+  const [priorityTouched, setPriorityTouched] = useState(false);
+  const [effortTouched, setEffortTouched] = useState(false);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
@@ -832,6 +842,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const hiddenFieldsNote = hiddenResultsNote({ simpleMode, kitchenEnabled: true }, 'fields');
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
@@ -1029,6 +1040,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
+      setPriorityTouched(true); setEffortTouched(true);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned); setPinEachOccurrence(task.pinEachOccurrence ?? false);
       setActualMinutes(task.actualMinutes ?? null);
       setTimedMinutes(task.timedMinutes ?? null);
@@ -1094,6 +1106,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
+      setPriorityTouched(initialDraft?.priority !== undefined);
+      setEffortTouched(initialDraft?.effort !== undefined || initialDraft?.estimatedMinutes != null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false); setPinEachOccurrence(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
@@ -1874,7 +1888,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         // groupId only rides along on the create path; for an existing task the
         // store methods above own the move, since they place it in the stack's
         // order and cascade the category as well as setting the field.
-        const newData = { ...data, groupId };
+        // An untouched Priority or Effort row is left out so a default can fill
+        // it (see priorityTouched); `estimatedMinutes` is already null when unset.
+        const newData = {
+          ...data,
+          groupId,
+          ...(priorityTouched ? {} : { priority: undefined }),
+          ...(effortTouched ? {} : { effort: undefined }),
+        };
         if (allDates.length >= 2) {
           const rows = addTaskSeries(newData, allDates, repeat);
           // The set's earliest date is what the waiters wait on: blockedById
@@ -2214,6 +2235,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setReminderTracksVisibility(tracksVisibility ?? false);
       if (anchor) setReminderTimeAnchor(anchor);
       setReminderTouched(true);
+      // The person just chose a reminder, which is the moment to ask for the
+      // permission it needs if it has never been asked.
+      void askForReminderPermissionIfNeeded();
     }
     setPickerMode('none');
   };
@@ -2733,6 +2757,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
   const applyEffortPreset = (e: Effort) => {
+    setEffortTouched(true);
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
     setCustomEffortOpen(false);
@@ -2756,6 +2781,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const applyCustomEffort = (text: string, unit: 'min' | 'hr') => {
+    setEffortTouched(true);
     const n = parseFloat(text);
     if (!Number.isFinite(n) || n <= 0) {
       // Empty/invalid clears the estimate back to unknown.
@@ -2843,6 +2869,26 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const effortSummary = effort > 0 && effortSummaryMinutes != null
     ? formatDuration(effortSummaryMinutes)
     : undefined;
+  // What a new task starts with in the three fields a default can fill, shown
+  // on a row that hasn't been answered. Only for a new task: an existing one
+  // already holds its values. Read off the same functions the save uses.
+  const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const defaultsPreview = useMemo(() => {
+    if (task) return null;
+    const chosenProject = project ? projects.find(p => p.id === project) : undefined;
+    const seeded = previewSeededFields(chosenProject?.taskDefaults, newTaskDefaults, polarity === 'negative');
+    return {
+      priority: seeded.priority,
+      effort: seeded.effort,
+      category: previewCategoryDefault(chosenProject?.defaultTaskCategory, newTaskDefaults.category),
+    };
+  }, [task, project, projects, newTaskDefaults, polarity]);
+  const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
+    ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
+  const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
+    ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+  const defaultCategoryLabel = defaultsPreview && !category && selectedGroup === null && defaultsPreview.category
+    ? `Default: ${categoryLabel(defaultsPreview.category, categories)}` : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
   // The stretches of the countdown the subtasks have been given, in their own
   // order. Empty unless at least one subtask carries minutes, which is what
@@ -3330,7 +3376,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       )}
 
       {searching && totalMatches === 0 && (
-        <Text style={styles.searchEmpty}>No fields match “{searchQuery.trim()}”.</Text>
+        <Text style={styles.searchEmpty}>
+          No fields match “{searchQuery.trim()}”.
+          {hiddenFieldsNote ? `\n\n${hiddenFieldsNote}` : ''}
+        </Text>
       )}
 
       {titleVisible && (
@@ -4372,389 +4421,6 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 </CollapsibleField>
             </>),
           }] : []),
-          // Not one of the four kinds, and deliberately a row of its own below
-          // them: the kinds are exclusive (bakedFields clears the other three)
-          // and this isn't — a chain step or a timed task can end in a
-          // decision too. It sits in this group because it answers the same
-          // question the kinds do, "what does completing this mean", which is
-          // what someone opens this group looking for.
-          {
-            key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
-            keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
-            node: (
-              <>
-              <CollapsibleField
-                label="Ask on completion"
-                summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
-                emptySummary="Nothing"
-                hint={
-                  deliverableKind
-                    ? deliverableMeta(deliverableKind).hint
-                    : 'Asks you to record an answer when you complete the task, and keeps it in the Logbook.'
-                }
-                expanded={fieldOpen('deliverable')}
-                onToggle={() => toggleField('deliverable')}
-              >
-                <DeliverableKindPicker
-                  value={deliverableKind}
-                  onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
-                />
-              </CollapsibleField>
-              {/* Outside the collapsible, so the options stay in view once a
-                  pick closes it: a Pick-one with no options is a question
-                  with nothing to pick. */}
-              {deliverableKind === 'choice' && (
-                <TextField
-                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
-                  value={deliverableOptionsText}
-                  onChangeText={setDeliverableOptionsText}
-                  placeholder="e.g. Yes, No, Maybe"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  accessibilityLabel="Options to pick from, separated by commas"
-                />
-              )}
-              {/* Fewer than two options and completing asks nothing
-                  (deliverableOptionsFor), so say so where they're typed. */}
-              {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
-                <Text style={styles.choiceOptionsHint}>
-                  Add at least two options, separated by commas. With fewer, completing the task asks nothing.
-                </Text>
-              )}
-              {deliverableKind === 'date' && project !== null && (
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: deliverableSetsAway }}
-                  accessibilityLabel="Use the answer as the project's leaving date"
-                >
-                  <Ionicons
-                    name="airplane-outline"
-                    size={18}
-                    color={deliverableSetsAway ? colors.accent : colors.textSecondary}
-                  />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
-                    <Text style={styles.optionHint}>
-                      The date you answer becomes the project's Leaving date, if it doesn't have one yet
-                    </Text>
-                  </View>
-                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
-                  </View>
-                </TouchableOpacity>
-              )}
-              </>
-            ),
-          },
-          // Another "what does completing this mean" question, and — like
-          // deliverable above — not gated on any other field: it answers to
-          // completion itself, not to a deadline the way the calendar toggle
-          // in the Schedule group does.
-          {
-            key: 'logCompletionToCalendar', label: 'Log to calendar',
-            keywords: ['calendar', 'event', 'log', 'history', 'record'],
-            node: (
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => {
-                  haptics.tap();
-                  // With no calendar named yet the row asks for one rather
-                  // than doing nothing. It used to send the reader to
-                  // Settings, which from a sheet guarding unsaved edits meant
-                  // abandoning the task to follow the instruction.
-                  if (!completionCalendarId) { setCalendarPickerFor('completion'); return; }
-                  setLogCompletionToCalendar(v => !v);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole={completionCalendarId ? 'switch' : 'button'}
-                accessibilityLabel="Log this task's completion to your calendar"
-                accessibilityState={completionCalendarId ? { checked: logCompletionToCalendar } : {}}
-              >
-                <Ionicons
-                  name="calendar-outline"
-                  size={18}
-                  color={logCompletionToCalendar ? colors.accent : colors.textSecondary}
-                />
-                <View style={styles.optionContent}>
-                  <Text style={styles.optionLabel}>Log to calendar</Text>
-                  <Text style={styles.optionHint}>
-                    {completionCalendarId
-                      ? 'A calendar event when you complete this task'
-                      : 'Pick a calendar to write to'}
-                  </Text>
-                </View>
-                {completionCalendarId ? (
-                  <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
-                  </View>
-                ) : (
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                )}
-              </TouchableOpacity>
-            ),
-          },
-          // A third "what does completing this mean" question, same family as
-          // the calendar toggle right above — opt-in, gated on a Settings
-          // switch it can't turn on for itself, same disabled/hint shape.
-          // A metric-and-number pair rather than a toggle, unlike the
-          // calendar row: the calendar event's content is fixed (the task's
-          // own title), but "how much of what" has no single obvious answer
-          // to bake in — this used to log dietary water only.
-          {
-            key: 'logHealthValue', label: 'Log to Health',
-            set: logHealthMetric !== null && logHealthAmount !== null,
-            keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
-            node: (() => {
-              // Water is the one nutrient with a second unit worth offering —
-              // nobody asks for a stepper in fl oz of sodium. logHealthAmount
-              // stays in ml regardless (see waterLogUnit above); this only
-              // decides what the stepper displays and steps in.
-              const isWater = (logHealthMetric ?? 'waterMl') === 'waterMl';
-              const useFlOz = isWater && waterLogUnit === 'flOz';
-              const range = useFlOz ? LOG_HEALTH_WATER_FL_OZ_STEPS : LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'];
-              const unitLabel = useFlOz ? 'fl oz' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit;
-              const isSet = logHealthMetric !== null && logHealthAmount !== null;
-              return (
-                <CollapsibleField
-                  label="Log to Health"
-                  summary={
-                    isSet
-                      ? `${useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount}${useFlOz ? ' ' : ''}${unitLabel} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} ${targetCount !== null ? 'per unit logged' : 'when completed'}`
-                      : undefined
-                  }
-                  hint={
-                    healthWriteEnabled
-                      ? targetCount !== null
-                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.`
-                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you complete this task.`
-                      : 'Turn on writing to Health in Settings › Health first'
-                  }
-                  expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
-                  onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
-                  // Turning this off used to mean holding − on the amount
-                  // stepper all the way down past its floor — real, but not
-                  // discoverable, especially from a large amount. This mirrors
-                  // EditorRow's onClear (a close-circle beside the value) for
-                  // the fields built on that component instead of this one.
-                  right={isSet ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        haptics.tap();
-                        setLogHealthAmount(null);
-                        closeField('logHealthValue');
-                      }}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear log to health"
-                    >
-                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  ) : undefined}
-                >
-                  <ChoiceMenuChip
-                    variant="field"
-                    name="TaskEditor nutrient menu"
-                    noun="Nutrient"
-                    groups={LOG_NUTRIENT_GROUPS}
-                    selectedKey={logHealthMetric ?? 'waterMl'}
-                    onSelect={key => {
-                      const next = key as NutrientKey;
-                      haptics.tap();
-                      setLogHealthMetric(next);
-                      // Re-defaulted rather than carried over, same reasoning
-                      // the health-target metric switch above uses: 250 of
-                      // whatever the old metric was is not a meaningful amount
-                      // of the new one, so switching starts back at one step.
-                      setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
-                    }}
-                  />
-                  <View style={styles.logHealthAmountRow}>
-                    <CountStepper
-                      value={logHealthAmount === null ? null : (useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount)}
-                      onChange={next => {
-                        const ml = next === null ? null : (useFlOz ? Math.round(flOzToMl(next)) : next);
-                        setLogHealthAmount(ml);
-                        // Stepping up from Off before ever touching the picker
-                        // above still has to turn the row on for some metric —
-                        // water, the same default this feature started as.
-                        if (ml !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
-                      }}
-                      min={range.step}
-                      max={range.max}
-                      step={range.step}
-                      allowNull
-                      emptyLabel="Off"
-                      label="Log to Health"
-                      format={n => (useFlOz ? `${n} fl oz` : `${n}${unitLabel}`)}
-                      describeValue={n => (n === null ? 'off' : `${n} ${useFlOz ? 'fluid ounces' : unitLabel}`)}
-                    />
-                    {isWater && (
-                      <View style={styles.pillRow}>
-                        {(['ml', 'flOz'] as const).map(u => {
-                          const active = waterLogUnit === u;
-                          return (
-                            <TouchableOpacity
-                              key={u}
-                              style={[styles.pill, active && styles.pillActiveNeutral]}
-                              onPress={() => { haptics.tap(); setWaterLogUnit(u); }}
-                              activeOpacity={interaction.activeOpacity}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: active }}
-                              accessibilityLabel={u === 'ml' ? 'Milliliters' : 'Fluid ounces'}
-                            >
-                              <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                                {u === 'ml' ? 'ml' : 'fl oz'}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                  {followsWaterTarget && (
-                    <TouchableOpacity
-                      style={styles.optionRow}
-                      onPress={() => { haptics.tap(); setFollowWaterTarget(v => !v); }}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="switch"
-                      accessibilityLabel="Follow the water target"
-                      accessibilityState={{ checked: followWaterTarget }}
-                    >
-                      <Ionicons name="water-outline" size={18} color={followWaterTarget ? colors.accent : colors.textSecondary} />
-                      <View style={styles.optionContent}>
-                        <Text style={styles.optionLabel}>Follow the water target</Text>
-                        <Text style={styles.optionHint}>
-                          Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
-                        </Text>
-                      </View>
-                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                </CollapsibleField>
-              );
-            })(),
-          },
-          // The fourth "what does completing this mean" row, and the closest
-          // relative of the Health one right above: a name-and-amount pair
-          // that turns a completion into a quantity recorded elsewhere. It
-          // needs no Settings switch, because what it writes is the app's own
-          // log rather than somebody else's database.
-          //
-          // Nothing is asked at the tick — the dose is what this row already
-          // says it is. That is the whole point: a repeating task carrying a
-          // medication *is* how a scheduled dose gets logged here, so asking
-          // again would be recording the same fact twice. See
-          // docs/arch/mood-log.md.
-          {
-            key: 'medication', label: 'Log a dose', set: medicationName !== null,
-            keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
-            node: (
-              <CollapsibleField
-                label="Log a dose"
-                summary={
-                  medicationName
-                    ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
-                        .filter(Boolean).join(', ')
-                    : undefined
-                }
-                hint="Records a dose in your medication log each time you complete this task. Unchecking it takes the dose back."
-                expanded={fieldOpen('medication')}
-                onToggle={() => toggleField('medication')}
-              >
-                <TextField
-                  style={styles.fieldBox}
-                  value={medicationName ?? ''}
-                  onChangeText={text => setMedicationName(text || null)}
-                  placeholder="e.g. Sertraline"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={MEDICATION_NAME_MAX_LENGTH}
-                  returnKeyType="done"
-                  accessibilityLabel="What this task records a dose of"
-                />
-                {/* Picking one of these is what makes it the *same* medication
-                    as an earlier dose — medicationKey does no fuzzy matching
-                    (see docs/arch/mood-log.md), so retyping "Sertraline" as
-                    "sertraline" would otherwise split one medicine's history
-                    into two untallied entries. */}
-                {medicationSuggestions.length > 0 && (
-                  <PillGroup
-                    noun="medication"
-                    surface="card"
-                    options={medicationSuggestions.map(name => ({
-                      key: medicationKey(name),
-                      label: name,
-                      selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
-                      onPress: () => { haptics.tap(); setMedicationName(name); },
-                    }))}
-                  />
-                )}
-                {/* Hidden until there's something to be the amount *of*, the
-                    same rule the daily target's unit field follows: on its own
-                    it labels nothing. */}
-                {medicationName !== null && (
-                  <>
-                    <DoseAmountField
-                      name="TaskEditor dose unit menu"
-                      style={styles.medicationAmountInput}
-                      amount={medicationAmount}
-                      onChangeAmount={setMedicationAmount}
-                      unit={medicationUnit}
-                      onChangeUnit={setMedicationUnit}
-                    />
-                  </>
-                )}
-              </CollapsibleField>
-            ),
-          },
-          // The fifth "what does completing this mean" row. Unlike the two
-          // above it never writes anything by itself — a plain task names no
-          // food and no amount, so completing it raises the same manual
-          // search-sheet offer a meal-plan task's own completion does (see
-          // offerMealLog in useTaskStore.ts), prefilled with this slot and
-          // the task's own title. It needs no Settings switch for the same
-          // reason the medication row above doesn't: picking a slot here is
-          // itself the opt-in.
-          {
-            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
-            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet'],
-            node: (
-              <CollapsibleField
-                label="Log to food log"
-                summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
-                hint="Offers to add an entry to your food log, for the slot below, each time you complete this task."
-                expanded={fieldOpen('logMealSlot')}
-                onToggle={() => toggleField('logMealSlot')}
-                right={logMealSlot !== null ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      haptics.tap();
-                      setLogMealSlot(null);
-                      closeField('logMealSlot');
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear log to food log"
-                  >
-                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ) : undefined}
-              >
-                <SegmentedControl<MealSlot>
-                  options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
-                  value={logMealSlot ?? 'breakfast'}
-                  onChange={next => { haptics.tap(); setLogMealSlot(next); }}
-                  columns={2}
-                  label="Meal"
-                  surface="card"
-                />
-              </CollapsibleField>
-            ),
-          },
         ]}
       />
 
@@ -4766,7 +4432,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         rows={[
           {
             key: 'date', label: 'Date',
-            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it'],
+            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it', 'due', 'due date', 'postpone', 'reschedule', 'push', 'move', 'snooze'],
             node: (
               <>
             <EditorRow
@@ -4825,7 +4491,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days. Each date can be checked off separately."
+              hint="The same task on several set days, each checked off separately. For a schedule that keeps going, use Repeat."
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -4874,7 +4540,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="flag-outline"
               label="Deadline"
-              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit, separate from Date' : undefined}
+              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'The date it needs to be done by, separate from the Date it first appears on Today' : undefined}
               value={
                 deadlineOffsetDays !== null
                   ? (deadline ? `${formatDeadlineLabel(deadline.toISOString(), deadlineTime)} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
@@ -5101,7 +4767,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="time-outline"
               label="Time of day"
-              hint="Hold it back until a part of the day."
+              hint="Hidden until this part of the day arrives: morning, afternoon, evening or night."
               value={timeOfDaySummary}
               expanded={showTimeOfDay}
               onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -5141,7 +4807,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only active for part of the day, then expires."
+              hint="Only on the list between two clock times, then it expires. Removing expired tasks is set in Settings."
               value={timeWindowSummary}
               caption={windowStartMeeting
                 ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
@@ -5379,7 +5045,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           {
             key: 'remindMe', label: 'Remind me',
-            keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
+            keywords: ['reminder', 'notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
             node: (
               <>
             <EditorRow
@@ -5453,53 +5119,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'location', label: 'Location',
-            keywords: ['address', 'place', 'venue', 'where'],
-            node: (
-              <>
-            <EditorRow
-              icon="location-outline"
-              label="Location"
-              hint="Where this task happens, like an appointment's address or a venue."
-              value={location ?? undefined}
-              expanded={showLocationField}
-              onPress={() => {
-                // Same pattern as Phone/Email: no presets, so it opens with
-                // what's already there.
-                setLocationText(location ?? '');
-                setShowLocationField(v => !v);
-              }}
-              onClear={location ? () => { setLocation(null); setLocationText(''); setShowLocationField(false); } : undefined}
-            />
-            {showLocationField && (
-              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
-                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                <TextField
-                  style={styles.linkCustomInput}
-                  value={locationText}
-                  onChangeText={setLocationText}
-                  onSubmitEditing={commitLocation}
-                  onBlur={commitLocation}
-                  placeholder="e.g. 156 William Street"
-                  placeholderTextColor={colors.textTertiary}
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  autoFocus
-                />
-              </View>
-            )}
-              </>
-            ),
-          },
-          {
             key: 'repeat', label: 'Repeat',
-            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule'],
+            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule', 'after completion', 'from completion', 'interval', 'ends', 'weekdays', 'count'],
             node: (
               <>
             <EditorRow
               icon="repeat"
               label="Repeat"
-              hint="Come back on a schedule after each completion."
+              hint="Comes back on a schedule after each completion. For a few set days, use More dates."
               // The picker has no read-back line of its own — this row, sitting
               // directly above it, is where the whole rule reads as a sentence.
               value={recurrenceType !== 'none' ? describeRecurrence({
@@ -5736,6 +5363,671 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           }] : []),
+        ]}
+      />
+
+      {/* Organize — collapsed to the chosen value until you tap in */}
+      <EditorGroup
+        label="Organize"
+        divider="full"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
+        rows={[
+          // Only when there is something to pick. An empty picker would teach
+          // nothing — stacks are created from the + menu on Today, not here.
+          ...(allGroups.length > 0 ? [{
+            key: 'stack', label: 'Stack', set: !!selectedGroup,
+            keywords: ['group', 'together', 'bundle'],
+            node: (
+              <>
+              <CollapsibleField
+                label="Stack"
+                summary={selectedGroup ? selectedGroup.title : undefined}
+                hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
+                expanded={fieldOpen('stack')}
+                onToggle={() => toggleField('stack')}
+              >
+                <View style={styles.pillRow}>
+                  <TouchableOpacity
+                    style={[styles.pill, !groupId && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
+                  >
+                    <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
+                  </TouchableOpacity>
+                  {allGroups.map(g => (
+                    <TouchableOpacity
+                      key={g.id}
+                      style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
+                      onPress={() => {
+                        haptics.tap();
+                        setGroupId(g.id);
+                        // A stack owns its members' category (see addExistingToGroup),
+                        // so adopt it here rather than letting the locked row keep
+                        // showing a value the save is about to overwrite.
+                        setCategory(g.category);
+                        closeField('stack');
+                      }}
+                    >
+                      <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'category', label: 'Category',
+            keywords: ['section', 'bucket', 'list'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Category"
+            summary={category ? categoryLabel(category, categories) : undefined}
+            emptySummary={defaultCategoryLabel}
+            hint="One home for the task. Drives the Categories screen and its filters."
+            expanded={fieldOpen('category')}
+            onToggle={() => toggleField('category')}
+            // A stack owns its members' category, so there's nothing to pick
+            // here while the task is in one — the value would be overwritten
+            // by the next cascade. Changing it means changing the stack's,
+            // or leaving the stack.
+            locked={selectedGroup !== null}
+            lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
+          >
+            {/* The same picker quick add and the bulk bar open as a sheet,
+                inline here: this sheet scrolls, so the list needs no scroll of
+                its own and every category is one glance away rather than one
+                remembered name away. */}
+            <CategoryPickerList
+              value={category}
+              onSelect={cat => { setCategory(cat); closeField('category'); }}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          },
+          ...(projects.length > 0 ? [{
+            key: 'project', label: 'Project',
+            keywords: ['progress', 'goal'],
+            node: (
+              <>
+              <CollapsibleField
+                label="Project"
+                summary={projects.find(p => p.id === project)?.title}
+                hint="Files the task under a project so it counts toward that project's progress."
+                expanded={fieldOpen('project')}
+                onToggle={() => toggleField('project')}
+              >
+                {/* The user's own project order, finished projects left out
+                    (bar the one this task is already in), and capped with a
+                    find field once there are many: a flat row of every
+                    project ever made pushed the rest of the card away. */}
+                <PillGroup
+                  noun="project"
+                  surface="card"
+                  filterPlaceholder="Find a project"
+                  options={[
+                    {
+                      key: '',
+                      label: 'None',
+                      selected: !project,
+                      pinned: true,
+                      onPress: () => { haptics.tap(); setProject(null); closeField('project'); },
+                    },
+                    ...projects
+                      .filter(p => !p.completed || p.id === project)
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map(p => ({
+                        key: p.id,
+                        label: p.title,
+                        selected: project === p.id,
+                        onPress: () => { haptics.tap(); setProject(p.id); closeField('project'); },
+                      })),
+                  ]}
+                />
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'tags', label: 'Tags',
+            keywords: ['labels', 'hashtag', 'filter'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Tags"
+            summary={tags.length > 0 ? tags.join(', ') : undefined}
+            hint="Free-form labels. A task can carry several, and you can filter or search by them."
+            expanded={fieldOpen('tags')}
+            onToggle={() => toggleField('tags')}
+          >
+            <View style={styles.tagRow}>
+              {tags.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                  onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
+                >
+                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                  <Ionicons name="close" size={12} color={tagColor(tag)} />
+                </TouchableOpacity>
+              ))}
+              {addingTag ? (
+                <TextField
+                  autoFocus
+                  style={styles.tagInput}
+                  value={newTag}
+                  onChangeText={setNewTag}
+                  onSubmitEditing={addTagFromInput}
+                  onBlur={addTagFromInput}
+                  placeholder="Tag name"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                />
+              ) : (
+                <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+              )}
+            </View>
+            {allTags.filter(t => !tags.includes(t)).length > 0 && (
+              <View style={styles.tagSuggestions}>
+                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={styles.tagSuggestion}
+                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
+                  >
+                    <Text style={styles.tagSuggestionText}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </CollapsibleField>
+              </>
+            ),
+          },
+          ...(people.length > 0 ? [{
+            key: 'people', label: 'People', set: personIds.length > 0,
+            keywords: ['who', 'friend', 'family', 'with', 'together'],
+            node: (
+              <>
+              <CollapsibleField
+                label="People"
+                summary={personIds.length > 0
+                  ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
+                  : undefined}
+                hint="Who this is with. Checking it off adds it to their history."
+                expanded={fieldOpen('people')}
+                onToggle={() => toggleField('people')}
+              >
+                <View style={styles.pillRow}>
+                  {people.map(p => {
+                    const on = personIds.includes(p.id);
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.pill, on && styles.pillActiveNeutral]}
+                        // Multi-select, so the field deliberately does not
+                        // collapse on a tap the way the single-choice ones do:
+                        // "beach with Gideon and Tessa" is two taps, and
+                        // closing after the first would hide the second.
+                        onPress={() => {
+                          haptics.tap();
+                          setPersonIds(prev => on ? prev.filter(id => id !== p.id) : [...prev, p.id]);
+                        }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'location', label: 'Location',
+            keywords: ['address', 'place', 'venue', 'where'],
+            node: (
+              <>
+            <EditorRow
+              icon="location-outline"
+              label="Location"
+              hint="Where this task happens, like an appointment's address or a venue."
+              value={location ?? undefined}
+              expanded={showLocationField}
+              onPress={() => {
+                // Same pattern as Phone/Email: no presets, so it opens with
+                // what's already there.
+                setLocationText(location ?? '');
+                setShowLocationField(v => !v);
+              }}
+              onClear={location ? () => { setLocation(null); setLocationText(''); setShowLocationField(false); } : undefined}
+            />
+            {showLocationField && (
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
+                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
+                <TextField
+                  style={styles.linkCustomInput}
+                  value={locationText}
+                  onChangeText={setLocationText}
+                  onSubmitEditing={commitLocation}
+                  onBlur={commitLocation}
+                  placeholder="e.g. 156 William Street"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  autoFocus
+                />
+              </View>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'vacation', label: 'Vacation pause', set: vacationPause,
+            keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Vacation pause"
+              accessibilityState={{ checked: vacationPause }}
+            >
+              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Vacation pause</Text>
+                <Text style={styles.optionHint}>Hide and protect streak during vacation mode. Vacation mode is turned on in Settings.</Text>
+              </View>
+              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          },
+        ]}
+      />
+
+
+      {/* Priority + Effort */}
+      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
+          was never about — and a plain card rather than an EditorGroup,
+          because a group caption reading SUBTASKS above a field also reading
+          SUBTASKS is the same name twice. The field's own label is the
+          section heading, and its "2/5 done" summary is what a fold would
+          otherwise cost. */}
+      {subtasksVisible && (
+      <View style={styles.optionsCard}>
+        <CollapsibleField
+          label="Subtasks"
+          summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
+          emptySummary="None"
+          expanded={fieldOpen('subtasks', true)}
+          onToggle={() => toggleField('subtasks', true)}
+        >
+          <SortableList
+            onDragStateChange={setDraggingRow}
+            data={subtasks}
+            onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
+            renderItem={(sub, _i, drag) => (
+              <View style={styles.subtaskRow}>
+                <TouchableOpacity
+                  onPress={() => toggleDraftSubtask(sub.id)}
+                  hitSlop={6}
+                  style={styles.subtaskCheck}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={sub.title}
+                  accessibilityState={{ checked: sub.completed }}
+                >
+                  <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                    {sub.completed && (
+                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
+                    )}
+                  </View>
+                  </TouchableOpacity>
+                  {editingSubtaskId === sub.id ? (
+                    <TextField
+                      ref={subtaskTitleEditRef}
+                      style={styles.subtaskTitleInput}
+                      value={subtaskTitleEdit}
+                      onChangeText={setSubtaskTitleEdit}
+                      onBlur={() => saveSubtaskTitle(sub)}
+                      onSubmitEditing={() => saveSubtaskTitleAndFocusAdd(sub)}
+                      returnKeyType="next"
+                      maxLength={TITLE_MAX_LENGTH}
+                      blurOnSubmit={false}
+                      autoFocus
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.subtaskTitleWrapper}
+                      onPress={() => handleSubtaskTitleTap(sub)}
+                      onLongPress={drag}
+                      delayLongPress={interaction.delayLongPress}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                    >
+                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                        {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* A timed task's countdown runs through its subtasks in this
+                      order, so the minutes belong on the rows that carry the
+                      order — not in the Duration field, which only totals them. */}
+                  {kind === 'timed' && (
+                    <StepMinutes
+                      value={sub.timedMinutes ?? null}
+                      label={sub.title}
+                      what="Timer"
+                      onChange={mins => setSubtaskMinutes(sub.id, mins)}
+                    />
+                  )}
+                  <TouchableOpacity
+                    onPress={() => deleteDraftSubtask(sub.id)}
+                    hitSlop={8}
+                    style={styles.subtaskDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete subtask ${sub.title}`}
+                  >
+                    <Ionicons name="close" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+            {/* Always here, pinned at the end of the list — adding a subtask is a
+                burst, not a one-off edit gated behind a button tap. */}
+            <View style={styles.subtaskInputRow}>
+              {/* An empty copy of the row checkbox, so the field being typed
+                  into lines up with the subtasks above it. */}
+              <View style={styles.subtaskCheck}>
+                <View style={styles.subtaskBox} />
+              </View>
+              <TextField
+                ref={newSubtaskInputRef}
+                style={styles.subtaskInput}
+                value={newSubtaskTitle}
+                onChangeText={setNewSubtaskTitle}
+                placeholder="Add subtask"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="next"
+                // Adding subtasks is a burst, not one edit: submitting keeps
+                // the field focused so the keyboard never drops between them.
+                // This used to blur on submit and refocus on a 50ms timer,
+                // which dismissed and reopened the keyboard on every entry.
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  commitSubtask(newSubtaskTitle);
+                  setNewSubtaskTitle('');
+                }}
+                onBlur={() => commitPendingSubtask()}
+              />
+            </View>
+          </CollapsibleField>
+      </View>
+      )}
+
+      {/* The heading has to answer for its own rows: simplified mode takes the
+          Effort row away, and a card headed "Priority & effort" with only a
+          Priority row in it names a field that isn't there. `EditorGroup` can
+          drop a row but it can't rename the group around it, so the one group
+          whose label lists its contents says so here. */}
+      <EditorGroup
+        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
+        divider="full"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
+        rows={[
+          {
+            key: 'priority', label: 'Priority',
+            keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Priority"
+            summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+            emptySummary={defaultPriorityLabel}
+            hint="Ranks the task against everything else on Today."
+            expanded={fieldOpen('priority')}
+            onToggle={() => toggleField('priority')}
+          >
+            <SegmentedControl
+              label="Priority"
+              value={priority}
+              onChange={p => { setPriority(p); setPriorityTouched(true); closeField('priority'); }}
+              // Five with "Medium" among them doesn't fit one row once each
+              // carries a dot; 3 + 2 does, and keeps every cell the same width.
+              columns={3}
+              options={PRIORITY_SEGMENTS}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          },
+          {
+            key: 'effort', label: 'Effort', set: !!effort,
+            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload', 'duration', 'time estimate', 'length', 'hours'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Effort"
+            summary={effortSummary}
+            emptySummary={defaultEffortLabel ?? 'Not set'}
+            hint="Roughly how long this takes, so a day's list can be sized realistically. It does not run a timer."
+            expanded={fieldOpen('effort')}
+            onToggle={() => toggleField('effort')}
+          >
+            <View style={styles.pillRow}>
+              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
+                const active = !customEffortActive && effort === e;
+                const presetMins = EFFORT_MINUTES[e];
+                return (
+                  <TouchableOpacity
+                    key={e}
+                    style={[styles.pill, active && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                      {e === 0 ? '—' : EFFORT_LABELS[e]}
+                    </Text>
+                    {presetMins != null ? (
+                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={[styles.pill, customEffortActive && styles.pillCustomActive]}
+                onPress={openCustomEffort}
+              >
+                {customEffortActive && estimatedMinutes != null ? (
+                  <View style={styles.pillCustomInner}>
+                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                    <Text style={styles.pillCustomText}>{formatDuration(estimatedMinutes)}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pillText}>Custom</Text>
+                )}
+                <Text style={styles.pillHint}>exact</Text>
+              </TouchableOpacity>
+            </View>
+            {customEffortOpen && (
+              <View style={styles.customEffortRow}>
+                <TextField
+                  style={[styles.customEffortInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
+                  value={customEffortText}
+                  onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="Amount"
+                  placeholderTextColor={colors.textTertiary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  autoFocus
+                />
+                <View style={styles.unitToggle}>
+                  <SegmentedControl
+                    label="Effort unit"
+                    value={customEffortUnit}
+                    onChange={u => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                    options={DURATION_UNIT_SEGMENTS}
+                  />
+                </View>
+              </View>
+            )}
+          </CollapsibleField>
+              </>
+            ),
+          },
+          // Only the coin rules read it, so it's offered only while they run:
+          // a rating that changes nothing on screen is a question with no
+          // answer. A rating set earlier stays put while rewards are off.
+          ...(rewardsEnabled && polarity !== 'negative' ? [{
+            key: 'difficulty', label: 'Difficulty', set: difficulty !== null,
+            keywords: ['hard', 'easy', 'dread', 'avoid', 'coins', 'reward', 'aversion'],
+            node: (
+              <>
+          <CollapsibleField
+            label="Difficulty"
+            summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+            emptySummary="Not set"
+            hint={DIFFICULTY_HINT}
+            expanded={fieldOpen('difficulty')}
+            onToggle={() => toggleField('difficulty')}
+          >
+            <SegmentedControl
+              label="Difficulty"
+              value={difficulty}
+              onChange={d => { setDifficulty(d); closeField('difficulty'); }}
+              options={DIFFICULTY_PICKER_SEGMENTS}
+            />
+          </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'pin', label: 'Pin to Today',
+            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setPinned(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Pin to Today"
+              accessibilityState={{ checked: pinned }}
+            >
+              <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Pin to Today</Text>
+                <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
+              </View>
+              <View style={[styles.toggle, pinned && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            {recurrenceType !== 'none' && (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setPinEachOccurrence(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Pin every occurrence"
+                accessibilityState={{ checked: pinEachOccurrence }}
+              >
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
+                  <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
+                </View>
+                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            )}
+              </>
+            ),
+          },
+          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
+            key: 'bounty', label: 'Bounty',
+            keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                if (!bounty && !isBountyLive(task)) {
+                  // The slot check is made here, where the switch is, rather
+                  // than refused silently on save.
+                  const taken = liveBountyCount(useTaskStore.getState().tasks);
+                  if (taken >= bountyLimit) {
+                    haptics.warning();
+                    Alert.alert(
+                      bountyLimit === 1 ? 'You already have a bounty out' : `You already have ${taken} bounties out`,
+                      'Finish or withdraw one first, or allow more on the Rewards screen.',
+                    );
+                    return;
+                  }
+                }
+                haptics.tap();
+                setBounty(v => !v);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Bounty"
+              accessibilityState={{ checked: bounty }}
+            >
+              <CoinIcon size={18} color={bounty ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Bounty</Text>
+                <Text style={styles.optionHint}>
+                  {bounty && isBountyLive(task)
+                    ? describeBounty(task)
+                    : bounty
+                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it's moved to a later day, the bounty gets smaller.`
+                      : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
+                </Text>
+              </View>
+              <View style={[styles.toggle, bounty && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, bounty && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'excludeFromSuggestions', label: 'Skip in suggestions',
+            keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setExcludeFromSuggestions(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Skip in suggestions"
+              accessibilityState={{ checked: excludeFromSuggestions }}
+            >
+              <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Skip in suggestions</Text>
+                <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
+              </View>
+              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          },
         ]}
       />
 
@@ -6253,603 +6545,399 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* Organize — collapsed to the chosen value until you tap in */}
+      {/* On completion — what finishing the task asks or writes down. Kept off the Kind card:
+          these only matter to some tasks, and they sat between choosing a kind and setting a date. */}
       <EditorGroup
-        label="Organize"
-        divider="full"
+        label="On completion"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
-          // Only when there is something to pick. An empty picker would teach
-          // nothing — stacks are created from the + menu on Today, not here.
-          ...(allGroups.length > 0 ? [{
-            key: 'stack', label: 'Stack', set: !!selectedGroup,
-            keywords: ['group', 'together', 'bundle'],
-            node: (
-              <>
-              <CollapsibleField
-                label="Stack"
-                summary={selectedGroup ? selectedGroup.title : undefined}
-                hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
-                expanded={fieldOpen('stack')}
-                onToggle={() => toggleField('stack')}
-              >
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={[styles.pill, !groupId && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
-                  >
-                    <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
-                  </TouchableOpacity>
-                  {allGroups.map(g => (
-                    <TouchableOpacity
-                      key={g.id}
-                      style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
-                      onPress={() => {
-                        haptics.tap();
-                        setGroupId(g.id);
-                        // A stack owns its members' category (see addExistingToGroup),
-                        // so adopt it here rather than letting the locked row keep
-                        // showing a value the save is about to overwrite.
-                        setCategory(g.category);
-                        closeField('stack');
-                      }}
-                    >
-                      <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </CollapsibleField>
-              </>
-            ),
-          }] : []),
+          // Not one of the four kinds, and deliberately a row of its own below
+          // them: the kinds are exclusive (bakedFields clears the other three)
+          // and this isn't — a chain step or a timed task can end in a
+          // decision too. It sits in this group because it answers the same
+          // question the kinds do, "what does completing this mean", which is
+          // what someone opens this group looking for.
           {
-            key: 'category', label: 'Category',
-            keywords: ['section', 'bucket', 'list'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Category"
-            summary={category ? categoryLabel(category, categories) : undefined}
-            hint="One home for the task. Drives the Categories screen and its filters."
-            expanded={fieldOpen('category')}
-            onToggle={() => toggleField('category')}
-            // A stack owns its members' category, so there's nothing to pick
-            // here while the task is in one — the value would be overwritten
-            // by the next cascade. Changing it means changing the stack's,
-            // or leaving the stack.
-            locked={selectedGroup !== null}
-            lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
-          >
-            {/* The same picker quick add and the bulk bar open as a sheet,
-                inline here: this sheet scrolls, so the list needs no scroll of
-                its own and every category is one glance away rather than one
-                remembered name away. */}
-            <CategoryPickerList
-              value={category}
-              onSelect={cat => { setCategory(cat); closeField('category'); }}
-            />
-          </CollapsibleField>
-              </>
-            ),
-          },
-          ...(projects.length > 0 ? [{
-            key: 'project', label: 'Project',
-            keywords: ['progress', 'goal'],
+            key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
+            keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
             node: (
               <>
               <CollapsibleField
-                label="Project"
-                summary={projects.find(p => p.id === project)?.title}
-                hint="Files the task under a project so it counts toward that project's progress."
-                expanded={fieldOpen('project')}
-                onToggle={() => toggleField('project')}
+                label="Ask on completion"
+                summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
+                emptySummary="Nothing"
+                hint={
+                  deliverableKind
+                    ? deliverableMeta(deliverableKind).hint
+                    : 'Asks you to record an answer when you complete the task, and keeps it in the Logbook.'
+                }
+                expanded={fieldOpen('deliverable')}
+                onToggle={() => toggleField('deliverable')}
               >
-                {/* The user's own project order, finished projects left out
-                    (bar the one this task is already in), and capped with a
-                    find field once there are many: a flat row of every
-                    project ever made pushed the rest of the card away. */}
-                <PillGroup
-                  noun="project"
-                  surface="card"
-                  filterPlaceholder="Find a project"
-                  options={[
-                    {
-                      key: '',
-                      label: 'None',
-                      selected: !project,
-                      pinned: true,
-                      onPress: () => { haptics.tap(); setProject(null); closeField('project'); },
-                    },
-                    ...projects
-                      .filter(p => !p.completed || p.id === project)
-                      .sort((a, b) => a.sortOrder - b.sortOrder)
-                      .map(p => ({
-                        key: p.id,
-                        label: p.title,
-                        selected: project === p.id,
-                        onPress: () => { haptics.tap(); setProject(p.id); closeField('project'); },
-                      })),
-                  ]}
+                <DeliverableKindPicker
+                  value={deliverableKind}
+                  onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
                 />
               </CollapsibleField>
-              </>
-            ),
-          }] : []),
-          {
-            key: 'tags', label: 'Tags',
-            keywords: ['labels', 'hashtag', 'filter'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Tags"
-            summary={tags.length > 0 ? tags.join(', ') : undefined}
-            hint="Free-form labels. A task can carry several, and you can filter or search by them."
-            expanded={fieldOpen('tags')}
-            onToggle={() => toggleField('tags')}
-          >
-            <View style={styles.tagRow}>
-              {tags.map(tag => (
-                <TouchableOpacity
-                  key={tag}
-                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                  onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
-                >
-                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                  <Ionicons name="close" size={12} color={tagColor(tag)} />
-                </TouchableOpacity>
-              ))}
-              {addingTag ? (
+              {/* Outside the collapsible, so the options stay in view once a
+                  pick closes it: a Pick-one with no options is a question
+                  with nothing to pick. */}
+              {deliverableKind === 'choice' && (
                 <TextField
-                  autoFocus
-                  style={styles.tagInput}
-                  value={newTag}
-                  onChangeText={setNewTag}
-                  onSubmitEditing={addTagFromInput}
-                  onBlur={addTagFromInput}
-                  placeholder="Tag name"
+                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                  value={deliverableOptionsText}
+                  onChangeText={setDeliverableOptionsText}
+                  placeholder="e.g. Yes, No, Maybe"
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
-                  autoCapitalize="none"
+                  accessibilityLabel="Options to pick from, separated by commas"
                 />
-              ) : (
-                <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
               )}
-            </View>
-            {allTags.filter(t => !tags.includes(t)).length > 0 && (
-              <View style={styles.tagSuggestions}>
-                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={styles.tagSuggestion}
-                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
-                  >
-                    <Text style={styles.tagSuggestionText}>{tag}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </CollapsibleField>
-              </>
-            ),
-          },
-          ...(people.length > 0 ? [{
-            key: 'people', label: 'People', set: personIds.length > 0,
-            keywords: ['who', 'friend', 'family', 'with', 'together'],
-            node: (
-              <>
-              <CollapsibleField
-                label="People"
-                summary={personIds.length > 0
-                  ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
-                  : undefined}
-                hint="Who this is with. Checking it off adds it to their history."
-                expanded={fieldOpen('people')}
-                onToggle={() => toggleField('people')}
-              >
-                <View style={styles.pillRow}>
-                  {people.map(p => {
-                    const on = personIds.includes(p.id);
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pill, on && styles.pillActiveNeutral]}
-                        // Multi-select, so the field deliberately does not
-                        // collapse on a tap the way the single-choice ones do:
-                        // "beach with Gideon and Tessa" is two taps, and
-                        // closing after the first would hide the second.
-                        onPress={() => {
-                          haptics.tap();
-                          setPersonIds(prev => on ? prev.filter(id => id !== p.id) : [...prev, p.id]);
-                        }}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
-                      >
-                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </CollapsibleField>
-              </>
-            ),
-          }] : []),
-        ]}
-      />
-
-      {/* Priority + Effort */}
-      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
-          was never about — and a plain card rather than an EditorGroup,
-          because a group caption reading SUBTASKS above a field also reading
-          SUBTASKS is the same name twice. The field's own label is the
-          section heading, and its "2/5 done" summary is what a fold would
-          otherwise cost. */}
-      {subtasksVisible && (
-      <View style={styles.optionsCard}>
-        <CollapsibleField
-          label="Subtasks"
-          summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
-          emptySummary="None"
-          expanded={fieldOpen('subtasks', true)}
-          onToggle={() => toggleField('subtasks', true)}
-        >
-          <SortableList
-            onDragStateChange={setDraggingRow}
-            data={subtasks}
-            onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
-            renderItem={(sub, _i, drag) => (
-              <View style={styles.subtaskRow}>
+              {/* Fewer than two options and completing asks nothing
+                  (deliverableOptionsFor), so say so where they're typed. */}
+              {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+                <Text style={styles.choiceOptionsHint}>
+                  Add at least two options, separated by commas. With fewer, completing the task asks nothing.
+                </Text>
+              )}
+              {deliverableKind === 'date' && project !== null && (
                 <TouchableOpacity
-                  onPress={() => toggleDraftSubtask(sub.id)}
-                  hitSlop={6}
-                  style={styles.subtaskCheck}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel={sub.title}
-                  accessibilityState={{ checked: sub.completed }}
+                  style={styles.optionRow}
+                  onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: deliverableSetsAway }}
+                  accessibilityLabel="Use the answer as the project's leaving date"
                 >
-                  <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
-                    {sub.completed && (
-                      <Ionicons name="checkmark" size={11} color={colors.onDone} />
-                    )}
-                  </View>
-                  </TouchableOpacity>
-                  {editingSubtaskId === sub.id ? (
-                    <TextField
-                      ref={subtaskTitleEditRef}
-                      style={styles.subtaskTitleInput}
-                      value={subtaskTitleEdit}
-                      onChangeText={setSubtaskTitleEdit}
-                      onBlur={() => saveSubtaskTitle(sub)}
-                      onSubmitEditing={() => saveSubtaskTitleAndFocusAdd(sub)}
-                      returnKeyType="next"
-                      maxLength={TITLE_MAX_LENGTH}
-                      blurOnSubmit={false}
-                      autoFocus
-                    />
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.subtaskTitleWrapper}
-                      onPress={() => handleSubtaskTitleTap(sub)}
-                      onLongPress={drag}
-                      delayLongPress={interaction.delayLongPress}
-                      activeOpacity={interaction.activeOpacity}
-                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                    >
-                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                        {sub.title}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  {/* A timed task's countdown runs through its subtasks in this
-                      order, so the minutes belong on the rows that carry the
-                      order — not in the Duration field, which only totals them. */}
-                  {kind === 'timed' && (
-                    <StepMinutes
-                      value={sub.timedMinutes ?? null}
-                      label={sub.title}
-                      what="Timer"
-                      onChange={mins => setSubtaskMinutes(sub.id, mins)}
-                    />
-                  )}
-                  <TouchableOpacity
-                    onPress={() => deleteDraftSubtask(sub.id)}
-                    hitSlop={8}
-                    style={styles.subtaskDelete}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete subtask ${sub.title}`}
-                  >
-                    <Ionicons name="close" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-              )}
-            />
-            {/* Always here, pinned at the end of the list — adding a subtask is a
-                burst, not a one-off edit gated behind a button tap. */}
-            <View style={styles.subtaskInputRow}>
-              {/* An empty copy of the row checkbox, so the field being typed
-                  into lines up with the subtasks above it. */}
-              <View style={styles.subtaskCheck}>
-                <View style={styles.subtaskBox} />
-              </View>
-              <TextField
-                ref={newSubtaskInputRef}
-                style={styles.subtaskInput}
-                value={newSubtaskTitle}
-                onChangeText={setNewSubtaskTitle}
-                placeholder="Add subtask"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={TITLE_MAX_LENGTH}
-                returnKeyType="next"
-                // Adding subtasks is a burst, not one edit: submitting keeps
-                // the field focused so the keyboard never drops between them.
-                // This used to blur on submit and refocus on a 50ms timer,
-                // which dismissed and reopened the keyboard on every entry.
-                blurOnSubmit={false}
-                onSubmitEditing={() => {
-                  commitSubtask(newSubtaskTitle);
-                  setNewSubtaskTitle('');
-                }}
-                onBlur={() => commitPendingSubtask()}
-              />
-            </View>
-          </CollapsibleField>
-      </View>
-      )}
-
-      {/* The heading has to answer for its own rows: simplified mode takes the
-          Effort row away, and a card headed "Priority & effort" with only a
-          Priority row in it names a field that isn't there. `EditorGroup` can
-          drop a row but it can't rename the group around it, so the one group
-          whose label lists its contents says so here. */}
-      <EditorGroup
-        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
-        divider="full"
-        searchTerms={searchTerms}
-        onMatchCount={reportMatches}
-        rows={[
-          {
-            key: 'priority', label: 'Priority',
-            keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Priority"
-            summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-            hint="Ranks the task against everything else on Today."
-            expanded={fieldOpen('priority')}
-            onToggle={() => toggleField('priority')}
-          >
-            <SegmentedControl
-              label="Priority"
-              value={priority}
-              onChange={p => { setPriority(p); closeField('priority'); }}
-              // Five with "Medium" among them doesn't fit one row once each
-              // carries a dot; 3 + 2 does, and keeps every cell the same width.
-              columns={3}
-              options={PRIORITY_SEGMENTS}
-            />
-          </CollapsibleField>
-              </>
-            ),
-          },
-          {
-            key: 'effort', label: 'Effort', set: !!effort,
-            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Effort"
-            summary={effortSummary}
-            emptySummary="Not set"
-            hint="Roughly how long this takes, so a day's list can be sized realistically."
-            expanded={fieldOpen('effort')}
-            onToggle={() => toggleField('effort')}
-          >
-            <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                const active = !customEffortActive && effort === e;
-                const presetMins = EFFORT_MINUTES[e];
-                return (
-                  <TouchableOpacity
-                    key={e}
-                    style={[styles.pill, active && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
-                  >
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {presetMins != null ? (
-                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
-              <TouchableOpacity
-                style={[styles.pill, customEffortActive && styles.pillCustomActive]}
-                onPress={openCustomEffort}
-              >
-                {customEffortActive && estimatedMinutes != null ? (
-                  <View style={styles.pillCustomInner}>
-                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
-                    <Text style={styles.pillCustomText}>{formatDuration(estimatedMinutes)}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.pillText}>Custom</Text>
-                )}
-                <Text style={styles.pillHint}>exact</Text>
-              </TouchableOpacity>
-            </View>
-            {customEffortOpen && (
-              <View style={styles.customEffortRow}>
-                <TextField
-                  style={[styles.customEffortInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
-                  value={customEffortText}
-                  onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
-                  keyboardType="number-pad"
-                  placeholder="Amount"
-                  placeholderTextColor={colors.textTertiary}
-                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                  autoFocus
-                />
-                <View style={styles.unitToggle}>
-                  <SegmentedControl
-                    label="Effort unit"
-                    value={customEffortUnit}
-                    onChange={u => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
-                    options={DURATION_UNIT_SEGMENTS}
+                  <Ionicons
+                    name="airplane-outline"
+                    size={18}
+                    color={deliverableSetsAway ? colors.accent : colors.textSecondary}
                   />
-                </View>
-              </View>
-            )}
-          </CollapsibleField>
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
+                    <Text style={styles.optionHint}>
+                      The date you answer becomes the project's Leaving date, if it doesn't have one yet
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              )}
               </>
             ),
           },
-          // Only the coin rules read it, so it's offered only while they run:
-          // a rating that changes nothing on screen is a question with no
-          // answer. A rating set earlier stays put while rewards are off.
-          ...(rewardsEnabled && polarity !== 'negative' ? [{
-            key: 'difficulty', label: 'Difficulty', set: difficulty !== null,
-            keywords: ['hard', 'easy', 'dread', 'avoid', 'coins', 'reward', 'aversion'],
-            node: (
-              <>
-          <CollapsibleField
-            label="Difficulty"
-            summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
-            emptySummary="Not set"
-            hint={DIFFICULTY_HINT}
-            expanded={fieldOpen('difficulty')}
-            onToggle={() => toggleField('difficulty')}
-          >
-            <SegmentedControl
-              label="Difficulty"
-              value={difficulty}
-              onChange={d => { setDifficulty(d); closeField('difficulty'); }}
-              options={DIFFICULTY_PICKER_SEGMENTS}
-            />
-          </CollapsibleField>
-              </>
-            ),
-          }] : []),
+          // Another "what does completing this mean" question, and — like
+          // deliverable above — not gated on any other field: it answers to
+          // completion itself, not to a deadline the way the calendar toggle
+          // in the Schedule group does.
           {
-            key: 'pin', label: 'Pin to Today',
-            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
+            key: 'logCompletionToCalendar', label: 'Log to calendar',
+            keywords: ['calendar', 'event', 'log', 'history', 'record'],
             node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setPinned(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Pin to Today"
-              accessibilityState={{ checked: pinned }}
-            >
-              <PinIcon filled={pinned} size={18} color={pinned ? colors.orangeText : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Pin to Today</Text>
-                <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
-              </View>
-              <View style={[styles.toggle, pinned && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            {recurrenceType !== 'none' && (
               <TouchableOpacity
                 style={styles.optionRow}
-                onPress={() => { haptics.tap(); setPinEachOccurrence(v => !v); }}
+                onPress={() => {
+                  haptics.tap();
+                  // With no calendar named yet the row asks for one rather
+                  // than doing nothing. It used to send the reader to
+                  // Settings, which from a sheet guarding unsaved edits meant
+                  // abandoning the task to follow the instruction.
+                  if (!completionCalendarId) { setCalendarPickerFor('completion'); return; }
+                  setLogCompletionToCalendar(v => !v);
+                }}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="switch"
-                accessibilityLabel="Pin every occurrence"
-                accessibilityState={{ checked: pinEachOccurrence }}
+                accessibilityRole={completionCalendarId ? 'switch' : 'button'}
+                accessibilityLabel="Log this task's completion to your calendar"
+                accessibilityState={completionCalendarId ? { checked: logCompletionToCalendar } : {}}
               >
-                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orangeText : colors.textSecondary} />
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={logCompletionToCalendar ? colors.accent : colors.textSecondary}
+                />
                 <View style={styles.optionContent}>
-                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
-                  <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
+                  <Text style={styles.optionLabel}>Log to calendar</Text>
+                  <Text style={styles.optionHint}>
+                    {completionCalendarId
+                      ? 'A calendar event when you complete this task'
+                      : 'Pick a calendar to write to'}
+                  </Text>
                 </View>
-                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
-                </View>
+                {completionCalendarId ? (
+                  <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
+                  </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                )}
               </TouchableOpacity>
-            )}
-              </>
             ),
           },
-          ...(rewardsEnabled && task && (isBountyLive(task) || canPostBounty(task)) && polarity !== 'negative' ? [{
-            key: 'bounty', label: 'Bounty',
-            keywords: ['reward', 'coins', 'dread', 'procrastinate', 'putting off', 'incentive', 'bonus'],
-            node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => {
-                if (!bounty && !isBountyLive(task)) {
-                  // The slot check is made here, where the switch is, rather
-                  // than refused silently on save.
-                  const taken = liveBountyCount(useTaskStore.getState().tasks);
-                  if (taken >= bountyLimit) {
-                    haptics.warning();
-                    Alert.alert(
-                      bountyLimit === 1 ? 'You already have a bounty out' : `You already have ${taken} bounties out`,
-                      'Finish or withdraw one first, or allow more on the Rewards screen.',
-                    );
-                    return;
-                  }
-                }
-                haptics.tap();
-                setBounty(v => !v);
-              }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Bounty"
-              accessibilityState={{ checked: bounty }}
-            >
-              <CoinIcon size={18} color={bounty ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Bounty</Text>
-                <Text style={styles.optionHint}>
-                  {bounty && isBountyLive(task)
-                    ? describeBounty(task)
-                    : bounty
-                      ? `+${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done. Each time it's moved to a later day, the bounty gets smaller.`
-                      : 'Extra coins for a task you keep putting off. Worth the most if you do it before moving it again.'}
-                </Text>
-              </View>
-              <View style={[styles.toggle, bounty && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, bounty && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-              </>
-            ),
-          }] : []),
+          // A third "what does completing this mean" question, same family as
+          // the calendar toggle right above — opt-in, gated on a Settings
+          // switch it can't turn on for itself, same disabled/hint shape.
+          // A metric-and-number pair rather than a toggle, unlike the
+          // calendar row: the calendar event's content is fixed (the task's
+          // own title), but "how much of what" has no single obvious answer
+          // to bake in — this used to log dietary water only.
           {
-            key: 'excludeFromSuggestions', label: 'Skip in suggestions',
-            keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
+            key: 'logHealthValue', label: 'Log to Health',
+            set: logHealthMetric !== null && logHealthAmount !== null,
+            keywords: ['water', 'hydration', 'drink', 'health', 'apple health', 'nutrient', 'protein', 'sodium', 'calories', 'sugar', 'fiber', 'fat', 'carbs', 'caffeine'],
+            node: (() => {
+              // Water is the one nutrient with a second unit worth offering —
+              // nobody asks for a stepper in fl oz of sodium. logHealthAmount
+              // stays in ml regardless (see waterLogUnit above); this only
+              // decides what the stepper displays and steps in.
+              const isWater = (logHealthMetric ?? 'waterMl') === 'waterMl';
+              const useFlOz = isWater && waterLogUnit === 'flOz';
+              const range = useFlOz ? LOG_HEALTH_WATER_FL_OZ_STEPS : LOG_HEALTH_VALUE_STEPS[logHealthMetric ?? 'waterMl'];
+              const unitLabel = useFlOz ? 'fl oz' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].unit;
+              const isSet = logHealthMetric !== null && logHealthAmount !== null;
+              return (
+                <CollapsibleField
+                  label="Log to Health"
+                  summary={
+                    isSet
+                      ? `${useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount}${useFlOz ? ' ' : ''}${unitLabel} of ${NUTRIENT_LABEL[logHealthMetric].label.toLowerCase()} ${targetCount !== null ? 'per unit logged' : 'when completed'}`
+                      : undefined
+                  }
+                  hint={
+                    healthWriteEnabled
+                      ? targetCount !== null
+                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.`
+                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you complete this task.`
+                      : 'Turn on writing to Health in Settings › Health first'
+                  }
+                  expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
+                  onToggle={() => { if (!healthWriteEnabled) return; toggleField('logHealthValue'); }}
+                  // Turning this off used to mean holding − on the amount
+                  // stepper all the way down past its floor — real, but not
+                  // discoverable, especially from a large amount. This mirrors
+                  // EditorRow's onClear (a close-circle beside the value) for
+                  // the fields built on that component instead of this one.
+                  right={isSet ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setLogHealthAmount(null);
+                        closeField('logHealthValue');
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear log to health"
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : undefined}
+                >
+                  <ChoiceMenuChip
+                    variant="field"
+                    name="TaskEditor nutrient menu"
+                    noun="Nutrient"
+                    groups={LOG_NUTRIENT_GROUPS}
+                    selectedKey={logHealthMetric ?? 'waterMl'}
+                    onSelect={key => {
+                      const next = key as NutrientKey;
+                      haptics.tap();
+                      setLogHealthMetric(next);
+                      // Re-defaulted rather than carried over, same reasoning
+                      // the health-target metric switch above uses: 250 of
+                      // whatever the old metric was is not a meaningful amount
+                      // of the new one, so switching starts back at one step.
+                      setLogHealthAmount(LOG_HEALTH_VALUE_STEPS[next].step);
+                    }}
+                  />
+                  <View style={styles.logHealthAmountRow}>
+                    <CountStepper
+                      value={logHealthAmount === null ? null : (useFlOz ? Math.round(mlToFlOz(logHealthAmount)) : logHealthAmount)}
+                      onChange={next => {
+                        const ml = next === null ? null : (useFlOz ? Math.round(flOzToMl(next)) : next);
+                        setLogHealthAmount(ml);
+                        // Stepping up from Off before ever touching the picker
+                        // above still has to turn the row on for some metric —
+                        // water, the same default this feature started as.
+                        if (ml !== null && logHealthMetric === null) setLogHealthMetric('waterMl');
+                      }}
+                      min={range.step}
+                      max={range.max}
+                      step={range.step}
+                      allowNull
+                      emptyLabel="Off"
+                      label="Log to Health"
+                      format={n => (useFlOz ? `${n} fl oz` : `${n}${unitLabel}`)}
+                      describeValue={n => (n === null ? 'off' : `${n} ${useFlOz ? 'fluid ounces' : unitLabel}`)}
+                    />
+                    {isWater && (
+                      <View style={styles.pillRow}>
+                        {(['ml', 'flOz'] as const).map(u => {
+                          const active = waterLogUnit === u;
+                          return (
+                            <TouchableOpacity
+                              key={u}
+                              style={[styles.pill, active && styles.pillActiveNeutral]}
+                              onPress={() => { haptics.tap(); setWaterLogUnit(u); }}
+                              activeOpacity={interaction.activeOpacity}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: active }}
+                              accessibilityLabel={u === 'ml' ? 'Milliliters' : 'Fluid ounces'}
+                            >
+                              <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                                {u === 'ml' ? 'ml' : 'fl oz'}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                  {followsWaterTarget && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setFollowWaterTarget(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Follow the water target"
+                      accessibilityState={{ checked: followWaterTarget }}
+                    >
+                      <Ionicons name="water-outline" size={18} color={followWaterTarget ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Follow the water target</Text>
+                        <Text style={styles.optionHint}>
+                          Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </CollapsibleField>
+              );
+            })(),
+          },
+          // The fourth "what does completing this mean" row, and the closest
+          // relative of the Health one right above: a name-and-amount pair
+          // that turns a completion into a quantity recorded elsewhere. It
+          // needs no Settings switch, because what it writes is the app's own
+          // log rather than somebody else's database.
+          //
+          // Nothing is asked at the tick — the dose is what this row already
+          // says it is. That is the whole point: a repeating task carrying a
+          // medication *is* how a scheduled dose gets logged here, so asking
+          // again would be recording the same fact twice. See
+          // docs/arch/mood-log.md.
+          {
+            key: 'medication', label: 'Log a dose', set: medicationName !== null,
+            keywords: ['medication', 'medicine', 'pill', 'tablet', 'dose', 'drug', 'supplement', 'vitamin', 'mg', 'prescription'],
             node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setExcludeFromSuggestions(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Skip in suggestions"
-              accessibilityState={{ checked: excludeFromSuggestions }}
-            >
-              <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Skip in suggestions</Text>
-                <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
-              </View>
-              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-              </>
+              <CollapsibleField
+                label="Log a dose"
+                summary={
+                  medicationName
+                    ? [medicationName, resolveMedicationAmount() !== null ? `${resolveMedicationAmount()} ${medicationUnit}` : null]
+                        .filter(Boolean).join(', ')
+                    : undefined
+                }
+                hint="Records a dose in your medication log each time you complete this task. Unchecking it takes the dose back."
+                expanded={fieldOpen('medication')}
+                onToggle={() => toggleField('medication')}
+              >
+                <TextField
+                  style={styles.fieldBox}
+                  value={medicationName ?? ''}
+                  onChangeText={text => setMedicationName(text || null)}
+                  placeholder="e.g. Sertraline"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={MEDICATION_NAME_MAX_LENGTH}
+                  returnKeyType="done"
+                  accessibilityLabel="What this task records a dose of"
+                />
+                {/* Picking one of these is what makes it the *same* medication
+                    as an earlier dose — medicationKey does no fuzzy matching
+                    (see docs/arch/mood-log.md), so retyping "Sertraline" as
+                    "sertraline" would otherwise split one medicine's history
+                    into two untallied entries. */}
+                {medicationSuggestions.length > 0 && (
+                  <PillGroup
+                    noun="medication"
+                    surface="card"
+                    options={medicationSuggestions.map(name => ({
+                      key: medicationKey(name),
+                      label: name,
+                      selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                      onPress: () => { haptics.tap(); setMedicationName(name); },
+                    }))}
+                  />
+                )}
+                {/* Hidden until there's something to be the amount *of*, the
+                    same rule the daily target's unit field follows: on its own
+                    it labels nothing. */}
+                {medicationName !== null && (
+                  <>
+                    <DoseAmountField
+                      name="TaskEditor dose unit menu"
+                      style={styles.medicationAmountInput}
+                      amount={medicationAmount}
+                      onChangeAmount={setMedicationAmount}
+                      unit={medicationUnit}
+                      onChangeUnit={setMedicationUnit}
+                    />
+                  </>
+                )}
+              </CollapsibleField>
+            ),
+          },
+          // The fifth "what does completing this mean" row. Unlike the two
+          // above it never writes anything by itself — a plain task names no
+          // food and no amount, so completing it raises the same manual
+          // search-sheet offer a meal-plan task's own completion does (see
+          // offerMealLog in useTaskStore.ts), prefilled with this slot and
+          // the task's own title. It needs no Settings switch for the same
+          // reason the medication row above doesn't: picking a slot here is
+          // itself the opt-in.
+          {
+            key: 'logMealSlot', label: 'Log to food log', set: logMealSlot !== null,
+            keywords: ['food', 'meal', 'eat', 'nutrition', 'breakfast', 'lunch', 'dinner', 'snack', 'diet'],
+            node: (
+              <CollapsibleField
+                label="Log to food log"
+                summary={logMealSlot ? `Offers to log ${MEAL_SLOT_LABELS[logMealSlot].toLowerCase()} when completed` : undefined}
+                hint="Offers to add an entry to your food log, for the slot below, each time you complete this task."
+                expanded={fieldOpen('logMealSlot')}
+                onToggle={() => toggleField('logMealSlot')}
+                right={logMealSlot !== null ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.tap();
+                      setLogMealSlot(null);
+                      closeField('logMealSlot');
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear log to food log"
+                  >
+                    <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : undefined}
+              >
+                <SegmentedControl<MealSlot>
+                  options={MEAL_SLOTS.map(slot => ({ value: slot, label: MEAL_SLOT_LABELS[slot] }))}
+                  value={logMealSlot ?? 'breakfast'}
+                  onChange={next => { haptics.tap(); setLogMealSlot(next); }}
+                  columns={2}
+                  label="Meal"
+                  surface="card"
+                />
+              </CollapsibleField>
             ),
           },
         ]}
       />
+
       {/* Ways to act on the task from its row, rather than things about the
           task itself — the one group here whose rows produce a button on the
           list rather than changing how the task behaves. */}
@@ -7021,39 +7109,14 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* Vacation pause sits with the streak rather than under a general
-          "More", because keeping a streak alive through a week away is what
-          it's for. */}
+      {/* Streaks — a task that repeats, once it has one. Vacation pause used to sit here because
+          keeping a streak alive through a week away is what it is for, but it applies to every task, so it
+          is in Organize now. */}
       <EditorGroup
         label="Streaks"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
-          {
-            key: 'vacation', label: 'Vacation pause', set: vacationPause,
-            keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
-            node: (
-              <>
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Vacation pause"
-              accessibilityState={{ checked: vacationPause }}
-            >
-              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Vacation pause</Text>
-                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
-              </View>
-              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-              </>
-            ),
-          },
           ...(task && task.recurrenceType !== 'none' ? [{
             key: 'streak', label: 'Streak', set: task.streakCount > 0,
             keywords: ['run', 'days in a row', 'count'],

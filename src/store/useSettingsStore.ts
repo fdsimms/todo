@@ -130,7 +130,9 @@ import { parseTransitLines } from '../utils/transitAlerts';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
-import { DEFAULT_MOOD_NUDGE_AFTER_DAYS } from '../utils/moodTasks';
+import {
+  DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
+} from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
@@ -623,6 +625,12 @@ interface SettingsStore {
    * redundant hasn't thereby said they know the app has a meal plan.
    */
   tipsEnabled: boolean;
+  /**
+   * The first-run questions were answered or skipped on this device
+   * (`src/utils/firstRun.ts`). Progress rather than a preference, so a settings
+   * reset leaves it alone, and not synced: it is a fact about this install.
+   */
+  firstRunDone: boolean;
   /**
    * Tip ids already dismissed or marked read. Progress rather than a
    * preference, so it stays out of DEFAULT_SETTINGS/resetToDefaults for the
@@ -1880,6 +1888,7 @@ interface SettingsStore {
   setHideHelpText: (on: boolean) => void;
   setMirroringMode: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
+  setFirstRunDone: (done: boolean) => void;
   /**
    * Records a tip as promoted, which spends that logical day's one slot.
    *
@@ -2589,6 +2598,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mirroringMode: false,
   tipsEnabled: true,
   seenTips: [],
+  firstRunDone: false,
   lastTipShown: null,
   timerLiveActivity: true,
   tripLiveActivity: true,
@@ -3264,6 +3274,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // `!== 'false'`, same as postponeCheckEnabled above: defaults on, so an
     // install that predates the setting gets tips rather than silence.
     const tipsEnabled = dbGetSetting('tipsEnabled') !== 'false';
+    const firstRunDone = dbGetSetting('firstRunDone') === 'true';
     // Both stored as JSON, and both fall back to "nothing seen yet" on a parse
     // failure rather than throwing. The cost of getting this wrong is one
     // extra tip, which is the right way round to fail.
@@ -3406,6 +3417,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       filterEfforts,
       filterHasReminder,
       filterPriorities,
+      firstRunDone,
       focusBreaksEnabled,
       focusDefaultWorkMinutes,
       focusHideTimers,
@@ -4312,8 +4324,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   // Floored at 1: a nudge after zero low days would fire on any day with a
   // mood on it at all, which is not what any answer to this question means.
+  // Capped at two weeks, the longest run the setting row offers.
   setMoodNudgeAfterDays(days: number) {
-    const clamped = Math.max(1, Math.round(days));
+    const clamped = Math.min(MOOD_NUDGE_AFTER_DAYS_MAX, Math.max(MOOD_NUDGE_AFTER_DAYS_MIN, Math.round(days)));
     dbSetSetting('moodNudgeAfterDays', String(clamped));
     set({ moodNudgeAfterDays: clamped });
   },
@@ -4601,6 +4614,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTipsEnabled(on: boolean) {
     dbSetSetting('tipsEnabled', on ? 'true' : 'false');
     set({ tipsEnabled: on });
+  },
+
+  setFirstRunDone(done: boolean) {
+    dbSetSetting('firstRunDone', done ? 'true' : 'false');
+    set({ firstRunDone: done });
   },
 
   // Separate from markTipSeen because they answer different questions: this

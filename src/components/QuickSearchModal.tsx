@@ -103,7 +103,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const { task, titleMatches, projectName, projectMatches, occurrenceCount } = result;
+  const { task, titleMatches, projectName, projectMatches, notesExcerpt, occurrenceCount } = result;
   const categories = useCategoryStore(s => s.categories);
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
@@ -191,6 +191,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
           task.category ? `in ${task.category}` : null,
           task.archived ? 'archived' : null,
           task.completed ? 'completed' : null,
+          notesExcerpt ? `matches in notes: ${notesExcerpt.text}` : null,
           dateLabel,
           hoursUnlock ? `unlocks ${hoursUnlock}` : null,
           quotaNext ? `next ${quotaNext}` : null,
@@ -221,6 +222,21 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
                 <Text style={styles.countText}>{countLabel}</Text>
               </View>
             )}
+          </View>
+        )}
+        {/* Only when the notes are why this row is here: a title or project
+            match is already highlighted above. Its own line, since it is the
+            longest thing on the row and would otherwise squeeze the meta. */}
+        {notesExcerpt && (
+          <View style={styles.notesMatch}>
+            <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <HighlightedText
+              text={notesExcerpt.text}
+              ranges={notesExcerpt.ranges}
+              style={styles.notesMatchText}
+              highlightStyle={styles.metaHighlight}
+              numberOfLines={1}
+            />
           </View>
         )}
       </TouchableOpacity>
@@ -749,6 +765,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
   metaHighlight: { color: colors.accent, fontWeight: fontWeight.semibold },
+  notesMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    marginTop: 2,
+  },
+  notesMatchText: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
   // Dots rather than the Search screen's bare gaps: that row separates its
   // parts with an icon, coloured tag dots and a "Due" prefix, and this one has
   // none of those, so "Home Friday" would read as one phrase.

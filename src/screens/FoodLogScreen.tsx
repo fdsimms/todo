@@ -100,7 +100,7 @@ import { SelectionDot } from '../components/SelectionDot';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { CountStepper } from '../components/CountStepper';
-import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { LazySheet } from '../components/LazySheet';
 
@@ -170,6 +170,7 @@ export function FoodLogScreen() {
   const screenSettings = useScreenSettings('FoodLog', 'Food log settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
+  const fabBottom = useFabBottom();
   const route = useRoute<{
     key: string;
     name: string;
@@ -1276,7 +1277,7 @@ export function FoodLogScreen() {
           <ReorderableList
             data={listItems}
             keyExtractor={foodListItemKey}
-            scrollToTop={{ bottom: tabBarHeight + spacing.md }}
+            scrollToTop={{ bottom: fabBottom }}
             scrollControlRef={foodScrollControl}
             // A paint gesture owns the touch for its duration, same reason
             // every other selectable list turns scrolling off for one, and
@@ -1356,7 +1357,6 @@ export function FoodLogScreen() {
           slotByKey={dropTargetsByKey}
           onPress={() => { setAddingSlot(guessedSlot); setAddOpen(true); }}
           accessibilityLabel="Log something you ate"
-          bottom={tabBarHeight + spacing.md}
           drag={fabDrag}
           dragHint="Drag onto a meal to log food there, or back to the button to cancel"
         />

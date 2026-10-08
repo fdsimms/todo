@@ -17,8 +17,13 @@ import { collapseOccurrences, type CollapsedOccurrence } from './searchCollapse'
  */
 export const QUICK_SEARCH_LIMIT = 7;
 
-/** Per word: an exact substring hit scores at least 100 in `scoreSubstring` (a scattered-letters hit tops out at 60), and stacks and projects double their title score. */
-const EXACT_TITLE_SCORE = 200;
+/**
+ * Per word: a hit at the start of the title or of one of its words scores at
+ * least 130 in `scoreSubstring` (mid-word 100, scattered letters 60 at most),
+ * and stacks and projects double their title score. A mid-word hit ("lo" in
+ * "Cardiologist") is deliberately below the line.
+ */
+const EXACT_TITLE_SCORE = 260;
 
 export interface QuickSearchOutcome {
   /** Stack matches, capped to whatever's left of `limit`. */

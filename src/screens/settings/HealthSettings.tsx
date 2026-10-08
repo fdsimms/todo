@@ -17,8 +17,8 @@ import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { formatWeight } from '../../utils/weightLog';
 import { goalDirection } from '../../utils/weightGoal';
-import { SLEEP_GOAL_RANGE, formatSleepDuration } from '../../utils/sleepLog';
-import { CountStepper } from '../../components/CountStepper';
+import { formatSleepDuration } from '../../utils/sleepLog';
+import { SleepGoalSheet } from '../../components/SleepGoalSheet';
 import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -101,7 +101,7 @@ export function HealthSettings() {
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
   const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const sleepGoalMinutes = useSettingsStore(s => s.sleepGoalMinutes);
-  const setSleepGoalMinutes = useSettingsStore(s => s.setSleepGoalMinutes);
+  const [sleepGoalOpen, setSleepGoalOpen] = useState(false);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -522,24 +522,12 @@ export function HealthSettings() {
         label="Sleep goal"
         hint="Hours asleep you want each day to reach."
         value={sleepGoalMinutes === null ? 'None' : formatSleepDuration(sleepGoalMinutes)}
-        tight
+        onPress={() => { haptics.tap(); setSleepGoalOpen(true); }}
       />
-      <View style={styles.cadenceRow}>
-        <CountStepper
-          value={sleepGoalMinutes}
-          onChange={next => setSleepGoalMinutes(next)}
-          min={SLEEP_GOAL_RANGE.min}
-          max={SLEEP_GOAL_RANGE.max}
-          step={SLEEP_GOAL_RANGE.step}
-          start={SLEEP_GOAL_RANGE.start}
-          allowNull
-          emptyLabel="None"
-          format={formatSleepDuration}
-          label="sleep goal"
-          describeValue={n => (n === null ? 'No sleep goal' : formatSleepDuration(n))}
-        />
-      </View>
     </SettingsSection>
+    {/* The sheet the Sleep screen's own target icon opens, not a second
+        stepper for the same number. */}
+    <SleepGoalSheet visible={sleepGoalOpen} onClose={() => setSleepGoalOpen(false)} />
     </>
   );
 }

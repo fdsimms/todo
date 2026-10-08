@@ -1,9 +1,10 @@
 import {
   parseTaskFieldDefaults, parseGeneratedTaskDefaults, serializeTaskFieldDefaults, hasTaskFieldDefaults,
   resolveFieldDefaults, seedTaskFields, existingTaskPatch, tasksNeedingDefaults, describeTaskFieldDefaults,
+  previewSeededFields, previewCategoryDefault,
   backfillGroupKey, backfillGroupMembers, NO_TASK_FIELD_DEFAULTS, defaultsFromAnswer, defaultsDiffer,
 } from '../utils/taskFieldDefaults';
-import type { Task, TaskFieldDefaults } from '../types';
+import type { Effort, Priority, Task, TaskFieldDefaults } from '../types';
 
 const task = (over: Partial<Task> = {}): Task => ({
   id: 't1', title: 'T', parentId: null, completed: false, archived: false, polarity: 'positive',
@@ -118,6 +119,40 @@ describe('seedTaskFields', () => {
   it('does not rate an avoid-habit', () => {
     const group: TaskFieldDefaults = { priority: null, difficulty: 'hard', effort: null };
     expect(seedTaskFields({}, group, { ...NO_GLOBAL, difficulty: 'easy' }, true).difficulty).toBeNull();
+  });
+});
+
+describe('previewSeededFields', () => {
+  it('reads the project default ahead of the global one', () => {
+    const project: TaskFieldDefaults = { priority: 3, difficulty: null, effort: null };
+    expect(previewSeededFields(project, { ...NO_GLOBAL, priority: 1 as Priority, effort: 2 as Effort }, false))
+      .toEqual({ priority: 3, effort: 2 });
+  });
+
+  it('falls back to none when nothing answers', () => {
+    expect(previewSeededFields(null, NO_GLOBAL, false)).toEqual({ priority: 0, effort: 0 });
+  });
+
+  it('agrees with what seedTaskFields writes for an unanswered draft', () => {
+    const project: TaskFieldDefaults = { priority: null, difficulty: null, effort: 4 };
+    const global = { ...NO_GLOBAL, priority: 2 as Priority };
+    const seeded = seedTaskFields({}, resolveFieldDefaults(project), global, false);
+    expect(previewSeededFields(project, global, false)).toEqual({ priority: seeded.priority, effort: seeded.effort });
+  });
+
+  it('is what an explicit 0 from the draft would have blocked', () => {
+    // The reason the editor leaves an untouched row out of the draft: a 0 sent
+    // with it is an answer and beats every default behind it.
+    expect(seedTaskFields({ priority: 0 }, NO_TASK_FIELD_DEFAULTS, { ...NO_GLOBAL, priority: 3 as Priority }, false).priority).toBe(0);
+    expect(seedTaskFields({}, NO_TASK_FIELD_DEFAULTS, { ...NO_GLOBAL, priority: 3 as Priority }, false).priority).toBe(3);
+  });
+});
+
+describe('previewCategoryDefault', () => {
+  it('prefers the project default, then Settings, then none', () => {
+    expect(previewCategoryDefault('Work', 'Home')).toBe('Work');
+    expect(previewCategoryDefault(null, 'Home')).toBe('Home');
+    expect(previewCategoryDefault(undefined, undefined)).toBeNull();
   });
 });
 

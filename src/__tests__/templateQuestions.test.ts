@@ -19,8 +19,12 @@ import {
   personIdsFromAnswer,
   personIdsToAnswer,
   personIdsForAnswers,
+  answerValues,
+  encodeAnswerValues,
+  toggleAnswer,
+  displayOptions,
 } from '../utils/templateQuestions';
-import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree } from '../utils/templateUtils';
+import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree, substitutePlaceholders } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateItem, TemplateQuestion } from '../types';
 
 const makeQuestion = (overrides: Partial<TemplateQuestion> = {}): TemplateQuestion => ({
@@ -462,5 +466,86 @@ describe('item variants', () => {
     } as unknown as Partial<TemplateItem>);
     expect(n.variants).toEqual([{ questionId: 'q', answer: 'A', title: 'x' }]);
     expect(normalizeTemplateItem({}).variants).toEqual([]);
+  });
+});
+
+const NO_DATES = { start: null, end: null };
+
+describe('a question that takes several answers', () => {
+  const trip = makeQuestion({ options: ['Work', 'Beach', 'Outdoors', 'Camping'], multiple: true });
+
+  it('reads a stored answer as its set, and a plain one as itself', () => {
+    expect(answerValues('')).toEqual([]);
+    expect(answerValues('Work')).toEqual(['Work']);
+    expect(answerValues('["Work","Beach"]')).toEqual(['Work', 'Beach']);
+    // An option that merely starts with a bracket is still just itself.
+    expect(answerValues('[draft] Work')).toEqual(['[draft] Work']);
+    expect(encodeAnswerValues([])).toBe('');
+  });
+
+  it('starts on the first option, like any choice', () => {
+    expect(answerValues(defaultAnswer(trip, NO_DATES))).toEqual(['Work']);
+    expect(defaultAnswer({ ...trip, multiple: false }, NO_DATES)).toBe('Work');
+  });
+
+  it('toggles a pick in the question\'s own option order, and keeps the last one', () => {
+    let answer = defaultAnswer(trip, NO_DATES);
+    answer = toggleAnswer(trip, answer, 'Camping');
+    answer = toggleAnswer(trip, answer, 'Beach');
+    expect(answerValues(answer)).toEqual(['Work', 'Beach', 'Camping']);
+    answer = toggleAnswer(trip, answer, 'Work');
+    answer = toggleAnswer(trip, answer, 'Beach');
+    expect(answerValues(answer)).toEqual(['Camping']);
+    expect(toggleAnswer(trip, answer, 'Camping')).toBe(answer);
+  });
+
+  it('a single-answer choice still just takes the tapped option', () => {
+    expect(toggleAnswer({ ...trip, multiple: false }, 'Work', 'Beach')).toBe('Beach');
+  });
+
+  it('matches a condition on any picked answer, and a variant on any too', () => {
+    const answers = { [trip.id]: encodeAnswerValues(['Beach', 'Camping']) };
+    const camping = makeItem({ conditions: [{ questionId: trip.id, values: ['Camping', 'Winter'] }] });
+    const work = makeItem({ conditions: [{ questionId: trip.id, values: ['Work'] }] });
+    expect(itemMatchesAnswers(camping, [trip], answers)).toBe(true);
+    expect(itemMatchesAnswers(work, [trip], answers)).toBe(false);
+    const withVariant = makeItem({ variants: [{ questionId: trip.id, answer: 'Camping', title: 'Pack tent' }] });
+    expect(applyItemVariant(withVariant, answers).title).toBe('Pack tent');
+  });
+
+  it('fills a title with the picks joined, never the stored JSON', () => {
+    const answers = { [trip.id]: encodeAnswerValues(['Work', 'Beach']) };
+    expect(substitutePlaceholders('Packing for {trip type}', placeholderValuesFor([trip], answers))).toBe('Packing for Work, Beach');
+    // One pick reads as itself.
+    expect(substitutePlaceholders('{trip type}', { 'trip type': encodeAnswerValues(['Work']) })).toBe('Work');
+  });
+
+  it('lets a count switch match any pick', () => {
+    const values = (picks: string[]) => placeholderValuesFor([trip], { [trip.id]: encodeAnswerValues(picks) });
+    const token = 'Pack {trip type = camping ? 2 : 4} layers';
+    expect(substitutePlaceholders(token, values(['Beach', 'Camping']))).toBe('Pack 2 layers');
+    expect(substitutePlaceholders(token, values(['Camping']))).toBe('Pack 2 layers');
+    expect(substitutePlaceholders(token, values(['Work', 'Beach']))).toBe('Pack 4 layers');
+  });
+
+  it('is only ever a choice, and survives normalizing', () => {
+    expect(normalizeTemplateQuestion({ kind: 'choice', multiple: true }).multiple).toBe(true);
+    expect(normalizeTemplateQuestion({ kind: 'number', multiple: true }).multiple).toBe(false);
+    expect(normalizeTemplateQuestion({}).showForecast).toBe(false);
+    expect(normalizeTemplateQuestion({ showForecast: true }).showForecast).toBe(true);
+  });
+});
+
+describe('displayOptions', () => {
+  it('always shows a Yes/No pair as Yes then No, leaving the default alone', () => {
+    const flipped = makeQuestion({ options: ['No', 'Yes'] });
+    expect(displayOptions(flipped)).toEqual(['Yes', 'No']);
+    expect(defaultAnswer(flipped, NO_DATES)).toBe('No');
+    expect(displayOptions(makeQuestion({ options: ['yes', 'no'] }))).toEqual(['yes', 'no']);
+  });
+
+  it('leaves every other set in the author\'s order', () => {
+    expect(displayOptions(makeQuestion({ options: ['No', 'Maybe'] }))).toEqual(['No', 'Maybe']);
+    expect(displayOptions(makeQuestion({ options: ['Work', 'Beach', 'City'] }))).toEqual(['Work', 'Beach', 'City']);
   });
 });

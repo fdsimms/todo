@@ -19,7 +19,7 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
-import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -70,6 +70,7 @@ function AddTemplateFabWithDropLabel({
 
 export function TemplatesScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -292,7 +293,7 @@ export function TemplatesScreen() {
         // to be told directly (see PaintSelectionProvider).
         scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
-        scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+        scrollToTop={{ bottom: fabBottom }}
         onReorder={data => {
           const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
@@ -368,7 +369,6 @@ export function TemplatesScreen() {
           channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add template"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
           dragHint="Drag onto the list to add a template there, or back to the button to cancel"
         />
@@ -423,7 +423,7 @@ export function TemplatesScreen() {
       {templateAppliedCount !== null && (
         <TemplateAppliedToast
           count={templateAppliedCount}
-          bottom={insets.bottom + tabBarHeight + FAB_SIZE + spacing.md}
+          bottom={fabBottom + FAB_SIZE + spacing.md}
           onDismiss={() => setTemplateAppliedCount(null)}
         />
       )}

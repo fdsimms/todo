@@ -62,6 +62,10 @@ export const MOOD_NUDGE_TITLE = 'Plan something you enjoy this week';
  */
 export const DEFAULT_MOOD_NUDGE_AFTER_DAYS = 3;
 
+/** The range the setting row offers; below one day the nudge would fire on any day with a mood on it at all. */
+export const MOOD_NUDGE_AFTER_DAYS_MIN = 1;
+export const MOOD_NUDGE_AFTER_DAYS_MAX = 14;
+
 /**
  * The fewest days between two nudges.
  *

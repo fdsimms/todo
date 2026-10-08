@@ -68,7 +68,7 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
 
 describe('settings entry wiring', () => {
   it('renders a row carrying every entry id', () => {
-    const missing = SETTINGS_ENTRIES.filter(entry => {
+    const missing = SETTINGS_ENTRIES.filter(entry => !entry.screen).filter(entry => {
       const templated = TEMPLATED.find(t => t.test(entry.id));
       if (templated) return !source.includes(templated.template(entry.id));
       return !source.includes(`entryId="${entry.id}"`);

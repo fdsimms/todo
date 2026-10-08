@@ -18,6 +18,8 @@ import { CompletionCalendarSettings } from './settings/CompletionCalendarSetting
 import { MealCalendarSettings } from './settings/MealCalendarSettings';
 import { ClaudeCalendarSettings } from './settings/ClaudeCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
+import { FocusSettings } from './settings/FocusSettings';
+import { VacationTripsSettings } from './settings/VacationTripsSettings';
 import { HealthSettings } from './settings/HealthSettings';
 import { PermissionsSettings } from './settings/PermissionsSettings';
 import { KitchenSettings } from './settings/KitchenSettings';
@@ -87,14 +89,16 @@ export function SettingsGroupScreen() {
           {groupId === 'featureAreas' && <FeatureAreasSettings />}
           {groupId === 'appearance' && <AppearanceSettings />}
           {groupId === 'dayTime' && <DayTimeSettings />}
+          {groupId === 'dayTime' && <VacationTripsSettings />}
           {groupId === 'notifications' && <NotificationSettings />}
           {groupId === 'capture' && <RemindersCaptureSettings />}
-          {groupId === 'capture' && <CalendarSettings />}
-          {groupId === 'capture' && <DeadlineCalendarSettings />}
-          {groupId === 'capture' && <CompletionCalendarSettings />}
-          {groupId === 'capture' && kitchenEnabled && <MealCalendarSettings />}
-          {groupId === 'capture' && <ClaudeCalendarSettings />}
+          {groupId === 'calendar' && <CalendarSettings />}
+          {groupId === 'calendar' && <DeadlineCalendarSettings />}
+          {groupId === 'calendar' && <CompletionCalendarSettings />}
+          {groupId === 'calendar' && kitchenEnabled && <MealCalendarSettings />}
+          {groupId === 'calendar' && <ClaudeCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
+          {groupId === 'focus' && <FocusSettings />}
           {/* No 'generated' case: that group lives on the Automations screen
               (SettingsGroup.screen), so nothing routes it here. */}
           {/* No Platform check: the whole group is `iosOnly`, so the index

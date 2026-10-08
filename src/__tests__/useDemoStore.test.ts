@@ -1279,6 +1279,10 @@ describe('demo mode', () => {
     expect(varied[0].variants[0].questionId).toBe(choice.id);
     expect(choice.options).toContain(varied[0].variants[0].answer);
 
+    // A choice that takes several answers, and one that asks for the forecast.
+    expect(choice.multiple).toBe(true);
+    expect(asking.questions.some(q => q.kind === 'choice' && q.showForecast)).toBe(true);
+
     // And a people question — no name to fill a blank with, no options, no
     // default: normalizeTemplateQuestion forces all three empty for this kind.
     const who = asking.questions.find(q => q.kind === 'people')!;

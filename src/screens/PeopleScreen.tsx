@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -18,7 +18,16 @@ import { PersonEditor } from '../components/PersonEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { ContactPickerSheet } from '../components/ContactPickerSheet';
 import { TripPlannerSheet } from '../components/TripPlannerSheet';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, useFabBottom, type FabDragHandlers } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import type { DragScroller, FabDropIntent } from '../utils/fabDrop';
 import { SelectionDot } from '../components/SelectionDot';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
@@ -55,8 +64,23 @@ import { anyoneHasLocation } from '../utils/peopleLocations';
  * shows is whose birthday is coming up, which is a fact about a calendar rather
  * than a claim about a friendship.
  */
+// The add button, naming what a release right now would do.
+function AddPersonFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    if (intent?.kind === 'cancel') return 'Cancel';
+    return intent?.kind === 'insert' ? 'New person here' : null;
+  });
+  return <Fab {...props} dragLabel={label} />;
+}
+
 export function PeopleScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const route = useRoute<{ key: string; name: string; params?: { openPerson?: number; personId?: string } }>();
   const tabBarHeight = useBottomTabBarHeight();
@@ -166,9 +190,59 @@ export function PeopleScreen() {
 
   const today = getCurrentDayStart();
 
+  // ——— Dragging the add button into the list ———————————————————————————
+  //
+  // Same gesture as Templates and Projects: a drop means a spot in the hand
+  // order. Off while the list is sorted alphabetically, for the reason a row
+  // drag is: the visible order isn't the order a new person would be filed in,
+  // so a drop there is a plain add.
+
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  const scrollControl = useRef<DragScroller | null>(null);
+  const fabIntentChannel = useFabIntentChannel();
+  // The spot a drop asked for, read by `add` when the person is created.
+  const pendingDropRef = useRef<Extract<FabDropIntent, { kind: 'insert' }> | null>(null);
+
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' };
+      if (intent.kind === 'cancel') {
+        haptics.tap();
+        return;
+      }
+      pendingDropRef.current = intent.kind === 'insert' ? intent : null;
+      setQuickAddVisible(true);
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
+
   const add = (name: string) => {
     animateLayout();
-    return createPerson(name);
+    const person = createPerson(name);
+    const dropped = pendingDropRef.current;
+    pendingDropRef.current = null;
+    if (dropped) {
+      // Splice into the hand order the way a finished row drag would; the
+      // store's own list is read so the new person is already in it.
+      const order = usePersonStore.getState().people.filter(p => !p.archived && p.id !== person.id);
+      const anchor = order.findIndex(p => p.id === dropped.anchorKey);
+      if (anchor >= 0) {
+        const ids = order.map(p => p.id);
+        ids.splice(dropped.before ? anchor : anchor + 1, 0, person.id);
+        reorderPeople(ids);
+      }
+    }
+    return person;
   };
 
   return (
@@ -235,15 +309,21 @@ export function PeopleScreen() {
         />
       ) : (
         <PaintSelectionProvider {...paintProps}>
+          <FabDropZoneProvider
+            ref={dropZonesRef}
+            onIntentChange={fabIntentChannel.publish}
+            scroller={scrollControl}
+          >
           <ReorderableList
             data={visiblePeople}
             keyExtractor={p => p.id}
-            scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
+            scrollToTop={{ bottom: fabBottom }}
             contentContainerStyle={styles.list}
             // A paint gesture owns the touch for its duration — see the note in
             // PaintSelectionProvider on why the list can't be allowed to scroll
             // out from under it.
-            scrollEnabled={!painting}
+            scrollEnabled={!fabDragging && !painting}
+            scrollControlRef={scrollControl}
             ListFooterComponent={
               <View style={{
                 height: selectionMode
@@ -275,6 +355,12 @@ export function PeopleScreen() {
               // while selecting, just for a different reason.
               const canDrag = !selectionMode && !alphabetical;
               return (
+                // Every row doubles as a target for the add button being
+                // dragged in; the floating copy of a dragged row registers
+                // nothing, and nothing registers while sorted alphabetically.
+                <FabDropZone
+                  zone={isActive || alphabetical ? null : { kind: 'task', key: person.id, category: null }}
+                >
                 <PersonRow
                   person={person}
                   name={name}
@@ -291,17 +377,21 @@ export function PeopleScreen() {
                   styles={styles}
                   colors={colors}
                 />
+                </FabDropZone>
               );
             }}
           />
+          </FabDropZoneProvider>
         </PaintSelectionProvider>
       )}
 
       {!showArchived && !selectionMode && (
-        <Fab
-          onPress={() => setQuickAddVisible(true)}
+        <AddPersonFabWithDropLabel
+          channel={fabIntentChannel}
+          onPress={() => { pendingDropRef.current = null; setQuickAddVisible(true); }}
           accessibilityLabel="Add person"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag onto the list to add a person there, or back to the button to cancel"
         />
       )}
 
@@ -336,7 +426,7 @@ export function PeopleScreen() {
         // (the reason most people are added at all) is one tap away rather than
         // needing the row to be found again afterwards.
         onOpenFull={(name) => { setNewPerson(add(name)); setQuickAddVisible(false); }}
-        onClose={() => setQuickAddVisible(false)}
+        onClose={() => { pendingDropRef.current = null; setQuickAddVisible(false); }}
       />
 
       <ContactPickerSheet

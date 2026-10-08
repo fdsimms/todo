@@ -59,6 +59,9 @@ import { useColors } from '../../theme/ThemeContext';
 import { interaction, spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
 import {
+  DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
+} from '../../utils/moodTasks';
+import {
   DEFAULT_BIRTHDAY_LEAD_DAYS,
   DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
@@ -102,6 +105,7 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
+import { alertPermissionOff } from '../../utils/permissionAlert';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -161,6 +165,10 @@ const timeSegmentChoices: { value: TimeOfDay | null; label: string }[] = [
 ];
 
 /** Weekday segments rotated to start at weekStartsOn, matching the calendar's header order. */
+function describeLowDays(days: number): string {
+  return days === 1 ? '1 low day' : `${days} low days in a row`;
+}
+
 function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   return Array.from({ length: 7 }, (_, i) => {
     const value = (weekStartsOn + i) % 7;
@@ -946,6 +954,33 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'moodNudge') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="moodNudgeAfterDays"
+            icon="trending-down-outline"
+            label="Low days before the task"
+            hint="How many low-mood days in a row before the task is offered. It is offered at most once a week."
+            value={describeLowDays(s.moodNudgeAfterDays)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.moodNudgeAfterDays}
+              onChange={next => s.setMoodNudgeAfterDays(next ?? DEFAULT_MOOD_NUDGE_AFTER_DAYS)}
+              min={MOOD_NUDGE_AFTER_DAYS_MIN}
+              max={MOOD_NUDGE_AFTER_DAYS_MAX}
+              format={n => `${n}d`}
+              label="Low days in a row"
+              describeValue={n => describeLowDays(n ?? DEFAULT_MOOD_NUDGE_AFTER_DAYS)}
+            />
+          </View>
+        </>
+      );
+    }
+
     if (kind === 'journalLog') {
       return multiSegmentExtra('journalLogTimeSegments', s.journalLogTimeSegments, s.setJournalLogTimeSegments,
         'Any time means one task a day. Pick parts of the day to get a task in each. An earlier one still unanswered is cleared once the next arrives.',
@@ -1039,7 +1074,7 @@ export function GeneratedTasksSection() {
                 s.setTravelEstimates(true);
                 return;
               }
-              Alert.alert(
+              alertPermissionOff(
                 'Location access is off',
                 'Estimating the trip needs to know where you are. Turn on location access for this app in the Settings app, then try again.',
               );
@@ -1077,7 +1112,7 @@ export function GeneratedTasksSection() {
                     // The phone's position is read under location access, so
                     // it is asked for here if it was never granted.
                     if (!(await requestLocationPermission())) {
-                      Alert.alert(
+                      alertPermissionOff(
                         'Location access is off',
                         'Estimating from where you are needs location access. Turn it on for this app in the Settings app, then try again.',
                       );

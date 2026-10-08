@@ -525,7 +525,7 @@ export interface DoseInput {
 /** One Settings row, located the way a person would have to walk to it. */
 export interface SettingsHit {
   label: string;
-  /** "Settings › Day & time › When the day turns over › Morning". */
+  /** "Settings › Day & time › When the day turns over › Day starts". */
   path: string;
   /** Why it matched when the label did not: a keyword or the section name. */
   matchedVia?: string;
@@ -3358,7 +3358,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         const where = group?.screen ? `Menu › ${group.title}` : `Settings › ${group?.title ?? r.entry.groupId}`;
         return {
           label: r.entry.label,
-          path: `${where} › ${r.entry.section} › ${r.entry.label}`,
+          // A setting that lives on its own screen has no Settings row: its
+          // section already says which screen and which button.
+          path: r.entry.screen
+            ? `${r.entry.section} › ${r.entry.label}`
+            : `${where} › ${r.entry.section} › ${r.entry.label}`,
           ...(r.matchedVia ? { matchedVia: r.matchedVia } : {}),
         };
       });
@@ -4082,7 +4086,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     requestCalendarEvent(input: CalendarRequestInput): CalendarRequest {
       if (!db.dbGetSetting('calendarRequestDeviceId')) {
         throw new Error(
-          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Reminders & Calendar › Add Claude’s events to.'
+          'No device is set to add events to the calendar. On the phone that should add them, pick a calendar in Settings › Calendar › Add Claude’s events to.'
         );
       }
       const request: CalendarRequest = {
@@ -4401,10 +4405,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
         // A choice answer is spelled the way the option is, since a condition
         // compares the stored strings exactly.
-        const value = question.kind === 'choice'
-          ? question.options.find(o => o.trim().toLowerCase() === raw.trim().toLowerCase()) ?? raw
-          : raw;
-        if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
+        // A question that takes several answers gets them joined with commas,
+        // unless an option itself holds a comma and the whole string is one.
+        const spell = (text: string) => question.options.find(o => o.trim().toLowerCase() === text.trim().toLowerCase());
+        let value = question.kind === 'choice' ? spell(raw) ?? raw : raw;
+        if (question.kind === 'choice' && question.multiple && spell(raw) === undefined) {
+          const parts = raw.split(',').map(part => spell(part) ?? part.trim()).filter(Boolean);
+          const bad = parts.filter(part => !question.options.includes(part));
+          if (bad.length > 0 || parts.length === 0) errors.push(`"${name}" must be some of ${question.options.join(', ')}.`);
+          else value = templateQuestions.encodeAnswerValues(question.options.filter(o => parts.includes(o)));
+        } else if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
         if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
         typed[question.id] = value;
       }

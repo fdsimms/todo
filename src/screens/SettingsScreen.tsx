@@ -21,11 +21,12 @@ import {
   settingsIndexGroups,
   type IndexedSettingsGroup, type SettingsGroupId, type SettingsTint,
 } from '../utils/settingsIndex';
-import { openSettingsGroup } from '../navigation/openSettings';
+import { navigateToSettingsEntry, openSettingsGroup } from '../navigation/openSettings';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
 import { searchableSettingsEntries } from '../utils/settingsActiveRows';
 import { useFilterField } from '../hooks/useFilterField';
+import { hiddenResultsNote } from '../utils/simpleMode';
 
 /**
  * How the Groceries & meals line names the unit setting. Null for `asWritten`,
@@ -86,7 +87,7 @@ export function SettingsScreen() {
     themeMode: settings.themeMode,
     fontLabel: getAppFontOption(settings.appFont)?.label ?? 'System',
     hapticsEnabled: settings.hapticsEnabled,
-    morningStart: settings.morningStart ?? '06:00',
+    dayResetTime: settings.dayResetTime ?? '00:00',
     use24HourTime: settings.use24HourTime,
     weekStartsOn: settings.weekStartsOn,
     dailyAgendaEnabled: settings.dailyAgendaEnabled,
@@ -100,6 +101,9 @@ export function SettingsScreen() {
     mealsOnToday: settings.mealsOnToday === 'inline',
     unitSystemLabel: UNIT_SYSTEM_SUMMARY[settings.unitSystem] ?? null,
     vacationMode: settings.vacationMode,
+    writesCalendar: !!(settings.deadlineCalendarId || settings.completionCalendarId
+      || (settings.kitchenEnabled && settings.mealCalendarId)),
+    appBlocking: settings.focusShieldEnabled || settings.gateShieldEnabled || settings.penaltyShieldEnabled,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
     autoCompleteProjectsOnDone: settings.autoCompleteProjectsOnDone,
     appLockEnabled: settings.appLockEnabled,
@@ -168,6 +172,7 @@ export function SettingsScreen() {
   }, [results, groups]);
 
   const searching = query.trim().length > 0;
+  const hiddenNote = hiddenResultsNote(settings, 'settings');
 
   const configureGroups = useMemo(() => groups.filter(g => g.tint !== 'neutral'), [groups]);
   const housekeepingGroups = useMemo(() => groups.filter(g => g.tint === 'neutral'), [groups]);
@@ -203,7 +208,10 @@ export function SettingsScreen() {
         )}
 
         {searching && resultsByGroup.length === 0 && (
-          <Text style={styles.noResults}>Nothing in Settings matches “{query.trim()}”.</Text>
+          <Text style={styles.noResults}>
+            Nothing in Settings matches “{query.trim()}”.
+            {hiddenNote ? `\n\n${hiddenNote}` : ''}
+          </Text>
         )}
 
         {searching && resultsByGroup.map(({ group, hits }) => (
@@ -215,7 +223,7 @@ export function SettingsScreen() {
                   {i > 0 && <View style={styles.sep} />}
                   <TouchableOpacity
                     style={styles.resultRow}
-                    onPress={() => openGroup(group.id, hit.entry.id)}
+                    onPress={() => navigateToSettingsEntry(navigation, hit.entry.id)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                     accessibilityLabel={`${hit.entry.label}, in ${group.title}`}

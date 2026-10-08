@@ -407,7 +407,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     // not the Settings index.
     handleClose();
     (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId: 'tasksProjects' });
+      .navigate('SettingsGroup', { groupId: 'focus' });
   };
 
   // ==== render. Everything below is JSX ====
