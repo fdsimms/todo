@@ -649,3 +649,23 @@ describe('notesExcerpt', () => {
     expect(fuzzySearch([scattered], 'log')[0].notesExcerpt).toBeNull();
   });
 });
+
+describe('notes weight', () => {
+  it('does not let a notes hit lift a mid-word title match over a title that starts with the query', () => {
+    const prefix = makeTask({ id: 'a', title: 'Look into flights', notes: '' });
+    const midWord = makeTask({
+      id: 'b',
+      title: 'Use the cloud session credits',
+      notes: 'lock in the plan, long weekend',
+      tags: ['lo'],
+    });
+    const ids = fuzzySearch([midWord, prefix], 'lo').map(r => r.task.id);
+    expect(ids).toEqual(['a', 'b']);
+  });
+
+  it('still finds a task by its notes alone, below one with the query in the title', () => {
+    const inTitle = makeTask({ id: 'a', title: 'Local errands', notes: '' });
+    const inNotes = makeTask({ id: 'b', title: 'Call dentist', notes: 'ask about the local anesthetic' });
+    expect(fuzzySearch([inNotes, inTitle], 'local').map(r => r.task.id)).toEqual(['a', 'b']);
+  });
+});

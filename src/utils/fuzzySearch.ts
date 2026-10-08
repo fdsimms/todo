@@ -8,6 +8,16 @@ import { matchExcerpt, mergeRanges, scoreSubstring, type MatchExcerpt } from './
 // use them without pulling this module's store imports along.
 export { mergeRanges, scoreSubstring };
 
+/**
+ * How much a hit in notes counts against the same hit in a title. Notes are
+ * long free text, so a query lands in them far more often than in a title, and
+ * the bonus is added on top of the title score: at half weight a notes hit plus
+ * a tag could pull a mid-word title match level with a title that starts with
+ * the query. A quarter keeps notes a tiebreaker that can't outrank a better
+ * title.
+ */
+const NOTES_WEIGHT = 0.25;
+
 export interface SearchResult {
   task: Task;
   score: number;
@@ -81,10 +91,10 @@ export function fuzzySearch(
         0
       );
 
-      // Title matches score highest, notes/category/project/chain steps lower, tags moderate
+      // Title matches score highest, notes lowest of the text fields, category/project/chain steps in between, tags moderate
       totalScore +=
         titleResult.score * 2 +
-        notesResult.score * 0.5 +
+        notesResult.score * NOTES_WEIGHT +
         categoryResult.score * 0.5 +
         projectResult.score * 0.5 +
         chainScore * 0.5 +
@@ -180,7 +190,7 @@ export function searchProjects(
       if (titleResult.ranges.length > 0) {
         titleMatches = titleMatches.concat(titleResult.ranges);
       }
-      totalScore += scoreSubstring(project.notes, word).score * 0.5;
+      totalScore += scoreSubstring(project.notes, word).score * NOTES_WEIGHT;
     }
 
     if (totalScore > 0) {
