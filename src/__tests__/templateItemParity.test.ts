@@ -35,6 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
+    'meterHeldUntil',
   ],
 
   // A template has no calendar date of its own. These are written as offsets
@@ -59,6 +60,13 @@ const NOT_SEEDED: Record<string, string[]> = {
 
   // Names someone or something outside the template that a run can't know.
   'names a person or a date outside the template': ['waitingOnPersonId', 'followUpOn'],
+
+  // The reading a task is due at is where one meter stood at one moment. A run
+  // can't know where the odometer is now, so a seeded "due at 45,000" would be
+  // wrong for every run but the first.
+  'a meter reading outside the template': [
+    'meterName', 'meterUnit', 'meterEvery', 'meterDueAt', 'meterLimitMonths',
+  ],
 
   // Read from and written to Apple Health. Withheld from templates for the
   // reason a medication is withheld over MCP: a template is a way to hand them

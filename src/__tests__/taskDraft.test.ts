@@ -183,3 +183,15 @@ describe('newTaskFromDraft: rotation', () => {
     expect(row.targetCount).toBeNull();
   });
 });
+
+describe('newTaskFromDraft: a meter', () => {
+  it('keeps a meter the editor or quick add set, and never starts with a hold', () => {
+    const task = newTaskFromDraft(
+      { title: 'Change the oil', meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, meterLimitMonths: 6, meterHeldUntil: '2026-12-10' },
+      new Date(2026, 9, 8, 9).toISOString(), 1, false, 'm1',
+    );
+    expect(task).toMatchObject({
+      meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, meterLimitMonths: 6, meterHeldUntil: null,
+    });
+  });
+});

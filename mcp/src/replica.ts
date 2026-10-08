@@ -48,6 +48,7 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
+  MeterReading,
   JournalEntry,
   JournalKind,
   FocusSessionRecord,
@@ -1033,6 +1034,15 @@ export interface Replica {
   addMilestone(label: string, date: Date): Milestone;
   updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
   deleteMilestone(id: string): Milestone;
+  /** Every meter reading, oldest first. See src/utils/meters.ts. */
+  meterReadings(): MeterReading[];
+  /**
+   * Through `useMeterReadingStore`'s own action, so a blank name or a reading
+   * that isn't a number is refused as the app refuses it. The tasks on that
+   * meter are held or released by the phone's own pass on its next sync.
+   */
+  logMeterReading(name: string, value: number, readAt: Date): MeterReading;
+  deleteMeterReading(id: string): MeterReading;
   /** Journal and dream entries between two day keys, inclusive, newest first. */
   journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[];
   /**
@@ -2878,6 +2888,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       now: new Date(),
       allTasks: tasks(),
       subtasks: tasks().filter(t => t.parentId === id),
+      meterReadings: db.dbGetAllMeterReadings(),
     });
     // Unreachable: completionRefusal above is the same guard buildCompletion
     // runs. Narrowing rather than asserting, so a rule added to one and not
@@ -3490,6 +3501,26 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!milestone) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
       store.removeMilestone(id);
       return milestone;
+    },
+    meterReadings: () => db.dbGetAllMeterReadings(),
+    logMeterReading(name: string, value: number, readAt: Date): MeterReading {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');
+      const store = useMeterReadingStore.getState();
+      store.initialize();
+      const reading = store.logReading(name, value, readAt);
+      if (!reading) throw new Error('A reading needs a meter name and a number zero or above.');
+      return reading;
+    },
+    deleteMeterReading(id: string): MeterReading {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useMeterReadingStore } = require('../../src/store/useMeterReadingStore') as typeof import('../../src/store/useMeterReadingStore');
+      const store = useMeterReadingStore.getState();
+      store.initialize();
+      const reading = store.readings.find(r => r.id === id);
+      if (!reading) throw new Error(`No meter reading with id ${id}. list_meter_readings names them.`);
+      store.removeReading(id);
+      return reading;
     },
     journalEntries(fromDayKey: string, toDayKey: string, kind?: JournalKind): JournalEntry[] {
       return db.dbGetAllJournalEntries()

@@ -38,6 +38,8 @@ export interface SerializedTask {
   deferUntil?: string;
   /** Set while a one-off task is held for a kind of day ("sunny"); the app moves deferUntil to the first matching forecast day. */
   weatherWait?: string;
+  /** Set on a one-off due at a meter reading: the phone holds it until a reading, the projected day or the time limit, whichever comes first. */
+  meter?: { name: string; unit?: string; every: number; dueAt: number; limitMonths?: number };
   /** Set on a task that waits for a repeating blocker's last occurrence, not just its next. */
   waitForSeriesEnd?: true;
   timeSegments?: string[];
@@ -156,6 +158,15 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     deadline: task.deadline ?? undefined,
     deferUntil: task.deferUntil ?? undefined,
     weatherWait: task.weatherWait ?? undefined,
+    meter: task.meterName && task.meterEvery != null && task.meterDueAt != null
+      ? {
+          name: task.meterName,
+          unit: task.meterUnit ?? undefined,
+          every: task.meterEvery,
+          dueAt: task.meterDueAt,
+          limitMonths: task.meterLimitMonths ?? undefined,
+        }
+      : undefined,
     waitForSeriesEnd: task.waitForSeriesEnd ? true : undefined,
     timeSegments: task.timeSegments,
     priority: task.priority > 0 ? PRIORITY_LABELS[task.priority] : undefined,

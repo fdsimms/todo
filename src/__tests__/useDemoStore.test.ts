@@ -16,6 +16,7 @@ import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday, isFailedToday } from '../utils/negativeHabits';
 import { MIN_ROTATION_ITEMS, plannedRotationItem, rotationTargetTotal } from '../utils/rotation';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -946,6 +947,18 @@ describe('demo mode', () => {
     const trash = useTaskStore.getState().tasks.filter(t => t.title === 'Take out the trash' && !t.completed);
     expect(trash).toHaveLength(1);
     expect(trash[0].recurrenceHolidays).toBe('move');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a task due at a meter reading, held on the estimate its readings give', () => {
+    useDemoStore.getState().enterDemoMode();
+    const oil = useTaskStore.getState().tasks.find(t => t.title === 'Change the oil');
+    expect(oil?.meterName).toBe('Car');
+    expect(oil?.meterDueAt).toBe(40500);
+    expect(useMeterReadingStore.getState().readings.filter(r => r.meterKey === 'car')).toHaveLength(2);
+    // 1,100 miles to go at 40 a day: held on the estimate, off Today.
+    expect(oil?.meterHeldUntil).not.toBeNull();
+    expect(useTaskStore.getState().visibleTasks().some(t => t.id === oil?.id)).toBe(false);
     useDemoStore.getState().exitDemoMode();
   });
 

@@ -89,6 +89,8 @@ only the fallback until the first sync.
 | `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind. Empty unless health logs reach the server. |
 | `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words. An entry's day is fixed once written. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
+| `list_meter_readings` | The meters the person reads by hand, each with its readings, the rate they imply, and the open tasks due at a reading on it. |
+| `log_meter_reading` / `delete_meter_reading` | **Write.** A reading of a meter ("Car", 45,120). Every task on that meter uses it; the phone moves them on its next sync. |
 | `list_saved_views` | The person's saved views, each with its clauses in words and how many open tasks it holds right now. |
 | `get_saved_view` | One view by id or name, with the tasks it holds (up to 100). |
 | `create_saved_view` / `update_saved_view` / `delete_saved_view` | **Write.** A view by name, icon and clauses, checked by the app's own parser; a clause it would drop is refused instead. An update can also move it in the list. |

@@ -27,6 +27,7 @@ import type { SerializedTask } from './serialize';
 import type { TaskFieldsInput } from './taskFields';
 import { describeRepeat, type RepeatInput } from './taskFields';
 import { completeTask, deferTask, getTask, updateTask } from './tools';
+import { knownMeterNames, meterFieldsFromInput, meterKey } from '../../src/utils/meters';
 import { localDateInput } from './timeZone';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -162,6 +163,8 @@ export interface QuickAddRow {
   project?: string;
   estimatedMinutes?: number;
   reminderTime?: string;
+  /** "every 5,000 miles on the car": due by usage. No dueAt while the meter has never been read. */
+  meter?: { name: string; unit: string; every: number; dueAt?: number };
   /** Anything in the line that was read but not used, so nothing is dropped unsaid. */
   notes?: string[];
   /** After applying: the task as created. */
@@ -256,6 +259,22 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     }
   }
 
+  // "every 5,000 miles on the car": due by usage, on a line that doesn't
+  // already repeat. The due reading comes from the meter's last reading, as
+  // the sheet takes it; an unread meter starts on its first one.
+  const meterHit = !draft.recurrenceType || draft.recurrenceType === 'none' ? p.parseMeterInput(text) : null;
+  if (meterHit) {
+    const readings = replica.meterReadings();
+    const known = knownMeterNames(readings).find(n => meterKey(n) === meterKey(meterHit.meterName));
+    const name = known?.trim() ?? meterHit.meterName.charAt(0).toUpperCase() + meterHit.meterName.slice(1);
+    text = meterHit.cleanTitle;
+    Object.assign(draft, meterFieldsFromInput(
+      { name, unit: meterHit.unit, everyText: String(meterHit.every), dueText: '', limitMonths: null },
+      readings,
+    ));
+    if (draft.meterDueAt === null) notes.push(`${name} has no reading yet, so the task starts when one is logged (log_meter_reading).`);
+  }
+
   for (const m of text.matchAll(/(^|\s)([#+!][\p{L}\p{N}_-]+)/gu)) {
     notes.push(`"${m[2]}" matched nothing the app knows, so it stays in the title.`);
   }
@@ -284,6 +303,9 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     ...(pj ? { project: pj.title } : {}),
     ...(draft.estimatedMinutes ? { estimatedMinutes: draft.estimatedMinutes } : {}),
     ...(draft.reminderTime ? { reminderTime: draft.reminderTime } : {}),
+    ...(draft.meterName && draft.meterEvery
+      ? { meter: { name: draft.meterName, unit: draft.meterUnit ?? '', every: draft.meterEvery, ...(draft.meterDueAt != null ? { dueAt: draft.meterDueAt } : {}) } }
+      : {}),
     ...(notes.length > 0 ? { notes } : {}),
   };
   if (!draft.title) return { row: { ...row, problem: 'Nothing is left for a title once the date and tags are read out.' }, draft: null };

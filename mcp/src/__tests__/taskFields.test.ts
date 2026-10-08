@@ -443,6 +443,42 @@ describe('supply', () => {
 
 });
 
+describe('meter', () => {
+  const car = { name: 'Car', unit: 'miles', every: 5000, dueAt: 45000 };
+
+  it('makes a plain one-off due at a reading', () => {
+    expect(ok({ meter: car })).toMatchObject({
+      meterName: 'Car', meterUnit: 'miles', meterEvery: 5000, meterDueAt: 45000, meterLimitMonths: null,
+    });
+    expect(ok({ meter: { ...car, limitMonths: 6 } }).meterLimitMonths).toBe(6);
+  });
+
+  it('keeps the due reading on an update that leaves it out', () => {
+    const current = existing({ meterName: 'Car', meterEvery: 5000, meterDueAt: 45000 });
+    expect(ok({ meter: { name: 'Car', every: 3000 } }, current)).toMatchObject({ meterEvery: 3000, meterDueAt: 45000 });
+  });
+
+  it('refuses what the app would refuse', () => {
+    expect(errorsOf({ meter: { ...car, name: ' ' } })).toMatch(/meter.name is required/);
+    expect(errorsOf({ meter: { ...car, every: 0 } })).toMatch(/meter.every/);
+    expect(errorsOf({ meter: { name: 'Car', every: 5000 } })).toMatch(/meter.dueAt is required/);
+    expect(errorsOf({ meter: { ...car, limitMonths: 0 } })).toMatch(/limitMonths/);
+  });
+
+  it('is for a plain one-off only, judged as the task will be', () => {
+    expect(errorsOf({ meter: car }, existing({ recurrenceType: 'weekly' }))).toMatch(/plain one-off/);
+    expect(errorsOf({ meter: car, repeat: { every: 'day' } })).toMatch(/plain one-off/);
+    expect(errorsOf({ meter: car }, existing({ weatherWait: 'sunny' }))).toMatch(/plain one-off/);
+    expect(errorsOf({ meter: car, weatherWait: 'sunny' })).toMatch(/plain one-off/);
+  });
+
+  it('lets go of the app\'s own hold when the meter is cleared', () => {
+    const held = existing({ meterName: 'Car', meterEvery: 5000, meterDueAt: 45000, meterHeldUntil: '2026-12-10', deferUntil: '2026-12-10T05:00:00.000Z' });
+    expect(ok({ meter: null }, held)).toMatchObject({ meterName: null, meterDueAt: null, deferUntil: null, meterHeldUntil: null });
+    expect(ok({ meter: null }, existing())).not.toHaveProperty('deferUntil');
+  });
+});
+
 describe('weatherWait', () => {
   it('records the want on a plain one-off', () => {
     expect(ok({ weatherWait: 'sunny' })).toMatchObject({ weatherWait: 'sunny' });

@@ -12,6 +12,7 @@ import { SafeBlurView } from '../components/SafeBlurView';
 import { GlassLayer, glassSupported } from '../components/GlassLayer';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
+import { MetersScreen } from '../screens/MetersScreen';
 import { PeopleScreen } from '../screens/PeopleScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { GroceryScreen } from '../screens/GroceryScreen';
@@ -86,6 +87,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -140,6 +142,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Calendar: freezeWhenBlurred(CalendarScreen),
   Categories: freezeWhenBlurred(CategoriesScreen),
   Tags: freezeWhenBlurred(TagsScreen),
+  Meters: freezeWhenBlurred(MetersScreen),
   People: freezeWhenBlurred(PeopleScreen),
   Stacks: freezeWhenBlurred(StacksScreen),
   Templates: freezeWhenBlurred(TemplatesScreen),
@@ -409,6 +412,7 @@ function initialScreenFromSettings(): string {
     journal: useJournalStore.getState().entries.filter(e => e.kind === 'journal').length,
     dreams: useJournalStore.getState().entries.filter(e => e.kind === 'dream').length,
     foodLog: useFoodLogStore.getState().totalCount,
+    meters: useMeterReadingStore.getState().readings.length,
   })) return 'Today';
   // Restored but unproven until it has stayed up (a restore to Today needs no guard).
   if (lastVisitedScreen !== 'Today') markScreenUnproven(lastVisitedScreen);
