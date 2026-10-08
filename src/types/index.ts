@@ -47,11 +47,12 @@ export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
  * `priority: 0` is an answer, not an absence: it means "these have no
  * priority, don't ask", and a task created under it is stamped as dismissed for
  * the priority backfill, since a priority of 0 otherwise reads as missing.
+ * `effort: 0` is the same answer for the time estimate.
  */
 export interface TaskFieldDefaults {
   priority: Priority | null;
   difficulty: Difficulty | null;
-  /** An estimate bucket, 1 to 6. The minutes come from `EFFORT_MINUTES`. */
+  /** An estimate bucket, 1 to 6, or 0 for "no estimate, don't ask". The minutes come from `EFFORT_MINUTES`. */
   effort: Effort | null;
 }
 

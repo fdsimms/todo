@@ -1,7 +1,7 @@
 import type { Difficulty, Effort, Priority, Task, TaskFieldDefaults } from '../types';
 import { PRIORITY_LABELS } from '../types';
 import { EFFORT_MINUTES, formatDuration } from './effort';
-import { dismissBackfillField, estimatePatchFor, isFieldMissing, isBackfillDismissed } from './fieldBackfill';
+import { dismissBackfillField, estimatePatchFor, isFieldMissing, isBackfillDismissed, type BackfillFieldId } from './fieldBackfill';
 
 /**
  * Priority, difficulty and time estimate given once for a group of tasks, so the
@@ -21,6 +21,11 @@ import { dismissBackfillField, estimatePatchFor, isFieldMissing, isBackfillDismi
  * set" (the backfill queue is exactly the tasks at 0), so "these have no
  * priority" is stored as 0 here and a task created under it is stamped as
  * dismissed for the priority field, the same mark "Leave priority unset" writes.
+ *
+ * **`effort: 0` is an answer for the same reason.** A task with no estimate is
+ * exactly what the estimate backfill asks about, so "these need no estimate" is
+ * stored as bucket 0 and a task created under it is stamped as dismissed for the
+ * estimate field.
  */
 
 export const NO_TASK_FIELD_DEFAULTS: TaskFieldDefaults = { priority: null, difficulty: null, effort: null };
@@ -50,7 +55,7 @@ export function parseTaskFieldDefaults(raw: unknown): TaskFieldDefaults | null {
     result.priority = o.priority as Priority;
   }
   if (DIFFICULTIES.includes(o.difficulty as Difficulty)) result.difficulty = o.difficulty as Difficulty;
-  if (typeof o.effort === 'number' && Number.isInteger(o.effort) && o.effort >= 1 && o.effort <= 6) {
+  if (typeof o.effort === 'number' && Number.isInteger(o.effort) && o.effort >= 0 && o.effort <= 6) {
     result.effort = o.effort as Effort;
   }
   return hasTaskFieldDefaults(result) ? result : null;
@@ -135,9 +140,12 @@ export function seedTaskFields(
     draft.estimatedMinutes ??
     (group.effort !== null && effort === group.effort ? EFFORT_MINUTES[group.effort] ?? null : null);
   const difficulty = negative ? (draft.difficulty ?? null) : draft.difficulty ?? group.difficulty ?? global.difficulty ?? null;
-  // Only a group's own "none" counts: a priority of 0 with no group answer
-  // behind it is exactly the unanswered state the queue is for.
-  const dismissed = group.priority === 0 && priority === 0 ? ['priority'] : [];
+  // Only a group's own "none" counts: a priority or estimate of 0 with no group
+  // answer behind it is exactly the unanswered state the queue is for.
+  const dismissed = [
+    ...(group.priority === 0 && priority === 0 ? ['priority'] : []),
+    ...(group.effort === 0 && effort === 0 && estimatedMinutes === null ? ['estimate'] : []),
+  ];
   return { priority, effort, estimatedMinutes, difficulty, backfillDismissedFields: dismissed };
 }
 
@@ -153,16 +161,21 @@ export function seedTaskFields(
 export function existingTaskPatch(task: Task, d: TaskFieldDefaults | null | undefined): Partial<Task> | null {
   if (!hasTaskFieldDefaults(d)) return null;
   let patch: Partial<Task> = {};
+  // Read through the patch so two "none" answers add to one dismissed list
+  // rather than the second overwriting the first.
+  const dismissing = (fieldId: BackfillFieldId) => dismissBackfillField({ ...task, ...patch } as Task, fieldId);
   if (d.priority !== null && isFieldMissing(task, 'priority') && !isBackfillDismissed(task, 'priority')) {
     patch = d.priority === 0
-      ? { ...patch, ...dismissBackfillField(task, 'priority') }
+      ? { ...patch, ...dismissing('priority') }
       : { ...patch, priority: d.priority };
   }
   if (d.difficulty !== null && isFieldMissing(task, 'difficulty') && !isBackfillDismissed(task, 'difficulty')) {
     patch = { ...patch, difficulty: d.difficulty };
   }
   if (d.effort !== null && isFieldMissing(task, 'estimate') && !isBackfillDismissed(task, 'estimate')) {
-    patch = { ...patch, ...estimatePatchFor(d.effort) };
+    patch = d.effort === 0
+      ? { ...patch, ...dismissing('estimate') }
+      : { ...patch, ...estimatePatchFor(d.effort) };
   }
   return Object.keys(patch).length > 0 ? patch : null;
 }
@@ -178,7 +191,8 @@ export function describeTaskFieldDefaults(d: TaskFieldDefaults | null | undefine
   const parts: string[] = [];
   if (d.priority !== null) parts.push(d.priority === 0 ? 'No priority' : PRIORITY_LABELS[d.priority]);
   if (d.difficulty !== null) parts.push(d.difficulty === 'easy' ? 'Easy' : d.difficulty === 'hard' ? 'Hard' : 'Normal');
-  if (d.effort !== null) {
+  if (d.effort === 0) parts.push('No estimate');
+  else if (d.effort !== null) {
     const mins = EFFORT_MINUTES[d.effort];
     if (mins != null) parts.push(formatDuration(mins));
   }
@@ -213,8 +227,9 @@ export function backfillGroupMembers(queue: Task[], current: Task): Task[] {
 /**
  * The group default a backfill answer implies, for the "also use this for new
  * tasks" offer after a whole-group apply. `patch` is what was written to each
- * task. Leaving priority unset implies "no priority" (0); leaving difficulty or
- * an estimate unset implies nothing, since those have no "none" answer.
+ * task. Leaving priority unset implies "no priority" (0) and leaving an estimate
+ * unset implies "no estimate" (0); leaving difficulty unset implies nothing,
+ * since it has no "none" answer.
  */
 export function defaultsFromAnswer(
   fieldId: string,
@@ -225,6 +240,7 @@ export function defaultsFromAnswer(
     if (dismissed) return { priority: 0 };
     return patch.priority !== undefined ? { priority: patch.priority } : null;
   }
+  if (fieldId === 'estimate' && dismissed) return { effort: 0 };
   if (dismissed) return null;
   if (fieldId === 'difficulty') return patch.difficulty ? { difficulty: patch.difficulty } : null;
   if (fieldId === 'estimate') return patch.effort ? { effort: patch.effort } : null;

@@ -3037,7 +3037,7 @@ function registerWriteTools(
       taskDefaults: z.object({
         priority: z.number().int().min(0).max(4).nullable().optional().describe('0 means no priority on purpose, so the backfill screen stops asking. Null means ask.'),
         difficulty: z.enum(['easy', 'normal', 'hard']).nullable().optional(),
-        effort: z.number().int().min(1).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL).'),
+        effort: z.number().int().min(0).max(6).nullable().optional().describe('The time estimate bucket, 1 (XXS) to 6 (XL). 0 means no estimate on purpose, so the backfill screen stops asking. Null means ask.'),
       }).nullable().optional().describe('Priority, difficulty and time estimate every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),

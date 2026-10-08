@@ -33,6 +33,7 @@ const DIFFICULTY_OPTIONS: SegmentOption<Difficulty | null>[] = [
 
 const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
   { value: null, label: 'Ask each time' },
+  { value: 0, label: 'No estimate' },
   ...ESTIMATE_EFFORTS.map(e => ({
     value: e as Effort | null,
     // The time, not the size letter: the letter is only a name for these
