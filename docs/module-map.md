@@ -96,7 +96,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
 - `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, deadlineInstant, getTaskDayStart, formatHHMM, formatTimeOfDay, hoursUnlockLabel, +34 more
-- `src/utils/dayContextRows.ts` — ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, LIMIT_ROW_NAME, limitContextRows, insertContextRows, withoutContextRows
+- `src/utils/dayContextRows.ts` — ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, limitContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, +1 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
@@ -193,7 +193,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
-- `src/utils/limitWarningTasks.ts` — LimitWarning, limitWarningsFor, limitWarningSourceId, limitWarningKeyOf, limitWarningDayOf, limitWarningTitle, LIMIT_WARNING_NOTES, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, describeLimitContributors, +1 more
+- `src/utils/limitWarningTasks.ts` — LimitReading, limitReadings, limitWarningKeyOf, limitWarningTitle, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, LIMIT_WARNING_NOTES, describeLimitContributors, limitWarningNotes, shouldAutoSlip, +2 more
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
@@ -239,7 +239,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionPanelForm.ts` — PanelForm, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, ServingWeightUnit, servingWeightToGrams, gramsToServingWeight, panelFormDirty, +7 more
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, ProduceAverage, produceAverage, nutrientAverages, +9 more
-- `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, targetProgress, TargetStatus, TARGET_MET_TOLERANCE, +23 more
+- `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, targetProgress, TargetStatus, TARGET_MET_TOLERANCE, +24 more
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween

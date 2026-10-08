@@ -405,14 +405,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                   onPress={toggleLimitWarning}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: limitWarningTasks }}
-                  accessibilityLabel="Add a task when a day gets close to a limit"
+                  accessibilityLabel="Add a daily don't-do task for each limit"
                 >
                   <Ionicons
                     name={limitWarningTasks ? 'checkmark-circle' : 'ellipse-outline'}
                     size={iconSize.md}
                     color={limitWarningTasks ? colors.accent : colors.textTertiary}
                   />
-                  <Text style={styles.boostToggleLabel}>Add a task when close</Text>
+                  <Text style={styles.boostToggleLabel}>Add a "don't do" task for each</Text>
                 </TouchableOpacity>
                 <View style={styles.boostFields}>
                   <View style={styles.boostFieldRow}>

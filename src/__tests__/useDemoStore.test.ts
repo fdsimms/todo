@@ -4615,7 +4615,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(settings.limitsTodayCategory).toBe('Health');
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'limitWarning');
     expect(task?.category).toBe('Health');
-    expect(task?.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}:satFatG`);
+    expect(task?.generatedSourceId).toBe('satFatG');
+    expect(task?.polarity).toBe('negative');
   });
 
   it('seeds a snack suggestion under the Health category', () => {

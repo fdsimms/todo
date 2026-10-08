@@ -1,3 +1,4 @@
+import { slipsToday } from '../utils/negativeHabits';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
@@ -13998,21 +13999,25 @@ describe('quota tasks', () => {
         });
       });
 
-      describe('the limit warning', () => {
+      describe('the limit task', () => {
         const fatEntry = (satFatG: number, id = 'f1'): FoodLogEntry => ({
           ...waterEntry(0),
           id,
           label: 'Ice cream',
           nutrition: { ...panel(0), amounts: { satFatG } },
         });
-        const warnings = () =>
-          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'limitWarning' && !t.completedAt);
-        const on = {
+        const limitTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'limitWarning' && !t.archived);
+        const on = () => ({
           limitWarningTasks: true, limitWarningTaskCategory: 'Health', vacationMode: false,
-          nutritionTargets: { satFatG: 16, sugarG: 35 }, nutritionLimits: ['satFatG', 'sugarG'],
-          limitWarnPercent: 75, limitWarningDeclinedDayKey: null,
-        };
+          nutritionTargets: { satFatG: 16 }, nutritionLimits: ['satFatG'],
+          limitWarnPercent: 75, limitWarningDeclined: [], limitWarningAutoSlips: {},
+          // The pass records its own slips; the mock keeps what it wrote.
+          setLimitWarningAutoSlips: (days: Record<string, string>) => withSettings({ limitWarningAutoSlips: days }),
+        });
         const run = () => useTaskStore.getState().syncLimitWarningTasks();
+        const log = (...entries: FoodLogEntry[]) => (dbGetFoodLogEntries as jest.Mock).mockReturnValue(entries);
+        const todayStart = () => getCurrentDayStart();
 
         beforeEach(() => {
           jest.useFakeTimers({ now: new Date(2026, 9, 5, 16, 0) });
@@ -14020,54 +14025,67 @@ describe('quota tasks', () => {
         });
         afterEach(() => jest.useRealTimers());
 
-        it('writes one once the log reaches the close share of a limit', () => {
-          withSettings(on);
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+        it('keeps one "don\'t do" task per limit, there before anything is logged', () => {
+          withSettings(on());
+          log();
           run();
-          expect(warnings().map(t => t.title)).toEqual(['Saturated fat at 12 of 16g today']);
-          // Says what it's made of, and its link button opens the Food log.
-          expect(warnings()[0].notes).toMatch(/^Most of it: Ice cream \(12g\)\./);
-          expect(warnings()[0].linkUrl).toBe('dundundun://foodlog');
+          expect(limitTasks()).toHaveLength(1);
+          const [task] = limitTasks();
+          expect(task).toMatchObject({
+            title: 'Stay under 16g sat fat', polarity: 'negative', showStreak: true,
+            generatedSourceId: 'satFatG', linkUrl: 'dundundun://foodlog', dueDate: null,
+          });
         });
 
-        it('writes nothing below it, or for a nutrient that is not a limit', () => {
-          withSettings({ ...on, nutritionLimits: ['sugarG'] });
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(15)]);
+        it('follows the total in its title and names the foods behind it', () => {
+          withSettings(on());
+          log(fatEntry(12));
           run();
-          expect(warnings()).toHaveLength(0);
-          withSettings(on);
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(11)]);
+          const [task] = limitTasks();
+          expect(task.title).toBe('Stay under 16g sat fat · 12g so far');
+          expect(task.notes).toMatch(/^Today: 12 of 16g, 4g left\.\n\nMost of it: Ice cream \(12g\)\./);
           run();
-          expect(warnings()).toHaveLength(0);
+          expect(limitTasks()).toHaveLength(1);
         });
 
-        it('retitles the same task once the day passes the limit, rather than adding one', () => {
-          withSettings(on);
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+        it('logs a slip the moment the day goes over, once, and takes it back when the entry goes', () => {
+          withSettings(on());
+          log(fatEntry(12));
           run();
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12), fatEntry(7, 'f2')]);
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(0);
+          log(fatEntry(12), fatEntry(7, 'f2'));
           run();
-          expect(warnings().map(t => t.title)).toEqual(['Saturated fat at 19 of 16g today, over the limit']);
-          expect(warnings()[0].notes).toMatch(/^Most of it: Ice cream \(19g\)\./);
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+          log(fatEntry(12));
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(0);
         });
 
-        it('removes it when the entry behind it is deleted', () => {
-          withSettings(on);
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+        it('never slips on top of, or takes back, a slip the person logged', () => {
+          withSettings(on());
+          log(fatEntry(12));
           run();
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+          useTaskStore.getState().logSlip(limitTasks()[0].id);
+          log(fatEntry(20));
           run();
-          expect(warnings()).toHaveLength(0);
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
+          log();
+          run();
+          expect(slipsToday(limitTasks()[0], todayStart())).toBe(1);
         });
 
-        it('does not write one back the day it was deleted, or while off', () => {
-          withSettings({ ...on, limitWarningDeclinedDayKey: dayKeyOf(getCurrentDayStart()) });
-          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([fatEntry(12)]);
+        it('writes none for a declined limit, and takes them all away when switched off', () => {
+          withSettings({ ...on(), limitWarningDeclined: ['satFatG'] });
+          log();
           run();
-          expect(warnings()).toHaveLength(0);
-          withSettings({ ...on, limitWarningTasks: false });
+          expect(limitTasks()).toHaveLength(0);
+          withSettings(on());
           run();
-          expect(warnings()).toHaveLength(0);
+          expect(limitTasks()).toHaveLength(1);
+          withSettings({ ...on(), limitWarningTasks: false });
+          run();
+          expect(limitTasks()).toHaveLength(0);
         });
       });
 

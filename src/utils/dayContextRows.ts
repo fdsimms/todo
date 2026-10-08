@@ -9,7 +9,7 @@ import { titleForEntry } from './mealPlan';
 import { ringsSummaryLine, type ActivityRings } from './activityRings';
 import type { NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
-import { activeLimits, describeLimit, limitStatus, type NutritionTargets } from './nutritionTargets';
+import { LIMIT_ROW_NAME, activeLimits, describeLimit, limitStatus, type NutritionTargets } from './nutritionTargets';
 
 /**
  * The day's calendar events and planned meals, as rows in the task list
@@ -312,16 +312,6 @@ export function healthContextRows(
   return rows;
 }
 
-/** The short names a limit row uses, so a folded section's one-line summary fits. */
-export const LIMIT_ROW_NAME: Partial<Record<NutrientKey, string>> = {
-  satFatG: 'Sat fat',
-  transFatG: 'Trans fat',
-  sugarG: 'Sugar',
-  addedSugarG: 'Added sugar',
-  calorieKcal: 'Calories',
-  carbsG: 'Carbs',
-  fatG: 'Fat',
-};
 
 /**
  * Today's food log against each Stay under limit, one row per limit: "Sat fat 9

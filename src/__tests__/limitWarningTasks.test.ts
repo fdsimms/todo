@@ -1,51 +1,50 @@
 import type { FoodLogEntry } from '../types';
 import {
-  describeLimitContributors,
-  limitWarningNotes,
   LIMIT_WARNING_NOTES,
-  limitWarningDayOf,
+  describeLimitContributors,
+  limitReadings,
   limitWarningKeyOf,
-  limitWarningSourceId,
+  limitWarningNotes,
   limitWarningTitle,
-  limitWarningsFor,
+  parseAutoSlips,
+  shouldAutoSlip,
+  shouldTakeBackAutoSlip,
+  type LimitReading,
 } from '../utils/limitWarningTasks';
 
 const targets = { satFatG: 16, sugarG: 35, proteinG: 150 };
 
-describe('limitWarningsFor', () => {
-  it('lists the limits the day is close to or past, in label order', () => {
-    expect(limitWarningsFor({ sugarG: 40, satFatG: 12, proteinG: 200 }, targets, ['sugarG', 'satFatG'], 75))
-      .toEqual([
-        { key: 'satFatG', total: 12, target: 16, status: 'near' },
-        { key: 'sugarG', total: 40, target: 35, status: 'over' },
-      ]);
+describe('limitReadings', () => {
+  it('reads each limit against today, goals left out, in label order', () => {
+    expect(limitReadings({ sugarG: 40, satFatG: 12, proteinG: 200 }, targets, ['sugarG', 'satFatG'], 75)).toEqual([
+      { key: 'satFatG', total: 12, target: 16, status: 'near' },
+      { key: 'sugarG', total: 40, target: 35, status: 'over' },
+    ]);
   });
 
-  it('ignores a goal, a limit with room left, and one nothing logged states', () => {
-    expect(limitWarningsFor({ proteinG: 200, satFatG: 5 }, targets, ['satFatG', 'sugarG'], 75)).toEqual([]);
-  });
-
-  it('moves with the close share', () => {
-    expect(limitWarningsFor({ satFatG: 12 }, targets, ['satFatG'], 90)).toEqual([]);
+  it('reads a limit nothing logged states as zero, so the task is there from the start of the day', () => {
+    expect(limitReadings({}, targets, ['satFatG'], 75)).toEqual([
+      { key: 'satFatG', total: 0, target: 16, status: 'within' },
+    ]);
   });
 });
 
-describe('source ids', () => {
-  it('round-trip the day and the nutrient', () => {
-    const id = limitWarningSourceId('2026-10-08', 'satFatG');
-    expect(limitWarningDayOf(id)).toBe('2026-10-08');
-    expect(limitWarningKeyOf(id)).toBe('satFatG');
+describe('limitWarningKeyOf', () => {
+  it('reads the nutrient a task is keyed by, and nothing else', () => {
+    expect(limitWarningKeyOf('satFatG')).toBe('satFatG');
+    expect(limitWarningKeyOf('2026-10-08:satFatG')).toBeNull();
     expect(limitWarningKeyOf(null)).toBeNull();
-    expect(limitWarningDayOf('nonsense')).toBeNull();
   });
 });
 
 describe('limitWarningTitle', () => {
-  it('states the total against the limit, and says when it is past it', () => {
-    expect(limitWarningTitle({ key: 'satFatG', total: 12.04, target: 16, status: 'near' }))
-      .toBe('Saturated fat at 12 of 16g today');
+  const reading = (total: number): LimitReading => ({ key: 'sugarG', total, target: 35, status: 'within' });
+
+  it('names the limit, then the day so far once anything states it', () => {
+    expect(limitWarningTitle(reading(0))).toBe('Stay under 35g sugar');
+    expect(limitWarningTitle(reading(28.04))).toBe('Stay under 35g sugar · 28g so far');
     expect(limitWarningTitle({ key: 'cholesterolMg', total: 1250, target: 300, status: 'over' }))
-      .toBe('Cholesterol at 1,250 of 300mg today, over the limit');
+      .toBe('Stay under 300mg cholesterol · 1,250mg so far');
   });
 });
 
@@ -67,8 +66,36 @@ describe('describeLimitContributors', () => {
     expect(describeLimitContributors([entry('Restaurant curry')], 'sugarG')).toBeNull();
   });
 
-  it('puts them ahead of the standing note', () => {
-    expect(limitWarningNotes([entry('Cookie', 9)], 'sugarG')).toBe(`Most of it: Cookie (9g).\n\n${LIMIT_WARNING_NOTES}`);
-    expect(limitWarningNotes([], 'sugarG')).toBe(LIMIT_WARNING_NOTES);
+  it('opens the notes with where the day stands', () => {
+    const reading: LimitReading = { key: 'sugarG', total: 9, target: 35, status: 'within' };
+    expect(limitWarningNotes([entry('Cookie', 9)], reading))
+      .toBe(`Today: 9 of 35g, 26g left.\n\nMost of it: Cookie (9g).\n\n${LIMIT_WARNING_NOTES}`);
+    expect(limitWarningNotes([], { ...reading, total: 0 })).toBe(`Today: 0 of 35g, 35g left.\n\n${LIMIT_WARNING_NOTES}`);
+    expect(limitWarningNotes([], { ...reading, total: 41, status: 'over' })).toMatch(/^Today: 41 of 35g, 6g over\./);
+  });
+});
+
+describe('the automatic slip', () => {
+  const over: LimitReading = { key: 'sugarG', total: 40, target: 35, status: 'over' };
+  const back: LimitReading = { ...over, total: 30, status: 'near' };
+
+  it('slips once, the moment the day goes over, and never on top of the person\'s own slip', () => {
+    expect(shouldAutoSlip(over, 0, false)).toBe(true);
+    expect(shouldAutoSlip(over, 0, true)).toBe(false);
+    expect(shouldAutoSlip(over, 1, false)).toBe(false);
+    expect(shouldAutoSlip(back, 0, false)).toBe(false);
+  });
+
+  it('takes back only its own slip, once the day is within the limit again', () => {
+    expect(shouldTakeBackAutoSlip(back, 1, true)).toBe(true);
+    expect(shouldTakeBackAutoSlip(back, 2, true)).toBe(false);
+    expect(shouldTakeBackAutoSlip(back, 1, false)).toBe(false);
+    expect(shouldTakeBackAutoSlip(over, 1, true)).toBe(false);
+  });
+
+  it('reads the stored record, dropping anything malformed', () => {
+    expect(parseAutoSlips('{"sugarG":"2026-10-08","nope":"2026-10-08","satFatG":5}')).toEqual({ sugarG: '2026-10-08' });
+    expect(parseAutoSlips('[')).toEqual({});
+    expect(parseAutoSlips(null)).toEqual({});
   });
 });

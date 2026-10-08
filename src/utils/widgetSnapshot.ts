@@ -32,6 +32,7 @@ import { widgetTapNeedsApp } from './widgetQuietTaps';
 import { formatDose, medicationStats, repeatDose } from './medicationLog';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import {
+  LIMIT_ROW_NAME,
   activeLimits,
   describeLimit,
   limitStatus,
@@ -39,7 +40,6 @@ import {
   type LimitStatus,
   type NutritionTargets,
 } from './nutritionTargets';
-import { LIMIT_ROW_NAME } from './dayContextRows';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.

@@ -531,6 +531,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'nutritionLimits',
   'limitWarnPercent',
   'limitsTodayCategory',
+  // The limit tasks deleted for good, and the slips the app logged on them.
+  'limitWarningDeclined',
+  'limitWarningAutoSlips',
   'waterUnit',
 
   // Vocabularies the user builds. These are data as much as preference — a
@@ -686,6 +689,7 @@ export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones',
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = [
   'medication_archived', 'medication_settings', 'medication_summary_last',
   'medication_milestone_dismissed', 'nutritionTargets', 'nutritionLimits', 'limitWarnPercent',
+  'limitWarningAutoSlips',
 ];
 
 /**

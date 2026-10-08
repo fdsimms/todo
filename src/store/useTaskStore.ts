@@ -218,7 +218,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
-import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
+import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -333,9 +333,10 @@ import {
   loggedKcalToday, snackNudgeApplies, snackNudgeTitle, SNACK_NUDGE_NOTES,
 } from '../utils/snackNudgeTasks';
 import {
-  limitWarningsFor, limitWarningSourceId, limitWarningDayOf, limitWarningKeyOf, limitWarningTitle,
-  LIMIT_WARNING_LINK, limitWarningNotes,
+  limitReadings, limitWarningKeyOf, limitWarningTitle, LIMIT_WARNING_LINK, limitWarningNotes,
+  shouldAutoSlip, shouldTakeBackAutoSlip,
 } from '../utils/limitWarningTasks';
+import type { LimitReading } from '../utils/limitWarningTasks';
 import { foodLogTotals } from '../utils/foodLog';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
@@ -738,10 +739,17 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       useSettingsStore.getState()
         .setSnackNudgeDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
-    case 'limitWarning':
-      useSettingsStore.getState()
-        .setLimitWarningDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+    // The task is the limit's for as long as it is one, so deleting it stops
+    // it for that nutrient rather than for a day. Setting the nutrient to Stay
+    // under again clears this (setNutritionLimits); undo clears it too.
+    case 'limitWarning': {
+      const key = limitWarningKeyOf(sourceId);
+      if (!key) return;
+      const settings = useSettingsStore.getState();
+      const rest = settings.limitWarningDeclined.filter(k => k !== key);
+      settings.setLimitWarningDeclined(value === false ? [...rest, key] : rest);
       return;
+    }
     // On the saved event itself, scoped to the cycle the task was for: the
     // next appointment added from it starts a fresh one. Undo clears it.
     case 'bookEvent': {
@@ -2495,65 +2503,98 @@ function reconcileSnackNudge(tasks: Task[]): void {
 }
 
 /**
- * The `limitWarning` generator's whole pass. See `src/utils/limitWarningTasks.ts`.
+ * The `limitWarning` generator's whole pass: one "don't do" task per Stay under
+ * limit, and the slip it logs itself. See `src/utils/limitWarningTasks.ts`.
  *
  * Run beside the snack one, on every food log write for today and on every
- * catch-up sweep, so a task appears as soon as an entry takes a limit close and
- * goes away if that entry is deleted.
+ * catch-up sweep, so the title follows the total as it is logged and the slip
+ * lands the moment an entry takes the day over.
  */
 function reconcileLimitWarnings(tasks: Task[]): void {
   const settings = useSettingsStore.getState();
-  if (!settings.limitWarningTasks || !settings.limitWarningTaskCategory) return;
-  if (generatorPausedForVacation('limitWarning', settings.vacationMode)) return;
-  // The demo seed's warning has no food log behind it; see reconcileSnackNudge.
+  // The demo seed's task has no food log behind it; see reconcileSnackNudge.
   if (isDemoModeActive()) return;
+  // Off means stop tracking: the tasks go, rather than sitting on Today with
+  // nothing keeping them current.
+  if (!settings.limitWarningTasks || !settings.limitWarningTaskCategory) {
+    liveGeneratedTasksOfKind(tasks, 'limitWarning')
+      .forEach(t => dropGeneratedTask('limitWarning', t.generatedSourceId));
+    return;
+  }
+  if (generatorPausedForVacation('limitWarning', settings.vacationMode)) return;
 
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const declined = settings.limitWarningDeclinedDayKey === todayKey;
+  const dayStart = getCurrentDayStart();
   const todayEntries = dbGetFoodLogEntries(todayKey, todayKey);
-  const totals = foodLogTotals(todayEntries).total;
-  const warnings = limitWarningsFor(
-    totals, settings.nutritionTargets, settings.nutritionLimits, settings.limitWarnPercent,
+  const readings = limitReadings(
+    foodLogTotals(todayEntries).total, settings.nutritionTargets, settings.nutritionLimits, settings.limitWarnPercent,
   );
-  const wantedKeys = new Set(warnings.map(w => w.key as string));
 
-  // Another day's, or a nutrient that is no longer a limit: dropped without an
-  // opt-out, since nobody declined it.
+  // A nutrient no longer a limit (or a row from an older shape of this
+  // generator): dropped without an opt-out, since nobody declined it.
   liveGeneratedTasksOfKind(tasks, 'limitWarning')
-    .filter(t => limitWarningDayOf(t.generatedSourceId) !== todayKey
-      || !settings.nutritionLimits.includes(limitWarningKeyOf(t.generatedSourceId) as NutrientKey))
+    .filter(t => !readings.some(r => r.key === limitWarningKeyOf(t.generatedSourceId)))
     .forEach(t => dropGeneratedTask('limitWarning', t.generatedSourceId));
 
-  const dueDate = getCurrentDayStart().toISOString();
-  for (const key of settings.nutritionLimits) {
-    const warning = warnings.find(w => w.key === key);
+  for (const reading of readings) {
     reconcileGeneratedTask({
       kind: 'limitWarning',
-      sourceId: limitWarningSourceId(todayKey, key),
-      wanted: !declined && wantedKeys.has(key),
-      // Ticked off ends it for the day, even once the total climbs past the limit.
+      sourceId: reading.key,
+      wanted: !settings.limitWarningDeclined.includes(reading.key),
+      // Archiving one is how a person stops tracking it, the way they would a
+      // "don't do" task of their own, so an archived row is never replaced.
       blocksOnFinished: true,
-      // The title follows the total and the notes follow what made it, so
-      // the task says which foods to look at without opening anything.
       drift: existing => {
-        if (!warning) return null;
-        const title = limitWarningTitle(warning);
-        const notes = limitWarningNotes(todayEntries, key);
+        const title = limitWarningTitle(reading);
+        const notes = limitWarningNotes(todayEntries, reading);
         const patch: Partial<Task> = {};
         if (existing.title !== title) patch.title = title;
         if (existing.notes !== notes) patch.notes = notes;
         return Object.keys(patch).length > 0 ? patch : null;
       },
       draft: () => ({
-        title: warning ? limitWarningTitle(warning) : '',
-        notes: limitWarningNotes(todayEntries, key),
+        title: limitWarningTitle(reading),
+        notes: limitWarningNotes(todayEntries, reading),
         linkUrl: LIMIT_WARNING_LINK,
-        dueDate,
+        polarity: 'negative',
+        showStreak: true,
         category: settings.limitWarningTaskCategory,
-        ...generatedBy('limitWarning', limitWarningSourceId(todayKey, key)),
+        ...generatedBy('limitWarning', reading.key),
       }),
     });
+    syncLimitAutoSlip(reading, todayKey, dayStart);
   }
+}
+
+/**
+ * Logs or takes back the slip the app owns for one limit today. Quiet on
+ * purpose, unlike `logSlip`: nobody tapped anything, so there is no undo entry
+ * for shake-to-undo to find under the food log's own, no coins and no app
+ * block. The broken streak is the record.
+ */
+function syncLimitAutoSlip(reading: LimitReading, todayKey: string, dayStart: Date): void {
+  const task = liveGeneratedTask(useTaskStore.getState().tasks, 'limitWarning', reading.key);
+  if (!task || !isNegativeTask(task)) return;
+  const settings = useSettingsStore.getState();
+  const autoToday = settings.limitWarningAutoSlips[reading.key] === todayKey;
+  const slips = slipsToday(task, dayStart);
+  let patch: Partial<Task> | null = null;
+  let nextAuto: string | null | undefined;
+  if (shouldAutoSlip(reading, slips, autoToday)) {
+    patch = slipPatch(task, dayStart);
+    nextAuto = todayKey;
+  } else if (shouldTakeBackAutoSlip(reading, slips, autoToday)) {
+    patch = undoSlipPatch(task, dayStart);
+    nextAuto = null;
+  }
+  if (!patch) return;
+  const updated = { ...task, ...patch };
+  dbUpdateTask(updated);
+  useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+  const days = { ...settings.limitWarningAutoSlips };
+  if (nextAuto) days[reading.key] = nextAuto;
+  else delete days[reading.key];
+  settings.setLimitWarningAutoSlips(days);
 }
 
 /**

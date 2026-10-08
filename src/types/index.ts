@@ -2276,9 +2276,9 @@ export type GeneratedKind =
   // coming straight back is snackNudgeDeclinedDayKey, and a completed one blocks
   // a second through `blocksOnFinished`.
   | 'snackNudge'
-  // A task the first time a day's food log gets close to a Stay under limit —
-  // see src/utils/limitWarningTasks.ts. Day-and-nutrient keyed with no source
-  // row; deleting one stamps limitWarningDeclinedDayKey for the rest of the day.
+  // A "don't do" task per Stay under limit, slipped automatically when the food
+  // log goes past it — see src/utils/limitWarningTasks.ts. Keyed by the
+  // nutrient; deleting one adds it to limitWarningDeclined.
   | 'limitWarning'
   // "Book Optometrist" once a saved event's own interval has nearly passed
   // since the last one — see src/utils/savedEventTasks.ts. Sourced by the saved

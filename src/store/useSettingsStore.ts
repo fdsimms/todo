@@ -52,6 +52,7 @@ import {
   DEFAULT_LIMIT_WARN_PERCENT,
   type NutritionTargets,
 } from '../utils/nutritionTargets';
+import { parseAutoSlips } from '../utils/limitWarningTasks';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -1389,8 +1390,12 @@ interface SettingsStore {
   // limitWarnPercent of a limit. See src/utils/limitWarningTasks.ts.
   limitWarningTasks: boolean;
   limitWarningTaskCategory: string | null;
-  // The logical day a limit warning was last deleted on, held for that day only.
-  limitWarningDeclinedDayKey: string | null;
+  // The limits whose task was deleted: none is written back for them until the
+  // nutrient is set to Stay under again (setNutritionLimits clears it).
+  limitWarningDeclined: NutrientKey[];
+  // Per limit, the logical day the app last logged a slip on itself, so a
+  // deleted entry can take back that slip and never one the person logged.
+  limitWarningAutoSlips: Partial<Record<NutrientKey, string>>;
 
   /**
    * Which of the nutrients a logged meal is allowed to write to
@@ -2039,7 +2044,8 @@ interface SettingsStore {
   setLimitsTodayCategory: (category: string | null) => void;
   setLimitWarningTasks: (on: boolean) => void;
   setLimitWarningTaskCategory: (category: string | null) => void;
-  setLimitWarningDeclinedDayKey: (dayKey: string | null) => void;
+  setLimitWarningDeclined: (keys: NutrientKey[]) => void;
+  setLimitWarningAutoSlips: (days: Partial<Record<NutrientKey, string>>) => void;
   setMealShortfallLeadDays: (days: number) => void;
   setMealShortfallTaskCategory: (category: string | null) => void;
   setMealLogNudgeTasks: (on: boolean) => void;
@@ -2687,7 +2693,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   limitsTodayCategory: null,
   limitWarningTasks: false,
   limitWarningTaskCategory: null,
-  limitWarningDeclinedDayKey: null,
+  limitWarningDeclined: [],
+  limitWarningAutoSlips: {},
   healthWriteNutrients: [...DEFAULT_HEALTH_WRITE_NUTRIENTS],
   keepOpenAfterFoodLog: false,
   mealShortfallLeadDays: MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
@@ -3166,7 +3173,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const limitWarningTasks = dbGetSetting('limitWarningTasks') === 'true';
     const limitsTodayCategory = dbGetSetting('limitsTodayCategory') || null;
     const limitWarningTaskCategory = dbGetSetting('limitWarningTaskCategory') || null;
-    const limitWarningDeclinedDayKey = dbGetSetting('limitWarningDeclinedDayKey') || null;
+    const limitWarningDeclined = parseNutritionLimits(dbGetSetting('limitWarningDeclined'));
+    const limitWarningAutoSlips = parseAutoSlips(dbGetSetting('limitWarningAutoSlips'));
     const healthWriteNutrients = parseHealthWriteNutrients(dbGetSetting('healthWriteNutrients'));
     const keepOpenAfterFoodLog = dbGetSetting('keepOpenAfterFoodLog') === 'true';
     const mealShortfallTaskCategory = dbGetSetting('mealShortfallTaskCategory') || null;
@@ -3535,7 +3543,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
       limitsTodayCategory,
-      limitWarningDeclinedDayKey,
+      limitWarningAutoSlips,
+      limitWarningDeclined,
       limitWarningTaskCategory,
       limitWarningTasks,
       limitWarnPercent,
@@ -4096,6 +4105,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setNutritionLimits(keys: NutrientKey[]) {
     dbSetSetting('nutritionLimits', serializeNutritionLimits(keys));
+    // Setting a nutrient to Stay under again is asking for its task again, so
+    // a task deleted for it before is no longer declined.
+    const added = keys.filter(k => !get().nutritionLimits.includes(k));
+    const declined = get().limitWarningDeclined.filter(k => !added.includes(k));
+    if (declined.length !== get().limitWarningDeclined.length) get().setLimitWarningDeclined(declined);
     set({ nutritionLimits: parseNutritionLimits(serializeNutritionLimits(keys)) });
   },
 
@@ -4120,9 +4134,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ limitWarningTaskCategory: category });
   },
 
-  setLimitWarningDeclinedDayKey(dayKey: string | null) {
-    dbSetSetting('limitWarningDeclinedDayKey', dayKey ?? '');
-    set({ limitWarningDeclinedDayKey: dayKey });
+  setLimitWarningDeclined(keys: NutrientKey[]) {
+    dbSetSetting('limitWarningDeclined', serializeNutritionLimits(keys));
+    set({ limitWarningDeclined: parseNutritionLimits(serializeNutritionLimits(keys)) });
+  },
+
+  setLimitWarningAutoSlips(days: Partial<Record<NutrientKey, string>>) {
+    dbSetSetting('limitWarningAutoSlips', JSON.stringify(days));
+    set({ limitWarningAutoSlips: days });
   },
 
   setHealthWriteNutrients(keys: NutrientKey[]) {

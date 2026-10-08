@@ -229,6 +229,17 @@ function round(amount: number): number {
 
 // ==== Limits ====
 
+/** The short names a limit row uses, so a folded section's one-line summary fits. */
+export const LIMIT_ROW_NAME: Partial<Record<NutrientKey, string>> = {
+  satFatG: 'Sat fat',
+  transFatG: 'Trans fat',
+  sugarG: 'Sugar',
+  addedSugarG: 'Added sugar',
+  calorieKcal: 'Calories',
+  carbsG: 'Carbs',
+  fatG: 'Fat',
+};
+
 /**
  * The nutrients whose target the person marked **Stay under**, in label order.
  *
