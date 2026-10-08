@@ -52,6 +52,9 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, filterTasksByTitle, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
+import { ProjectPageMenu } from '../components/ProjectPageMenu';
+import { LazySheet } from '../components/LazySheet';
+import type { CardAnchor } from '../components/CardSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { useStableCallback } from '../hooks/useStableCallback';
@@ -435,6 +438,8 @@ export function ProjectDetailScreen() {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [pageMenuVisible, setPageMenuVisible] = useState(false);
+  const [pageMenuAnchor, setPageMenuAnchor] = useState<CardAnchor | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
@@ -1715,32 +1720,6 @@ export function ProjectDetailScreen() {
           onBack={onClose}
           actions={
             <View style={styles.detailHeaderActions}>
-              {/*
-                The kind, right where its effect shows. Same shape as Recipes'
-                own grid-outline toggle in its header. The editor has the same
-                choice with its explanation; this is the quick way.
-              */}
-              {!!project && (
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.tap();
-                    // The store brings the kind's own defaults along (a list
-                    // never finishes and is never pulled; a project gets both
-                    // back), so either direction lands where creating that
-                    // kind fresh would. See kindSwitchFields.
-                    updateProject(project.id, { kind: isList ? 'project' : 'list' });
-                  }}
-                  hitSlop={8}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: isList }}
-                  // A fixed name with the state beside it, as a switch reads:
-                  // the label used to change with the state, so VoiceOver said
-                  // "Keep as a list, switch, on" and the reverse when off.
-                  accessibilityLabel="Show as a list, without dates"
-                >
-                  <Ionicons name="list-outline" size={20} color={isList ? colors.accent : colors.textSecondary} />
-                </TouchableOpacity>
-              )}
               {/* Share, whose sheet includes Copy: a list of questions or gift
                   ideas is usually headed for a message, not the clipboard.
                   Long-press still copies in one step. */}
@@ -1778,6 +1757,19 @@ export function ProjectDetailScreen() {
                     three dots promise a menu of choices first. */}
                 <Ionicons name="create-outline" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
+              {!!project && (
+                <TouchableOpacity
+                  hitSlop={12}
+                  onPress={(e) => {
+                    setPageMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                    setPageMenuVisible(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Project options"
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
             </View>
           }
         />
@@ -2682,6 +2674,18 @@ export function ProjectDetailScreen() {
           onClose={() => setLookAheadOpen(false)}
         />
 
+        <LazySheet open={pageMenuVisible}>
+          <ProjectPageMenu
+            visible={pageMenuVisible}
+            onClose={() => setPageMenuVisible(false)}
+            anchor={pageMenuAnchor}
+            isList={isList}
+            // The store brings the kind's own defaults along (a list never
+            // finishes and is never pulled; a project gets both back). See
+            // kindSwitchFields.
+            onConvert={() => project && updateProject(project.id, { kind: isList ? 'project' : 'list' })}
+          />
+        </LazySheet>
         <ProjectEditor
           visible={editingProject !== null}
           project={editingProject}

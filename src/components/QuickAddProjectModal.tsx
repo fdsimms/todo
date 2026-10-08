@@ -16,6 +16,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { WhenPicker } from './WhenPicker';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SheetScrim } from './SheetScrim';
+import { SegmentedControl } from './SegmentedControl';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -35,7 +36,7 @@ export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
-  /** The "List" chip was on: a running list rather than work with an end. */
+  /** "List" was picked above the name: a running list rather than work with an end. */
   asList?: boolean;
   /** The "Planning" chip was on: held back until it's marked ready. */
   planning?: boolean;
@@ -195,9 +196,9 @@ export function QuickAddProjectModal({
     animateLayout();
     const resolvedCategory = resolveCategory();
     const created = createProject(finalTitle, {
-      deadline: deadline ? deadline.toISOString() : null,
+      deadline: deadline && !asList ? deadline.toISOString() : null,
       category: resolvedCategory,
-      awayStart: leaving ? awayNoonIso(leaving) : null,
+      awayStart: leaving && !asList ? awayNoonIso(leaving) : null,
       kind: asList ? 'list' : 'project',
       planning,
     });
@@ -345,12 +346,28 @@ export function QuickAddProjectModal({
             </View>
           ) : null}
 
+          {/* The kind is the first question, not a switch found later on the
+              project's page: a list has no dates or finish line, so it is a
+              different thing to make. Switching afterward is Convert in the
+              project page's "..." menu. */}
+          <View style={styles.kindRow}>
+            <SegmentedControl
+              label="Kind"
+              options={[
+                { value: false, label: 'Project', icon: 'briefcase-outline' },
+                { value: true, label: 'List', icon: 'list-outline' },
+              ]}
+              value={asList}
+              onChange={setAsList}
+            />
+          </View>
+
           {/* Name input row */}
           <View style={styles.row}>
             <TextField
               ref={inputRef}
               style={styles.input}
-              placeholder="New project…"
+              placeholder={asList ? 'New list…' : 'New project…'}
               placeholderTextColor={colors.textTertiary}
               value={title}
               onChangeText={setTitle}
@@ -364,7 +381,7 @@ export function QuickAddProjectModal({
               onPress={handleAdd}
               disabled={!title.trim()}
               accessibilityRole="button"
-              accessibilityLabel="Create project"
+              accessibilityLabel={asList ? 'Create list' : 'Create project'}
             >
               <Ionicons name="arrow-up" size={18} color={title.trim() ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
@@ -375,12 +392,8 @@ export function QuickAddProjectModal({
               QuickAddModal's own toolbar: label until there's a value, then
               the value replaces it.
 
-              Whether the new project is a list isn't asked here any more —
-              that's a toggle on the project's own screen now (Project.kind),
-              set after creation rather than as a question every new project
-              answers up front. The List chip below is the opt-in exception:
-              a chip nobody has to touch, for the person who already knows,
-              who otherwise had to find an unlabeled icon on the next screen. */}
+              Whether it's a list is the segmented control above the name. A
+              list has no deadline or trip, so those two chips are left off. */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
@@ -395,7 +408,7 @@ export function QuickAddProjectModal({
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {!asList && <TouchableOpacity
               style={[styles.toolChip, deadline != null && styles.toolChipSet]}
               onPress={() => setDeadlinePickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
@@ -406,9 +419,9 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, deadline != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {deadline != null ? formatDeadlineDate(deadline.toISOString()) : 'Deadline'}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
 
-            <TouchableOpacity
+            {!asList && <TouchableOpacity
               style={[styles.toolChip, leaving != null && styles.toolChipSet]}
               onPress={() => setLeavingPickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
@@ -419,19 +432,7 @@ export function QuickAddProjectModal({
               <Text style={[styles.toolChipText, leaving != null && styles.toolChipTextSet]} numberOfLines={1}>
                 {leaving != null ? `Leaves ${formatDeadlineDate(leaving.toISOString())}` : 'Trip'}
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.toolChip, asList && styles.toolChipSet]}
-              onPress={() => { haptics.tap(); setAsList(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: asList }}
-              accessibilityLabel="List, with no dates or finish line"
-            >
-              <Ionicons name="list-outline" size={13} color={asList ? colors.accent : colors.textTertiary} />
-              <Text style={[styles.toolChipText, asList && styles.toolChipTextSet]} numberOfLines={1}>List</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
 
             <TouchableOpacity
               style={[styles.toolChip, planning && styles.toolChipSet]}
@@ -512,6 +513,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
   },
+  kindRow: { marginBottom: spacing.smd },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
