@@ -55,6 +55,7 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
+import { LIMIT_WARNING_NOTES, limitWarningSourceId, limitWarningTitle } from './limitWarningTasks';
 import { helpingNutrition, scalePanelToAmount } from './foodLog';
 import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
@@ -1899,6 +1900,17 @@ export function seedDemoData(): void {
     ...generatedBy('snackNudge', dayKeyOf(today)),
   });
 
+  // The limit warning, seeded directly for the snack suggestion's reason:
+  // `reconcileLimitWarnings` refuses in demo mode. Illustrative figures.
+  useSettingsStore.getState().setLimitWarningTaskCategory('Health');
+  addTask({
+    title: limitWarningTitle({ key: 'satFatG', total: 16, target: 20, status: 'near' }),
+    notes: LIMIT_WARNING_NOTES,
+    dueDate: today.toISOString(),
+    category: 'Health',
+    ...generatedBy('limitWarning', limitWarningSourceId(dayKeyOf(today), 'satFatG')),
+  });
+
   // A health-target task, the fifth kind. Seeded so the shape is visible even
   // though the demo can show no reading behind it: the row draws its chip only
   // once Health has a number, so in demo mode this reads as an ordinary task
@@ -2213,6 +2225,12 @@ function seedFoodLog(today: Date): void {
   // view you press rather than read: without a target it is a stepper with no
   // bar under it, which shows the control and not the point of it.
   setNutritionTarget('waterMl', 2000);
+  // And one limit, since Stay under changes how a target reads (what's left,
+  // red past it, a row on Today) and is invisible without one marked.
+  setNutritionTarget('satFatG', 20);
+  useSettingsStore.getState().setNutritionLimits(['satFatG']);
+  useSettingsStore.getState().setFoodLogPinnedNutrients(['calorieKcal', 'proteinG', 'satFatG']);
+  useSettingsStore.getState().setLimitsTodayCategory('Health');
   const { items } = useGroceryStore.getState();
 
   /**

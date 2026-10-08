@@ -357,7 +357,7 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'generated', 'automatic'],
   snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
     'generated', 'automatic'],
-  limitWarning: ['limit', 'stay under', 'saturated fat', 'sugar', 'cholesterol', 'sodium', 'over',
+  limitWarning: ['stay under', 'saturated fat', 'sugar', 'cholesterol', 'sodium', 'over',
     'food log', 'generated', 'automatic'],
   bookEvent: ['appointment', 'checkup', 'doctor', 'dentist', 'optometrist', 'remind', 'yearly',
     'generated', 'automatic'],
@@ -897,7 +897,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'mealLogPrompt', groupId: 'kitchen', label: 'Ask what you ate', section: 'Meals on Today',
     keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
   { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
-    keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim'] },
+    keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim',
+      'limit', 'stay under', 'saturated fat', 'sugar', 'added sugar', 'cholesterol', 'trans fat'] },
   // Simplified mode takes scaling away, and this row with it unless one is set.
   { id: 'householdServings', groupId: 'kitchen', label: 'Usually cooking for', section: 'Meal plan',
     keywords: ['household', 'family', 'people', 'servings', 'serves', 'portions', 'scale', 'batch',

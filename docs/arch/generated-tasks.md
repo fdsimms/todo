@@ -1549,6 +1549,28 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
 
+## `limitWarning`: a task when the food log nears a Stay under limit
+
+Once today's food log reaches `limitWarnPercent` (75% by default) of a target the
+person marked Stay under (`nutritionLimits`), `reconcileLimitWarnings` writes
+"Saturated fat at 12 of 16g today". Rules are in `src/utils/limitWarningTasks.ts`;
+the pass is in `useTaskStore.ts`, run beside the snack one on the same triggers.
+
+- **It reads the food log, not Apple Health.** A Health rule can watch saturated
+  fat too, but only after the log is written to Health, and its threshold is a
+  second number to keep in step with the target by hand. This uses the totals
+  the Food log shows, against the limit set there, at the same "close" share the
+  Food log's orange bar and Today's limit rows use.
+- **One task per limit per day** (`<dayKey>:<nutrient>`). Its title follows the
+  total, so the task that said "12 of 16g" says "19 of 16g today, over the
+  limit" rather than a second task appearing. Deleting the entry behind it
+  removes it.
+- **A notice**: ticking it off is the acknowledgement, and blocks it for the rest
+  of the day (`blocksOnFinished`). Deleting it stamps
+  `limitWarningDeclinedDayKey`, which declines every limit warning that day.
+- Refuses in demo mode, for the snack suggestion's reason. Ships off, pauses on
+  vacation, files under its own category setting (default Health).
+
 ## `bookEvent`: booking a saved event again
 
 A saved event (`src/utils/savedEvents.ts`, an event kept for re-adding from the
