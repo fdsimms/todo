@@ -4350,7 +4350,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days. Each date can be checked off separately."
+              hint="The same task on several set days, each checked off separately. For a schedule that keeps going, use Repeat."
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -4399,7 +4399,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="flag-outline"
               label="Deadline"
-              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit, separate from Date' : undefined}
+              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'The date it needs to be done by, separate from the Date it first appears on Today' : undefined}
               value={
                 deadlineOffsetDays !== null
                   ? (deadline ? `${formatDeadlineLabel(deadline.toISOString(), deadlineTime)} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
@@ -4626,7 +4626,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="time-outline"
               label="Time of day"
-              hint="Hold it back until a part of the day."
+              hint="Hidden until this part of the day arrives: morning, afternoon, evening or night."
               value={timeOfDaySummary}
               expanded={showTimeOfDay}
               onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -4666,7 +4666,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only active for part of the day, then expires. Removing expired tasks is set in Settings."
+              hint="Only on the list between two clock times, then it expires. Removing expired tasks is set in Settings."
               value={timeWindowSummary}
               caption={windowStartMeeting
                 ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
@@ -4958,7 +4958,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="repeat"
               label="Repeat"
-              hint="Come back on a schedule after each completion."
+              hint="Comes back on a schedule after each completion. For a few set days, use More dates."
               // The picker has no read-back line of its own — this row, sitting
               // directly above it, is where the whole rule reads as a sentence.
               value={recurrenceType !== 'none' ? describeRecurrence({
@@ -5654,7 +5654,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             label="Effort"
             summary={effortSummary}
             emptySummary={defaultEffortLabel ?? 'Not set'}
-            hint="Roughly how long this takes, so a day's list can be sized realistically."
+            hint="Roughly how long this takes, so a day's list can be sized realistically. It does not run a timer."
             expanded={fieldOpen('effort')}
             onToggle={() => toggleField('effort')}
           >
