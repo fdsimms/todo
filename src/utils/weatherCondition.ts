@@ -56,18 +56,25 @@ export function classifyWeather(weatherCode: number, tempF: number): WeatherCond
  * already stating the temperature as a number and a second, wordless way of
  * saying "cold" would just be a thermometer next to one.
  */
-export function weatherIconFor(weatherCode: number): 'sunny-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
+export function weatherIconFor(
+  weatherCode: number,
+  isDay: boolean = true,
+): 'sunny-outline' | 'moon-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
   if (SNOWY_CODES.has(weatherCode)) return 'snow-outline';
   if (RAINY_CODES.has(weatherCode)) return 'rainy-outline';
-  if (SUNNY_CODES.has(weatherCode)) return 'sunny-outline';
+  if (SUNNY_CODES.has(weatherCode)) return isDay ? 'sunny-outline' : 'moon-outline';
   return 'cloud-outline';
 }
 
-/** "sunny", "rainy", "snowy", or "cloudy" for anything outside those three groups. */
-export function weatherConditionAdjective(weatherCode: number): string {
+/**
+ * "sunny", "rainy", "snowy", or "cloudy" for anything outside those three
+ * groups. A clear sky after dark is "clear", as weather apps say it: the sun
+ * isn't out to be sunny.
+ */
+export function weatherConditionAdjective(weatherCode: number, isDay: boolean = true): string {
   if (SNOWY_CODES.has(weatherCode)) return 'snowy';
   if (RAINY_CODES.has(weatherCode)) return 'rainy';
-  if (SUNNY_CODES.has(weatherCode)) return 'sunny';
+  if (SUNNY_CODES.has(weatherCode)) return isDay ? 'sunny' : 'clear';
   return 'cloudy';
 }
 

@@ -1792,8 +1792,8 @@ export function TodayScreen() {
     && weatherSnapshot
     && weatherSnapshotDayKey === getLogicalDayKey(new Date(), dayResetTime)
     ? {
-        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode))}`,
-        icon: weatherIconFor(weatherSnapshot.weatherCode),
+        label: `${Math.round(weatherSnapshot.tempF)}° ${capitalize(weatherConditionAdjective(weatherSnapshot.weatherCode, weatherSnapshot.isDay ?? true))}`,
+        icon: weatherIconFor(weatherSnapshot.weatherCode, weatherSnapshot.isDay ?? true),
       }
     : undefined;
 

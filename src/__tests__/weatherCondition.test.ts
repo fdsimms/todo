@@ -73,6 +73,15 @@ describe('weatherConditionAdjective / weatherConditionNoun', () => {
     expect(weatherConditionNoun(71)).toBe('Snow');
     expect(weatherConditionNoun(3)).toBe('Clouds');
   });
+
+  it('calls a clear sky "clear" with a moon after dark, and leaves other skies alone', () => {
+    expect(weatherConditionAdjective(0, false)).toBe('clear');
+    expect(weatherConditionAdjective(1, false)).toBe('clear');
+    expect(weatherIconFor(0, false)).toBe('moon-outline');
+    expect(weatherConditionAdjective(61, false)).toBe('rainy');
+    expect(weatherIconFor(61, false)).toBe('rainy-outline');
+    expect(weatherConditionAdjective(3, false)).toBe('cloudy');
+  });
 });
 
 describe('conditionNoun', () => {

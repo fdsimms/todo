@@ -48,6 +48,13 @@ export interface WeatherHour {
 export interface WeatherSnapshot {
   weatherCode: number;
   tempF: number;
+  /**
+   * Whether the sun was up at the reading (Open-Meteo's `current.is_day`), so
+   * the header can say "Clear" rather than "Sunny" after dark. Optional: a
+   * snapshot saved before this field existed, or a response without it, reads
+   * as daytime.
+   */
+  isDay?: boolean;
   /** ISO, when this reading was taken. */
   fetchedAt: string;
   /**
@@ -164,7 +171,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const url = `${FORECAST_URL}?latitude=${location.latitude}&longitude=${location.longitude}` +
-      '&current=temperature_2m,weather_code' +
+      '&current=temperature_2m,weather_code,is_day' +
       '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
       '&hourly=weather_code,temperature_2m' +
       '&forecast_days=14&temperature_unit=fahrenheit&timezone=auto';
@@ -201,6 +208,7 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
     return {
       weatherCode,
       tempF,
+      isDay: typeof body?.current?.is_day === 'number' ? body.current.is_day === 1 : undefined,
       fetchedAt: new Date().toISOString(),
       todayHighF,
       todayLowF,
