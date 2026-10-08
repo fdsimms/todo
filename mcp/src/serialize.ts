@@ -22,6 +22,7 @@
 import { PRIORITY_LABELS } from '../../src/types';
 import type { Task } from '../../src/types';
 import type { Replica } from './replica';
+import { decisionOutcomes } from '../../src/utils/decisionReview';
 
 export interface SerializedTask {
   id: string;
@@ -68,6 +69,10 @@ export interface SerializedTask {
   why?: string;
   /** What would reopen the decision, where it was recorded with it. */
   revisitIf?: string;
+  /** How the answer turned out, from the look-back that asked (decisionReview.ts). */
+  outcome?: { text: string; at: string };
+  /** On a look-back task: the answered decision it asks about. */
+  lookBackOf?: string;
   recurring?: boolean;
   pinned?: boolean;
   /** On a repeating task: every occurrence it spawns starts pinned. */
@@ -181,6 +186,8 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     answer: task.deliverableValue ?? undefined,
     why: task.deliverableWhy ?? undefined,
     revisitIf: task.deliverableRevisitIf ?? undefined,
+    outcome: task.deliverableValue != null ? outcomeOf(replica, task.id) : undefined,
+    lookBackOf: task.reviewOfTaskId ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     pinned: task.pinned ? true : undefined,
     pinsEachOccurrence: task.pinEachOccurrence ? true : undefined,
@@ -193,6 +200,12 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     people,
     vacationPause: task.vacationPause ? true : undefined,
   });
+}
+
+/** The latest answered look-back on a decision, read the way the app reads it (`decisionOutcomes`). */
+function outcomeOf(replica: Replica, id: string): { text: string; at: string } | undefined {
+  const outcome = decisionOutcomes(replica.tasks().filter(t => t.reviewOfTaskId === id)).get(id);
+  return outcome ? { text: outcome.text, at: outcome.at } : undefined;
 }
 
 /**

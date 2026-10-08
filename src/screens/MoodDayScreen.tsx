@@ -10,7 +10,8 @@ import { useJournalStore } from '../store/useJournalStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { openEntries } from '../utils/journal';
 import { logsOnDay, moodEmoji, moodLabel, severityLabel } from '../utils/moodLog';
 import { adjacentLogDays } from '../utils/moodHistory';
 import { DetailHeader } from '../components/DetailHeader';
@@ -54,7 +55,10 @@ export function MoodDayScreen() {
   const [dayKey, setDayKey] = useState(route.params.dayKey);
   const [editing, setEditing] = useState<MoodLog | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const journal = useJournalStore(s => s.entries);
+  const allJournal = useJournalStore(s => s.entries);
+  // A sealed note to your future self shows nowhere until its day (openEntries).
+  const todayKey = dayKeyOf(getCurrentDayStart());
+  const journal = useMemo(() => openEntries(allJournal, todayKey), [allJournal, todayKey]);
   const [editingPage, setEditingPage] = useState<JournalEntry | null>(null);
   // Its own flag so the entry stays put while the sheet fades out.
   const [pageOpen, setPageOpen] = useState(false);

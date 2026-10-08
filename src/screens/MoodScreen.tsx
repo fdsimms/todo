@@ -21,6 +21,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { openEntries } from '../utils/journal';
 import { segmentOf } from '../utils/rhythms';
 import {
   contextTagKey,
@@ -178,7 +179,8 @@ export function MoodScreen() {
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const journal = useJournalStore(s => s.entries);
-  const lookedBack = useMemo(() => lookBacks(logs, todayKey, journal), [logs, todayKey, journal]);
+  // A sealed note to your future self is no look back until its day (openEntries).
+  const lookedBack = useMemo(() => lookBacks(logs, todayKey, openEntries(journal, todayKey)), [logs, todayKey, journal]);
 
   // The first day the task record is complete for. `completedRetentionDays`
   // deletes completed rows on a schedule while the mood log keeps every entry

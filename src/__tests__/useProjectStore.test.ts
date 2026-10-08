@@ -404,6 +404,14 @@ describe('projectDecisions', () => {
     expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['a']);
   });
 
+  it('leaves out a look-back, whose answer is the outcome of another decision', () => {
+    const tasks = [
+      decision({ id: 'a', completedAt: '2025-01-02T09:00:00' }),
+      decision({ id: 'r', reviewOfTaskId: 'a', deliverableValue: 'Went well', completedAt: '2025-02-02T09:00:00' }),
+    ];
+    expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['a']);
+  });
+
   // "No answer" is a real state — nothing may ever require one — but a block
   // that exists to be read back has nothing to read back from it.
   it('leaves out a decision that was completed without an answer', () => {

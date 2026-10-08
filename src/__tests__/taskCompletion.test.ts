@@ -689,3 +689,38 @@ describe('buildCompletion', () => {
     });
   });
 });
+
+describe('a look-back on an answered decision', () => {
+  const decision = (over: Partial<Task> = {}) => makeTask({
+    id: 'd1', title: 'Which contractor?', deliverableKind: 'text', category: 'Home', projectId: 'p1', ...over,
+  });
+
+  it('adds a task that asks how the answer turned out, due that long after the day it was made', () => {
+    const { completed, reviewTask } = build(decision(), { deliverableValue: "Bob's Roofing", reviewAfter: '1m' });
+    expect(reviewTask).toMatchObject({
+      title: 'How did it turn out? Which contractor?',
+      deliverableKind: 'text',
+      reviewOfTaskId: completed.id,
+      category: 'Home',
+      projectId: 'p1',
+      completed: false,
+    });
+    expect(reviewTask!.notes).toBe('You answered "Bob\'s Roofing" on Mar 10, 2026.');
+    expect(dayKeyOf(new Date(reviewTask!.dueDate!))).toBe('2026-04-10');
+  });
+
+  it('derives its id from the completion, so two devices write one', () => {
+    const a = build(decision(), { deliverableValue: 'Bob', reviewAfter: '2w' }).reviewTask!;
+    const b = build(decision(), { deliverableValue: 'Bob', reviewAfter: '2w' }).reviewTask!;
+    expect(a.id).toBe(b.id);
+    expect(dayKeyOf(new Date(a.dueDate!))).toBe('2026-03-24');
+  });
+
+  it('is not made without a real answer, on a miss, or for a look-back itself', () => {
+    expect(build(decision(), { deliverableValue: null, reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision(), { reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision(), { missed: true, deliverableValue: 'Bob', reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision({ reviewOfTaskId: 'd0' }), { deliverableValue: 'Fine', reviewAfter: '1m' }).reviewTask).toBeNull();
+    expect(build(decision(), { deliverableValue: 'Bob' }).reviewTask).toBeNull();
+  });
+});

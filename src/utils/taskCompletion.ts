@@ -50,7 +50,8 @@ import {
   dayKeyToDate,
 } from './dateUtils';
 import { canFollowMeter, hasMeter, nextMeterDueAt } from './meters';
-import { carryClockTime } from './clockTime';
+import { carryClockTime, logicalDayStart } from './clockTime';
+import { canReviewDecision, reviewTaskDraft, type ReviewAfter } from './decisionReview';
 import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 import { nextStreakRecord } from './streakRecord';
@@ -92,6 +93,12 @@ export interface CompletionOptions {
    * no answer has nothing to hang on.
    */
   deliverableReasoning?: DeliverableReasoning;
+  /**
+   * Come back after this long and ask how the answer turned out: adds a
+   * look-back task pointing at the completed row (see decisionReview.ts).
+   * Ignored without a real answer, on a miss, and on a look-back itself.
+   */
+  reviewAfter?: ReviewAfter | null;
   neutral?: boolean;
   /**
    * The person says somebody else did it. Stamps `Task.doneByOtherAt`, and
@@ -157,6 +164,8 @@ export interface CompletionRows {
   /** The every-Nth-completion task, if this completion earned one. */
   followUpTask: Task | null;
   followUpSubtasks: Task[];
+  /** "How did it turn out?", when the answer asked to be looked back on. */
+  reviewTask: Task | null;
   /** The next set of a repeating dated series, once its last date lands. */
   rolledOver: Task[];
   /** True when the recurrence's own schedule applied on this completion. */
@@ -954,12 +963,30 @@ export function buildCompletion(
     }
   }
 
+  // Asked for at answer time, never by itself (decisionReview.ts). Counted
+  // from the logical day the decision was made, and derived by id so two
+  // devices replaying one completion write one look-back.
+  let reviewTask: Task | null = null;
+  const reviewAfter = options?.reviewAfter;
+  if (reviewAfter && !missed && !neutral && canReviewDecision(task, completed.deliverableValue)) {
+    const decidedDay = logicalDayStart(completedAt, dayResetTime);
+    const maxOrder = allTasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    reviewTask = newTaskFromDraft(
+      reviewTaskDraft(completed, reviewAfter, decidedDay),
+      now.toISOString(),
+      maxOrder + 1,
+      false,
+      derivedId(spawnSeed.review(id)),
+    );
+  }
+
   return {
     completed,
     nextTask,
     nextSubtasks,
     followUpTask,
     followUpSubtasks,
+    reviewTask,
     rolledOver,
     advancesBySchedule,
     recurs,

@@ -2030,6 +2030,18 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
   });
 
+  it('adds the look-back an answer asks for, and takes it away when the completion is undone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Which contractor?', deliverableKind: 'text' } as Partial<Task>)] });
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Bob', reviewAfter: '3m' });
+    const review = useTaskStore.getState().tasks.find(t => t.reviewOfTaskId === 't1');
+    expect(review).toMatchObject({ title: 'How did it turn out? Which contractor?', deliverableKind: 'text', completed: false });
+    expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: review!.id }));
+
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useTaskStore.getState().tasks.some(t => t.reviewOfTaskId === 't1')).toBe(false);
+    expect(dbDeleteTask).toHaveBeenCalledWith(review!.id);
+  });
+
   it('reconciles the deadline calendar event for the completed row', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
     useTaskStore.getState().completeTask('t1');

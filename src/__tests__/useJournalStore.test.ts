@@ -49,6 +49,24 @@ describe('addEntry', () => {
   });
 });
 
+describe('a note to your future self', () => {
+  it('is sealed until a later day, and a day already here seals nothing', () => {
+    expect(state().addEntry('journal', 'Hello, me', undefined, '2027-08-17')!.openOn).toBe('2027-08-17');
+    expect(state().addEntry('journal', 'Now', undefined, '2026-08-17')!.openOn).toBeNull();
+    expect(state().addEntry('journal', 'Then', undefined, '2026-01-01')!.openOn).toBeNull();
+  });
+
+  it('opens early when asked, and only a sealed one changes', () => {
+    const note = state().addEntry('journal', 'Hello, me', undefined, '2027-08-17')!;
+    state().openNow(note.id);
+    expect(state().entries.find(e => e.id === note.id)!.openOn).toBeNull();
+    expect(dbUpdateJournalEntry).toHaveBeenCalledWith(expect.objectContaining({ id: note.id, openOn: null }));
+    (dbUpdateJournalEntry as jest.Mock).mockClear();
+    state().openNow(note.id);
+    expect(dbUpdateJournalEntry).not.toHaveBeenCalled();
+  });
+});
+
 describe('updateEntry', () => {
   it('changes the words and never the day', () => {
     const entry = state().addEntry('journal', 'First', new Date(2026, 7, 12, 12))!;

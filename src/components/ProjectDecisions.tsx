@@ -6,6 +6,7 @@ import { spacing, font, fontWeight, lineHeight, radius, interaction, type Colors
 import { formatTaskDeliverable, reasoningOf } from '../utils/deliverables';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import type { DecisionOutcome } from '../utils/decisionReview';
 
 interface Props {
   /** Already collapsed to one row per member — see projectDecisions. */
@@ -17,6 +18,8 @@ interface Props {
    * since a question for the doctor that got answered isn't a decision.
    */
   label?: string;
+  /** How each decision turned out, by id, from its look-back (decisionReview.ts). */
+  outcomes?: ReadonlyMap<string, DecisionOutcome>;
 }
 
 /**
@@ -41,7 +44,7 @@ interface Props {
  */
 export const DECISIONS_SHOWN = 3;
 
-export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Props) {
+export function ProjectDecisions({ decisions, onPress, label = 'Decisions', outcomes }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showAll, setShowAll] = useState(false);
@@ -58,6 +61,7 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
         const answer = formatTaskDeliverable(task);
         const title = displayTitleFor(task);
         const { why, revisitIf } = reasoningOf(task);
+        const outcome = outcomes?.get(task.id)?.text ?? null;
         return (
           <TouchableOpacity
             key={task.id}
@@ -70,6 +74,7 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
               `${title}, answered ${answer}`,
               why ? `because ${why}` : null,
               revisitIf ? `revisit if ${revisitIf}` : null,
+              outcome ? `turned out: ${outcome}` : null,
             ].filter(Boolean).join(', ')}
             accessibilityHint={onPress ? 'Double tap to change the answer' : undefined}
           >
@@ -85,7 +90,7 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
             </View>
             {/* The reasoning on its own full-width lines under the pair, so
                 it never competes with the question for the row's width. */}
-            {(why || revisitIf) && (
+            {(why || revisitIf || outcome) && (
               <View style={styles.reasoning}>
                 {why && (
                   <Text style={styles.reasoningText}>
@@ -95,6 +100,11 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
                 {revisitIf && (
                   <Text style={styles.reasoningText}>
                     <Text style={styles.reasoningLabel}>Revisit if </Text>{revisitIf}
+                  </Text>
+                )}
+                {outcome && (
+                  <Text style={styles.reasoningText}>
+                    <Text style={styles.reasoningLabel}>Turned out </Text>{outcome}
                   </Text>
                 )}
               </View>

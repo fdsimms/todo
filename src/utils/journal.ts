@@ -6,8 +6,70 @@
  * `moodInsights.ts` never reads either kind.
  */
 
-import type { JournalEntry, JournalKind } from '../types';
+import { format } from 'date-fns/format';
+import type { JournalEntry, JournalKind, TaskDraft } from '../types';
 import { textMatchesQuery } from './moodHistory';
+
+/**
+ * Whether a note to your future self is still sealed on `todayKey`, the
+ * logical day being read on. An entry with no `openOn` never is.
+ */
+export function isSealed(entry: Pick<JournalEntry, 'openOn'>, todayKey: string): boolean {
+  return typeof entry.openOn === 'string' && entry.openOn > todayKey;
+}
+
+/**
+ * Every entry that may be read today: the one rule every reader goes through
+ * (the screens, the sheet's "so far", the mood day page, Looking back, the
+ * export and Claude), so a sealed note's words appear nowhere before its day.
+ */
+export function openEntries<T extends Pick<JournalEntry, 'openOn'>>(entries: readonly T[], todayKey: string): T[] {
+  return entries.filter(e => !isSealed(e, todayKey));
+}
+
+/** The sealed notes, soonest to open first. */
+export function sealedEntries(entries: readonly JournalEntry[], todayKey: string): JournalEntry[] {
+  return entries.filter(e => isSealed(e, todayKey)).sort((a, b) => a.openOn!.localeCompare(b.openOn!));
+}
+
+/** How many days a note shows under "Just opened" after it opens. */
+export const JUST_OPENED_DAYS = 7;
+
+/**
+ * Notes that opened in the last week, newest opening first. A note files
+ * under the day it was written, which can be a year down the page, so these
+ * are also shown at the top for the week they open.
+ */
+export function justOpened(entries: readonly JournalEntry[], todayKey: string): JournalEntry[] {
+  const today = new Date(`${todayKey}T00:00:00`);
+  today.setDate(today.getDate() - (JUST_OPENED_DAYS - 1));
+  const from = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return entries
+    .filter(e => typeof e.openOn === 'string' && e.openOn <= todayKey && e.openOn >= from)
+    .sort((a, b) => b.openOn!.localeCompare(a.openOn!) || b.loggedAt.localeCompare(a.loggedAt));
+}
+
+/** The link a sealed note's reminder task carries, which opens that note. */
+export function journalEntryLink(id: string): string {
+  return `dundundun://journal?entry=${encodeURIComponent(id)}`;
+}
+
+/**
+ * The reminder a note to your future self leaves on the day it opens
+ * (JournalEntry.openOn): an ordinary task, due that day, whose link opens the
+ * note. A plain task rather than a generated one, because the person asked
+ * for it by sealing the note; nothing reconciles it, and the two places that
+ * take a note's reason away (opening it early, deleting it) take the task too.
+ */
+export function sealedNoteTaskDraft(entry: Pick<JournalEntry, 'id' | 'dayKey' | 'openOn'>): Partial<TaskDraft> | null {
+  if (!entry.openOn) return null;
+  const due = new Date(`${entry.openOn}T12:00:00`);
+  return {
+    title: `Read the note you wrote on ${format(new Date(`${entry.dayKey}T00:00:00`), 'MMM d, yyyy')}`,
+    dueDate: due.toISOString(),
+    linkUrl: journalEntryLink(entry.id),
+  };
+}
 
 /** One kind's entries, in the order given (the store keeps newest first). */
 export function entriesOfKind(entries: readonly JournalEntry[], kind: JournalKind): JournalEntry[] {

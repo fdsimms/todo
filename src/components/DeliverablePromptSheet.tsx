@@ -39,6 +39,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { TextField } from './TextField';
+import { SegmentedControl } from './SegmentedControl';
+import { REVIEW_AFTER_OPTIONS, type ReviewAfter } from '../utils/decisionReview';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -68,11 +70,17 @@ interface Props {
    * `reasoning` is the Why / Revisit if pair (Task.deliverableWhy), passed
    * only when that section was opened; undefined leaves the row's alone.
    */
-  onConfirm: (value: string | null, reasoning?: DeliverableReasoning) => void;
+  onConfirm: (value: string | null, reasoning?: DeliverableReasoning, lookBack?: ReviewAfter) => void;
   /** Backs out entirely — in 'complete' mode the task is left incomplete. */
   onCancel: () => void;
   /** Opens the task editor or detail view. Optional. */
   onOpenTask?: (task: Task) => void;
+  /**
+   * Offers "Ask how it turned out" (decisionReview.ts), whose choice arrives as
+   * `onConfirm`'s third argument. Only a caller that passes it on to
+   * `completeTask` sets this, so the sheet never offers what a path drops.
+   */
+  offerLookBack?: boolean;
 }
 
 /**
@@ -91,7 +99,7 @@ interface Props {
  * non-interactive completion paths (bulk, cascade, widget, sweep) can't ask at
  * all — so an unanswered completion has to be an ordinary, unremarkable one.
  */
-export function DeliverablePromptSheet({ visible, task, mode = 'complete', onConfirm, onCancel, onOpenTask }: Props) {
+export function DeliverablePromptSheet({ visible, task, mode = 'complete', onConfirm, onCancel, onOpenTask, offerLookBack = false }: Props) {
   const colors = useColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -121,6 +129,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [why, setWhy] = useState('');
   const [revisitIf, setRevisitIf] = useState('');
+  // When to ask how the answer turned out, or null for not at all. Folded
+  // away like Why, and for its reason: opening it turns an option's tap into
+  // a pick, so the choice made here isn't lost to the sheet closing.
+  const [lookBack, setLookBack] = useState<ReviewAfter | null>(null);
+  const canLookBack = offerLookBack && mode === 'complete' && !task.reviewOfTaskId;
   // Mounted on first open and kept, so it closes through `visible` rather
   // than by leaving the tree. See useSheetMount.
   const mountPicker = useSheetMount(pickerOpen);
@@ -158,6 +171,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     setWhy(held.why ?? '');
     setRevisitIf(held.revisitIf ?? '');
     setReasoningOpen(!!(held.why || held.revisitIf));
+    setLookBack(null);
   }, [visible, task.id]);
 
   // A date answers through the calendar and a choice through its buttons, so
@@ -175,7 +189,8 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const confirm = (value: string | null) => {
     haptics.success();
     const reasoning = reasoningOpen ? { why, revisitIf } : undefined;
-    dismiss(() => onConfirm(value, reasoning));
+    const after = canLookBack && value !== null ? lookBack ?? undefined : undefined;
+    dismiss(() => onConfirm(value, reasoning, after));
   };
 
   const pickDate = (d: Date) => {
@@ -270,7 +285,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                   // the reasoning isn't lost to the sheet closing under it.
                   onPress={() => {
                     setDraft(option);
-                    if (reasoningOpen) haptics.tap();
+                    if (reasoningOpen || lookBack) haptics.tap();
                     else confirm(option);
                   }}
                   activeOpacity={interaction.activeOpacity}
@@ -375,15 +390,56 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
               />
             </View>
           </>
-        ) : (
-          <InlineAction
-            icon="add"
-            label="Add why"
-            variant="neutral"
-            accessibilityLabel="Add why you chose this answer, and what would make you revisit it"
-            onPress={() => { haptics.tap(); setReasoningOpen(true); }}
-            style={styles.addWhy}
-          />
+        ) : null}
+
+        {lookBack !== null && (
+          <>
+            <Text style={styles.label}>Ask how it turned out</Text>
+            <View style={styles.lookBack}>
+              <SegmentedControl
+                options={REVIEW_AFTER_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+                value={lookBack}
+                onChange={v => { haptics.tap(); setLookBack(v); }}
+                label="Ask how it turned out after"
+                surface="card"
+              />
+              <Text style={styles.lookBackHint}>
+                Adds a task on that day asking how it went. Its answer is shown beside this one.
+              </Text>
+            </View>
+          </>
+        )}
+
+        {(!reasoningOpen || (canLookBack && lookBack === null) || lookBack !== null) && (
+          <View style={styles.extras}>
+            {!reasoningOpen && (
+              <InlineAction
+                icon="add"
+                label="Add why"
+                variant="neutral"
+                accessibilityLabel="Add why you chose this answer, and what would make you revisit it"
+                onPress={() => { haptics.tap(); setReasoningOpen(true); }}
+              />
+            )}
+            {canLookBack && lookBack === null && (
+              <InlineAction
+                icon="time-outline"
+                label="Ask how it turned out"
+                variant="neutral"
+                accessibilityLabel="Add a task later asking how this answer turned out"
+                onPress={() => { haptics.tap(); setLookBack('1m'); }}
+              />
+            )}
+            {lookBack !== null && (
+              <InlineAction
+                icon="close"
+                label="Don't ask later"
+                variant="neutral"
+                accessibilityLabel="Don't add a task asking how this turned out"
+                onPress={() => { haptics.tap(); setLookBack(null); }}
+              />
+            )}
+          </View>
         )}
 
         {/* The quiet way out, and it says exactly what it does. In 'edit'
@@ -513,5 +569,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   skipText: { color: colors.textSecondary, fontSize: font.md },
   body: { flexGrow: 0 },
-  addWhy: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.md },
+  extras: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+  },
+  lookBack: { paddingHorizontal: spacing.md, gap: spacing.sm },
+  lookBackHint: { color: colors.textSecondary, fontSize: font.sm },
 });

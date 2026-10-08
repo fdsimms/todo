@@ -1913,6 +1913,15 @@ export interface JournalEntry {
   dayKey: string;
   /** What was written. Never empty: the store refuses a blank entry. */
   text: string;
+  /**
+   * A note to your future self: the logical day it opens, or null for an
+   * entry that is open as soon as it's written (every entry before this, and
+   * most after). Until that day it is sealed: kept, synced and counted as
+   * written, but every reader shows it only as "a note for later", never its
+   * words. Read through `openEntries` (utils/journal.ts), the one rule every
+   * reader uses. Optional so a row or fixture from before it reads as open.
+   */
+  openOn?: string | null;
 }
 
 /**
@@ -3144,6 +3153,18 @@ export interface Task {
    * `src/utils/deliverables.ts` for the terms a second destination has to meet.
    */
   deliverableSetsAway?: boolean;
+  /**
+   * On a look-back task ("How did it turn out?"), the answered row it looks
+   * back on; null on every other task. Its own answer is that decision's
+   * outcome, read beside the original answer by joining on this
+   * (`decisionOutcomes`), so the decision's row is never written again. See
+   * src/utils/decisionReview.ts.
+   *
+   * Points at the completed row, not at a successor: that row is the one
+   * holding the answer, and retention never purges an answered row.
+   * Resolve-or-shrug like every cross-row pointer.
+   */
+  reviewOfTaskId?: string | null;
 
   // Which generator wrote this task, and the row it was projected from — both
   // null on every task a person typed. See src/utils/generatedTasks.ts for the

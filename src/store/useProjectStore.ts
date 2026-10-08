@@ -142,6 +142,9 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
     // question (see deliverableKindFor), and a decision made at a step is a
     // decision the project should list.
     if (deliverableKindFor(member) === null || member.deliverableValue === null) continue;
+    // A look-back's answer is how another decision turned out, and is read
+    // beside that one (decisionOutcomes), not listed as a decision of its own.
+    if (member.reviewOfTaskId) continue;
     const key = memberKey(member, byId);
     const held = latest.get(key);
     if (!held || answeredAt(member) > answeredAt(held)) latest.set(key, member);

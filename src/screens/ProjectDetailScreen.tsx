@@ -22,6 +22,7 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
+import { decisionOutcomes } from '../utils/decisionReview';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { isPausedOn, isPlanning } from '../utils/projectPause';
@@ -680,6 +681,7 @@ export function ProjectDetailScreen() {
   // answer first. It does its own filtering (members, unarchived, collapsed by
   // identity), so it takes the whole task list rather than projectTasks.
   const decisions = useMemo(() => projectDecisions(projectId, allTasks), [projectId, allTasks]);
+  const decisionOutcomeMap = useMemo(() => decisionOutcomes(allTasks), [allTasks]);
   const answerTask = answerTaskId !== null ? allTasks.find(t => t.id === answerTaskId) ?? null : null;
   // Held so the sheet can close through `visible` rather than by leaving
   // the tree while still on screen. See useSheetSubject.
@@ -2100,6 +2102,7 @@ export function ProjectDetailScreen() {
                 <ProjectDecisions
                   label={isList ? 'Answers' : 'Decisions'}
                   decisions={decisions}
+                  outcomes={decisionOutcomeMap}
                   onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
                 />
               </>

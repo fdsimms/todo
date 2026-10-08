@@ -35,7 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'meterHeldUntil', 'rainSkippedOn',
+    'meterHeldUntil', 'rainSkippedOn', 'reviewOfTaskId',
   ],
 
   // A template has no calendar date of its own. These are written as offsets

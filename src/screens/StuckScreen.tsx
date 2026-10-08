@@ -569,12 +569,13 @@ export function StuckScreen() {
         <DeliverablePromptSheet
           visible={promptTask !== null}
           task={shownPromptTask}
-          onConfirm={(value, reasoning) => {
+          onConfirm={(value, reasoning, lookBack) => {
             const id = shownPromptTask.id;
             setPromptTask(null);
             animateLayout();
-            completeTask(id, { deliverableValue: value, deliverableReasoning: reasoning });
+            completeTask(id, { deliverableValue: value, deliverableReasoning: reasoning, reviewAfter: lookBack });
           }}
+          offerLookBack
           // Same as the row's: cancelling takes the tap back rather than
           // completing the task with no answer.
           onCancel={() => setPromptTask(null)}

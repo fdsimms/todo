@@ -392,7 +392,7 @@ file: the two maps are indexes, not write-ups.
 | moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
 | where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
 | vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
-| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
+| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once). Looking back on an answer ("How did it turn out?") is `src/utils/decisionReview.ts`: a plain task pointing at the answered row by `Task.reviewOfTaskId`, whose answer is read beside the original by joining (`decisionOutcomes`), never written onto it |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |

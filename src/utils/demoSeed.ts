@@ -4,6 +4,8 @@ import { subDays } from 'date-fns/subDays';
 import { subHours } from 'date-fns/subHours';
 import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
+import type { ReviewAfter } from './decisionReview';
+import { addSealedNoteReminder } from './sealedNoteTasks';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
@@ -1343,14 +1345,26 @@ export function seedDemoData(): void {
     answer?: string;
     dueDate?: string;
     deferUntil?: string;
+    /** Asks how the answer turned out after this long (decisionReview.ts). */
+    lookBack?: ReviewAfter;
+    /** Answered that long ago, so its look-back has already come round. */
+    answeredDaysAgo?: number;
+    /** The look-back's own answer: how the decision turned out. */
+    outcome?: string;
   }> = [
     { title: 'Measure the counters', effort: 1, done: true },
-    { title: 'Pick a tile', effort: 2, done: true, deliverableKind: 'text', answer: 'Matte white 4x12' },
-    { title: 'Set the budget', effort: 1, done: true, deliverableKind: 'number', answer: '6500' },
+    // Both decisions asked to be looked back on: the tile two months ago, with
+    // the look-back since answered (so its outcome shows beside the answer),
+    // and the budget just now, so its look-back is waiting in Later.
+    {
+      title: 'Pick a tile', effort: 2, done: true, deliverableKind: 'text', answer: 'Matte white 4x12',
+      lookBack: '1m', answeredDaysAgo: 60, outcome: 'Easy to clean, and no regrets on the white',
+    },
+    { title: 'Set the budget', effort: 1, done: true, deliverableKind: 'number', answer: '6500', lookBack: '1m' },
     { title: 'Get three quotes', effort: 3, done: false, dueDate: addDays(today, 2).toISOString() },
     { title: 'Book the installer', effort: 2, done: false, deferUntil: addDays(today, 9).toISOString() },
   ];
-  projectTasks.forEach(({ title, effort, done, deliverableKind, answer, dueDate, deferUntil }) => {
+  projectTasks.forEach(({ title, effort, done, deliverableKind, answer, dueDate, deferUntil, lookBack, answeredDaysAgo, outcome }) => {
     const t = addTask({
       title,
       category: 'Home',
@@ -1360,7 +1374,17 @@ export function seedDemoData(): void {
       deferUntil: deferUntil ?? null,
     });
     addExistingToProject(t.id, kitchen.id);
-    if (done) completeTask(t.id, answer !== undefined ? { deliverableValue: answer } : undefined);
+    if (done) {
+      completeTask(t.id, answer !== undefined
+        ? {
+            deliverableValue: answer,
+            ...(lookBack ? { reviewAfter: lookBack } : {}),
+            ...(answeredDaysAgo ? { completedAt: subDays(today, answeredDaysAgo).toISOString() } : {}),
+          }
+        : undefined);
+      const review = outcome ? useTaskStore.getState().tasks.find(x => x.reviewOfTaskId === t.id) : undefined;
+      if (review) completeTask(review.id, { deliverableValue: outcome });
+    }
   });
 
   // A stack built inside the project, the way the project screen's own
@@ -3024,6 +3048,11 @@ function seedJournal(today: Date): void {
   addEntry('journal', 'Quiet evening. Pasta, then an hour of the new book.', at(1, 20));
   addEntry('dream', 'Walking along a beach I did not recognize, looking for a train station.', at(15, 7));
   addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7));
+  // A note to your future self, sealed for three months (JournalEntry.openOn):
+  // the Journal shows it only as "1 note for later", and its reminder waits in
+  // Later for the day it opens.
+  const note = addEntry('journal', 'Hello from October. Did the kitchen get finished, and was the white tile the right call?', undefined, dayKeyOf(addMonths(today, 3)));
+  if (note) addSealedNoteReminder(note);
 }
 
 /**

@@ -715,6 +715,8 @@ export interface CompletedResult {
   nextTask: Task | null;
   /** The every-Nth-completion task, where this completion earned one. */
   followUpTask: Task | null;
+  /** The "How did it turn out?" look-back, where the answer asked for one. */
+  reviewTask: Task | null;
   /** The next set of a repeating dated series, where its last date just landed. */
   rolledOver: Task[];
   /** True when a dose was recorded against the medication the task names. */
@@ -2907,6 +2909,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       ...built.nextSubtasks,
       ...(built.followUpTask ? [built.followUpTask] : []),
       ...built.followUpSubtasks,
+      ...(built.reviewTask ? [built.reviewTask] : []),
       ...built.rolledOver,
     ]) {
       db.dbInsertTask(row);
@@ -2951,6 +2954,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       completed: built.completed,
       nextTask: built.nextTask,
       followUpTask: built.followUpTask,
+      reviewTask: built.reviewTask,
       rolledOver: built.rolledOver,
       loggedDose: dose !== null,
     };

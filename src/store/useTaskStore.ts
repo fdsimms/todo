@@ -183,6 +183,7 @@ import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
 import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
+import type { ReviewAfter } from '../utils/decisionReview';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -1661,6 +1662,8 @@ interface TaskStore extends UndoHistoryActions {
     deliverableValue?: string | null;
     /** Why that answer, and what would reopen it. See CompletionOptions.deliverableReasoning. */
     deliverableReasoning?: DeliverableReasoning;
+    /** Ask how the answer turned out after this long. See CompletionOptions.reviewAfter. */
+    reviewAfter?: ReviewAfter | null;
     neutral?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
@@ -3581,7 +3584,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // refuses, so this is unreachable; it is here because the two run the same
     // rule and only one of them may be the authority on it.
     if (!built) return;
-    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, rolledOver } = built;
+    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, reviewTask, rolledOver } = built;
 
     if (task.pinned) pendingUnpinIds.push(id);
 
@@ -3650,6 +3653,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (followUpTask) dbInsertTask(followUpTask);
     followUpSubtasks.forEach(sub => dbInsertTask(sub));
+    if (reviewTask) dbInsertTask(reviewTask);
     rolledOver.forEach(row => {
       dbInsertTask(row);
       scheduleTaskReminder(row);
@@ -3663,6 +3667,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...rolledOver,
         ...(followUpTask ? [followUpTask] : []),
         ...followUpSubtasks,
+        ...(reviewTask ? [reviewTask] : []),
       ],
       // See the option's own doc comment: a row that already animated its own
       // transition to the successor's look has nothing left for the hold to
@@ -4078,7 +4083,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its last outstanding date inserts every date of the next set at once
     // (see completeTask). Matching only the first left next month on the board
     // after the completion that conjured it had been taken back.
-    const followUps = get().tasks.filter(t => t.previousOccurrenceId === id && !t.completed);
+    // A look-back the completion asked for goes the same way: the answer it
+    // was to look back on is no longer given (see decisionReview.ts).
+    const followUps = get().tasks.filter(t => (t.previousOccurrenceId === id || t.reviewOfTaskId === id) && !t.completed);
     const followUpIds = new Set(followUps.map(f => f.id));
     const followUpSubtasks = followUps.flatMap(f => get().subtasksOf(f.id));
     followUps.forEach(f => {
