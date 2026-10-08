@@ -64,7 +64,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
-import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem, useFabBottom } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -109,6 +109,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
@@ -377,7 +378,9 @@ function NewLineField({
 }
 
 export function ProjectDetailScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
@@ -635,7 +638,7 @@ export function ProjectDetailScreen() {
   // it. With completed tasks present, ListFooterComponent renders and carries
   // its own bottom padding; stacking this on top of it would double the gap.
   const baseListBottomPadding = completedProjectTasks.length === 0
-    ? insets.bottom + FAB_SIZE + spacing.lg
+    ? fabBottom + FAB_SIZE + spacing.lg
     : undefined;
   // Same identity-grouped count the Projects list badges its quick-complete
   // action with — a recurring member never reads done here either. Memoized
@@ -941,8 +944,10 @@ export function ProjectDetailScreen() {
     if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
+    // Finished rows count too, to match `empty` in the render: a section whose
+    // only members are done is not empty, so it has to be able to collapse.
     const hasRows = useTaskStore.getState().tasks.some(
-      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.completed && !t.archived,
+      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.archived,
     );
     if (!hasRows) return;
     haptics.tap();
@@ -1779,13 +1784,14 @@ export function ProjectDetailScreen() {
           scroller={scrollControl}
         >
           <ReorderableList
+            refreshControl={pullSearch.refreshControl}
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // scrollControl below.
             scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
-            scrollToTop={{ bottom: insets.bottom + spacing.xl }}
+            scrollToTop={{ bottom: fabBottom }}
             data={shownListItems}
             keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,
@@ -2104,7 +2110,12 @@ export function ProjectDetailScreen() {
                 // buildProjectListItems) — the membership walk can't produce a
                 // group row without the task that led it there.
                 const checkedHere = checkedBySection.get(group.id) ?? NO_GROUP_CHILDREN;
-                const empty = children.length === 0 && checkedHere.length === 0;
+                // A finished member counts as something under the header even
+                // while completed rows are hidden: a section holding only done
+                // tasks is not empty, and reading as empty would both claim it
+                // has no items and lock its chevron.
+                const doneHere = allChildren.some(t => t.completed && !t.archived && t.parentId === null && t.projectId === projectId);
+                const empty = children.length === 0 && checkedHere.length === 0 && !doneHere;
                 // Collapse hides rows, and an empty stack has none to hide —
                 // collapsed it would be a bare title with no way to reach the
                 // button that fills it in. The header takes the same value so
@@ -2222,6 +2233,7 @@ export function ProjectDetailScreen() {
                               label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
                               icon="add"
                               variant="neutral"
+                              surface="tray"
                               onPress={() => openAddToSection(group)}
                               accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
                             />
@@ -2234,6 +2246,7 @@ export function ProjectDetailScreen() {
                                 label="Sort A to Z"
                                 icon="swap-vertical-outline"
                                 variant="neutral"
+                                surface="tray"
                                 onPress={() => sortSectionAToZ(group, children)}
                                 accessibilityLabel={`Sort ${group.title.trim() || 'this section'} A to Z`}
                               />
@@ -2274,7 +2287,7 @@ export function ProjectDetailScreen() {
             // the box the empty state centres in.
             ListFooterComponent={
               completedProjectTasks.length === 0 && (!showInlineNewTask || isList) && !namingSection && taskLineOpen === null ? null : (
-              <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
+              <View style={[styles.detailFooter, { paddingBottom: fabBottom + FAB_SIZE + spacing.lg }]}>
                 {/* Where the new section will land: after everything else. */}
                 {namingSection && (
                   <InlineNameField
@@ -2329,8 +2342,11 @@ export function ProjectDetailScreen() {
                     {/* A packing list is checked off and then used again, so a
                         list can put every line back in one go, without opening
                         the checked lines first. Several at once raises the
-                        Undo bar (bulkUncompleteTasks). */}
-                    {isList && !selectionMode && (
+                        Undo bar (bulkUncompleteTasks). Both act on the checked
+                        lines, so they appear only while those lines are shown:
+                        collapsed, the buttons would act on rows the person
+                        can't see. */}
+                    {isList && !selectionMode && completedShown && (
                       <View style={styles.uncheckAllRow}>
                         <InlineAction
                           icon="refresh"
@@ -2529,7 +2545,6 @@ export function ProjectDetailScreen() {
             channel={fabIntentChannel}
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
-            bottom={insets.bottom + spacing.xl}
             accessibilityLabel={isList ? 'Add to this list' : 'Add task to project'}
             drag={fabDrag}
             dragHint={isList
@@ -2589,7 +2604,7 @@ export function ProjectDetailScreen() {
           <TemplateAppliedToast
             count={templateAppliedCount}
             noun={isList ? 'item' : 'task'}
-            bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
+            bottom={fabBottom + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
         )}
@@ -2659,6 +2674,7 @@ export function ProjectDetailScreen() {
             setExpandedTaskId(null);
           }}
         />
+        {pullSearch.sheet}
       </View>
     </SpotlightProvider>
   );

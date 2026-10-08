@@ -31,6 +31,7 @@ import {
   findMissingRefs,
   templateHasMissingRefs,
   describeMissingRefs,
+  placeItemAtDrop,
 } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateAnchor, TemplateItem, TemplateQuestion } from '../types';
 
@@ -1302,5 +1303,38 @@ describe('describePlaceholderTokens', () => {
   it('returns text with no computed token byte for byte', () => {
     expect(describePlaceholderTokens('Pack for {where}')).toBe('Pack for {where}');
     expect(describePlaceholderTokens('Plain  title')).toBe('Plain  title');
+  });
+});
+
+describe('placeItemAtDrop', () => {
+  const a = makeItem({ id: 'a' });
+  const b = makeItem({ id: 'b' });
+  const c = makeItem({ id: 'c' });
+  const fresh = makeItem({ id: 'new' });
+
+  it('puts the item above or below the row it was dropped on', () => {
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'b', true)?.ids).toEqual(['a', 'new', 'b', 'c']);
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'b', false)?.ids).toEqual(['a', 'b', 'new', 'c']);
+  });
+
+  it('handles the two ends of the list', () => {
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'a', true)?.ids).toEqual(['new', 'a', 'b', 'c']);
+    expect(placeItemAtDrop([a, b, c, fresh], 'new', 'c', false)?.ids).toEqual(['a', 'b', 'c', 'new']);
+  });
+
+  it('joins a group only when dropped between two of its members', () => {
+    const g1 = makeItem({ id: 'g1', groupId: 'grp' });
+    const g2 = makeItem({ id: 'g2', groupId: 'grp' });
+    const other = makeItem({ id: 'o', groupId: null });
+    const items = [g1, g2, other, fresh];
+    expect(placeItemAtDrop(items, 'new', 'g1', false)?.groupId).toBe('grp');
+    expect(placeItemAtDrop(items, 'new', 'g1', true)?.groupId).toBeNull();
+    expect(placeItemAtDrop(items, 'new', 'g2', false)?.groupId).toBeNull();
+  });
+
+  it('refuses a row or item that is not there', () => {
+    expect(placeItemAtDrop([a, b, fresh], 'new', 'gone', true)).toBeNull();
+    expect(placeItemAtDrop([a, b], 'new', 'a', true)).toBeNull();
+    expect(placeItemAtDrop([a, fresh], 'new', 'new', true)).toBeNull();
   });
 });

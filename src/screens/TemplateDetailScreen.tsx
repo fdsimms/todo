@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,16 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from '../components/EmptyState';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, useFabBottom, type FabDragHandlers } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { TemplateItemEditor } from '../components/TemplateItemEditor';
@@ -21,6 +30,8 @@ import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
+import { templateRunDestination, templateRunDestinationLabel, type TemplateRunDestination } from '../utils/templateRunDestination';
+import { goToTemplateRun } from '../navigation/navigationRef';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
@@ -38,7 +49,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatHHMM } from '../utils/dateUtils';
-import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs, describePlaceholderTokens } from '../utils/templateUtils';
+import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs, describePlaceholderTokens, placeItemAtDrop } from '../utils/templateUtils';
 import { liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
 
@@ -58,8 +69,23 @@ function itemHint(item: TemplateItem, away = false): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+// The add button, naming what a release right now would do.
+function AddItemFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    if (intent?.kind === 'cancel') return 'Cancel';
+    return intent?.kind === 'insert' ? 'New item here' : null;
+  });
+  return <Fab {...props} dragLabel={label} />;
+}
+
 export function TemplateDetailScreen() {
   const insets = useSafeAreaInsets();
+  const fabBottom = useFabBottom();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'TemplateDetail'>>();
   const { templateId } = route.params;
@@ -87,6 +113,7 @@ export function TemplateDetailScreen() {
   // its own to land the created tasks in, so without this the run leaves no
   // trace beyond wherever its container happens to be.
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
+  const [templateAppliedDest, setTemplateAppliedDest] = useState<TemplateRunDestination | null>(null);
   // Snapshot rather than the live row, like TemplatesScreen does: the editor
   // seeds its fields off this object's identity, so handing it a value that
   // changes under it would reset them mid-edit.
@@ -114,6 +141,27 @@ export function TemplateDetailScreen() {
   const [nestedPickerVisible, setNestedPickerVisible] = useState(false);
 
   const template = templates.find(t => t.id === templateId) ?? null;
+
+  // ——— Dragging the add button into the list ———————————————————————————
+  //
+  // Same gesture as Templates and Projects. Items are one flat run here (a
+  // group is a header drawn above its first member, not a row of its own), so
+  // every visible row is a drop target and a drop means a spot in the run.
+
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  // Lets the drag scroll the list once it reaches either end of the screen.
+  const scrollControl = useRef<DragScroller | null>(null);
+  // What the drag is aimed at goes through a channel rather than state, since it
+  // changes as the finger crosses each row (see Templates' own note).
+  const fabIntentChannel = useFabIntentChannel();
+  // The spot a drop asked for, held until the item exists. The item can come
+  // from any of three places (the quick add, the full editor it hands off to, or
+  // the nested-template picker), and each calls `placeDroppedItem` with what it
+  // made. Every open of the quick add resets it, so a drop that was abandoned
+  // can't place a later item.
+  const pendingDropRef = useRef<Extract<FabDropIntent, { kind: 'insert' }> | null>(null);
+
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
 
   const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
@@ -134,6 +182,53 @@ export function TemplateDetailScreen() {
     (navigation as any).navigate('TemplateDetail', { templateId: refTemplateId });
   }, [navigation]);
 
+  /**
+   * Move a just-added item to the spot the add button was dropped on.
+   *
+   * Reads the template from the store rather than the render's snapshot: the
+   * item was added a moment ago, and this runs before this component has
+   * re-rendered with it.
+   */
+  const placeDroppedItem = (created: TemplateItem) => {
+    const dropped = pendingDropRef.current;
+    pendingDropRef.current = null;
+    if (!dropped || !templateId) return;
+    const current = useTemplateStore.getState().templates.find(t => t.id === templateId);
+    if (!current) return;
+    const placed = placeItemAtDrop(current.items, created.id, dropped.anchorKey, dropped.before);
+    if (!placed) return;
+    reorderItems(templateId, placed.ids);
+    if (placed.groupId) updateItem(templateId, created.id, { groupId: placed.groupId });
+  };
+
+  const openQuickAdd = (drop: Extract<FabDropIntent, { kind: 'insert' }> | null) => {
+    pendingDropRef.current = drop;
+    setQuickAddVisible(true);
+  };
+
+  // Rebuilt each render so it closes over fresh state; the button reads it
+  // through a ref, and its responder is built once regardless.
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' };
+      if (intent.kind === 'cancel') {
+        haptics.tap();
+        return;
+      }
+      openQuickAdd(intent.kind === 'insert' ? intent : null);
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
+
   const handleNestedTemplateSelected = (target: TaskTemplate) => {
     if (!templateId) return;
     if (nestedPickerReplacingId) {
@@ -141,16 +236,21 @@ export function TemplateDetailScreen() {
         refTemplateId: target.id,
         refTemplateName: target.name,
       });
-    } else if (!addItem(templateId, {
-      title: target.name,
-      refTemplateId: target.id,
-      refTemplateName: target.name,
-    })) {
-      haptics.error();
-      Alert.alert(
-        'Couldn’t nest that template',
-        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
-      );
+    } else {
+      const created = addItem(templateId, {
+        title: target.name,
+        refTemplateId: target.id,
+        refTemplateName: target.name,
+      });
+      if (created) {
+        placeDroppedItem(created);
+      } else {
+        haptics.error();
+        Alert.alert(
+          'Couldn’t nest that template',
+          'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+        );
+      }
     }
   };
 
@@ -252,6 +352,17 @@ export function TemplateDetailScreen() {
     return { firstOfGroup: first, hiddenByCollapse: hidden };
   }, [template, collapsedGroups]);
 
+  // A row hidden inside a collapsed group has no height to land on, so it
+  // registers nothing and the drag reaches past it to the group's header row.
+  const zoneByKey = useMemo(() => {
+    const map = new Map<string, DropZone>();
+    (template?.items ?? []).forEach(item => {
+      const showsNothing = hiddenByCollapse.has(item.id) && !firstOfGroup.has(item.id);
+      if (!showsNothing) map.set(item.id, { kind: 'task', key: item.id, category: null });
+    });
+    return map;
+  }, [template, hiddenByCollapse, firstOfGroup]);
+
   const conditionLabelsFor = (item: TemplateItem) =>
     liveConditions(item.conditions, template?.questions ?? []).map(c => c.values.join(' or '));
 
@@ -312,17 +423,25 @@ export function TemplateDetailScreen() {
       {/* A drag down the column of selection dots picks up a run of items
           (#2944), as on every other selectable list. */}
       <PaintSelectionProvider {...paintProps}>
+      <FabDropZoneProvider
+        ref={dropZonesRef}
+        onIntentChange={fabIntentChannel.publish}
+        scroller={scrollControl}
+      >
       <ReorderableList
         data={template?.items ?? []}
         keyExtractor={i => i.id}
-        // iOS has to be told directly while a paint gesture owns the touch
-        // (see PaintSelectionProvider).
-        scrollEnabled={!painting}
+        // The user can't scroll during an add-button drag (the button's
+        // responder has the touch); the drag scrolls it instead, through the
+        // control below. Same while a paint gesture owns the touch: iOS has to
+        // be told directly (see PaintSelectionProvider).
+        scrollEnabled={!fabDragging && !painting}
+        scrollControlRef={scrollControl}
         onReorder={data => {
           if (!templateId) return;
           reorderItems(templateId, data.map(i => i.id));
         }}
-        scrollToTop={{ bottom: insets.bottom + spacing.xl }}
+        scrollToTop={{ bottom: fabBottom }}
         contentContainerStyle={
           (template?.items.length ?? 0) === 0
             ? styles.emptyContainer
@@ -330,7 +449,7 @@ export function TemplateDetailScreen() {
                 styles.list,
                 // Clears the floating add button, same sum every FAB screen uses;
                 // a fixed 120 sat two points short on a 34pt-inset phone.
-                { paddingBottom: insets.bottom + spacing.xl + FAB_SIZE + spacing.md },
+                { paddingBottom: fabBottom + FAB_SIZE + spacing.md },
                 selectionMode && styles.listWithBulkBar,
               ]
         }
@@ -345,6 +464,10 @@ export function TemplateDetailScreen() {
           const missingRefsLabel = describeMissingRefs(findMissingRefs(item, allCategories, allTags));
 
           return (
+            // Every row doubles as a target for the add button being dragged
+            // in. The wrapper only measures, and the dragged row's floating
+            // copy registers nothing rather than claiming the real row's slot.
+            <FabDropZone zone={isActive ? null : zoneByKey.get(item.id) ?? null}>
             <View>
               {showHeader && group && (
                 <TemplateGroupHeader
@@ -381,6 +504,7 @@ export function TemplateDetailScreen() {
                 />
               )}
             </View>
+            </FabDropZone>
           );
         }}
         ListEmptyComponent={
@@ -393,13 +517,16 @@ export function TemplateDetailScreen() {
           />
         }
       />
+      </FabDropZoneProvider>
       </PaintSelectionProvider>
 
       {!selectionMode && (
-        <Fab
-          onPress={() => setQuickAddVisible(true)}
+        <AddItemFabWithDropLabel
+          channel={fabIntentChannel}
+          onPress={() => openQuickAdd(null)}
           accessibilityLabel="Add item"
-          bottom={insets.bottom + spacing.xl}
+          drag={fabDrag}
+          dragHint="Drag onto the list to add an item there, or back to the button to cancel"
         />
       )}
 
@@ -425,6 +552,7 @@ export function TemplateDetailScreen() {
           templateId={template.id}
           templateName={template.name}
           onClose={() => setQuickAddVisible(false)}
+          onCreated={placeDroppedItem}
           onOpenFull={(draft) => {
             setQuickAddVisible(false);
             openItemEditor(null, draft);
@@ -453,6 +581,7 @@ export function TemplateDetailScreen() {
           item={editingItem}
           initialDraft={itemEditorDraft}
           onClose={() => setItemEditorVisible(false)}
+          onCreated={placeDroppedItem}
         />
       )}
 
@@ -474,15 +603,23 @@ export function TemplateDetailScreen() {
           visible={applyTemplateObj !== null}
           template={applyTemplateObj}
           onClose={() => setApplyTemplateId(null)}
-          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
+          onApplied={tasks => {
+          if (tasks.length === 0) return;
+          setTemplateAppliedCount(tasks.length);
+          setTemplateAppliedDest(templateRunDestination(tasks));
+        }}
         />
       )}
 
       {templateAppliedCount !== null && (
         <TemplateAppliedToast
           count={templateAppliedCount}
-          bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
-          onDismiss={() => setTemplateAppliedCount(null)}
+          bottom={fabBottom + FAB_SIZE + spacing.md}
+          goTo={templateAppliedDest ? {
+            label: templateRunDestinationLabel(templateAppliedDest),
+            onPress: () => goToTemplateRun(templateAppliedDest),
+          } : undefined}
+          onDismiss={() => { setTemplateAppliedCount(null); setTemplateAppliedDest(null); }}
         />
       )}
     </View>

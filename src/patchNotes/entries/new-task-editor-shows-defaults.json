@@ -1,0 +1,1 @@
+{ "message": "The new task editor now shows the default a task will get on its Priority, Effort and Category rows, like \"Default: High\". Priority and Effort defaults from Settings, a project or a title rule now apply to tasks made in the editor too, as they already did from quick add, unless you pick a value yourself.", "date": "2026-10-08" }

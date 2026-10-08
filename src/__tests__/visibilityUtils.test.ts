@@ -1,5 +1,6 @@
 import {
   isTaskVisible,
+  isPinnedOnToday,
   isTaskDeferred,
   isTaskWindowActive,
   isTaskExpired,
@@ -53,6 +54,7 @@ const mockSettingsState = {
   nightStart: '21:00',
   activeHoursStart: '08:00',
   activeHoursEnd: '22:00',
+  weekStartsOn: 1,
   vacationMode: false,
 };
 
@@ -2080,6 +2082,26 @@ describe('quota tasks', () => {
     });
   });
 
+  describe('isUpcomingToday for an on-pace target', () => {
+    it('is true for a daily target whose next unit falls due later today', () => {
+      expect(isUpcomingToday({ ...quotaTask, progressCount: 2 })).toBe(true);
+    });
+
+    // NOW is Tue Jun 10 10:00; the week runs Mon Jun 9 to Mon Jun 16, so 3 of 5
+    // is ahead of pace and the fourth unit isn't owed until Friday.
+    it('is false for a weekly target whose next unit falls due on another day', () => {
+      const weekly: Task = {
+        ...quotaTask,
+        recurrenceType: 'weekly',
+        quotaPeriod: 'week',
+        targetCount: 5,
+        progressCount: 3,
+      };
+      expect(isOnPaceQuota(weekly)).toBe(true);
+      expect(isUpcomingToday(weekly)).toBe(false);
+    });
+  });
+
   describe('activeChainStepTitle / displayTitleFor', () => {
     const chainItems = [
       { id: 'c1', title: 'Stretch for five minutes', estimatedMinutes: null },
@@ -2551,5 +2573,23 @@ describe('getVisibleAt with a category schedule', () => {
   it('keeps the task\'s own later start when it falls inside the window', () => {
     const task = { ...baseTask, category: 'Work', dueDate: new Date(2025, 5, 12, 12, 0, 0).toISOString(), windowStart: '10:00' };
     expect(getVisibleAt(task)).toEqual(new Date(2025, 5, 12, 10, 0, 0));
+  });
+});
+
+describe('isPinnedOnToday', () => {
+  const withTask = (o: Partial<Task>): Task => ({ ...baseTask, ...o });
+  it('lights a pin-each-occurrence pin only while its occurrence is visible', () => {
+    const later = withTask({ pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2999, 0, 1, 9).toISOString() });
+    const due = withTask({ pinned: true, pinEachOccurrence: true, recurrenceType: 'daily', dueDate: new Date(2020, 0, 1, 9).toISOString() });
+    expect(isPinnedOnToday(later)).toBe(false);
+    expect(isPinnedOnToday(due)).toBe(true);
+  });
+
+  it('keeps a manual pin lit regardless of its date', () => {
+    expect(isPinnedOnToday(withTask({ pinned: true, dueDate: new Date(2999, 0, 1, 9).toISOString() }))).toBe(true);
+  });
+
+  it('is unlit when the task is not pinned', () => {
+    expect(isPinnedOnToday(withTask({ pinned: false }))).toBe(false);
   });
 });

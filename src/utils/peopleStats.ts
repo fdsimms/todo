@@ -46,13 +46,16 @@ export function timeTogetherInRange(
 /**
  * The sentence, or null when there is nothing to say.
  *
- * Null rather than a zero: "you spent time with people 0 times this year" is
- * a debt the way "94 days ago" is (rule 2), and a stat that can only ever be a
- * cheerful fact or silent is what keeps it that way.
+ * Null rather than a zero: "you completed 0 tasks involving people this year"
+ * is a debt the way "94 days ago" is (rule 2), and a stat that can only ever be
+ * a cheerful fact or silent is what keeps it that way.
+ *
+ * Worded as what the app counted (completed tasks that name a person), not as
+ * what happened: the app can't know whether time was spent together.
  */
 export function describeTimeTogether(count: number): string | null {
   if (count <= 0) return null;
-  return `You spent time with people on ${count} ${count === 1 ? 'occasion' : 'occasions'} this year.`;
+  return `You completed ${count} ${count === 1 ? 'task' : 'tasks'} involving people this year.`;
 }
 
 /** The year `today` falls in, as `[startIso, endIso]` — Jan 1 through today. */

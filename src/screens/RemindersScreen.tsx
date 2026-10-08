@@ -12,6 +12,7 @@ import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
@@ -34,6 +35,7 @@ import type { Task } from '../types';
  * drift apart.
  */
 export function RemindersScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
@@ -74,6 +76,7 @@ export function RemindersScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
+        refreshControl={pullSearch.refreshControl}
         data={reminders}
         keyExtractor={item => item.id}
         contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : styles.listContent}
@@ -103,6 +106,7 @@ export function RemindersScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      {pullSearch.sheet}
     </View>
   );
 }

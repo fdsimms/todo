@@ -27,6 +27,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { MedicationLogSheet } from '../components/MedicationLogSheet';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 
 /** How many recent doses the list shows before it stops. */
 const RECENT_LIMIT = 25;
@@ -55,6 +56,7 @@ const TREND_DAYS = 14;
  * days. The one card that *is* a comparison carries its own gates.
  */
 export function MedicationScreen() {
+  const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -182,6 +184,7 @@ export function MedicationScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        refreshControl={pullSearch.refreshControl}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
       >
@@ -260,6 +263,7 @@ export function MedicationScreen() {
         </View>
       </ScrollView>
       <MedicationLogSheet visible={sheetOpen} log={editing} onClose={closeSheet} />
+      {pullSearch.sheet}
     </View>
   );
 }

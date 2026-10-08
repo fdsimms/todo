@@ -48,6 +48,14 @@ export interface SettingsSummaryInput {
   /** Already-rendered, like `fontLabel` — null when amounts show as written. */
   unitSystemLabel: string | null;
   vacationMode: boolean;
+  /**
+   * A calendar is chosen for deadlines, completions or (with the groceries area
+   * on) meals to be written to. The Calendar line named only the read, so it
+   * said "Off" while events were being added.
+   */
+  writesCalendar: boolean;
+  /** Any of the three Screen Time shields (focus, gate, penalty) is switched on. */
+  appBlocking: boolean;
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoCompleteProjectsOnDone: boolean;
   appLockEnabled: boolean;
@@ -101,6 +109,7 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettin
       `Day starts ${formatHHMM(s.dayResetTime, s.use24HourTime)}`,
       s.use24HourTime && '24-hour',
       s.weekStartsOn === 1 && 'Weeks from Monday',
+      s.vacationMode && 'Vacation on',
     ),
 
     notifications: s.dailyAgendaEnabled ? 'Daily agenda on' : 'Reminders only',
@@ -108,20 +117,25 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettin
     capture: line(
       s.remindersImportEnabled && 'Importing from Apple Reminders',
       s.groceryImportEnabled && s.kitchenEnabled && 'Groceries from Apple Reminders',
+    ) || 'Off. Say “Hey Siri, remind me to…”',
+
+    calendar: line(
       s.calendarReadEnabled && s.calendarIds.length > 0 && (
         s.calendarIds.length === 1 ? 'Reading 1 calendar' : `Reading ${s.calendarIds.length} calendars`
       ),
-    ) || 'Off. Say “Hey Siri, remind me to…”',
+      s.writesCalendar && 'Writing events',
+    ) || 'Off. Your calendar is not read or written',
 
     tasksProjects: line(
-      s.vacationMode && 'Vacation on',
       s.autoRemoveExpiredTasks !== null && (
         s.autoRemoveExpiredTasks === 0
           ? 'Expired tasks removed immediately'
           : `Expired tasks removed after ${expiredTaskGraceLabel(s.autoRemoveExpiredTasks).toLowerCase()}`
       ),
       s.autoCompleteProjectsOnDone && 'Projects auto-complete',
-    ) || 'Vacation, expiry, auto-complete',
+    ) || 'New task defaults, rescheduling, projects',
+
+    focus: s.appBlocking ? 'Blocking apps' : 'Work stretches, breaks, blocking apps',
 
     // The switch alone, with no reading named beside it. The number this group
     // shows is a step count that changes by the minute and is often absent

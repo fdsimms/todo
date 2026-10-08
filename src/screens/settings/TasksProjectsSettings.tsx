@@ -1,17 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { format } from 'date-fns/format';
-import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
-import { useTaskStore } from '../../store/useTaskStore';
-import { useCalendarStore } from '../../store/useCalendarStore';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../../theme/ThemeContext';
-import { spacing } from '../../theme';
-import { WhenPicker } from '../../components/WhenPicker';
-import { getTaskDayStart } from '../../utils/dateUtils';
-import { clockTimeToken } from '../../utils/clockTime';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
@@ -22,7 +14,6 @@ import { PillGroup } from '../../components/PillGroup';
 import { TitleRulesSheet } from '../../components/TitleRulesSheet';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
-import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { effortTimeLabel } from '../../utils/effort';
 import { EFFORT_LABELS, type Difficulty, type Effort, type TimeOfDay } from '../../types';
@@ -35,14 +26,6 @@ import {
 import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
-import {
-  FOCUS_DEFAULTS,
-  FOCUS_LONG_REST_EVERY_MAX, FOCUS_LONG_REST_EVERY_MIN,
-  FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_TASKS_MAX,
-  FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
-  focusRestsDisabled,
-} from '../../utils/focusSettings';
-import { alertPermissionOff } from '../../utils/permissionAlert';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -71,13 +54,6 @@ const NEW_TASK_DESTINATION_OPTIONS: SegmentOption<'today' | 'inbox' | 'unschedul
   { value: 'unscheduled', label: 'Unscheduled' },
 ];
 export function TasksProjectsSettings() {
-  const vacationMode = useSettingsStore(s => s.vacationMode);
-  const setVacationMode = useSettingsStore(s => s.setVacationMode);
-  const vacationStart = useSettingsStore(s => s.vacationStart);
-  const vacationEnd = useSettingsStore(s => s.vacationEnd);
-  const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
-  const setDestinationForecastEnabled = useSettingsStore(s => s.setDestinationForecastEnabled);
-  const setVacationEnd = useSettingsStore(s => s.setVacationEnd);
   const autoRemoveExpiredTasks = useSettingsStore(s => s.autoRemoveExpiredTasks);
   const setAutoRemoveExpiredTasks = useSettingsStore(s => s.setAutoRemoveExpiredTasks);
   const autoCompleteProjectsOnDone = useSettingsStore(s => s.autoCompleteProjectsOnDone);
@@ -85,27 +61,6 @@ export function TasksProjectsSettings() {
   const postponeCheckEnabled = useSettingsStore(s => s.postponeCheckEnabled);
   const setPostponeCheckEnabled = useSettingsStore(s => s.setPostponeCheckEnabled);
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
-  const focusWorkCapMinutes = useSettingsStore(s => s.focusWorkCapMinutes);
-  const setFocusWorkCapMinutes = useSettingsStore(s => s.setFocusWorkCapMinutes);
-  const focusDefaultWorkMinutes = useSettingsStore(s => s.focusDefaultWorkMinutes);
-  const setFocusDefaultWorkMinutes = useSettingsStore(s => s.setFocusDefaultWorkMinutes);
-  const focusRestAfterTasks = useSettingsStore(s => s.focusRestAfterTasks);
-  const setFocusRestAfterTasks = useSettingsStore(s => s.setFocusRestAfterTasks);
-  const focusRestAfterMinutes = useSettingsStore(s => s.focusRestAfterMinutes);
-  const setFocusRestAfterMinutes = useSettingsStore(s => s.setFocusRestAfterMinutes);
-  const focusRestMinutes = useSettingsStore(s => s.focusRestMinutes);
-  const setFocusRestMinutes = useSettingsStore(s => s.setFocusRestMinutes);
-  const focusLongRestEvery = useSettingsStore(s => s.focusLongRestEvery);
-  const setFocusLongRestEvery = useSettingsStore(s => s.setFocusLongRestEvery);
-  const focusLongRestMinutes = useSettingsStore(s => s.focusLongRestMinutes);
-  const setFocusLongRestMinutes = useSettingsStore(s => s.setFocusLongRestMinutes);
-  const focusLiveActivity = useSettingsStore(s => s.focusLiveActivity);
-  const setFocusLiveActivity = useSettingsStore(s => s.setFocusLiveActivity);
-  const focusHideTimers = useSettingsStore(s => s.focusHideTimers);
-  const setFocusHideTimers = useSettingsStore(s => s.setFocusHideTimers);
-  const focusBreaksEnabled = useSettingsStore(s => s.focusBreaksEnabled);
-  const setFocusBreaksEnabled = useSettingsStore(s => s.setFocusBreaksEnabled);
-  const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes, focusBreaksEnabled });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideListPreviews = useSettingsStore(s => s.hideListPreviews);
   const setHideListPreviews = useSettingsStore(s => s.setHideListPreviews);
@@ -113,8 +68,6 @@ export function TasksProjectsSettings() {
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
   const setSimpleTaskForm = useSettingsStore(s => s.setSimpleTaskForm);
-  const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
-  const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
@@ -122,129 +75,11 @@ export function TasksProjectsSettings() {
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
   const titleRules = useSettingsStore(useShallow(s => s.titleRules));
 
-  const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const categories = useCategoryStore(s => s.categories);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
-  const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
   const [titleRulesVisible, setTitleRulesVisible] = useState(false);
-
-  // --- Screen Time -----------------------------------------------------
-  // Asked once on mount rather than subscribed to: whether this build has the
-  // native half, on a device new enough, cannot change while the screen is up.
-  const [screenTimeSupported] = useState(isScreenTimeSupported);
-  const focusShieldEnabled = useSettingsStore(s => s.focusShieldEnabled);
-  const setFocusShieldEnabled = useSettingsStore(s => s.setFocusShieldEnabled);
-  // Counts, not names. iOS hands the app opaque tokens for the apps somebody
-  // picked and only SwiftUI can render them, so this is the most the row can
-  // say — see modules/todo-screentime-bridge.
-  const [shieldCount, setShieldCount] = useState(
-    () => screenTimeBridge()?.screenTimeSelectionCount() ?? { applications: 0, categories: 0 },
-  );
-  const shieldTotal = shieldCount.applications + shieldCount.categories;
-  const shieldSelectionLabel = shieldTotal === 0
-    ? 'None'
-    : [
-      shieldCount.applications > 0
-        ? `${shieldCount.applications} ${shieldCount.applications === 1 ? 'app' : 'apps'}`
-        : null,
-      shieldCount.categories > 0
-        ? `${shieldCount.categories} ${shieldCount.categories === 1 ? 'category' : 'categories'}`
-        : null,
-    ].filter(Boolean).join(', ');
-
-  const handleChooseApps = async () => {
-    haptics.tap();
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const picked = await bridge.presentAppPicker();
-    if (picked) setShieldCount(bridge.screenTimeSelectionCount());
-  };
-
-  const handleToggleShield = async () => {
-    haptics.tap();
-    if (focusShieldEnabled) {
-      setFocusShieldEnabled(false);
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    // Asking is a Settings action and never something the app does on its own
-    // — the same rule the weather rules sheet follows for location.
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Blocking apps during a focus session needs Screen Time access. You can grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    setFocusShieldEnabled(true);
-    // Straight into the picker the first time: the setting does nothing at all
-    // until some apps are chosen, and a toggle that visibly changes nothing is
-    // how somebody concludes the feature is broken.
-    if (shieldTotal === 0) await handleChooseApps();
-  };
-
-  const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
-  const gateShieldEnabled = useSettingsStore(s => s.gateShieldEnabled);
-  const setGateShieldEnabled = useSettingsStore(s => s.setGateShieldEnabled);
-  const setPenaltyShieldEnabled = useSettingsStore(s => s.setPenaltyShieldEnabled);
-  const penaltyShieldUntil = useSettingsStore(s => s.penaltyShieldUntil);
-  const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
-  const use24HourTime = useSettingsStore(s => s.use24HourTime);
-  // Only while one is actually being served. A row reporting a time that has
-  // already passed reads as a block still in force.
-  const penaltyUntilLabel = penaltyShieldUntil && new Date(penaltyShieldUntil) > new Date()
-    ? format(new Date(penaltyShieldUntil), clockTimeToken(use24HourTime))
-    : null;
-
-
-  const handleToggleGate = async () => {
-    haptics.tap();
-    if (gateShieldEnabled) {
-      setGateShieldEnabled(false);
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Blocking apps until a task is done needs Screen Time access. You can grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    setGateShieldEnabled(true);
-    if (shieldTotal === 0) await handleChooseApps();
-  };
-
-  const handleTogglePenalty = async () => {
-    haptics.tap();
-    if (penaltyShieldEnabled) {
-      setPenaltyShieldEnabled(false);
-      // Switching the feature off is the way out of a block being served, so
-      // the block must not be left waiting to resume the moment it comes back
-      // on. This is deliberately the *only* way out from inside the app: a
-      // "lift it now" button would undo the one thing the feature is for.
-      setPenaltyShieldUntil(null);
-      return;
-    }
-    const bridge = screenTimeBridge();
-    if (!bridge) return;
-    const status = await bridge.requestScreenTimeAuthorization();
-    if (status !== 'approved') {
-      alertPermissionOff(
-        'Screen Time access needed',
-        'Blocking apps when you fail a task needs Screen Time access. You can grant it in Settings, under Screen Time.',
-      );
-      return;
-    }
-    setPenaltyShieldEnabled(true);
-    if (shieldTotal === 0) await handleChooseApps();
-  };
 
   // What the row's value counts: rules that are actually filing things. A rule
   // switched off is kept and listed, but reporting it here would have the row
@@ -291,7 +126,7 @@ export function TasksProjectsSettings() {
           is a reason to meet them after the rest, not before it. */}
       <SettingsSection
         label="New tasks"
-        footer="What a fresh task starts with, and where quick add files it before you type anything. None of these override a value you actually pick. Typing a date in quick add still wins over the destination below."
+        footer="What a fresh task starts with, and where quick add files it before you type anything. A project's own defaults come first, and none of these override a value you actually pick. The task editor shows the default on a row you haven't touched. Typing a date in quick add still wins over the destination below."
       >
         <SettingsRow
   entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
@@ -529,320 +364,6 @@ export function TasksProjectsSettings() {
         )}
       </SettingsSection>
 
-      {!simpleMode && (
-      <SettingsSection
-        label="Focus sessions"
-        footer={`${noBreaks
-          ? 'Breaks are off, so a session runs straight through with no breaks in it.'
-          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}${
-          Platform.OS === 'ios' ? ' The Lock Screen activity requires iOS 17.' : ''}`}
-      >
-        <SettingsRow
-          entryId="focusWorkCapMinutes"
-          icon="hourglass-outline"
-          label="Work stretch length"
-          hint="The longest a single stretch runs. A task estimated for longer is split into equal parts."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusWorkCapMinutes}
-            onChange={next => setFocusWorkCapMinutes(next ?? FOCUS_DEFAULTS.workCapMinutes)}
-            min={FOCUS_WORK_CAP_MIN}
-            max={FOCUS_WORK_CAP_MAX}
-            format={n => `${n} min`}
-            label="Work stretch length"
-            describeValue={n => `${n} minutes`}
-          />
-        </View>
-
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="focusDefaultWorkMinutes"
-          icon="help-circle-outline"
-          label="Length without an estimate"
-          hint="How long a stretch runs for a task that has no time estimate."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusDefaultWorkMinutes}
-            onChange={next => setFocusDefaultWorkMinutes(next ?? FOCUS_DEFAULTS.defaultWorkMinutes)}
-            min={FOCUS_WORK_CAP_MIN}
-            max={FOCUS_WORK_CAP_MAX}
-            format={n => `${n} min`}
-            label="Length without an estimate"
-            describeValue={n => `${n} minutes`}
-          />
-        </View>
-
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="focusBreaksEnabled"
-          icon="cafe-outline"
-          iconColor={focusBreaksEnabled ? colors.accent : undefined}
-          label="Breaks in focus sessions"
-          hint={focusBreaksEnabled
-            ? 'Sessions add breaks using the settings below. Turn off to start every session with no breaks. Your break settings are kept.'
-            : 'New sessions have no breaks. Turn on to use your break settings again.'}
-          toggle={focusBreaksEnabled}
-          onPress={() => setFocusBreaksEnabled(!focusBreaksEnabled)}
-        />
-
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="focusRestAfterMinutes"
-          icon="time-outline"
-          label="Break after this much work"
-          hint="Minutes of work before a break is added. Set to off to never break on elapsed time."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusRestAfterMinutes}
-            onChange={setFocusRestAfterMinutes}
-            min={FOCUS_REST_AFTER_MINUTES_MIN}
-            max={FOCUS_REST_AFTER_MINUTES_MAX}
-            allowNull
-            emptyLabel="Off"
-            format={n => `${n} min`}
-            label="Break after this much work"
-            describeValue={n => (n === null ? 'Off' : `${n} minutes`)}
-          />
-        </View>
-
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="focusRestAfterTasks"
-          icon="list-outline"
-          label="Break after this many tasks"
-          hint="Tasks finished before a break is added. Set to off to never break on a task count."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusRestAfterTasks}
-            onChange={setFocusRestAfterTasks}
-            min={1}
-            max={FOCUS_REST_AFTER_TASKS_MAX}
-            allowNull
-            emptyLabel="Off"
-            format={n => `${n} task${n === 1 ? '' : 's'}`}
-            label="Break after this many tasks"
-            describeValue={n => (n === null ? 'Off' : `${n} tasks`)}
-          />
-        </View>
-
-        {!noBreaks && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="focusRestMinutes"
-              icon="cafe-outline"
-              label="Break length"
-              tight
-            />
-            <View style={styles.cadenceRow}>
-              <CountStepper
-                value={focusRestMinutes}
-                onChange={next => setFocusRestMinutes(next ?? FOCUS_DEFAULTS.restMinutes)}
-                min={FOCUS_REST_MIN}
-                max={FOCUS_REST_MAX}
-                format={n => `${n} min`}
-                label="Break length"
-                describeValue={n => `${n} minutes`}
-              />
-            </View>
-
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="focusLongRestEvery"
-              icon="bed-outline"
-              label="Long break every"
-              hint="Makes every nth break a longer one. Set to off to keep every break the same length."
-              tight
-            />
-            <View style={styles.cadenceRow}>
-              <CountStepper
-                value={focusLongRestEvery}
-                onChange={setFocusLongRestEvery}
-                min={FOCUS_LONG_REST_EVERY_MIN}
-                max={FOCUS_LONG_REST_EVERY_MAX}
-                allowNull
-                emptyLabel="Off"
-                format={n => `${n} breaks`}
-                label="Long break every"
-                describeValue={n => (n === null ? 'Off' : `every ${n} breaks`)}
-              />
-            </View>
-
-            {focusLongRestEvery !== null && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId="focusLongRestMinutes"
-                  icon="moon-outline"
-                  label="Long break length"
-                  tight
-                />
-                <View style={styles.cadenceRow}>
-                  <CountStepper
-                    value={focusLongRestMinutes}
-                    onChange={next => setFocusLongRestMinutes(next ?? FOCUS_DEFAULTS.longRestMinutes)}
-                    min={FOCUS_REST_MIN}
-                    max={FOCUS_REST_MAX}
-                    format={n => `${n} min`}
-                    label="Long break length"
-                    describeValue={n => `${n} minutes`}
-                  />
-                </View>
-              </>
-            )}
-          </>
-        )}
-
-        <View style={styles.sep} />
-        <SettingsRow
-          entryId="focusHideTimers"
-          icon="eye-off-outline"
-          iconColor={focusHideTimers ? colors.accent : undefined}
-          label="Hide timers while focusing"
-          hint={focusHideTimers
-            ? 'By default, the countdown is hidden everywhere a session shows one: the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule. Change it for a single session from the start screen.'
-            : 'By default, the countdown shows everywhere a session runs. Change it for a single session from the start screen.'}
-          toggle={focusHideTimers}
-          onPress={() => setFocusHideTimers(!focusHideTimers)}
-        />
-
-        {Platform.OS === 'ios' && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="focusLiveActivity"
-              icon="phone-portrait-outline"
-              iconColor={focusLiveActivity ? colors.accent : undefined}
-              label="Live Activity while focusing"
-              hint={focusLiveActivity
-                ? 'The step you’re on shows on the Lock Screen and Dynamic Island, with a button to pause it or move to the next one'
-                : 'Sessions stay in the app only'}
-              toggle={focusLiveActivity}
-              onPress={() => setFocusLiveActivity(!focusLiveActivity)}
-            />
-          </>
-        )}
-
-        {/*
-          Screen Time. Hidden outright rather than shown disabled when the
-          device or build can't do it — the authorization it wants is one an
-          iOS 15 phone can never grant, so offering the row would be asking a
-          question with no answer. Same call the Live Activity row above makes
-          about a non-iOS device.
-        */}
-        {screenTimeSupported && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="focusShield"
-              icon="lock-closed-outline"
-              iconColor={focusShieldEnabled ? colors.accent : undefined}
-              label="Block apps while focusing"
-              hint={focusShieldEnabled
-                ? 'The apps you choose are blocked while a session is running, and unblocked when you pause or finish it'
-                : 'Apps stay available during a session'}
-              toggle={focusShieldEnabled}
-              onPress={handleToggleShield}
-            />
-            {focusShieldEnabled && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  entryId="focusShieldApps"
-                  icon="apps-outline"
-                  label="Apps to block"
-                  hint="Chosen in the system picker. iOS doesn’t tell the app which ones you picked, so only the count shows here."
-                  value={shieldSelectionLabel}
-                  onPress={handleChooseApps}
-                />
-              </>
-            )}
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="gateShield"
-              icon="lock-closed-outline"
-              iconColor={gateShieldEnabled ? colors.accent : undefined}
-              label="Block apps until a task is done"
-              hint={gateShieldEnabled
-                ? 'Tasks you mark keep the same apps blocked while they sit on Today undone. Finishing one, or moving it to another day, unblocks them'
-                : 'No tasks block apps'}
-              toggle={gateShieldEnabled}
-              onPress={handleToggleGate}
-            />
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="penaltyShield"
-              icon="alert-circle-outline"
-              iconColor={penaltyShieldEnabled ? colors.accent : undefined}
-              label="Block apps when you fail a task"
-              hint={penaltyShieldEnabled
-                ? 'Each task sets how long. The same apps are blocked when you miss a cutoff, or log a slip on a task you’re avoiding'
-                : 'Failing a task blocks nothing'}
-              toggle={penaltyShieldEnabled}
-              onPress={handleTogglePenalty}
-            />
-            {penaltyShieldEnabled && (
-              <>
-                {shieldTotal === 0 && !focusShieldEnabled && (
-                  <>
-                    <View style={styles.sep} />
-                    <SettingsRow
-                      entryId="penaltyShieldApps"
-                      icon="apps-outline"
-                      label="Apps to block"
-                      hint="The same set the focus shield uses. iOS doesn’t tell the app which ones you picked, so only the count shows here."
-                      value={shieldSelectionLabel}
-                      onPress={handleChooseApps}
-                    />
-                  </>
-                )}
-                {penaltyUntilLabel && (
-                  <>
-                    <View style={styles.sep} />
-                    <SettingsRow
-                      entryId="penaltyShieldActive"
-                      icon="time-outline"
-                      iconColor={colors.accent}
-                      label="Blocked until"
-                      hint="Turning this setting off is the only way to end it early."
-                      value={penaltyUntilLabel}
-                    />
-                  </>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </SettingsSection>
-      )}
-
-      {Platform.OS === 'ios' && (
-        <SettingsSection
-          label="Timers"
-          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it, or dismiss a completion timer's own reminder. Resuming a timer starts a fresh one."
-        >
-          <SettingsRow
-            entryId="timerLiveActivity"
-            icon="phone-portrait-outline"
-            iconColor={timerLiveActivity ? colors.accent : undefined}
-            label="Live Activity while timing"
-            hint={timerLiveActivity
-              ? 'A running task timer, recipe cook/prep timer, or completion timer reminder shows on the Lock Screen and Dynamic Island'
-              : 'Timers stay in the app only'}
-            toggle={timerLiveActivity}
-            onPress={() => setTimerLiveActivity(!timerLiveActivity)}
-          />
-        </SettingsSection>
-      )}
-
       {/* Expiry needs a time window, and simplified mode takes the window row
           off the editor — but only for *new* tasks. Simplified mode is a
           display setting (see simpleMode.ts): it clears nothing, so a task that
@@ -878,107 +399,6 @@ export function TasksProjectsSettings() {
         />
       </SettingsSection>
       )}
-
-      {/* Nothing to configure in simplified mode: it removes the per-task
-          "vacation pause" row, so vacation mode has nothing new to hide.
-          Nothing *new* is the whole of it, though — the mode changes what is
-          rendered and never what is stored, so tasks already marked for
-          vacation pause, and whole categories set to hide on vacation, stay
-          hidden exactly as they were. Switching simplified mode on with
-          vacation mode already on therefore used to take the off-switch away
-          from a state that was still hiding the user's tasks, with no way back
-          to it. So the section survives as long as it is on. */}
-      {(!simpleMode || vacationMode) && (
-      <SettingsSection
-        label="Vacation"
-        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.`}
-      >
-        <SettingsRow
-          entryId="vacationMode"
-          icon="airplane-outline"
-          iconColor={vacationMode ? colors.accent : undefined}
-          label="Vacation mode"
-          hint="Hides tasks marked for vacation pause."
-          toggle={vacationMode}
-          onPress={() => {
-            if (vacationMode) {
-              forgivVacationStreaks();
-              setVacationMode(false);
-            } else {
-              setVacationMode(true);
-            }
-            // Any calendar in vacationHiddenCalendarIds joins or leaves the
-            // read right on the toggle, rather than waiting on the next
-            // focus of a screen that happens to call refresh() itself.
-            void useCalendarStore.getState().refresh();
-          }}
-        />
-        {vacationMode && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              entryId="vacationEnd"
-              icon="calendar-outline"
-              label="End date"
-              hint={vacationEnd
-                ? 'Turns off automatically on this day'
-                : 'Optional. Turn off manually if not set'}
-              value={vacationEnd ? format(new Date(vacationEnd), 'MMM d, yyyy') : 'None'}
-              onPress={() => setShowVacationEndPicker(true)}
-              accessibilityLabel="Vacation end date"
-              trailing={vacationEnd ? (
-                <TouchableOpacity
-                  onPress={() => setVacationEnd(null)}
-                  hitSlop={8}
-                  style={{ marginLeft: spacing.xs }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear vacation end date"
-                >
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              ) : undefined}
-            />
-          </>
-        )}
-      </SettingsSection>
-      )}
-
-      <SettingsSection
-        label="Trips"
-        footer="A project with away dates can carry where you're going. With this on, that place is sent to Open-Meteo to look up its coordinates and the forecast for your dates, and the project shows a line with the temperature range and whether rain or snow is expected. Nothing is stored, and it's only ever asked about a project that has both a destination and a departure date. Off means nothing leaves the app."
-      >
-        <SettingsRow
-          entryId="destinationForecastEnabled"
-          icon="partly-sunny-outline"
-          iconColor={destinationForecastEnabled ? colors.accent : undefined}
-          label="Destination forecast"
-          hint="Looks up the weather where you're going."
-          toggle={destinationForecastEnabled}
-          onPress={() => setDestinationForecastEnabled(!destinationForecastEnabled)}
-        />
-      </SettingsSection>
-
-      {/*
-        A plain day, so WhenPicker — the CalendarPicker this used to be is only
-        for a completion timestamp or a set of dates. Time of day and Suggest
-        are off: this is a range bound, not a task's own schedule.
-      */}
-      <WhenPicker
-        visible={showVacationEndPicker}
-        value={vacationEnd ? new Date(vacationEnd) : null}
-        title="Vacation end date"
-        showTimeOfDay={false}
-        showSuggest={false}
-        onConfirm={date => {
-          setVacationEnd(date ? getTaskDayStart(date).toISOString() : null);
-          setShowVacationEndPicker(false);
-        }}
-        onClear={() => {
-          setVacationEnd(null);
-          setShowVacationEndPicker(false);
-        }}
-        onCancel={() => setShowVacationEndPicker(false)}
-      />
 
       <TitleRulesSheet
         visible={titleRulesVisible}
