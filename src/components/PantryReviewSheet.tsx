@@ -193,9 +193,9 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const flingOut = useCallback(
     (answer: PantryReviewAnswer) => {
       const toValue =
-        answer === 'low'
-          ? { x: 0, y: -SCREEN_HEIGHT }
-          : { x: answer === 'have' ? SCREEN_WIDTH * 1.4 : -SCREEN_WIDTH * 1.4, y: 0 };
+        answer === 'low' ? { x: 0, y: -SCREEN_HEIGHT }
+        : answer === 'new' ? { x: 0, y: SCREEN_HEIGHT }
+        : { x: answer === 'have' ? SCREEN_WIDTH * 1.4 : -SCREEN_WIDTH * 1.4, y: 0 };
       // A second swipe or button tap before this animation finishes stops it
       // and fires this same callback with `finished: false` — Animated always
       // calls back on interruption, not just on completion (the same reason
@@ -304,11 +304,11 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         // pantry never heard.
         onPanResponderTerminationRequest: () => false,
         onPanResponderMove: (_e, g) => {
-          // Upward drags track vertically and horizontal ones horizontally,
+          // Vertical drags track vertically and horizontal ones horizontally,
           // never both: a card that follows the finger diagonally reads as
           // being dragged towards two answers at once, and the release then
           // picks one of them without having shown which.
-          if (isVertical(g.dx, g.dy)) pan.setValue({ x: 0, y: Math.min(0, g.dy) });
+          if (isVertical(g.dx, g.dy)) pan.setValue({ x: 0, y: g.dy });
           else pan.setValue({ x: g.dx, y: 0 });
         },
         onPanResponderRelease: (_e, g) => {
@@ -343,6 +343,9 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const stampOpacity = (kind: PantryReviewAnswer) => {
     if (kind === 'low') {
       return pan.y.interpolate({ inputRange: [-SWIPE_THRESHOLD, -8, 0], outputRange: [1, 0, 0], extrapolate: 'clamp' });
+    }
+    if (kind === 'new') {
+      return pan.y.interpolate({ inputRange: [0, 8, SWIPE_THRESHOLD], outputRange: [0, 0, 1], extrapolate: 'clamp' });
     }
     const range = kind === 'have' ? [0, 8, SWIPE_THRESHOLD] : [-SWIPE_THRESHOLD, -8, 0];
     const out = kind === 'have' ? [0, 0, 1] : [1, 0, 0];
@@ -450,6 +453,9 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                         <Animated.View style={[styles.stamp, styles.stampLow, { opacity: stampOpacity('low') }]}>
                           <Text style={[styles.stampText, { color: colors.orangeText }]}>Running low</Text>
                         </Animated.View>
+                        <Animated.View style={[styles.stamp, styles.stampNew, { opacity: stampOpacity('new') }]}>
+                          <Text style={[styles.stampText, { color: colors.accentText }]}>Restocked</Text>
+                        </Animated.View>
                         <CardBody card={entry} styles={styles} />
                       </>
                     )}
@@ -497,6 +503,14 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                 styles={styles}
               />
               <Action
+                icon="add"
+                label="Restocked"
+                tint={colors.accentText}
+                background={colors.accent + '26'}
+                onPress={() => flingOut('new')}
+                styles={styles}
+              />
+              <Action
                 icon="play-skip-forward-outline"
                 label="Skip"
                 small
@@ -507,7 +521,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
               />
             </View>
             <Text style={[styles.foot, { paddingBottom: insets.bottom + spacing.lg }]}>
-              Swipe left, right or up
+              Swipe left, right, up or down
             </Text>
           </>
         )}
@@ -543,11 +557,12 @@ function CardBody({ card, styles }: { card: PantryReviewCard; styles: Styles }) 
 /** Icon, label and color for each answer — the review row's chips and the swipe stamps agree on all three. */
 const ANSWER_META: Record<
   PantryReviewAnswer,
-  { icon: keyof typeof Ionicons.glyphMap; label: string; colorKey: 'red' | 'orange' | 'green' }
+  { icon: keyof typeof Ionicons.glyphMap; label: string; colorKey: 'red' | 'orange' | 'green' | 'accent' }
 > = {
   out: { icon: 'close', label: 'Out of it', colorKey: 'red' },
   low: { icon: 'contrast-outline', label: 'Running low', colorKey: 'orange' },
   have: { icon: 'checkmark', label: 'Still have it', colorKey: 'green' },
+  new: { icon: 'add', label: 'Restocked', colorKey: 'accent' },
 };
 
 /**
@@ -574,7 +589,7 @@ function ReviewRow({
         {entry.item.name}
       </Text>
       <View style={styles.reviewChips}>
-        {(['out', 'low', 'have'] as const).map(answer => {
+        {(['out', 'low', 'have', 'new'] as const).map(answer => {
           const meta = ANSWER_META[answer];
           const active = entry.answer === answer;
           const tint = colors[meta.colorKey];
@@ -624,7 +639,7 @@ function Action({
   styles: Styles;
 }) {
   return (
-    <View style={styles.action}>
+    <View style={[styles.action, small && styles.actionSmall]}>
       <PressableScale
         onPress={onPress}
         disabled={disabled}
@@ -656,14 +671,17 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 
-/** Whether a drag reads as the upward "running low" one rather than a sideways answer. */
+/** Whether a drag reads as the up ("running low") or down ("restocked") one rather than a sideways answer. */
 function isVertical(dx: number, dy: number): boolean {
-  return dy < 0 && Math.abs(dy) > Math.abs(dx);
+  return Math.abs(dy) > Math.abs(dx);
 }
 
 /** Which answer a release means, or null when the card didn't travel far enough. */
 function answerFor(dx: number, dy: number): PantryReviewAnswer | null {
-  if (isVertical(dx, dy)) return dy < -SWIPE_THRESHOLD ? 'low' : null;
+  if (isVertical(dx, dy)) {
+    if (dy < -SWIPE_THRESHOLD) return 'low';
+    return dy > SWIPE_THRESHOLD ? 'new' : null;
+  }
   if (dx > SWIPE_THRESHOLD) return 'have';
   if (dx < -SWIPE_THRESHOLD) return 'out';
   return null;
@@ -796,6 +814,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     stampOut: { right: spacing.lg, transform: [{ rotate: '11deg' }], borderColor: colors.red },
     stampHave: { left: spacing.lg, transform: [{ rotate: '-11deg' }], borderColor: colors.green },
     stampLow: { alignSelf: 'center', left: 0, right: 0, borderColor: colors.orange, alignItems: 'center' },
+    stampNew: { alignSelf: 'center', left: 0, right: 0, borderColor: colors.accent, alignItems: 'center' },
     stampText: {
       fontSize: font.md,
       fontWeight: fontWeight.bold,
@@ -803,16 +822,18 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
       textTransform: 'uppercase',
     },
 
+    // Six columns (Undo, the four answers, Skip) share the row, so the widths
+    // are fixed and `space-between` spends what is left on the gaps.
     actions: {
       flexDirection: 'row',
-      justifyContent: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      gap: spacing.lg - 4,
     },
-    action: { alignItems: 'center', width: 62, gap: spacing.sm },
+    action: { alignItems: 'center', width: 56, gap: spacing.sm },
+    actionSmall: { width: 48 },
     button: {
-      width: 60,
-      height: 60,
+      width: 56,
+      height: 56,
       borderRadius: radius.full,
       alignItems: 'center',
       justifyContent: 'center',

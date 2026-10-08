@@ -3517,12 +3517,26 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: s.items.map(i => (i.id === itemId ? updated : i)),
       itemProducts: gone.size > 0 ? s.itemProducts.filter(p => !gone.has(p.id)) : s.itemProducts,
     }));
+    // After the row write above, which carries the item's home-list mirror
+    // columns: removing the entry first had them written straight back.
+    // A new packet retires the "running low" that put the row on the list. The
+    // home list only, the same scope 'low' joins it at: the deck reviews the
+    // pantry at home, so an away list's entry is that trip's own.
+    if (answer === 'new' && item.runningLowAt && entryFor(get().listEntries, itemId, null)) {
+      writeMembership({ remove: [{ itemId, listId: null }] });
+    }
     // Answering "out of it" resolves the same question a live "Use up X"
     // task was asking — leaving the task standing is what had it come back
     // the morning after it was already answered here. Still gated on the column
     // having actually changed, which the stamp above no longer is: a second
     // "out of it" on a row already out has no task left to drop.
     if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
+    // The new packet may have taken the old one's use-by day with it (frozen or
+    // opened), so the use-up task follows the row, as `acquired` does.
+    if (answer === 'new') {
+      if (liveExpiresAt(updated) === null) dropUseUpTask(itemId);
+      else reconcileUseUpTask(updated);
+    }
     return thawedPortions;
   },
 

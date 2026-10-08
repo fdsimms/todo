@@ -40,19 +40,25 @@ import { PANTRY_CHECK_GRACE_DAYS } from './pantryCheckTasks';
  * - **It is ordered by doubt**, not by name or aisle. A deck that opens on the
  *   things the app is surest about is a deck that wastes the user's first ten
  *   swipes confirming what it already believed.
- * - **It answers with the three assertions that already exist** — `onHandUntil`,
- *   `runningLowAt`, and the "Out of it" sentinel. No quantities, no per-card
- *   expiry, no freezer. Those are the inventory creeping back in.
+ * - **It answers with the assertions that already exist** — `onHandUntil`,
+ *   `runningLowAt`, and the "Out of it" sentinel, plus the new-packet clear a
+ *   receipt or scan already does. No quantities, no per-card expiry, no
+ *   freezer. Those are the inventory creeping back in.
  */
 
 /**
- * What a swipe says. Deliberately the three states the pantry can already be
- * told about, and deliberately not four: `runningLowAt` is the middle of the
- * scale that "Got it"/"Out of it" was missing (see `docs/arch/groceries.md`),
- * and it is the one answer with an outlet — it puts the row on the shopping
- * list, which is what gives a review pass something to show for itself.
+ * What a swipe says. Deliberately the states the pantry can already be told
+ * about: `runningLowAt` is the middle of the scale that "Got it"/"Out of it"
+ * was missing (see `docs/arch/groceries.md`), and it is the one answer with an
+ * outlet — it puts the row on the shopping list, which is what gives a review
+ * pass something to show for itself.
+ *
+ * `new` is "I just got another one": the packet the card was asking about is
+ * gone and a fresh one is here. It is only ever offered by the deck itself (the
+ * Describe and scan sheets' pantry control stays three-way), because a
+ * restock is something you say standing at the cupboard.
  */
-export type PantryReviewAnswer = 'have' | 'low' | 'out';
+export type PantryReviewAnswer = 'have' | 'low' | 'out' | 'new';
 
 /**
  * How many cards one session can hold.
