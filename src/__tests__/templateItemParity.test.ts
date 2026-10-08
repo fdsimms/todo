@@ -35,7 +35,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'generatedKind', 'generatedSourceId', 'calendarEventId',
     'calendarEventExternalId', 'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
     'timeBlockExternalId', 'reminderUtcOffsetMinutes', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'meterHeldUntil',
+    'meterHeldUntil', 'rainSkippedOn',
   ],
 
   // A template has no calendar date of its own. These are written as offsets
@@ -84,6 +84,7 @@ const NOT_SEEDED: Record<string, string[]> = {
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
     'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',
+    'rainSkipMm',
   ],
 };
 

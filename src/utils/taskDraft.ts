@@ -238,6 +238,9 @@ export function newTaskFromDraft(
     windowEndSun: draft.windowEndSun ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
     recurrenceHolidays: draft.recurrenceHolidays ?? null,
+    rainSkipMm: draft.rainSkipMm ?? null,
+    // The pass's mark, never carried: a new row hasn't been skipped.
+    rainSkippedOn: null,
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,

@@ -286,6 +286,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +5 more
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
+- `src/utils/rainSkip.ts` — RAIN_SKIP_PRESETS_MM, RAIN_SKIP_PRESETS_IN, RainUnit, rainUnitFor, rainPresetToMm, formatRain, rainSkipOptions, canSkipForRain, recentRainMm, shouldSkipForRain, +1 more
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring, MatchExcerpt, matchExcerpt
 - `src/utils/reachOutIntent.ts` — ReachOutKind, PendingReachOut, REACH_OUT_PROMPT_WINDOW_MS, serializePendingReachOut, parsePendingReachOut, isReachOutPromptLive, isStampFromEarlierLaunch, reachOutHistoryTitle, reachOutPromptMessage
 - `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, +9 more
@@ -575,4 +576,4 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/services/recipePage.ts` — RecipePageErrorCode, RecipePageError, recipePageError, isRecipePageError, describeImportError, isRetryableImportError, FetchedRecipePage, fetchRecipePage
 - `src/services/transitLookup.ts` — fetchTransitSnapshot
 - `src/services/travelTime.ts` — estimateTravelMinutes
-- `src/services/weatherLookup.ts` — WeatherHour, WeatherSnapshot, fetchWeatherSnapshot, ForecastDay, fetchDestinationForecast
+- `src/services/weatherLookup.ts` — WeatherHour, WeatherSnapshot, snapshotFromResponse, fetchWeatherSnapshot, ForecastDay, fetchDestinationForecast

@@ -633,6 +633,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
+  // See Task.rainSkipMm: millimetres, whatever unit the picker shows.
+  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
@@ -1070,6 +1072,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceHolidays(task.recurrenceHolidays ?? null);
+      setRainSkipMm(task.rainSkipMm ?? null);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriorityTouched(true); setEffortTouched(true);
@@ -1138,6 +1141,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
+      setRainSkipMm(null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriorityTouched(initialDraft?.priority !== undefined);
@@ -1277,6 +1281,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceHolidays: task ? (task.recurrenceHolidays ?? null) : (initialDraft?.recurrenceHolidays ?? null),
+      rainSkipMm: task?.rainSkipMm ?? null,
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
       recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
@@ -1768,6 +1773,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       // Only a rule with days to land on can skip one.
       recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       // Cleared with the schedule: it only means anything on a repeating task.
@@ -2634,6 +2640,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceHolidays,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
@@ -5402,6 +5409,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceHolidays={recurrenceHolidays}
                 onChangeHolidays={setRecurrenceHolidays}
+                rainSkipMm={rainSkipMm}
+                onChangeRainSkip={setRainSkipMm}
                 recurrenceCount={recurrenceCount}
                 onChangeCount={setRecurrenceCount}
                 weekOrdinal={{

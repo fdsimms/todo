@@ -353,6 +353,7 @@ import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { decideWeatherWait } from '../utils/weatherWait';
+import { recentRainMm, shouldSkipForRain } from '../utils/rainSkip';
 import { canFollowMeter, decideMeterHold, meterHoldPatch, meterStartPatch } from '../utils/meters';
 import {
   weatherSourceId,
@@ -1981,6 +1982,13 @@ interface TaskStore extends UndoHistoryActions {
    * one does. Reads `useMeterReadingStore`; see `src/utils/meters.ts`.
    */
   applyMeterHolds: () => void;
+  /**
+   * Skips today's occurrence of every repeating task whose rain threshold the
+   * day's rainfall has reached, forgiving its streak and recording each in
+   * Activity. Reads the snapshot `useWeatherStore` already holds and never
+   * fetches; see `src/utils/rainSkip.ts`.
+   */
+  applyRainSkips: () => void;
   checkEventTasks: () => void;
   /**
    * "Leave for X" for each upcoming event with a location, its reminder at the
@@ -6522,6 +6530,45 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  applyRainSkips() {
+    // The forecast is a fact about the real world; a skip written into the
+    // demo database would be invented weather moving invented tasks.
+    if (isDemoModeActive()) return;
+    const weather = useWeatherStore.getState();
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    // A reading from before the day rolled is not an answer for today.
+    if (weather.snapshotDayKey !== todayKey) return;
+    const rain = recentRainMm(weather.snapshot);
+    if (rain === null) return;
+    const { dayResetTime } = useSettingsStore.getState();
+    const skipped: Task[] = [];
+    for (const task of get().tasks) {
+      if (!task.rainSkipMm || task.completed || task.archived) continue;
+      // A task nobody can see isn't acted on because a day went by.
+      if (isWithheld(task)) continue;
+      const placed = getEffectiveTaskDate(task, dayResetTime);
+      const taskDayKey = placed ? dayKeyOf(getTaskDayStart(new Date(placed), dayResetTime)) : null;
+      if (!shouldSkipForRain(task, rain, taskDayKey, todayKey)) continue;
+      const patch = skipPatch(task, dayResetTime);
+      if (!patch) continue;
+      get().updateTask(task.id, {
+        ...patch,
+        rainSkippedOn: todayKey,
+        // The rain did the job, so the gap reads as no gap: the vacation
+        // forgiveness, re-dating the streak to today and crediting nothing.
+        ...(task.streakCount > 0 ? { streakDate: getCurrentDayStart().toISOString() } : {}),
+      }, SKIP_POSTPONE);
+      skipped.push(task);
+    }
+    if (skipped.length > 0) {
+      // The effect, recorded: Activity names each task the rain moved, so a
+      // skip nobody saw happen has somewhere to be found and pulled back.
+      useUnattendedStore.getState().recordMany(skipped.map(t => ({
+        action: 'moved' as const, kind: null, title: t.title, taskId: t.id,
+      })));
+    }
   },
 
   applyMeterHolds() {

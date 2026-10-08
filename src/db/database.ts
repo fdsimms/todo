@@ -2026,6 +2026,10 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN meter_due_at REAL',
     'ALTER TABLE tasks ADD COLUMN meter_limit_months INTEGER',
     'ALTER TABLE tasks ADD COLUMN meter_held_until TEXT',
+    // Skip an occurrence after rain (Task.rainSkipMm); NULL on every existing
+    // row, which never skips.
+    'ALTER TABLE tasks ADD COLUMN rain_skip_mm REAL',
+    'ALTER TABLE tasks ADD COLUMN rain_skipped_on TEXT',
     'CREATE INDEX IF NOT EXISTS idx_meter_readings_key ON meter_readings(meter_key, read_at)',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
@@ -3443,6 +3447,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     meterDueAt: (row.meter_due_at as number | null) ?? null,
     meterLimitMonths: (row.meter_limit_months as number | null) ?? null,
     meterHeldUntil: (row.meter_held_until as string | null) ?? null,
+    rainSkipMm: (row.rain_skip_mm as number | null) ?? null,
+    rainSkippedOn: (row.rain_skipped_on as string | null) ?? null,
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
@@ -3654,8 +3660,8 @@ export function dbInsertTask(task: Task): void {
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
-      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      meter_name, meter_unit, meter_every, meter_due_at, meter_limit_months, meter_held_until, rain_skip_mm, rain_skipped_on
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3789,6 +3795,8 @@ export function dbInsertTask(task: Task): void {
       task.meterDueAt ?? null,
       task.meterLimitMonths ?? null,
       task.meterHeldUntil ?? null,
+      task.rainSkipMm ?? null,
+      task.rainSkippedOn ?? null,
     ]
   );
 }
@@ -3826,7 +3834,7 @@ export function dbUpdateTask(task: Task): void {
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
-      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?
+      meter_name=?, meter_unit=?, meter_every=?, meter_due_at=?, meter_limit_months=?, meter_held_until=?, rain_skip_mm=?, rain_skipped_on=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3961,6 +3969,8 @@ export function dbUpdateTask(task: Task): void {
       task.meterDueAt ?? null,
       task.meterLimitMonths ?? null,
       task.meterHeldUntil ?? null,
+      task.rainSkipMm ?? null,
+      task.rainSkippedOn ?? null,
       task.id,
     ]
   );

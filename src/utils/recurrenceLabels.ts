@@ -81,7 +81,7 @@ export interface RecurrenceRule {
  */
 export function describeTaskRecurrence(
   task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion'>
-    & Partial<Pick<Task, 'recurrenceHolidays'>>,
+    & Partial<Pick<Task, 'recurrenceHolidays' | 'rainSkipMm'>>,
 ): string {
   const { recurrenceType: type, recurrenceInterval: interval, recurrenceDays: days } = task;
   if (type === 'none') return '';
@@ -129,6 +129,11 @@ export function describeTaskRecurrence(
   // nothing else on a row says so.
   if (type !== 'hours' && task.recurrenceHolidays) {
     text = `${text} · ${task.recurrenceHolidays === 'skip' ? 'skips holidays' : 'moves off holidays'}`;
+  }
+  // And a rain threshold: the next date can come sooner than the rule says.
+  // No amount here, since the caption is unit-free; the editor says it.
+  if (type !== 'hours' && typeof task.rainSkipMm === 'number' && task.rainSkipMm > 0) {
+    text = `${text} · skips after rain`;
   }
   return text;
 }

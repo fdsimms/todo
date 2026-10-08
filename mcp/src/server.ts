@@ -1075,6 +1075,8 @@ const taskFieldsShape = {
     count: z.number().int().nullable().optional().describe('Stop after this many more times, this one included. Give endDate or count, not both.'),
     holidays: z.enum(['skip', 'move']).nullable().optional()
       .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day (a trash pickup after a holiday). Holidays are the set and days off chosen in the app\'s Settings. Omit for "happens anyway". Not for hourly.'),
+    skipAfterRainMm: z.number().positive().max(200).nullable().optional()
+      .describe('Skip the day\'s occurrence when at least this much rain (millimetres, 25.4 to the inch) fell yesterday and today, e.g. 5 for "water the garden unless it rained". The phone reads the rainfall when the person has Weather-based tasks on; it does the skipping, so it can take until the next sync. Not for hourly.'),
   }).optional().describe('How it repeats. Replaces the whole rule. The first occurrence sits on dueDate; the rule places the ones after it, so set dueDate to the first matching day.'),
   chain: z.object({
     steps: z.array(z.object({

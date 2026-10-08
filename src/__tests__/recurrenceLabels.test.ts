@@ -226,6 +226,13 @@ describe('describeTaskRecurrence', () => {
       .toBe('Daily · from completion · skips holidays');
   });
 
+  it('says a task skips after rain, and not on an hourly one', () => {
+    expect(describeTaskRecurrence({ ...rule({ recurrenceType: 'daily', recurrenceInterval: 2 }), rainSkipMm: 5 }))
+      .toBe('Every 2 days · skips after rain');
+    expect(describeTaskRecurrence({ ...rule({ recurrenceType: 'hours', recurrenceInterval: 8 }), rainSkipMm: 5 }))
+      .not.toMatch(/rain/);
+  });
+
   it('reads the hours recurrence', () => {
     expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 1 })))
       .toBe('Hourly');
