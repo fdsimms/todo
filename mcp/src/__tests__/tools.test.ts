@@ -126,6 +126,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     moodLogs: () => [],
     medicationLogs: () => [],
     medicationSummary: (log: MedicationLog) => log.name,
+    medicationSettings: () => [],
     // No store configured is the ordinary state for a replica pointed at a
     // file somebody copied, and the tool layer never calls this anyway.
     sync: async () => null,
@@ -804,6 +805,12 @@ describe('listMedicationLogs', () => {
       stubReplica({ medicationLogs: () => [dose({ id: 'd1', name: 'Levothyroxine' })] })
     );
     expect(result.logs[0].asNeeded).toBeUndefined();
+  });
+
+  it('carries the limits and supply the person set, whatever the range', () => {
+    const view = { name: 'Ibuprofen', limit: 'At least 6 hours apart', dosesInLast24h: 1, supplyLeft: '9 doses left' };
+    const result = listMedicationLogs(stubReplica({ medicationSettings: () => [view] }));
+    expect(result.limitsAndSupply).toEqual([view]);
   });
 });
 

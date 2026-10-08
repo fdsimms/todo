@@ -2057,6 +2057,17 @@ describe('Projects', () => {
     expect(dbGetAllProjects().find(row => row.id === 'p-ongoing')?.ongoing).toBe(false);
   });
 
+  it('round-trips groupOnToday on insert and update, reading a row without it as off', () => {
+    dbInsertProject(makeProject({ id: 'p-band', groupOnToday: true }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-band')?.groupOnToday).toBe(true);
+
+    dbUpdateProject(makeProject({ id: 'p-band', groupOnToday: false }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-band')?.groupOnToday).toBe(false);
+
+    dbInsertProject(makeProject({ id: 'p-unset' }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-unset')?.groupOnToday).toBe(false);
+  });
+
   it('orders by sort_order', () => {
     dbInsertProject(makeProject({ id: 'b', title: 'B', sortOrder: 2 }));
     dbInsertProject(makeProject({ id: 'a', title: 'A', sortOrder: 1 }));

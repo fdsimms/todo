@@ -40,10 +40,11 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, departureMoveFromAnswer, awaySpanOf, liveAwaySpans, isAwayDay, awayNights, +12 more
 - `src/utils/awayShift.ts` — AwayShiftProposal, AwayShiftPlan, shiftDateOf, buildAwayShiftPlan, awayShiftUpdates, describeAwayShift, hasAnchoredMember
 - `src/utils/backfillBatch.ts` — BatchScopeKind, BatchScope, BatchOption, batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes, canBatchApply, canBatchDismiss, +1 more
+- `src/utils/backfillDismissCopy.ts` — MAX_DISMISS_LABEL_LENGTH, KEEP_AS_IS_LABEL, TASK_DISMISS_LABELS, CATEGORY_DISMISS_LABELS, PROJECT_DISMISS_LABELS, PERSON_DISMISS_LABELS, ITEM_DISMISS_LABELS, RECIPE_DISMISS_LABELS
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, useBackgroundRefresh
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
-- `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, discardBackupFile, pickBackupFile
+- `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
@@ -100,13 +101,14 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +41 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +42 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
+- `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, measuredTimeAppliesTo, SuggestionCarrier, +7 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
@@ -210,7 +212,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealThawTasks.ts` — MEAL_THAW_LEAD_DAYS, MAX_MEAL_THAW_TASKS, mealThawTitle, mealThawEntryId, isWithinThawWindow, FrozenForMeal, frozenForMeal, mealThawLinkUrl, MealThawWant, wantedMealThaws, +1 more
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
-- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +10 more
+- `src/utils/medicationIndex.ts` — MedicationIndexEntry, MAX_MEDICATION_INDEX_ENTRIES, buildMedicationIndex, QueuedDose, parseQueuedDoses, resolveQueuedDoseName
+- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +15 more
+- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, MedicationLimit, MedicationSupply, MedicationPrefs, MedicationSettingsMap, SUPPLY_UNITS, parseMedicationSettings, prefsFor, withPrefs, formatHours, +11 more
+- `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/meters.ts` — METER_CHECK_IN_DAYS, METER_RATE_MIN_DAYS, METER_RATE_WINDOW_DAYS, METER_NAME_MAX_LENGTH, meterKey, canFollowMeter, hasMeter, NO_METER, readingsFor, latestReading, +23 more
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
@@ -225,7 +230,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/negativeHold.ts` — NegativeHoldActions, negativeHoldOffered, runNegativeHold
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +32 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +34 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -280,6 +285,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
+- `src/utils/quickDose.ts` — parseQuickDose
 - `src/utils/quickEvent.ts` — QuickEventDraft, EventRecurrence, eventRecurrenceFor, describeEventRepeat, parseAlertClause, alertRelativeOffset, DEFAULT_EVENT_MINUTES, parseLengthClause, parseClockRange, parseQuickEvent, +1 more
 - `src/utils/quickEventDefaults.ts` — QUICK_EVENT_DEFAULTS_KEY, EventAvailability, QuickEventDefaults, INITIAL_QUICK_EVENT_DEFAULTS, parseQuickEventDefaults, readQuickEventDefaults, writeQuickEventDefaults
 - `src/utils/quickEventSave.ts` — splitNotesAndLink, QuickEventSaveInput, quickEventSaveFields, alertMinutesFromOffset, describeAlert, ALERT_CHOICES, quickEventFromLine
@@ -416,6 +422,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/titleTokenChips.ts` — TokenChipKind, TokenChip, TokenChipSet, TokenChipSources, MAX_TOKEN_CHIPS, tokenChipsFor, applyTokenChip
+- `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +4 more
 - `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TravelMode, TRAVEL_MODES, TravelEventPref, TRAVEL_ORIGIN_PHONE, TravelEventPrefs, TRAVEL_ARRIVE_CHOICES, +39 more
@@ -448,7 +455,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInDeclineHolds, weighInNotes
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapAction, widgetTapNeedsApp, parseQuietTaps, planQuietTaps
-- `src/utils/widgetSnapshot.ts` — WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, WidgetEvent, MAX_WIDGET_EVENTS, WidgetSnapshot, +10 more
+- `src/utils/widgetSnapshot.ts` — WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, WidgetEvent, MAX_WIDGET_EVENTS, WidgetSnapshot, +13 more
 - `src/utils/widgetSync.ts` — writeWidgetSnapshotNow, useWidgetSync
 
 ## `src/store`
@@ -471,7 +478,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useJournalStore.ts` — useJournalStore
 - `src/store/useLeftoverStore.ts` — useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, sameMealPlanEntries, useMealPlanStore
-- `src/store/useMedicationStore.ts` — DoseInput, MedicationLogPatch, useMedicationStore
+- `src/store/useMedicationStore.ts` — SUMMARY_LAST_SETTING_KEY, MILESTONE_DISMISSED_SETTING_KEY, DoseInput, MedicationLogPatch, useMedicationStore
 - `src/store/useMeterReadingStore.ts` — useMeterReadingStore
 - `src/store/useMilestoneStore.ts` — MilestonePatch, useMilestoneStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore

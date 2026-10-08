@@ -163,6 +163,11 @@ export function ChainStepMedicationSheet({
                 unit={unit}
                 onChangeUnit={setUnit}
               />
+              {/* The one place a taper can be discovered from: nothing else
+                  says a chain of doses can step down a day at a time. */}
+              <Text style={[styles.hint, styles.taperHint]}>
+                For a taper, give each step its own dose, set Next step to On the next repeat, and end the repeat after the last step.
+              </Text>
             </>
           )}
         </View>
@@ -209,4 +214,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 36,
   },
   hint: { color: colors.textSecondary, fontSize: font.sm },
+  taperHint: { marginTop: spacing.sm },
 });

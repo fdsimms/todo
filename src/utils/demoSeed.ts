@@ -1371,10 +1371,15 @@ export function seedDemoData(): void {
   const quotes = createGroup('Contractor quotes', 'Home');
   const abcQuote = addNewGroupedTask(quotes.id, 'Call ABC Contractors');
   const sunriseQuote = addNewGroupedTask(quotes.id, 'Call Sunrise Builders');
-  updateTask(abcQuote.id, { dueDate: addDays(today, 2).toISOString() });
-  updateTask(sunriseQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  // Due today, so the kitchen has something on Today for its band below.
+  updateTask(abcQuote.id, { dueDate: today.toISOString() });
+  updateTask(sunriseQuote.id, { dueDate: today.toISOString() });
   addExistingToProject(abcQuote.id, kitchen.id);
   addExistingToProject(sunriseQuote.id, kitchen.id);
+  // Gathered on Today under the project's name (Project.groupOnToday), with
+  // the quotes stack inside it. An opt-in that starts off, so with no project
+  // seeded with it on, Today in demo mode never shows a project band.
+  updateProject(kitchen.id, { groupOnToday: true });
 
   // A stack with nothing in it yet, homed on the project rather than scoped by
   // members it hasn't got (see TaskGroup.projectId) — an outline of the part of
@@ -3122,6 +3127,26 @@ function seedAsNeededDoses(today: Date): void {
     });
   }
   useMedicationStore.getState().archiveMedication('Amoxicillin');
+
+  // A limit and a supply on the ibuprofen, so its row says where it stands
+  // and its page has both cards filled in. Through the store's own actions,
+  // which stamp the supply's count as of now, so the doses above (all in the
+  // past) leave it at the number typed here.
+  const meds = useMedicationStore.getState();
+  meds.setLimit('Ibuprofen', { minHours: 6, maxPer24h: 3, notify: false });
+  meds.setSupply('Ibuprofen', { count: 9, unit: 'dose', refillCount: 24, reorderAt: 3 });
+
+  // Something started a few days ago with no milestone for it, so the
+  // Medications screen shows its "mark the day you started" offer.
+  for (const back of [5, 3, 1]) {
+    addLog({
+      name: 'Melatonin',
+      amount: 3,
+      unit: 'mg',
+      asNeeded: true,
+      at: setHours(subDays(today, back), 22),
+    });
+  }
 }
 
 /**
@@ -3313,6 +3338,31 @@ function seedTemplates(): void {
   ];
   RESET_ITEMS.forEach(item => addItem(reset.id, item));
   useTemplateStore.getState().setTemplateContainer(reset.id, 'stack');
+
+  // A taper: one daily task whose chain steps each record their own dose,
+  // moving one step a day ("Next step: on the next repeat") and ending after
+  // the last one (the repeat count). Nothing else in the app shows that a
+  // chain step can carry a dose, so without this the way to schedule a taper
+  // is a thing nobody would find.
+  const taper = addTemplate('Prednisone taper');
+  const TAPER_DOSES = [40, 40, 40, 30, 30, 30, 20, 20, 20, 10, 10, 10];
+  addItem(taper.id, {
+    title: 'Take prednisone',
+    category: 'Health',
+    dueOffsetDays: 0,
+    recurrenceType: 'daily',
+    recurrenceCount: TAPER_DOSES.length,
+    chainEnabled: true,
+    chainStepOnSchedule: true,
+    chainItems: TAPER_DOSES.map(mg => ({
+      id: generateId(),
+      title: `Prednisone ${mg} mg`,
+      estimatedMinutes: null,
+      medicationName: 'Prednisone',
+      medicationAmount: mg,
+      medicationUnit: 'mg',
+    })),
+  });
   useTemplateStore.getState().setSchedule(reset.id, {
     frequency: 'weekly',
     weekday: 0,

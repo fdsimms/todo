@@ -33,6 +33,10 @@ import { haptics } from '../utils/haptics';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useMedicationStore } from '../store/useMedicationStore';
+import { medicationVocabulary, type MedicationDose } from '../utils/medicationLog';
+import { parseQuickDose } from '../utils/quickDose';
+import { confirmWithinLimit, recordDose } from '../utils/doseRecording';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -2009,6 +2013,23 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // a demo, where the event would reach the real calendar, so there the line is
   // an ordinary task.
   const eventText = isDemoModeActive() ? null : eventMarkerText(title);
+  // "took ibuprofen 400mg" is a dose to record, not a task (see quickDose.ts
+  // for how strict that reading is). Recorded through the same path the
+  // Medications screen uses, so the limit is checked and a low supply offers
+  // a refill. No demo gate: a dose only reaches the database, which in a demo
+  // is the throwaway one.
+  const medicationLogs = useMedicationStore(s => s.logs);
+  const doseParse = useMemo(
+    () => (eventText === null ? parseQuickDose(title, medicationVocabulary(medicationLogs)) : null),
+    [eventText, title, medicationLogs],
+  );
+  const addAsDose = async (dose: MedicationDose) => {
+    haptics.tap();
+    if (!(await confirmWithinLimit(dose.name))) return;
+    if (!recordDose({ ...dose, asNeeded: true })) return;
+    haptics.success();
+    dismiss();
+  };
   const addAsEvent = async (text: string) => {
     haptics.tap();
     const byId = new Map(people.map(p => [p.id, p]));
@@ -2095,6 +2116,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
 
   const handleAdd = () => {
     if (eventText !== null) { void addAsEvent(eventText); return; }
+    if (doseParse !== null) { void addAsDose(doseParse); return; }
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
@@ -2593,7 +2615,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 onPress={handleAdd}
                 disabled={!title.trim() || blocked !== null}
                 accessibilityRole="button"
-                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
+                accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Ionicons name="arrow-up" size={18} color={!title.trim() || blocked !== null ? colors.textTertiary : colors.onAccent} />
               </TouchableOpacity>
@@ -3670,13 +3692,13 @@ parsed
                 disabled={!title.trim() || blocked !== null}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
+                accessibilityLabel={eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
               >
                 <Text style={[
                   styles.footerAddText,
                   (!title.trim() || blocked !== null) && styles.footerAddTextDisabled,
                 ]}>
-                  {eventText !== null ? 'Add event' : 'Add task'}
+                  {eventText !== null ? 'Add event' : doseParse !== null ? 'Record dose' : 'Add task'}
                 </Text>
               </TouchableOpacity>
             </View>

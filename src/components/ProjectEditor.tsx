@@ -212,6 +212,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [inOrder, setInOrder] = useState(false);
   const [showChecked, setShowChecked] = useState(false);
   const [hideNextStep, setHideNextStep] = useState(false);
+  const [groupOnToday, setGroupOnToday] = useState(false);
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
 
   // Returns the typed link to the list, or says why it can't.
@@ -293,6 +294,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setInOrder(project.inOrder ?? false);
     setShowChecked(project.showChecked ?? false);
     setHideNextStep(project.hideNextStep ?? false);
+    setGroupOnToday(project.groupOnToday ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [visible, project]);
@@ -438,6 +440,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       inOrder,
       showChecked,
       hideNextStep,
+      groupOnToday,
     });
     if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
     // The same offer when the event moves: the wedding pushed back a month
@@ -538,7 +541,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       linkDraft.trim() !== '' ||
       inOrder !== (project.inOrder ?? false) ||
       showChecked !== (project.showChecked ?? false) ||
-      hideNextStep !== (project.hideNextStep ?? false)
+      hideNextStep !== (project.hideNextStep ?? false) ||
+      groupOnToday !== (project.groupOnToday ?? false)
     );
   };
 
@@ -1349,6 +1353,28 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           </TouchableOpacity>
         ) : (
           <>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setGroupOnToday(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Group on Today"
+            accessibilityState={{ checked: groupOnToday }}
+          >
+            <Ionicons name="folder-open-outline" size={18} color={groupOnToday ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Group on Today</Text>
+              <Text style={styles.optionHint}>
+                {groupOnToday
+                  ? "Today shows this project's tasks for the day together under its name, at the top"
+                  : "Today shows this project's tasks in their categories"}
+              </Text>
+            </View>
+            <View style={[styles.toggle, groupOnToday && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, groupOnToday && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => { haptics.tap(); setHideNextStep(v => !v); }}

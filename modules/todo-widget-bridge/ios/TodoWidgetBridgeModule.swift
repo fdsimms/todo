@@ -31,6 +31,10 @@ private let sharedLinksFileName = "shared_recipe_links.json"
 // See src/utils/pantryIndex.ts for what goes in it and why.
 private let pantryIndexFileName = "siri_pantry_index.json"
 private let pendingDisposalsFileName = "pending_disposals.json"
+// Both matching LogMedicationIntent.swift, the same way the pair above
+// matches MarkDisposedIntent.swift. See src/utils/medicationIndex.ts.
+private let medicationIndexFileName = "siri_medication_index.json"
+private let pendingDosesFileName = "pending_doses.json"
 // Must match QuietTapQueue.fileName in targets/todo-widget/WidgetQuietIntents.swift
 // (a separate target, so the literal can't be shared).
 private let quietTapsFileName = "widget_quiet_taps.json"
@@ -43,6 +47,14 @@ private struct PendingDisposalPayload: Codable {
   let id: String?
   let name: String
   let outcome: String
+}
+
+// Mirrors what LogMedicationIntent queues and what processPendingDoses() in
+// widgetSync.ts expects back. `at` is the ISO 8601 moment Siri was asked.
+private struct PendingDosePayload: Codable {
+  let id: String?
+  let name: String
+  let at: String
 }
 
 // Mirrors the TimerRun shape written by src/utils/liveActivity.ts —
@@ -146,6 +158,30 @@ public class TodoWidgetBridgeModule: Module {
 
         let directoryURL = containerURL.appendingPathComponent("Library/Application Support", isDirectory: true)
         let fileURL = directoryURL.appendingPathComponent(pantryIndexFileName)
+
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        guard let data = jsonString.data(using: .utf8) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+        succeeded = true
+      }
+      return succeeded
+    }
+
+    // The medications LogMedicationIntent's entity query matches a spoken name
+    // against (see medicationIndex.ts). Its own file for the reason the pantry
+    // index is one: a different reader with a different shape.
+    AsyncFunction("writeMedicationIndex") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let directoryURL = containerURL.appendingPathComponent("Library/Application Support", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent(medicationIndexFileName)
 
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
@@ -267,6 +303,34 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         guard let decoded = try? JSONDecoder().decode([PendingDisposalPayload].self, from: data) else {
+          return
+        }
+        guard let reencoded = try? JSONEncoder().encode(decoded) else { return }
+        json = String(data: reencoded, encoding: .utf8) ?? "[]"
+      }
+      return json
+    }
+
+    // Reads and clears the queue LogMedicationIntent writes ("log ibuprofen").
+    // The same read-and-delete shape as drainPendingDisposals, for the same
+    // reasons: recording a dose runs the limit and supply checks in JS, and a
+    // corrupt file is deleted rather than failing on every launch.
+    AsyncFunction("drainPendingDoses") { () -> String in
+      var json = "[]"
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingDosesFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard let decoded = try? JSONDecoder().decode([PendingDosePayload].self, from: data) else {
           return
         }
         guard let reencoded = try? JSONEncoder().encode(decoded) else { return }

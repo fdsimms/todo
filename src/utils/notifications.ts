@@ -346,6 +346,45 @@ export async function cancelCompletionTimer(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(completionTimerNotificationId(taskId)).catch(() => {});
 }
 
+function medicationOkAgainId(key: string): string {
+  return `medication-ok-${key}`;
+}
+
+/**
+ * "You can take it again": the notification a medication's limit can ask for
+ * (`MedicationLimit.notify`), fired when the spacing or the 24-hour cap you
+ * set next allows a dose. One per medication, replaced on every dose, the way
+ * a completion timer is replaced on every completion. Like that timer it
+ * ignores quiet hours: it answers a question you asked about a clock, and
+ * holding it back would make the answer wrong. Not counted in
+ * `nonReminderSlots`, the same as completion timers: there is at most one per
+ * medication you set it on.
+ */
+export async function scheduleMedicationOkAgain(key: string, name: string, at: Date): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(medicationOkAgainId(key)).catch(() => {});
+  if (at.getTime() <= Date.now()) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: medicationOkAgainId(key),
+    content: {
+      title: name,
+      body: 'The limit you set now allows another dose.',
+      data: { medicationOkAgain: key },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: at,
+    },
+  });
+}
+
+export async function cancelMedicationOkAgain(key: string): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(medicationOkAgainId(key)).catch(() => {});
+}
+
 // iOS caps pending local notification requests at 64.
 export const MAX_PENDING_REMINDERS = 64;
 

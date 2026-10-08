@@ -22,6 +22,7 @@ import {
   resetToMood,
   resetToJournal,
   resetToFoodLog,
+  resetToMedications,
   resetToWeight,
   resetToProjectPull,
   resetToProject,
@@ -523,6 +524,14 @@ export function isFoodLogUrl(url: string): boolean {
   return typeof url === 'string' && FOOD_LOG_RE.test(url.trim());
 }
 
+// `dundundun://medications` — the Medications widget's tap, the same plain
+// "open this screen" shape as `foodlog`.
+const MEDICATIONS_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?medications\\/?$`, 'i');
+
+export function isMedicationsUrl(url: string): boolean {
+  return typeof url === 'string' && MEDICATIONS_RE.test(url.trim());
+}
+
 // `dundundun://weight[?log=1]` — what the weigh-in request carries, the exact
 // shape the mood check-in's link takes and for a sharper version of its reason:
 // ticking the request off without recording anything loses a number that cannot
@@ -699,6 +708,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isPeopleUrl(url)) return 'people-outline';
   if (isMoodUrl(url)) return 'happy-outline';
   if (isFoodLogUrl(url)) return 'fast-food-outline';
+  if (isMedicationsUrl(url)) return 'medkit-outline';
   if (isWeightUrl(url)) return 'scale-outline';
   if (isProjectsUrl(url) || isProjectUrl(url)) return 'briefcase-outline';
   if (isDeloadUrl(url)) return 'leaf-outline';
@@ -774,6 +784,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isFoodLogUrl(url)) {
     resetToFoodLog();
+    return true;
+  }
+  if (isMedicationsUrl(url)) {
+    resetToMedications();
     return true;
   }
   if (isWeightUrl(url)) {

@@ -503,7 +503,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Doses recorded over a range of days, including as-needed ones, plus the limit and supply the person set for each medication (limitsAndSupply: their own limit, how many doses in the last 24 hours, when the next is within it, and how many are left). A limit is the person\'s own, never a prescription; say it that way. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
@@ -3119,6 +3119,7 @@ function registerWriteTools(
       weekendSource: z.boolean().optional().describe('Somewhere the weekend nudge looks for something to do when a weekend is bare.'),
       showChecked: z.boolean().optional().describe('On a list: checked items stay on the page, struck through, instead of folding away.'),
       hideNextStep: z.boolean().optional().describe('Leave the "Next:" line off its card on the Projects screen.'),
+      groupOnToday: z.boolean().optional().describe('Today shows its tasks and stacks for the day together under its name, at the top below the pinned tasks, instead of in their categories. A trip with a packing list is the usual case. Display only: it changes nothing about what is due.'),
     },
     async ({ id, moveTasks, moveTasksFrom, archiveRemaining, ...patch }) => {
       try {

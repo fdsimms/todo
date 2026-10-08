@@ -92,7 +92,8 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
-import { frequencyTrend, medicationFor } from '../utils/medicationLog';
+import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicationLog';
+import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSettings';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
@@ -130,6 +131,7 @@ import {
   mealCookCounts,
   mostCookedRecipes,
 } from '../utils/cookingStats';
+import { buildTodayProjectBands } from '../utils/todayProjectBands';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { recipeIndex } from '../utils/mealPlan';
@@ -1610,6 +1612,21 @@ describe('demo mode', () => {
   // The only stack in the seed with no members at all. Every other screen
   // finds a stack through its children, so without one homed on a project
   // there's nothing in demo mode that shows a stack can be empty.
+  it('seeds a project grouped on Today, with a stack in its band', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen?.groupOnToday).toBe(true);
+
+    const visible = useTaskStore.getState().visibleTasks();
+    const groups = useTaskGroupStore.getState().groups
+      .map(group => ({ group, children: visible.filter(t => t.groupId === group.id) }))
+      .filter(g => g.children.length > 0);
+    const { bands } = buildTodayProjectBands(visible, groups, useProjectStore.getState().projects);
+    const band = bands.find(b => b.project.id === kitchen!.id);
+    expect(band?.items.some(i => i.type === 'group' && i.group.title === 'Contractor quotes')).toBe(true);
+  });
+
   it('seeds an empty stack homed on a project', () => {
     useDemoStore.getState().enterDemoMode();
 
@@ -2272,6 +2289,33 @@ describe('demo seed — people', () => {
     const logTask = useTaskStore.getState().tasks.find(t => t.title === 'Log breakfast');
     expect(logTask).toBeDefined();
     expect(logTask!.logMealSlot).toBe('breakfast');
+  });
+
+  it('seeds a limit and a supply on an as-needed medication', () => {
+    const { logs, settings } = useMedicationStore.getState();
+    const { limit, supply } = prefsFor(settings, 'Ibuprofen');
+    expect(limit).toMatchObject({ minHours: 6, maxPer24h: 3 });
+    expect(limitStatus(logs, 'Ibuprofen', limit, new Date()).inLast24h).toBe(0);
+    expect(supplyRemaining(logs, 'Ibuprofen', supply)).toBe(9);
+  });
+
+  it('seeds a medication started recently enough to offer a milestone', () => {
+    const logs = useMedicationStore.getState().logs;
+    const labels = useMilestoneStore.getState().milestones.map(m => m.label);
+    const offers = milestoneOffers(logs, labels, [], dayKeyOf(new Date()));
+    expect(offers.map(o => o.name)).toContain('Melatonin');
+  });
+
+  it('seeds a taper: a daily chain whose steps each record a smaller dose', () => {
+    const template = useTemplateStore.getState().templates.find(t => t.name === 'Prednisone taper');
+    expect(template).toBeDefined();
+    const item = template!.items[0];
+    expect(item.recurrenceType).toBe('daily');
+    expect(item.chainStepOnSchedule).toBe(true);
+    expect(item.recurrenceCount).toBe(item.chainItems.length);
+    const doses = item.chainItems.map(c => c.medicationAmount);
+    expect(doses[0]).toBeGreaterThan(doses[doses.length - 1]!);
+    expect(new Set(item.chainItems.map(c => c.medicationName))).toEqual(new Set(['Prednisone']));
   });
 
   it('seeds enough as-needed doses for the frequency card to draw', () => {
