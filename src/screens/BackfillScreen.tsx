@@ -55,7 +55,7 @@ import {
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { describeAIError, suggestBackfillValues } from '../services/aiSuggestions';
 import {
-  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField,
+  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField, isCategoryFieldMissing,
   type CategoryBackfillFieldId,
 } from '../utils/categoryBackfill';
 import {
@@ -286,12 +286,14 @@ const DURATION_UNIT_SEGMENTS = [
  * `renameItem` returns false there, and the collision is the *common* case in
  * a queue full of rows that all want to be called "Yogurt". See `applyRename`.
  *
- * The header's redo icon (task fields only, for now) starts the same loop
- * over from scratch — every live task for the field, including ones already
- * set — for someone who wants to revisit a field wholesale rather than just
- * fill in the gaps. It's still one task at a time through the normal
- * apply/skip/dismiss actions, so a value is only ever replaced when you
- * reach that task and set a new one; nothing is cleared in bulk up front.
+ * The header's redo icon (every pool has it) starts the same loop over from
+ * scratch — every live item for the field, including ones already set — for
+ * someone who wants to revisit a field wholesale rather than just fill in the
+ * gaps. It's still one item at a time through the normal apply/skip/dismiss
+ * actions, so a value is only ever replaced when you reach that item and set a
+ * new one; nothing is cleared in bulk up front. The two on/off flags (a
+ * category's three, a project's weekend source) turn *off* on an item that is
+ * already on, since turning on is a no-op there.
  */
 type ActiveField =
   | { kind: 'task'; id: BackfillFieldId }
@@ -502,12 +504,12 @@ export function BackfillScreen() {
     [tasks, active, fromScratch, skippedIds, categories]
   );
   const categoryQueue = useMemo(
-    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id).filter(c => !skippedIds.has(c.id)) : [],
-    [categories, active, skippedIds]
+    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id, { fromScratch }).filter(c => !skippedIds.has(c.id)) : [],
+    [categories, active, fromScratch, skippedIds]
   );
   const projectQueue = useMemo(
-    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id).filter(p => !skippedIds.has(p.id)) : [],
-    [projects, active, skippedIds]
+    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    [projects, active, fromScratch, skippedIds]
   );
   const currentTask = active?.kind === 'task'
     ? (manualCurrentId ? tasks.find(t => t.id === manualCurrentId) ?? (taskQueue[0] ?? null) : (taskQueue[0] ?? null))
@@ -516,18 +518,18 @@ export function BackfillScreen() {
     ? (manualCurrentId ? categories.find(c => c.id === manualCurrentId) ?? (categoryQueue[0] ?? null) : (categoryQueue[0] ?? null))
     : null;
   const personQueue = useMemo(
-    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id).filter(p => !skippedIds.has(p.id)) : [],
-    [people, active, skippedIds]
+    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    [people, active, fromScratch, skippedIds]
   );
   const itemQueue = useMemo(
     () => active?.kind === 'item'
-      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles).filter(i => !skippedIds.has(i.id))
+      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }).filter(i => !skippedIds.has(i.id))
       : [],
-    [groceryItems, active, skippedIds, itemSubs, nonFoodAisles]
+    [groceryItems, active, fromScratch, skippedIds, itemSubs, nonFoodAisles]
   );
   const recipeQueue = useMemo(
-    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id).filter(r => !skippedIds.has(r.id)) : [],
-    [recipes, active, skippedIds]
+    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id, { fromScratch }).filter(r => !skippedIds.has(r.id)) : [],
+    [recipes, active, fromScratch, skippedIds]
   );
   const currentProject = active?.kind === 'project'
     ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
@@ -783,14 +785,14 @@ export function BackfillScreen() {
     clearSuggestions();
   };
 
-  // Widens the task queue to every live task for the field, including ones
-  // that already have a value or were dismissed — nothing is cleared by this
-  // alone, it just puts every task back in front of you to confirm or
+  // Widens the queue to every live item for the field, including ones that
+  // already have a value or were dismissed — nothing is cleared by this
+  // alone, it just puts every item back in front of you to confirm or
   // replace one at a time (see apply/dismiss below for how each one leaves
-  // the queue once you've actually reached it). Category and project fields
-  // have no redo-from-scratch mode of their own yet.
+  // the queue once you've actually reached it). Every pool has it: the header's
+  // redo icon is the same button on all six.
   const startOver = () => {
-    if (active?.kind !== 'task') return;
+    if (!active) return;
     haptics.tap();
     setFromScratch(true);
     setSkippedIds(new Set());
@@ -802,15 +804,36 @@ export function BackfillScreen() {
     // built to exclude tasks that already had one — so the answers that batch
     // came back with are about a queue this one isn't.
     clearSuggestions();
-    setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
+    const opts = { fromScratch: true };
+    setSessionTotal(
+      active.kind === 'task' ? backfillCandidates(tasks, active.id, opts).length
+      : active.kind === 'category' ? categoryBackfillCandidates(categories, active.id, opts).length
+      : active.kind === 'project' ? projectBackfillCandidates(projects, active.id, opts).length
+      : active.kind === 'person' ? personBackfillCandidates(people, active.id, opts).length
+      : active.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, opts).length
+      : recipeBackfillCandidates(recipes, active.id, opts).length
+    );
   };
 
   const confirmStartOver = () => {
-    if (active?.kind !== 'task') return;
-    const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
+    if (!active) return;
+    const label =
+      active.kind === 'task' ? BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'category' ? CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'project' ? PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
+      : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+      : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    const noun =
+      active.kind === 'task' ? 'task'
+      : active.kind === 'category' ? 'category'
+      : active.kind === 'project' ? 'project'
+      : active.kind === 'person' ? 'person'
+      : active.kind === 'item' ? 'item'
+      : 'recipe';
     Alert.alert(
-      `Redo ${label} from scratch?`,
-      `Walks through every task again, one at a time, including ones that already have a ${label} set. Each task keeps its current value until you set a new one for it, so nothing is cleared upfront.`,
+      `Redo ${label.toLowerCase()} from scratch?`,
+      `Walks through every ${noun} again, one at a time, including ones that already have this set. Each ${noun} keeps its current value until you change it, so nothing is cleared upfront.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Start over', onPress: startOver },
@@ -830,8 +853,15 @@ export function BackfillScreen() {
   // item about to leave the front of the queue is captured regardless of
   // *how* it leaves (an explicit advance() vs. a category/project apply
   // that just mutates the store and lets the live filter drop it).
+  //
+  // In a from-scratch run it also advances for every pool but tasks (whose
+  // handlers call advance() themselves): the live filter that normally drops a
+  // category, project, person, item or recipe once it has a value keeps
+  // already-set ones, so without this the same card would stay at the front.
   const recordVisited = () => {
-    if (currentId) setHistory(prev => [...prev, currentId]);
+    if (!currentId) return;
+    setHistory(prev => [...prev, currentId]);
+    if (fromScratch && active?.kind !== 'task') advance(currentId);
   };
 
   // Steps back to the item recorded just before the current one. It isn't
@@ -1161,25 +1191,25 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const categoryName = currentCategory.name;
     const fieldId = active.id;
-    switch (fieldId) {
-      case 'vacation': setCategoryHideOnVacation(categoryName, true); break;
-      case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, true); break;
-      case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, true); break;
-    }
-    // Always off before this fires (that's what made the category a
-    // candidate), so the undo is just the same setter with the value flipped
-    // back — no snapshot needed the way the project/person cases below take.
+    // Off in the normal queue (that's what made the category a candidate), so
+    // the button turns it on. A redo also reaches categories that are already
+    // on, and for those the same button turns it off, so the undo is the same
+    // setter with the value flipped back either way.
+    const turnOn = isCategoryFieldMissing(currentCategory, fieldId);
+    const set = (value: boolean) => {
+      switch (fieldId) {
+        case 'vacation': setCategoryHideOnVacation(categoryName, value); break;
+        case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, value); break;
+        case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, value); break;
+      }
+    };
+    set(turnOn);
+    const fieldLabel = CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label;
     logSession({
       itemId: currentCategory.id,
       title: categoryLabel(categoryName, getCategoryByName),
-      valueText: CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label,
-      undo: () => {
-        switch (fieldId) {
-          case 'vacation': setCategoryHideOnVacation(categoryName, false); break;
-          case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, false); break;
-          case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, false); break;
-        }
-      },
+      valueText: turnOn ? fieldLabel : `Turned off: ${fieldLabel}`,
+      undo: () => set(!turnOn),
     });
   };
 
@@ -1210,7 +1240,8 @@ export function BackfillScreen() {
 
   // A plain flag, so unlike applyNudge above there is no draft to commit and
   // the undo is the one field. Doesn't call advance() either: setting the value
-  // is what drops the project out of the live queue.
+  // is what drops the project out of the live queue (a redo run advances in
+  // recordVisited instead).
   const applyWeekendSource = () => {
     if (!currentProject) return;
     haptics.tap();
@@ -1219,11 +1250,14 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     const projectId = currentProject.id;
     const before = { weekendSource: currentProject.weekendSource };
-    updateProject(projectId, { weekendSource: true });
+    // On in the normal queue's sense of missing (off); a redo also reaches
+    // projects that already have it on, and for those the button turns it off.
+    const turnOn = !currentProject.weekendSource;
+    updateProject(projectId, { weekendSource: turnOn });
     logSession({
       itemId: projectId,
       title: currentProject.title,
-      valueText: 'Suggested for a free weekend',
+      valueText: turnOn ? 'Suggested for a free weekend' : 'No longer suggested for a free weekend',
       undo: () => updateProject(projectId, before),
     });
   };
@@ -1961,6 +1995,26 @@ export function BackfillScreen() {
 
   const doneCount = Math.max(0, sessionTotal - queueLength);
 
+  // The header's redo icon, the same on every pool's page. Defined once so the
+  // six headers can't drift, which is how only tasks came to have it.
+  const redoLabel =
+    active.kind === 'task' ? BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'category' ? CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'project' ? PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
+    : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
+    : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+  const redoButton = (
+    <TouchableOpacity
+      onPress={confirmStartOver}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`Redo ${redoLabel.toLowerCase()} from scratch`}
+    >
+      <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+
   if (active.kind === 'task') {
     const field = BACKFILL_FIELDS.find(f => f.id === active.id)!;
     // In a from-scratch run, "dismiss" often lands on a task that already has
@@ -1975,16 +2029,7 @@ export function BackfillScreen() {
           title={field.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={
-            <TouchableOpacity
-              onPress={confirmStartOver}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
-            >
-              <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
-          }
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2155,6 +2200,7 @@ export function BackfillScreen() {
     const currentCategoryTaskCount = currentCategory
       ? tasks.filter(t => t.category === currentCategory.name && !t.completed && !t.archived).length
       : 0;
+    const currentCategoryIsOn = !!currentCategory && !isCategoryFieldMissing(currentCategory, active.id);
 
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -2162,6 +2208,7 @@ export function BackfillScreen() {
           title={categoryField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2212,10 +2259,12 @@ export function BackfillScreen() {
               style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={applyCategory}
               accessibilityRole="button"
-              accessibilityLabel={categoryField.label}
+              accessibilityLabel={currentCategoryIsOn ? `Turn off ${categoryField.label}` : categoryField.label}
             >
               <Ionicons name={CATEGORY_FIELD_ICONS[active.id].button} size={iconSize.md} color={colors.onAccent} />
-              <Text style={styles.toggleButtonText}>{categoryField.label}</Text>
+              <Text style={styles.toggleButtonText}>
+                {currentCategoryIsOn ? `Turn off: ${categoryField.label}` : categoryField.label}
+              </Text>
             </PressableScale>
 
             <View style={styles.actionRow}>
@@ -2275,6 +2324,7 @@ export function BackfillScreen() {
           title={personField.shortLabel}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2571,6 +2621,7 @@ export function BackfillScreen() {
           title={projectField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2663,10 +2714,14 @@ export function BackfillScreen() {
                   style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
                   onPress={applyWeekendSource}
                   accessibilityRole="button"
-                  accessibilityLabel={`Let the weekend task name "${currentProject.title}"`}
+                  accessibilityLabel={currentProject.weekendSource
+                    ? `Stop letting the weekend task name "${currentProject.title}"`
+                    : `Let the weekend task name "${currentProject.title}"`}
                 >
                   <Ionicons name="sunny" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Suggest it for a free weekend</Text>
+                  <Text style={styles.toggleButtonText}>
+                    {currentProject.weekendSource ? 'Stop suggesting it for a free weekend' : 'Suggest it for a free weekend'}
+                  </Text>
                 </PressableScale>
               </View>
             )}
@@ -2718,6 +2773,7 @@ export function BackfillScreen() {
           title={recipeField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2877,6 +2933,7 @@ export function BackfillScreen() {
         title={itemField.label}
         onBack={backToFields}
         backAccessibilityLabel="Back to fields"
+        actions={redoButton}
       />
       {sessionTotal > 0 && (
         <View style={styles.progressRow}>

@@ -122,6 +122,23 @@ export function isPersonFieldMissing(person: Person, fieldId: PersonBackfillFiel
 }
 
 /**
+ * Whether `fieldId` is a question for this person at all, set or not: the
+ * `isPersonFieldMissing` gates that are about the kind of person rather than
+ * about the value. A business has no birthday, and never gets a reach-out
+ * nudge, so a redo has nothing to ask it for the three fields that feed those.
+ */
+export function isPersonFieldApplicable(person: Person, fieldId: PersonBackfillFieldId): boolean {
+  switch (fieldId) {
+    case 'birthday':
+    case 'cadence':
+    case 'askAbout':
+      return person.kind !== 'business';
+    case 'location':
+      return true;
+  }
+}
+
+/**
  * Whether the user has told the backfill screen not to ask about `fieldId` for
  * this person again — "I'm not going to put a birthday on this one", not "not
  * right now" (that's the screen's own session-only `skippedIds`, which never
@@ -149,16 +166,28 @@ export function isPersonBackfillDismissed(person: Person, fieldId: PersonBackfil
  * and chasing somebody for a birthday after they have been filed away is the
  * opposite of what that said. Same exclusion `activePeople` already makes.
  *
- * There is no from-scratch mode here, unlike the task fields. Redoing a field
- * wholesale means being walked past every person you know to reconsider a
- * cadence for each of them, which is the "sort your friends into tiers"
- * afternoon the arch doc opens by refusing.
+ * `fromScratch` is the screen's redo, the same as the task fields have. It
+ * widens the queue to everybody the field applies to (`isPersonFieldApplicable`),
+ * including people who already have a value or were told never to be asked
+ * again, and it keeps the order above. It was left out at first, on the
+ * reasoning that being walked past every person you know is the "sort your
+ * friends into tiers" afternoon the arch doc refuses; it was added on request,
+ * so the guards are the ones the rest of this module already holds: it only
+ * ever opens by choice (a header button behind a confirm), nobody's value is
+ * touched until their own card is answered, and still nothing here reads
+ * history or ranks anybody.
  */
-export function personBackfillCandidates(people: Person[], fieldId: PersonBackfillFieldId): Person[] {
+export function personBackfillCandidates(
+  people: Person[],
+  fieldId: PersonBackfillFieldId,
+  opts: { fromScratch?: boolean } = {}
+): Person[] {
   return people
     .filter(p =>
       !p.archived &&
-      isPersonFieldMissing(p, fieldId) && !isPersonBackfillDismissed(p, fieldId)
+      (opts.fromScratch
+        ? isPersonFieldApplicable(p, fieldId)
+        : isPersonFieldMissing(p, fieldId) && !isPersonBackfillDismissed(p, fieldId))
     )
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
