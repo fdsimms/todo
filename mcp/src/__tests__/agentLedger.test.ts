@@ -149,6 +149,9 @@ describe('records an undo can find again', () => {
     expect(describeRuleListChange('health', [rule], [{ ...rule, threshold: 6000, lastFiredDayKey: '2026-10-08' }]))
       .toBe('Change a Health rule (when steps is under 6000 by 8 PM, add the task "Take a walk"): threshold from 5000 to 6000');
     expect(describeRuleListChange('health', [rule], [])).toBe('Delete a Health rule: when steps is under 5000 by 8 PM, add the task "Take a walk"');
+    const cap = { id: 'r2', metric: 'satFatG', threshold: 12, checkpointHour: 0, direction: 'over', title: 'Ease off' };
+    expect(describeRuleListChange('health', [], [cap])).toBe('Add a Health rule: when saturated fat (g) is over 12 at any point in the day, add the task "Ease off"');
+    expect(describeRuleListChange('health', [], [{ ...cap, checkpointHour: 18 }])).toBe('Add a Health rule: when saturated fat (g) is over 12 from 6 PM on, add the task "Ease off"');
   });
 });
 
