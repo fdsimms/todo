@@ -1,5 +1,6 @@
 import type { FoodLogEntry } from '../types';
 import {
+  dailyProduceProgress,
   dayProduce,
   formatServings,
   produceKindOf,
@@ -222,5 +223,16 @@ describe('formatting', () => {
     expect(formatServings(2)).toBe('2');
     expect(formatServings(2.6)).toBe('2.5');
     expect(formatServings(0)).toBe('0');
+  });
+});
+
+describe('dailyProduceProgress', () => {
+  it('adds vegetables and fruit toward five', () => {
+    expect(dailyProduceProgress(2, 1)).toBeCloseTo(0.6);
+    expect(dailyProduceProgress(0, 0)).toBe(0);
+  });
+
+  it('stops at a full bar rather than overflowing', () => {
+    expect(dailyProduceProgress(4, 3)).toBe(1);
   });
 });

@@ -37,7 +37,9 @@ import { isNutrientOnlyEntry } from './nutrientLog';
  * logged.
  *
  * **Counts, never a score.** `nutritionStats.ts` states why. Nothing here
- * compares a day to a target.
+ * judges a day against a target. The one exception is the Food log's bar
+ * toward the fixed 5 a day (`dailyProduceProgress`): neutral accent, no status
+ * colour, nothing that changes when it fills.
  *
  * Store-free and node-testable. The recipe half (which needs the catalog and the
  * recipe walk) is `recipeProduce.ts`, so this file reaches no store.
@@ -264,6 +266,14 @@ export function roundToHalf(value: number): number {
 }
 
 /** "2.5", "1", "0": a half-serving figure without a trailing ".0". */
+/** The "5 a day" figure: vegetable and fruit servings together. */
+export const DAILY_PRODUCE_SERVINGS = 5;
+
+/** How far a day's vegetable and fruit servings are toward 5 a day, 0..1. */
+export function dailyProduceProgress(vegetable: number, fruit: number): number {
+  return Math.min(1, Math.max(0, (vegetable + fruit) / DAILY_PRODUCE_SERVINGS));
+}
+
 export function formatServings(value: number): string {
   const rounded = roundToHalf(value);
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
