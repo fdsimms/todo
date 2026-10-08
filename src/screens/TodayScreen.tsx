@@ -578,6 +578,29 @@ function ExpiredSection({
   );
 }
 
+// Id on the view switch's channel while a pill tap is waiting for its list.
+const VIEW_SWITCHING = 'switching';
+
+// Hides the outgoing list the instant a pill is tapped. It subscribes to the
+// channel itself, so the tap repaints this wrapper and nothing else: the list
+// inside arrives as an untouched prop. Without it the pill moved at once and
+// the old list sat there until the new one finished rendering.
+function ViewSwitchVeil({
+  channel,
+  children,
+}: {
+  channel: DropTargetChannel;
+  children: React.ReactNode;
+}) {
+  const switching = useDropTargetAimed(channel, VIEW_SWITCHING);
+  return <View style={switching ? veilStyles.hidden : veilStyles.shown}>{children}</View>;
+}
+
+const veilStyles = StyleSheet.create({
+  shown: { flex: 1 },
+  hidden: { flex: 1, opacity: 0 },
+});
+
 // The view mode switcher. Its own component so a tap can light the pill on a
 // render of just this row: the switch itself (setViewMode) unmounts one list
 // and mounts another, the most expensive render this screen does, so it runs
@@ -597,6 +620,7 @@ function ViewModePills({
   unscheduledCount,
   onLeave,
   onSelect,
+  switchChannel,
   styles,
 }: {
   modes: ViewMode[];
@@ -605,9 +629,14 @@ function ViewModePills({
   unscheduledCount: number;
   onLeave: () => void;
   onSelect: (mode: ViewMode) => void;
+  switchChannel: DropTargetChannel;
   styles: ReturnType<typeof makeStyles>;
 }) {
   const [shownMode, showMode] = useOptimistic(viewMode);
+  // Clears once the new mode has committed (or the tap changed nothing).
+  useEffect(() => {
+    switchChannel.publish(null);
+  }, [viewMode, switchChannel]);
   return (
     <ScrollView
       horizontal
@@ -627,6 +656,9 @@ function ViewModePills({
             onPress={() => {
               haptics.tap();
               onLeave();
+              // Urgent, outside the transition, so it lands with the pill.
+              // Tapping the active pill switches nothing, so it hides nothing.
+              if (mode !== viewMode) switchChannel.publish(VIEW_SWITCHING);
               startTransition(() => {
                 showMode(mode);
                 onSelect(mode);
@@ -3209,6 +3241,8 @@ export function TodayScreen() {
   // DropTargetChannel.
   const joinGroupIntentRef = useRef<string | null>(null);
   const dropTargetChannel = useDropTargetChannel();
+  // Whether a pill tap is waiting on its list (see ViewSwitchVeil).
+  const viewSwitchChannel = useDropTargetChannel();
   const dropCapture = useRef<DropCapture>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
@@ -4390,6 +4424,7 @@ export function TodayScreen() {
           unscheduledCount={unscheduledCount}
           onLeave={leaveViewMode}
           onSelect={selectViewMode}
+          switchChannel={viewSwitchChannel}
           styles={styles}
         />
 
@@ -4438,6 +4473,7 @@ export function TodayScreen() {
           onTouchStart={spotlightActive ? handleListTouchStart : undefined}
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
+        <ViewSwitchVeil channel={viewSwitchChannel}>
         <PaintSelectionProvider {...paintProps}>
         <FabDropZoneProvider
           ref={dropZonesRef}
@@ -4967,6 +5003,7 @@ export function TodayScreen() {
         )}
         </FabDropZoneProvider>
         </PaintSelectionProvider>
+        </ViewSwitchVeil>
         </View>
 
         {/* Today and Later get their own scroll-to-top button from
