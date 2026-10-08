@@ -6490,7 +6490,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // already spent. `todayWeatherCode` is Open-Meteo's own summary for the
     // whole day, so this is a look-ahead rather than a second live reading.
     const conditions = Array.from(new Set([
-      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF),
+      ...classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF, weather.snapshot.isDay ?? true),
       ...(weather.snapshot.todayWeatherCode != null
         ? classifyWeather(weather.snapshot.todayWeatherCode, weather.snapshot.tempF)
         : []),
@@ -6517,7 +6517,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // anyway, and reading the hours is what lets "cold" answer to the small
     // hours rather than to a single temperature standing for the whole day.
     const tomorrowConditions = Array.from(new Set(
-      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF)),
+      (tomorrowHours ?? []).flatMap(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true)),
     ));
     const aheadOpen = nowHour >= WEATHER_AHEAD_FROM_HOUR && !!tomorrowHours;
 
@@ -6568,11 +6568,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Hours exist but none of the condition's runs is still ahead: the
       // weather has already happened, so a row for it is a chore about nothing.
       const windowPassed = !window && !tomorrow && !!hours && hours.length > 0
-        && hours.some(h => classifyWeather(h.weatherCode, h.tempF).includes(rule.condition));
+        && hours.some(h => classifyWeather(h.weatherCode, h.tempF, h.isDay ?? true).includes(rule.condition));
       if (existing && windowPassed) {
         dropGeneratedTask('weather', sourceId);
         return;
       }
+      // The sun has set on a sunny day whose rule hadn't been looked at yet
+      // (the day-level code still says sunny): nothing is left to write a row
+      // about. Only sunny, because that is the one condition night ends; the
+      // others keep writing a row for weather that already happened.
+      if (windowPassed && rule.condition === 'sunny') return;
       if (tomorrow && !window) {
         if (existing) dropGeneratedTask('weather', sourceId);
         return;

@@ -48,6 +48,14 @@ describe('classifyWeather', () => {
   });
 });
 
+describe('classifyWeather after dark', () => {
+  it('does not call a clear night sunny, but keeps temperature and other skies', () => {
+    expect(classifyWeather(0, 70, false)).toEqual([]);
+    expect(classifyWeather(0, 40, false)).toEqual(['cold']);
+    expect(classifyWeather(61, 60, false)).toEqual(['rainy']);
+  });
+});
+
 describe('weatherIconFor', () => {
   it('picks snow over rain over sun, sky codes only', () => {
     expect(weatherIconFor(71)).toBe('snow-outline');
@@ -72,6 +80,15 @@ describe('weatherConditionAdjective / weatherConditionNoun', () => {
     expect(weatherConditionNoun(61)).toBe('Rain');
     expect(weatherConditionNoun(71)).toBe('Snow');
     expect(weatherConditionNoun(3)).toBe('Clouds');
+  });
+
+  it('calls a clear sky "clear" with a moon after dark, and leaves other skies alone', () => {
+    expect(weatherConditionAdjective(0, false)).toBe('clear');
+    expect(weatherConditionAdjective(1, false)).toBe('clear');
+    expect(weatherIconFor(0, false)).toBe('moon-outline');
+    expect(weatherConditionAdjective(61, false)).toBe('rainy');
+    expect(weatherIconFor(61, false)).toBe('rainy-outline');
+    expect(weatherConditionAdjective(3, false)).toBe('cloudy');
   });
 });
 

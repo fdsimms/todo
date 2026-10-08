@@ -39,9 +39,10 @@ const HOT_THRESHOLD_F = 85;
  * to the sky half; a temperature past either threshold still contributes its
  * own condition regardless of what the sky is doing.
  */
-export function classifyWeather(weatherCode: number, tempF: number): WeatherCondition[] {
+export function classifyWeather(weatherCode: number, tempF: number, isDay: boolean = true): WeatherCondition[] {
   const conditions: WeatherCondition[] = [];
-  if (SUNNY_CODES.has(weatherCode)) conditions.push('sunny');
+  // A clear sky after dark is not sunny: nobody needs sunscreen at midnight.
+  if (SUNNY_CODES.has(weatherCode) && isDay) conditions.push('sunny');
   if (RAINY_CODES.has(weatherCode)) conditions.push('rainy');
   if (SNOWY_CODES.has(weatherCode)) conditions.push('snowy');
   if (tempF <= COLD_THRESHOLD_F) conditions.push('cold');
@@ -56,18 +57,25 @@ export function classifyWeather(weatherCode: number, tempF: number): WeatherCond
  * already stating the temperature as a number and a second, wordless way of
  * saying "cold" would just be a thermometer next to one.
  */
-export function weatherIconFor(weatherCode: number): 'sunny-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
+export function weatherIconFor(
+  weatherCode: number,
+  isDay: boolean = true,
+): 'sunny-outline' | 'moon-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
   if (SNOWY_CODES.has(weatherCode)) return 'snow-outline';
   if (RAINY_CODES.has(weatherCode)) return 'rainy-outline';
-  if (SUNNY_CODES.has(weatherCode)) return 'sunny-outline';
+  if (SUNNY_CODES.has(weatherCode)) return isDay ? 'sunny-outline' : 'moon-outline';
   return 'cloud-outline';
 }
 
-/** "sunny", "rainy", "snowy", or "cloudy" for anything outside those three groups. */
-export function weatherConditionAdjective(weatherCode: number): string {
+/**
+ * "sunny", "rainy", "snowy", or "cloudy" for anything outside those three
+ * groups. A clear sky after dark is "clear", as weather apps say it: the sun
+ * isn't out to be sunny.
+ */
+export function weatherConditionAdjective(weatherCode: number, isDay: boolean = true): string {
   if (SNOWY_CODES.has(weatherCode)) return 'snowy';
   if (RAINY_CODES.has(weatherCode)) return 'rainy';
-  if (SUNNY_CODES.has(weatherCode)) return 'sunny';
+  if (SUNNY_CODES.has(weatherCode)) return isDay ? 'sunny' : 'clear';
   return 'cloudy';
 }
 
