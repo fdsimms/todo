@@ -151,9 +151,11 @@ export function ArchivedScreen() {
     if (!selectionMode) enterSelectionMode(taskId);
   }, [selectionMode, enterSelectionMode]);
 
+  // The tab bar floats over the screen rather than reserving space, so the
+  // list always clears it; selection mode stacks the bulk bar on top of that.
   const listBottomPadding = selectionMode
     ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-    : 40;
+    : tabBarHeight + spacing.md;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
