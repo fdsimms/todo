@@ -1,7 +1,8 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
@@ -42,7 +43,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 export function ArchivedScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
-  const scrollTop = useListScrollToTop();
+  const scrollTop = useListScrollToTop<FlatList<Task>>();
   const tabBarHeight = useBottomTabBarHeight();
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -57,6 +58,7 @@ export function ArchivedScreen() {
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const [flashId, setFlashId] = useState<string | null>(null);
 
   const {
     selectionMode, selectedIds, enterSelectionMode, toggleSelection,
@@ -87,6 +89,31 @@ export function ArchivedScreen() {
       || (t.category?.toLowerCase().includes(q) ?? false)
     );
   }, [sorted, query]);
+
+  // A search result for a paused task lands here (see TodayScreen.locateTask):
+  // clear the filter so the row exists, scroll to it and tint it for a moment.
+  // Stamped like the other one-shot params so a second visit to the same task
+  // still applies.
+  const route = useRoute<any>();
+  const [handledFocus, setHandledFocus] = useState<number | undefined>(undefined);
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    const stamp = route.params?.at as number | undefined;
+    if (stamp === undefined || stamp === handledFocus) return;
+    setHandledFocus(stamp);
+    searchFilter.clear();
+    setPendingFocusId((route.params?.focusTaskId as string | undefined) ?? null);
+  }, [route.params?.at, route.params?.focusTaskId, handledFocus]);
+  useEffect(() => {
+    if (pendingFocusId === null) return;
+    const index = filtered.findIndex(t => t.id === pendingFocusId);
+    if (index < 0) return;
+    setPendingFocusId(null);
+    scrollTop.ref.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    setFlashId(pendingFocusId);
+    const timer = setTimeout(() => setFlashId(null), 1200);
+    return () => clearTimeout(timer);
+  }, [pendingFocusId, filtered]);
 
   const restore = useCallback((id: string) => {
     haptics.tap();
@@ -190,6 +217,12 @@ export function ArchivedScreen() {
         <FlatList
           ref={scrollTop.ref}
           {...scrollTop.listProps}
+          // Rows are variable height (the meta line wraps), so a jump past what
+          // has been measured lands approximately and is corrected once it has.
+          onScrollToIndexFailed={info => {
+            scrollTop.ref.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+            setTimeout(() => scrollTop.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 }), 100);
+          }}
           refreshControl={pullSearch.refreshControl}
           data={filtered}
           keyExtractor={item => item.id}
@@ -211,6 +244,7 @@ export function ArchivedScreen() {
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
               selectionMode={selectionMode}
               selected={selectedIds.has(item.id)}
+              flashing={flashId === item.id}
               onPress={handleRowPress}
               onLongPress={handleRowLongPress}
               onToggleSelect={toggleSelection}
@@ -289,6 +323,8 @@ interface RowProps {
   projectTitle: string | null;
   selectionMode: boolean;
   selected: boolean;
+  /** Tinted briefly after a search result lands on this row. */
+  flashing: boolean;
   // Each takes the task it acts on rather than the screen closing over it once
   // per row, so one stable function serves every row and the memo holds.
   onPress: (task: Task) => void;
@@ -301,7 +337,7 @@ interface RowProps {
 }
 
 const ArchivedRow = React.memo(function ArchivedRow({
-  task, categoryLabel, projectTitle, selectionMode, selected,
+  task, categoryLabel, projectTitle, selectionMode, selected, flashing,
   onPress, onLongPress, onToggleSelect, onRestore, styles, colors, cardShadow,
 }: RowProps) {
   const paintRef = usePaintSelectionRow(task.id);
@@ -313,7 +349,7 @@ const ArchivedRow = React.memo(function ArchivedRow({
   const pausedOn = task.archivedAt ? format(new Date(task.archivedAt), 'MMM d') : null;
 
   return (
-    <View ref={paintRef} style={[styles.card, cardShadow, selected && styles.cardSelected]}>
+    <View ref={paintRef} style={[styles.card, cardShadow, (selected || flashing) && styles.cardSelected]}>
       <TouchableOpacity
         style={styles.cardBody}
         onPress={() => onPress(task)}

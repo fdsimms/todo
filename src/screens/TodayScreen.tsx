@@ -32,6 +32,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -4322,6 +4323,58 @@ export function TodayScreen() {
     flashTask(task.id);
   };
 
+  /**
+   * Take a search result to where its task lives now, rather than opening it:
+   * the right sub-view (Today, Later, Unscheduled, Inbox) scrolled to its row
+   * and flashed, or the Archived screen for a paused one. A task no list holds
+   * (completed, blocked, filed under a project) or one a filter is hiding has
+   * no row to land on, so it opens in the editor instead of eating the tap.
+   * A subtask lands on its parent, which is the row that exists.
+   */
+  const locateTask = (task: Task) => {
+    const root = (task.parentId
+      ? useTaskStore.getState().tasks.find(t => t.id === task.parentId)
+      : undefined) ?? task;
+    const home = taskHomeFor(root);
+    if (home === 'archived') {
+      navigation.navigate({ name: 'Archived', params: { focusTaskId: root.id, at: Date.now() } } as never);
+      return;
+    }
+    let landed = false;
+    if (home === 'today') {
+      landed = revealTaskInToday(root);
+    } else if (home === 'later') {
+      // Later pages itself in behind a task budget — see goToCreatedTask.
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
+      landed = true;
+    } else if (home) {
+      landed = scrollToFlatViewTask(root, home);
+    }
+    if (!landed || !home) {
+      openEditor(task);
+      return;
+    }
+    if (home !== viewMode) {
+      setViewMode(home);
+      // A row left spotlighted on the view being left has no match in the next.
+      setExpandedTaskId(null);
+    }
+    markTaskSeen(root.id);
+    flashTask(root.id);
+  };
+
+  // The same stamped-param handoff the editor link above uses, from a search
+  // result tapped on some other screen (see resetToLocateTask).
+  const [handledLocateTask, setHandledLocateTask] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.locateTask as number | undefined;
+    if (stamp === undefined || stamp === handledLocateTask) return;
+    setHandledLocateTask(stamp);
+    const task = useTaskStore.getState().tasks.find(t => t.id === route.params?.locateTaskId);
+    if (task) locateTask(task);
+  }, [route.params?.locateTask, route.params?.locateTaskId, handledLocateTask]);
+
   // The quiet-projects banner used to sit here, above the pinned block. It's a
   // real task now (see utils/projectReviewTasks.ts), so the offer arrives in
   // the list rather than as a strip over it. What the header holds is the
@@ -5317,7 +5370,7 @@ export function TodayScreen() {
             visible={quickSearchVisible}
             onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
             onShown={endPullToSearch}
-            onSelectTask={openEditor}
+            onSelectTask={locateTask}
             onSelectGroup={group => handleGroupPressEdit(group.id)}
             onSelectProject={handleOpenProject}
             onSelectElsewhere={handleOpenElsewhere}
