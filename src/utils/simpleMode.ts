@@ -29,11 +29,12 @@ import { TASK_KINDS } from './taskKinds';
  * **Screens split two ways under that second rule**, which is the one
  * non-obvious thing here. Calendar, Stats, Backfill and Stuck are *lenses*:
  * every task they show is reachable from Today or Search, so hiding them
- * costs nothing and they go unconditionally. Stacks, Templates, People and
- * Mood hold objects that live nowhere else, so hiding them while the user has
- * some would strand real data — those four survive as long as they hold
- * anything (see `screenShown`). An install with none of them loses all four
- * rows; an install with four stacks keeps the one row that can edit them.
+ * costs nothing and they go unconditionally. Stacks, Templates, People, Mood,
+ * Medications, Journal, Dreams and the Food log hold objects that live nowhere
+ * else, so hiding them while the user has some would strand real data — those
+ * eight survive as long as they hold anything (see `screenShown`). An install
+ * with none of them loses all eight rows; an install with four stacks keeps
+ * the one row that can edit them.
  * Mood was declared one of the four from the start but had no branch in
  * `screenShown` for a long time, so it alone was shown unconditionally,
  * including on an install with no entries at all.

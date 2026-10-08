@@ -262,8 +262,8 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
   },
   // Goes through one field at a time and offers the items missing it — a
   // lens over tasks, categories, projects, people and grocery items that
-  // already exist, so it's shown unconditionally in simplified mode the same
-  // as Calendar and Stuck (see simpleMode.ts).
+  // already exist, so simplified mode hides it unconditionally, the same as
+  // Calendar and Stuck (see simpleMode.ts).
   {
     kind: 'screen',
     destination: {

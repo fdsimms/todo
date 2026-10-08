@@ -9,6 +9,7 @@ import { SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn } f
 import { DEFAULT_TAB_ROUTES, NAV_MENU_ROWS, type NavDestination } from '../../utils/navHubs';
 import { TabSlotPickerSheet, TAB_SLOT_NAMES } from '../../components/TabSlotPickerSheet';
 import { haptics } from '../../utils/haptics';
+import { COIN_ICON } from '../../constants/coinIcon';
 
 const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
   NAV_MENU_ROWS.flatMap(row => row.kind === 'screen' ? [row.destination] : row.hub.members)
@@ -18,7 +19,9 @@ const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
 /**
  * The two switches that reshape the rest of the app: `kitchenEnabled` (the
  * whole groceries/recipes/meal-plan area, its tab and its drawer hub) and
- * `simpleMode` (every advanced feature `SIMPLE_FEATURES` names).
+ * `simpleMode` (every advanced feature `SIMPLE_FEATURES` names), plus
+ * `rewardsEnabled` (coins, bounties and the difficulty field), which had no way
+ * off once the Rewards screen's own Turn on button was pressed.
  *
  * This used to be the last section of Tasks & projects, the group that was
  * already the widest in Settings — eleven sections deep, so the two controls
@@ -32,6 +35,8 @@ export function FeatureAreasSettings() {
 
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
+  const setRewardsEnabled = useSettingsStore(s => s.setRewardsEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const tabRoutes = useSettingsStore(s => s.tabRoutes);
@@ -58,7 +63,7 @@ export function FeatureAreasSettings() {
     <>
     <SettingsSection
       label="Feature areas"
-      footer="Neither switch deletes anything. Your tasks, lists, recipes and planned meals are kept exactly as they are, and turning either back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
+      footer="None of these switches deletes anything. Your tasks, lists, recipes, planned meals and coin history are kept exactly as they are, and turning one back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
     >
       <SettingsRow
         entryId="kitchenEnabled"
@@ -70,6 +75,18 @@ export function FeatureAreasSettings() {
           : tabRoutes.includes('Groceries') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
         toggle={kitchenEnabled}
         onPress={() => setKitchenEnabled(!kitchenEnabled)}
+      />
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="rewardsEnabled"
+        icon={COIN_ICON}
+        iconColor={rewardsEnabled ? colors.accent : undefined}
+        label="Coins and rewards"
+        hint={rewardsEnabled
+          ? 'Finishing a task earns coins you can spend on rewards you set'
+          : 'Off. No coins are earned or shown'}
+        toggle={rewardsEnabled}
+        onPress={() => setRewardsEnabled(!rewardsEnabled)}
       />
       <View style={styles.sep} />
       <SettingsRow

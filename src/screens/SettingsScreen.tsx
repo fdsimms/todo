@@ -86,7 +86,7 @@ export function SettingsScreen() {
     themeMode: settings.themeMode,
     fontLabel: getAppFontOption(settings.appFont)?.label ?? 'System',
     hapticsEnabled: settings.hapticsEnabled,
-    morningStart: settings.morningStart ?? '06:00',
+    dayResetTime: settings.dayResetTime ?? '00:00',
     use24HourTime: settings.use24HourTime,
     weekStartsOn: settings.weekStartsOn,
     dailyAgendaEnabled: settings.dailyAgendaEnabled,

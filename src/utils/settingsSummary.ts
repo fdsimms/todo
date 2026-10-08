@@ -18,7 +18,7 @@ export interface SettingsSummaryInput {
   themeMode: string;
   fontLabel: string;
   hapticsEnabled: boolean;
-  morningStart: string;
+  dayResetTime: string;
   use24HourTime: boolean;
   weekStartsOn: 0 | 1;
   dailyAgendaEnabled: boolean;
@@ -98,7 +98,7 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettin
     // both pushed this line onto a second row, which made one index row taller
     // than the other seven for the sake of restating a default.
     dayTime: line(
-      `Day starts ${formatHHMM(s.morningStart, s.use24HourTime)}`,
+      `Day starts ${formatHHMM(s.dayResetTime, s.use24HourTime)}`,
       s.use24HourTime && '24-hour',
       s.weekStartsOn === 1 && 'Weeks from Monday',
     ),

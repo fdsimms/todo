@@ -5,7 +5,7 @@ const defaults: SettingsSummaryInput = {
   themeMode: 'dark',
   fontLabel: 'System',
   hapticsEnabled: true,
-  morningStart: '06:00',
+  dayResetTime: '06:00',
   use24HourTime: false,
   weekStartsOn: 0,
   dailyAgendaEnabled: false,
@@ -78,7 +78,7 @@ describe('settingsSummaries', () => {
     });
 
     it('honours the 24-hour setting', () => {
-      const line = summarise({ use24HourTime: true, morningStart: '02:00' }).dayTime;
+      const line = summarise({ use24HourTime: true, dayResetTime: '02:00' }).dayTime;
       expect(line).toContain('Day starts 02:00');
       expect(line).toContain('24-hour');
     });

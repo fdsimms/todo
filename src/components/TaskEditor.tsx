@@ -4629,7 +4629,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
         rows={[
           {
             key: 'date', label: 'Date',
-            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it'],
+            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it', 'due', 'due date', 'postpone', 'reschedule', 'push', 'move', 'snooze'],
             node: (
               <>
             <EditorRow
@@ -5004,7 +5004,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only active for part of the day, then expires."
+              hint="Only active for part of the day, then expires. Removing expired tasks is set in Settings."
               value={timeWindowSummary}
               caption={windowStartMeeting
                 ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
@@ -5215,7 +5215,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           {
             key: 'remindMe', label: 'Remind me',
-            keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
+            keywords: ['reminder', 'notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
             node: (
               <>
             <EditorRow
@@ -5329,7 +5329,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'repeat', label: 'Repeat',
-            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule'],
+            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule', 'after completion', 'from completion', 'interval', 'ends', 'weekdays', 'count'],
             node: (
               <>
             <EditorRow
@@ -6471,7 +6471,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'effort', label: 'Effort', set: !!effort,
-            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload'],
+            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload', 'duration', 'time estimate', 'length', 'hours'],
             node: (
               <>
           <CollapsibleField
@@ -6881,7 +6881,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
-                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
+                <Text style={styles.optionHint}>Hide and protect streak during vacation mode. Vacation mode is turned on in Settings.</Text>
               </View>
               <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
