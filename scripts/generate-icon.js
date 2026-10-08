@@ -147,15 +147,6 @@ function onMark(x, y, scale, parts = 'all') {
   );
 }
 
-/** Whether a point lies on a rounded square of edge `size` centered in the icon. */
-function onTile(x, y, size) {
-  const radius = size * 0.224;
-  const half = size / 2;
-  const qx = Math.max(Math.abs(x - 0.5) - (half - radius), 0);
-  const qy = Math.max(Math.abs(y - 0.5) - (half - radius), 0);
-  return Math.hypot(qx, qy) <= radius;
-}
-
 // ------------------------------------------------------------------ painting
 
 const GOLD = [0xff, 0xb0, 0x20];
@@ -168,36 +159,28 @@ const WHITE = [255, 255, 255];
  * @param {number} opts.size        output edge length in px
  * @param {number[]} opts.mark      mark color
  * @param {number[]} [opts.background] opaque full-bleed fill; omitted = transparent
- * @param {number} [opts.tile]      draw a rounded gold tile this share of the canvas
- *                                  under the mark (transparent around it)
  * @param {number} opts.scale       mark scale about the center
  * @param {string} [opts.parts]     'dots' or 'check' to draw only that part of the
  *                                  mark; omitted = the whole mark
  */
-function render({ size, mark, background, tile, scale, parts }) {
+function render({ size, mark, background, scale, parts }) {
   const ss = size <= 256 ? 8 : 4; // supersampling per axis
   const channels = background ? 3 : 4;
   const out = Buffer.alloc(size * size * channels);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let markHits = 0;
-      let tileHits = 0;
       for (let sy = 0; sy < ss; sy++) {
         for (let sx = 0; sx < ss; sx++) {
           const nx = (x + (sx + 0.5) / ss) / size;
           const ny = (y + (sy + 0.5) / ss) / size;
           if (onMark(nx, ny, scale, parts)) markHits++;
-          if (tile && onTile(nx, ny, tile)) tileHits++;
         }
       }
       const m = markHits / (ss * ss);
       const i = (y * size + x) * channels;
       if (background) {
         for (let c = 0; c < 3; c++) out[i + c] = Math.round(background[c] + (mark[c] - background[c]) * m);
-      } else if (tile) {
-        // The mark sits wholly inside the tile, so the tile's coverage is the alpha.
-        for (let c = 0; c < 3; c++) out[i + c] = Math.round(GOLD[c] + (mark[c] - GOLD[c]) * m);
-        out[i + 3] = Math.round((tileHits / (ss * ss)) * 255);
       } else {
         for (let c = 0; c < 3; c++) out[i + c] = mark[c];
         out[i + 3] = Math.round(m * 255);
@@ -228,10 +211,13 @@ const files = [
   // makes the mark fill that visible area in the same proportion it fills the
   // iOS icon, and leaves it inside the 66% safe zone the mask may clip to.
   ['adaptive-icon.png', { size: 1024, mark: INK, scale: 0.66 }],
-  // Splash art, drawn over the black splash background: the icon itself, as a
-  // gold tile. `resizeMode: contain` fits this square image to the screen width
-  // on a portrait phone, so a 0.3 tile lands at ~30% of the screen's width.
-  ['splash-icon.png', { size: 512, mark: INK, tile: 0.3, scale: 0.3 }],
+  // Splash art: the mark alone on transparent, over the splash background set
+  // in the `expo-splash-screen` plugin options in app.json. Light is the icon
+  // blown up to the whole screen (ink on gold); dark is `icon-dark.png`'s pair
+  // (gold on ink). Both share the icon's canvas and scale, so the plugin's
+  // `imageWidth` sizes the mark at 0.7 of it.
+  ['splash-icon.png', { size: 1024, mark: INK, scale: 1 }],
+  ['splash-icon-dark.png', { size: 1024, mark: GOLD, scale: 1 }],
 ];
 
 for (const [name, opts] of files) {

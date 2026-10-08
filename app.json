@@ -7,11 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "dundundun",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
     "ios": {
       "icon": {
         "light": "./assets/icon.png",
@@ -103,7 +98,19 @@
       "expo-background-task",
       "expo-asset",
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFB020",
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#17131C"
+          }
+        }
+      ],
       [
         "expo-build-properties",
         {
