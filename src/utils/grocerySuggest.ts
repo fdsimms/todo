@@ -447,6 +447,19 @@ function onHandWindowDays(item: GroceryItem, now: Date): number {
 }
 
 /**
+ * How much of the purchase window has gone by since the last purchase, as a
+ * fraction (0 = bought just now, 1 = the window has run out). Infinity when
+ * there is no purchase on record.
+ *
+ * Lives beside `onHandWindowDays` for the same reason `pantryGuessLapsedDays`
+ * does: the window arithmetic has one owner. The pantry review deck reads it to
+ * leave a purchase from a few hours ago alone.
+ */
+export function pantryGuessElapsedFraction(item: GroceryItem, now: Date): number {
+  return daysBetween(now, item.lastPurchasedAt) / onHandWindowDays(item, now);
+}
+
+/**
  * How many days ago this item's *purchase reading* ran out — null when there
  * never was one to run out, or it hasn't yet.
  *

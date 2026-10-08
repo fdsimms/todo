@@ -3,6 +3,7 @@ import type { GroceryItem, ItemProduct } from '../types';
 import {
   OUT_OF_IT_UNTIL,
   isRunningLow,
+  pantryGuessElapsedFraction,
   pantryGuessLapsedDays,
   probablyHaveReason,
 } from './grocerySuggest';
@@ -85,6 +86,15 @@ export const MAX_PANTRY_REVIEW_CARDS = 20;
  * position in their day.
  */
 export const PANTRY_REVIEW_QUIET_DAYS = 7;
+
+/**
+ * How far through its purchase window a `guessed` row must be before it earns a
+ * card. A purchase from this morning is the app's best evidence that you have
+ * something, and asking about it is noise: the deck only cards a guess once
+ * half its window has gone, when there is a real chance it has run down.
+ * Lapsed and asserted rows are unaffected.
+ */
+export const PANTRY_GUESS_DOUBT_FRACTION = 0.5;
 
 const DAY_MS = 86_400_000;
 
@@ -183,13 +193,16 @@ export function buildPantryReviewDeck(
     // does" — never to build the card itself.
     const reason = probablyHaveReason(item, now, []);
     if (reason) {
+      // An explicit assertion outranks the purchase reading inside
+      // `probablyHaveReason`, so the columns are what decide the tier here
+      // rather than the prose it returned — the same "read the columns, not
+      // the string" rule `correctableHaveReason` follows.
+      const asserted = isAsserted(item, now);
+      // A guess from a purchase that has barely aged has nothing to doubt yet.
+      if (!asserted && pantryGuessElapsedFraction(item, now) < PANTRY_GUESS_DOUBT_FRACTION) continue;
       candidates.push({
         item,
-        // An explicit assertion outranks the purchase reading inside
-        // `probablyHaveReason`, so the columns are what decide the tier here
-        // rather than the prose it returned — the same "read the columns, not
-        // the string" rule `correctableHaveReason` follows.
-        doubt: isAsserted(item, now) ? 'asserted' : 'guessed',
+        doubt: asserted ? 'asserted' : 'guessed',
         reason,
         lapsedDays: null,
       });
