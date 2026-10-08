@@ -117,7 +117,7 @@ import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
-import { DREAM_LOG_TITLE, JOURNAL_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
+import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
@@ -7399,7 +7399,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     if (settings.journalLogTasks && settings.journalLogTaskCategory) {
       run('journal', settings.journalLogTaskCategory, settings.journalLogTimeSegments,
-        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey, JOURNAL_LOG_TITLE);
+        settings.journalLogLastDayKey, settings.setJournalLogLastDayKey,
+        journalLogTitle(settings.journalLogTimeSegments));
     }
     if (settings.dreamLogTasks && settings.dreamLogTaskCategory) {
       run('dream', settings.dreamLogTaskCategory, [],
