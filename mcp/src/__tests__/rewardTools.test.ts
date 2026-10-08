@@ -81,6 +81,13 @@ describe('the rewards tools', () => {
       expect(getRewards(replica).goal!.shortBy).toBe(3);
     });
 
+    it('refuses a dollar price with no rate, and a cost and price together', () => {
+      expect(() => createReward(replica, { title: 'Coffee', price: 4.5 })).toThrow(/weekly reward budget/);
+      expect(() => createReward(replica, { title: 'Coffee', cost: 5, price: 4.5 })).toThrow(/either cost/);
+      expect(() => createReward(replica, { title: 'Coffee' })).toThrow(/either cost/);
+      expect(() => createReward(replica, { title: 'Coffee', price: 4.567 })).toThrow(/two decimals/);
+    });
+
     it('lists a live bounty and says what the miss costs', () => {
       const task = replica.createTask({ title: 'Ring the dentist' });
       expect(setBounty(replica, task.id, true).bounty).toMatch(/\d/);

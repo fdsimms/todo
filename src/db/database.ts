@@ -1915,6 +1915,8 @@ export function initDatabase(): void {
     // Empty on every existing recipe: a method heading declared ahead of any
     // step is new. See Recipe.emptyStepSections.
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // NULL on every existing reward: priced in coins only. See Reward.priceMinor.
+    'ALTER TABLE rewards ADD COLUMN price_minor INTEGER',
     // Nullable with no default, for log_meal's reason: NULL is "the setting
     // decides", and a DEFAULT 0 would record every meal ever planned as having
     // declined a freezer reminder. See MealPlanEntry.thawTask.
@@ -7020,6 +7022,7 @@ function rowToReward(row: Record<string, unknown>): Reward {
     note: (row.note as string | null) || null,
     oneTime: row.one_time === 1 || !!row.task_id,
     taskId: (row.task_id as string | null) || null,
+    priceMinor: row.price_minor == null ? null : Math.max(1, Math.round(Number(row.price_minor)) || 1),
   };
 }
 
@@ -7031,15 +7034,15 @@ export function dbGetAllRewards(): Reward[] {
 
 export function dbInsertReward(reward: Reward): void {
   db.runSync(
-    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId]
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor]
   );
 }
 
 export function dbUpdateReward(reward: Reward): void {
   db.runSync(
-    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=? WHERE id=?',
-    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.id]
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.id]
   );
 }
 

@@ -233,6 +233,8 @@ export interface ReplicaSettings {
   rewardsEnabled: boolean;
   /** The reward being saved for, or null. */
   rewardGoalId: string | null;
+  /** Weekly reward spend in minor units, which with the earning rate sets the coin-to-dollar rate. Null when unset. */
+  rewardWeeklyBudgetMinor: number | null;
   /** How many coin bounties may be live at once. */
   bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
@@ -1662,9 +1664,9 @@ export interface Replica {
    * sit on a screen the person cannot open. Never a wish-list reward: those
    * read their title off a list item and are made in the app.
    */
-  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null }): Reward;
   /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
-  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean }): Reward;
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
@@ -3296,6 +3298,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
         rewardGoalId: s.rewardGoalId,
+        rewardWeeklyBudgetMinor: s.rewardWeeklyBudgetMinor,
         bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
         // Read off the table, as requestCalendarEvent does, so the two agree.

@@ -2060,6 +2060,14 @@ export interface Reward {
    * key, like every other provenance pointer in the ledger.
    */
   taskId: string | null;
+  /**
+   * A real-money price in minor units (cents), for a reward that costs money.
+   * When set, `cost` is derived from it at the current exchange rate
+   * (`repriceCoinsFor` in `src/utils/rewards.ts`) and rewritten whenever the
+   * rate moves, so `cost` stays the one figure every reader claims, sorts and
+   * saves toward. Null for a reward priced in coins only.
+   */
+  priceMinor: number | null;
 }
 
 /**
