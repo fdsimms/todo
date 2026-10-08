@@ -48,7 +48,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
-import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, HEALTH_WRITABLE_NUTRIENTS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
@@ -354,8 +354,11 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   carbsG: { step: 5, max: 150 },
   fatG: { step: 5, max: 100 },
   satFatG: { step: 1, max: 50 },
+  transFatG: { step: 1, max: 20 },
+  cholesterolMg: { step: 10, max: 500 },
   fiberG: { step: 1, max: 30 },
   sugarG: { step: 1, max: 50 },
+  addedSugarG: { step: 1, max: 50 },
   sodiumMg: { step: 100, max: 3000 },
   calciumMg: { step: 50, max: 1500 },
   ironMg: { step: 1, max: 30 },
@@ -364,7 +367,8 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
   waterMl: { step: 50, max: 1000 },
 };
 
-// The nutrient menu's sections. Anything in `NUTRIENT_KEYS` that no section
+// The nutrient menu's sections, over what a completion can write to Health
+// (`HEALTH_WRITABLE_NUTRIENTS`). Anything in it that no section
 // names lands in a trailing unlabelled one, so a nutrient added later is
 // offered here rather than silently missing.
 const LOG_NUTRIENT_SECTIONS: Array<{ heading: string; keys: NutrientKey[] }> = [
@@ -377,9 +381,9 @@ const LOG_NUTRIENT_GROUPS: ChoiceGroup[] = (() => {
   const option = (key: NutrientKey) => ({ key, label: NUTRIENT_LABEL[key].label });
   const groups: ChoiceGroup[] = LOG_NUTRIENT_SECTIONS.map(sec => ({
     heading: sec.heading,
-    options: sec.keys.filter(k => NUTRIENT_KEYS.includes(k)).map(option),
+    options: sec.keys.filter(k => HEALTH_WRITABLE_NUTRIENTS.includes(k)).map(option),
   }));
-  const rest = NUTRIENT_KEYS.filter(k => !named.has(k));
+  const rest = HEALTH_WRITABLE_NUTRIENTS.filter(k => !named.has(k));
   return rest.length > 0 ? [...groups, { options: rest.map(option) }] : groups;
 })();
 
@@ -2088,6 +2092,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // becoming a weekly target in this edit, or already is a scaled-down one;
   // a weekly target whose week is already running keeps its count.
   const wasProrated = task ? proratedFrom(task) !== null : false;
+  // What the row has logged so far, for the period it was saved with. Null for
+  // a new target, or once the period is switched here: the count belongs to the
+  // stretch it was logged in, so it can't be read against the other one.
+  const loggedProgress = task && task.targetCount !== null && (task.quotaPeriod ?? 'day') === quotaPeriod
+    ? task.progressCount
+    : null;
   const prorationAnchor = (() => {
     if (task && wasProrated && task.quotaStartedAt) {
       return getTaskDayStart(new Date(task.quotaStartedAt), dayResetTime);
@@ -3809,7 +3819,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 hint={quotaPeriod === 'week'
                   ? "Log it several times a week, on whichever days work. The task hides while you're on pace and comes back when you fall behind."
                   : "Log it several times a day. The task hides while you're on pace and comes back when you fall behind."}
-                value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
+                value={targetCount !== null
+                  ? (loggedProgress !== null ? formatQuotaProgress(loggedProgress, targetCount, targetUnit) : formatQuotaTarget(targetCount, targetUnit))
+                  : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
                 onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
@@ -3871,6 +3883,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       />
                     )}
                   </View>
+                  {loggedProgress !== null && targetCount !== null && quotaIntervalMinutes === null && (
+                    <View
+                      style={styles.targetProgressTrack}
+                      accessible
+                      accessibilityRole="progressbar"
+                      accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`}
+                    >
+                      <View style={[styles.targetProgressFill, { width: `${Math.min(100, (loggedProgress / targetCount) * 100)}%` }]} />
+                    </View>
+                  )}
                   {/* Says what the row will read as rather than what the field is
                       for: the unit's whole job is how the meter comes out, and a
                       preview answers "plural or singular?" without a rule to
@@ -3880,7 +3902,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       ? 'Not a target'
                       : quotaIntervalMinutes !== null
                         ? quotaCadenceCaption
-                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
+                        : loggedProgress !== null && loggedProgress > 0
+                          // The row's real count, not a zero: the preview used to
+                          // read "0/6" on a target already half done, which looked
+                          // like opening the editor had reset it.
+                          ? `Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`
+                          : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
                   </Text>
                   {targetCount !== null && (
                     <>
@@ -7745,6 +7772,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   /** The static words either side of a stepper, e.g. "Every [4th] completion". */
   stepperSentence: { color: colors.textSecondary, fontSize: font.md },
+  targetProgressTrack: {
+    height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.bgTertiary,
+    marginHorizontal: spacing.md, marginTop: spacing.xs,
+  },
+  targetProgressFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,

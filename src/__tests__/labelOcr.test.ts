@@ -58,10 +58,13 @@ describe('readNutritionLabel', () => {
         calorieKcal: 140,
         fatG: 6,
         satFatG: 2.5,
+        transFatG: 0,
+        cholesterolMg: 5,
         sodiumMg: 105,
         carbsG: 20,
         fiberG: 1,
         sugarG: 11,
+        addedSugarG: 10,
         proteinG: 1,
       });
     });
@@ -78,12 +81,15 @@ describe('readNutritionLabel', () => {
       expect(reading.columns[0].amounts.sugarG).toBe(11);
     });
 
-    it('files no figure for a nutrient it has no key for', () => {
-      // Cholesterol is declared on every US panel and this build cannot store
-      // it. The reading has to drop it rather than find it a home.
+    it('reads the added sugars out of the "Includes" row, not its %DV', () => {
       const reading = readNutritionLabel(panel(US_PANEL))!;
-      expect(Object.keys(reading.columns[0].amounts)).not.toContain('cholesterolMg');
-      expect(reading.columns[0].amounts.sodiumMg).toBe(105);
+      expect(reading.columns[0].amounts.addedSugarG).toBe(10);
+    });
+
+    it('still drops an "Includes" row that is not added sugars', () => {
+      const reading = readNutritionLabel(panel([...US_PANEL, ['Includes 2g Sugar Alcohols']]))!;
+      expect(reading.columns[0].amounts.sugarG).toBe(11);
+      expect(reading.columns[0].amounts.addedSugarG).toBe(10);
     });
 
     it('reads the serving line as printed, with its gram weight', () => {

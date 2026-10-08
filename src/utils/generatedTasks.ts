@@ -178,6 +178,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // part of the other, since one asks about water already owed and this about
   // the day's food.
   'snackNudge',
+  // Beside it, reading the same food log against a limit rather than a goal:
+  // a "don't do" task per limit, slipped when the log goes past it.
+  'limitWarning',
   // Appended: the one generator whose source is a calendar event the person
   // keeps for re-adding (savedEvents.ts).
   'bookEvent',
@@ -249,6 +252,7 @@ export type GeneratedEnabledKey =
   | 'weighInTasks'
   | 'waterShortfallTasks'
   | 'snackNudgeTasks'
+  | 'limitWarningTasks'
   | 'bookEventTasks'
   | 'journalLogTasks'
   | 'dreamLogTasks';
@@ -993,6 +997,27 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: false,
     // Not a notice: eating the snack is the decision, and logging it removes the
     // task, so it is something to act on rather than something to tick.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Ships off: Stay under limits are opt-in, and so is being told about one.
+  limitWarning: {
+    kind: 'limitWarning',
+    // Hidden on vacation with its streak held, like any "don't do" task marked
+    // to pause, and the pass logs no slips meanwhile.
+    pausedOnVacation: true,
+    enabledKey: 'limitWarningTasks',
+    label: 'Stay under limits as tasks',
+    onHint: 'Adds a daily "don\'t do" task for each Stay under limit, and logs a slip when the food log goes past it',
+    offHint: 'No task for Stay under limits',
+    icon: 'nutrition-outline',
+    // Keyed by the nutrient; limitWarningDeclined is what keeps a deleted one
+    // from coming back until the nutrient is set to Stay under again.
+    sourced: true,
+    // Not a notice: it is a habit with a streak, a slip allowance and a penalty
+    // a person may want to set, so the editor stays reachable.
     notice: false,
     kitchen: false,
     categorized: true,

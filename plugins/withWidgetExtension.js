@@ -26,6 +26,7 @@ const SWIFT_FILES = [
   'TodoGroceryWidget.swift',
   'TodoKitchenWidget.swift',
   'TodoMedicationWidget.swift',
+  'TodoLimitsWidget.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
   'FocusLiveActivity.swift',

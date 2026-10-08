@@ -1,5 +1,5 @@
 import type { NutrientKey } from '../types';
-import { NUTRIENT_KEYS } from '../types';
+import { HEALTH_WRITABLE_NUTRIENTS, NUTRIENT_KEYS } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 
 /**
@@ -20,11 +20,17 @@ import { NUTRIENT_LABEL } from './foodNutrition';
  * auto-completes on reaching its target and `MAX_TARGET_COUNT` is 99; neither
  * is any use for two thousand calories.
  *
- * **Counts, never a score.** This is the surface that most tempts a progress
- * ring turning red, and it must not have one. No colour that means bad, no
- * encouragement, no "400 calories left" framed as permission or as warning.
- * Report the number and the target and stop. `cookingStats.ts` states the rule
- * twice; it binds hardest here.
+ * **Counts, never a score, unless the person said the number is a limit.** A
+ * plain target reports the number and the target and stops: no colour that
+ * means bad, no encouragement, no "400 calories left", because the app is not
+ * told whether reaching it is the point (protein) or staying under it is
+ * (sodium), and guessing would be the app having an opinion about a body. A
+ * nutrient the person marked **Stay under** (`NutritionLimits`) is the one
+ * exception, and it is theirs rather than the app's: they named the direction,
+ * so "4 g left" and a red bar past it repeat their own statement back to them.
+ * Nothing is a limit by default, and the app never proposes one. Everything
+ * limit-shaped lives under "Limits" below; `cookingStats.ts`'s no-score rule
+ * still binds every other target here.
  *
  * **Absent is not zero.** A day with nothing logged has no total, not a total
  * of zero, so it reads as having no answer rather than as a day of nothing —
@@ -72,9 +78,14 @@ export const NUTRITION_TARGET_RANGES: Record<
   calorieKcal: { min: 0, max: 6000, step: 50, default: 2000 },
   fatG: { min: 0, max: 300, step: 5, default: 70 },
   satFatG: { min: 0, max: 100, step: 1, default: 20 },
+  // No Daily Value exists for trans fat, so this is only where the stepper
+  // opens, and `NO_DAILY_VALUE` keeps it out of "Set to U.S. Daily Value".
+  transFatG: { min: 0, max: 20, step: 1, default: 2 },
+  cholesterolMg: { min: 0, max: 1000, step: 25, default: 300 },
   carbsG: { min: 0, max: 800, step: 10, default: 250 },
   fiberG: { min: 0, max: 100, step: 1, default: 30 },
   sugarG: { min: 0, max: 300, step: 5, default: 50 },
+  addedSugarG: { min: 0, max: 200, step: 5, default: 50 },
   proteinG: { min: 0, max: 400, step: 5, default: 60 },
   sodiumMg: { min: 0, max: 6000, step: 100, default: 2300 },
   calciumMg: { min: 0, max: 3000, step: 50, default: 1300 },
@@ -83,6 +94,12 @@ export const NUTRITION_TARGET_RANGES: Record<
   caffeineMg: { min: 0, max: 1000, step: 10, default: 400 },
   waterMl: { min: 0, max: 6000, step: 250, default: 2000 },
 };
+
+/**
+ * The nutrients a label prints with no %DV, so "Use Daily Value" has no figure to
+ * offer and their `default` above is only where a stepper opens.
+ */
+export const NO_DAILY_VALUE: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['transFatG']);
 
 /** What a person has set, keyed by nutrient. Empty is the shipping state. */
 export type NutritionTargets = Partial<Record<NutrientKey, number>>;
@@ -183,7 +200,9 @@ export function targetProgress(
  * nutrient is the point (protein) or staying under it is (sodium), so
  * `'under'` and `'over'` are not colored as better or worse than each other.
  * `'met'` marks that the day landed on the number chosen, not that the
- * number itself was the right one to choose.
+ * number itself was the right one to choose. A nutrient the person marked
+ * Stay under has told the app its direction, so it reads through
+ * `limitStatus` instead.
  */
 export type TargetStatus = 'under' | 'met' | 'over';
 
@@ -206,6 +225,181 @@ export function targetStatus(
 
 function round(amount: number): number {
   return Math.round(amount * 10) / 10;
+}
+
+// ==== Limits ====
+
+/** The short names a limit row uses, so a folded section's one-line summary fits. */
+export const LIMIT_ROW_NAME: Partial<Record<NutrientKey, string>> = {
+  satFatG: 'Sat fat',
+  transFatG: 'Trans fat',
+  sugarG: 'Sugar',
+  addedSugarG: 'Added sugar',
+  calorieKcal: 'Calories',
+  carbsG: 'Carbs',
+  fatG: 'Fat',
+};
+
+/**
+ * The nutrients whose target the person marked **Stay under**, in label order.
+ *
+ * **A set the person builds, empty by default.** It is what makes a target a
+ * ceiling: `describeLimit` says what's left, the bar turns red past it, Today
+ * can show it, and the limit warning can fire on it. A nutrient listed here
+ * without a target means nothing until a target is set, and stays listed so
+ * clearing and re-setting a target doesn't silently forget the choice.
+ */
+export type NutritionLimits = NutrientKey[];
+
+/** Reads the stored set. Unknown keys and water (never something to stay under) drop. */
+export function parseNutritionLimits(raw: string | null | undefined): NutritionLimits {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const wanted = new Set(parsed);
+    return NUTRIENT_KEYS.filter(key => key !== 'waterMl' && wanted.has(key));
+  } catch {
+    return [];
+  }
+}
+
+export function serializeNutritionLimits(limits: NutritionLimits): string {
+  return JSON.stringify(limits);
+}
+
+/** True when `key` is a limit with a target to be a limit against. */
+export function isActiveLimit(
+  key: NutrientKey,
+  targets: NutritionTargets,
+  limits: readonly NutrientKey[],
+): boolean {
+  return targets[key] !== undefined && limits.includes(key);
+}
+
+/** The limits that have a target set, in label order. */
+export function activeLimits(targets: NutritionTargets, limits: readonly NutrientKey[]): NutrientKey[] {
+  return NUTRIENT_KEYS.filter(key => isActiveLimit(key, targets, limits));
+}
+
+/**
+ * Where a day sits against a limit. `'near'` starts at `warnShare` of it (the
+ * limit warning's own setting, `DEFAULT_LIMIT_WARN_PERCENT` by default), so the
+ * Food log, Today and the warning task all agree on when a day is close.
+ *
+ * **No tolerance band, unlike `targetStatus`.** A goal landing 5% short has
+ * met it in any sense a person recognizes; a limit 5% over has been passed,
+ * and calling 16.8 of 16 g "met" is the exact misreading a limit exists to stop.
+ */
+export type LimitStatus = 'within' | 'near' | 'over';
+
+/** The share of a limit at which a day counts as close to it, as a percent. */
+export const DEFAULT_LIMIT_WARN_PERCENT = 75;
+export const LIMIT_WARN_PERCENT_MIN = 50;
+export const LIMIT_WARN_PERCENT_MAX = 100;
+export const LIMIT_WARN_PERCENT_STEP = 5;
+
+/** Snaps to the step and clamps to the range; anything unreadable is the default. */
+export function clampLimitWarnPercent(percent: number): number {
+  if (!Number.isFinite(percent)) return DEFAULT_LIMIT_WARN_PERCENT;
+  const snapped = Math.round(percent / LIMIT_WARN_PERCENT_STEP) * LIMIT_WARN_PERCENT_STEP;
+  return Math.min(LIMIT_WARN_PERCENT_MAX, Math.max(LIMIT_WARN_PERCENT_MIN, snapped));
+}
+
+export function limitStatus(
+  key: NutrientKey,
+  total: number | undefined,
+  targets: NutritionTargets,
+  warnPercent: number = DEFAULT_LIMIT_WARN_PERCENT,
+): LimitStatus {
+  const target = targets[key];
+  const amount = total ?? 0;
+  if (target === undefined) return 'within';
+  if (amount > target) return 'over';
+  if (target <= 0) return 'within';
+  return amount >= target * (warnPercent / 100) ? 'near' : 'within';
+}
+
+/**
+ * "4 g left", "At the limit" or "3 g over", for a nutrient with a target.
+ * Null with no target. Rounded the way `describeAgainstTarget` rounds, so the
+ * two lines on one row can't disagree by a tenth.
+ */
+export function describeLimit(
+  key: NutrientKey,
+  total: number | undefined,
+  targets: NutritionTargets,
+): string | null {
+  const target = targets[key];
+  if (target === undefined) return null;
+  const unit = NUTRIENT_LABEL[key].unit;
+  const suffix = unit === 'cal' ? ' cal' : unit;
+  const diff = round(target - round(total ?? 0));
+  if (diff === 0) return 'At the limit';
+  return diff > 0
+    ? `${diff.toLocaleString()}${suffix} left`
+    : `${(-diff).toLocaleString()}${suffix} over`;
+}
+
+/** One limit an entry about to be logged would move. See `limitImpact`. */
+export interface LimitImpact {
+  key: NutrientKey;
+  /** The day's total once the entry is in. */
+  after: number;
+  target: number;
+  /** Where the day sits once the entry is in. */
+  status: LimitStatus;
+  /** True when this entry is the one that takes the day past the limit. */
+  crosses: boolean;
+}
+
+/**
+ * What logging `amounts` would do to each limit it states, for a sheet to show
+ * before the person confirms ("Puts you at 14 of 16 g saturated fat").
+ *
+ * Only the limits the entry actually states: an entry with no saturated fat
+ * figure moves nothing anyone knows about, and reporting the day's existing
+ * total against it would read as this food's doing. `dayTotals` is the day the
+ * entry is going to, without it.
+ */
+export function limitImpact(
+  amounts: Partial<Record<NutrientKey, number>>,
+  dayTotals: Partial<Record<NutrientKey, number>>,
+  targets: NutritionTargets,
+  limits: readonly NutrientKey[],
+  warnPercent: number = DEFAULT_LIMIT_WARN_PERCENT,
+): LimitImpact[] {
+  const impacts: LimitImpact[] = [];
+  for (const key of activeLimits(targets, limits)) {
+    const adds = amounts[key];
+    if (adds === undefined || adds <= 0) continue;
+    const target = targets[key]!;
+    const before = dayTotals[key] ?? 0;
+    const after = before + adds;
+    impacts.push({
+      key,
+      after,
+      target,
+      status: limitStatus(key, after, targets, warnPercent),
+      crosses: before <= target && after > target,
+    });
+  }
+  return impacts;
+}
+
+/**
+ * "Puts you at 14 of 16 g saturated fat" (or "…, 2 g over"), one line per
+ * impact. Plain statements of the arithmetic, the way the rest of the log
+ * talks; the colour the caller gives an `'over'` line is the warning.
+ */
+export function describeLimitImpact(impact: LimitImpact): string {
+  const { key, after, target } = impact;
+  const unit = NUTRIENT_LABEL[key].unit;
+  const suffix = unit === 'cal' ? ' cal' : unit;
+  const name = NUTRIENT_LABEL[key].label.toLowerCase();
+  const base = `Puts you at ${round(after).toLocaleString()} of ${target.toLocaleString()}${suffix} ${name}`;
+  if (impact.status !== 'over') return base;
+  return `${base}, ${round(after - target).toLocaleString()}${suffix} over`;
 }
 
 /**
@@ -244,10 +438,10 @@ export function serializeFoodLogPinnedNutrients(keys: NutrientKey[]): string {
 
 /**
  * Every nutrient a logged meal writes to Health, on an install that has never
- * chosen otherwise — all thirteen, matching what `healthFoodSync.ts` always
- * wrote before which ones to write became a choice.
+ * chosen otherwise — every one HealthKit has a type for, matching what
+ * `healthFoodSync.ts` always wrote before which ones to write became a choice.
  */
-export const DEFAULT_HEALTH_WRITE_NUTRIENTS: NutrientKey[] = [...NUTRIENT_KEYS];
+export const DEFAULT_HEALTH_WRITE_NUTRIENTS: NutrientKey[] = [...HEALTH_WRITABLE_NUTRIENTS];
 
 /**
  * The Health write-selection a stored blob actually carries.
@@ -263,7 +457,7 @@ export function parseHealthWriteNutrients(raw: string | null | undefined): Nutri
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
-    return parsed.filter((key): key is NutrientKey => NUTRIENT_KEYS.includes(key as NutrientKey));
+    return parsed.filter((key): key is NutrientKey => HEALTH_WRITABLE_NUTRIENTS.includes(key as NutrientKey));
   } catch {
     return [...DEFAULT_HEALTH_WRITE_NUTRIENTS];
   }

@@ -1574,6 +1574,35 @@ in `src/utils/snackNudgeTasks.ts`; the pass is in `useTaskStore.ts`. It is
 - Ships off, pauses on vacation, files under its own category setting (default
   Health).
 
+## `limitWarning`: a "don't do" task per Stay under limit
+
+For each nutrient the person marked Stay under (`nutritionLimits`),
+`reconcileLimitWarnings` keeps one negative task (`Task.polarity`): "Stay under
+35g sugar · 28g so far". Rules are in `src/utils/limitWarningTasks.ts`; the pass
+is in `useTaskStore.ts`, run beside the snack one on the same triggers.
+
+- **A negative task, because a limit is a commitment not to do something.** It
+  sits on Today all day, is never checked off, and its streak counts clean days,
+  which for a limit is "days within it". It has no date and no recurrence, like
+  the avoid-tasks a person makes by hand, and it is keyed by the nutrient so the
+  streak stays on one row for as long as the limit does.
+- **The app logs the slip.** When today's food log goes past the limit, the pass
+  records one slip (`syncLimitAutoSlip`), quietly: no undo entry, no coins and no
+  app block, since nobody tapped anything. `limitWarningAutoSlips` remembers the
+  day it did, so deleting the entry that took the day over takes that slip back,
+  and a slip the person logged is never added to or taken back.
+- **It reads the food log, not Apple Health**, for the reason the Health rule
+  can't: a rule sees one number from Health, and its threshold is a second figure
+  to keep in step with the target. The notes name the day's total and the foods
+  behind it, and the link button opens the Food log.
+- **Deleting it stops it for that nutrient** (`limitWarningDeclined`), until the
+  nutrient is set to Stay under again (`setNutritionLimits` clears it).
+  Archiving one stops it too (`blocksOnFinished`). Turning the automation off
+  removes them all, rather than leaving rows nothing keeps current.
+- Refuses in demo mode, for the snack suggestion's reason. Ships off, pauses on
+  vacation (the task hides and its streak holds), files under its own category
+  setting (default Health).
+
 ## `bookEvent`: booking a saved event again
 
 A saved event (`src/utils/savedEvents.ts`, an event kept for re-adding from the

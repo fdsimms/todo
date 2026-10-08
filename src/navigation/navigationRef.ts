@@ -455,6 +455,17 @@ export function resetToTask(taskId: string): void {
   });
 }
 
+/**
+ * Takes a search result to the row the task lives on (Today, Later,
+ * Unscheduled, Inbox or Archived) and scrolls it into view, rather than
+ * opening its editor. Today decides where that is, because it owns the lists.
+ */
+export function resetToLocateTask(taskId: string): void {
+  runWhenReady(() => {
+    navigateToTab('Today', { locateTask: Date.now(), locateTaskId: taskId });
+  });
+}
+
 /** One project's own page (`dundundun://project?id=…`). */
 export function resetToProject(projectId: string): void {
   runWhenReady(() => {

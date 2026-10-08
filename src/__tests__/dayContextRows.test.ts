@@ -6,6 +6,7 @@ import {
   startsInLabel,
   mealContextRows,
   healthContextRows,
+  limitContextRows,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
@@ -410,5 +411,26 @@ describe('eventContextRows startsIn', () => {
       { now: NOW, category: 'Calendar', use24Hour: false },
     );
     expect(rows.map(r => r.startsIn ?? null)).toEqual([null, 'in 60 min']);
+  });
+});
+
+describe('limitContextRows', () => {
+  const targets = { satFatG: 16, sugarG: 35, proteinG: 150 };
+  const opts = { category: 'Health', warnPercent: 75 };
+
+  it('draws one row per limit, zero included, with what is left', () => {
+    const rows = limitContextRows({ satFatG: 9 }, targets, ['satFatG', 'sugarG'], opts);
+    expect(rows.map(r => r.title)).toEqual(['Sat fat 9 of 16g, 7g left', 'Sugar 0 of 35g, 35g left']);
+    expect(rows.every(r => r.kind === 'health' && r.category === 'Health' && r.tone === undefined)).toBe(true);
+  });
+
+  it('marks a row close to its limit, and one past it', () => {
+    const [near, over] = limitContextRows({ satFatG: 13, sugarG: 41.25 }, targets, ['satFatG', 'sugarG'], opts);
+    expect(near.tone).toBe('near');
+    expect(over).toMatchObject({ tone: 'over', title: 'Sugar 41.3 of 35g, 6.3g over' });
+  });
+
+  it('draws nothing for a goal, or a limit with no target', () => {
+    expect(limitContextRows({ proteinG: 80 }, targets, ['cholesterolMg'], opts)).toEqual([]);
   });
 });

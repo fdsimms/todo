@@ -15,7 +15,9 @@ import { dayProduce, type RecipeProduceResolver } from './produceServings';
  * binds harder here than anywhere else in the app: nutrition stats are the
  * exact surface where a task app turns into something that makes people feel
  * bad about eating. So there are no percentages of a goal, no red and green, no
- * streaks, no encouragement, and nothing that reads as a result. A daily target
+ * streaks, no encouragement, and nothing that reads as a result. The single
+ * exception is a target the person marked Stay under, whose days are counted
+ * against it (`daysWithinLimits`); its note says why that one is theirs. A daily target
  * is a number the user typed and belongs beside the day it was set against; a
  * month of days measured against it is a report card, which is a different
  * object and not one this screen produces. `docs/arch/mood-log.md`'s rule that
@@ -297,6 +299,32 @@ export function nutrientAverages(
   entries: readonly FoodLogEntry[],
   window: CookingWindow,
 ): NutrientAverage[] {
+  const counted = countedDayTotals(entries, window);
+  const out: NutrientAverage[] = [];
+  for (const key of NUTRIENT_KEYS) {
+    let total = 0;
+    let days = 0;
+    for (const day of counted.values()) {
+      const amount = day[key];
+      if (amount === undefined) continue;
+      total += amount;
+      days += 1;
+    }
+    if (days === 0) continue;
+    out.push({ key, total: round(total), days, average: round(total / days) });
+  }
+  return out;
+}
+
+/**
+ * Each complete day before today, with the nutrients that day can speak for:
+ * the walk `nutrientAverages` describes, shared so `daysWithinLimits` counts
+ * exactly the days the averages divide by.
+ */
+function countedDayTotals(
+  entries: readonly FoodLogEntry[],
+  window: CookingWindow,
+): Map<string, Partial<Record<NutrientKey, number>>> {
   const totals = new Map<string, Partial<Record<NutrientKey, number>>>();
   // Per day, how many food entries stated each nutrient, against how many food
   // entries the day has: a nutrient counts for a day only when the two match.
@@ -339,23 +367,66 @@ export function nutrientAverages(
     }
   }
 
-  const out: NutrientAverage[] = [];
-  for (const key of NUTRIENT_KEYS) {
-    let total = 0;
-    let days = 0;
-    for (const [dayKey, day] of totals) {
-      if ((slotsByDay.get(dayKey)?.size ?? 0) < COMPLETE_DAY_SLOTS) continue;
+  const counted = new Map<string, Partial<Record<NutrientKey, number>>>();
+  for (const [dayKey, day] of totals) {
+    if ((slotsByDay.get(dayKey)?.size ?? 0) < COMPLETE_DAY_SLOTS) continue;
+    const kept: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
       const amount = day[key];
       if (amount === undefined) continue;
       // Water keeps the plain rule; everything else needs every food entry
       // that day to have stated it, or the day is left out of this row.
       if (key !== 'waterMl'
         && (statedByDay.get(dayKey)?.[key] ?? 0) < (foodEntriesByDay.get(dayKey) ?? 0)) continue;
-      total += amount;
-      days += 1;
+      kept[key] = amount;
     }
-    if (days === 0) continue;
-    out.push({ key, total: round(total), days, average: round(total / days) });
+    counted.set(dayKey, kept);
+  }
+  return counted;
+}
+
+/** How many counted days stayed within one Stay under limit. */
+export interface LimitDays {
+  key: NutrientKey;
+  /** Days at or under the limit. */
+  within: number;
+  /** Days that could be measured against it at all. */
+  days: number;
+}
+
+/**
+ * For each Stay under limit, how many of the window's measurable days stayed
+ * at or under it.
+ *
+ * **The one place this screen measures days against a target**, and only for a
+ * target the person marked as a limit. The module rule above (no report card)
+ * stands for every goal: whether 1,800 of 2,000 calories was a good day isn't
+ * the app's to say. A limit is different because the person already said which
+ * side is the right one, and "within on 4 of 6 days" is the count they set it
+ * to keep. Still a count rather than a percentage or a streak, over the same
+ * days the average divides by, so a day that couldn't be measured is never a
+ * day within.
+ */
+export function daysWithinLimits(
+  entries: readonly FoodLogEntry[],
+  window: CookingWindow,
+  targets: Partial<Record<NutrientKey, number>>,
+  limits: readonly NutrientKey[],
+): LimitDays[] {
+  const keys = NUTRIENT_KEYS.filter(key => limits.includes(key) && targets[key] !== undefined);
+  if (keys.length === 0) return [];
+  const counted = countedDayTotals(entries, window);
+  const out: LimitDays[] = [];
+  for (const key of keys) {
+    let within = 0;
+    let days = 0;
+    for (const day of counted.values()) {
+      const amount = day[key];
+      if (amount === undefined) continue;
+      days += 1;
+      if (amount <= targets[key]!) within += 1;
+    }
+    if (days > 0) out.push({ key, within, days });
   }
   return out;
 }

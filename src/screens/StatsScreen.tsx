@@ -80,6 +80,7 @@ import {
   hasNutritionData,
   mostLoggedFoods,
   nutrientAverages,
+  daysWithinLimits,
   nutritionCounts,
   produceAverage,
   sourceMix,
@@ -462,12 +463,18 @@ export function StatsScreen() {
   // shouldn't be shown what they ate, and turning it back on restores this
   // exactly as it was.
   const [eatingDays, setEatingDays] = useState(COOKING_DAYS);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const eating = useMemo(() => {
     if (!kitchenEnabled || !cookWindow) return null;
     const span = lastDaysOf(cookWindow, eatingDays);
     return {
       counts: nutritionCounts(foodEntries, span),
       averages: nutrientAverages(foodEntries, span),
+      // Only for a target marked Stay under; see daysWithinLimits.
+      limitDays: new Map(
+        daysWithinLimits(foodEntries, span, nutritionTargets, nutritionLimits).map(row => [row.key, row]),
+      ),
       produce: produceAverage(
         foodEntries,
         span,
@@ -481,7 +488,7 @@ export function StatsScreen() {
         recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
       }),
     };
-  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, itemProducts, itemSubs, recipes]);
+  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, itemProducts, itemSubs, recipes, nutritionTargets, nutritionLimits]);
   // Asked of the whole month whichever span is showing, so a week with nothing
   // logged in it keeps the section, and with it the control that switches back.
   const hasEating = useMemo(
@@ -1051,6 +1058,11 @@ export function StatsScreen() {
                       {row.days < eating.counts.daysAveraged && (
                         <Text style={styles.instanceMeta}>
                           across {row.days} {row.days === 1 ? 'day' : 'days'} that stated it
+                        </Text>
+                      )}
+                      {eating.limitDays.has(row.key) && (
+                        <Text style={styles.instanceMeta}>
+                          {`Within the ${nutritionTargets[row.key]!.toLocaleString()}${NUTRIENT_LABEL[row.key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[row.key].unit} limit on ${eating.limitDays.get(row.key)!.within} of ${eating.limitDays.get(row.key)!.days} ${eating.limitDays.get(row.key)!.days === 1 ? 'day' : 'days'}`}
                         </Text>
                       )}
                     </View>

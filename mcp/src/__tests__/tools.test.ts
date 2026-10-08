@@ -188,6 +188,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     logSavedMeal: () => { throw new Error('not stubbed'); },
     deleteSavedMeal: () => { throw new Error('not stubbed'); },
     nutritionTargets: () => ({}),
+    nutritionLimits: () => [],
     setNutritionTargets: () => { throw new Error('not stubbed'); },
     setMealCooked: () => { throw new Error('not stubbed'); },
     saveMealAsRecipe: () => { throw new Error('not stubbed'); },

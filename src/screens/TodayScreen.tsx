@@ -32,6 +32,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -65,6 +66,7 @@ import {
   eventContextRows,
   mealContextRows,
   healthContextRows,
+  limitContextRows,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
@@ -173,6 +175,9 @@ import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { foodLogTotals } from '../utils/foodLog';
+import { activeLimits } from '../utils/nutritionTargets';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
 import { capitalize } from '../utils/capitalize';
@@ -1792,6 +1797,15 @@ export function TodayScreen() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const healthToday = useHealthStore(s => s.today);
+  const limitsTodayCategory = useSettingsStore(s => s.limitsTodayCategory);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
+  const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
+  const recentFoodEntries = useFoodLogStore(s => s.recentEntries);
+  // Read for their identity only: they change when an entry is added, removed
+  // or revised, which is when today's totals below go stale.
+  const foodLogCount = useFoodLogStore(s => s.totalCount);
+  const foodLogWindow = useFoodLogStore(s => s.entries);
 
   // Today's reading, shown as a concise "68° Sunny" next to the header title
   // rather than as a row in the list. Gated on `weatherTaskCategory` the same
@@ -2611,6 +2625,18 @@ export function TodayScreen() {
         category: healthCategory,
       }));
     }
+    // A row per Stay under limit, read off today's food log. Off until the
+    // Nutrition sheet's "Show on Today" files them under a category, for the
+    // reason Health's rows are gated on theirs.
+    if (limitsTodayCategory && activeLimits(nutritionTargets, nutritionLimits).length > 0) {
+      const todayFoodKey = getLogicalDayKey(new Date(), dayResetTime);
+      rows.push(...limitContextRows(
+        foodLogTotals(recentFoodEntries(todayFoodKey, todayFoodKey)).total,
+        nutritionTargets,
+        nutritionLimits,
+        { category: limitsTodayCategory, warnPercent: limitWarnPercent },
+      ));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -2652,6 +2678,8 @@ export function TodayScreen() {
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
+    limitsTodayCategory, nutritionTargets, nutritionLimits, limitWarnPercent,
+    recentFoodEntries, foodLogCount, foodLogWindow,
     minuteTick,
   ]);
 
@@ -4322,6 +4350,58 @@ export function TodayScreen() {
     flashTask(task.id);
   };
 
+  /**
+   * Take a search result to where its task lives now, rather than opening it:
+   * the right sub-view (Today, Later, Unscheduled, Inbox) scrolled to its row
+   * and flashed, or the Archived screen for a paused one. A task no list holds
+   * (completed, blocked, filed under a project) or one a filter is hiding has
+   * no row to land on, so it opens in the editor instead of eating the tap.
+   * A subtask lands on its parent, which is the row that exists.
+   */
+  const locateTask = (task: Task) => {
+    const root = (task.parentId
+      ? useTaskStore.getState().tasks.find(t => t.id === task.parentId)
+      : undefined) ?? task;
+    const home = taskHomeFor(root);
+    if (home === 'archived') {
+      navigation.navigate({ name: 'Archived', params: { focusTaskId: root.id, at: Date.now() } } as never);
+      return;
+    }
+    let landed = false;
+    if (home === 'today') {
+      landed = revealTaskInToday(root);
+    } else if (home === 'later') {
+      // Later pages itself in behind a task budget — see goToCreatedTask.
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
+      landed = true;
+    } else if (home) {
+      landed = scrollToFlatViewTask(root, home);
+    }
+    if (!landed || !home) {
+      openEditor(task);
+      return;
+    }
+    if (home !== viewMode) {
+      setViewMode(home);
+      // A row left spotlighted on the view being left has no match in the next.
+      setExpandedTaskId(null);
+    }
+    markTaskSeen(root.id);
+    flashTask(root.id);
+  };
+
+  // The same stamped-param handoff the editor link above uses, from a search
+  // result tapped on some other screen (see resetToLocateTask).
+  const [handledLocateTask, setHandledLocateTask] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.locateTask as number | undefined;
+    if (stamp === undefined || stamp === handledLocateTask) return;
+    setHandledLocateTask(stamp);
+    const task = useTaskStore.getState().tasks.find(t => t.id === route.params?.locateTaskId);
+    if (task) locateTask(task);
+  }, [route.params?.locateTask, route.params?.locateTaskId, handledLocateTask]);
+
   // The quiet-projects banner used to sit here, above the pinned block. It's a
   // real task now (see utils/projectReviewTasks.ts), so the offer arrives in
   // the list rather than as a strip over it. What the header holds is the
@@ -5317,7 +5397,7 @@ export function TodayScreen() {
             visible={quickSearchVisible}
             onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
             onShown={endPullToSearch}
-            onSelectTask={openEditor}
+            onSelectTask={locateTask}
             onSelectGroup={group => handleGroupPressEdit(group.id)}
             onSelectProject={handleOpenProject}
             onSelectElsewhere={handleOpenElsewhere}

@@ -25,6 +25,8 @@ import { listedAnywhere } from './groceryLists';
 import { buildPantryIndex, parseQueuedDisposals, planQueuedDisposals } from './pantryIndex';
 import { widgetBridge } from './widgetBridge';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
+import { foodLogTotals } from './foodLog';
 import { buildMedicationIndex, parseQueuedDoses, resolveQueuedDoseName } from './medicationIndex';
 import { repeatDose } from './medicationLog';
 import { recordDose } from './doseRecording';
@@ -301,6 +303,7 @@ function writeSnapshotNow(): void {
   const settings = useSettingsStore.getState();
   const grocery = useGroceryStore.getState();
   const medications = useMedicationStore.getState();
+  const foodLog = useFoodLogStore.getState();
   const leftovers = useLeftoverStore.getState();
   const dayResetTime = settings.dayResetTime;
   const todayKey = getLogicalDayKey(now, dayResetTime);
@@ -345,6 +348,16 @@ function writeSnapshotNow(): void {
     events: widgetEvents(settings.calendarReadEnabled),
     medications: medications.initialized
       ? { logs: medications.logs, archived: medications.archived }
+      : null,
+    // Read fresh for today rather than from the Food log's window, which holds
+    // whatever day that screen last showed.
+    limits: foodLog.initialized
+      ? {
+          totals: foodLogTotals(foodLog.recentEntries(todayKey, todayKey)).total,
+          targets: settings.nutritionTargets,
+          limits: settings.nutritionLimits,
+          warnPercent: settings.limitWarnPercent,
+        }
       : null,
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
     upcoming: widgetUpcoming(tasks.deferredTasks(), now),
@@ -424,6 +437,22 @@ function subscribeToStores(): () => void {
     }),
     useHiddenEventsStore.subscribe((s, p) => {
       if (s.hiddenByKey !== p.hiddenByKey) scheduleSnapshotWrite();
+    }),
+    // The Limits widget: a logged, revised or deleted entry, and the targets
+    // and limits it is read against.
+    useFoodLogStore.subscribe((s, p) => {
+      if (s.totalCount !== p.totalCount || s.entries !== p.entries || s.initialized !== p.initialized) {
+        scheduleSnapshotWrite();
+      }
+    }),
+    useSettingsStore.subscribe((s, p) => {
+      if (
+        s.nutritionTargets !== p.nutritionTargets ||
+        s.nutritionLimits !== p.nutritionLimits ||
+        s.limitWarnPercent !== p.limitWarnPercent
+      ) {
+        scheduleSnapshotWrite();
+      }
     }),
     useMedicationStore.subscribe((s, p) => {
       if (s.logs !== p.logs || s.archived !== p.archived || s.initialized !== p.initialized) {

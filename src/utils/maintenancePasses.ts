@@ -102,6 +102,8 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Beside it, reading the same food log: 3 PM arriving is time passing, and
     // the food log's own writes cover everything else. See snackNudgeTasks.ts.
     ['sync snack nudge', () => tasks().syncSnackNudgeTasks()],
+    // And the Stay under warnings, off the same log. See limitWarningTasks.ts.
+    ['sync limit warnings', () => tasks().syncLimitWarningTasks()],
     // A saved event's booking interval running out is a day passing, so it is
     // caught up here. Reads only its own setting; see savedEventTasks.ts.
     ['check book-event tasks', () => tasks().checkBookEventTasks()],

@@ -25,6 +25,8 @@ import {
   View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { LimitImpactLines } from './LimitImpactLines';
+import { useLimitImpact } from '../hooks/useLimitImpact';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
@@ -869,6 +871,9 @@ export function FoodLogEntrySheet({
     if (!picked.panel) return null;
     return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
   }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps]);
+
+  // What this entry would do to a Stay under limit, said before Log is tapped.
+  const limitImpacts = useLimitImpact(built?.nutrition.amounts, at, { editing });
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
@@ -1738,6 +1743,7 @@ export function FoodLogEntrySheet({
                 {built.grams !== null ? `, ${built.grams} g` : ''}
               </Text>
             )}
+            {!!built && <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />}
             {/* This label states no density of its own, so the weight behind
                 a volume amount is approximated from water's — right for most
                 drinks, off for anything syrupy or creamy. See
@@ -2126,6 +2132,7 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
+    limitImpacts: { marginTop: spacing.xs },
     // Wraps rather than truncating: the first pill carries the food's own name,
     // which can be a database description several words long.
     fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
