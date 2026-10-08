@@ -149,7 +149,7 @@ export function TipsScreen() {
         }
         actions={withScreenSettings(actions, screenSettings.action)}
       />
-  const actions = useMemo<ScreenSettingsSheet {...screenSettings.sheet} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <SearchField
         field={searchFilter}
