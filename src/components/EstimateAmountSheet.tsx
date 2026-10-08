@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import type { FoodLogEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -117,6 +117,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const card = useCardSheet();
+  const amountRef = useRef<TextInput>(null);
 
   const whole = entry ? wholeEstimate(entry) : null;
   const counted = whole ? estimateCount(whole.servingText) : null;
@@ -181,6 +182,9 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
       visible={visible}
       controller={card}
       onRequestClose={() => dismiss(onClose)}
+      // The sheet stays mounted across opens, so a bare `autoFocus` would only
+      // fire once. The stepper has no field to focus.
+      onShow={() => amountRef.current?.focus()}
     >
       <View style={styles.card}>
         <View style={styles.headerRow}>
@@ -219,6 +223,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
             <View style={styles.amountBlock}>
               <View style={styles.amountRow}>
                 <TextField
+                  ref={amountRef}
                   style={styles.amountInput}
                   value={fieldText}
                   onChangeText={text => { setTyped(text); }}
@@ -230,12 +235,14 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                   accessibilityLabel={`${question}, in ${unit === 'grams' ? 'grams' : 'percent of the meal'}`}
                 />
                 {wholeGrams ? (
-                  <SegmentedControl
-                    options={UNIT_OPTIONS}
-                    value={unit}
-                    onChange={pickUnit}
-                    label="Unit"
-                  />
+                  <View style={styles.unitTrack}>
+                    <SegmentedControl
+                      options={UNIT_OPTIONS}
+                      value={unit}
+                      onChange={pickUnit}
+                      label="Unit"
+                    />
+                  </View>
                 ) : (
                   <Text style={styles.unitText}>% of the meal</Text>
                 )}
@@ -322,6 +329,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   amountInput: {
     flex: 1,
+    minWidth: 96,
     color: colors.text,
     fontSize: font.lg,
     backgroundColor: colors.bgTertiary,
@@ -330,6 +338,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // Height rather than lineHeight, see the TextInput note in CLAUDE.md.
     minHeight: 44,
   },
+  // The track's segments are `flex: 1`, so left to size itself it claims the
+  // whole row and squeezes the field to nothing. A fixed width gives it a size.
+  unitTrack: { width: 112 },
   unitText: { color: colors.textSecondary, fontSize: font.md },
   shareRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm },
   share: {
