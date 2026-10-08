@@ -56,6 +56,12 @@ interface Props {
   visible: boolean;
   /** The entry being edited, or null to record a new one. */
   editing?: MoodLog | null;
+  /**
+   * A new entry's mood or symptom, picked before the sheet opens (search's
+   * "feeling tired"). Offered exactly as a tap would be, so it comes back off
+   * with one more. Ignored when editing.
+   */
+  prefill?: MoodLogPrefill | null;
   onClose: () => void;
 }
 
@@ -79,7 +85,12 @@ interface Props {
  * Asking for a severity up front would be a second question about a thing you
  * have not yet said you have.
  */
-export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
+export interface MoodLogPrefill {
+  mood: MoodLevel | null;
+  symptom: string | null;
+}
+
+export function MoodLogSheet({ visible, editing = null, prefill = null, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -120,8 +131,9 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   // wrong day's feelings.
   useEffect(() => {
     if (!visible) return;
-    setMood(editing?.mood ?? null);
-    setSymptoms(editing?.symptoms ?? []);
+    const offered = editing ? null : prefill;
+    setMood(editing?.mood ?? offered?.mood ?? null);
+    setSymptoms(editing?.symptoms ?? (offered?.symptom ? withSymptom([], offered.symptom, 1) : []));
     // Offered, not decided: a new entry opens with "Vacation" pre-picked
     // while vacation mode is on, exactly as if you had tapped the pill
     // yourself, and it comes right back off with one more tap. Only for a
@@ -152,7 +164,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     // one this same save produces — and wipe out whatever you were mid-way
     // through entering.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, editing, vacationMode]);
+  }, [visible, editing, prefill, vacationMode]);
 
   // Picking another day re-seeds the context tags for that day, but only while
   // they are still exactly the seed: once the user has tapped a tag on or off,

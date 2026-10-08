@@ -8,7 +8,7 @@ import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Milestone, MoodLog } from '../types';
+import type { Milestone, MoodLevel, MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { journalPlainText } from '../utils/journalMarkdown';
@@ -62,7 +62,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
-import { MoodLogSheet } from '../components/MoodLogSheet';
+import { MoodLogSheet, type MoodLogPrefill } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
@@ -160,7 +160,7 @@ export function MoodScreen() {
   const route = useRoute<{
     key: string;
     name: string;
-    params?: { openLog?: number; returnTo?: string };
+    params?: { openLog?: number; returnTo?: string; prefillMood?: MoodLevel; prefillSymptom?: string };
   }>();
   const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
   // Where to hand the user back once the sheet this opens closes — the tab
@@ -169,10 +169,17 @@ export function MoodScreen() {
   // `openEdit`) so a manual visit never inherits a stale value left over from
   // an earlier link tap.
   const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
+  // What a link asked a new entry to open with (search's "feeling tired").
+  // Cleared the same way `returnTo` is, so a manual open starts empty.
+  const [prefill, setPrefill] = useState<MoodLogPrefill | null>(null);
   useEffect(() => {
     if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
     setHandledOpenLog(route.params.openLog);
     setReturnTo(route.params.returnTo);
+    const { prefillMood, prefillSymptom } = route.params;
+    setPrefill(prefillMood !== undefined || prefillSymptom !== undefined
+      ? { mood: prefillMood ?? null, symptom: prefillSymptom ?? null }
+      : null);
     setEditing(null);
     setSheetOpen(true);
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
@@ -405,8 +412,8 @@ export function MoodScreen() {
 
   const recent = useMemo(() => logs.slice(0, 20), [logs]);
 
-  const openNew = () => { haptics.tap(); setReturnTo(undefined); setEditing(null); setSheetOpen(true); };
-  const openEdit = (log: MoodLog) => { haptics.tap(); setReturnTo(undefined); setEditing(log); setSheetOpen(true); };
+  const openNew = () => { haptics.tap(); setReturnTo(undefined); setPrefill(null); setEditing(null); setSheetOpen(true); };
+  const openEdit = (log: MoodLog) => { haptics.tap(); setReturnTo(undefined); setPrefill(null); setEditing(log); setSheetOpen(true); };
   const closeSheet = () => {
     setSheetOpen(false);
     setEditing(null);
@@ -952,6 +959,7 @@ export function MoodScreen() {
       <MoodLogSheet
         visible={sheetOpen}
         editing={editing}
+        prefill={prefill}
         onClose={closeSheet}
       />
 
