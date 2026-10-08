@@ -441,6 +441,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['daily target', 'pace', 'active hours'] },
   { id: 'activeEnd', groupId: 'dayTime', label: 'Awake until', section: 'Awake hours',
     keywords: ['active hours'] },
+  { id: 'sunLocation', groupId: 'dayTime', label: 'Location for sun times', section: 'Sunrise and sunset',
+    keywords: ['sunrise', 'sunset', 'dark', 'daylight', 'dusk', 'dawn', 'time window', 'coordinates', 'where'] },
   { id: 'use24HourTime', groupId: 'dayTime', label: '24-hour time', section: 'How times read',
     keywords: ['clock', 'am', 'pm', 'format'] },
   { id: 'weekStartsOn', groupId: 'dayTime', label: 'Week starts on', section: 'How times read',

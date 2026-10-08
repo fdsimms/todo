@@ -1091,8 +1091,8 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('A stock that goes down by one each time this repeating task is completed ("12 filters left"), and asks to reorder as it runs low. Needs a repeat, and not for a subtask. null removes it.'),
   window: z.object({
-    start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time.'),
-    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day.'),
+    start: z.string().nullable().optional().describe('"HH:MM", 24-hour: it shows up from this time. Or follow the sun: "sunrise", "sunset", or either with a minutes offset of up to 180 ("sunset-30", "sunrise+45"), which moves with the sun each day.'),
+    end: z.string().nullable().optional().describe('"HH:MM", 24-hour: after this it counts as missed for the day. Or "sunrise"/"sunset" with an optional offset, as for start ("sunset" for "before dark").'),
   }).nullable().optional().describe('A time of day to do it in. null removes it.'),
   habit: z.enum(['do', 'avoid']).optional()
     .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),

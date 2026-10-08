@@ -26,6 +26,7 @@ import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { sunAnchorHHMM } from './sunTimes';
 import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -414,6 +415,22 @@ export function seedDemoData(): void {
     effort: 1,
     weatherWait: 'sunny',
     deferUntil: addDays(today, 3).toISOString(),
+  });
+
+  // A window that closes at sunset. The demo database gets its own made-up
+  // location, so the real one is never read in demo mode; the clock time
+  // beside the anchor is the sunset it resolves to today, as the editor writes.
+  const demoSunLocation = { latitude: 40.68, longitude: -73.94 };
+  useSettingsStore.getState().setSunLocation(demoSunLocation);
+  addTask({
+    title: 'Walk the dog before dark',
+    category: 'Home',
+    effort: 1,
+    recurrenceType: 'daily',
+    dueDate: today.toISOString(),
+    windowStart: '15:00',
+    windowEnd: sunAnchorHHMM('sunset', today, demoSunLocation),
+    windowEndSun: 'sunset',
   });
 
   // The 'hours' recurrence — a dose that can only be taken again N hours

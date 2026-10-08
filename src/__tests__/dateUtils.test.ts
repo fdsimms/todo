@@ -33,6 +33,7 @@ import {
   isDeadlineTimePassed,
   formatDeadlineLabel,
   formatHHMM,
+  formatWindowRemaining,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -1828,5 +1829,28 @@ describe('deadline time of day', () => {
   it('leaves the label alone without a time or once the day is past', () => {
     expect(formatDeadlineLabel(noon(10), null, '00:00')).toBe('Today');
     expect(formatDeadlineLabel(noon(8), '17:00', '00:00')).toBe('2d overdue');
+  });
+});
+
+describe('formatWindowRemaining', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    settings.dayResetTime = '00:00';
+  });
+
+  it('counts down to a close later the same day', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 9, 8, 15, 45));
+    expect(formatWindowRemaining('18:00')).toBe('2h 15m left');
+  });
+
+  // Placed on the logical day: under a 4 AM reset, 02:00 is the small hours at
+  // the end of today, not this morning. On the calendar date instead it read
+  // as already past and said "0m left" all evening.
+  it('counts down to a close in the small hours under a later day reset', () => {
+    settings.dayResetTime = '04:00';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 9, 8, 23, 0));
+    expect(formatWindowRemaining('02:00')).toBe('3h left');
   });
 });

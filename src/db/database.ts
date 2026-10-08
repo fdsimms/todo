@@ -1992,6 +1992,10 @@ export function initDatabase(): void {
     "ALTER TABLE calendar_requests ADD COLUMN action TEXT NOT NULL DEFAULT 'create'",
     'ALTER TABLE calendar_requests ADD COLUMN target_request_id TEXT',
     'ALTER TABLE calendar_requests ADD COLUMN changes TEXT',
+    // A window bound that follows the sun ("sunset-30"). NULL on every
+    // existing row: a clock time stays a clock time. See Task.windowStartSun.
+    'ALTER TABLE tasks ADD COLUMN window_start_sun TEXT',
+    'ALTER TABLE tasks ADD COLUMN window_end_sun TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3383,6 +3387,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     timeSegments: parseTimeSegments(row.time_of_day),
     windowStart: (row.window_start as string) ?? null,
     windowEnd: (row.window_end as string) ?? null,
+    windowStartSun: (row.window_start_sun as string) ?? null,
+    windowEndSun: (row.window_end_sun as string) ?? null,
     recurrenceType: (row.recurrence_type as Task['recurrenceType']) ?? 'none',
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
@@ -3607,8 +3613,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -3734,6 +3740,7 @@ export function dbInsertTask(task: Task): void {
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
+      task.windowStartSun ?? null, task.windowEndSun ?? null,
     ]
   );
 }
@@ -3770,7 +3777,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3897,6 +3904,7 @@ export function dbUpdateTask(task: Task): void {
       task.rotationPlan ? JSON.stringify(task.rotationPlan) : null,
       task.slipAllowance ?? null,
       task.doneByOtherAt ?? null,
+      task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.id,
     ]
   );

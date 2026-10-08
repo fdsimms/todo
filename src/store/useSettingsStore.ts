@@ -107,6 +107,7 @@ import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
+import { parseSunLocation, roundSunLocation, type SunLocation } from '../utils/sunTimes';
 import {
   parseEventRules,
   defaultEventRules,
@@ -1506,6 +1507,10 @@ interface SettingsStore {
   // from, or null for where the phone is. Read through travelOriginFor, which
   // also answers null for a place that was removed or has no map pin.
   travelOriginPlaceId: string | null;
+  // Where sunrise and sunset are worked out for, for a time window that follows
+  // the sun (Task.windowStartSun). Rounded to about a kilometer, set only from
+  // a tap, and null until then: a sun anchor needs one to resolve.
+  sunLocation: SunLocation | null;
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -2003,6 +2008,7 @@ interface SettingsStore {
   setTravelEstimates: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
+  setSunLocation: (location: SunLocation | null) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelEventPref: (eventId: string, pref: TravelEventPref | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
@@ -2701,6 +2707,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelEstimates: false,
   travelMode: 'driving',
   travelOriginPlaceId: null,
+  sunLocation: null,
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -3160,6 +3167,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const travelOriginPlaceId = dbGetSetting('travelOriginPlaceId') || null;
+    const sunLocation = parseSunLocation(dbGetSetting('sunLocation'));
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3534,6 +3542,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      sunLocation,
       supplyReorderTaskCategory,
       supplyReorderTasks,
       tabRoutes,
@@ -4156,6 +4165,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTravelOriginPlaceId(id: string | null) {
     dbSetSetting('travelOriginPlaceId', id ?? '');
     set({ travelOriginPlaceId: id });
+  },
+
+  setSunLocation(location: SunLocation | null) {
+    const rounded = location ? roundSunLocation(location) : null;
+    dbSetSetting('sunLocation', rounded ? JSON.stringify(rounded) : '');
+    set({ sunLocation: rounded });
   },
 
   // Null puts the calendar back on the default lead, by removing its entry

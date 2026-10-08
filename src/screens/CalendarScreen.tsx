@@ -153,6 +153,7 @@ export function CalendarScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const sunLocation = useSettingsStore(s => s.sunLocation);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const people = usePersonStore(s => s.people);
@@ -325,8 +326,8 @@ export function CalendarScreen() {
   const dayTimeline = useMemo(() => {
     // A task can be in more than one of the three lists (due today with a
     // deadline today), and it is still one row on the axis.
-    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents });
-  }, [detail, selectedDayStart, dayEvents]);
+    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents, sunLocation });
+  }, [detail, selectedDayStart, dayEvents, sunLocation]);
 
   const dayMeals = selectedExtras?.meals ?? NO_MEALS;
 

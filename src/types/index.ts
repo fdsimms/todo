@@ -2382,6 +2382,22 @@ export interface Task {
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
   windowEnd: string | null;   // "HH:MM" — task expires (moves to Expired) after this time on its day
+  /**
+   * A window bound that follows the sun instead of the clock: "sunset",
+   * "sunset-30", "sunrise+15" (see src/utils/sunTimes.ts). Null for a plain
+   * clock time, which is every row written before this existed.
+   *
+   * **It overrides `windowStart`/`windowEnd` for that bound, and doesn't
+   * replace them.** A reader resolves it for the day it's asking about through
+   * `windowBoundsFor`, and the clock field keeps the time it resolved to when
+   * it was set: that is what a reader with no day of its own, an older build on
+   * another device, and a day the sun times can't be worked out (no location
+   * saved, a polar day) all read instead. So anything writing the clock field
+   * for a bound without naming its anchor clears the anchor (`updateTask`), or
+   * the anchor would silently outrank the time just typed.
+   */
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
 
   recurrenceType: RecurrenceType;
   // The count of days/weeks/months/years for every type but 'hours', which

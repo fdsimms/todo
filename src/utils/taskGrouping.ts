@@ -1,5 +1,5 @@
 import type { ContextRow, Task, TaskGroup } from '../types';
-import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
+import { beginVisibleAtPass, getVisibleAt, windowBoundsFor } from './visibilityUtils';
 import { formatGroupHeader, formatHHMM, getDayStart } from './dateUtils';
 import type { DropZone, ScheduleInfo } from './fabDrop';
 
@@ -380,6 +380,7 @@ export const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as con
  */
 function laterSubGroups(
   task: Task,
+  dayStart: Date,
 ): { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null }[] {
   if (task.timeSegments.length > 0) {
     return task.timeSegments.map(seg => ({
@@ -390,10 +391,15 @@ function laterSubGroups(
     }));
   }
   if (task.windowStart) {
-    const windowLabel = task.windowEnd
-      ? `${formatHHMM(task.windowStart)}–${formatHHMM(task.windowEnd)}`
-      : formatHHMM(task.windowStart);
-    return [{ label: windowLabel, segment: null, windowStart: task.windowStart, windowEnd: task.windowEnd }];
+    // Resolved on the day the task is filed under, so a window that follows
+    // the sun is labelled with that day's sunset rather than the one it was
+    // saved with.
+    const window = windowBoundsFor(task, dayStart);
+    const start = window.start ?? task.windowStart;
+    const windowLabel = window.end
+      ? `${formatHHMM(start)}–${formatHHMM(window.end)}`
+      : formatHHMM(start);
+    return [{ label: windowLabel, segment: null, windowStart: start, windowEnd: window.end }];
   }
   return [{ label: null, segment: null, windowStart: null, windowEnd: null }];
 }
@@ -410,7 +416,7 @@ function laterSubGroups(
  */
 export function laterGroupKeys(task: Task, visibleAt: Date = getVisibleAt(task)): string[] {
   const dayLabel = formatGroupHeader(visibleAt.toISOString());
-  return laterSubGroups(task).map(({ label }) => (label ? `${dayLabel} — ${label}` : dayLabel));
+  return laterSubGroups(task, getDayStart(visibleAt)).map(({ label }) => (label ? `${dayLabel} — ${label}` : dayLabel));
 }
 
 export interface LaterDaySection {
@@ -527,7 +533,7 @@ export function laterDaySections(
     }
     const day = days.get(dayLabel)!;
     day.dayKeys.add(dayKey);
-    for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task)) {
+    for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task, getDayStart(visibleAt))) {
       const key = label ?? '';
       if (!day.segMap.has(key)) day.segMap.set(key, { label, segment, windowStart, windowEnd, data: [] });
       day.segMap.get(key)!.data.push(task);

@@ -937,6 +937,15 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds a time window that closes at sunset, with a location of its own', () => {
+    useDemoStore.getState().enterDemoMode();
+    const walk = useTaskStore.getState().tasks.find(t => t.title === 'Walk the dog before dark');
+    expect(walk?.windowEndSun).toBe('sunset');
+    expect(walk?.windowEnd).toMatch(/^\d{2}:\d{2}$/);
+    expect(useSettingsStore.getState().sunLocation).toEqual({ latitude: 40.68, longitude: -73.94 });
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // Same reasoning: nothing seeded carrying logCompletionToCalendar reads as
   // a feature the app doesn't have.
   it('seeds a task that logs its completion to the calendar', () => {

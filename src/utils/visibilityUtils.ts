@@ -15,6 +15,7 @@ import { proratedFrom, quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
 import { isRotationTask } from './rotation';
 import { isProjectPaused, projectPausedUntil } from './projectPause';
+import { windowBounds, type WindowFields } from './sunTimes';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -329,6 +330,25 @@ function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
   return onLogicalDay(pass ? pass.todayStart : getCurrentDayStart(), hhmm);
 }
 
+/**
+ * A task's window as clock times on the logical day starting at `dayStart`
+ * (today's by default), with a bound that follows the sun resolved for that
+ * day. **Every reader of a window's times goes through this** rather than
+ * `task.windowStart`/`windowEnd`, which for an anchored bound only hold the
+ * time it resolved to when it was set (see Task.windowStartSun). A presence
+ * check ("does it have a start at all") can still read the stored field, which
+ * is never null while an anchor is set.
+ */
+export function windowBoundsFor(
+  task: WindowFields,
+  dayStart: Date = getCurrentDayStart(),
+): { start: string | null; end: string | null } {
+  if (!task.windowStartSun && !task.windowEndSun) {
+    return { start: task.windowStart, end: task.windowEnd };
+  }
+  return windowBounds(task, dayStart, useSettingsStore.getState().sunLocation);
+}
+
 // Whether `deferUntil` still holds a task back right now. Every other
 // recurrence steps in whole days, so the four call sites below all
 // day-truncate deferUntil before comparing it — "6pm today" and "11pm today"
@@ -385,8 +405,13 @@ export function hasDayArrived(task: Task): boolean {
 // next date, so "03:00–05:00" under a 4 AM reset is the inverted one, and
 // "22:00–02:00" is a window that closes. Compared as raw minutes the first
 // kept its end and was expired, hidden and swept all day.
-export function effectiveWindowEnd(task: Task): string | null {
-  return effectiveWindowEndTime(task.windowStart, task.windowEnd, useSettingsStore.getState().dayResetTime);
+//
+// `dayStart` says which day's window: today's by default, the task's own day
+// for the two readers measuring a close that has already happened (a sun
+// anchor resolves differently on each day).
+export function effectiveWindowEnd(task: Task, dayStart?: Date): string | null {
+  const { start, end } = windowBoundsFor(task, dayStart);
+  return effectiveWindowEndTime(start, end, useSettingsStore.getState().dayResetTime);
 }
 
 // Order used only to find the boundary *after* the latest segment a task is
@@ -425,7 +450,7 @@ function streakWindowAnchor(task: Task): Date {
 // against.
 function streakWindowEnd(task: Task): Date | null {
   const dayStart = streakWindowAnchor(task);
-  const explicitEnd = effectiveWindowEnd(task);
+  const explicitEnd = effectiveWindowEnd(task, dayStart);
   // onLogicalDay for getWindowThreshold's reason; the next segment is never
   // morning, so it rolls the same way getTimeOfDayThreshold's do.
   if (explicitEnd) return onLogicalDay(dayStart, explicitEnd);
@@ -456,7 +481,7 @@ export function isTaskWindowActive(task: Task): boolean {
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (!hasDayArrived(task)) return false;
   const now = new Date();
-  if (now < getWindowThreshold(task.windowStart)) return false;
+  if (now < getWindowThreshold(windowBoundsFor(task).start ?? task.windowStart)) return false;
   const end = effectiveWindowEnd(task);
   if (end && now >= getWindowThreshold(end)) return false;
   return true;
@@ -518,12 +543,16 @@ export function isTaskExpired(task: Task): boolean {
 // "placed"). Such a task re-expires every day with no fixed day to measure a
 // grace period from, so it only sweeps under Immediately, matching how the
 // old boolean setting treated it.
+//
+// The end is resolved on that same day, not today: a bound that follows the
+// sun closed at that day's sunset, which can be minutes away from today's.
 function windowClosedAt(task: Task, end: string): Date {
   const anchor = task.dueDate ?? task.deferUntil;
   if (!anchor) return getWindowThreshold(end);
   const { dayResetTime } = useSettingsStore.getState();
+  const dayStart = getTaskDayStart(new Date(anchor), dayResetTime);
   // onLogicalDay rather than hhmmToDate, for getWindowThreshold's reason.
-  return onLogicalDay(getTaskDayStart(new Date(anchor), dayResetTime), end);
+  return onLogicalDay(dayStart, effectiveWindowEnd(task, dayStart) ?? end);
 }
 
 // True once an expired task is old enough for sweepExpiredTasks to actually
@@ -624,13 +653,15 @@ function getQuotaSpan(task: Task): { start: Date; end: Date } {
       weekStartsOn,
     });
   }
+  const dayStart = getCurrentDayStart();
+  const window = windowBoundsFor(task, dayStart);
   return quotaRunSpan({
-    windowStart: task.windowStart,
-    windowEnd: task.windowEnd,
+    windowStart: window.start,
+    windowEnd: window.end,
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    dayStart: getCurrentDayStart(),
+    dayStart,
   });
 }
 
@@ -817,7 +848,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
     if (now < threshold) return false;
   }
 
-  if (task.windowStart && now < getWindowThreshold(task.windowStart)) return false;
+  if (task.windowStart && now < getWindowThreshold(windowBoundsFor(task).start ?? task.windowStart)) return false;
 
   if (isTaskExpired(task)) return false;
 
@@ -1052,7 +1083,7 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
     if (task.timeSegments.length > 0) {
       return earliestSegmentThreshold(task.timeSegments, { ...pass, todayStart: base })!;
     }
-    if (task.windowStart) return onLogicalDay(base, task.windowStart);
+    if (task.windowStart) return onLogicalDay(base, windowBoundsFor(task, base).start ?? task.windowStart);
     return base;
   };
 
@@ -1072,7 +1103,7 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
     const threshold = earliestSegmentThreshold(task.timeSegments, pass)!;
     if (threshold > now) candidates.push(threshold);
   } else if (task.windowStart && candidates.length === 0) {
-    const threshold = getWindowThreshold(task.windowStart, pass);
+    const threshold = getWindowThreshold(windowBoundsFor(task, todayStart).start ?? task.windowStart, pass);
     if (threshold > now) candidates.push(threshold);
   }
 

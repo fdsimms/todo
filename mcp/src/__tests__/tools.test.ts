@@ -113,6 +113,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     // through getLogicalToday; what is tested here is the counting, not the
     // clock.
     todayKey: () => '2026-09-11',
+    windowToday: (task: Task) => ({ start: task.windowStart, end: task.windowEnd }),
     shiftDayKey: (key: string, days: number) => {
       const d = new Date(`${key}T00:00:00Z`);
       d.setUTCDate(d.getUTCDate() + days);

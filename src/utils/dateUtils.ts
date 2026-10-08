@@ -619,9 +619,16 @@ export function getNextSeriesDates(
   return Array.from(byTime.values()).sort((a, b) => +a - +b);
 }
 
-/** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */
+/**
+ * Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or
+ * "15m left". The end is placed on the current logical day with onLogicalDay,
+ * like every window gate: on the calendar date instead, a window running into
+ * the small hours under a later reset ("22:00–02:00" with a 4 AM reset) read
+ * its 02:00 as this morning and said "0m left" all evening.
+ */
 export function formatWindowRemaining(windowEnd: string): string {
-  const minutesLeft = Math.max(0, Math.round((hhmmToDate(windowEnd).getTime() - Date.now()) / 60000));
+  const end = onLogicalDay(getCurrentDayStart(), windowEnd);
+  const minutesLeft = Math.max(0, Math.round((end.getTime() - Date.now()) / 60000));
   const hours = Math.floor(minutesLeft / 60);
   const minutes = minutesLeft % 60;
   if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m left`;

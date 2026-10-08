@@ -404,11 +404,13 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
       if (t.priority >= 3) why.push('high priority');
       // Already on Today means it can start whenever the plan starts, short
       // of its own window; otherwise not before the moment the app shows it.
+      // Today's times, a bound that follows the sun resolved for today.
+      const window = replica.windowToday(t);
       const earliest = replica.isVisible(t)
-        ? Math.max(from, t.windowStart ? dayMinutesOf(t.windowStart) : 0)
+        ? Math.max(from, window.start ? dayMinutesOf(window.start) : 0)
         : Math.max(from, clockMinutes(replica.visibleAt(t), todayStart));
-      const latest = t.windowEnd ? dayMinutesOf(t.windowEnd) : to;
-      if (t.windowStart || t.windowEnd) why.push(`time window ${t.windowStart ?? ''}–${t.windowEnd ?? ''}`);
+      const latest = window.end ? dayMinutesOf(window.end) : to;
+      if (window.start || window.end) why.push(`time window ${window.start ?? ''}–${window.end ?? ''}`);
       return { t, minutes: est ?? assumed, estimated: est != null, earliest, latest, why };
     })
     .sort((a, b) =>

@@ -90,6 +90,7 @@ import type {
 } from '../../src/types';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
+import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import type { AwaySpan } from '../../src/utils/awayDates';
 import type { WaterUnit } from '../../src/utils/waterLog';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
@@ -923,6 +924,12 @@ export interface Replica {
    * user would say they were asking about.
    */
   todayKey(): string;
+  /**
+   * A task's window as clock times today, with a bound that follows the sun
+   * resolved for today (see Task.windowStartSun). The stored clock fields hold
+   * only the time an anchor resolved to when it was set.
+   */
+  windowToday(task: Task): { start: string | null; end: string | null };
   /** Shifts a day key by whole days. Used to default a range to "the last N days". */
   shiftDayKey(key: string, days: number): string;
 
@@ -2671,6 +2678,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const { patch, waitsOn, onlyIfAnswer, errors } = taskFieldsPatch(fields, current, {
       newId: generateId,
       emptyFollowUpDraft: followUp.emptyFollowUpTaskDraft,
+      // The clock time a sun anchor resolves to on the task's day, which is
+      // what the task keeps as its fallback (see Task.windowStartSun). Null
+      // with no location saved, which the patch refuses with the reason.
+      sunClockFor: (anchor, dueDate) => {
+        const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
+        const dayStart = dueDate ? dates.getTaskDayStart(new Date(dueDate)) : dates.getCurrentDayStart();
+        return sunAnchorHHMM(anchor, dayStart, useSettingsStore.getState().sunLocation);
+      },
     }, { isSubtask });
     errors.unshift(...eventErrors);
 
@@ -3203,6 +3218,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     deliverableOptions: (task: Task) => deliverables.deliverableOptionsFor(task),
 
     todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
+    windowToday: (task: Task) => visibility.windowBoundsFor(task),
     shiftDayKey: (key: string, days: number) =>
       dates.dayKeyOf(addDays(dates.dayKeyToDate(key), days)),
 

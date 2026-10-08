@@ -11,7 +11,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isTaskNotNeeded, isWithheld } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -915,16 +915,18 @@ function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date 
 
   const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();
+  // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
+  // is anchored to follows the `now` being asked about — the same logical-day
+  // helper either way, just not pinned to the wall clock.
+  const dayStart = getDayStart(now, dayResetTime);
+  const window = windowBoundsFor(task, dayStart);
   const span = quotaRunSpan({
-    windowStart: task.windowStart,
-    windowEnd: task.windowEnd,
+    windowStart: window.start,
+    windowEnd: window.end,
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
-    // is anchored to follows the `now` being asked about — the same logical-day
-    // helper either way, just not pinned to the wall clock.
-    dayStart: getDayStart(now, dayResetTime),
+    dayStart,
   });
 
   return quotaDueTimesAfter(span, task.targetCount, now, MAX_QUOTA_NUDGES_AHEAD)

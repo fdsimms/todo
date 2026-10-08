@@ -3205,7 +3205,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.windowLabelExpired} numberOfLines={1}>
-                  Expired at {formatHHMM(task.windowEnd!)}
+                  Expired at {formatHHMM(windowEnd ?? task.windowEnd!)}
                 </Text>
               </View>
             )}

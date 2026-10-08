@@ -138,9 +138,15 @@ import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
 import { DoseAmountField } from './DoseAmountField';
-import { SegmentedControl } from './SegmentedControl';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
+import { SunBoundPanel } from './SunBoundPanel';
+import {
+  formatSunAnchor, parseSunAnchor, shortSunAnchor, sunAnchorHHMM, roundSunLocation,
+  type SunAnchor, type SunEvent, type SunLocation,
+} from '../utils/sunTimes';
+import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
@@ -198,6 +204,9 @@ export interface TaskDraft {
   windowStart?: string | null;
   /** `"HH:MM"`, carried over when quick add parses "only today" or "expires friday". */
   windowEnd?: string | null;
+  /** A bound that follows the sun ("sunset-30"); see Task.windowStartSun. */
+  windowStartSun?: string | null;
+  windowEndSun?: string | null;
   /** Carried over when quick add reads "don't …" or "no snacking" as a habit to avoid. */
   polarity?: Polarity;
   /** Carried over from quick add's Difficulty chip. */
@@ -381,6 +390,13 @@ function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters
  * render it from a busy screen pass a stable `onClose` so this holds.
  */
 export const TaskEditor = React.memo(TaskEditorSheet);
+
+// What a Start or End pill can follow: the clock, or the sun.
+const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
+  { value: 'time', label: 'Time' },
+  { value: 'sunrise', label: 'Sunrise' },
+  { value: 'sunset', label: 'Sunset' },
+];
 
 function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
@@ -567,6 +583,15 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
+  // A bound that follows the sun ("sunset-30"), alongside the clock time it
+  // resolved to (see Task.windowStartSun), and which of Time / Sunrise /
+  // Sunset the open pill is set to.
+  const [windowStartSun, setWindowStartSun] = useState<string | null>(null);
+  const [windowEndSun, setWindowEndSun] = useState<string | null>(null);
+  const [windowPickerKind, setWindowPickerKind] = useState<'time' | SunEvent>('time');
+  // The "Use my current location" read, and why a sun bound couldn't be set.
+  const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
+  const [sunUnavailable, setSunUnavailable] = useState(false);
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [penaltyMinutes, setPenaltyMinutes] = useState<number | null>(null);
   const [gatesApps, setGatesApps] = useState(false);
@@ -796,6 +821,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const sunLocation = useSettingsStore(s => s.sunLocation);
+  const setSunLocation = useSettingsStore(s => s.setSunLocation);
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
@@ -964,6 +991,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
+      setWindowStartSun(task.windowStartSun ?? null);
+      setWindowEndSun(task.windowEndSun ?? null);
       setPenaltyMinutes(task.penaltyMinutes ?? null);
       setGatesApps(task.gatesApps ?? false);
       setPenaltyCutoffTime(task.penaltyCutoffTime ?? null);
@@ -1054,7 +1083,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1153,6 +1182,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task ? (task.windowStart ?? null) : (initialDraft?.windowStart ?? null),
       windowEnd: task ? (task.windowEnd ?? null) : (initialDraft?.windowEnd ?? null),
+      windowStartSun: task ? (task.windowStartSun ?? null) : (initialDraft?.windowStartSun ?? null),
+      windowEndSun: task ? (task.windowEndSun ?? null) : (initialDraft?.windowEndSun ?? null),
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
@@ -1608,7 +1639,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // Like the calendar flag: a time with no deadline to close at is dropped.
       deadlineTime: deadline ? deadlineTime : null,
       logCompletionToCalendar,
-      timeSegments, windowStart, windowEnd, targetCount: savedTargetCount,
+      timeSegments, windowStart, windowEnd, windowStartSun, windowEndSun, targetCount: savedTargetCount,
       penaltyMinutes,
       // Meaningless on an avoid-task, which is never completed and so could
       // never satisfy a gate. Cleared rather than carried so flipping the
@@ -2210,13 +2241,106 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const commitWindowValue = (which: 'start' | 'end', date: Date) => {
     const hhmm = dateToHHMM(date);
     if (which === 'start') {
+      setWindowStartSun(null);
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
       applyDerivedTargetCount({ windowStart: hhmm });
     } else {
+      setWindowEndSun(null);
       setWindowEnd(hhmm);
       applyDerivedTargetCount({ windowEnd: hhmm });
     }
+  };
+
+  // ==== sun-anchored window bounds ====
+  // A bound can follow sunrise or sunset instead of the clock. Picking one
+  // commits straight away (there's no spinner to settle), writing the anchor
+  // and, as the clock field, the time it resolves to on the task's own day,
+  // which is what every reader that isn't sun-aware keeps (Task.windowStartSun).
+  const windowSunOf = (which: 'start' | 'end') => (which === 'start' ? windowStartSun : windowEndSun);
+
+  /** The day a sun bound is resolved on for the editor: the due day, else today. */
+  const windowDayStart = () => (dueDate ? getTaskDayStart(dueDate, dayResetTime) : getCurrentDayStart());
+
+  const commitWindowSun = (which: 'start' | 'end', anchor: SunAnchor, loc: SunLocation) => {
+    const text = formatSunAnchor(anchor);
+    const hhmm = sunAnchorHHMM(text, windowDayStart(), loc);
+    // A polar day or night: no sunset to follow on that day. Said inline
+    // rather than saving an anchor that would quietly fall back to a clock.
+    if (!hhmm) { setSunUnavailable(true); return; }
+    setSunUnavailable(false);
+    if (which === 'start') {
+      setWindowStartSun(text);
+      setWindowStart(hhmm);
+      applyDefaultReminderLead(hhmm);
+      applyDerivedTargetCount({ windowStart: hhmm });
+    } else {
+      setWindowEndSun(text);
+      setWindowEnd(hhmm);
+      applyDerivedTargetCount({ windowEnd: hhmm });
+    }
+  };
+
+  const chooseWindowKind = (kind: 'time' | SunEvent) => {
+    if (windowPickerMode === 'none') return;
+    const which = windowPickerMode;
+    setWindowPickerKind(kind);
+    setSunUnavailable(false);
+    if (kind === 'time') {
+      // Back to a clock time: the anchor goes and the time it last resolved to
+      // stays, already loaded in the spinner.
+      const current = which === 'start' ? windowStart : windowEnd;
+      if (which === 'start') setWindowStartSun(null); else setWindowEndSun(null);
+      setWindowPickerDate(hhmmToDate(current ?? (which === 'start' ? '08:00' : '13:00')));
+      return;
+    }
+    // With no location saved, the panel offers to save one first, and nothing
+    // is written until there is one.
+    if (!sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(which));
+    commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, sunLocation);
+  };
+
+  /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
+  const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const minutes = Math.abs(existing?.offsetMinutes ?? 0) || 30;
+    const offsetMinutes = side === 'at' ? 0 : side === 'before' ? -minutes : minutes;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes }, sunLocation);
+  };
+
+  const setWindowSunMinutes = (minutes: number) => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const sign = (existing?.offsetMinutes ?? 0) < 0 ? -1 : 1;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes: sign * minutes }, sunLocation);
+  };
+
+  // What the location read below was started for, so the answer is applied
+  // only if the same pill is still open on the same choice when it lands.
+  const sunPickRef = useRef({ visible, which: windowPickerMode, kind: windowPickerKind });
+  sunPickRef.current = { visible, which: windowPickerMode, kind: windowPickerKind };
+
+  const saveCurrentLocationForSun = async () => {
+    const asked = { which: windowPickerMode, kind: windowPickerKind };
+    setSunLocationStatus('asking');
+    const granted = await requestLocationPermission();
+    const loc = granted ? await getCurrentLocation() : null;
+    if (!loc) { setSunLocationStatus('failed'); return; }
+    setSunLocation(loc);
+    setSunLocationStatus('idle');
+    const now = sunPickRef.current;
+    if (!now.visible || now.which !== asked.which || now.kind !== asked.kind) return;
+    if (asked.which === 'none' || asked.kind === 'time') return;
+    commitWindowSun(asked.which, { event: asked.kind, offsetMinutes: 0 }, roundSunLocation(loc));
+  };
+
+  /** A bound as the pills and the row's summary show it. */
+  const windowBoundLabel = (hhmm: string | null, sun: string | null): string | null => {
+    const anchor = parseSunAnchor(sun);
+    if (anchor) return shortSunAnchor(anchor);
+    return hhmm ? formatHHMM(hhmm) : null;
   };
 
   // The cutoff a positive task has to beat. Defaults to 09:00 rather than the
@@ -2237,12 +2361,17 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     // Switching pills before hitting Set commits the pill being left instead
     // of discarding it, so dialing in Start and tapping End keeps the Start
     // time you'd already picked.
-    if (windowPickerMode !== 'none' && windowPickerMode !== which) {
+    // A sun bound has already been written as it was picked, so only a
+    // spinner still waiting on Set has anything to commit.
+    if (windowPickerMode !== 'none' && windowPickerMode !== which && windowPickerKind === 'time') {
       commitWindowValue(windowPickerMode, windowPickerDate);
     }
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
     setWindowPickerDate(hhmmToDate(current ?? fallback));
+    setWindowPickerKind(parseSunAnchor(windowSunOf(which))?.event ?? 'time');
+    setSunUnavailable(false);
+    setSunLocationStatus('idle');
     setWindowPickerMode(which);
   };
 
@@ -2274,7 +2403,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const confirmWindowPicker = () => {
-    if (windowPickerMode !== 'none') {
+    if (windowPickerMode !== 'none' && windowPickerKind === 'time') {
       commitWindowValue(windowPickerMode, windowPickerDate);
     }
     setWindowPickerMode('none');
@@ -2394,6 +2523,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
+      windowStartSun, windowEndSun,
       penaltyMinutes, gatesApps, penaltyCutoffTime,
       targetCount,
       prorateFirstWeek,
@@ -2691,7 +2821,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
     return getVisibleAt(previewTask);
   }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'}–${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
   // Says what happens and when, because the two halves are set separately and
   // a bare "2h" on the collapsed row reads as how long the task takes.
@@ -4998,7 +5128,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'timeWindow', label: 'Time window', set: !!windowStart || !!windowEnd,
-            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window'],
+            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window', 'sunrise', 'sunset', 'dark', 'daylight'],
             node: (
               <>
             <EditorRow
@@ -5012,7 +5142,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)
-                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
                 : undefined}
             />
             {showTimeWindow && (
@@ -5027,7 +5157,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     onPress={() => openWindowPicker('start')}
                   >
                     <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                      {windowStart ? formatHHMM(windowStart) : 'Start'}
+                      {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -5039,16 +5169,43 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                     onPress={() => openWindowPicker('end')}
                   >
                     <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                      {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                      {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
                     </Text>
                   </TouchableOpacity>
                 </View>
                 {windowPickerMode !== 'none' && (
+                  <View style={styles.windowKindRow}>
+                    <SegmentedControl
+                      options={WINDOW_KIND_OPTIONS}
+                      value={windowPickerKind}
+                      onChange={chooseWindowKind}
+                      label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+                    />
+                  </View>
+                )}
+                {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
                   <InlineTimePicker
                     value={windowPickerDate}
                     onChange={setWindowPickerDate}
                     onCancel={() => setWindowPickerMode('none')}
                     onConfirm={confirmWindowPicker}
+                  />
+                )}
+                {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
+                  <SunBoundPanel
+                    event={windowPickerKind}
+                    anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
+                    resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
+                    dayLabel={dueDate && getTaskDayStart(dueDate, dayResetTime).getTime() !== getCurrentDayStart().getTime()
+                      ? `On ${format(dueDate, 'MMM d')}`
+                      : 'Today'}
+                    hasLocation={!!sunLocation}
+                    locationStatus={sunLocationStatus}
+                    unavailable={sunUnavailable}
+                    onSide={setWindowSunSide}
+                    onMinutes={setWindowSunMinutes}
+                    onUseLocation={saveCurrentLocationForSun}
+                    onDone={() => setWindowPickerMode('none')}
                   />
                 )}
               </>
@@ -7236,6 +7393,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
+  // Time / Sunrise / Sunset for the open pill, above whichever control it picks.
+  windowKindRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   // Margin on both sides: the pill row below supplies its own top padding, but
   // the row above this one ends flush, so without the top margin the stepper
   // sits against it.
