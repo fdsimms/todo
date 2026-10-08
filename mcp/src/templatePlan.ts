@@ -47,6 +47,7 @@ import type {
   TimeOfDay,
 } from '../../src/types';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
+import { parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { RUN_PLACEHOLDER, itemPlaceholders, placeholderKey, wouldCreateCycle } from '../../src/utils/templateUtils';
 import { MIN_ROTATION_ITEMS, rotationMemberTitle, rotationMemberToInput, type RotationMemberInput } from '../../src/utils/rotation';
 
@@ -570,6 +571,17 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   for (const field of ['windowStart', 'windowEnd', 'deadlineTime'] as const) {
     const value = item[field];
     if (value != null && !HHMM.test(value)) errors.push(`item "${label}" ${field} must be HH:MM.`);
+  }
+  // A sun anchor overrides its clock bound and needs it beside it: the clock
+  // time is what a task falls back to on a day the anchor can't be resolved.
+  for (const [sunField, clockField] of [['windowStartSun', 'windowStart'], ['windowEndSun', 'windowEnd']] as const) {
+    const value = item[sunField];
+    if (value == null) continue;
+    if (!parseSunAnchor(value)) {
+      errors.push(`item "${label}" ${sunField} must be "sunrise" or "sunset", with an optional minutes offset of up to ${SUN_OFFSET_LIMIT} ("sunset-30").`);
+    } else if (item[clockField] == null) {
+      errors.push(`item "${label}" ${sunField} needs ${clockField} beside it, the clock time to fall back to.`);
+    }
   }
   for (const segment of (item.timeSegments ?? []) as TimeOfDay[]) {
     if (!['morning', 'afternoon', 'evening'].includes(segment)) {

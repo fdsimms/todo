@@ -11,7 +11,7 @@ import {
   isFocusRunning,
   isFocusSessionFinished,
 } from './focusPlan';
-import { displayTitleFor, isHeldBack, isTaskNotNeeded, isWithheld } from './visibilityUtils';
+import { displayTitleFor, isHeldBack, isQuotaTask, isTaskNotNeeded, isWithheld, windowBoundsFor } from './visibilityUtils';
 import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
 import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -693,7 +693,11 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     identifier: timerAlarmId(task.id),
     content: {
       title: 'Time’s up',
-      body: `${displayTitleFor(task) || 'Your task'} is ready to complete`,
+      // A target's countdown is for one unit, and tapping it logs one rather
+      // than completing the task, so it can't say "complete".
+      body: isQuotaTask(task)
+        ? `${displayTitleFor(task) || 'Your task'} is ready to log`
+        : `${displayTitleFor(task) || 'Your task'} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
       // A countdown the user started and is waiting on, same urgency as a
@@ -915,16 +919,18 @@ function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date 
 
   const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();
+  // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
+  // is anchored to follows the `now` being asked about — the same logical-day
+  // helper either way, just not pinned to the wall clock.
+  const dayStart = getDayStart(now, dayResetTime);
+  const window = windowBoundsFor(task, dayStart);
   const span = quotaRunSpan({
-    windowStart: task.windowStart,
-    windowEnd: task.windowEnd,
+    windowStart: window.start,
+    windowEnd: window.end,
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
-    // is anchored to follows the `now` being asked about — the same logical-day
-    // helper either way, just not pinned to the wall clock.
-    dayStart: getDayStart(now, dayResetTime),
+    dayStart,
   });
 
   return quotaDueTimesAfter(span, task.targetCount, now, MAX_QUOTA_NUDGES_AHEAD)

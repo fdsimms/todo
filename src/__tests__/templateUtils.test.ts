@@ -263,6 +263,15 @@ describe('buildDraftsFromTemplate', () => {
     expect(noDeadline.deadlineTime).toBeNull();
   });
 
+  it('carries a window that follows the sun onto the task, beside its clock fallback', () => {
+    const [draft] = buildDraftsFromTemplate(
+      [makeItem({ windowStart: '15:00', windowEnd: '18:40', windowEndSun: 'sunset-30' })], { start, end },
+    );
+    expect(draft).toMatchObject({ windowStart: '15:00', windowEnd: '18:40', windowStartSun: null, windowEndSun: 'sunset-30' });
+    // A template stored before the fields existed reads as a plain clock window.
+    expect(normalizeTemplateItem({ windowStart: '08:00' })).toMatchObject({ windowStartSun: null, windowEndSun: null });
+  });
+
   it('normalizes a deadline time away when the item has no deadline', () => {
     expect(normalizeTemplateItem({ deadlineOffsetDays: 2, deadlineTime: '09:30' }).deadlineTime).toBe('09:30');
     expect(normalizeTemplateItem({ deadlineTime: '09:30' }).deadlineTime).toBeNull();

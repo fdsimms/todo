@@ -48,6 +48,8 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     deadlineTime: raw.deadlineOffsetDays != null ? (raw.deadlineTime ?? null) : null,
     windowStart: raw.windowStart ?? null,
     windowEnd: raw.windowEnd ?? null,
+    windowStartSun: raw.windowStartSun ?? null,
+    windowEndSun: raw.windowEndSun ?? null,
     linkUrl: raw.linkUrl ?? null,
     location: raw.location ?? null,
     reminderOffsetMinutes: raw.reminderOffsetMinutes ?? null,
@@ -67,6 +69,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceMonthDay: raw.recurrenceMonthDay ?? null,
     recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
+    recurrenceHolidays: raw.recurrenceHolidays ?? null,
     recurrenceCount: raw.recurrenceCount ?? null,
     recurrenceWeekOrdinal: raw.recurrenceWeekOrdinal ?? null,
     // A target below 2 is no target (Task.targetCount's own floor), so it
@@ -286,6 +289,8 @@ export function buildDraftsFromTemplate(
       deadlineTime: item.deadlineOffsetDays !== null ? (item.deadlineTime ?? null) : null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
+      windowStartSun: item.windowStartSun ?? null,
+      windowEndSun: item.windowEndSun ?? null,
       linkUrl: item.linkUrl ?? null,
       location: item.location ?? null,
       reminderTime,
@@ -300,6 +305,7 @@ export function buildDraftsFromTemplate(
       recurrenceMonthDay: item.recurrenceMonthDay,
       recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
+      recurrenceHolidays: item.recurrenceHolidays ?? null,
       recurrenceCount: item.recurrenceCount,
       // Only a monthly repeat reads an ordinal (TaskEditor saves it the same way).
       recurrenceWeekOrdinal: item.recurrenceType === 'monthly' ? item.recurrenceWeekOrdinal ?? null : null,

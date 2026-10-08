@@ -597,6 +597,27 @@ reading and the destination's `daily=` forecast. Three rules hold it:
   snapshot. Nothing about a forecast should be persisted onto the project, where
   it would go stale and then be believed.
 
+**The coordinates are kept, the forecast is not.** This used to say the geocode
+was never stored either. That changed when sunrise and sunset started following
+a trip (`tripPlaceOn`, read by `sunLocationOn` in `visibilityUtils.ts`): a time
+window that follows the sun is resolved in every list pass, in background
+refresh and in reminder scheduling, none of which can wait on a request, so the
+place has to be on the device already. `Project.destinationLatitude` /
+`destinationLongitude` hold it, and three rules keep it from being the "second,
+staler answer" the old rule was guarding against:
+
+- **It is a cache of the text, keyed by the text.** Only the trip page's own
+  geocode writes it, through `destinationPinUpdate`, and only while the
+  destination is still the words it asked about. Any change to the destination
+  clears it (`destinationPinFields`, applied in `updateProject`, which the MCP
+  replica's writes go through too).
+- **"Mum's" stays text.** A place no geocoder knows gets no coordinates, and sun
+  times on those days use the saved home location. Nothing asks the user to
+  rename a destination so it can be found.
+- **It rides the forecast's switch.** No new network call: the geocode was
+  already made for the forecast line, behind `destinationForecastEnabled`. With
+  the switch off the trip has no coordinates and the sun is home's.
+
 ---
 
 ## A trip from a calendar event
