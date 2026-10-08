@@ -42,6 +42,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   log_saved_meal: ['update_food_entry', 'delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],
+  log_meter_reading: ['delete_meter_reading'],
   log_journal_entry: ['update_journal_entry', 'delete_journal_entry'],
   create_saved_view: ['update_saved_view', 'delete_saved_view'],
   request_calendar_event: ['cancel_calendar_request'],

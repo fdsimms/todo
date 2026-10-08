@@ -50,6 +50,8 @@ export interface NavContentCounts {
   foodLog?: number;
   journal?: number;
   dreams?: number;
+  /** Meter readings: the Meters screen's content. */
+  meters?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history' | 'health';
@@ -130,6 +132,9 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'Categories', label: 'Categories', icon: 'folder-outline', keywords: ['areas', 'lists', 'groups'] },
     { route: 'Tags', label: 'Tags', icon: 'pricetag-outline', keywords: ['labels'] },
     { route: 'People', label: 'People', icon: 'people-outline', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
+    // Something tasks belong to, as a tag or a person is: the odometer an oil
+    // change is due by. See docs/arch/meters.md.
+    { route: 'Meters', label: 'Meters', icon: 'speedometer-outline', keywords: ['odometer', 'mileage', 'miles', 'usage', 'readings', 'hours', 'counter', 'oil change'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
   ],

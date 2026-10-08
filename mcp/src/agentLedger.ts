@@ -1320,6 +1320,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return milestone;
     },
 
+    logMeterReading(name, value, readAt) {
+      const reading = replica.logMeterReading(name, value, readAt);
+      log({ action: 'created', subject: 'meter', title: reading.meterName, taskId: null, recordId: reading.id, note: `Log ${reading.value} on ${reading.meterName} for ${replica.logicalDayKeyOf(reading.readAt)}` });
+      return reading;
+    },
+
+    deleteMeterReading(id) {
+      const reading = replica.deleteMeterReading(id);
+      log({ action: 'cleared', subject: 'meter', title: reading.meterName, taskId: null, recordId: reading.id, note: `Delete the reading of ${reading.value} on ${reading.meterName} from ${replica.logicalDayKeyOf(reading.readAt)}. It cannot be restored from here.` });
+      return reading;
+    },
+
     createSavedView(name, icon, clauses) {
       const view = replica.createSavedView(name, icon, clauses);
       log({ action: 'created', subject: 'view', title: view.name, taskId: null, recordId: view.id, note: `Create the saved view "${view.name}" (${plural(clauses.length, 'filter')})` });

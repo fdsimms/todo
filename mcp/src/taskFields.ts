@@ -37,6 +37,7 @@ import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
+import { canFollowMeter, METER_NAME_MAX_LENGTH, NO_METER } from '../../src/utils/meters';
 import { formatSunAnchor, parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { localDateInput } from './timeZone';
 
@@ -137,6 +138,20 @@ export interface HealthTargetInput {
 }
 
 /** A stock that runs down as a repeating task is completed. Needs a repeat. */
+/** A task's meter, as Claude writes it. See the `meter` input below. */
+export interface MeterInput {
+  /** What the reading is taken off: "Car", "Espresso machine". Tasks on one meter share its readings. */
+  name: string;
+  /** What it counts, for display only: "miles", "hours". */
+  unit?: string | null;
+  /** How far it runs between occurrences. */
+  every: number;
+  /** The reading this one is due at. Optional on an update that keeps the current one. */
+  dueAt?: number | null;
+  /** "Or after this many months", whichever comes first. */
+  limitMonths?: number | null;
+}
+
 export interface SupplyInput {
   count: number;
   unit?: string | null;
@@ -202,6 +217,14 @@ export interface TaskFieldsInput {
    * so this only records the want. null stops waiting.
    */
   weatherWait?: WeatherConditionInput | null;
+  /**
+   * Makes a plain one-off due at a meter reading rather than a date: "change
+   * the oil every 5,000 miles". The phone holds the task until a logged reading
+   * reaches `dueAt`, the reading rate projects it, or `limitMonths` pass, and
+   * completing it writes the next one `every` further on. null stops following
+   * the meter.
+   */
+  meter?: MeterInput | null;
   pinned?: boolean;
   pinEachOccurrence?: boolean;
   deliverableKind?: DeliverableKind | null;
@@ -748,6 +771,51 @@ export function taskFieldsPatch(
         errors.push('weatherWait is only for a plain one-off task: not a repeating task, a chain, a set of dates or a subtask.');
       } else {
         patch.weatherWait = input.weatherWait;
+      }
+    }
+  }
+
+  // ---- meter ---------------------------------------------------------------
+  // The same "plain one-off" check weatherWait makes, against the task as it
+  // will be once this patch lands, plus the wait itself: the two passes would
+  // each own deferUntil.
+  if (input.meter !== undefined) {
+    if (input.meter === null) {
+      Object.assign(patch, NO_METER);
+      // The hold was the app's own, so stopping the meter lets the task go.
+      if (current?.meterHeldUntil && input.deferUntil === undefined) {
+        patch.deferUntil = null;
+        patch.meterHeldUntil = null;
+      }
+    } else {
+      const m = input.meter;
+      const name = (m.name ?? '').trim();
+      const dueAt = m.dueAt ?? current?.meterDueAt ?? null;
+      const after = {
+        ...current,
+        recurrenceType: patch.recurrenceType ?? current?.recurrenceType ?? 'none',
+        chainEnabled: patch.chainEnabled ?? current?.chainEnabled ?? false,
+        weatherWait: patch.weatherWait !== undefined ? patch.weatherWait : current?.weatherWait ?? null,
+        parentId: current?.parentId ?? (context.isSubtask ? 'subtask' : null),
+      };
+      if (!name) errors.push('meter.name is required: what the reading is taken off, like "Car".');
+      else if (name.length > METER_NAME_MAX_LENGTH) errors.push(`meter.name can be at most ${METER_NAME_MAX_LENGTH} characters.`);
+      if (!(typeof m.every === 'number' && m.every > 0)) errors.push('meter.every must be a positive number: how far the meter runs between times.');
+      if (dueAt === null || !(dueAt >= 0)) errors.push('meter.dueAt is required: the reading this one is due at.');
+      if (m.limitMonths != null && !(Number.isInteger(m.limitMonths) && m.limitMonths > 0 && m.limitMonths <= 60)) {
+        errors.push('meter.limitMonths must be a whole number of months from 1 to 60, or null.');
+      }
+      if (!canFollowMeter(after)) {
+        errors.push('meter is only for a plain one-off task: not a repeating task, a chain, a set of dates, a subtask, a task waiting on weather or a habit you are avoiding.');
+      }
+      if (!errors.length) {
+        Object.assign(patch, {
+          meterName: name,
+          meterUnit: m.unit?.trim() || null,
+          meterEvery: m.every,
+          meterDueAt: dueAt,
+          meterLimitMonths: m.limitMonths ?? null,
+        } satisfies Partial<Task>);
       }
     }
   }

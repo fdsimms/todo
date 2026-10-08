@@ -373,6 +373,7 @@ file: the two maps are indexes, not write-ups.
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal whose food is only in the freezer | `src/utils/mealThawTasks.ts` — see `docs/arch/generated-tasks.md`. `mealShortfallTasks.ts` asking about the `FROZEN_REASON` rows instead of the missing ones |
 | a one-off task that waits for a kind of day ("next sunny day") | `src/utils/weatherWait.ts` + `applyWeatherWaits` in `useTaskStore` + `Task.weatherWait` — see `docs/arch/generated-tasks.md`. The task's own `deferUntil` is the hold, and it is released for good once the matched day arrives |
+| a task due at a reading rather than a date ("every 5,000 miles"), and the readings behind it | `src/utils/meters.ts` + `src/store/useMeterReadingStore.ts` + `applyMeterHolds` in `useTaskStore` — see `docs/arch/meters.md`. Like a weather wait, the hold is the task's own `deferUntil`, and the pass only ever moves a hold it wrote (`meterHeldUntil`). Quick add's phrase is `parseMeterInput`; the screen is `MetersScreen` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a repeating task that skips or moves off holidays | `src/utils/holidays.ts` (the US set and your own days off, computed, never read from the calendar) + `recurrenceHolidays` in `getNextOccurrence` (`dateUtils.ts`) — see Recurrence below |
 | a time window that starts or ends at sunrise or sunset | `src/utils/sunTimes.ts` (computed on the device, never the forecast) + `windowBoundsFor`/`sunLocationOn` in `visibilityUtils.ts` (home's `sunLocation`, or a trip's `destinationLatitude` on its days). **A reader of a window's times goes through `windowBoundsFor`**, since `windowStart`/`windowEnd` hold only the time an anchor resolved to when it was set; see `Task.windowStartSun` |
@@ -649,6 +650,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
 | `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |
 | `docs/arch/supplies.md` | A consumable counted down by a repeating task, and the reorder it asks for |
+| `docs/arch/meters.md` | A task due at a meter reading (an odometer), the readings, and the hold that surfaces it |
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
