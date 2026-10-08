@@ -207,6 +207,7 @@ import { useScreenSettings } from '../hooks/useScreenSettings';
 import { stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
 import { emitNowTick } from '../utils/nowTick';
+import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { LazySheet } from '../components/LazySheet';
 
@@ -1353,8 +1354,13 @@ export function TodayScreen() {
   // re-derived when a render happens; a task's visibility can flip purely
   // from time passing (a defer/time-segment threshold crossing, a window
   // expiring), with no store mutation to trigger that render. Tick while
-  // focused so the list stays current on its own.
-  const [minuteTick, forceRefresh] = useState(0);
+  // shown so the list stays current on its own.
+  //
+  // On the shared heartbeat (nowTick.ts) that every task row already ticks
+  // on, rather than an interval of its own: two unsynchronized 30-second
+  // clocks meant two commits per half minute, the screen's and then every
+  // row's, where one heartbeat batches both into one.
+  const minuteTick = useNowTick();
   useFocusEffect(
     useCallback(() => {
       // After the switch onto Today has settled rather than in the focus
@@ -1424,7 +1430,8 @@ export function TodayScreen() {
             useTaskStore.getState().checkHealthTasks();
           });
         }
-        forceRefresh(n => n + 1);
+        // No re-render of its own: the heartbeat above is what refreshes the
+        // list, and a sweep that writes re-renders it through the store.
       }, 30000);
       // Also refresh the instant the app comes back to the foreground
       // (e.g. reopened the next morning), instead of waiting on the tick.
@@ -1577,11 +1584,10 @@ export function TodayScreen() {
           // sat on the Lock Screen at 0:00 until the next background refresh
           // or force-quit got around to it.
           useTaskStore.getState().sweepExpiredCompletionTimers();
-          forceRefresh(n => n + 1);
-          // The rows are memoized, so re-rendering this screen no longer
-          // re-renders them. Their clock-derived text (deadline countdowns,
-          // "N left") needs its own nudge, or it would sit showing the
-          // pre-background value until the next 30s tick came round.
+          // The heartbeat, off schedule, refreshes this screen's list and the
+          // rows' clock-derived text (deadline countdowns, "N left") together,
+          // rather than leaving the pre-background values up until the next
+          // 30s tick came round.
           emitNowTick();
         }
       });
@@ -2534,6 +2540,11 @@ export function TodayScreen() {
   // where the move offer is; null is the ordinary "today's events" sheet.
   const [eventsSheetFor, setEventsSheetFor] = useState<BusyEvent | null>(null);
 
+  // Kept as the same array while a rebuild comes out the same, which is what
+  // most of the heartbeat's rebuilds do (an event's "Now" only flips at its
+  // start and end): a new array re-derived the whole list below and re-laid
+  // the list every half minute for nothing.
+  const contextRowsPrev = useRef<ContextRow[]>([]);
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
@@ -2592,7 +2603,9 @@ export function TodayScreen() {
           || !!liveGeneratedTask(openTasksOf(allTasks), 'mealCook', entry.id),
       }));
     }
-    return rows;
+    const prev = contextRowsPrev.current;
+    const same = prev.length === rows.length && prev.every((row, i) => JSON.stringify(row) === JSON.stringify(rows[i]));
+    return (contextRowsPrev.current = same ? prev : rows);
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
     isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
