@@ -3955,6 +3955,7 @@ describe('meal plan entries', () => {
       thawTask: null,
       calendarEventId: null,
       calendarEventExternalId: null,
+      eatAt: null,
       cookedAt: null,
       leftoverId: null,
       ...overrides,
@@ -3964,6 +3965,14 @@ describe('meal plan entries', () => {
   beforeEach(() => {
     mockRawDb.exec('DELETE FROM meal_plan_entries');
     mealSeq = 0;
+  });
+
+  it('round-trips a time to eat, and reads a malformed one as none', () => {
+    const timed = makeEntry('2026-08-05', 'dinner', { eatAt: '18:30' });
+    dbInsertMealPlanEntry(timed);
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].eatAt).toBe('18:30');
+    mockRawDb.prepare('UPDATE meal_plan_entries SET eat_at = ? WHERE id = ?').run('6:30pm', timed.id);
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].eatAt).toBeNull();
   });
 
   it('round-trips an entry', () => {

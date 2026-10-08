@@ -354,6 +354,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
+- `src/utils/serveTimeline.ts` — DishTiming, TimelineDish, ServeTimeline, isEatAtTime, slotEatAt, eatAtInstant, dishTiming, totalTimingMinutes, serveTimeline, describeDishTiming, +3 more
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
 - `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup, IndexedSettingsGroup, +5 more

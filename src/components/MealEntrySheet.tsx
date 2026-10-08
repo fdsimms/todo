@@ -159,6 +159,15 @@ interface Props {
   /** Present only while the entry's recipe still resolves and has prep tasks. */
   onAddPrepTasks?: () => void;
   /**
+   * Opens the serve timeline for this meal's slot: when it's eaten, and when to
+   * start each dish (see ServeTimelineSheet). The caller dismisses this sheet
+   * first and hosts the timeline, for `onMoveFurther`'s reason. Absent on a
+   * cooked meal, since the night has happened.
+   */
+  onOpenTimeline?: () => void;
+  /** The row's value: "Eat at 6:30 PM", or null when no time is set. */
+  eatAtLabel?: string | null;
+  /**
    * Says whether this meal gets a "Make X" task on Today, overriding the
    * `mealCookTasks` setting for this one meal (#1402). Absent on a meal that's
    * already been cooked — the night has happened, and offering to schedule it
@@ -211,7 +220,7 @@ export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
   onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
-  onLogLeftovers,
+  onOpenTimeline, eatAtLabel = null, onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
   const colors = useColors();
@@ -658,6 +667,21 @@ export function MealEntrySheet({
                 label="Add prep tasks"
                 onPress={() => { haptics.tap(); dismiss(onAddPrepTasks); }}
                 accessibilityLabel="Add prep tasks for this meal"
+              />
+            </>
+          )}
+
+          {!!onOpenTimeline && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="time-outline"
+                color={colors.accent}
+                label={eatAtLabel ?? 'Set a time to eat'}
+                onPress={() => { haptics.tap(); dismiss(onOpenTimeline); }}
+                accessibilityLabel={eatAtLabel
+                  ? `${eatAtLabel}. Open the timeline for when to start each dish`
+                  : 'Set a time to eat, and see when to start each dish'}
               />
             </>
           )}

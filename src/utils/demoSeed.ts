@@ -5349,6 +5349,10 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
+  // Tomorrow's dinner has a time to eat, so the meal sheet's timeline row has
+  // something to count back from (MealPlanEntry.eatAt): the salmon's 25
+  // minutes put its start at 6:35.
+  if (salmonNight) useMealPlanStore.getState().setEatAt(salmonNight.date, 'dinner', '19:00');
   // The frozen chili, planned for tomorrow's lunch: a frozen container is
   // still live and plannable, which is most of what anyone freezes one for.
   // Captured for the freezer task seeded at the end of this function. It took

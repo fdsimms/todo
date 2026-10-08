@@ -36,6 +36,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
+import { ServeTimelineSheet, type StartTaskDraft } from '../components/ServeTimelineSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { WhenPicker } from '../components/WhenPicker';
@@ -88,7 +89,8 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { buildWeekDays } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, formatTimeOfDay, getLogicalToday } from '../utils/dateUtils';
+import { eatAtInstant, slotEatAt } from '../utils/serveTimeline';
 import {
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
@@ -350,6 +352,7 @@ export function MealPlanScreen() {
   const route = useRoute<any>();
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   // #1063's gate. Without a key the suggestion sheet is exactly the offline
   // one it has always been — the ranking below is deliberately ungated. The
   // route rather than the bare key, so turning Meal ideas off in Settings
@@ -412,6 +415,7 @@ export function MealPlanScreen() {
   const loadRange = useMealPlanStore(s => s.loadRange);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
+  const setEatAt = useMealPlanStore(s => s.setEatAt);
   const removeEntry = useMealPlanStore(s => s.removeEntry);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const setEntryCooked = useMealPlanStore(s => s.setCooked);
@@ -1068,6 +1072,16 @@ export function MealPlanScreen() {
   const reviewingEntry = entries.find(e => e.id === reviewingPrepTasksFor) ?? null;
   const reviewingRecipe = reviewingEntry?.recipeId ? recipesById.get(reviewingEntry.recipeId) ?? null : null;
 
+  // The meal whose serve timeline is open, by day and slot rather than by
+  // entry: the time and the timeline belong to every dish in the slot.
+  const [timelineFor, setTimelineFor] = useState<{ date: string; slot: MealSlot } | null>(null);
+  const shownTimeline = useSheetSubject(timelineFor);
+  const timelineEntries = useMemo(
+    () => (shownTimeline ? entries.filter(e => e.date === shownTimeline.date && e.slot === shownTimeline.slot) : []),
+    [entries, shownTimeline],
+  );
+  const titleOfEntry = useCallback((e: MealPlanEntry) => titleForEntry(e, recipesById), [recipesById]);
+
   // ==== acting on the plan: prep tasks, the list, moves and replacements ====
   /**
    * Opens the review sheet on a range of the week. `useCallback` because the
@@ -1095,6 +1109,12 @@ export function MealPlanScreen() {
     }),
     [openAddToList]
   );
+
+  const addStartTasks = (drafts: StartTaskDraft[]) => {
+    drafts.forEach(d => addTask(d));
+    haptics.success();
+    Alert.alert('Start tasks added', `Added ${drafts.length} to your tasks.`);
+  };
 
   const addChosenPrepTasks = (chosen: FlatPrepTask[]) => {
     if (!reviewingEntry) return;
@@ -1618,6 +1638,13 @@ export function MealPlanScreen() {
   // live on one of its parts still offers the action.
   const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
   const selectedResolution = { chosen: selected?.recipeChoices ?? [], onHand };
+  // The meal's time for the sheet's row, read off the whole slot (slotEatAt).
+  const selectedEatAt = selected
+    ? slotEatAt(entries.filter(e => e.date === selected.date && e.slot === selected.slot))
+    : null;
+  const selectedEatAtLabel = selected && selectedEatAt
+    ? `Eat at ${formatTimeOfDay(eatAtInstant(selected.date, selectedEatAt, dayResetTime))}`
+    : null;
   const selectedPrepTaskCount = selectedRecipe
     ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
@@ -2496,6 +2523,12 @@ export function MealPlanScreen() {
                 }
               : undefined
           }
+          onOpenTimeline={
+            selected && !selected.cookedAt
+              ? () => setTimelineFor({ date: selected.date, slot: selected.slot })
+              : undefined
+          }
+          eatAtLabel={selectedEatAtLabel}
           onAddPrepTasks={
             selectedPrepTaskCount > 0
               ? () => selected && setReviewingPrepTasksFor(selected.id)
@@ -2586,6 +2619,20 @@ export function MealPlanScreen() {
           initialChoices={mealShop?.choices}
           initialScale={mealShop?.scale}
           onClose={() => setMealShopVisible(false)}
+        />
+      </LazySheet>
+
+      <LazySheet open={timelineFor !== null}>
+        <ServeTimelineSheet
+          visible={timelineFor !== null}
+          date={shownTimeline?.date ?? ''}
+          slot={shownTimeline?.slot ?? 'dinner'}
+          entries={timelineEntries}
+          recipesById={recipesById}
+          titleOf={titleOfEntry}
+          onSetEatAt={value => shownTimeline && setEatAt(shownTimeline.date, shownTimeline.slot, value)}
+          onAdd={addStartTasks}
+          onClose={() => setTimelineFor(null)}
         />
       </LazySheet>
 

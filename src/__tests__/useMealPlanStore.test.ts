@@ -3230,3 +3230,34 @@ describe('fillCalendarExternalIds (#2950)', () => {
     expect(byId['m-b'].calendarEventExternalId ?? null).toBeNull();
   });
 });
+
+describe('setEatAt', () => {
+  it('writes the time to every dish in the slot, and to no other meal', () => {
+    const roast = entry('2026-08-05', 'dinner', { title: 'Roast' });
+    const potatoes = entry('2026-08-05', 'dinner', { title: 'Potatoes' });
+    const lunch = entry('2026-08-05', 'lunch', { title: 'Soup' });
+    loadWeek([roast, potatoes, lunch]);
+    // The slot is read from SQLite, so a meal outside the loaded week is
+    // written whole too.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([roast, potatoes, lunch]);
+
+    useMealPlanStore.getState().setEatAt('2026-08-05', 'dinner', '18:30');
+
+    expect((dbUpdateMealPlanEntry as jest.Mock).mock.calls.map(c => [c[0].title, c[0].eatAt]))
+      .toEqual([['Roast', '18:30'], ['Potatoes', '18:30']]);
+    expect(getEntries().map(e => [e.title, e.eatAt ?? null]))
+      .toEqual(expect.arrayContaining([['Roast', '18:30'], ['Potatoes', '18:30'], ['Soup', null]]));
+  });
+
+  it('clears it with null, and writes nothing when nothing changes', () => {
+    const roast = entry('2026-08-05', 'dinner', { title: 'Roast', eatAt: '18:30' });
+    loadWeek([roast]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([roast]);
+    useMealPlanStore.getState().setEatAt('2026-08-05', 'dinner', '18:30');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+
+    useMealPlanStore.getState().setEatAt('2026-08-05', 'dinner', null);
+    expect((dbUpdateMealPlanEntry as jest.Mock).mock.calls[0][0].eatAt).toBeNull();
+    expect(getEntries()[0].eatAt).toBeNull();
+  });
+});

@@ -1241,3 +1241,28 @@ through a locked phone, and outlives the sheet.
   everywhere else). Someone cooking at 11pm with quiet hours from 10 has not asked the app to let
   dinner burn.
 
+
+## When to start each dish (`serveTimeline.ts`, `MealPlanEntry.eatAt`)
+
+A planned meal can carry the time it's eaten, and the timeline counts each dish back from it:
+"eat at 6:30" with a roast (20 min prep, 90 min cook) and potatoes (45 min cook) says start the
+roast at 4:40 and the potatoes at 5:45. The meal sheet's "Eat at" row opens `ServeTimelineSheet`;
+Claude sets the same field through `update_meal` and reads each dish's `startAt` back.
+
+- **The time belongs to the meal, not the dish.** `setEatAt` writes every entry in the day's slot,
+  read from SQLite so a slot outside the loaded week is written whole, and every reader takes
+  `slotEatAt` (the first time in plan order), so a dish added afterwards still joins.
+- **Your own minutes first.** Each half (prep, cook) is the logged average when there is one, else
+  the recipe's stated figure, and the row says which. The average is the one the recipe page shows.
+- **It counts back and claims nothing else.** Every dish finishes at the eat time. There is no
+  resting time, no oven sharing and no hands-on split, because no recipe records them. A composed
+  recipe uses its own times, not its components', since nothing says how those overlap, and a
+  scaled meal keeps its minutes: twice as much is rarely twice as long.
+- **A dish with no minutes is listed, never guessed** (no recipe, a leftover night, or a recipe
+  with neither time), so it is visible that it was left out.
+- **The start tasks are plain tasks added after a review**, the `PrepTasksReviewSheet` shape: one
+  per checked dish, due on the logical day it starts, with a reminder at the start. Only starts
+  still ahead begin checked. They are not generated tasks and nothing reconciles them, so changing
+  the time later leaves tasks already added where they are.
+- **The time is a clock time on the meal's day**, placed with `onLogicalDay` from that day's
+  reset, so a dinner at 00:30 after a late reset lands in the small hours after it.

@@ -3501,7 +3501,7 @@ function registerWriteTools(
 
   server.tool(
     'update_meal',
-    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
+    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, swap what it is (recipeId, or recipeId: null with a title for a typed meal), rename a typed one, set a recipe's scale (0.5 halves it, 2 doubles it), answer its either/or questions (choices, by the group and option names list_meal_plan shows), or say whether this meal gets a shopping task, a thaw task or the offer to log it (null hands the choice back to the setting), or set when it's eaten (eatAt). A leftover night is not swapped here. Whether a meal gets a cook task is set on the phone, which writes or removes that task as it is changed. The phone catches up the meal's task and calendar event the next time it opens.",
     {
       id: z.string().min(1),
       date: dayKey.optional(),
@@ -3513,6 +3513,8 @@ function registerWriteTools(
       shopTask: z.boolean().nullable().optional(),
       thawTask: z.boolean().nullable().optional(),
       logMeal: z.boolean().nullable().optional(),
+      eatAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional()
+        .describe('When the meal is eaten, 24-hour "HH:MM". It belongs to the meal, so every dish in the same day and slot takes it. list_meal_plan then gives each dish its startAt, counted back by its prep and cook time (the person\'s logged average where there is one). null clears it.'),
     },
     async ({ id, ...patch }) => {
       try {

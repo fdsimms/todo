@@ -470,6 +470,14 @@ interface MealPlanStore extends UndoHistoryActions {
    * torn down in between.
    */
   setLogMeal: (id: string, value: boolean | null) => void;
+  /**
+   * Sets when a meal is eaten ("HH:MM"), or clears it with `null`. A time
+   * belongs to the meal rather than the dish, so this writes every entry in
+   * that day's slot: the serve timeline reads them as one (see
+   * MealPlanEntry.eatAt). Writes the field and stops; nothing is reconciled,
+   * since the timeline's start tasks are added by hand and stay plain tasks.
+   */
+  setEatAt: (date: string, slot: MealSlot, value: string | null) => void;
 
   /**
    * "Cooked" as a single user action: stamps `cookedAt` **and** bumps the
@@ -1170,6 +1178,18 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
     // Nothing to reconcile: this gates an offer made at finish time rather
     // than a row on a list, so there is no task to create or tear down.
+  },
+
+  setEatAt(date, slot, value) {
+    // From SQLite rather than the loaded window, so the whole slot is written
+    // even when the week on screen isn't the meal's.
+    const changed = dbGetMealPlanEntries(date, date)
+      .filter(e => e.slot === slot && (e.eatAt ?? null) !== value)
+      .map(e => ({ ...e, eatAt: value }));
+    if (changed.length === 0) return;
+    changed.forEach(dbUpdateMealPlanEntry);
+    const byId = new Map(changed.map(e => [e.id, e]));
+    set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
   },
 
   setCookedPaired(id, cooked) {

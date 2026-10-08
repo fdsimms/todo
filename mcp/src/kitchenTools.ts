@@ -4,6 +4,8 @@
  */
 import type { MealPlanEntry, MealSlot, Recipe } from '../../src/types';
 import type { MealChoice, MealPatch, Replica } from './replica';
+import { dateToHHMM } from '../../src/utils/clockTime';
+import { describeDishTiming, eatAtInstant, serveTimeline, slotEatAt } from '../../src/utils/serveTimeline';
 
 export const MEAL_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 export const RECIPE_LIMIT = 50;
@@ -157,10 +159,36 @@ export interface SerializedMeal {
   thawTask?: boolean;
   logMeal?: boolean;
   cookTask?: boolean;
+  /** When the meal is eaten, "HH:MM", shared by every dish in its slot. */
+  eatAt?: string;
+  /** With eatAt: when to start this dish so it is ready then ("HH:MM"), and the minutes that came from. */
+  startAt?: string;
+  startTiming?: string;
 }
 
 function serializeMeal(e: MealPlanEntry, recipes: Map<string, string>, replica?: Replica): SerializedMeal {
   const choices = replica ? replica.mealChoices(e) : [];
+  return {
+    ...mealCore(e, recipes, choices),
+    ...(replica ? mealTiming(e, replica) : e.eatAt ? { eatAt: e.eatAt } : {}),
+  };
+}
+
+/** The slot's time and this dish's start, read as the phone's timeline reads them (utils/serveTimeline.ts). */
+function mealTiming(e: MealPlanEntry, replica: Replica): Pick<SerializedMeal, 'eatAt' | 'startAt' | 'startTiming'> {
+  const slot = replica.mealPlan(e.date, e.date).filter(m => m.slot === e.slot);
+  const eatAt = slotEatAt(slot.length > 0 ? slot : [e]);
+  if (!eatAt) return {};
+  const byId = new Map(replica.recipes().map(r => [r.id, r]));
+  const at = eatAtInstant(e.date, eatAt, replica.settings().dayResetTime);
+  const dish = serveTimeline([e], byId, at, m => m.title).dishes[0];
+  return {
+    eatAt,
+    ...(dish?.startAt && dish.timing ? { startAt: dateToHHMM(dish.startAt), startTiming: describeDishTiming(dish.timing) } : {}),
+  };
+}
+
+function mealCore(e: MealPlanEntry, recipes: Map<string, string>, choices: MealChoice[]): SerializedMeal {
   return {
     id: e.id,
     date: e.date,

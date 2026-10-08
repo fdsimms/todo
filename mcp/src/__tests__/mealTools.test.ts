@@ -124,6 +124,30 @@ describe('update_meal', () => {
     const meal = planMeal(replica, { date: DAY, slot: 'dinner', title: 'Takeout' });
     expect(updateMeal(replica, meal.id, { shopTask: false, logMeal: true })).toMatchObject({ shopTask: false, logMeal: true });
   });
+
+  it('sets when the meal is eaten for every dish in the slot, and gives each its start', () => {
+    const roast = saveRecipe(replica, { name: 'Roast' });
+    const potatoes = saveRecipe(replica, { name: 'Potatoes' });
+    mockRaw.runSync('UPDATE recipes SET prep_minutes = 20, estimated_minutes = 90 WHERE id = ?', [roast.id]);
+    mockRaw.runSync('UPDATE recipes SET estimated_minutes = 45 WHERE id = ?', [potatoes.id]);
+    replica.refresh();
+    const main = planMeal(replica, { date: DAY, slot: 'dinner', recipeId: roast.id });
+    planMeal(replica, { date: DAY, slot: 'dinner', recipeId: potatoes.id });
+    planMeal(replica, { date: DAY, slot: 'lunch', title: 'Soup' });
+
+    expect(updateMeal(replica, main.id, { eatAt: '18:30' }))
+      .toMatchObject({ eatAt: '18:30', startAt: '16:40', startTiming: 'Prep 20 min, cook 1 hr 30 min' });
+    const meals = listMealPlan(replica, { from: DAY, to: DAY }).meals;
+    expect(meals.map(m => [m.title, m.eatAt ?? null, m.startAt ?? null])).toEqual([
+      ['Soup', null, null],
+      ['Roast', '18:30', '16:40'],
+      ['Potatoes', '18:30', '17:45'],
+    ]);
+
+    expect(() => updateMeal(replica, main.id, { eatAt: '6:30pm' })).toThrow(/HH:MM/);
+    updateMeal(replica, main.id, { eatAt: null });
+    expect(listMealPlan(replica, { from: DAY, to: DAY }).meals.every(m => m.eatAt === undefined)).toBe(true);
+  });
 });
 
 describe('a leftover night and saving a meal as a recipe', () => {

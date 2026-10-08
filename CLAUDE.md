@@ -480,6 +480,7 @@ file: the two maps are indexes, not write-ups.
 | reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
 | asking about the cooking step you're on, and keeping the answer | `src/utils/cookQuestions.ts` + `askCookQuestion` — see `docs/arch/recipes.md` |
 | the amount and the swap a step's own sentence implies | `src/utils/stepIngredients.ts` + `src/components/StepText.tsx` — see `docs/arch/recipes.md`. The recipe's own list only, whole words, two closed tables for the shorter name a method actually uses, a name used as a verb takes nothing, and an amount spent over several steps says so |
+| when to start each dish so a meal is ready at the time it's eaten | `src/utils/serveTimeline.ts` + `MealPlanEntry.eatAt` + `src/components/ServeTimelineSheet.tsx` — see `docs/arch/recipes.md`. The time belongs to the whole slot, the minutes are your logged average before the recipe's, and the start tasks are plain tasks added after a review |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe's photo, and getting it to another device | `src/utils/recipePhoto.ts` + `src/utils/recipeImageSync.ts` + `pushImages` in `src/utils/syncEngine.ts` — see `docs/arch/recipes.md`. A row carries only the path; a failed photo push is not a failed sync |

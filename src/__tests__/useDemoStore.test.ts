@@ -135,6 +135,7 @@ import { buildTodayProjectBands } from '../utils/todayProjectBands';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { recipeIndex } from '../utils/mealPlan';
+import { eatAtInstant, serveTimeline } from '../utils/serveTimeline';
 import { collectPlannedIngredients } from '../utils/mealPlanGroceries';
 import { overlapSeedFromPlanned, rankOverlapRecipes } from '../utils/recipeOverlap';
 import { probablyHaveReason } from '../utils/grocerySuggest';
@@ -2354,6 +2355,16 @@ describe('demo seed — people', () => {
     // on the plate, so counting it would be fiction.
     const declined = useMealPlanStore.getState().entries.filter(e => e.logMeal === false);
     expect(declined.length).toBeGreaterThan(0);
+  });
+
+  it('seeds a dinner with a time to eat, and a start counted back from it', () => {
+    const { entries } = useMealPlanStore.getState();
+    const timed = entries.find(e => e.eatAt === '19:00')!;
+    expect(timed.title).toBe('Lemon garlic salmon');
+    const recipesById = new Map(useRecipeStore.getState().recipes.map(r => [r.id, r]));
+    const eatAt = eatAtInstant(timed.date, '19:00', '00:00');
+    const [dish] = serveTimeline([timed], recipesById, eatAt, e => e.title).dishes;
+    expect(dish.startAt).toEqual(new Date(eatAt.getTime() - 25 * 60_000));
   });
 
   it('leaves every other planned meal to the setting, and logs none of them itself', () => {

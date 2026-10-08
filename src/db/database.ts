@@ -2034,6 +2034,9 @@ export function initDatabase(): void {
     // Off on every existing project: Today keeps its category sections until
     // a project asks for a band of its own. See Project.groupOnToday.
     'ALTER TABLE projects ADD COLUMN group_on_today INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing meal, which is the truth: nothing recorded a time
+    // to eat before this. See MealPlanEntry.eatAt.
+    'ALTER TABLE meal_plan_entries ADD COLUMN eat_at TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -6592,7 +6595,13 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
       : Boolean(row.thaw_task),
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
     calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
+    eatAt: isEatAt(row.eat_at) ? row.eat_at : null,
   };
+}
+
+/** A stored "HH:MM", or anything else (a restored backup can carry anything) read as no time. */
+function isEatAt(value: unknown): value is string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 /**
@@ -7471,8 +7480,8 @@ export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEnt
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id, eat_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -7484,13 +7493,14 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.calendarEventId ?? null,
       entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
       entry.calendarEventExternalId ?? null,
+      entry.eatAt ?? null,
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=?, eat_at=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -7501,6 +7511,7 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.calendarEventId ?? null,
       entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
       entry.calendarEventExternalId ?? null,
+      entry.eatAt ?? null,
       entry.id,
     ]
   );

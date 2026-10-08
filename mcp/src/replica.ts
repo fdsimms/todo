@@ -109,6 +109,7 @@ import { eventNoonIso, taskFieldsPatch, type TaskFieldsInput } from './taskField
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
 import { SETTINGS_SPEC } from './settingsSpec';
 import { toLedgerEntries, withAgentLedger, type AgentLedgerEntry } from './agentLedger';
+import { isEatAtTime } from '../../src/utils/serveTimeline';
 
 /** What `deleteTask` removed: the row and its checklist, as they were. */
 export type DeletedTask = DeletedTaskSnapshot;
@@ -392,6 +393,8 @@ export interface MealPatch {
   shopTask?: boolean | null;
   thawTask?: boolean | null;
   logMeal?: boolean | null;
+  /** When the meal is eaten ("HH:MM"), written to every dish in its slot; null clears it. */
+  eatAt?: string | null;
 }
 
 export interface MealChoice {
@@ -6897,7 +6900,20 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (date !== entry.date || slot !== entry.slot) {
         next = { ...next, date, slot, sortOrder: mealPlanUtils.nextSortOrder(db.dbGetMealPlanEntries(date, date), date, slot) };
       }
+      if (patch.eatAt !== undefined) {
+        if (patch.eatAt !== null && !isEatAtTime(patch.eatAt)) throw new Error('eatAt must be a 24-hour "HH:MM", like "18:30", or null.');
+        next = { ...next, eatAt: patch.eatAt };
+      }
       db.dbUpdateMealPlanEntry(next);
+      // A time belongs to the meal, not the dish (MealPlanEntry.eatAt), so the
+      // rest of the slot it now sits in takes it too.
+      if (patch.eatAt !== undefined) {
+        for (const other of db.dbGetMealPlanEntries(next.date, next.date)) {
+          if (other.id !== next.id && other.slot === next.slot && (other.eatAt ?? null) !== patch.eatAt) {
+            db.dbUpdateMealPlanEntry({ ...other, eatAt: patch.eatAt });
+          }
+        }
+      }
       return next;
     },
 

@@ -7446,6 +7446,18 @@ export interface MealPlanEntry {
    * fixture from before it reads as null.
    */
   calendarEventExternalId?: string | null;
+  /**
+   * When this meal is eaten, as "HH:MM" on the entry's day, or null for no
+   * time (every meal before this existed, and most meals after). It belongs
+   * to the meal, not the dish: every entry in one day's slot carries the same
+   * value (`setEatAt` writes them together), and a reader takes the slot's
+   * first non-null one (`slotEatAt`), so a dish added later still joins the
+   * same timeline. The serve timeline counts back from it
+   * (utils/serveTimeline.ts). A clock time earlier than `dayResetTime` is the
+   * small hours at the end of the day, as everywhere (`onLogicalDay`).
+   * Optional so a row or fixture from before it reads as null.
+   */
+  eatAt?: string | null;
 }
 
 /**
