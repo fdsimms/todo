@@ -2,6 +2,7 @@ import type { JournalEntry } from '../types';
 import {
   JOURNAL_PROMPTS,
   entriesOfKind,
+  entriesOnDay,
   groupJournalByDay,
   journalPromptAt,
   journalStats,
@@ -54,6 +55,18 @@ describe('groupJournalByDay', () => {
 
   it('draws no day for one with nothing written', () => {
     expect(groupJournalByDay([])).toEqual([]);
+  });
+});
+
+describe('entriesOnDay', () => {
+  it('is one kind on one day, oldest first', () => {
+    const late = entry({ id: 'late', dayKey: '2026-10-07', loggedAt: '2026-10-07T20:00:00' });
+    const early = entry({ id: 'early', dayKey: '2026-10-07', loggedAt: '2026-10-07T09:00:00' });
+    const otherDay = entry({ id: 'other', dayKey: '2026-10-06' });
+    const dream = entry({ id: 'dream', kind: 'dream', dayKey: '2026-10-07' });
+    expect(entriesOnDay([late, otherDay, dream, early], 'journal', '2026-10-07').map(e => e.id))
+      .toEqual(['early', 'late']);
+    expect(entriesOnDay([late, early], 'journal', '2026-10-08')).toEqual([]);
   });
 });
 

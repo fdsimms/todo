@@ -127,7 +127,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, firstRunSettings, FirstRunState, shouldOfferFirstRun
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +17 more
-- `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +14 more
+- `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +19 more
 - `src/utils/focusShield.ts` — shieldWanted
 - `src/utils/focusStats.ts` — MIN_ACCURACY_SAMPLES, FocusDayTotal, focusMinutesByDay, FocusSummary, focusSummary, focusRecordsSince, FocusAccuracy, focusAccuracy, BreakUse, breakUse
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
@@ -178,10 +178,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/itemVarieties.ts` — varietyIndex, NO_VARIETIES, coveringVariety, familyOnHand, varietyOfferFor, genericNameSuggestions, describeFamilyOnHand
-- `src/utils/journal.ts` — entriesOfKind, searchJournal, JournalDay, groupJournalByDay, JournalStats, journalStats, JOURNAL_PROMPTS, journalPromptAt, JOURNAL_KIND_COPY
+- `src/utils/journal.ts` — entriesOfKind, searchJournal, JournalDay, groupJournalByDay, entriesOnDay, JournalStats, journalStats, JOURNAL_PROMPTS, journalPromptAt, JOURNAL_KIND_COPY
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, journalExportCsv, journalExportFileName, journalExportSummary
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, journalPlainText, EditSelection, FormatEdit, toggleWrap, LineFormat, toggleLinePrefix
-- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
+- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, shortcutById, shortcutKeys, describeShortcuts
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, PORTION_LABEL, KitchenEntry, KitchenSection, +5 more
@@ -388,7 +388,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
 - `src/utils/taskDuplicate.ts` — duplicateRows
 - `src/utils/taskFieldDefaults.ts` — NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults, parseTaskFieldDefaults, serializeTaskFieldDefaults, parseGeneratedTaskDefaults, resolveFieldDefaults, SeededFieldsInput, SeededFields, seedTaskFields, previewSeededFields, +6 more
-- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +20 more
+- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, FlattenLaterOptions, +22 more
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice

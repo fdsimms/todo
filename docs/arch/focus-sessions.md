@@ -87,16 +87,22 @@ Settings also has a master **Breaks in focus sessions** switch (`focusBreaksEnab
 on by default). Off, `focusPlanOptionsFrom` reads both triggers as null, so every plan is
 break-free while the trigger and length values stay stored for when it is turned back on.
 
-The setup sheet's own Breaks toggle (`FocusSetupSheet`) lets a session run
-without breaks even when Settings has them configured, for the one-off "not
-this time" case — going to Settings to turn both triggers off and back on
-again would be a strange way to skip breaks for a single session. It's a
-session-only override, one direction only: it can silence Settings' triggers
-for the run about to start, never add breaks Settings doesn't already have,
-and it's left off the sheet entirely once Settings already has none
-configured, since there'd be nothing left for it to do. The plan preview and
-`onStart` both build from the same effective options, so the summary the user
-agreed to and the plan the session actually runs never disagree.
+The setup sheet's own Breaks row (`FocusSetupSheet`) lets a session differ from
+Settings for the one-off "not this time" case, since going to Settings and back
+would be a strange way to change breaks for a single run. It has two parts, both
+session-only and never written back to Settings:
+
+- **A toggle** that silences Settings' triggers for the run about to start.
+- **An Edit disclosure** (`breakEdits`) with steppers for the minute trigger,
+  the break length and the long-break cadence, seeded from Settings on every
+  open, with a Reset back to them. The task-count trigger and the long break's
+  length stay Settings-only, to keep the card short.
+
+The row is left off the sheet entirely once Settings already has no breaks
+configured, so the edit can change a configured rule but not conjure breaks
+from none. The plan preview and `onStart` both build from the same effective
+options (`applySessionBreakEdits`), so the summary the user agreed to and the
+plan the session actually runs never disagree.
 
 ## The time window
 

@@ -48,6 +48,20 @@ export function groupJournalByDay(entries: readonly JournalEntry[]): JournalDay[
 }
 
 /**
+ * One kind's entries on one day, oldest first: what the sheet shows above the
+ * field as "so far" when another snippet is added to that day.
+ */
+export function entriesOnDay(
+  entries: readonly JournalEntry[],
+  kind: JournalKind,
+  dayKey: string,
+): JournalEntry[] {
+  return entries
+    .filter(e => e.kind === kind && e.dayKey === dayKey)
+    .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+}
+
+/**
  * Plain counts of one kind. Counting one thing has no minimum, so nothing
  * here is gated on a sample size.
  */
@@ -106,6 +120,8 @@ export const JOURNAL_KIND_COPY: Record<JournalKind, {
   one: string;
   placeholder: string;
   hint: string | null;
+  /** The placeholder once the day already has an entry of this kind. */
+  continuePlaceholder: string;
   emptyTitle: string;
   emptySubtitle: string;
 }> = {
@@ -114,6 +130,7 @@ export const JOURNAL_KIND_COPY: Record<JournalKind, {
     one: 'journal entry',
     placeholder: 'e.g. How the day went, or anything you want to remember',
     hint: null,
+    continuePlaceholder: 'e.g. What has happened since then',
     emptyTitle: 'Nothing written yet',
     emptySubtitle: 'Write about your day, as often as you like.',
   },
@@ -122,6 +139,7 @@ export const JOURNAL_KIND_COPY: Record<JournalKind, {
     one: 'dream',
     placeholder: 'e.g. Anything you remember from last night',
     hint: 'A dream is filed under the day you wake.',
+    continuePlaceholder: 'e.g. Anything else you remember',
     emptyTitle: 'No dreams written down yet',
     emptySubtitle: 'Write down what you remember when you wake up.',
   },

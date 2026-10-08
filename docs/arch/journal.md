@@ -71,6 +71,15 @@ away, off by default, and each opens its sheet through
   day, any time; one or more parts of the day hold back a task per part, with
   only the current one live and "answered" meaning an entry since that part
   began.
+- **Several parts of the day make it a day written in snippets.** The task
+  then reads "Add to today's journal" (`journalLogTitle`), and each answer is
+  its own row, stitched together only when read: the screen draws a day as one
+  page (no rule between entries, just their times) and the sheet shows the
+  day's earlier entries above the field (`entriesOnDay`). Appending to one row
+  per day was the other option and was turned down: two devices adding a
+  snippet before they sync would each rewrite that row, and one snippet would
+  lose. Rewriting the snippets into prose with a model was turned down too, by
+  the "nothing is derived" rule above.
 - **The dream reminder is once a day, with no part of the day.** A dream is
   written once, on waking, and whenever the list is first looked at is close
   enough to that.

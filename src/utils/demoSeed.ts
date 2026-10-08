@@ -1011,6 +1011,15 @@ export function seedDemoData(): void {
   // archiveTask stamps the moment it runs, which is the seed's own runtime.
   updateTask(swim.id, { archivedAt: subDays(today, 26).toISOString() });
 
+  // --- A stack with several tasks on one future day ---------------------------
+  // Later folds three or more of one stack's tasks on the same day into a
+  // single row (see LATER_STACK_FOLD_MIN), so this is what shows it.
+  const poconos = createGroup('Pack for Poconos', 'Home');
+  ['Underwear x4', 'Socks x4', 'Phone charger', 'Binoculars', 'Comfortable shoes', 'Pants x1'].forEach(title => {
+    const t = addNewGroupedTask(poconos.id, title);
+    updateTask(t.id, { dueDate: addDays(today, 5).toISOString() });
+  });
+
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
   const vitaminD = addNewGroupedTask(supplements.id, 'Vitamin D');
@@ -2950,7 +2959,7 @@ function seedMilestone(today: Date): void {
 }
 
 /**
- * A few journal entries and two dreams, so the Journal and Dreams screens (and
+ * A few journal entries (one day written in three snippets) and two dreams, so the Journal and Dreams screens (and
  * their pills in the Health hub, which simplified mode hides while empty) have
  * something to show. Through `addEntry`, so a seeded row can't drift from the type.
  */
@@ -2965,6 +2974,10 @@ function seedJournal(today: Date): void {
   // Formatted, so the light Markdown the journal draws has something to show.
   addEntry('journal', '# Slow Saturday\nSlept in, then a **long** walk by the river.\n- Call Mom\n- Start the next book', at(4, 18));
   addEntry('journal', 'Good meeting this morning. Want to remember to thank Sam for covering on Friday.', at(1, 9));
+  // Two more on the same day, so the Journal shows a day written in snippets
+  // (what the part-of-day reminders ask for) drawn as one page.
+  addEntry('journal', 'Lunch outside for once. Got the report draft over to Priya.', at(1, 13));
+  addEntry('journal', 'Quiet evening. Pasta, then an hour of the new book.', at(1, 20));
   addEntry('dream', 'Walking along a beach I did not recognize, looking for a train station.', at(15, 7));
   addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7));
 }

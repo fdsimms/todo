@@ -103,6 +103,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
+import { LaterStackRow } from '../components/LaterStackRow';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -4226,7 +4227,47 @@ export function TodayScreen() {
     [laterOrder, laterTaskLimit],
   );
 
-  const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
+  // Stacks with three or more tasks on one Later day fold into a row (see
+  // LATER_STACK_FOLD_MIN). Unfolded while selecting, so every task is a row the
+  // selection can reach and the paint drag can run down.
+  const laterGroupsById = useMemo(() => new Map(taskGroups.map(g => [g.id, g])), [taskGroups]);
+  const laterData = useMemo(
+    () => flattenLaterSections(visibleLaterSections, { groupsById: laterGroupsById, fold: !selectionMode }),
+    [visibleLaterSections, laterGroupsById, selectionMode],
+  );
+  // Session state, keyed by the folded row's own key (a stack can fold on
+  // several days, and opening one day's must not open the others).
+  const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+  const handleLaterStackToggle = useCallback((key: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setOpenLaterStacks(prev => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, [expandedTaskId]);
+  const handleLaterStackShowAll = useCallback((key: string) => {
+    setExpandedLaterStacks(prev => new Set(prev).add(key));
+  }, []);
+  // Scoped to the day's members the row holds, never the stack's roster: see
+  // LaterStackRow.
+  const handleLaterStackComplete = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    requestComplete({
+      ids,
+      complete: skipIds => bulkCompleteTasks(ids.filter(id => !skipIds.includes(id))),
+    });
+  }, [requestComplete, bulkCompleteTasks]);
+  const handleLaterStackDefer = useCallback((ids: string[], date: Date) => {
+    if (ids.length > 0) useTaskStore.getState().bulkDefer(ids, date);
+  }, []);
+  const handleLaterStackSelect = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    setExpandedTaskId(null);
+    enterSelectionMode(ids);
+  }, [enterSelectionMode]);
   // Synced during render (comparing against a ref), same as Today's own
   // draggableData above — a useEffect sync lands a frame late, which is what
   // made switching to Later always flash "Nothing deferred" (the stale,
@@ -4531,6 +4572,24 @@ export function TodayScreen() {
                     <Text style={styles.laterSubHeaderText}>{item.label}</Text>
                     <SpotlightScrim />
                   </Pressable>
+                );
+              } else if (item.type === 'stack') {
+                content = (
+                  <LaterStackRow
+                    itemKey={item.key}
+                    group={item.group}
+                    tasks={item.tasks}
+                    open={openLaterStacks.has(item.key)}
+                    showAll={expandedLaterStacks.has(item.key)}
+                    selectionMode={selectionMode}
+                    onToggle={handleLaterStackToggle}
+                    onShowAll={handleLaterStackShowAll}
+                    onCompleteIds={handleLaterStackComplete}
+                    onDeferIds={handleLaterStackDefer}
+                    onSelectIds={handleLaterStackSelect}
+                    onPressEdit={handleGroupPressEdit}
+                    renderTask={task => renderTaskRow(task, { indented: true })}
+                  />
                 );
               } else {
                 const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
