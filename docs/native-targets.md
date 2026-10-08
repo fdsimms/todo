@@ -16,6 +16,10 @@ Targets are injected at prebuild time by custom config plugins rather than a che
 - **`targets/todo-shield-config/`** and **`targets/todo-shield-action/`** — the screen shown
   when a blocked app is opened, and the button on it, both added by
   `plugins/withShieldExtensions.js`.
+- **`targets/todo-watch/`** and **`targets/todo-watch-complication/`** — the Apple Watch app
+  (Today and the grocery list, ticked off from the wrist) and its watch face complication, both
+  added by `plugins/withWatchApp.js` and only when `DUNDUNDUN_WATCH_APP=1` (eas.json's
+  `watch-canary` profile). See "The watch app" below.
 
 `plugins/withAppGroup.js` puts the App Group on the main app and exports `APP_GROUP_ID`; each
 extension's plugin writes its own `.entitlements` with that id (`todo-shield-action` deliberately
@@ -160,3 +164,77 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   no-op the user cannot tell apart from success. The JS drain re-resolves by name through the
   app's own lookup when the id misses (`resolveQueuedPantryItem`), which is also where the
   plural handling lives: nothing in Swift should reimplement `groceryNameKey`.
+
+## The watch app
+
+Two watchOS targets: the app (`TodoWatch`, embedded in the iPhone app) and its complication
+(`TodoWatchComplication`, a WidgetKit extension embedded in the *watch app*). Neither is an
+iPhone extension, and most of what that changes lives in `addWatchAppTarget`,
+`addWatchExtensionTarget` and `withExplicitTargetDependency` (`plugins/lib/nativeTarget.js`),
+whose comments carry the reasons. The rules worth knowing before touching them:
+
+- **They are behind a flag until a build has gone all the way through.** `withWatchApp.js` adds
+  nothing unless `DUNDUNDUN_WATCH_APP=1`, which only the `watch-canary` build profile sets (the
+  EAS Build workflow's `profile` input runs it). A profile's `env` reaches both the local
+  config evaluation (credentials) and the builder (prebuild), so the flag switches the targets
+  and their `appExtensions` entries together. Those entries are the one exception to the rule
+  above: the plugin adds them to the evaluated config instead of `app.json`, because a static
+  entry would have EAS provision targets the production project doesn't contain. When a canary
+  has shipped to TestFlight and installed, drop the flag rather than adding a second way in.
+  **The iPhone half is not behind it**: `WatchSession.swift` and the watch's snapshot write are
+  in every build, and do nothing without a paired watch that has the app.
+- **The watch can't read the App Group, so the data path is WatchConnectivity, both ways.** The
+  watch is another device with its own containers. Out: the app builds a second copy of the
+  widget snapshot with `WATCH_LIMITS` (room for a whole shopping list), and
+  `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
+  is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
+  AddTaskIntent's queue, for a dictated task) in the widget's shape, so
+  `processQuietWidgetTaps` applies it with the widget's rules.
+- **A tap can wake the iPhone app to be applied, and that path has no React tree.** With the
+  phone in reach the watch also sends each tap as a message, which (unlike the transfer) wakes
+  the app in the background; the phone drops the second copy by `watchTapId`. `WatchSession`
+  cancels a completed task's reminder, asks iOS for background time (the next snapshot write
+  hands it back) and posts `onWatchQueuedWork`, replaying it to the first JS listener so a cold
+  launch, where the tap lands while the bundle loads, still hears it. `runWatchWork` in
+  `backgroundRefresh.ts` answers, registered at module scope like the background task: open the
+  stores if nothing has, drain, write the snapshot. **With the app not in front, a tap that needs
+  the app goes back on the queue (`tapsToRequeue`)** rather than to `useWidgetCompletionStore`,
+  which is memory a suspended process loses.
+- **The watch draws its own taps until the phone has applied them, settled by id, not by
+  clock.** Every tap carries a `watchTapId`. Each context lists the ids the phone has received
+  and the ones still waiting (queued, or drained but not yet in a written snapshot); the watch
+  drops a tap once it is received and no longer waiting, which is exactly when the snapshot in
+  that context includes it (`WatchStore.apply`). Before any of that, a tap is held on the watch
+  for `WatchStore.undoWindow` behind an Undo button, and sent early if the app leaves the
+  screen: once WatchConnectivity has it, the phone will apply it and the watch can't take it back.
+- **`TodoWidgetData.swift` is compiled into both watch targets unchanged.** The watch keeps the
+  snapshot in its own App Group under the widget's file name, so `loadWidgetSnapshot()` and the
+  time-passing helpers (`visibleTasks(at:)`, `isStale`, `changeDates`) work there as they do in
+  the widget. It must stay Foundation and SwiftUI only.
+- **The session is activated from an app delegate subscriber** (`WatchSessionAppDelegate`, in
+  the bridge's `expo-module.config.json`), so a transfer delivered while the app is in the
+  background lands in the queue before any JS has run. On the watch, `.backgroundTask(.watchConnectivity)`
+  lets a new context wake the app and reload the complication while the app is closed.
+- **A watch app is an `application` target with `SDKROOT = watchos`, embedded by an "Embed
+  Watch Content" phase into `$(CONTENTS_FOLDER_PATH)/Watch`; its extension goes in an "Embed
+  Foundation Extensions" phase on the watch app.** The `xcode` package only knows the legacy
+  two-target watch app, and `addTarget()` files every `app_extension` under the iPhone app, so
+  the helper moves the complication's product out again.
+- **The extensions have no explicit target dependency, and the watch targets do.** `addTarget()`'s
+  own dependency call is a no-op on Expo's template (the sections it writes into don't exist), so
+  the extensions build on the scheme's implicit dependencies. The watch targets get real ones,
+  from a finalized mod, so that creating those sections can't switch the extensions'
+  dependencies on too: plugin mods run last-registered first, so doing it in `withXcodeProject`
+  did exactly that.
+- **A watch app needs an icon in an asset catalog**, or App Store validation refuses the upload.
+  The catalog's `Contents.json` is checked in and the image is the app's own icon, copied in at
+  prebuild. `addResourceFile()` can't add it (it throws on the "Resources" group Expo's
+  template doesn't have).
+- **The watchOS platform is a separate download since Xcode 15**, and archiving an app that
+  embeds a watch app fails without it. `scripts/eas-build-pre-install.js` fetches it on the
+  builder when the flag is on and no matching runtime is installed.
+- **React Native's `pod install` adds the app's `PrivacyInfo.xcprivacy` to the watch app too.**
+  Its privacy manifest aggregation attaches the file to every target of type `:application`. Not
+  a bug, but it's why the watch target in Xcode shows a file nothing here added.
+- **Expect App Store Connect to ask for Apple Watch screenshots** the first time a version whose
+  build contains the watch app is submitted for review. TestFlight doesn't need them.

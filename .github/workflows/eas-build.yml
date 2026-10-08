@@ -18,6 +18,15 @@ on:
         description: Submit the finished build to TestFlight.
         type: boolean
         default: true
+      profile:
+        description: >-
+          Build profile from eas.json. `watch-canary` is the production build
+          plus the Apple Watch app (see plugins/withWatchApp.js).
+        type: choice
+        options:
+          - production
+          - watch-canary
+        default: production
 
 jobs:
   build-and-submit:
@@ -41,7 +50,8 @@ jobs:
       # pod doesn't, because the bundle then asks for a native module the
       # binary hasn't got and the app dies before it can render anything.
       - name: Build
-        run: eas build --platform ios --profile production --non-interactive ${{ inputs.clear_cache && '--clear-cache' || '' }}
+        # `inputs` is empty on the scheduled run, so that one stays production.
+        run: eas build --platform ios --profile ${{ inputs.profile || 'production' }} --non-interactive ${{ inputs.clear_cache && '--clear-cache' || '' }}
       - name: Submit
         # Defaults to true, including for the scheduled run, where `inputs` is
         # empty and the expression below is what keeps submitting.

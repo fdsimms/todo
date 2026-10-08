@@ -123,6 +123,7 @@
       "./plugins/withHealthKit",
       "./plugins/withActivityMonitor",
       "./plugins/withShieldExtensions",
+      "./plugins/withWatchApp",
       [
         "expo-quick-actions",
         {

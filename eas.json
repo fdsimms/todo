@@ -19,6 +19,12 @@
       "ios": {
         "buildConfiguration": "Release"
       }
+    },
+    "watch-canary": {
+      "extends": "production",
+      "env": {
+        "DUNDUNDUN_WATCH_APP": "1"
+      }
     }
   },
   "submit": {

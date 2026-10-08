@@ -9,11 +9,11 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
-import { buildWidgetSnapshot } from './widgetSnapshot';
+import { buildWidgetSnapshot, WATCH_LIMITS, type SnapshotInput } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
 import { getDayStart, getLogicalDayKey } from './dateUtils';
 import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
-import { parseQuietTaps, planQuietTaps } from './widgetQuietTaps';
+import { parseQuietTaps, planQuietTaps, tapsToRequeue } from './widgetQuietTaps';
 import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -159,7 +159,14 @@ async function processPendingDisposals(): Promise<void> {
 // Grocery ticks name their list, and are written to that list rather than to
 // whichever one the app has open (CLAUDE.md, "A caller that isn't a person
 // looking at the grocery screen passes listId explicitly").
-async function processQuietWidgetTaps(): Promise<void> {
+//
+// `handOff` is where a tap that needs the app goes. 'app' is the Today screen,
+// through useWidgetCompletionStore, which is right with a person in front of
+// it. 'requeue' is back onto the queue, for a drain run with nobody looking (a
+// watch tap that woke the app in the background): that store lives in memory,
+// and a process iOS ends before anyone opens the app would take the tap with
+// it. See tapsToRequeue.
+async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promise<void> {
   // Same demo-mode reasoning as the drains above: a drain consumes real taps.
   const bridge = widgetBridge();
   if (!bridge) return;
@@ -193,10 +200,25 @@ async function processQuietWidgetTaps(): Promise<void> {
       }
     }
     const ids = Object.keys(handedOver);
-    if (ids.length > 0) useWidgetCompletionStore.getState().enqueue(ids, handedOver);
+    if (ids.length > 0) {
+      if (handOff === 'requeue') {
+        await bridge.requeueQuietTaps(JSON.stringify(tapsToRequeue(taps, new Set(ids))));
+      } else {
+        useWidgetCompletionStore.getState().enqueue(ids, handedOver);
+      }
+    }
   } catch {
     // A build predating drainQuietTaps — no-op.
   }
+}
+
+/**
+ * The two queues the Apple Watch feeds (quiet taps and dictated tasks), applied
+ * now. For backgroundRefresh.ts's watch handler, which runs whether or not the
+ * app has a screen; `handOff` is 'requeue' whenever the app isn't in front.
+ */
+export async function drainWatchQueues(handOff: 'app' | 'requeue'): Promise<void> {
+  await Promise.all([processQuietWidgetTaps(handOff), processPendingAddTasks()]);
 }
 
 /**
@@ -258,7 +280,7 @@ function writeSnapshotNow(): void {
   const dayResetTime = settings.dayResetTime;
   const todayKey = getLogicalDayKey(now, dayResetTime);
 
-  const snapshot = buildWidgetSnapshot({
+  const input: SnapshotInput = {
     now,
     visibleTasks: tasks.visibleTasks(),
     pinnedTasks: tasks.pinnedTasks(),
@@ -299,9 +321,16 @@ function writeSnapshotNow(): void {
     dayEnd: addDays(getDayStart(now, dayResetTime), 1),
     upcoming: widgetUpcoming(tasks.deferredTasks(), now),
     mealLogPrompt: settings.mealLogPrompt,
-  });
+  };
 
-  writeToNativeBridge(JSON.stringify(snapshot));
+  writeToNativeBridge(JSON.stringify(buildWidgetSnapshot(input)));
+
+  // The Apple Watch reads the same snapshot with room for a whole shopping
+  // list (see WATCH_LIMITS). Same moment and the same gate as the widget's
+  // write, so the two never describe different states; the native half drops
+  // it when there's no paired watch with the app installed.
+  const bridge = widgetBridge();
+  bridge?.writeWatchSnapshot(JSON.stringify(buildWidgetSnapshot({ ...input, limits: WATCH_LIMITS }))).catch(() => {});
 
   // Rides the same debounce and the same store read rather than taking a
   // subscription of its own: every write that could change the index is a
@@ -315,7 +344,6 @@ function writeSnapshotNow(): void {
   // handles the same gap by contributing null for a section it can't speak
   // for; a file has no null, so it keeps the last true one.
   if (grocery.initialized) {
-    const bridge = widgetBridge();
     bridge?.writePantryIndex(JSON.stringify(buildPantryIndex(grocery.items))).catch(() => {});
   }
 }
@@ -418,6 +446,10 @@ export function useWidgetSync(): void {
         ]).finally(scheduleSnapshotWrite);
       }
     });
+
+    // A tap from the Apple Watch is applied by backgroundRefresh.ts's watch
+    // handler, registered when that module loads rather than here, because it
+    // has to run with no React tree too (a watch tap that woke the app).
 
     return () => {
       unsubscribe();

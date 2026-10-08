@@ -7,6 +7,8 @@ import {
   buildWidgetSnapshot,
   isWidgetWorthy,
   toWidgetTask,
+  WATCH_LIMITS,
+  WIDGET_LIMITS,
 } from '../utils/widgetSnapshot';
 import type {
   GroceryItem,
@@ -340,6 +342,35 @@ describe('buildWidgetSnapshot', () => {
 
   it('stamps the write time so the widget can tell a stale snapshot', () => {
     expect(buildWidgetSnapshot(snapshotInput()).updatedAt).toBe(NOW.toISOString());
+  });
+
+  // The watch is where a shopping trip gets ticked off, so its copy carries the
+  // whole list where the widget's stops at the few rows it can draw.
+  describe('the watch copy', () => {
+    const longShop = () => {
+      const items = Array.from({ length: 25 }, (_, i) =>
+        makeItem({ id: `i${i}`, name: `Item ${i}`, sortOrder: i })
+      );
+      const listEntries = items.map((item, i) => makeEntry({ itemId: item.id, sortOrder: i }));
+      return groceryInput({ items, listEntries });
+    };
+    const tasks = Array.from({ length: 70 }, (_, i) => makeTask({ id: `t${i}` }));
+
+    it('keeps the widget at its own caps when no limits are given', () => {
+      const snapshot = buildWidgetSnapshot(snapshotInput({ grocery: longShop(), visibleTasks: tasks }));
+      expect(snapshot.groceries!.lists[0].rows).toHaveLength(WIDGET_LIMITS.groceryItemsPerList);
+      expect(snapshot.visibleTasks).toHaveLength(WIDGET_LIMITS.visibleTasks);
+    });
+
+    it('carries more rows with the watch limits, and still counts the same list', () => {
+      const widget = buildWidgetSnapshot(snapshotInput({ grocery: longShop(), visibleTasks: tasks }));
+      const watch = buildWidgetSnapshot(
+        snapshotInput({ grocery: longShop(), visibleTasks: tasks, limits: WATCH_LIMITS })
+      );
+      expect(watch.groceries!.lists[0].rows).toHaveLength(25);
+      expect(watch.visibleTasks).toHaveLength(70);
+      expect(watch.groceries!.lists[0].remaining).toBe(widget.groceries!.lists[0].remaining);
+    });
   });
 });
 

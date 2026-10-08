@@ -86,8 +86,59 @@ private struct FocusRunPayload: Codable {
 }
 
 public class TodoWidgetBridgeModule: Module {
+  private var watchWorkObserver: NSObjectProtocol?
+
   public func definition() -> ModuleDefinition {
     Name("TodoWidgetBridge")
+
+    // Fired when a tap or a dictated task from the Apple Watch has just been
+    // queued (WatchSession.swift), so a running app drains it at once instead
+    // of at its next foreground. Carries nothing: the queue is the payload.
+    Events("onWatchQueuedWork")
+
+    OnStartObserving("onWatchQueuedWork") {
+      guard self.watchWorkObserver == nil else { return }
+      self.watchWorkObserver = NotificationCenter.default.addObserver(
+        forName: .todoWatchQueuedWork,
+        object: nil,
+        queue: nil
+      ) { [weak self] _ in
+        WatchSession.shared.markAnnounced()
+        self?.sendEvent("onWatchQueuedWork", [:])
+      }
+      // A tap that arrived before anything listened: a cold launch woken by
+      // the watch, where the message lands while the bundle is still loading.
+      if WatchSession.shared.takeUnannouncedWork() {
+        DispatchQueue.main.async { [weak self] in
+          self?.sendEvent("onWatchQueuedWork", [:])
+        }
+      }
+    }
+
+    OnStopObserving("onWatchQueuedWork") {
+      if let observer = self.watchWorkObserver {
+        NotificationCenter.default.removeObserver(observer)
+        self.watchWorkObserver = nil
+      }
+    }
+
+    // The watch's copy of the snapshot: the widget's shape with larger caps
+    // (widgetSync.ts). Handed straight to WatchSession, which keeps it and
+    // sends it on. Returns Bool for the same reason writeSnapshot below does.
+    AsyncFunction("writeWatchSnapshot") { (jsonString: String) -> Bool in
+      WatchSession.shared.writeSnapshot(jsonString)
+      return true
+    }
+
+    // Puts quiet taps back at the front of their queue, for a drain that ran
+    // with nobody there to hand a tap to (tapsToRequeue in widgetQuietTaps.ts).
+    // Through WatchSession because it's the other writer of that file in this
+    // process, and the watch's pending list changes with it.
+    AsyncFunction("requeueQuietTaps") { (jsonString: String) -> Bool in
+      guard let data = jsonString.data(using: .utf8) else { return false }
+      WatchSession.shared.requeue(data)
+      return true
+    }
 
     // Returns a Bool rather than Void deliberately. Per
     // facebook/react-native#54859: an earlier RN fix (PR #50193) patched the
@@ -297,6 +348,9 @@ public class TodoWidgetBridgeModule: Module {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         defer { try? FileManager.default.removeItem(at: fileURL) }
         json = String(data: data, encoding: .utf8) ?? "[]"
+        // Watch taps in what was just read stay "waiting" for the watch
+        // until the snapshot that includes them is written.
+        WatchSession.shared.noteDrained(data)
       }
       return json
     }
