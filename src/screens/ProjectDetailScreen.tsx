@@ -1634,6 +1634,13 @@ export function ProjectDetailScreen() {
     [projectId, allTasks],
   );
   const showSummary = !!project && (routinesToCatchUp.length > 0 || summaryProgress !== null || summaryCaption !== null || tripLine !== null || !!pullable || paused || activityLine !== null || answerTallies.length > 0);
+  // A list whose summary is only its count (and a date, if it has one) draws it
+  // as a caption over the items rather than as a card, so the page doesn't open
+  // on the same stats card a project does. Anything that needs the card (a
+  // button, a trip, a pause, a tally) keeps it.
+  const summaryCaptionOnly = isList && showSummary && routinesToCatchUp.length === 0 && tripLine === null
+    && !pullable && !paused && activityLine === null && answerTallies.length === 0
+    && !project!.archived && !project!.completed;
 
   /**
    * One task per guest, each asking the given options on completion, under a
@@ -1922,8 +1929,8 @@ export function ProjectDetailScreen() {
             ListHeaderComponent={
               <>
                 {showSummary && (
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryText}>
+                  <View style={summaryCaptionOnly ? styles.summaryCaptionOnly : styles.summaryCard}>
+                    <Text style={summaryCaptionOnly ? styles.summaryCaptionText : styles.summaryText}>
                       {summaryProgress}
                       {summaryProgress && summaryCaption ? ' · ' : ''}
                       {summaryCaption && (
@@ -2751,6 +2758,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   summaryText: { color: colors.textSecondary, fontSize: font.sm },
+  // A list's count with no card behind it; the section-label treatment every
+  // other caption in the app uses.
+  summaryCaptionOnly: { marginHorizontal: spacing.md + spacing.xs, marginTop: spacing.md, marginBottom: spacing.sm },
+  summaryCaptionText: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
   // A count that opens who it counts. Underlined rather than accent-tinted:
   // it's a word in a sentence, and accent text there reads as a link out.
   tallyCount: { textDecorationLine: 'underline', textDecorationColor: colors.textTertiary },
