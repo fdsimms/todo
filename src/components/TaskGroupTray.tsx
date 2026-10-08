@@ -15,6 +15,9 @@ import { AnimatedCollapsible } from './AnimatedCollapsible';
 /** Inner padding of the tray, and so the inset of everything inside it. */
 export const TRAY_PAD = spacing.sm;
 
+/** The tray's vertical margin, which is also how far a highlight around it sits from its row's edge. */
+export const TRAY_MARGIN_Y = spacing.xxs;
+
 /**
  * How far the card edges under a collapsed stack reach below its header (see
  * TaskGroupHeader). The tray grows by this much as it collapses, so the edges
@@ -123,8 +126,8 @@ export function TaskGroupTray({ collapsed = false, children }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   tray: {
     marginHorizontal: spacing.md,
-    marginTop: spacing.xxs,
-    marginBottom: spacing.xxs,
+    marginTop: TRAY_MARGIN_Y,
+    marginBottom: TRAY_MARGIN_Y,
     paddingHorizontal: TRAY_PAD,
     // No vertical padding: the gaps above and below the children live inside
     // TaskGroupBody, where AnimatedCollapsible takes them away with the rest
