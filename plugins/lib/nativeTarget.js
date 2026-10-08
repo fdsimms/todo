@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { IOSConfig, withFinalizedMod } = require('@expo/config-plugins');
 
 /**
- * Injecting an iOS app-extension target into the generated Xcode project at
- * prebuild time, without ejecting to a checked-in `ios/` folder.
+ * Injecting an iOS app-extension target (or the watchOS app, see
+ * addWatchAppTarget) into the generated Xcode project at prebuild time,
+ * without ejecting to a checked-in `ios/` folder.
  *
  * This is the shared mechanics behind `withWidgetExtension.js` and
  * `withShareExtension.js` — the target creation itself, which is identical for
@@ -39,12 +41,17 @@ const DEVELOPMENT_TEAM = '4L5S4WA628';
  * section directly instead, stripping quotes before comparing.
  */
 function findExistingTarget(project, targetName) {
+  const key = findTargetKey(project, targetName);
+  return key ? project.pbxNativeTargetSection()[key] : null;
+}
+
+function findTargetKey(project, targetName) {
   const nativeTargets = project.pbxNativeTargetSection();
   for (const key of Object.keys(nativeTargets)) {
     if (key.endsWith('_comment')) continue;
     const target = nativeTargets[key];
     if (typeof target?.name === 'string' && target.name.replace(/^"|"$/g, '') === targetName) {
-      return target;
+      return key;
     }
   }
   return null;
@@ -69,18 +76,58 @@ function findExistingTarget(project, targetName) {
  *        target that needs a setting the defaults below don't cover can add one
  *        without every other target growing it too
  */
-function addAppExtensionTarget({
+function addAppExtensionTarget(options) {
+  return addNativeTarget({ ...options, kind: 'app_extension' });
+}
+
+/**
+ * A watchOS app embedded in the iPhone app, the single-target kind Xcode 14+
+ * creates (no separate WatchKit extension). Same options as
+ * addAppExtensionTarget, with `deploymentTarget` meaning
+ * WATCHOS_DEPLOYMENT_TARGET, plus `resourceFolders` for the asset catalog a
+ * watch app can't ship without (App Store validation refuses one with no icon).
+ *
+ * What differs from an extension, all of it below rather than in the plugin
+ * because each is the kind of thing that fails late:
+ *
+ * - The product type is a plain `application`. The `xcode` package only knows
+ *   the legacy two-target watch app (`watch2_app` + `watch2_extension`), so the
+ *   target is added as an ordinary application and the watch-specific parts are
+ *   build settings: SDKROOT watchos and device family 4.
+ * - It is embedded by an "Embed Watch Content" copy phase into
+ *   `$(CONTENTS_FOLDER_PATH)/Watch` (subfolder spec 16, the products
+ *   directory), not the extensions' plugins folder. A watch app anywhere else
+ *   is rejected at submission ("should be under Watch").
+ * - No `frameworks`: Swift autolinks SwiftUI against the watchOS SDK, and
+ *   `addFramework` silently skips a framework any other target already added
+ *   (it dedupes on the file path, project-wide), so naming one here would link
+ *   nothing and look like it did.
+ * - The main target's dependency on it comes from withExplicitTargetDependency,
+ *   which the calling plugin applies as well; it can't be done here.
+ *
+ * @param {object} options  as addAppExtensionTarget, minus `frameworks`
+ * @param {{dir: string, name: string}[]} [options.resourceFolders]  folders
+ *        (an `.xcassets`) copied in whole and added to the Resources phase
+ */
+function addWatchAppTarget(options) {
+  return addNativeTarget({ ...options, frameworks: [], kind: 'watch_app' });
+}
+
+function addNativeTarget({
+  kind,
   project,
   platformProjectRoot,
   targetName,
   bundleIdentifier,
   deploymentTarget,
   sourceFiles,
+  resourceFolders = [],
   infoPlist,
   entitlements,
   frameworks,
   extraBuildSettings = {},
 }) {
+  const isWatch = kind === 'watch_app';
   const infoPlistName = `${targetName}-Info.plist`;
   const entitlementsName = `${targetName}.entitlements`;
 
@@ -90,6 +137,9 @@ function addAppExtensionTarget({
   for (const { dir, name } of sourceFiles) {
     fs.copyFileSync(path.join(dir, name), path.join(targetDir, name));
   }
+  for (const { dir, name } of resourceFolders) {
+    fs.cpSync(path.join(dir, name), path.join(targetDir, name), { recursive: true });
+  }
   fs.writeFileSync(path.join(targetDir, infoPlistName), infoPlist);
   fs.writeFileSync(path.join(targetDir, entitlementsName), entitlements);
 
@@ -98,7 +148,12 @@ function addAppExtensionTarget({
   // lands on a project that already has the target.
   if (findExistingTarget(project, targetName)) return null;
 
-  const target = project.addTarget(targetName, 'app_extension', targetName, bundleIdentifier);
+  const target = project.addTarget(
+    targetName,
+    isWatch ? 'application' : 'app_extension',
+    targetName,
+    bundleIdentifier
+  );
 
   // addTarget() pre-wraps several string fields in literal quote characters
   // (e.g. `name: '"' + targetName + '"'`) instead of leaving them plain and
@@ -143,6 +198,37 @@ function addAppExtensionTarget({
   project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
   project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
 
+  if (isWatch) {
+    // addTarget() embeds an `app_extension` itself (the main target's
+    // "Copy Files" phase) but does nothing for an `application`, so the watch
+    // app's phase is made here. 'watch2_app' is only the folder-type key that
+    // maps to subfolder spec 16; the target itself is not one.
+    const { buildPhase } = project.addBuildPhase(
+      [],
+      'PBXCopyFilesBuildPhase',
+      'Embed Watch Content',
+      project.getFirstTarget().uuid,
+      'watch2_app',
+      '"$(CONTENTS_FOLDER_PATH)/Watch"'
+    );
+    // The phase embeds the build file addTarget() already minted for the
+    // product, not a second reference to it. Added by hand rather than by
+    // passing the product's name to addBuildPhase, which does find that build
+    // file but labels it `"TodoWatch.app" in Resources` in the phase's list
+    // (it re-guesses a group from the quoted path); the same kind of stale
+    // comment the name clean-up above exists to avoid.
+    const productRef = target.pbxNativeTarget.productReference;
+    const buildFiles = project.pbxBuildFileSection();
+    const productBuildFile = Object.keys(buildFiles).find(
+      key => !key.endsWith('_comment') && buildFiles[key].fileRef === productRef
+    );
+    const embedComment = `${targetName}.app in Embed Watch Content`;
+    buildFiles[`${productBuildFile}_comment`] = embedComment;
+    buildPhase.files.push({ value: productBuildFile, comment: embedComment });
+    // The dependency on this target is withExplicitTargetDependency's job, not
+    // this function's; see there for why it can't happen here.
+  }
+
   // Non-source files just need a file reference in the group — they're wired in
   // via build settings (INFOPLIST_FILE / CODE_SIGN_ENTITLEMENTS) below, not a
   // build phase.
@@ -169,6 +255,18 @@ function addAppExtensionTarget({
     project.addSourceFile(`${targetName}/${name}`, { target: target.uuid }, group.uuid);
   }
 
+  for (const { name } of resourceFolders) {
+    // addSourceFile's shape with the Resources phase in place of Sources.
+    // Not addResourceFile(): it looks for a project-wide group named
+    // "Resources" to correct the path against, and Expo's template has none,
+    // so it throws on the missing group.
+    const file = project.addFile(`${targetName}/${name}`, group.uuid, {});
+    file.target = target.uuid;
+    file.uuid = project.generateUuid();
+    project.addToPbxBuildFileSection(file);
+    project.addToPbxResourcesBuildPhase(file);
+  }
+
   for (const framework of frameworks) {
     project.addFramework(framework, { target: target.uuid });
   }
@@ -184,9 +282,17 @@ function addAppExtensionTarget({
     buildSettings.CODE_SIGN_ENTITLEMENTS = `${targetName}/${entitlementsName}`;
     buildSettings.CODE_SIGN_STYLE = 'Automatic';
     buildSettings.DEVELOPMENT_TEAM = DEVELOPMENT_TEAM;
-    buildSettings.IPHONEOS_DEPLOYMENT_TARGET = deploymentTarget;
+    if (isWatch) {
+      // Overrides the project-level SDKROOT = iphoneos every target inherits.
+      // The project's IPHONEOS_DEPLOYMENT_TARGET is still inherited and is
+      // simply unread under the watchOS SDK.
+      buildSettings.SDKROOT = 'watchos';
+      buildSettings.WATCHOS_DEPLOYMENT_TARGET = deploymentTarget;
+    } else {
+      buildSettings.IPHONEOS_DEPLOYMENT_TARGET = deploymentTarget;
+    }
     buildSettings.SWIFT_VERSION = '5.0';
-    buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';
+    buildSettings.TARGETED_DEVICE_FAMILY = isWatch ? '4' : '"1,2"';
     buildSettings.CURRENT_PROJECT_VERSION = '1';
     buildSettings.MARKETING_VERSION = '1.0';
     Object.assign(buildSettings, extraBuildSettings);
@@ -195,4 +301,51 @@ function addAppExtensionTarget({
   return target;
 }
 
-module.exports = { addAppExtensionTarget, findExistingTarget, DEVELOPMENT_TEAM };
+/**
+ * Makes the main app target depend on `targetName` explicitly, as Xcode's own
+ * watch app template does, so building a watchOS target inside an iOS archive
+ * doesn't rest on the scheme inferring that dependency across platforms.
+ *
+ * The extensions have no explicit dependency at all, and that's by accident:
+ * addTarget() asks for one, but addTargetDependency only writes into the
+ * PBXTargetDependency and PBXContainerItemProxy sections if they already exist,
+ * and Expo's template has neither, so the call does nothing and the extensions
+ * build on the scheme's "find implicit dependencies" (it sees their products in
+ * a copy phase). Creating those sections is what this has to do, and once they
+ * exist every later addTarget() call starts writing a dependency too. Since
+ * Expo runs the last-registered plugin's mod first, doing it inside
+ * withXcodeProject would quietly rewire every extension added after it. So it
+ * runs as a finalized mod, after every target has been added and the project
+ * written, and re-reads the project from disk. Re-running prebuild doesn't add
+ * a second dependency.
+ */
+function withExplicitTargetDependency(config, targetName) {
+  return withFinalizedMod(config, [
+    'ios',
+    async mod => {
+      const project = IOSConfig.XcodeUtils.getPbxproj(mod.modRequest.projectRoot);
+      const targetKey = findTargetKey(project, targetName);
+      if (!targetKey) return mod;
+
+      const objects = project.hash.project.objects;
+      const alreadyDepends = Object.values(objects.PBXTargetDependency ?? {}).some(
+        dependency => typeof dependency === 'object' && dependency.target === targetKey
+      );
+      if (alreadyDepends) return mod;
+
+      objects.PBXTargetDependency = objects.PBXTargetDependency ?? {};
+      objects.PBXContainerItemProxy = objects.PBXContainerItemProxy ?? {};
+      project.addTargetDependency(project.getFirstTarget().uuid, [targetKey]);
+      fs.writeFileSync(project.filepath, project.writeSync());
+      return mod;
+    },
+  ]);
+}
+
+module.exports = {
+  addAppExtensionTarget,
+  addWatchAppTarget,
+  findExistingTarget,
+  withExplicitTargetDependency,
+  DEVELOPMENT_TEAM,
+};
