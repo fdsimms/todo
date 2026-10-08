@@ -1,0 +1,1 @@
+{ "message": "A count that depends on an answer, like {trip type = Camping ? 2 : 4}, now works when the question allows more than one answer: it applies if any picked answer matches.", "date": "2026-10-08" }
