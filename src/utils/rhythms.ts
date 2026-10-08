@@ -58,6 +58,14 @@ export const MIN_SAMPLES = 3;
 // something other than what it's labelled. At 3 samples this means all 3.
 const MAJORITY_RATIO = 0.6;
 
+// Completions this close together are one stretch of activity, not several. A
+// morning routine of ten supplement checkboxes ticked in five minutes is one
+// moment of the day, and counting it as ten made it the peak of every chart.
+// Measured from the first completion of the run rather than chained from the
+// previous one, so a long afternoon of tasks each a few minutes apart still
+// counts as work spread across that afternoon.
+const BURST_WINDOW_MS = 10 * 60 * 1000;
+
 // There is deliberately no "quietest stretch" counterpart to the peak. The
 // emptiest window inside the active span is always the run-up to bedtime — it
 // reported 8–11pm on every realistic profile tried, never the afternoon dip it
@@ -119,7 +127,7 @@ export interface HourRange {
 }
 
 export interface RhythmProfile {
-  /** Completions per clock hour, index 0–23. */
+  /** Stretches of activity per clock hour, index 0–23 (see BURST_WINDOW_MS). */
   byHour: number[];
   /** Completions per logical weekday, index 0 = Sunday. */
   byWeekday: number[];
@@ -129,7 +137,7 @@ export interface RhythmProfile {
   peakRange: HourRange | null;
   /** The part of the day the most gets finished in, or null below MIN_SAMPLES. */
   peakSegment: TimeOfDay | null;
-  /** How many completions the profile was built from. */
+  /** How many stretches of activity the profile was built from. */
   sampleCount: number;
 }
 
@@ -155,6 +163,23 @@ function completionsOf(tasks: readonly Task[], options: RhythmOptions): Date[] {
     if (Number.isNaN(at.getTime())) continue;
     if (cutoff && at < cutoff) continue;
     out.push(at);
+  }
+  return out;
+}
+
+/**
+ * Collapses each run of completions that starts within BURST_WINDOW_MS of its
+ * first into that first completion. Input order doesn't matter.
+ */
+function collapseBursts(completions: readonly Date[]): Date[] {
+  const sorted = [...completions].sort((a, b) => a.getTime() - b.getTime());
+  const out: Date[] = [];
+  let runStart = -Infinity;
+  for (const at of sorted) {
+    if (at.getTime() - runStart > BURST_WINDOW_MS) {
+      out.push(at);
+      runStart = at.getTime();
+    }
   }
   return out;
 }
@@ -186,7 +211,7 @@ export function buildRhythmProfile(tasks: readonly Task[], options: RhythmOption
   const byWeekday = new Array<number>(7).fill(0);
   const bySegment = emptySegmentCounts();
 
-  const completions = completionsOf(tasks, options);
+  const completions = collapseBursts(completionsOf(tasks, options));
   for (const at of completions) {
     byHour[at.getHours()]++;
     byWeekday[logicalDayStart(at, dayResetTime).getDay()]++;
