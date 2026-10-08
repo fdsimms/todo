@@ -24,7 +24,7 @@ import {
   toggleAnswer,
   displayOptions,
 } from '../utils/templateQuestions';
-import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree } from '../utils/templateUtils';
+import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree, substitutePlaceholders } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateItem, TemplateQuestion } from '../types';
 
 const makeQuestion = (overrides: Partial<TemplateQuestion> = {}): TemplateQuestion => ({
@@ -515,7 +515,17 @@ describe('a question that takes several answers', () => {
 
   it('fills a title with the picks joined, never the stored JSON', () => {
     const answers = { [trip.id]: encodeAnswerValues(['Work', 'Beach']) };
-    expect(placeholderValuesFor([trip], answers)).toEqual({ 'trip type': 'Work, Beach' });
+    expect(substitutePlaceholders('Packing for {trip type}', placeholderValuesFor([trip], answers))).toBe('Packing for Work, Beach');
+    // One pick reads as itself.
+    expect(substitutePlaceholders('{trip type}', { 'trip type': encodeAnswerValues(['Work']) })).toBe('Work');
+  });
+
+  it('lets a count switch match any pick', () => {
+    const values = (picks: string[]) => placeholderValuesFor([trip], { [trip.id]: encodeAnswerValues(picks) });
+    const token = 'Pack {trip type = camping ? 2 : 4} layers';
+    expect(substitutePlaceholders(token, values(['Beach', 'Camping']))).toBe('Pack 2 layers');
+    expect(substitutePlaceholders(token, values(['Camping']))).toBe('Pack 2 layers');
+    expect(substitutePlaceholders(token, values(['Work', 'Beach']))).toBe('Pack 4 layers');
   });
 
   it('is only ever a choice, and survives normalizing', () => {

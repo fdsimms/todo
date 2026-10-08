@@ -98,9 +98,11 @@ beside it.
     untouched and falls back to the first option (`resolveAnswers`), so letting the last one go would
     look like a dead tap or quietly select something else. Same default rule as a single choice.
   - **A title shows the picks joined with ", "** (`placeholderValuesFor`), never the stored JSON.
-  - **A `{x = Yes ? a : b}` switch on one matches only when that option is the single pick.** The
-    token compares the whole answer text, and joining on a comma would be ambiguous with options that
-    hold one. A switch on a multi-answer question is better written as conditions.
+  - **A `{x = Camping ? a : b}` switch matches any pick.** A multi-answer choice reaches the
+    placeholder engine in its stored form, and `readBlank` (`templateUtils`) decides how to read it: a
+    title gets the picks joined, a switch gets them as a set. A hand-typed blank that happens to be a
+    JSON array of strings reads the same way, the price of not threading a second map through every
+    substitution.
   - Over MCP the answer is the picks joined with commas (`apply_template`), and `multiple` rides
     `create_template`/`update_template` like any question field.
 - **A Yes/No pair is always shown Yes, then No** (`displayOptions`). The first option is the default,

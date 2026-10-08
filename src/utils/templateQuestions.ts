@@ -23,7 +23,9 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateQuestion } from '../types';
 import type { ApplyTreeNode, TemplateAnchors } from './templateUtils';
-import { placeholderKey } from './templateUtils';
+import { placeholderKey, answerValues, encodeAnswerValues } from './templateUtils';
+
+export { answerValues, encodeAnswerValues };
 
 /**
  * Every question asked by a run of this tree, in the order it should be shown:
@@ -145,41 +147,12 @@ export function placeholderValuesFor(
     // apply sheet doesn't also ask for it as an undeclared blank.
     const key = placeholderKey(question.name);
     if (key in values) continue;
-    const raw = answers[question.id] ?? '';
-    // A multi-answer choice reads as its picks in a title ("Outdoors, Camping"),
-    // never as the JSON it is stored as.
-    values[key] = question.kind === 'choice' && question.multiple ? answerValues(raw).join(', ') : raw;
+    // A multi-answer choice stays in its stored form: the placeholder engine
+    // reads it as the picks joined in a title ("Outdoors, Camping") and as a
+    // set for a `{x = Camping ? …}` switch (see readBlank in templateUtils).
+    values[key] = answers[question.id] ?? '';
   }
   return values;
-}
-
-/**
- * The answers a stored answer string holds. A multi-answer choice stores a JSON
- * array of its picked options (the way a 'people' answer stores ids, so the
- * answer model stays one string per question); every other answer is the one
- * value, or none when it is empty.
- *
- * Takes the string alone, not the question, so `applyItemVariant` (which only
- * has answers by id) can match without the question list. Never throws: a
- * single-answer option that merely starts with `[` and isn't a JSON array of
- * strings reads as itself.
- */
-export function answerValues(raw: string): string[] {
-  if (!raw) return [];
-  if (raw.startsWith('[')) {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.every(v => typeof v === 'string')) return parsed;
-    } catch {
-      // Not an encoded set: the option's own text.
-    }
-  }
-  return [raw];
-}
-
-/** The reverse of `answerValues` for a multi-answer choice. Empty when nothing is picked. */
-export function encodeAnswerValues(values: readonly string[]): string {
-  return values.length > 0 ? JSON.stringify(values) : '';
 }
 
 /**
