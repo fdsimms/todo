@@ -27,10 +27,10 @@ import {
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { useShallow } from 'zustand/react/shallow';
+import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
@@ -387,6 +387,13 @@ function databaseCandidate(key: string, label: string, panel: FoodNutrition): Ca
   };
 }
 
+// What the store bindings read before the sheet has ever opened.
+const NO_ITEMS: GroceryItem[] = [];
+const NO_PRODUCTS: ItemProduct[] = [];
+const NO_AISLES: string[] = [];
+const NO_RECIPES: Recipe[] = [];
+const NO_SUBS: ItemSubLink[] = [];
+
 export function FoodLogEntrySheet({
   visible, slot, at, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, canEstimate, onScan, onSavedMeal, onDeclineMeal,
   overlays, ref,
@@ -409,10 +416,14 @@ export function FoodLogEntrySheet({
   const pendingBurstFocus = useRef(false);
 
   // ==== store bindings ====
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
-  const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
-  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Read only while the sheet is open. It is mounted for the life of the app
+  // (and twice more on the food log), and everything it offers is built from
+  // these: every grocery or recipe write anywhere rebuilt that list, with
+  // nutrition worked out for every recipe, under a sheet nobody had open.
+  const items = useStoreWhileOpen(useGroceryStore, visible, s => s.items, NO_ITEMS);
+  const itemProducts = useStoreWhileOpen(useGroceryStore, visible, s => s.itemProducts, NO_PRODUCTS);
+  const nonFoodAisles = useStoreWhileOpen(useGroceryStore, visible, s => s.nonFoodAisles, NO_AISLES);
+  const recipes = useStoreWhileOpen(useRecipeStore, visible, s => s.recipes, NO_RECIPES);
   // Every recipe, not just the one being logged: a composed dish measures its
   // components through this map, and `recipeNutrition`'s default (a map of the
   // outer recipe alone) silently dropped everything they contribute. The same
@@ -421,7 +432,7 @@ export function FoodLogEntrySheet({
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   // "Always use oat milk for milk", so a dish logs as the recipe page's
   // nutrition row reads it rather than as written. See standingSwaps.ts.
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemSubs = useStoreWhileOpen(useGroceryStore, visible, s => s.itemSubs, NO_SUBS);
   const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
   const addEntry = useFoodLogStore(s => s.addEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);

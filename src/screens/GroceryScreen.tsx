@@ -97,6 +97,7 @@ import { groceriesLinkUrl } from '../utils/deepLinks';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
+import { LazySheet } from '../components/LazySheet';
 
 /** The collapse and scroll key of one store's section in the store lens. */
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
@@ -1816,14 +1817,20 @@ export function GroceryScreen() {
         />
       )}
 
-      <GroceryAddSheet
-        visible={addOpen}
-        onClose={closeAdd}
-        seedAisle={addSeedAisle}
-        onAdded={handleItemsAdded}
-      />
-      <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
-      <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
+      <LazySheet open={addOpen}>
+        <GroceryAddSheet
+          visible={addOpen}
+          onClose={closeAdd}
+          seedAisle={addSeedAisle}
+          onAdded={handleItemsAdded}
+        />
+      </LazySheet>
+      <LazySheet open={catalogOpen}>
+        <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
+      </LazySheet>
+      <LazySheet open={aislesOpen}>
+        <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
+      </LazySheet>
       <ScreenSettingsSheet
         {...screenSettings.sheet}
         extraRows={[{
@@ -1833,94 +1840,112 @@ export function GroceryScreen() {
           onPress: () => setAislesOpen(true),
         }]}
       />
-      <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />
+      <LazySheet open={listSheetOpen}>
+        <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />
+      </LazySheet>
 
-      <FinishShoppingSheet
-        visible={finishOpen}
-        checkedCount={checkedCount}
-        leftover={leftover}
-        purchased={purchased}
-        away={away}
-        seedShopId={receiptSeed?.shopId}
-        seedPriceText={receiptSeed?.priceText}
-        seedPurchasedAt={receiptSeed?.purchasedAt}
-        seedStamp={receiptSeed?.stamp}
-        seedFrozenIds={scanFrozenIds}
-        // Gated for the reason the list's own button is: with neither a key
-        // nor an on-device read, the action opens a sheet that can only
-        // apologise.
-        onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
-          ? () => openReceipt('finish')
-          : undefined}
-        onClose={() => {
-          setFinishOpen(false);
-          setReceiptSeed(null);
-        }}
-        onFinished={handleFinished}
-        overlays={shownReceiptHost === 'finish' ? receiptSheet : null}
-      />
-      <BarcodeScanSheet
-        visible={scanOpen}
-        context="shopping"
-        onClose={() => setScanOpen(false)}
-        onApply={handleScanApply}
-      />
+      <LazySheet open={finishOpen}>
+        <FinishShoppingSheet
+          visible={finishOpen}
+          checkedCount={checkedCount}
+          leftover={leftover}
+          purchased={purchased}
+          away={away}
+          seedShopId={receiptSeed?.shopId}
+          seedPriceText={receiptSeed?.priceText}
+          seedPurchasedAt={receiptSeed?.purchasedAt}
+          seedStamp={receiptSeed?.stamp}
+          seedFrozenIds={scanFrozenIds}
+          // Gated for the reason the list's own button is: with neither a key
+          // nor an on-device read, the action opens a sheet that can only
+          // apologise.
+          onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
+            ? () => openReceipt('finish')
+            : undefined}
+          onClose={() => {
+            setFinishOpen(false);
+            setReceiptSeed(null);
+          }}
+          onFinished={handleFinished}
+          overlays={shownReceiptHost === 'finish' ? receiptSheet : null}
+        />
+      </LazySheet>
+      <LazySheet open={scanOpen}>
+        <BarcodeScanSheet
+          visible={scanOpen}
+          context="shopping"
+          onClose={() => setScanOpen(false)}
+          onApply={handleScanApply}
+        />
+      </LazySheet>
 
       {/* Only when it was opened from the list. Raised from the finish sheet
           it renders inside that sheet instead — see `receiptHost`. */}
       {shownReceiptHost === 'list' && receiptSheet}
-      <ShoppingTripSheet
-        visible={tripOpen}
-        onClose={() => setTripOpen(false)}
-        onCreate={createGroceryTasks}
-        onStart={handleStartTrip}
-        intent="start"
-      />
-      <SubstituteSheet
-        visible={substitutesForId !== null}
-        itemId={substitutesForId}
-        onSwap={subId => {
-          if (substitutesForId) handleSwapForSubstitute(substitutesForId, subId);
-        }}
-        onClose={() => setSubstitutesForId(null)}
-      />
-      <GroceryItemSheet
-        visible={editingId !== null}
-        itemId={editingId}
-        onClose={() => setEditingId(null)}
-        onOpenRecipe={recipeId => {
-          setEditingId(null);
-          openRecipe(recipeId);
-        }}
-        onOpenSettings={entryId => {
-          setEditingId(null);
-          navigateToFoodSearchSettings(navigation, entryId);
-        }}
-        recipeExists={recipeId => recipeIds.has(recipeId)}
-      />
-      <GroceryAISheet
-        visible={aiMode !== null}
-        mode={aiMode ?? 'tidy'}
-        onClose={() => setAiMode(null)}
-      />
-      <RecipeSourceSheet
-        visible={recipeSourceOpen}
-        allowAIImport={canImportRecipe}
-        onPickSaved={recipe => {
-          setRecipeSourceOpen(false);
-          setRecipeToAdd(recipe);
-        }}
-        onImportWithAI={() => {
-          setRecipeSourceOpen(false);
-          setAiMode('recipe');
-        }}
-        onClose={() => setRecipeSourceOpen(false)}
-      />
-      <RecipeToListSheet
-        visible={recipeToAdd !== null}
-        recipe={recipeToAdd}
-        onClose={() => setRecipeToAdd(null)}
-      />
+      <LazySheet open={tripOpen}>
+        <ShoppingTripSheet
+          visible={tripOpen}
+          onClose={() => setTripOpen(false)}
+          onCreate={createGroceryTasks}
+          onStart={handleStartTrip}
+          intent="start"
+        />
+      </LazySheet>
+      <LazySheet open={substitutesForId !== null}>
+        <SubstituteSheet
+          visible={substitutesForId !== null}
+          itemId={substitutesForId}
+          onSwap={subId => {
+            if (substitutesForId) handleSwapForSubstitute(substitutesForId, subId);
+          }}
+          onClose={() => setSubstitutesForId(null)}
+        />
+      </LazySheet>
+      <LazySheet open={editingId !== null}>
+        <GroceryItemSheet
+          visible={editingId !== null}
+          itemId={editingId}
+          onClose={() => setEditingId(null)}
+          onOpenRecipe={recipeId => {
+            setEditingId(null);
+            openRecipe(recipeId);
+          }}
+          onOpenSettings={entryId => {
+            setEditingId(null);
+            navigateToFoodSearchSettings(navigation, entryId);
+          }}
+          recipeExists={recipeId => recipeIds.has(recipeId)}
+        />
+      </LazySheet>
+      <LazySheet open={aiMode !== null}>
+        <GroceryAISheet
+          visible={aiMode !== null}
+          mode={aiMode ?? 'tidy'}
+          onClose={() => setAiMode(null)}
+        />
+      </LazySheet>
+      <LazySheet open={recipeSourceOpen}>
+        <RecipeSourceSheet
+          visible={recipeSourceOpen}
+          allowAIImport={canImportRecipe}
+          onPickSaved={recipe => {
+            setRecipeSourceOpen(false);
+            setRecipeToAdd(recipe);
+          }}
+          onImportWithAI={() => {
+            setRecipeSourceOpen(false);
+            setAiMode('recipe');
+          }}
+          onClose={() => setRecipeSourceOpen(false)}
+        />
+      </LazySheet>
+      <LazySheet open={recipeToAdd !== null}>
+        <RecipeToListSheet
+          visible={recipeToAdd !== null}
+          recipe={recipeToAdd}
+          onClose={() => setRecipeToAdd(null)}
+        />
+      </LazySheet>
     </View>
   );
 }

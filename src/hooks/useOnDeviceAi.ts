@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { onDeviceAvailability, type OnDeviceAvailability } from '../services/onDeviceModel';
@@ -20,19 +20,51 @@ import type { AiFeatureId } from '../utils/aiFeatures';
  * version, which doesn't change while the app is open.
  */
 export function useOnDeviceAvailability(): OnDeviceAvailability {
-  const [state, setState] = useState<OnDeviceAvailability>(() => onDeviceAvailability());
+  return useSyncExternalStore(subscribeAvailability, readAvailability);
+}
 
-  const refresh = useCallback(() => setState(onDeviceAvailability()), []);
+/**
+ * One answer shared by every caller, rather than one per hook.
+ *
+ * Each instance used to ask the device on mount and keep its own listener, and
+ * a screen holds several (Groceries, with its sheets, about six), so every
+ * return to that tab, which re-runs the tab's effects, made that many native
+ * calls for one answer. Now a mount asks only once the shared answer is a few
+ * seconds old, which still catches a model that finished downloading while the
+ * app was open, and one listener re-reads it on every return to the foreground.
+ */
+const AVAILABILITY_FRESH_MS = 5_000;
+let availability: { state: OnDeviceAvailability; readAt: number } | null = null;
+const availabilityListeners = new Set<() => void>();
+let foregroundSub: { remove: () => void } | null = null;
 
-  useEffect(() => {
-    refresh();
-    const sub = AppState.addEventListener('change', s => {
-      if (s === 'active') refresh();
+function readAvailability(): OnDeviceAvailability {
+  if (!availability) availability = { state: onDeviceAvailability(), readAt: Date.now() };
+  return availability.state;
+}
+
+function refreshAvailability() {
+  const state = onDeviceAvailability();
+  const changed = availability?.state !== state;
+  availability = { state, readAt: Date.now() };
+  if (changed) availabilityListeners.forEach(fn => fn());
+}
+
+function subscribeAvailability(onChange: () => void): () => void {
+  availabilityListeners.add(onChange);
+  if (!foregroundSub) {
+    foregroundSub = AppState.addEventListener('change', s => {
+      if (s === 'active') refreshAvailability();
     });
-    return () => sub.remove();
-  }, [refresh]);
-
-  return state;
+  }
+  if (!availability || Date.now() - availability.readAt > AVAILABILITY_FRESH_MS) refreshAvailability();
+  return () => {
+    availabilityListeners.delete(onChange);
+    if (availabilityListeners.size === 0) {
+      foregroundSub?.remove();
+      foregroundSub = null;
+    }
+  };
 }
 
 /**

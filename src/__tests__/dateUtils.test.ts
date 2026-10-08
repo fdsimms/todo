@@ -1,3 +1,4 @@
+import { format } from 'date-fns/format';
 import {
   getDayStart,
   formatDeadlineDate,
@@ -1683,6 +1684,28 @@ describe('dayKeyOf', () => {
   it('is the local calendar day, zero-padded', () => {
     expect(dayKeyOf(new Date(2026, 7, 5))).toBe('2026-08-05');
     expect(dayKeyOf(new Date(2026, 11, 31))).toBe('2026-12-31');
+  });
+
+  // It builds the key itself rather than calling date-fns `format`, for speed,
+  // so it has to give `format`'s answer for every moment of every day.
+  it("matches date-fns format('yyyy-MM-dd') across years, months, days and hours", () => {
+    for (let year = 1999; year <= 2031; year += 4) {
+      for (let month = 0; month < 12; month++) {
+        for (const day of [1, 9, 10, 28, 29, 30, 31]) {
+          for (const hour of [0, 1, 2, 3, 12, 23]) {
+            const date = new Date(year, month, day, hour, 30);
+            expect(dayKeyOf(date)).toBe(format(date, 'yyyy-MM-dd'));
+          }
+        }
+      }
+    }
+  });
+
+  it('hands a year outside four digits, and an invalid date, to format', () => {
+    const early = new Date(2026, 0, 2);
+    early.setFullYear(812);
+    expect(dayKeyOf(early)).toBe(format(early, 'yyyy-MM-dd'));
+    expect(() => dayKeyOf(new Date(NaN))).toThrow(RangeError);
   });
 
   // Zero-padding is what lets a range read be a plain `date >= ? AND date <= ?`

@@ -185,6 +185,14 @@ describe('refreshHistory and refreshWeight', () => {
     expect(useHealthStore.getState().sleepNights).toEqual([]);
   });
 
+  // The Mood screen reads this on every return to it.
+  it('keeps the window it holds when a re-read finds the same days', async () => {
+    await useHealthStore.getState().refreshHistory();
+    const held = useHealthStore.getState().history;
+    await useHealthStore.getState().refreshHistory();
+    expect(useHealthStore.getState().history).toBe(held);
+  });
+
   it('skips a reading whose instant cannot be read', async () => {
     bridge.readDailyHealth.mockResolvedValue([reading({ start: 'not a date' })]);
     await useHealthStore.getState().refreshHistory();

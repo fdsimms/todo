@@ -466,15 +466,28 @@ export function LogbookScreen() {
   };
 
   const sections = useMemo((): LogbookSection[] => {
-    const sorted = [...filteredTasks].sort(
-      (a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime()
-    );
+    // Each completion's instant parsed once up front, rather than twice per
+    // comparison inside the sort: this is every completion there has ever
+    // been, and it re-runs on every return to the Logbook after a task write.
+    const sorted = filteredTasks
+      .map(task => ({ task, at: Date.parse(task.completedAt!) }))
+      .sort((a, b) => b.at - a.at);
 
+    // Newest first, so a row belongs to the day of the row before it for as
+    // long as it falls at or after that day's start. The day key is worked out
+    // once per day rather than once per row.
     const grouped = new Map<string, Task[]>();
-    sorted.forEach(task => {
-      const key = getLogicalDayKey(new Date(task.completedAt!), dayResetTime);
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(task);
+    let dayStart = Infinity;
+    let rows: Task[] = [];
+    sorted.forEach(({ task, at }) => {
+      if (!(at >= dayStart)) {
+        const date = new Date(at);
+        const key = getLogicalDayKey(date, dayResetTime);
+        dayStart = getDayStart(date, dayResetTime).getTime();
+        rows = grouped.get(key) ?? [];
+        grouped.set(key, rows);
+      }
+      rows.push(task);
     });
 
     return Array.from(grouped.entries()).map(([dateKey, data]) => ({

@@ -51,7 +51,8 @@ import {
   type DayWeight,
 } from '../utils/dayLoad';
 import { useCalendarStore } from '../store/useCalendarStore';
-import { useMealPlanStore } from '../store/useMealPlanStore';
+import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
+import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
@@ -71,6 +72,7 @@ import {
   tripBandLanes,
   type DayExtras,
 } from '../utils/calendarExtras';
+import { LazySheet } from '../components/LazySheet';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
@@ -205,15 +207,17 @@ export function CalendarScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  // Stable, so the memoized editor isn't re-rendered by every render here.
+  const closeEditor = useCallback(() => {
+    setEditorVisible(false);
+    setExpandedTaskId(null);
+    setEditorInitialDraft(null);
+  }, []);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [draggingSubtask, setDraggingSubtask] = useState(false);
 
   // Collapse an expanded row on the way out, so it isn't still open on return.
   useFocusEffect(useCallback(() => () => setExpandedTaskId(null), []));
-  // Bumped on every focus, so a read that goes past a store to SQLite (the
-  // day's meals, below) is taken again after another screen may have written.
-  const [focusCount, setFocusCount] = useState(0);
-  useFocusEffect(useCallback(() => { setFocusCount(n => n + 1); }, []));
 
   const use24Hour = useSettingsStore(s => s.use24HourTime);
   // Subscribed only so a meal edited in the loaded window redraws; the grid's
@@ -255,16 +259,29 @@ export function CalendarScreen() {
    * Built one day wider on each side than the grid, so the first and last
    * rows can tell whether a trip band carries on past them. The meals come
    * through the range read, never the loaded window alone, which is only the
-   * week Meal Plan last opened; `mealEntries` and `focusCount` aren't read,
-   * they're what tells the memo to read again.
+   * week Meal Plan last opened.
    */
-  const extras = useMemo(() => {
-    const wide = [addDays(days[0], -1), ...days, addDays(days[days.length - 1], 1)];
-    const meals = kitchenEnabled
-      ? entriesInRangeLive(dayKeyOf(wide[0]), dayKeyOf(wide[wide.length - 1]))
-      : [];
-    return buildDayExtras(wide, { trips, meals, people, projects, tasks: allTasks, dayResetTime });
-  }, [days, kitchenEnabled, entriesInRangeLive, mealEntries, focusCount, trips, people, projects, allTasks, dayResetTime]);
+  const wideDays = useMemo(
+    () => [addDays(days[0], -1), ...days, addDays(days[days.length - 1], 1)],
+    [days],
+  );
+  // A read that goes past a store to SQLite, so it is taken again on each
+  // focus, after another screen may have written; it stays the same array
+  // while it finds the same rows, so the extras below aren't rebuilt over
+  // every task for meals that didn't change (see useFocusRefreshedRead).
+  // `mealEntries` isn't read: it is what tells the read to run again when a
+  // meal in the meal plan's loaded week is edited.
+  const gridMeals = useFocusRefreshedRead(
+    () => (kitchenEnabled
+      ? entriesInRangeLive(dayKeyOf(wideDays[0]), dayKeyOf(wideDays[wideDays.length - 1]))
+      : NO_MEALS),
+    [wideDays, kitchenEnabled, entriesInRangeLive, mealEntries],
+    sameMealPlanEntries,
+  );
+  const extras = useMemo(
+    () => buildDayExtras(wideDays, { trips, meals: gridMeals, people, projects, tasks: allTasks, dayResetTime }),
+    [wideDays, gridMeals, trips, people, projects, allTasks, dayResetTime],
+  );
   const selectedExtras = extras.get(selectedKey);
   const detail = useMemo(() => dayDetail(buckets.get(selectedKey), taskById), [buckets, selectedKey, taskById]);
   const summary = summarizeDay(detail);
@@ -1244,51 +1261,55 @@ export function CalendarScreen() {
         visible={editorVisible}
         task={editingTask}
         initialDraft={editorInitialDraft}
-        onClose={() => {
-          setEditorVisible(false);
-          setExpandedTaskId(null);
-          setEditorInitialDraft(null);
-        }}
+        onClose={closeEditor}
       />
 
-      <QuickAddModal
-        visible={quickAddVisible}
-        onClose={onQuickAddClose}
-        onOpenFull={onQuickAddOpenFull}
-        seed={quickAddSeed}
-        seedLabel={quickAddTime
-          ? `${format(selectedDate, 'MMM d')}, ${formatTimeOfDay(hhmmToDate(quickAddTime, selectedDate), use24Hour)}`
-          : format(selectedDate, 'MMM d')}
-      />
+      <LazySheet open={quickAddVisible}>
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          seed={quickAddSeed}
+          seedLabel={quickAddTime
+            ? `${format(selectedDate, 'MMM d')}, ${formatTimeOfDay(hhmmToDate(quickAddTime, selectedDate), use24Hour)}`
+            : format(selectedDate, 'MMM d')}
+        />
+      </LazySheet>
 
-      <QuickEventSheet
-        visible={newEventVisible}
-        onClose={() => setNewEventVisible(false)}
-        seed={newEventSeed ?? { day: dayKeyToDate(selectedKey) }}
-      />
-      <TimeSlotMenu
-        visible={slotMenuOpen}
-        at={slotMenu?.at ?? null}
-        anchor={slotMenu?.anchor ?? null}
-        use24Hour={use24Hour}
-        canAddEvent={!isDemoModeActive()}
-        onClose={() => setSlotMenuOpen(false)}
-        onNewTask={at => { setQuickAddTime(dateToHHMM(at)); setQuickAddVisible(true); }}
-        onNewEvent={at => {
-          // An hour, the length a calendar app gives a new event by default;
-          // the card's own fields change it.
-          setNewEventSeed({ start: at, end: new Date(at.getTime() + 60 * 60000) });
-          setNewEventVisible(true);
-        }}
-      />
-      <TodayEventsSheet
-        visible={eventsSheetVisible}
-        onClose={() => setEventsSheetVisible(false)}
-        events={dayEvents}
-        calendarsById={eventCalendarTags}
-        title={format(dayKeyToDate(selectedKey), 'EEEE, MMM d')}
-        day={dayKeyToDate(selectedKey)}
-      />
+      <LazySheet open={newEventVisible}>
+        <QuickEventSheet
+          visible={newEventVisible}
+          onClose={() => setNewEventVisible(false)}
+          seed={newEventSeed ?? { day: dayKeyToDate(selectedKey) }}
+        />
+      </LazySheet>
+      <LazySheet open={slotMenuOpen}>
+        <TimeSlotMenu
+          visible={slotMenuOpen}
+          at={slotMenu?.at ?? null}
+          anchor={slotMenu?.anchor ?? null}
+          use24Hour={use24Hour}
+          canAddEvent={!isDemoModeActive()}
+          onClose={() => setSlotMenuOpen(false)}
+          onNewTask={at => { setQuickAddTime(dateToHHMM(at)); setQuickAddVisible(true); }}
+          onNewEvent={at => {
+            // An hour, the length a calendar app gives a new event by default;
+            // the card's own fields change it.
+            setNewEventSeed({ start: at, end: new Date(at.getTime() + 60 * 60000) });
+            setNewEventVisible(true);
+          }}
+        />
+      </LazySheet>
+      <LazySheet open={eventsSheetVisible}>
+        <TodayEventsSheet
+          visible={eventsSheetVisible}
+          onClose={() => setEventsSheetVisible(false)}
+          events={dayEvents}
+          calendarsById={eventCalendarTags}
+          title={format(dayKeyToDate(selectedKey), 'EEEE, MMM d')}
+          day={dayKeyToDate(selectedKey)}
+        />
+      </LazySheet>
     </View>
   );
 }

@@ -12024,6 +12024,50 @@ describe('allTags', () => {
     useTaskStore.setState({ tasks: [makeTask({ tags: [] })] });
     expect(useTaskStore.getState().allTags()).toEqual([]);
   });
+
+  // Several always-mounted sheets ask for this on every store write, so it is
+  // kept until the tasks or the registry change, and handed back as the same
+  // array (a shallow compare of it is then one identity check).
+  it('answers the same array until the tasks or the registry change', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', tags: ['work'] })], tagRegistry: [] });
+    const first = useTaskStore.getState().allTags();
+    expect(useTaskStore.getState().allTags()).toBe(first);
+
+    useTaskStore.setState(s => ({ tasks: [...s.tasks, makeTask({ id: 'b', tags: ['home'] })] }));
+    expect(useTaskStore.getState().allTags()).toEqual(['home', 'work']);
+
+    useTaskStore.setState({ tagRegistry: ['errand'] });
+    expect(useTaskStore.getState().allTags()).toEqual(['errand', 'home', 'work']);
+  });
+});
+
+describe('allCategories and completedTasks, kept per input', () => {
+  it('allCategories answers the same array until the tasks or the categories change', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', category: 'Chores' })] });
+    const first = useTaskStore.getState().allCategories();
+    expect(useTaskStore.getState().allCategories()).toBe(first);
+
+    useTaskStore.setState(s => ({ tasks: [...s.tasks, makeTask({ id: 'b', category: 'Garden' })] }));
+    expect(useTaskStore.getState().allCategories()).not.toBe(first);
+    expect(useTaskStore.getState().allCategories()).toEqual(expect.arrayContaining(['Chores', 'Garden']));
+  });
+
+  it('completedTasks answers the same array until the tasks change', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2026-01-01T10:00:00.000Z' }),
+        makeTask({ id: 'b' }),
+      ],
+    });
+    const first = useTaskStore.getState().completedTasks();
+    expect(first.map(t => t.id)).toEqual(['a']);
+    expect(useTaskStore.getState().completedTasks()).toBe(first);
+
+    useTaskStore.setState(s => ({
+      tasks: s.tasks.map(t => (t.id === 'b' ? { ...t, completed: true, completedAt: '2026-01-02T10:00:00.000Z' } : t)),
+    }));
+    expect(useTaskStore.getState().completedTasks().map(t => t.id)).toEqual(['a', 'b']);
+  });
 });
 
 describe('tasksByTag', () => {

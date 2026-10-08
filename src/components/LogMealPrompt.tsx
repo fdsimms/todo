@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
-import { useShallow } from 'zustand/react/shallow';
+import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
+import type { GroceryItem, ItemProduct, ItemSubLink, Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -73,6 +74,12 @@ const MEASURE_OPTIONS: SegmentOption<Measure>[] = [
  * switch doesn't govern it.
  */
 
+// What the catalog reads hold before there has been a meal to ask about.
+const NO_RECIPES: Recipe[] = [];
+const NO_ITEMS: GroceryItem[] = [];
+const NO_PRODUCTS: ItemProduct[] = [];
+const NO_SUBS: ItemSubLink[] = [];
+
 export function LogMealPrompt() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -83,10 +90,14 @@ export function LogMealPrompt() {
   const setLogMeal = useMealPlanStore(s => s.setLogMeal);
   const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
-  const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const items = useGroceryStore(useShallow(s => s.items));
-  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // Read only while there is a meal to ask about: this is mounted for the
+  // life of the app, and the maps below were rebuilt on every grocery and
+  // recipe write with nothing on screen to use them.
+  const asking = pending !== null;
+  const recipes = useStoreWhileOpen(useRecipeStore, asking, s => s.recipes, NO_RECIPES);
+  const items = useStoreWhileOpen(useGroceryStore, asking, s => s.items, NO_ITEMS);
+  const itemProducts = useStoreWhileOpen(useGroceryStore, asking, s => s.itemProducts, NO_PRODUCTS);
+  const itemSubs = useStoreWhileOpen(useGroceryStore, asking, s => s.itemSubs, NO_SUBS);
 
   const [helpings, setHelpings] = useState<number | null>(defaultHelpings());
   const [platedText, setPlatedText] = useState('');

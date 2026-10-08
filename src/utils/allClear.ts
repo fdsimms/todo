@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { getLogicalDayKey } from './dateUtils';
+import { dayKeyToDate, getLogicalDayKey, getTaskDayStart } from './dateUtils';
 import { isRealCompletion } from './missed';
 
 /**
@@ -27,10 +27,17 @@ import { isRealCompletion } from './missed';
  * finished, and anything marked missed rather than done (`isRealCompletion`).
  */
 export function completedOnDay(tasks: Task[], dayKey: string, dayResetTime?: string): Task[] {
+  // Nothing finished before the day started can belong to it (a logical day
+  // never starts later than a later moment's does), so that one comparison
+  // rules out nearly all of history before the day key, which is the
+  // expensive part, is worked out. Today calls this on every task write, over
+  // every completion there has ever been.
+  const dayStart = getTaskDayStart(dayKeyToDate(dayKey), dayResetTime).getTime();
   return tasks.filter(t =>
     !t.parentId
     && isRealCompletion(t)
     && t.completedAt != null
+    && !(Date.parse(t.completedAt) < dayStart)
     && getLogicalDayKey(new Date(t.completedAt), dayResetTime) === dayKey,
   );
 }

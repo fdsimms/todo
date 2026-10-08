@@ -1,4 +1,4 @@
-import { useMealPlanStore } from '../store/useMealPlanStore';
+import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
 import {
   dbGetMealPlanEntries,
   dbInsertMealPlanEntry,
@@ -556,6 +556,38 @@ describe('loadRange', () => {
     useMealPlanStore.getState().loadRange('2026-08-10', '2026-08-16');
 
     expect(getEntries().map(e => e.date)).toEqual(['2026-08-12']);
+  });
+
+  // The screen re-reads its week on every return to it, and the read builds
+  // fresh rows each time; handing those over unchecked re-rendered the week.
+  it('keeps the rows it holds when a re-read of the same week finds the same rows', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+    const held = getEntries();
+
+    loadWeek([{ ...dinner }]);
+    expect(getEntries()).toBe(held);
+  });
+
+  it('takes the re-read when a row changed', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+    const held = getEntries();
+
+    loadWeek([{ ...dinner, title: 'Tacos' }]);
+    expect(getEntries()).not.toBe(held);
+    expect(getEntries()[0].title).toBe('Tacos');
+  });
+});
+
+describe('sameMealPlanEntries', () => {
+  it('compares rows by contents, in order', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-06', 'lunch');
+    expect(sameMealPlanEntries([a, b], [{ ...a }, { ...b }])).toBe(true);
+    expect(sameMealPlanEntries([a, b], [b, a])).toBe(false);
+    expect(sameMealPlanEntries([a], [{ ...a, cookedAt: localIso('2026-08-05T19:00') }])).toBe(false);
+    expect(sameMealPlanEntries([a], [])).toBe(false);
   });
 });
 

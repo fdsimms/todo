@@ -183,19 +183,32 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
   // Bumped whenever a sheet is presented from or dismissed at this sheet's own
   // level, purely to re-run the closing effect below when the sheet above
   // finally goes. The count itself is read from `ownLevel`, not from here.
+  //
+  // Only while this sheet is up: nothing can be presented from a sheet that
+  // isn't (its children aren't even mounted), so a closed one has nothing to
+  // wait for here.
   const [above, setAbove] = useState(0);
-  useEffect(
-    () => subscribePresentation(ownLevel, () => setAbove(n => n + 1)),
-    [ownLevel],
-  );
+  useEffect(() => {
+    if (!shown) return;
+    return subscribePresentation(ownLevel, () => setAbove(n => n + 1));
+  }, [ownLevel, shown]);
 
   // The same, for the level this sheet presents *from*: it wakes the opening
-  // effect below when whatever is standing in this sheet's place goes.
+  // effect below when whatever is standing in this sheet's place goes, and
+  // re-renders a presented sheet so it sees a claim it has to yield to.
+  //
+  // Only while the sheet is wanted or up. Every mounted sheet subscribing here
+  // re-rendered every closed sheet on the screen each time any sheet opened or
+  // closed, which is work landing in the open and close animations of the one
+  // sheet that moved. A closed sheet has no place to wait for and nothing to
+  // yield. Declared ahead of the opening effect below, so a sheet the place
+  // frees for between this commit and its subscription is still caught there.
   const [beside, setBeside] = useState(0);
-  useEffect(
-    () => subscribePresentation(parentLevel, () => setBeside(n => n + 1)),
-    [parentLevel],
-  );
+  const wantsPlace = visible === true || shown;
+  useEffect(() => {
+    if (!wantsPlace) return;
+    return subscribePresentation(parentLevel, () => setBeside(n => n + 1));
+  }, [parentLevel, wantsPlace]);
 
   // The opening edge, taken during render so it lands in this same commit
   // (see above). Legal as a render-phase state adjustment because it is

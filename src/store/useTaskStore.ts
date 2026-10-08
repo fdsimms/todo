@@ -163,7 +163,7 @@ import {
 import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
+import type { Category, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
 import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -257,6 +257,7 @@ import {
   getVisibleAt,
   beginVisibleAtPass,
 } from '../utils/visibilityUtils';
+import { openTasksOf } from '../utils/openTasks';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -1235,6 +1236,14 @@ function schedulePaceUnpin(id: string) {
 // changed, lets useShallow see it as unchanged and break the loop.
 const heldMaskCache = new Map<string, { source: Task; masked: Task }>();
 
+// allTags() and allCategories(), each the answer for one pair of input arrays.
+// Both inputs are replaced rather than mutated on every write, so identity is
+// enough to know the answer still holds. Callers get the same array back, so
+// it must not be mutated.
+let allTagsCache: { registry: string[]; tasks: Task[]; tags: string[] } | null = null;
+let allCategoriesCache: { categories: readonly Category[]; tasks: Task[]; names: string[] } | null = null;
+const completedTasksCache = new WeakMap<Task[], Task[]>();
+
 // Arms (or re-arms) the batched collapse. Called from every completion and
 // whenever an in-flight one is cancelled; while any tap is still playing its
 // animation the timer stays down, and that tap's own completion re-arms it.
@@ -1277,6 +1286,18 @@ function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
     heldMaskCache.set(t.id, { source: t, masked });
     return masked;
   });
+}
+
+// The rows a list lens can show: the open ones, plus any completion still held
+// on screen, masked as open (withHeldCompletions). What every list selector
+// below starts from, in place of the whole array, since each of them is false
+// for a completed row anyway and completed history is most of the array (see
+// openTasksOf). The held rows are kept in their original positions, so a tie
+// in sortOrder still breaks the way it did over the full array.
+function liveListRows(tasks: Task[], heldIds: string[]): Task[] {
+  if (heldIds.length === 0) return openTasksOf(tasks);
+  const held = new Set(heldIds);
+  return withHeldCompletions(tasks.filter(t => !t.completed || held.has(t.id)), heldIds);
 }
 
 // A daily target whose row is still playing out its send-off (see
@@ -9395,7 +9416,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   visibleTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds)
+    return liveListRows(tasks, completionHoldIds)
       .filter(t => !t.parentId && (isTaskVisible(t) || isQuotaHeld(t, quotaHoldIds)))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
@@ -9406,19 +9427,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // the two lists can't both be showing it.
   upcomingTodayTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds)
+    return liveListRows(tasks, completionHoldIds)
       .filter(t => !t.parentId && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   inboxTasks() {
-    return get().tasks
+    return openTasksOf(get().tasks)
       .filter(isInboxTask)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   unscheduledTasks() {
-    return get().tasks
+    return openTasksOf(get().tasks)
       .filter(isUnscheduledTask)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
@@ -9431,7 +9452,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // both are set, matching how the screen files it.
     // With several blockers, the first one still open is the one it's filed under.
     const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? blockerIdsOf(t)[0] ?? t.waitingOnPersonId ?? '';
-    return get().tasks
+    return openTasksOf(get().tasks)
       .filter(isWaitingTask)
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);
   },
@@ -9454,21 +9475,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   deferredTasks() {
     const { tasks, completionHoldIds, quotaHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds)
+    return liveListRows(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskDeferred(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   expiredTasks() {
     const { tasks, completionHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds)
+    return liveListRows(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskExpired(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   vacationHiddenTasks() {
     const { tasks, completionHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds)
+    return liveListRows(tasks, completionHoldIds)
       // isHiddenForVacation alone says *why* a task is hidden, not whether it
       // would otherwise be on Today — isVisibleApartFromVacation is what makes
       // this "what vacation is currently hiding from today" rather than
@@ -9479,7 +9500,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   pinnedTasks() {
     const { tasks, completionHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds)
+    return liveListRows(tasks, completionHoldIds)
       // Pinning overrides the *clock* — a pinned task shows here whether or not
       // it is due today, which is the whole feature. It does not override the
       // one hide that isn't a clock: isVisibleApartFromVacation puts isHeldBack
@@ -9501,11 +9522,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   completedTasks() {
-    return get().tasks.filter(t => !t.parentId && t.completed && t.completedAt);
+    // The Logbook selects this on every store write, and it is most of the
+    // array, so the answer is kept per task array: the same array back means
+    // its useShallow compare is one identity check rather than a walk over
+    // every completion there has ever been.
+    const { tasks } = get();
+    let done = completedTasksCache.get(tasks);
+    if (!done) {
+      done = tasks.filter(t => !t.parentId && t.completed && t.completedAt);
+      completedTasksCache.set(tasks, done);
+    }
+    return done;
   },
 
   archivedTasks() {
-    return get().tasks
+    return openTasksOf(get().tasks)
       .filter(t => !t.parentId && t.archived && !t.completed)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
@@ -9517,9 +9548,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   allTags() {
-    const tagSet = new Set<string>(get().tagRegistry);
-    get().tasks.forEach(t => t.tags.forEach(tag => tagSet.add(tag)));
-    return Array.from(tagSet).sort();
+    const { tagRegistry, tasks } = get();
+    // A full scan of every task, and several always-mounted sheets ask for it
+    // on every store write, so the answer is kept until either input changes.
+    if (allTagsCache && allTagsCache.registry === tagRegistry && allTagsCache.tasks === tasks) {
+      return allTagsCache.tags;
+    }
+    const tagSet = new Set<string>(tagRegistry);
+    tasks.forEach(t => t.tags.forEach(tag => tagSet.add(tag)));
+    const tags = Array.from(tagSet).sort();
+    allTagsCache = { registry: tagRegistry, tasks, tags };
+    return tags;
   },
 
   addTag(tag) {
@@ -9565,13 +9604,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Sorted by sortOrder here (rather than trusting array position) because
     // reorderCategories() only patches each category's sortOrder field in
     // place, it doesn't physically reposition the store's array.
-    const registered = [...useCategoryStore.getState().categories]
+    //
+    // Kept until either input changes, for allTags' reason.
+    const { categories } = useCategoryStore.getState();
+    const { tasks } = get();
+    if (allCategoriesCache && allCategoriesCache.categories === categories && allCategoriesCache.tasks === tasks) {
+      return allCategoriesCache.names;
+    }
+    const registered = [...categories]
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(c => c.name);
     const known = new Set(registered);
     const phantom = new Set<string>();
-    get().tasks.forEach(t => { if (t.category && !known.has(t.category)) phantom.add(t.category); });
-    return [...registered, ...Array.from(phantom).sort()];
+    tasks.forEach(t => { if (t.category && !known.has(t.category)) phantom.add(t.category); });
+    const names = [...registered, ...Array.from(phantom).sort()];
+    allCategoriesCache = { categories, tasks, names };
+    return names;
   },
 
   addCategory(name) {

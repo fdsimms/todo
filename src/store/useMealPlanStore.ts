@@ -778,6 +778,17 @@ interface MealPlanStore extends UndoHistoryActions {
   fillCalendarExternalIds: (found: Readonly<Record<string, string>>) => void;
 }
 
+/**
+ * Whether a re-read of meal plan rows came back with exactly the rows already
+ * held. Compared on whole contents, since screens draw nearly every field; a
+ * row built in memory with its keys in another order merely reads as changed,
+ * which costs the re-render this exists to skip and nothing worse.
+ */
+export function sameMealPlanEntries(held: readonly MealPlanEntry[], read: readonly MealPlanEntry[]): boolean {
+  if (held.length !== read.length) return false;
+  return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
+}
+
 export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   entries: [],
   rangeStart: null,
@@ -827,11 +838,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   },
 
   loadRange(startKey, endKey) {
-    set({
-      entries: sortMealEntries(dbGetMealPlanEntries(startKey, endKey)),
-      rangeStart: startKey,
-      rangeEnd: endKey,
-    });
+    const entries = sortMealEntries(dbGetMealPlanEntries(startKey, endKey));
+    const s = get();
+    // The meal plan calls this on every return to it, and the read allocates
+    // fresh rows each time, so handing those over unchecked re-rendered the
+    // whole week and recomputed everything keyed on it (coverage, cost,
+    // suggestions) when nothing had changed.
+    if (s.rangeStart === startKey && s.rangeEnd === endKey && sameMealPlanEntries(s.entries, entries)) return;
+    set({ entries, rangeStart: startKey, rangeEnd: endKey });
   },
 
   entriesForDayLive(dayKey) {

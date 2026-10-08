@@ -165,7 +165,7 @@ describe('initialize', () => {
   });
 });
 
-describe('loadWindow and loadInsightWindow', () => {
+describe('loadWindow, loadInsightWindow and loadRange', () => {
   const row = (id: string, dayKey: string) => ({ id, dayKey, label: id }) as unknown as FoodLogEntry;
 
   it('keeps the held array when a re-read finds the same rows, so a refocus re-renders nothing', () => {
@@ -192,6 +192,21 @@ describe('loadWindow and loadInsightWindow', () => {
     expect(useFoodLogStore.getState().insightEntries).toHaveLength(2);
     loadInsightWindow('2026-08-02', '2026-08-31');
     expect(useFoodLogStore.getState().insightStart).toBe('2026-08-02');
+  });
+
+  it("holds the day view's rows the same way, since it re-reads them on every return to the food log", () => {
+    mockRows.push(row('a', '2026-08-10') as never);
+    state().loadRange('2026-08-10', '2026-08-10');
+    const held = state().entries;
+    mockRows[0] = { ...mockRows[0] };
+    state().loadRange('2026-08-10', '2026-08-10');
+    expect(state().entries).toBe(held);
+
+    mockRows[0] = { ...mockRows[0], label: 'b' } as never;
+    state().loadRange('2026-08-10', '2026-08-10');
+    expect(state().entries).not.toBe(held);
+    state().loadRange('2026-08-11', '2026-08-11');
+    expect(state().rangeStart).toBe('2026-08-11');
   });
 });
 
