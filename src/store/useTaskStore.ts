@@ -224,6 +224,7 @@ import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFo
 // visibility helper is added to, so one line is a guaranteed conflict.
 import {
   isTaskVisible,
+  isPinnedOnToday,
   isTaskNew,
   isTaskDeferred,
   isUpcomingToday,
@@ -9525,8 +9526,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // It comes back the moment the blocker clears, exactly as that row does.
       // A paused project's task is the other non-clock hide: the pause is the
       // person saying "not until then", which pinning doesn't answer.
-      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !isWithheld(t))
+      //
+      // The one clock gate pinning does not override is a pinEachOccurrence
+      // task, whose pin counts only while its occurrence is visible (see
+      // isPinnedOnToday). Its successor is spawned pinned, so without that gate
+      // a daily task finished today would sit at the top of Today all day.
+      .filter(t => !t.parentId && !t.completed && !t.archived
+        && !isHeldBack(t) && !isWithheld(t) && isPinnedOnToday(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

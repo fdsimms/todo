@@ -45,7 +45,8 @@ exist, which is why the whole feature is a util plus a screen.
 - **Placement, not visibility.** A task shows on its day whether or not it's actionable there —
   vacation-paused, blocked, behind a time segment. The grid answers "what date is this on";
   `isTaskVisible` is Today's question. (Pinning is the opposite call: `pinnedTasks()` ignores the
-  clock gates but does drop blocked, vacation-paused and paused-project tasks.) `windowStart`/`windowEnd`
+  clock gates, except that a pin-each-occurrence pin counts only while its task is visible, and it
+  drops blocked, vacation-paused and paused-project tasks.) `windowStart`/`windowEnd`
   are correspondingly *not* a fourth signal: they're clock times within a day, with no cell to
   land in.
 - **The reset time deliberately doesn't reach the bucketing.** `getTaskDayStart` only moves the
