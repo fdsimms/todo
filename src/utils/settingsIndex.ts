@@ -737,6 +737,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'kitchenEnabled', groupId: 'featureAreas', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
+  // The first-launch questions again. Unflagged like its neighbours: it is the
+  // way back to two of the switches around it.
+  { id: 'firstRunSetup', groupId: 'featureAreas', label: 'Run setup again', section: 'Feature areas',
+    keywords: ['onboarding', 'welcome', 'first run', 'first launch', 'questions', 'wizard', 'start over', 'getting started'] },
   // Coins and rewards. Unflagged for the same reason as the two around it: the
   // switch that brings the feature back can't be hidden by the feature.
   { id: 'rewardsEnabled', groupId: 'featureAreas', label: 'Coins and rewards', section: 'Feature areas',

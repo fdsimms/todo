@@ -89,6 +89,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { categoryLabel } from '../utils/categoryLabel';
+import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
@@ -2182,6 +2183,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setReminderTracksVisibility(tracksVisibility ?? false);
       if (anchor) setReminderTimeAnchor(anchor);
       setReminderTouched(true);
+      // The person just chose a reminder, which is the moment to ask for the
+      // permission it needs if it has never been asked.
+      void askForReminderPermissionIfNeeded();
     }
     setPickerMode('none');
   };
