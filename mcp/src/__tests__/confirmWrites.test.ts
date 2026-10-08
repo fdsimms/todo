@@ -73,8 +73,8 @@ describe('describeEffects', () => {
 });
 
 describe('describeEffects, field changes', () => {
-  // A local day key, as the replica's own dayOf is: slicing the ISO string is a
-  // UTC date, which is a day off far from Greenwich.
+  // The replica's dayKeyOf, as above: a local day, never a cut of the UTC
+  // string, or the day and the clock time disagree away from Greenwich.
   const dayOf = (iso: string) => {
     const d = new Date(iso);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -97,7 +97,7 @@ describe('describeEffects, field changes', () => {
     expect(lines[0]).toContain('waits for weather from nothing to "sunny"');
     expect(lines[0]).toContain('repeat days from Monday to Monday, Friday');
     expect(lines[0]).toContain('priority from 1 of 4 to 3 of 4');
-    expect(lines[0]).toMatch(/reminder from nothing to 2026-10-09 at 9:30 AM/);
+    expect(lines[0]).toMatch(/reminder from nothing to 2026-10-09 at \d{1,2}:30 [AP]M/);
   });
 
   it('appends a suffix, and counts identical lines once', () => {

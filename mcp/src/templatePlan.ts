@@ -524,6 +524,11 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   positive(item.estimatedMinutes, 'estimatedMinutes');
   positive(item.completionTimerMinutes, 'completionTimerMinutes');
   positive(item.recurrenceCount, 'recurrenceCount');
+  if (item.rainSkipMm != null) {
+    if (!(item.rainSkipMm > 0 && item.rainSkipMm <= 200)) errors.push(`item "${label}" rainSkipMm must be more than 0 and at most 200 millimetres, or null.`);
+    // The same refusal the task's repeat.skipAfterRainMm makes (taskFields.ts).
+    if (item.recurrenceType === 'hours') errors.push(`item "${label}" repeats hourly, which has no days to skip, so it cannot take rainSkipMm.`);
+  }
   if (item.recurrenceMonth != null && (item.recurrenceMonth < 1 || item.recurrenceMonth > 12)) {
     errors.push(`item "${label}" recurrenceMonth must be 1 to 12.`);
   }
@@ -757,6 +762,9 @@ export function templateWarnings(
     }
     if (item.reminderOffsetMinutes != null && item.dueOffsetDays == null) {
       warnings.push(`${label(item)} has reminderOffsetMinutes but no dueOffsetDays, so there is no date to remind before and no reminder is set.`);
+    }
+    if (item.rainSkipMm != null && item.recurrenceType === 'none') {
+      warnings.push(`${label(item)} skips after rain but does not repeat, so there is no occurrence to skip and rainSkipMm has no effect.`);
     }
     if (item.weatherWait && (item.recurrenceType !== 'none' || item.chainEnabled)) {
       warnings.push(`${label(item)} waits for weather but repeats or is a chain; only a one-off can wait, so the wait is dropped.`);

@@ -232,6 +232,8 @@ export interface TaskDraft {
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceHolidays?: HolidayRule | null;
+  // Task.rainSkipMm, from quick add's "unless it rains" or a duplicate.
+  rainSkipMm?: number | null;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
@@ -637,6 +639,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
+  // See Task.rainSkipMm: millimetres, whatever unit the picker shows.
+  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
@@ -1074,6 +1078,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceHolidays(task.recurrenceHolidays ?? null);
+      setRainSkipMm(task.rainSkipMm ?? null);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriorityTouched(true); setEffortTouched(true);
@@ -1142,6 +1147,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
+      setRainSkipMm(initialDraft?.rainSkipMm ?? null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriorityTouched(initialDraft?.priority !== undefined);
@@ -1281,6 +1287,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceHolidays: task ? (task.recurrenceHolidays ?? null) : (initialDraft?.recurrenceHolidays ?? null),
+      rainSkipMm: task ? (task.rainSkipMm ?? null) : (initialDraft?.rainSkipMm ?? null),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
       recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
@@ -1772,6 +1779,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       // Only a rule with days to land on can skip one.
       recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       // Cleared with the schedule: it only means anything on a repeating task.
@@ -2084,6 +2092,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // becoming a weekly target in this edit, or already is a scaled-down one;
   // a weekly target whose week is already running keeps its count.
   const wasProrated = task ? proratedFrom(task) !== null : false;
+  // What the row has logged so far, for the period it was saved with. Null for
+  // a new target, or once the period is switched here: the count belongs to the
+  // stretch it was logged in, so it can't be read against the other one.
+  const loggedProgress = task && task.targetCount !== null && (task.quotaPeriod ?? 'day') === quotaPeriod
+    ? task.progressCount
+    : null;
   const prorationAnchor = (() => {
     if (task && wasProrated && task.quotaStartedAt) {
       return getTaskDayStart(new Date(task.quotaStartedAt), dayResetTime);
@@ -2638,6 +2652,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceHolidays,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
@@ -3804,7 +3819,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 hint={quotaPeriod === 'week'
                   ? "Log it several times a week, on whichever days work. The task hides while you're on pace and comes back when you fall behind."
                   : "Log it several times a day. The task hides while you're on pace and comes back when you fall behind."}
-                value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
+                value={targetCount !== null
+                  ? (loggedProgress !== null ? formatQuotaProgress(loggedProgress, targetCount, targetUnit) : formatQuotaTarget(targetCount, targetUnit))
+                  : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
                 onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
@@ -3866,6 +3883,16 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       />
                     )}
                   </View>
+                  {loggedProgress !== null && targetCount !== null && quotaIntervalMinutes === null && (
+                    <View
+                      style={styles.targetProgressTrack}
+                      accessible
+                      accessibilityRole="progressbar"
+                      accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`}
+                    >
+                      <View style={[styles.targetProgressFill, { width: `${Math.min(100, (loggedProgress / targetCount) * 100)}%` }]} />
+                    </View>
+                  )}
                   {/* Says what the row will read as rather than what the field is
                       for: the unit's whole job is how the meter comes out, and a
                       preview answers "plural or singular?" without a rule to
@@ -3875,7 +3902,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       ? 'Not a target'
                       : quotaIntervalMinutes !== null
                         ? quotaCadenceCaption
-                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
+                        : loggedProgress !== null && loggedProgress > 0
+                          // The row's real count, not a zero: the preview used to
+                          // read "0/6" on a target already half done, which looked
+                          // like opening the editor had reset it.
+                          ? `Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`
+                          : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
                   </Text>
                   {targetCount !== null && (
                     <>
@@ -5406,6 +5438,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceHolidays={recurrenceHolidays}
                 onChangeHolidays={setRecurrenceHolidays}
+                rainSkipMm={rainSkipMm}
+                onChangeRainSkip={setRainSkipMm}
                 recurrenceCount={recurrenceCount}
                 onChangeCount={setRecurrenceCount}
                 weekOrdinal={{
@@ -7738,6 +7772,11 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   /** The static words either side of a stepper, e.g. "Every [4th] completion". */
   stepperSentence: { color: colors.textSecondary, fontSize: font.md },
+  targetProgressTrack: {
+    height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: colors.bgTertiary,
+    marginHorizontal: spacing.md, marginTop: spacing.xs,
+  },
+  targetProgressFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,

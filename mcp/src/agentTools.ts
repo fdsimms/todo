@@ -28,6 +28,7 @@ import type { TaskFieldsInput } from './taskFields';
 import { describeRepeat, type RepeatInput } from './taskFields';
 import { completeTask, deferTask, getTask, updateTask } from './tools';
 import { knownMeterNames, meterFieldsFromInput, meterKey } from '../../src/utils/meters';
+import { canSkipForRain, defaultRainSkipMm, rainUnitFor } from '../../src/utils/rainSkip';
 import { localDateInput } from './timeZone';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -214,7 +215,9 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     text = est.cleanTitle;
     draft.estimatedMinutes = est.minutes;
   }
-  const sched = p.parseTaskInput(text, lib.dates.getLogicalNow(dayResetTime), new Date());
+  // Read past a trailing "unless it rains", which the rain phrase below takes
+  // once the repeat is set (parseTaskInputAheadOfRainSkip).
+  const sched = p.parseTaskInputAheadOfRainSkip(text, lib.dates.getLogicalNow(dayResetTime), new Date());
   if (sched) {
     text = sched.cleanTitle;
     const s = sched.schedule;
@@ -273,6 +276,16 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
       readings,
     ));
     if (draft.meterDueAt === null) notes.push(`${name} has no reading yet, so the task starts when one is logged (log_meter_reading).`);
+  }
+
+  // "unless it rains": skip a day it rained, on a repeat with days to skip.
+  // A bare phrase takes the sheet's default in the person's unit.
+  const rain = p.parseRainSkipInput(text);
+  if (rain && canSkipForRain({ recurrenceType: draft.recurrenceType ?? 'none' })) {
+    const { unitSystem, weatherTasks } = replica.settings();
+    text = rain.cleanTitle;
+    draft.rainSkipMm = rain.mm ?? defaultRainSkipMm(rainUnitFor(unitSystem));
+    if (!weatherTasks) notes.push('Weather is switched off in the app\'s settings, so nothing reads rainfall and the task will not skip until it is on.');
   }
 
   for (const m of text.matchAll(/(^|\s)([#+!][\p{L}\p{N}_-]+)/gu)) {

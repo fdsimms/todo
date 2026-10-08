@@ -288,6 +288,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
+  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -388,6 +389,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceHolidays(item?.recurrenceHolidays ?? draft?.recurrenceHolidays ?? null);
+    setRainSkipMm(item?.rainSkipMm ?? draft?.rainSkipMm ?? null);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setRecurrenceWeekOrdinal(item?.recurrenceWeekOrdinal ?? draft?.recurrenceWeekOrdinal ?? null);
     setTargetCount(item?.targetCount ?? draft?.targetCount ?? null);
@@ -663,6 +665,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
       recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
+      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
@@ -1325,6 +1328,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             recurrenceFromCompletion={recurrenceFromCompletion}
             recurrenceHolidays={recurrenceHolidays}
             onChangeHolidays={setRecurrenceHolidays}
+            rainSkipMm={rainSkipMm}
+            onChangeRainSkip={setRainSkipMm}
             onChangeFromCompletion={setRecurrenceFromCompletion}
             recurrenceCount={recurrenceCount}
             onChangeCount={setRecurrenceCount}

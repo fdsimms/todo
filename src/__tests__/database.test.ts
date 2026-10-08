@@ -1789,6 +1789,7 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceHolidays: null,
+    rainSkipMm: null,
     recurrenceCount: null,
     vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, weatherWait: null, difficulty: null,
     estimatedMinutes: null,
@@ -2054,6 +2055,17 @@ describe('Projects', () => {
 
     dbUpdateProject(makeProject({ id: 'p-ongoing', ongoing: false }));
     expect(dbGetAllProjects().find(row => row.id === 'p-ongoing')?.ongoing).toBe(false);
+  });
+
+  it('round-trips groupOnToday on insert and update, reading a row without it as off', () => {
+    dbInsertProject(makeProject({ id: 'p-band', groupOnToday: true }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-band')?.groupOnToday).toBe(true);
+
+    dbUpdateProject(makeProject({ id: 'p-band', groupOnToday: false }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-band')?.groupOnToday).toBe(false);
+
+    dbInsertProject(makeProject({ id: 'p-unset' }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-unset')?.groupOnToday).toBe(false);
   });
 
   it('orders by sort_order', () => {

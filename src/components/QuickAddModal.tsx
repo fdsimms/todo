@@ -82,8 +82,9 @@ import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTok
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseMeterInput, parseRainSkipInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { formatMeterAmount, knownMeterNames, latestReading, meterFieldsFromInput, meterKey } from '../utils/meters';
+import { canSkipForRain, defaultRainSkipMm, formatRain, rainUnitFor } from '../utils/rainSkip';
 import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
@@ -521,6 +522,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // reading it's due at isn't in the phrase; it comes from the meter's last
   // reading on save, or from the first one logged (meterStartPatch).
   const [titleMeter, setTitleMeter] = useState<{ name: string; unit: string; every: number } | null>(null);
+  // Task.rainSkipMm from "unless it rains", in millimetres.
+  const [titleRainSkipMm, setTitleRainSkipMm] = useState<number | null>(null);
+  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
   const meterReadings = useMeterReadingStore(s => s.readings);
   // Read for the re-render alone: the sun tooltip resolves through
   // sunLocationOn, which reads the setting itself.
@@ -635,6 +639,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setQuotaPeriod('day');
     setWeatherWait(null);
     setTitleMeter(null);
+    setTitleRainSkipMm(null);
     setTitleWindowStart(null);
     setTitleWindowStartSun(null);
     setTitleSeries(null);
@@ -846,8 +851,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // phrase is highlighted in the input and described in a tooltip; nothing is
   // applied until the user taps the tooltip.
   // ==== parsing the typed line: date, category/tags, link, phone, email, duration ====
+  // Read past a trailing "unless it rains" (parseTaskInputAheadOfRainSkip),
+  // which would otherwise block the repeat it needs.
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
+    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
@@ -1088,6 +1095,18 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     const name = known?.trim() ?? hit.meterName.charAt(0).toUpperCase() + hit.meterName.slice(1);
     return { ...hit, meterName: name, read: !!known };
   }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, type, recurrenceType, titleSeries, chainItems, weatherWait, polarity, titleMeter, meterReadings]);
+  // "water the garden every 2 days unless it rains": skip a day it rained.
+  // After the meter phrase in the chain, and offered only once the repeat is
+  // set (the schedule phrase ahead of it in the same line is what sets it) and
+  // the weather switch is on, since nothing reads rainfall otherwise: the
+  // weather phrase's rule of refusing what wouldn't be honoured.
+  const rainParsed = useMemo(() => {
+    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
+      || durationParsed || supplyParsed || targetParsed || estimateParsed || weatherParsed || sunParsed || meterParsed || !title.trim()) return null;
+    if (!weatherTasksOn || type !== 'task' || titleRainSkipMm !== null || !canSkipForRain({ recurrenceType, polarity })) return null;
+    const hit = parseRainSkipInput(title);
+    return hit ? { ...hit, mm: hit.mm ?? defaultRainSkipMm(rainUnit) } : null;
+  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, weatherTasksOn, type, titleRainSkipMm, recurrenceType, polarity, rainUnit]);
   // "file taxes after get W-2" — waiting on another task. Matched strictly
   // (see parseWaitingOnInput) against live top-level tasks, one row per
   // series so a dated set doesn't read as several tasks of the same name.
@@ -1107,17 +1126,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   }, [tasks, visible]);
   const waitingParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && title.trim()
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !rainParsed && title.trim()
       ? parseWaitingOnInput(title, waitCandidates) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, waitCandidates]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, rainParsed, waitCandidates]
   );
   // "pack: socks, charger, passport" — subtasks. Last of all: a colon list is
   // the loosest shape here, so anything more specific in the line wins first.
   const subtasksParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !waitingParsed && title.trim()
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !rainParsed && !waitingParsed && title.trim()
       ? parseSubtasksInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, waitingParsed]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, rainParsed, waitingParsed]
   );
   // "Don't check Twitter", "No snacking" — a habit to avoid. Strips nothing
   // (the words are its name), so it stops being offered once accepted rather
@@ -1125,10 +1144,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // control in the editor.
   const avoidParsed = useMemo(
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !waitingParsed && !subtasksParsed
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !weatherParsed && !sunParsed && !meterParsed && !rainParsed && !waitingParsed && !subtasksParsed
       && type === 'task' && polarity !== 'negative' && title.trim()
       ? parseAvoidInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, waitingParsed, subtasksParsed, type, polarity]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, weatherParsed, sunParsed, meterParsed, rainParsed, waitingParsed, subtasksParsed, type, polarity]
   );
   // Whether the task being built is an avoid-task: the flag, on the one kind
   // that can hold it (a later switch to Timed or Target leaves it unset).
@@ -1202,6 +1221,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       ? {
                           matchStart: meterParsed.matchStart,
                           matchedText: title.slice(meterParsed.matchStart, meterParsed.matchEnd),
+                        }
+                    : rainParsed
+                      ? {
+                          matchStart: rainParsed.matchStart,
+                          matchedText: title.slice(rainParsed.matchStart, rainParsed.matchEnd),
                         }
                     : waitingParsed
                       ? {
@@ -1625,6 +1649,17 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTitleMeter({ name: meterParsed.meterName, unit: meterParsed.unit, every: meterParsed.every });
   };
 
+  // Skips a day it rained. The applied line says how much rain counts.
+  const applyRain = () => {
+    if (!rainParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(rainParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setTitleRainSkipMm(rainParsed.mm);
+  };
+
   const applyProject = () => {
     if (!projectParsed) return;
     haptics.success();
@@ -1684,6 +1719,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (weatherParsed) applyWeather();
     else if (sunParsed) applySun();
     else if (meterParsed) applyMeter();
+    else if (rainParsed) applyRain();
     else if (waitingParsed) applyWaiting();
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
@@ -1755,6 +1791,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // The same plain one-off, and never alongside a weather wait or as an
   // avoid-task (canFollowMeter). A later switch that breaks it drops the meter.
   const meterHere = titleMeter !== null && type === 'task' && recurrenceType === 'none' && seriesExtraDates.length === 0 && chainItems.length === 0 && !weatherWaitHere && polarity !== 'negative';
+  // The repeat it skips has to survive too: a later switch to a one-off or an
+  // hourly repeat drops it, the editor's rule on save.
+  const rainSkipHere = titleRainSkipMm !== null && type === 'task' && canSkipForRain({ recurrenceType, polarity });
   const titleMeterInput = titleMeter
     ? { name: titleMeter.name, unit: titleMeter.unit, everyText: String(titleMeter.every), dueText: '', limitMonths: null }
     : null;
@@ -1910,6 +1949,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(titleWindowEnd ? { windowEnd: titleWindowEnd, windowEndSun: titleWindowEndSun } : {}),
       ...(weatherWaitHere ? { weatherWait } : {}),
       ...(meterHere && titleMeterInput ? meterFieldsFromInput(titleMeterInput, meterReadings) : {}),
+      ...(rainSkipHere ? { rainSkipMm: titleRainSkipMm } : {}),
       // Plain kind only, the editor's rule: every other kind is a way of
       // completing something, and an avoid-task is never completed.
       ...(avoidsHere ? { polarity: 'negative' as const, showStreak: true } : {}),
@@ -2124,6 +2164,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowStartSun: titleWindowStart ? titleWindowStartSun : null,
       weatherWait: weatherWaitHere ? weatherWait : null,
       meter: meterHere ? titleMeter : null,
+      rainSkipMm: rainSkipHere ? titleRainSkipMm : null,
       blockerIds,
       subtaskTitles,
       windowEnd: titleWindowEnd,
@@ -2700,6 +2741,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                                 ? (sunParsed.anchor === 'sunrise' ? 'sunny-outline' : 'moon-outline')
                                                 : meterParsed
                                                 ? 'speedometer-outline'
+                                                : rainParsed
+                                                ? 'rainy-outline'
                                                 : waitingParsed
                                                   ? 'hourglass-outline'
                                                   : subtasksParsed
@@ -2737,6 +2780,8 @@ parsed
                                               ? `${sunParsed.bound === 'start' ? 'Hidden until' : 'Expires at'} ${sunParsed.anchor} · ${formatHHMM(sunParsed.clock)} that day`
                                               : meterParsed
                                               ? `Due every ${formatMeterAmount(meterParsed.every, meterParsed.unit)} on ${meterParsed.meterName}`
+                                              : rainParsed
+                                              ? `Skip after ${formatRain(rainParsed.mm, rainUnit)} of rain`
                                               : waitingParsed
                                                 ? `Waiting on · ${waitingParsed.title}`
                                                 : subtasksParsed
@@ -2824,6 +2869,12 @@ parsed
               : `Due every ${formatMeterAmount(titleMeter.every, titleMeter.unit)} on ${titleMeter.name}. Log a reading from the task to start it`,
             'Remove the meter',
             () => setTitleMeter(null),
+          )}
+          {rainSkipHere && titleRainSkipMm !== null && appliedLine(
+            'rainy-outline',
+            `Skips a day after ${formatRain(titleRainSkipMm, rainUnit)} of rain`,
+            'Stop skipping for rain',
+            () => setTitleRainSkipMm(null),
           )}
           {blockerIds.length > 0 && appliedLine(
             'hourglass-outline',

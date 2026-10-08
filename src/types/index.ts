@@ -1474,6 +1474,16 @@ export interface Project {
    */
   hideNextStep?: boolean;
   /**
+   * Gathers what this project has on Today under its own name, at the top of
+   * the Today view below the pinned block, rather than leaving its tasks and
+   * stacks in their category sections (`buildTodayProjectBands`). A trip's
+   * packing day is the case it exists for: its sections arrive as stacks,
+   * and without it nothing on Today said they were one trip's. Presentation
+   * only: what is on the day is decided exactly as before, and Later,
+   * Unscheduled and Inbox ignore it. Optional for rows built before it existed.
+   */
+  groupOnToday?: boolean;
+  /**
    * Where the trip goes, as free text.
    *
    * `Task.location` carries a note saying nothing in the app plots it and that
@@ -2525,6 +2535,15 @@ export interface Task {
    * dates the rule picks.
    */
   recurrenceHolidays?: HolidayRule | null;
+  // Skip this occurrence when it has rained enough: a threshold in
+  // millimetres over yesterday and today, read from the forecast the weather
+  // switch already fetches. Null = never. Repeating tasks only (not 'hours').
+  // See src/utils/rainSkip.ts.
+  rainSkipMm?: number | null;
+  // The day key the app last skipped this row for rain. The pass's mark: it
+  // never skips a row twice on one day, so pulling a skipped occurrence back
+  // onto Today sticks.
+  rainSkippedOn?: string | null;
 
   // Quota — a habit logged N times a day (8 glasses of water) rather than done
   // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
@@ -4120,6 +4139,9 @@ export interface TemplateItem {
   // Task.recurrenceHolidays, carried through. Optional so a template stored
   // before it reads as happening anyway.
   recurrenceHolidays?: HolidayRule | null;
+  // Task.rainSkipMm, carried through. Optional, like recurrenceHolidays: a
+  // template stored before it reads as never skipping.
+  rainSkipMm?: number | null;
   recurrenceCount: number | null;
   // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
   // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the

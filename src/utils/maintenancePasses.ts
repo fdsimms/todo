@@ -176,6 +176,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // works in a background run; moving a hold to a new day waits for a
     // snapshot, and useWeatherWaitSync re-runs it when one lands.
     ['apply weather waits', () => tasks().applyWeatherWaits()],
+    // Rain skips read the same snapshot, and refuse on its day key the same
+    // way: at cold launch, before the first fetch, they do nothing, and the
+    // weather sync runs them again once a reading for today lands.
+    ['apply rain skips', () => tasks().applyRainSkips()],
     // Meter holds read only what's on the device (the readings and the day), so
     // they work at cold launch and in a background run alike: a task whose
     // estimate or time limit arrives overnight is on Today in the morning.

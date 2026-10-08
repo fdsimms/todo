@@ -70,6 +70,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
     recurrenceHolidays: raw.recurrenceHolidays ?? null,
+    rainSkipMm: raw.rainSkipMm ?? null,
     recurrenceCount: raw.recurrenceCount ?? null,
     recurrenceWeekOrdinal: raw.recurrenceWeekOrdinal ?? null,
     // A target below 2 is no target (Task.targetCount's own floor), so it
@@ -306,6 +307,8 @@ export function buildDraftsFromTemplate(
       recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
       recurrenceHolidays: item.recurrenceHolidays ?? null,
+      // Only a repeat with days has an occurrence to skip (canSkipForRain).
+      rainSkipMm: item.recurrenceType !== 'none' && item.recurrenceType !== 'hours' ? item.rainSkipMm ?? null : null,
       recurrenceCount: item.recurrenceCount,
       // Only a monthly repeat reads an ordinal (TaskEditor saves it the same way).
       recurrenceWeekOrdinal: item.recurrenceType === 'monthly' ? item.recurrenceWeekOrdinal ?? null : null,

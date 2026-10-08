@@ -247,6 +247,10 @@ export interface ReplicaSettings {
    * (`calendarRequestDeviceId`). Without one, a request would wait for ever.
    */
   calendarRequestsOn: boolean;
+  /** How amounts show (asWritten, metric or us); a rain threshold reads millimetres only on metric. */
+  unitSystem: 'asWritten' | 'metric' | 'us';
+  /** The weather switch. Off, nothing reads a forecast, so a rain skip never fires. */
+  weatherTasks: boolean;
 }
 
 /** An event to ask the phone to write. Already parsed: instants, and an exclusive end. */
@@ -808,6 +812,8 @@ export interface ProjectPatch {
   showChecked?: boolean;
   /** Leave the "Next:" line off its card on the Projects screen. */
   hideNextStep?: boolean;
+  /** Today gathers its tasks for the day under its name, at the top. */
+  groupOnToday?: boolean;
 }
 
 /** A glass (or a bottle) of water, added onto the day's single water entry. */
@@ -3379,6 +3385,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         completedRetentionDays: s.completedRetentionDays,
         // Read off the table, as requestCalendarEvent does, so the two agree.
         calendarRequestsOn: !!db.dbGetSetting('calendarRequestDeviceId'),
+        unitSystem: s.unitSystem,
+        weatherTasks: s.weatherTasks,
       };
     },
 
@@ -6498,6 +6506,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           ongoing: source.ongoing, nudgeOptIn: source.nudgeOptIn, nudgeCadenceDays: source.nudgeCadenceDays,
           autoSchedule: source.autoSchedule, weekendSource: source.weekendSource, destination: source.destination,
           personIds: source.personIds, links: source.links, inOrder: source.inOrder, showChecked: source.showChecked, hideNextStep: source.hideNextStep,
+          groupOnToday: source.groupOnToday,
         });
         const sectionFor = new Map<string, string>();
         for (const section of blueprint.sections) {

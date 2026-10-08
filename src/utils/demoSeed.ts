@@ -1200,6 +1200,19 @@ export function seedDemoData(): void {
   });
   completeTask(trash.id, { byOther: true });
 
+  // A repeating task the rain can skip (Task.rainSkipMm): 5 mm over yesterday
+  // and today and the watering is moved on. The pass never runs in demo mode
+  // (it reads the real forecast), so this shows the setting and its caption.
+  addTask({
+    title: 'Water the garden',
+    category: 'Home',
+    effort: 1,
+    recurrenceType: 'daily',
+    recurrenceInterval: 2,
+    dueDate: today.toISOString(),
+    rainSkipMm: 5,
+  });
+
   // --- A monthly repeat on the Nth weekday ----------------------------------
   // recurrenceWeekOrdinal, otherwise invisible until a task uses it: "the
   // second Tuesday" rather than a day of the month. Dated onto the grid's own
@@ -1359,10 +1372,15 @@ export function seedDemoData(): void {
   const quotes = createGroup('Contractor quotes', 'Home');
   const abcQuote = addNewGroupedTask(quotes.id, 'Call ABC Contractors');
   const sunriseQuote = addNewGroupedTask(quotes.id, 'Call Sunrise Builders');
-  updateTask(abcQuote.id, { dueDate: addDays(today, 2).toISOString() });
-  updateTask(sunriseQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  // Due today, so the kitchen has something on Today for its band below.
+  updateTask(abcQuote.id, { dueDate: today.toISOString() });
+  updateTask(sunriseQuote.id, { dueDate: today.toISOString() });
   addExistingToProject(abcQuote.id, kitchen.id);
   addExistingToProject(sunriseQuote.id, kitchen.id);
+  // Gathered on Today under the project's name (Project.groupOnToday), with
+  // the quotes stack inside it. An opt-in that starts off, so with no project
+  // seeded with it on, Today in demo mode never shows a project band.
+  updateProject(kitchen.id, { groupOnToday: true });
 
   // A stack with nothing in it yet, homed on the project rather than scoped by
   // members it hasn't got (see TaskGroup.projectId) — an outline of the part of

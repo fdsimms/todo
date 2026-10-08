@@ -29,7 +29,7 @@ import { pantryRecordPlan, type PantryRecordPlan, type PantryRecordState } from 
 export const PROJECT_REVERT_FIELDS = [
   'title', 'notes', 'deadline', 'eventDate', 'category', 'defaultTaskCategory', 'taskDefaults', 'nudgeCadenceDays', 'autoSchedule',
   'nudgeOptIn', 'weekendSource', 'kind', 'ongoing', 'awayStart', 'awayEnd', 'awayPauses', 'destination', 'pausedUntil',
-  'personIds', 'links', 'inOrder', 'showChecked', 'hideNextStep',
+  'personIds', 'links', 'inOrder', 'showChecked', 'hideNextStep', 'groupOnToday',
 ] as const;
 
 export type RecordLogSubject = 'meal' | 'food' | 'mood' | 'medication';

@@ -6,7 +6,7 @@ import { QuickSearchModal } from '../components/QuickSearchModal';
 import { useColors } from '../theme/ThemeContext';
 import { haptics } from '../utils/haptics';
 import { openElsewhereResult } from '../navigation/openSearchResult';
-import { resetToTask } from '../navigation/navigationRef';
+import { resetToLocateTask } from '../navigation/navigationRef';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
 import type { Task, TaskGroup } from '../types';
 
@@ -24,7 +24,7 @@ import type { Task, TaskGroup } from '../types';
  * See the note in `handlePullToSearch` in TodayScreen before changing that.
  *
  * Where a result opens, since there is no Today editor on this screen:
- *  - a task opens its editor on Today (`resetToTask`);
+ *  - a task is scrolled to on whichever list holds it (`resetToLocateTask`);
  *  - a stack, which has no page of its own, hands its name to the Search screen;
  *  - a project, person, recipe, grocery item, screen or setting opens exactly
  *    where it does from Today (`openElsewhereResult`).
@@ -49,7 +49,7 @@ export function usePullToSearch() {
   const openFullSearch = useCallback((query: string) => {
     navigation.navigate({ name: 'Search', params: { query, at: Date.now() } });
   }, [navigation]);
-  const selectTask = useCallback((task: Task) => resetToTask(task.id), []);
+  const selectTask = useCallback((task: Task) => resetToLocateTask(task.id), []);
   const selectGroup = useCallback((group: TaskGroup) => openFullSearch(group.title), [openFullSearch]);
   const selectProject = useCallback((projectId: string) => {
     navigation.navigate({ name: 'ProjectDetail', params: { projectId } });

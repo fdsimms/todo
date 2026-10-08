@@ -32,6 +32,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -158,6 +159,8 @@ import { shortSleepDeloadNote } from '../utils/healthRules';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { useProjectStore } from '../store/useProjectStore';
+import { buildTodayProjectBands } from '../utils/todayProjectBands';
+import type { ProjectListItem } from '../utils/projectStacks';
 import { DayContextRow } from '../components/DayContextRow';
 import { contextCardPositions, contextSectionSummaries } from '../utils/contextCards';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -790,6 +793,7 @@ export function TodayScreen() {
   const groupTasks = useTaskStore(s => s.groupTasks);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
+  const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
@@ -2291,6 +2295,24 @@ export function TodayScreen() {
       .filter(g => g.children.length > 0);
   }, [taskGroups, rosterByGroupId, filtered]);
 
+  // A project switched to "Group on Today" takes its loose tasks and its stacks
+  // out of the category sections and into a band of its own, drawn under the
+  // pinned block (see projectBandsBlock). Built from the same two inputs the
+  // sections are, and reporting what it took, so a task is in a band or a
+  // section and never both. Drag and the add button's drop targets are the
+  // sections' business only: the bands sit in the list's header, like the
+  // pinned block, so resolveDrop never sees a row it can't give a category.
+  const projectBands = useMemo(
+    () => buildTodayProjectBands(filtered, visibleGroupItems, projects),
+    [filtered, visibleGroupItems, projects],
+  );
+  const sectionGroupItems = useMemo(
+    () => projectBands.bandedGroupIds.size === 0
+      ? visibleGroupItems
+      : visibleGroupItems.filter(g => !projectBands.bandedGroupIds.has(g.group.id)),
+    [visibleGroupItems, projectBands],
+  );
+
   // Same pairing as visibleGroupItems, but for tasks deferred to later today
   // rather than currently visible — so a stack whose children are all still
   // waiting on a time segment/defer still renders as a collapsible group
@@ -2677,13 +2699,13 @@ export function TodayScreen() {
     // of the list beside the pinned block it is already in.
     const pinnedIds = new Set(pinnedTasks.map(t => t.id));
     const ungrouped = filtered.filter(
-      t => !t.groupId && !(t.category === null && pinnedIds.has(t.id)),
+      t => !t.groupId && !(t.category === null && pinnedIds.has(t.id)) && !projectBands.bandedTaskIds.has(t.id),
     );
     // Stacks slot into the task order by sortOrder (see makeCategoryGroups) —
     // but only while the list is in its hand-ordered state. Any other sort
     // reorders the tasks by something sortOrder says nothing about, so the
     // stacks go back to heading their section.
-    const grouped = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
+    const grouped = makeCategoryGroups(ungrouped, allCategories, sectionGroupItems, {
       interleaveGroups: sort === 'default',
     });
     // Folded in *here*, before collapse runs over the result, so a context row
@@ -2691,7 +2713,7 @@ export function TodayScreen() {
     // It's also what lets a category holding nothing but events have a header
     // at all — makeCategoryGroups only knows about tasks and stacks.
     return insertContextRows(grouped, contextRows, { categoryOrder: allCategories });
-  }, [filtered, allCategories, visibleGroupItems, sort, contextRows, pinnedTasks]);
+  }, [filtered, allCategories, sectionGroupItems, projectBands, sort, contextRows, pinnedTasks]);
 
   // The rows under each category header, for the header's own pin toggle and
   // the pin glyph that reports its state. Built from `listItems` rather than
@@ -3188,6 +3210,13 @@ export function TodayScreen() {
   // Same deal one level down: a drag of the inline subtask list inside an
   // expanded row (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
+  // And for a project band's SortableList, which is in the header too.
+  const [draggingBand, setDraggingBand] = useState(false);
+  // Project bands folded away, by project id. Session-only, like
+  // pinnedGroupOpen: a band only exists on the days its project has something
+  // on, and opening Today to a trip folded shut from last week would hide the
+  // one thing the band is there to show.
+  const [collapsedBands, setCollapsedBands] = useState<ReadonlySet<string>>(() => new Set());
 
   // Each of the three above already resets on its own gesture's release *and*
   // termination (SortableList, PaintSelection's own AppState backstop is the
@@ -3205,6 +3234,7 @@ export function TodayScreen() {
         setDraggingStackChildGroupId(null);
         setDraggingPin(false);
         setDraggingSubtask(false);
+        setDraggingBand(false);
       }
     });
     return () => subscription.remove();
@@ -4006,6 +4036,113 @@ export function TodayScreen() {
     </>
   );
 
+  const toggleBandCollapsed = (projectId: string) => {
+    // Same first-tap-dismisses rule every header on this screen has.
+    if (expandedTaskId !== null) {
+      setExpandedTaskId(null);
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    setCollapsedBands(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  };
+
+  // A band's rows keyed for its SortableList, which reads an `id` off each.
+  // Memoized with the bands so the list isn't handed a fresh array every render.
+  type BandListItem = ProjectListItem & { id: string };
+  const bandListItems = useMemo(
+    () => new Map(projectBands.bands.map(band => [
+      band.project.id,
+      band.items.map((item): BandListItem => ({ ...item, id: item.type === 'group' ? item.group.id : item.task.id })),
+    ])),
+    [projectBands],
+  );
+
+  /**
+   * The project bands: each project switched to "Group on Today", under its own
+   * name, holding its stacks and loose tasks for the day (see
+   * buildTodayProjectBands for which rows those are).
+   *
+   * In the list's header beside the pinned block rather than rows in its data,
+   * for the pinned block's reason: a band is not a category, and resolveDrop
+   * gives every row the category of the nearest header above it, so a band as
+   * rows would recategorize anything dragged across it. Its own SortableList
+   * reorders within the project instead (reorderProjectItems, the project
+   * page's own drag), which is the order a band is drawn in. A stack inside it
+   * is the main list's stack renderer, so its tray, its own child drag and
+   * its swipes behave exactly as they do in a category section.
+   *
+   * Hidden with everything else by the pinned block's eye, since that hides
+   * every row but the pins.
+   */
+  const projectBandsBlock = !restVisible || projectBands.bands.length === 0 ? null : (
+    <>
+      {projectBands.bands.map(band => {
+        const collapsed = collapsedBands.has(band.project.id);
+        const bandTaskIds = band.items.flatMap(item => (item.type === 'group' ? item.children.map(c => c.id) : [item.task.id]));
+        return (
+          <React.Fragment key={band.project.id}>
+            <CompletionCollapse taskIds={bandTaskIds}>
+              <View style={styles.categorySectionHeader}>
+                <TouchableOpacity
+                  style={styles.categorySectionToggle}
+                  onPress={() => toggleBandCollapsed(band.project.id)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${band.project.title}`}
+                >
+                  <View style={styles.categorySectionHeaderLeft}>
+                    <Ionicons name="folder-outline" size={13} color={colors.accentText} />
+                    <Text style={styles.projectBandTitle} numberOfLines={1}>
+                      {band.project.title}
+                      {collapsed ? ` (${band.taskCount})` : ''}
+                    </Text>
+                    <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+                    handleOpenProject(band.project.id);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${band.project.title}`}
+                >
+                  <Ionicons name="open-outline" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+                <SpotlightScrim />
+              </View>
+            </CompletionCollapse>
+            {!collapsed && (
+              <SortableList<BandListItem>
+                data={bandListItems.get(band.project.id) ?? []}
+                onReorder={next => reorderProjectItems(band.project.id, next.map(item => item.id))}
+                onDragStateChange={setDraggingBand}
+                placeholderStyle={styles.stackDropSlot}
+                autoscroll={pinnedAndStackAutoscroll}
+                renderItem={(item, _displayIndex, drag, isActive) =>
+                  item.type === 'group'
+                    ? renderListItem({ item: { type: 'group', group: item.group, children: item.children }, drag: selectionMode ? undefined : drag })
+                    : renderTaskRow(item.task, { drag, isActive, showCategory: true })
+                }
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+      <View style={styles.pinnedBlockFooter}>
+        <SpotlightScrim />
+      </View>
+    </>
+  );
+
   // Footer shared by every list variant: the vacation-hidden reveal (when any)
   // followed by the tap-to-dismiss spacer. `fixedWhenEmpty` keeps the empty
   // state centered by stopping the spacer from growing.
@@ -4078,7 +4215,9 @@ export function TodayScreen() {
   // Nothing to say when the list is empty only because the user just hid it —
   // "All clear" over a screen of pinned tasks would be flatly wrong, and the
   // eye that emptied it is right there to undo it.
-  const emptyComponent = !restVisible ? null : isEmptyDatabase ? (
+  // A day whose every task went to a project band leaves the list's own data
+  // empty with the bands still showing above it, which is not "All clear".
+  const emptyComponent = !restVisible || projectBands.bands.length > 0 ? null : isEmptyDatabase ? (
     <EmptyState
       icon="rocket-outline"
       title="Welcome to your list"
@@ -4126,6 +4265,26 @@ export function TodayScreen() {
   // hiding it, not just folding it — so a caller can fall back to opening it
   // directly. Shared by jumpToTask and handleTaskCreated.
   const revealTaskInToday = (task: Task): boolean => {
+    // A task in a project band isn't in `listItems` at all: the bands are the
+    // list's header. They sit at the top, so opening its band (and its stack)
+    // is the whole of landing on it.
+    const band = projectBands.bands.find(b => b.items.some(item =>
+      item.type === 'group' ? item.children.some(c => c.id === task.id) : item.task.id === task.id));
+    if (band) {
+      animateLayout();
+      // The bands hide with everything else behind the pinned block's eye.
+      if (othersHidden) setOthersHidden(false);
+      setCollapsedBands(prev => {
+        if (!prev.has(band.project.id)) return prev;
+        const next = new Set(prev);
+        next.delete(band.project.id);
+        return next;
+      });
+      const group = task.groupId ? taskGroups.find(g => g.id === task.groupId) : undefined;
+      if (group?.collapsed) setGroupCollapsed(group.id, false);
+      setExpandedTaskId(null);
+      return true;
+    }
     // Resolved against the pre-collapse list, so a task folded away still has
     // a row to aim at.
     const target = findTaskJumpTarget(listItems, task.id, listItemKey);
@@ -4191,11 +4350,68 @@ export function TodayScreen() {
     flashTask(task.id);
   };
 
+  /**
+   * Take a search result to where its task lives now, rather than opening it:
+   * the right sub-view (Today, Later, Unscheduled, Inbox) scrolled to its row
+   * and flashed, or the Archived screen for a paused one. A task no list holds
+   * (completed, blocked, filed under a project) or one a filter is hiding has
+   * no row to land on, so it opens in the editor instead of eating the tap.
+   * A subtask lands on its parent, which is the row that exists.
+   */
+  const locateTask = (task: Task) => {
+    const root = (task.parentId
+      ? useTaskStore.getState().tasks.find(t => t.id === task.parentId)
+      : undefined) ?? task;
+    const home = taskHomeFor(root);
+    if (home === 'archived') {
+      navigation.navigate({ name: 'Archived', params: { focusTaskId: root.id, at: Date.now() } } as never);
+      return;
+    }
+    let landed = false;
+    if (home === 'today') {
+      landed = revealTaskInToday(root);
+    } else if (home === 'later') {
+      // Later pages itself in behind a task budget — see goToCreatedTask.
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setPendingLaterJump({ key: root.id, n: jumpCount.current++ });
+      landed = true;
+    } else if (home) {
+      landed = scrollToFlatViewTask(root, home);
+    }
+    if (!landed || !home) {
+      openEditor(task);
+      return;
+    }
+    if (home !== viewMode) {
+      setViewMode(home);
+      // A row left spotlighted on the view being left has no match in the next.
+      setExpandedTaskId(null);
+    }
+    markTaskSeen(root.id);
+    flashTask(root.id);
+  };
+
+  // The same stamped-param handoff the editor link above uses, from a search
+  // result tapped on some other screen (see resetToLocateTask).
+  const [handledLocateTask, setHandledLocateTask] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.locateTask as number | undefined;
+    if (stamp === undefined || stamp === handledLocateTask) return;
+    setHandledLocateTask(stamp);
+    const task = useTaskStore.getState().tasks.find(t => t.id === route.params?.locateTaskId);
+    if (task) locateTask(task);
+  }, [route.params?.locateTask, route.params?.locateTaskId, handledLocateTask]);
+
   // The quiet-projects banner used to sit here, above the pinned block. It's a
   // real task now (see utils/projectReviewTasks.ts), so the offer arrives in
-  // the list rather than as a strip over it and there is nothing left to put
-  // in the header but the pinned block itself.
-  const todayListHeader = pinnedBlock;
+  // the list rather than as a strip over it. What the header holds is the
+  // pinned block and, under it, the project bands.
+  const todayListHeader = pinnedBlock === null && projectBandsBlock === null ? null : (
+    <>
+      {pinnedBlock}
+      {projectBandsBlock}
+    </>
+  );
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
@@ -4714,7 +4930,7 @@ export function TodayScreen() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // this control.
-            scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin && !draggingBand}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
             scrollToTop={{ bottom: fabBottom }}
@@ -5181,7 +5397,7 @@ export function TodayScreen() {
             visible={quickSearchVisible}
             onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
             onShown={endPullToSearch}
-            onSelectTask={openEditor}
+            onSelectTask={locateTask}
             onSelectGroup={group => handleGroupPressEdit(group.id)}
             onSelectProject={handleOpenProject}
             onSelectElsewhere={handleOpenElsewhere}
@@ -5582,6 +5798,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
+  },
+  projectBandTitle: {
+    flexShrink: 1,
+    color: colors.accentText, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
   },
   focusSectionTitleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
