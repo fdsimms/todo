@@ -309,7 +309,10 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
       />
       <View style={styles.notesCard}>
         <TextField
-          style={[styles.notesInput, { height: Math.max(styles.notesInput.minHeight, notesHeight) }]}
+          // An empty field is always the minimum height; see ProjectEditor's
+          // notes field for why the measured height can't be trusted while the
+          // sheet is still opening.
+          style={[styles.notesInput, { height: notes ? Math.max(styles.notesInput.minHeight, notesHeight) : styles.notesInput.minHeight }]}
           value={notes}
           onChangeText={setNotes}
           onContentSizeChange={e => setNotesHeight(Math.ceil(e.nativeEvent.contentSize.height))}
