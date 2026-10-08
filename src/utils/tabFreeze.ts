@@ -17,9 +17,16 @@
  * landing under an open editor) holds the freeze off until it closes, and the
  * freeze then lands on its own. The check is on the root presentation level,
  * so it is deliberately conservative: any open sheet, not only this tab's.
+ *
+ * **A sheet holds a freeze off; it never lifts one.** A tab that is already
+ * `frozen` has nothing on screen and runs no effects, so it can't be holding
+ * a sheet, and only focusing it thaws it. Letting any sheet thaw it made every
+ * frozen tab catch up at once whenever the side menu (itself a sheet) opened,
+ * which is work for screens nobody can see, landing in the drawer's opening
+ * animation.
  */
-export function shouldFreezeTab(opts: { focused: boolean; sheetPresented: boolean }): boolean {
-  return !opts.focused && !opts.sheetPresented;
+export function shouldFreezeTab(opts: { focused: boolean; sheetPresented: boolean; frozen: boolean }): boolean {
+  return !opts.focused && (opts.frozen || !opts.sheetPresented);
 }
 
 /**
