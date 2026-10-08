@@ -544,6 +544,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // window on a task syncs, so the place it is measured from has to as well,
   // or one task would surface at two different times on two devices.
   'sunLocation',
+  // Which days a recurring task treats as holidays (holidays.ts). A task that
+  // skips them has to skip the same days on every device.
+  'holidaySet',
+  'customHolidays',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',

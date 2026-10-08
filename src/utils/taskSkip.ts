@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { carryClockTime } from './clockTime';
-import { getDeadlineFromMonthDay, getDeadlineFromOffset, getNextDueDate, getReminderOffsetDate } from './dateUtils';
+import { getDeadlineFromMonthDay, getDeadlineFromOffset, getNextOccurrence, getReminderOffsetDate } from './dateUtils';
 import { CONTENT_FIELDS, captureField } from './taskUpdate';
 import { getVisibleAt } from './visibilityUtils';
 
@@ -86,13 +86,17 @@ export function skipPatch(task: Task, dayResetTime: string): Partial<Task> | nul
     // recurrenceCount is left alone in both modes: skipping a step isn't
     // skipping a cycle (same reasoning as completeTask's two flags).
     if (!task.chainStepOnSchedule) return { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 };
-    const stepDue = getNextDueDate(task, dayResetTime, { catchUp: true });
-    if (!stepDue) return { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 };
+    const stepOccurrence = getNextOccurrence(task, dayResetTime, { catchUp: true });
+    if (!stepOccurrence) return { ...contentReset, ...pinReset, chainIndex: task.chainIndex + 1 };
+    const stepDue = stepOccurrence.date;
     return {
       ...contentReset,
       ...pinReset,
       chainIndex: task.chainIndex + 1,
       dueDate: stepDue.toISOString(),
+      // The rule's own day when a holiday moved this one off it, so the next
+      // step is measured from the rule (Task.recurrenceHolidays).
+      recurrenceAnchorDate: stepOccurrence.gridDate?.toISOString() ?? null,
       deferUntil: null,
       // Same shape as completeTask's successor: see reminderOnto.
       ...reminderOnto(effective, stepDue, dayResetTime, contentReset),
@@ -115,12 +119,15 @@ export function skipPatch(task: Task, dayResetTime: string): Partial<Task> | nul
   // you already missed. sweepExpiredTasks rolls expired occurrences forward
   // through here, so an app left shut for a week lands them on today rather
   // than on the day after they expired.
-  const nextDue = getNextDueDate(task, dayResetTime, { catchUp: true });
-  if (!nextDue) return null;
+  const next = getNextOccurrence(task, dayResetTime, { catchUp: true });
+  if (!next) return null;
+  const nextDue = next.date;
   return {
     ...contentReset,
     ...pinReset,
     dueDate: nextDue.toISOString(),
+    // See the chain-step branch above.
+    recurrenceAnchorDate: next.gridDate?.toISOString() ?? null,
     deferUntil: null,
     ...reminderOnto(effective, nextDue, dayResetTime, contentReset),
     // A relative deadline follows the date, as it does on completion; see

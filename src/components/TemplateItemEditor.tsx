@@ -19,7 +19,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
+import type { HolidayRule, Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition, QuotaPeriod } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -287,6 +287,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -386,6 +387,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceMonthDay(item?.recurrenceMonthDay ?? draft?.recurrenceMonthDay ?? null);
     setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
+    setRecurrenceHolidays(item?.recurrenceHolidays ?? draft?.recurrenceHolidays ?? null);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setRecurrenceWeekOrdinal(item?.recurrenceWeekOrdinal ?? draft?.recurrenceWeekOrdinal ?? null);
     setTargetCount(item?.targetCount ?? draft?.targetCount ?? null);
@@ -660,6 +662,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceWeekOrdinal: recurrenceType === 'monthly' ? recurrenceWeekOrdinal : null,
       recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
+      recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
@@ -1320,6 +1323,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onChangeMonth={setRecurrenceMonth}
             seedMonth={() => 1}
             recurrenceFromCompletion={recurrenceFromCompletion}
+            recurrenceHolidays={recurrenceHolidays}
+            onChangeHolidays={setRecurrenceHolidays}
             onChangeFromCompletion={setRecurrenceFromCompletion}
             recurrenceCount={recurrenceCount}
             onChangeCount={setRecurrenceCount}

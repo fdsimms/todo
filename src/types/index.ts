@@ -1,6 +1,9 @@
 // 'hours' is the one type with no calendar grid of its own — see
 // getNextDueDate and the "hours" note on Task.recurrenceInterval. It always
 // behaves as recurrenceFromCompletion regardless of that flag's stored value.
+// What a recurring task does on a holiday. See Task.recurrenceHolidays.
+export type HolidayRule = 'skip' | 'move';
+
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'hours';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -2481,6 +2484,22 @@ export interface Task {
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
+  /**
+   * What the next occurrence does when the rule lands it on a holiday
+   * (`src/utils/holidays.ts`: the set chosen in Settings plus the user's own
+   * days off). `'skip'` drops it for the rule's following date; `'move'` puts
+   * it on the next day that isn't one, the way a trash pickup slides a day
+   * after a holiday. Null, as on every row written before this existed, is
+   * "happens anyway".
+   *
+   * Applied where the engine produces a date (`getNextOccurrence`), so the
+   * successor, a skip and the month grid all agree. A move keeps the rule's
+   * own date in `recurrenceAnchorDate`, the pull-forward mechanism, so one
+   * moved occurrence doesn't drag the rest of the schedule with it. The
+   * occurrence the user dated themselves is never moved: this governs the
+   * dates the rule picks.
+   */
+  recurrenceHolidays?: HolidayRule | null;
 
   // Quota — a habit logged N times a day (8 glasses of water) rather than done
   // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
@@ -4048,6 +4067,9 @@ export interface TemplateItem {
   recurrenceMonthDay: number | null;
   recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
+  // Task.recurrenceHolidays, carried through. Optional so a template stored
+  // before it reads as happening anyway.
+  recurrenceHolidays?: HolidayRule | null;
   recurrenceCount: number | null;
   // Seeds Task.recurrenceWeekOrdinal: "the 2nd Tuesday" on a monthly repeat
   // (1-4, or -1 for the last), read with recurrenceDays[0]. Optional, like the

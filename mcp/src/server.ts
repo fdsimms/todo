@@ -920,6 +920,8 @@ const itemSchema = z.object({
   recurrenceMonth: z.number().int().min(1).max(12).nullable().optional().describe('Yearly: the month, 1 to 12.'),
   recurrenceCount: z.number().int().positive().nullable().optional().describe('Stop repeating after this many occurrences.'),
   recurrenceFromCompletion: z.boolean().optional(),
+  recurrenceHolidays: z.enum(['skip', 'move']).nullable().optional()
+    .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day. Holidays are the set and days off chosen in Settings. Null or absent: it happens anyway.'),
   recurrenceWeekOrdinal: z.number().int().min(-1).max(4).refine(n => n !== 0).nullable().optional()
     .describe('Monthly only: "the 2nd Tuesday" is 2 with recurrenceDays [2]; -1 is the last. Not with recurrenceMonthDay.'),
   targetCount: z.number().int().min(2).nullable().optional().describe('A counted target: done N times a day (or a week with quotaPeriod). null for an ordinary task.'),
@@ -1051,6 +1053,8 @@ const taskFieldsShape = {
       .describe('Count the next one from when it was done rather than on a fixed schedule. Defaults to true for daily and hourly, as the app does, false otherwise.'),
     endDate: z.string().nullable().optional().describe('ISO date: stop repeating after this.'),
     count: z.number().int().nullable().optional().describe('Stop after this many more times, this one included. Give endDate or count, not both.'),
+    holidays: z.enum(['skip', 'move']).nullable().optional()
+      .describe('An occurrence the rule lands on a holiday: "skip" leaves it out, "move" puts it on the next day (a trash pickup after a holiday). Holidays are the set and days off chosen in the app\'s Settings. Omit for "happens anyway". Not for hourly.'),
   }).optional().describe('How it repeats. Replaces the whole rule. The first occurrence sits on dueDate; the rule places the ones after it, so set dueDate to the first matching day.'),
   chain: z.object({
     steps: z.array(z.object({

@@ -47,7 +47,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, HolidayRule, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -229,6 +229,7 @@ export interface TaskDraft {
   recurrenceMonth: number | null;
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
+  recurrenceHolidays?: HolidayRule | null;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
@@ -619,6 +620,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
@@ -1042,6 +1044,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceMonth(task.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
+      setRecurrenceHolidays(task.recurrenceHolidays ?? null);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriorityTouched(true); setEffortTouched(true);
@@ -1108,6 +1111,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceMonth(initialDraft?.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
+      setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriorityTouched(initialDraft?.priority !== undefined);
@@ -1246,6 +1250,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceMonth: task ? (task.recurrenceMonth ?? null) : (initialDraft?.recurrenceMonth ?? null),
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
+      recurrenceHolidays: task ? (task.recurrenceHolidays ?? null) : (initialDraft?.recurrenceHolidays ?? null),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
       recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
@@ -1723,6 +1728,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
+      // Only a rule with days to land on can skip one.
+      recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       // Cleared with the schedule: it only means anything on a repeating task.
@@ -2103,11 +2110,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
+      recurrenceHolidays,
       dueDate: dueDate.toISOString(),
     }, dayResetTime);
   }, [
     task, dueDate, recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth,
-    recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount,
+    recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount, recurrenceHolidays,
     dayResetTime,
   ]);
 
@@ -2586,6 +2594,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
+      recurrenceHolidays,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
@@ -5167,6 +5176,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 seedMonth={() => (dueDate ?? getLogicalToday()).getMonth() + 1}
                 recurrenceFromCompletion={recurrenceFromCompletion}
                 onChangeFromCompletion={setRecurrenceFromCompletion}
+                recurrenceHolidays={recurrenceHolidays}
+                onChangeHolidays={setRecurrenceHolidays}
                 recurrenceCount={recurrenceCount}
                 onChangeCount={setRecurrenceCount}
                 weekOrdinal={{

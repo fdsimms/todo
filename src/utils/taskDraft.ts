@@ -232,6 +232,7 @@ export function newTaskFromDraft(
     windowStartSun: draft.windowStartSun ?? null,
     windowEndSun: draft.windowEndSun ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
+    recurrenceHolidays: draft.recurrenceHolidays ?? null,
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,

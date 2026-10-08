@@ -1168,6 +1168,9 @@ export function seedDemoData(): void {
     recurrenceDays: [subDays(today, 1).getDay()],
     dueDate: subDays(today, 1).toISOString(),
     effort: 1,
+    // Pickup slides a day after a holiday, which is what this rule is for
+    // (Task.recurrenceHolidays). Its row caption says so.
+    recurrenceHolidays: 'move',
   });
   completeTask(trash.id, { byOther: true });
 
