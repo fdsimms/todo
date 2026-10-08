@@ -143,7 +143,7 @@ export type PullEmptyReason =
   | 'no-projects'
   /** Set to Never: the project is excluded from every nudge surface. */
   | 'nudge-excluded'
-  /** Paused until a day (Project.pausedUntil): left alone until then. */
+  /** Paused until a day (Project.pausedUntil), or in Planning: left alone until then. */
   | 'paused'
   /** Set to “When I ask”: it belongs in this sheet, but never volunteers. */
   | 'cadence-off'
@@ -648,8 +648,8 @@ export function describePullEmpty(state: PullEmptyState): string {
         : `${projects(count)} of ${total} have “Bring this up” set to Never. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
     case 'paused':
       return count === total
-        ? 'Every project is paused. Each comes back on its own on the day its pause ends.'
-        : `${projects(count)} of ${total} are paused until a later day.${rest}`;
+        ? 'Every project is paused or in Planning. A paused one comes back on the day its pause ends, and one in Planning when you mark it ready.'
+        : `${projects(count)} of ${total} are paused or in Planning.${rest}`;
     // Only reachable from a 'nudge'-mode diagnosis: “When I ask” is exactly a
     // project that belongs in this sheet and nowhere else, so the sheet the
     // user opened themselves never refuses one for this reason.

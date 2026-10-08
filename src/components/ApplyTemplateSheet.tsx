@@ -1,3 +1,9 @@
+// The sheet that runs a template. One component holding most of the file, so
+// grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   QuestionRow, AnchorRow  the two row components after it
+//   makeStyles              styles, at the bottom
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -10,6 +16,7 @@ import {
   useWindowDimensions,
   PanResponder,
   StyleSheet,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
@@ -134,6 +141,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * on what the answers say), then create them all as real tasks.
  */
 export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
+  // ==== store bindings and the template tree ====
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
   // clears the template in the same commit that lowers `visible`, and that
@@ -166,6 +174,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   );
   const away = (template?.anchorsAreAway ?? false) || (targetProject ? awaySpanOf(targetProject) !== null : false);
 
+  // ==== local state: the selection, anchors, run name and answers ====
   // Leaf item ids the user has checked — the only ids the checklist UI
   // itself needs to track; ref-item ids are derived at apply time.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -176,6 +185,8 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // What this run of the template is about ("Camping w/ Dan"), and values for
   // any `{name}` blanks its items declare. Both empty = the original behavior.
   const [runName, setRunName] = useState('');
+  // Create the run's project in Planning. See TemplateRunOptions.planning.
+  const [planning, setPlanning] = useState(false);
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
   // Only what's been answered by hand, keyed by question id — an untouched
   // number question keeps following the anchor dates as they're picked, which
@@ -202,6 +213,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // ==== effects: loading a template into the sheet, and re-selecting on answers ====
   useEffect(() => {
     if (visible && template) {
       // Non-optional leaves start checked; optional ones (and everything under
@@ -231,6 +243,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       );
       setCalendarTarget(null);
       setRunName(initialRunName ?? '');
+      setPlanning(false);
       setPlaceholderValues({});
       setTypedAnswers({});
       sheet.show();
@@ -249,6 +262,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev));
   }, [answersKey, visible, tree]);
 
+  // ==== exits and gestures: dismiss, open the template, the calendar, swipe-down ====
   const dismiss = (onDismissed?: () => void) => {
     Keyboard.dismiss();
     sheet.hide(() => {
@@ -263,6 +277,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const onTemplateScreen = route.name === 'TemplateDetail';
   const answeredAnything =
     runName !== (initialRunName ?? '')
+    || planning
     || Object.keys(typedAnswers).length > 0
     || Object.values(placeholderValues).some(v => v !== '');
 
@@ -313,6 +328,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
   if (!template) return null;
 
+  // ==== the checklist: ticking items, and what the selection decides (container, blanks, apply) ====
   const toggleItem = (id: string) => {
     haptics.tap();
     setSelectedIds(prev => {
@@ -370,6 +386,8 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
 
   const values = { ...placeholderValues, ...answerValues, [RUN_PLACEHOLDER]: runName.trim() };
+  // A project is created only for a named run whose container is a project.
+  const createsProject = container === 'project' && runName.trim() !== '';
 
   const handleApply = () => {
     if (selectedCount === 0) return;
@@ -380,6 +398,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       placeholders: { ...placeholderValues, ...answerValues },
       answers,
       targetProjectId: projectId,
+      planning: createsProject && planning,
       personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
     });
     // Waits for the sheet to be fully gone — a caller opening the task editor
@@ -388,6 +407,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     dismiss(() => onApplied?.(created));
   };
 
+  // ==== the checklist rows ====
   const renderApplyTreeNodes = (nodes: ApplyTreeNode[], depth: number) =>
     nodes.map((node, idx) => {
       const isLast = idx === nodes.length - 1;
@@ -489,6 +509,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     );
   };
 
+  // ==== render. Everything below is JSX; landmarks are the `{/* … */}` block comments ====
   return (
     <SheetModal
       visible={visible}
@@ -556,6 +577,22 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
               <Text style={styles.runHint}>
                 {runNameHint(container, containerUpgraded, placeholderNames.length > 0)}
               </Text>
+              {createsProject && (
+                <View style={styles.planningRow}>
+                  <View style={styles.planningText}>
+                    <Text style={styles.planningLabel}>Start in Planning</Text>
+                    <Text style={styles.runHint}>
+                      Hides the project's tasks, dated ones too, until you mark it ready.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={planning}
+                    onValueChange={next => { haptics.tap(); setPlanning(next); }}
+                    trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                    accessibilityLabel="Start in Planning"
+                  />
+                </View>
+              )}
             </View>
           )}
 
@@ -870,6 +907,20 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   runHint: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  planningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    marginTop: spacing.xs,
+  },
+  planningText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  planningLabel: {
+    color: colors.text,
+    fontSize: font.sm,
   },
   blanksLabel: {
     color: colors.textSecondary,

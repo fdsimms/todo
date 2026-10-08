@@ -1367,6 +1367,13 @@ export function seedDemoData(): void {
   addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: new Date().toISOString() });
   addTask({ title: 'Build a raised bed', projectId: garden.id });
 
+  // A project still being planned (Planning, an open-ended pause): steps
+  // already dated, all held off every list until it's marked ready.
+  const housewarming = createProject('Housewarming party', { planning: true });
+  addTask({ title: 'Send invitations', projectId: housewarming.id, dueDate: addDays(new Date(), 3).toISOString() });
+  addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(new Date(), 10).toISOString() });
+  addTask({ title: 'Make a playlist', projectId: housewarming.id });
+
   // The list the feature was built for, and the one that shows an answer being
   // recorded. Exactly one item carries a deliverable: a list where every line
   // demanded an answer on completion would be a form, so the kind is opt-in

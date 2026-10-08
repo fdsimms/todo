@@ -53,6 +53,8 @@ export interface ApplyTemplateOptions {
    * `''` for that kind. checkScheduledTemplates relies on exactly that.
    */
   personIds?: string[];
+  /** Create the run's project in Planning. See TemplateRunOptions.planning. */
+  planning?: boolean;
   /**
    * Land every created task in this existing project instead of the template's
    * own container. A resolved 'project' container would otherwise create a

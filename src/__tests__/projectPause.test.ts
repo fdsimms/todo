@@ -1,4 +1,4 @@
-import { isPausedOn, isProjectPaused, projectPausedUntil, registerPausedProjectSource } from '../utils/projectPause';
+import { PLANNING_PAUSE_KEY, isPausedOn, isPlanning, isProjectPaused, projectPausedUntil, registerPausedProjectSource } from '../utils/projectPause';
 
 afterEach(() => registerPausedProjectSource(null));
 
@@ -11,6 +11,16 @@ describe('isPausedOn', () => {
 
   it('is never paused without a date', () => {
     expect(isPausedOn({ pausedUntil: null }, '2026-02-28')).toBe(false);
+  });
+});
+
+describe('isPlanning', () => {
+  it('is a pause no day lifts, and only that pause', () => {
+    const planning = { pausedUntil: PLANNING_PAUSE_KEY };
+    expect(isPlanning(planning)).toBe(true);
+    expect(isPausedOn(planning, '2999-06-01')).toBe(true);
+    expect(isPlanning({ pausedUntil: '2026-03-01' })).toBe(false);
+    expect(isPlanning({ pausedUntil: null })).toBe(false);
   });
 });
 

@@ -50,6 +50,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { PLANNING_PAUSE_KEY, isPlanning } from '../utils/projectPause';
 import {
   CADENCE_UNITS,
   CADENCE_UNIT_MAX,
@@ -199,6 +200,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [weekendSource, setWeekendSource] = useState(false);
   // Project.pausedUntil, held as the day it comes back.
   const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
+  // Planning is a pause with no day (PLANNING_PAUSE_KEY), held apart here so
+  // the date row never shows the sentinel.
+  const [planning, setPlanning] = useState(false);
   const [pickingPause, setPickingPause] = useState(false);
   const [personIds, setPersonIds] = useState<string[]>([]);
   const [peopleOpen, setPeopleOpen] = useState(false);
@@ -277,7 +281,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setAutoSchedule(project.autoSchedule);
     setOngoing(project.ongoing);
     setWeekendSource(project.weekendSource);
-    setPausedUntil(project.pausedUntil ? dayKeyToDate(project.pausedUntil) : null);
+    setPlanning(isPlanning(project));
+    setPausedUntil(project.pausedUntil && !isPlanning(project) ? dayKeyToDate(project.pausedUntil) : null);
     setPickingPause(false);
     setPersonIds(project.personIds ?? []);
     setPeopleOpen(false);
@@ -298,6 +303,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // A new category is created and picked as soon as it's submitted in the
   // pill grid, so there's no half-typed name to resolve at save time.
   const resolveCategory = () => category;
+
+  const pausedUntilKey = (): string | null =>
+    planning ? PLANNING_PAUSE_KEY : pausedUntil ? dayKeyOf(pausedUntil) : null;
 
   /**
    * The departure this sheet opened on, and where it has just been moved to.
@@ -415,7 +423,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       ongoing,
       weekendSource,
-      pausedUntil: pausedUntil ? dayKeyOf(pausedUntil) : null,
+      pausedUntil: pausedUntilKey(),
       // A person archived since keeps their place: the page reads through
       // the people store and simply doesn't draw them.
       personIds,
@@ -521,7 +529,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
       ongoing !== project.ongoing ||
       weekendSource !== project.weekendSource ||
-      (pausedUntil ? dayKeyOf(pausedUntil) : null) !== project.pausedUntil ||
+      pausedUntilKey() !== project.pausedUntil ||
       personIds.join() !== (project.personIds ?? []).join() ||
       JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
       linkDraft.trim() !== '' ||
@@ -1238,17 +1246,51 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             leaves its tasks (a weekly watering stays on Today all winter);
             this holds every one of them back until the day, then brings the
             lot back on its own. */}
-        <EditorRow
-          icon="pause-outline"
-          label="Pause until"
-          hint={isList
-            ? 'Hides all of its items and stops any nudges until this day.'
-            : 'Hides all of its tasks, repeating ones too, and stops any nudges until this day.'}
-          value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
-          onPress={() => setPickingPause(true)}
-          onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
-        />
+        {/* Planning: the same hold with no day on it, for a project still
+            being set up. It replaces the date rather than sitting beside it,
+            since the two are one field (PLANNING_PAUSE_KEY). */}
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => {
+            haptics.tap();
+            animateLayout();
+            setPlanning(v => !v);
+            setPausedUntil(null);
+          }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Planning"
+          accessibilityState={{ checked: planning }}
+        >
+          <Ionicons name="construct-outline" size={18} color={planning ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Planning</Text>
+            <Text style={styles.optionHint}>
+              {isList
+                ? 'Hides all of its items and stops any nudges until you mark it ready'
+                : 'Hides all of its tasks, dated ones too, and stops any nudges until you mark it ready'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, planning && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, planning && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
         <View style={styles.sepIcon} />
+        {!planning && (
+          <>
+            <EditorRow
+              icon="pause-outline"
+              label="Pause until"
+              hint={isList
+                ? 'Hides all of its items and stops any nudges until this day.'
+                : 'Hides all of its tasks, repeating ones too, and stops any nudges until this day.'}
+              value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
+              onPress={() => setPickingPause(true)}
+              onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
+            />
+            <View style={styles.sepIcon} />
+          </>
+        )}
         {isList ? (
           <TouchableOpacity
             style={styles.optionRow}

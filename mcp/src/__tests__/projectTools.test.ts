@@ -244,6 +244,19 @@ describe('the project writes, against a real database', () => {
     expect(() => tools.updateProject(real, id, { pausedUntil: '2001-01-01' })).toThrow(/after today/);
   });
 
+  it('puts a project in Planning and marks it ready, reported by name rather than as its day', () => {
+    const created = tools.createProject(real, { title: 'Move', planning: true, steps: [{ title: 'Pack' }], defaultTaskCategory: 'Home' } as never);
+    expect(created.project).toMatchObject({ planning: true });
+    expect(created.project).not.toHaveProperty('pausedUntil');
+    const id = created.project.id;
+    expect(() => tools.updateProject(real, id, { planning: true, pausedUntil: null })).toThrow(/not both/);
+    expect(tools.updateProject(real, id, { planning: false }).project).not.toHaveProperty('planning');
+    // Marking ready leaves a dated pause alone.
+    tools.updateProject(real, id, { pausedUntil: '2099-01-01' });
+    expect(tools.updateProject(real, id, { planning: false, title: 'Move house' }).project).toMatchObject({ pausedUntil: '2099-01-01' });
+    expect(tools.updateProject(real, id, { planning: true }).project).toMatchObject({ planning: true });
+  });
+
   it('completes a project and archives what is left when asked', () => {
     const id = plan();
     const result = tools.updateProject(real, id, { completed: true }, { archiveRemaining: true });

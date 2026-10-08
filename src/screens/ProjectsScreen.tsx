@@ -428,6 +428,7 @@ export function ProjectsScreen() {
       category: draft.category,
       awayStart: draft.awayStart ?? null,
       kind: draft.asList ? 'list' : 'project',
+      planning: draft.planning,
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     newProjectIdRef.current = project.id;
