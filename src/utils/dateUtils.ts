@@ -18,6 +18,7 @@ import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
 import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart, taskDayStart, onLogicalDay } from './clockTime';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { hasAnyHolidays, holidayOn } from './holidays';
 
 /**
  * Returns the start of the logical "day" for a given datetime.
@@ -377,13 +378,47 @@ export type RecurrenceScheduleInput = Pick<Task,
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
   | 'recurrenceFromCompletion' | 'recurrenceEndDate' | 'recurrenceCount' | 'dueDate'
->;
+> & Partial<Pick<Task, 'recurrenceHolidays'>>;
 
+export interface RecurrenceStepOptions {
+  catchUp?: boolean;
+  completedAt?: Date;
+  coversCompletionDay?: boolean;
+}
+
+/** The date `getNextOccurrence` places, as one Date: what most callers want. */
 export function getNextDueDate(
   task: RecurrenceScheduleInput,
   dayResetTime?: string,
-  options?: { catchUp?: boolean; completedAt?: Date; coversCompletionDay?: boolean },
+  options?: RecurrenceStepOptions,
 ): Date | null {
+  return getNextOccurrence(task, dayResetTime, options)?.date ?? null;
+}
+
+/**
+ * The next occurrence: the day it lands on, and, when a holiday moved it off
+ * the rule's own date, that date too (`gridDate`), which is what a caller
+ * placing a row writes to `recurrenceAnchorDate` so the occurrence after it
+ * steps from the rule rather than from the moved day. Null `gridDate` means
+ * the occurrence sits where the rule put it.
+ */
+export interface NextOccurrence {
+  date: Date;
+  gridDate: Date | null;
+}
+
+/**
+ * A ceiling on the holiday walk below. Nothing real gets near it: it would
+ * take a run of holidays longer than any calendar has, so it only ever stops
+ * a rule that can't advance.
+ */
+const MAX_HOLIDAY_STEPS = 60;
+
+export function getNextOccurrence(
+  task: RecurrenceScheduleInput,
+  dayResetTime?: string,
+  options?: RecurrenceStepOptions,
+): NextOccurrence | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
   //
@@ -482,13 +517,44 @@ export function getNextDueDate(
     }
   }
 
+  // A holiday (Task.recurrenceHolidays). After the catch-up walk, which only
+  // ever moves forward, so a skip or a move can't land the row back in the
+  // past. 'hours' has no days to skip: it steps within one.
+  let gridDate: Date | null = null;
+  const rule = task.recurrenceType !== 'hours' ? task.recurrenceHolidays ?? null : null;
+  if (rule) {
+    const { holidaySet, customHolidays } = useSettingsStore.getState();
+    const config = { set: holidaySet ?? 'none', custom: customHolidays ?? [] };
+    if (hasAnyHolidays(config)) {
+      const isHoliday = (d: Date) => holidayOn(dayKeyOf(d), config) !== null;
+      for (let i = 0; i < MAX_HOLIDAY_STEPS && isHoliday(next); i++) {
+        const following = step(next);
+        if (following <= next) break;
+        if (rule === 'move') {
+          // The next day that isn't a holiday, as long as it comes before the
+          // rule's own next date. If it doesn't, the occurrence would only
+          // stack onto that one, so it's skipped instead, which is the same
+          // day the move would have reached.
+          let moved = addDays(next, 1);
+          while (isHoliday(moved) && dayKeyOf(moved) < dayKeyOf(following)) moved = addDays(moved, 1);
+          if (dayKeyOf(moved) < dayKeyOf(following)) {
+            gridDate = next;
+            next = moved;
+            break;
+          }
+        }
+        next = following;
+      }
+    }
+  }
+
   if (task.recurrenceEndDate && next > new Date(task.recurrenceEndDate)) {
     return null;
   }
   if (task.recurrenceCount !== null && task.recurrenceCount <= 1) {
     return null;
   }
-  return next;
+  return { date: next, gridDate };
 }
 
 /**
@@ -619,9 +685,16 @@ export function getNextSeriesDates(
   return Array.from(byTime.values()).sort((a, b) => +a - +b);
 }
 
-/** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */
+/**
+ * Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or
+ * "15m left". The end is placed on the current logical day with onLogicalDay,
+ * like every window gate: on the calendar date instead, a window running into
+ * the small hours under a later reset ("22:00–02:00" with a 4 AM reset) read
+ * its 02:00 as this morning and said "0m left" all evening.
+ */
 export function formatWindowRemaining(windowEnd: string): string {
-  const minutesLeft = Math.max(0, Math.round((hhmmToDate(windowEnd).getTime() - Date.now()) / 60000));
+  const end = onLogicalDay(getCurrentDayStart(), windowEnd);
+  const minutesLeft = Math.max(0, Math.round((end.getTime() - Date.now()) / 60000));
   const hours = Math.floor(minutesLeft / 60);
   const minutes = minutesLeft % 60;
   if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m left`;

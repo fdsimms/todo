@@ -1382,6 +1382,61 @@ export function parseWeatherWaitInput(input: string): ParsedWeatherWait | null {
   return { condition: match[1].toLowerCase() as WeatherCondition, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedSunWindow {
+  /** Which bound of the time window the phrase sets. */
+  bound: 'start' | 'end';
+  /** The stored anchor, as `Task.windowStartSun` / `windowEndSun` hold it. */
+  anchor: 'sunrise' | 'sunset';
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// The words for each end of the day. "dark" and "dusk" are sunset and "dawn"
+// is sunrise, to the minute this resolves to: twilight is a real half hour,
+// but a window that says "before dark" closing at sunset is the safe reading.
+const SUN_WORDS = '(sunrise|dawn|daybreak|sunset|dusk|dark|nightfall)';
+const SUN_WORD_EVENT: Record<string, 'sunrise' | 'sunset'> = {
+  sunrise: 'sunrise', dawn: 'sunrise', daybreak: 'sunrise',
+  sunset: 'sunset', dusk: 'sunset', dark: 'sunset', nightfall: 'sunset',
+};
+// A window end only from the two explicit expiry words, for ParsedSchedule
+// .windowEnd's reason: an end expires the task, and the sweep can delete what
+// has expired, so a softer "before dark" must not be able to set one.
+const SUN_END_PATTERN = new RegExp(`\\b(?:expires\\s+(?:at\\s+)?|only\\s+(?:until|till|before)\\s+)${SUN_WORDS}\\b`, 'i');
+// A window start from "after", the way "after 3pm" sets one.
+const SUN_START_PATTERN = new RegExp(`\\bafter\\s+${SUN_WORDS}\\b`, 'i');
+
+/**
+ * Pulls "after sunset" / "expires at dark" out of a quick-add title, so the
+ * task's time window follows the sun (`Task.windowStartSun`). Same shape as
+ * `parseWeatherWaitInput`, and like it the caller offers it only when it can be
+ * honoured: here, when a location is saved to work the time out from.
+ *
+ * "before dark" is deliberately not read: "before 5pm" is a deadline in this
+ * file, not a window end, and a deadline has no sun-following form, so the
+ * phrase stays in the title rather than being read as something it isn't.
+ */
+export function parseSunWindowInput(input: string): ParsedSunWindow | null {
+  const end = input.match(SUN_END_PATTERN);
+  const start = end ? null : input.match(SUN_START_PATTERN);
+  const match = end ?? start;
+  if (!match || match.index === undefined) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return {
+    bound: end ? 'end' : 'start',
+    anchor: SUN_WORD_EVENT[match[1].toLowerCase()],
+    cleanTitle,
+    matchStart,
+    matchEnd,
+  };
+}
+
 // "remind me to call mom at 4pm" — the words asking for a reminder, which are
 // a request rather than part of the task's name.
 const REMIND_PREFIX = /^\s*(?:remind me to|remind me about|remind me|reminder to|reminder:|don'?t forget to)\s+/i;

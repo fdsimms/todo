@@ -56,6 +56,7 @@ import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
+import { sunLocationOn } from '../utils/visibilityUtils';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
@@ -155,6 +156,7 @@ export function CalendarScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const sunLocation = useSettingsStore(s => s.sunLocation);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const people = usePersonStore(s => s.people);
@@ -327,8 +329,10 @@ export function CalendarScreen() {
   const dayTimeline = useMemo(() => {
     // A task can be in more than one of the three lists (due today with a
     // deadline today), and it is still one row on the axis.
-    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents });
-  }, [detail, selectedDayStart, dayEvents]);
+    // The day's own sun: a trip's destination on a day it covers, else home.
+    // `sunLocation` and `projects` are deps because sunLocationOn reads both.
+    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents, sunLocation: sunLocationOn(selectedDayStart) });
+  }, [detail, selectedDayStart, dayEvents, sunLocation, projects]);
 
   const dayMeals = selectedExtras?.meals ?? NO_MEALS;
 

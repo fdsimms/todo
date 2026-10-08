@@ -46,6 +46,7 @@ import {
   liveBountyCount,
   nextBountyPushes,
   parseBountyLimit,
+  suggestedBountyTasks,
 } from '../utils/rewards';
 import type { CoinEntry, ChainItem, Effort } from '../types';
 
@@ -503,6 +504,21 @@ describe('bounties', () => {
     expect(canPostBounty({ ...withBounty(30, null), parentId: 'p' })).toBe(false);
     expect(canPostBounty({ ...withBounty(30, null), polarity: 'negative' })).toBe(false);
     expect(canPostBounty({ ...withBounty(30, null), completed: true })).toBe(false);
+  });
+
+  it('suggests only drifting tasks a bounty can go on, in the order given, up to the cap', () => {
+    const t = (id: string, over: object = {}) => ({ id, ...withBounty(30, null), ...over });
+    const drifting = [
+      t('a'),
+      t('b', { polarity: 'negative' }),
+      t('c', { bountyPushes: BOUNTY_WITHDRAWN }),
+      t('d'),
+      t('e'),
+      t('f'),
+    ];
+    expect(suggestedBountyTasks(drifting).map(x => x.id)).toEqual(['a', 'd', 'e']);
+    expect(suggestedBountyTasks(drifting, 1).map(x => x.id)).toEqual(['a']);
+    expect(suggestedBountyTasks([])).toEqual([]);
   });
 
   it('reads a stored limit back, clamped', () => {

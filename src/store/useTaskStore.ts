@@ -209,7 +209,7 @@ import {
   supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
@@ -217,7 +217,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
-import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree } from '../utils/negativeHabits';
+import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch } from '../utils/negativeHabits';
 import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
@@ -235,6 +235,7 @@ import {
   isInPausedProject,
   isVisibleApartFromVacation,
   isTaskExpired,
+  effectiveWindowEnd,
   isTaskSweepable,
   isRecurrenceNotYetDue,
   isLiveRecurring,
@@ -257,6 +258,8 @@ import {
   displayTitleFor,
   getVisibleAt,
   beginVisibleAtPass,
+  windowBoundsFor,
+  sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
@@ -377,7 +380,7 @@ import {
   describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
-import { carryClockTime, dateToHHMM } from '../utils/clockTime';
+import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
 import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
 import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
@@ -1746,6 +1749,16 @@ interface TaskStore extends UndoHistoryActions {
    */
   sweepTaskPenalties: () => void;
   /**
+   * Counts today clean now rather than when the day ends: "after 10pm there is
+   * no way I use the pots and pans". Credits every day since the anchor through
+   * today and moves the anchor to today, so the next rollover adds nothing twice
+   * (see `closeDayPatch`). Offers an undo, and does nothing on a day already
+   * closed or broken.
+   */
+  closeNegativeDay: (id: string) => void;
+  /** Takes a closed day back, so it is credited by the rollover if it ends clean. */
+  reopenNegativeDay: (id: string) => void;
+  /**
    * Credits the clean days that have gone by since each negative habit was last
    * accounted for, and moves a repeating one's date onto today once its day has
    * passed (see negativeHabitDuePatch).
@@ -2533,9 +2546,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const snapshots = get().tasks.filter(t => taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
     if (snapshots.length === 0) return;
     for (const task of snapshots) {
-      const next = task.recurrenceFromCompletion ? today : getNextDueDate(task, resetTime, { catchUp: true });
-      if (!next) continue;
-      get().updateTask(task.id, { dueDate: next.toISOString(), deferUntil: null }, { skipPostponeCount: true });
+      const occurrence = task.recurrenceFromCompletion ? { date: today, gridDate: null } : getNextOccurrence(task, resetTime, { catchUp: true });
+      if (!occurrence) continue;
+      // The rule's own day as the anchor when a holiday moved this one off it.
+      get().updateTask(task.id, {
+        dueDate: occurrence.date.toISOString(),
+        recurrenceAnchorDate: occurrence.gridDate?.toISOString() ?? null,
+        deferUntil: null,
+      }, { skipPostponeCount: true });
     }
     get().setLastAction({
       label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,
@@ -3130,11 +3148,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
-    const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
+    const blockTask = get().tasks.find(t => t.id === id) ?? task;
+    const fields = timeBlockFieldsFor(blockTask, {
       now: new Date(),
       dayResetTime,
       activeHoursStart,
       activeHoursEnd,
+      // The day the block is proposed on, which is the day proposeTimeBlockStart picks.
+      sunLocation: sunLocationOn(blockTask.dueDate ? getTaskDayStart(new Date(blockTask.dueDate), dayResetTime) : getCurrentDayStart()),
       events: loaded ? events : null,
     });
     return fields ? { mode: 'create', fields } : null;
@@ -3494,7 +3515,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.
     if (task.timerStartedAt !== null || task.timerElapsedSeconds > 0) {
-      get().stopTimer(id);
+      if (isQuotaTask(task)) {
+        // A target's countdown belongs to one unit, so the unit that completes
+        // it spends the clock like any other. Stopping would write that single
+        // unit's minutes over the task as its measured time.
+        get().resetTimer(id);
+      } else {
+        get().stopTimer(id);
+      }
       task = get().tasks.find(t => t.id === id)!;
     }
 
@@ -4248,8 +4276,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (until !== settings.penaltyShieldUntil) settings.setPenaltyShieldUntil(until, reason);
   },
 
+  closeNegativeDay(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task) || task.archived) return;
+    const patch = closeDayPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    get().setLastAction({
+      label: `Day logged, streak ${updated.streakCount}`,
+      undo: () => get().reopenNegativeDay(id),
+      redo: () => get().closeNegativeDay(id),
+    });
+  },
+
+  reopenNegativeDay(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task)) return;
+    const patch = reopenDayPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   rolloverNegativeStreaks() {
     const todayStart = getCurrentDayStart();
+    const now = new Date();
     const resetTime = useSettingsStore.getState().dayResetTime;
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
@@ -4259,9 +4313,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // exactly as it does for the tasks the quota rollover skips.
       const paused = isWithheld(t);
       const streak = cleanDayPatch(t, todayStart, { paused });
+      const rolled = streak ? { ...t, ...streak } : t;
+      // The habit's own end time counts today as clean once it passes, on the
+      // rolled row so a catch-up and a close land in one write.
+      const end = effectiveWindowEnd(t);
+      const closing = windowCloseDayPatch(rolled, todayStart, end ? onLogicalDay(todayStart, end) : null, now, { paused });
       const due = negativeHabitDuePatch(t, todayStart, resetTime);
-      const patch = due ? { ...streak, ...due } : streak;
-      return patch ? [{ ...t, ...patch }] : [];
+      if (!streak && !closing && !due) return [];
+      return [{ ...rolled, ...closing, ...due }];
     });
     if (patched.length === 0) return;
     dbTransaction(() => patched.forEach(dbUpdateTask));
@@ -4288,7 +4347,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().completeTask(id);
       return;
     }
-    const updated = { ...task, progressCount: task.progressCount + 1 };
+    // A target with a per-unit countdown spends it on the unit just logged, so
+    // the next one starts from a full clock whether or not this one ran out.
+    // Logging never waits on the countdown, which only says when it's ready.
+    const hadCountdown = task.timerStartedAt !== null || task.timerElapsedSeconds > 0;
+    if (hadCountdown) cancelTimerAlarm(id);
+    const updated = {
+      ...task,
+      progressCount: task.progressCount + 1,
+      ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
+    };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     // Same reasoning as the dose below: a daily target is several units, not
@@ -4674,6 +4742,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // where the task continues.
         priorBestStreak: nextStreakRecord(task, nextStreak),
         timerStartedAt: null,
+        // A target's per-unit countdown banked on the day it closes must not
+        // carry onto the next day's first unit.
+        timerElapsedSeconds: 0,
         previousOccurrenceId: task.id,
         seriesDefaults: null,
         // The rest of what buildCompletion resets on a successor, which this
@@ -4876,10 +4947,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // over once its own span has closed.
       if (taskDay < todayStart) return true;
       if (taskDay > todayStart) return false;
+      const window = windowBoundsFor(t, todayStart);
       return isQuotaRunOver(
         quotaRunSpan({
-          windowStart: t.windowStart,
-          windowEnd: t.windowEnd,
+          windowStart: window.start,
+          windowEnd: window.end,
           quotaStartedAt: t.quotaStartedAt,
           activeHoursStart,
           activeHoursEnd,
@@ -8062,7 +8134,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // clearing it: the split is gone, but the task is still a timed task of
     // that length, and a null here would quietly demote it to a plain one.
     const parent = subtask.parentId ? get().tasks.find(t => t.id === subtask.parentId) : undefined;
-    const retotal = parent != null && parent.timedMinutes != null && segmentMinutesOf(subtask) !== null;
+    // Not on a target, whose `timedMinutes` is the per-unit countdown rather
+    // than a total of its subtasks' stretches.
+    const retotal = parent != null && parent.timedMinutes != null && !isQuotaTask(parent) && segmentMinutesOf(subtask) !== null;
     const previousTotal = parent?.timedMinutes ?? null;
 
     dbDeleteTask(id);

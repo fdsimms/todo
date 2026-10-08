@@ -54,6 +54,11 @@ exist, which is why the whole feature is a util plus a screen.
   `dayKeyOf(getTaskDayStart(d, r))` is `dayKeyOf(d)` for every `r`. Threading `dayResetTime`
   through the buckets would read like it did something. Projection takes it because
   `getNextDueDate` does.
+- **A projected step carries the holiday anchor the real successor would.** `stepOccurrence` asks
+  `getNextOccurrence`, and when a holiday moved the occurrence (`Task.recurrenceHolidays`) it
+  puts the rule's own day on the cursor as `recurrenceAnchorDate`. Cleared instead, as every
+  other step clears it, the projection would step from the moved day and drift a day per holiday,
+  so the grid would disagree with the rows the app actually writes.
 - **Three dot states, not two.** `solid` (real work outstanding), `done` (rows here, all ticked),
   `projected` (hollow). Collapsing `done` into `projected` makes a finished Tuesday read as a
   guess; collapsing it into `solid` makes a month you've cleared look untouched.

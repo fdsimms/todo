@@ -38,7 +38,7 @@
 import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
-  getNextDueDate,
+  getNextOccurrence,
   getCurrentDayStart,
   getStreakOutcome,
   getNextSeriesDates,
@@ -418,7 +418,8 @@ export function buildCompletion(
     // catchUp: this is placing a real row, and a successor dated before
     // today is one the user has to complete again to get rid of. See
     // getNextDueDate.
-    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true, completedAt, coversCompletionDay: !missed }) : null;
+    const nextOccurrence = recurs && datesBySchedule ? getNextOccurrence(task, dayResetTime, { catchUp: true, completedAt, coversCompletionDay: !missed }) : null;
+    const nextDue = nextOccurrence?.date ?? null;
     // Skip the spawn only when we actually consulted the schedule and it
     // says the series has ended — a mid-chain step never consults it, so
     // it always spawns regardless of recurrenceEndDate/recurrenceCount.
@@ -602,7 +603,13 @@ export function buildCompletion(
         // came off the grid, so it is the grid's anchor again (#1953). This
         // one is explicit because the successor is built as a row rather than
         // patched through updateTask, so the rule there doesn't reach it.
-        recurrenceAnchorDate: null,
+        //
+        // The one exception is a successor a holiday moved off the rule's own
+        // day (Task.recurrenceHolidays): that day is the anchor, so the one
+        // after steps from the rule rather than from the day it was moved to.
+        recurrenceAnchorDate: nextOccurrence?.gridDate && effectiveDue === nextDue
+          ? nextOccurrence.gridDate.toISOString()
+          : null,
         timeSegments: nextTimeSegments,
         // Stays pinned through an immediate chain step, and starts pinned when
         // the task asked for every occurrence to (pinEachOccurrence); resets

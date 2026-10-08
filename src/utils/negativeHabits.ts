@@ -245,3 +245,102 @@ export function cleanDayPatch(
     priorBestStreak: nextStreakRecord(task, streakCount),
   };
 }
+
+/**
+ * Whether today has already been counted clean ahead of the clock, either by the
+ * person (a long press) or because the habit's own end time passed.
+ *
+ * Derived, not stored, from the one thing closing a day writes: `streakDate`
+ * moves to today while the run is still alive. Nothing else leaves that pair
+ * behind. A slip past the allowance zeroes the run, the rollover pass anchors on
+ * yesterday, and a habit created today starts at 0, so `streakCount > 0` on
+ * today's date can only mean "closed". That is what keeps this out of the schema.
+ */
+export function isClosedToday(task: NegativeHabitFields, todayStart: Date): boolean {
+  if (!isNegativeTask(task) || task.streakCount < 1 || !task.streakDate) return false;
+  if (differenceInCalendarDays(todayStart, new Date(task.streakDate)) !== 0) return false;
+  return !isFailedToday(task, todayStart);
+}
+
+/**
+ * Counting today clean now, instead of when midnight (or `dayResetTime`) gets
+ * there: the run grows by every day since the anchor *including* today, and the
+ * anchor moves to today, so the next rollover credits nothing twice.
+ *
+ * Returns null when there is nothing to credit: the day is already accounted for
+ * (closed, or broken by a slip, which stamps today on the anchor too), or it is
+ * the day the habit was created, which is anchored to today for the reason
+ * `taskDraft` gives. A slip logged *after* closing breaks the run as usual and
+ * `undoSlipPatch` gives it back, because the break snapshots the closed run.
+ */
+export function closeDayPatch(task: NegativeHabitFields, todayStart: Date): Partial<Task> | null {
+  if (!isNegativeTask(task)) return null;
+  const credited = task.streakDate ? differenceInCalendarDays(todayStart, new Date(task.streakDate)) : 1;
+  if (credited < 1) return null;
+  const streakCount = task.streakCount + credited;
+  return {
+    streakCount,
+    streakDate: todayStart.toISOString(),
+    priorBestStreak: nextStreakRecord(task, streakCount),
+  };
+}
+
+/**
+ * Taking a closed day back. The run drops by one and the anchor returns to
+ * yesterday, so the day is open again and the rollover credits it normally if it
+ * is still clean at the end. Days credited before today stay credited.
+ */
+export function reopenDayPatch(task: NegativeHabitFields, todayStart: Date): Partial<Task> | null {
+  if (!isClosedToday(task, todayStart)) return null;
+  return {
+    streakCount: task.streakCount - 1,
+    streakDate: subDays(todayStart, 1).toISOString(),
+  };
+}
+
+/**
+ * The habit's own end time ("no pots and pans after 10pm"): once `windowEndAt`
+ * has passed, today counts as clean without anyone logging it. `windowEndAt` is
+ * the end placed on today's logical day by the caller (`onLogicalDay`), so this
+ * stays clock-injected like the rest of the file. Held while paused, since
+ * vacation protects a run rather than growing it.
+ */
+export function windowCloseDayPatch(
+  task: NegativeHabitFields,
+  todayStart: Date,
+  windowEndAt: Date | null,
+  now: Date,
+  opts: { paused?: boolean } = {},
+): Partial<Task> | null {
+  if (!windowEndAt || opts.paused || now < windowEndAt) return null;
+  return closeDayPatch(task, todayStart);
+}
+
+/**
+ * What a long press on a negative habit's box does, decided in one place for the
+ * task row and the Search checkbox. A slip already logged keeps the long press
+ * it always had (take it back); the rest is new.
+ *
+ * - `undo-slip`: slips are logged and the day is no longer closable.
+ * - `undo-or-close`: slips are logged but still inside the allowance, so the
+ *   person may want either.
+ * - `reopen`: today was closed and can be reopened.
+ * - `close`: a clean day that can be counted now.
+ * - null: nothing to do (the habit was created today).
+ */
+export type NegativeHold = 'undo-slip' | 'undo-or-close' | 'reopen' | 'close';
+
+export function negativeHoldFor(
+  task: NegativeHabitFields,
+  todayStart: Date,
+  // True once the habit's own end time has passed. The pass that counts that
+  // day would close a reopened one again within the minute, so there is no
+  // reopen to offer.
+  opts: { windowClosed?: boolean } = {},
+): NegativeHold | null {
+  if (!isNegativeTask(task)) return null;
+  const closable = closeDayPatch(task, todayStart) !== null && !isFailedToday(task, todayStart);
+  if (slipsToday(task, todayStart) > 0) return closable ? 'undo-or-close' : 'undo-slip';
+  if (isClosedToday(task, todayStart)) return opts.windowClosed ? null : 'reopen';
+  return closable ? 'close' : null;
+}

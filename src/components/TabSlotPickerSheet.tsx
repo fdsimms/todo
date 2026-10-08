@@ -10,7 +10,7 @@ import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
 import { PickerSheet, PICKER_SHEET_LIST_MAX_HEIGHT } from './CategoryPicker';
 
 /** Ordinal names for the slots, for the title and for the tag on a row already in use. */
-export const TAB_SLOT_NAMES = ['First tab', 'Second tab', 'Third tab', 'Fourth tab'] as const;
+export const TAB_SLOT_NAMES = ['First tab', 'Second tab', 'Third tab', 'Fourth tab', 'Fifth tab'] as const;
 
 interface Props {
   visible: boolean;
@@ -20,7 +20,7 @@ interface Props {
   /** Every slot's current route, so a row already in use can say which tab it is. */
   tabRoutes: readonly string[];
   onSelect: (route: string) => void;
-  /** Empties the slot. Only the optional fourth can be emptied. */
+  /** Empties the slot. Only the optional fourth and fifth can be emptied. */
   onClear: () => void;
 }
 
@@ -58,7 +58,7 @@ export function TabSlotPickerSheet({ visible, onClose, slot, tabRoutes, onSelect
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityState={{ selected: empty }}
-              accessibilityLabel="No fourth tab"
+              accessibilityLabel={`No ${TAB_SLOT_NAMES[slot]?.toLowerCase() ?? "tab"}`}
             >
               <Ionicons name="ellipse-outline" size={iconSize.sm} color={empty ? colors.accent : colors.textSecondary} />
               <Text style={[styles.rowText, empty && styles.rowTextOn]} numberOfLines={1}>None</Text>
