@@ -3002,7 +3002,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
    * a kind switch can't quietly promote a plain task back to a timed one.
    */
   const retotalDuration = (nextSubtasks: (Task | DraftSubtask)[]) => {
-    if (timedMinutes === null) return;
+    // Timed only: on a target `timedMinutes` is the per-unit countdown, which
+    // a stretch left on a subtask must not overwrite.
+    if (timedMinutes === null || kind !== 'timed') return;
     const total = apportionedMinutes(nextSubtasks);
     if (total === null || total === timedMinutes) return;
     setTimedMinutes(total);
@@ -3868,6 +3870,32 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         {quotaPeriod === 'week'
                           ? 'Any days of the week. The count resets when the week does.'
                           : 'The count resets each day.'}
+                      </Text>
+                      <View style={styles.sep} />
+                      {/* A countdown for each unit, kept in `timedMinutes`. It
+                          restarts every time a unit is logged and never blocks
+                          logging one early. */}
+                      <View style={styles.targetStepperRow}>
+                        <CountStepper
+                          value={timedMinutes}
+                          onChange={next => {
+                            setTimedMinutes(next);
+                            setDurationText(next !== null ? String(next) : '');
+                            setDurationUnit('min');
+                          }}
+                          min={1}
+                          max={180}
+                          allowNull
+                          emptyLabel="Off"
+                          format={n => `${n} min`}
+                          label="Time per unit"
+                          describeValue={n => (n === null ? 'off' : `${n} minutes for each unit`)}
+                        />
+                      </View>
+                      <Text style={styles.targetStepperCaption}>
+                        {timedMinutes === null
+                          ? 'Time per unit: off'
+                          : `A ${formatDuration(timedMinutes)} countdown for each one. It restarts when you log a unit.`}
                       </Text>
                     </>
                   )}

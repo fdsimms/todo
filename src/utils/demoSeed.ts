@@ -769,6 +769,21 @@ export function seedDemoData(): void {
   });
   updateTask(stretch.id, { progressCount: 3 });
 
+  // A daily target with a countdown for each unit (see docs/arch/timed-tasks.md):
+  // `timedMinutes` is the length of one sit, and logging one restarts the clock.
+  addTask({
+    title: 'Meditate',
+    notes: 'Three sits a day, ten minutes each. Start the timer for each one; logging a sit resets it.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 3,
+    targetUnit: 'sits',
+    timedMinutes: 10,
+    quotaAlwaysVisible: true,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+
   // A weekly target — the same counting mechanism over a week instead of a day
   // (see Task.quotaPeriod), which is what "three times a week, any days" is.
   // Seeded partway through so the meter reads as a week in progress: a 0/3
