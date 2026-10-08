@@ -90,7 +90,7 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
-import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit } from '../utils/rewards';
+import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
   parseFocusDefaultWorkMinutes,
@@ -532,6 +532,11 @@ interface SettingsStore {
   // src/utils/rewards.ts). Few on purpose: a bounty on every task is just a
   // bigger base rate.
   bountyLimit: number;
+  // What you'd spend on rewards in a week, in minor units (cents), or null for
+  // unset. Divides the weekly earning rate into the coins-per-dollar exchange
+  // rate that prices dollar-priced rewards (see `coinsPerDollar` in
+  // src/utils/rewards.ts).
+  rewardWeeklyBudgetMinor: number | null;
   // Keep those same apps blocked while a task marked as a gate is outstanding.
   // The other direction from the penalty: not what failing costs afterwards,
   // but what has to happen before the apps unblock at all. See
@@ -1881,6 +1886,7 @@ interface SettingsStore {
   setRewardGoalId: (id: string | null) => void;
   setRewardListProjectId: (id: string | null) => void;
   setBountyLimit: (count: number) => void;
+  setRewardWeeklyBudgetMinor: (minor: number | null) => void;
   setGateShieldEnabled: (on: boolean) => void;
   setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
@@ -2159,6 +2165,7 @@ const DEFAULT_SETTINGS = {
   rewardGoalId: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
+  rewardWeeklyBudgetMinor: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2590,6 +2597,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   rewardGoalId: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
+  rewardWeeklyBudgetMinor: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2887,6 +2895,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const rewardGoalId = dbGetSetting('rewardGoalId') || null;
     const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
     const bountyLimit = parseBountyLimit(dbGetSetting('bountyLimit'));
+    const rewardWeeklyBudgetMinor = parseWeeklyBudget(dbGetSetting('rewardWeeklyBudgetMinor'));
     const gateShieldEnabled = dbGetSetting('gateShieldEnabled') === 'true';
     const penaltyShieldUntil = dbGetSetting('penaltyShieldUntil') || null;
     const penaltyShieldReason = dbGetSetting('penaltyShieldReason') || null;
@@ -3548,6 +3557,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       rewardGoalId,
       rewardListProjectId,
       rewardsEnabled,
+      rewardWeeklyBudgetMinor,
       runningLowAddsToList,
       screenTimeRules,
       screenTimeTaskCategory,
@@ -4562,6 +4572,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = parseBountyLimit(String(count));
     dbSetSetting('bountyLimit', String(clamped));
     set({ bountyLimit: clamped });
+  },
+
+  setRewardWeeklyBudgetMinor(minor: number | null) {
+    const next = minor !== null && minor > 0 ? Math.round(minor) : null;
+    dbSetSetting('rewardWeeklyBudgetMinor', next === null ? '' : String(next));
+    set({ rewardWeeklyBudgetMinor: next });
   },
 
   setGateShieldEnabled(on: boolean) {

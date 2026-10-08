@@ -17,6 +17,8 @@ export interface SerializedReward {
   id: string;
   title: string;
   cost: number;
+  /** The dollar price in major units, for a reward priced in money. `cost` is that price at the current rate. */
+  price?: number;
   note?: string;
   link?: string;
   /** Claimed once, then gone from the list. */
@@ -87,6 +89,7 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
       id: reward.id,
       title: shown.title,
       cost: reward.cost,
+      ...(reward.priceMinor !== null ? { price: reward.priceMinor / 100 } : {}),
       ...(shown.note ? { note: shown.note } : {}),
       ...(shown.linkUrl ? { link: shown.linkUrl } : {}),
       oneTime: reward.oneTime,
@@ -120,15 +123,51 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
 
 export interface RewardInput {
   title: string;
-  cost: number;
+  /** Coins. Give this or `price`. */
+  cost?: number;
+  /** Dollars (major units, up to two decimals), converted to coins at the person's rate. Null on an update clears it. */
+  price?: number | null;
   note?: string | null;
   link?: string | null;
   oneTime?: boolean;
 }
 
-/** A new reward. The cost is the person's to set; the app prices ideas off the earning rate, which Claude can ask them about. */
+/**
+ * Coins per dollar: the person's weekly earning over their typed weekly reward
+ * budget (`coinsPerDollar`). Null until both exist, and a dollar price is
+ * refused rather than guessed while it is.
+ */
+function exchangeRate(replica: Replica): number | null {
+  const { rewards: lib } = replica.lib();
+  const rate = lib.earnRatePerDay(replica.tasks(), new Date());
+  return lib.coinsPerDollar(rate, replica.settings().rewardWeeklyBudgetMinor);
+}
+
+/** A typed dollar amount to minor units, refusing more than two decimals so nothing is rounded silently. */
+function priceToMinor(price: number): number {
+  const minor = Math.round(price * 100);
+  if (!(price > 0) || Math.abs(minor - price * 100) > 1e-6) {
+    throw new Error('price must be a positive amount with at most two decimals, like 4.5.');
+  }
+  return minor;
+}
+
+function costForPrice(replica: Replica, priceMinor: number): number {
+  const rate = exchangeRate(replica);
+  if (rate === null) {
+    throw new Error('A dollar price needs a coin-to-dollar rate: the person has to set a weekly reward budget in Rewards, and have about a week of completed tasks. Give a cost in coins instead.');
+  }
+  return replica.lib().rewards.coinsForPrice(priceMinor, rate);
+}
+
+/** A new reward. Give a coin cost, or a dollar price the person's own rate converts to one. */
 export function createReward(replica: Replica, input: RewardInput): SerializedReward {
-  const reward = replica.addReward(input.title, input.cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime });
+  if ((input.cost === undefined) === (input.price == null)) {
+    throw new Error('Give either cost (coins) or price (dollars), not both and not neither.');
+  }
+  const priceMinor = input.price != null ? priceToMinor(input.price) : null;
+  const cost = priceMinor !== null ? costForPrice(replica, priceMinor) : input.cost!;
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor });
   return rewardById(replica, reward.id);
 }
 
@@ -137,9 +176,17 @@ export function updateReward(
   id: string,
   patch: Partial<RewardInput>,
 ): SerializedReward {
+  if (patch.cost !== undefined && patch.price != null) {
+    throw new Error('Give either cost (coins) or price (dollars), not both.');
+  }
+  // A new price recomputes the coins; a coin cost on its own makes the reward
+  // coin-priced, so a stale dollar price can't repaint it later.
+  const priceMinor = patch.price != null ? priceToMinor(patch.price) : undefined;
+  const cost = priceMinor !== undefined ? costForPrice(replica, priceMinor) : patch.cost;
   const reward = replica.updateReward(id, {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
-    ...(patch.cost !== undefined ? { cost: patch.cost } : {}),
+    ...(cost !== undefined ? { cost } : {}),
+    ...(priceMinor !== undefined ? { priceMinor } : patch.cost !== undefined || patch.price === null ? { priceMinor: null } : {}),
     ...(patch.note !== undefined ? { note: patch.note } : {}),
     ...(patch.link !== undefined ? { linkUrl: patch.link } : {}),
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
@@ -154,7 +201,17 @@ export function deleteReward(replica: Replica, id: string): { deleted: { id: str
 
 /** Spend a reward's cost. The result carries the claim id `unclaim_reward` takes back. */
 export function claimReward(replica: Replica, id: string): { claimId: string; reward: string; spent: number; balance: number; checkedOff?: string } {
-  const listItem = replica.rewardState().rewards.find(r => r.id === id)?.taskId;
+  const before = replica.rewardState().rewards.find(r => r.id === id);
+  // A dollar-priced reward is claimed at today's rate, the way the app
+  // reprices it when its screen opens, so a stale cost isn't what gets spent.
+  if (before && before.priceMinor !== null && !before.taskId) {
+    const rate = exchangeRate(replica);
+    if (rate !== null) {
+      const fresh = replica.lib().rewards.coinsForPrice(before.priceMinor, rate);
+      if (fresh !== before.cost) replica.updateReward(id, { cost: fresh });
+    }
+  }
+  const listItem = before?.taskId;
   const itemTitle = listItem ? replica.taskById(listItem)?.title : undefined;
   const entry = replica.claimReward(id);
   return {

@@ -12,12 +12,15 @@ import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { usePullToSearch } from '../hooks/usePullToSearch';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { upcomingReminders } from '../utils/notifications';
 import type { Task } from '../types';
+import { useListScrollToTop } from '../hooks/useListScrollToTop';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
  * Every task with a reminder still ahead, across the whole app, soonest
@@ -34,7 +37,9 @@ import type { Task } from '../types';
  * drift apart.
  */
 export function RemindersScreen() {
+  const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Reminders', 'Reminder settings');
@@ -74,9 +79,12 @@ export function RemindersScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
+        ref={scrollTop.ref}
+        {...scrollTop.listProps}
+        refreshControl={pullSearch.refreshControl}
         data={reminders}
         keyExtractor={item => item.id}
-        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: tabBarHeight + spacing.md }]}
         renderItem={({ item }) => (
           <ReminderRow
             task={item}
@@ -103,6 +111,8 @@ export function RemindersScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+      <ScrollToTopButton {...scrollTop.buttonProps} />
+      {pullSearch.sheet}
     </View>
   );
 }

@@ -38,6 +38,7 @@ import {
   anchorLabel,
   formatOffsetWithAnchor,
   formatMinutesOffset,
+  describePlaceholderTokens,
   itemPlaceholders,
   normalizePlaceholderName,
   withPlaceholder,
@@ -217,6 +218,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
   // ==== local state: the draft, one piece of state per field ====
   const [title, setTitle] = useState('');
+  const readableTitle = useMemo(() => describePlaceholderTokens(title), [title]);
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
@@ -850,6 +852,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         maxLength={TITLE_MAX_LENGTH}
         multiline blurOnSubmit
       />
+      {/* The title in words, shown only when it holds a computed blank: the
+          field has to keep the syntax, so this is the one place it is read back. */}
+      {readableTitle !== title && (
+        <Text style={styles.readableTitle} accessibilityLabel={`Reads as: ${readableTitle}`}>
+          Reads as: {readableTitle}
+        </Text>
+      )}
       <TextField
         style={styles.notesInput}
         value={notes}
@@ -2718,6 +2727,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 120 },
+  readableTitle: {
+    color: colors.textSecondary, fontSize: font.sm,
+    paddingHorizontal: spacing.md, marginBottom: spacing.md,
+  },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 68,
