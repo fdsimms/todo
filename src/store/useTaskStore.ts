@@ -258,6 +258,8 @@ import {
   displayTitleFor,
   getVisibleAt,
   beginVisibleAtPass,
+  windowBoundsFor,
+  sunLocationOn,
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
@@ -3141,11 +3143,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const { activeHoursStart, activeHoursEnd, dayResetTime } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
-    const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
+    const blockTask = get().tasks.find(t => t.id === id) ?? task;
+    const fields = timeBlockFieldsFor(blockTask, {
       now: new Date(),
       dayResetTime,
       activeHoursStart,
       activeHoursEnd,
+      // The day the block is proposed on, which is the day proposeTimeBlockStart picks.
+      sunLocation: sunLocationOn(blockTask.dueDate ? getTaskDayStart(new Date(blockTask.dueDate), dayResetTime) : getCurrentDayStart()),
       events: loaded ? events : null,
     });
     return fields ? { mode: 'create', fields } : null;
@@ -4918,10 +4923,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // over once its own span has closed.
       if (taskDay < todayStart) return true;
       if (taskDay > todayStart) return false;
+      const window = windowBoundsFor(t, todayStart);
       return isQuotaRunOver(
         quotaRunSpan({
-          windowStart: t.windowStart,
-          windowEnd: t.windowEnd,
+          windowStart: window.start,
+          windowEnd: window.end,
           quotaStartedAt: t.quotaStartedAt,
           activeHoursStart,
           activeHoursEnd,

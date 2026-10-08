@@ -1,6 +1,7 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project } from '../types';
 import { formatDeadlineDate, getDayStart, getTaskDayStart } from './dateUtils';
+import { roundSunLocation } from './sunTimes';
 
 /**
  * A project's away dates — when you leave and when you are back.
@@ -328,7 +329,7 @@ export function awayListDriver<T extends Pick<Project, 'awayStart' | 'awayEnd' |
  * "no trip", which fails toward the behaviour that existed before any of this
  * did rather than toward sparing rows nobody asked to spare.
  */
-type AwayProject = Pick<Project, 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'archived' | 'completed'>;
+type AwayProject = Pick<Project, 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'archived' | 'completed' | 'destinationLatitude' | 'destinationLongitude'>;
 
 let awayProjectSource: (() => readonly AwayProject[]) | null = null;
 
@@ -342,4 +343,72 @@ export function isAwayPauseInForce(now: Date = new Date(), dayResetTime?: string
   const projects = awayProjectSource?.();
   if (!projects) return false;
   return awayPauseDriver(projects, now, dayResetTime) !== null;
+}
+
+type TripPlace = Pick<Project, 'awayStart' | 'awayEnd' | 'archived' | 'completed' | 'destinationLatitude' | 'destinationLongitude'>;
+
+/**
+ * Where the sun is worked out for on a day a trip covers: the destination's
+ * coordinates of a live trip whose span holds `date`, or null when no such trip
+ * has any (no trip that day, a destination nobody has looked up yet, or one no
+ * geocoder knows). Overlapping trips go to the one that started first, the
+ * order `nextAwayProject` already ranks them in.
+ *
+ * Only a planning read, like every other reader of the span: it moves when a
+ * window opens, and never whether a task may be done.
+ */
+export function tripPlaceOn(
+  projects: readonly TripPlace[],
+  date: Date,
+  dayResetTime?: string,
+): { latitude: number; longitude: number } | null {
+  let best: TripPlace | null = null;
+  for (const p of projects) {
+    if (p.destinationLatitude == null || p.destinationLongitude == null) continue;
+    if (!isProjectAwayNow(p, date, dayResetTime)) continue;
+    if (!best || (p.awayStart ?? '') < (best.awayStart ?? '')) best = p;
+  }
+  return best ? { latitude: best.destinationLatitude!, longitude: best.destinationLongitude! } : null;
+}
+
+/** `tripPlaceOn` over the registered project source. */
+export function tripSunLocationOn(date: Date, dayResetTime?: string): { latitude: number; longitude: number } | null {
+  const projects = awayProjectSource?.();
+  if (!projects) return null;
+  return tripPlaceOn(projects, date, dayResetTime);
+}
+
+/**
+ * What else an update to a project has to write when it changes the
+ * destination: the coordinates go with the old text, unless the patch names
+ * them itself (the trip page writing what it just looked up). Kept with the
+ * words they came from, they can never describe a place the trip no longer
+ * says it is going to. See Project.destinationLatitude.
+ */
+export function destinationPinFields(
+  project: Pick<Project, 'destination'>,
+  patch: Partial<Pick<Project, 'destination' | 'destinationLatitude' | 'destinationLongitude'>>,
+): Partial<Pick<Project, 'destinationLatitude' | 'destinationLongitude'>> {
+  if (!('destination' in patch)) return {};
+  if ('destinationLatitude' in patch || 'destinationLongitude' in patch) return {};
+  if ((patch.destination ?? null) === (project.destination ?? null)) return {};
+  return { destinationLatitude: null, destinationLongitude: null };
+}
+
+/**
+ * The patch that keeps a trip's coordinates in step with a geocode of its
+ * destination, or null when there is nothing to write: the destination has
+ * changed since the lookup was asked (the answer is about words the trip no
+ * longer says), or the rounded coordinates are already the stored ones, so a
+ * page opened again doesn't rewrite the row and restamp it for sync.
+ */
+export function destinationPinUpdate(
+  project: Pick<Project, 'destination' | 'destinationLatitude' | 'destinationLongitude'>,
+  askedFor: string,
+  place: { latitude: number; longitude: number },
+): Pick<Project, 'destinationLatitude' | 'destinationLongitude'> | null {
+  if ((project.destination ?? null) !== askedFor) return null;
+  const { latitude, longitude } = roundSunLocation(place);
+  if (project.destinationLatitude === latitude && project.destinationLongitude === longitude) return null;
+  return { destinationLatitude: latitude, destinationLongitude: longitude };
 }

@@ -12,6 +12,10 @@ import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
+import { getCurrentDayStart } from '../../utils/dateUtils';
+import { dateToHHMM as clockOf } from '../../utils/clockTime';
+import { sunEventsForDay } from '../../utils/sunTimes';
+import { getCurrentLocation, requestLocationPermission } from '../../utils/weatherLocation';
 
 type SegmentKey = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd';
 
@@ -30,7 +34,29 @@ export function DayTimeSettings() {
     activeHoursEnd, setActiveHoursEnd,
     use24HourTime, setUse24HourTime,
     weekStartsOn, setWeekStartsOn,
+    sunLocation, setSunLocation,
   } = useSettingsStore();
+  const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
+
+  // Read only from this tap (and the task editor's), never in the background.
+  // Stored rounded to about a kilometer (setSunLocation).
+  const saveCurrentLocation = async () => {
+    setSunLocationStatus('asking');
+    const granted = await requestLocationPermission();
+    const loc = granted ? await getCurrentLocation() : null;
+    if (!loc) { setSunLocationStatus('failed'); return; }
+    setSunLocation(loc);
+    setSunLocationStatus('idle');
+  };
+
+  const sunToday = sunLocation ? sunEventsForDay(getCurrentDayStart(), sunLocation) : null;
+  const sunLocationHint = sunLocationStatus === 'failed'
+    ? 'Couldn\u2019t read your location. Allow Location for dundundun in the Settings app, then try again.'
+    : !sunLocation
+      ? 'Not set yet. Tap to use where you are now.'
+      : sunToday?.sunrise && sunToday.sunset
+        ? `Today: sunrise ${formatHHMM(clockOf(sunToday.sunrise))}, sunset ${formatHHMM(clockOf(sunToday.sunset))}. Tap to update it to where you are now.`
+        : 'The sun doesn\u2019t rise or set there today. Tap to update it to where you are now.';
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -148,6 +174,34 @@ export function DayTimeSettings() {
       >
         {segment('activeStart', 'Awake from', 'speedometer-outline', formatHHMM(activeHoursStart), { first: true })}
         {segment('activeEnd', 'Awake until', 'speedometer-outline', formatHHMM(activeHoursEnd))}
+      </SettingsSection>
+
+      <SettingsSection
+        label="Sunrise and sunset"
+        footer="A task's time window can start or end at sunrise or sunset, or up to three hours either side. The times are worked out on this phone from the location saved here, which is never sent anywhere. On the days of a trip, the destination's times are used instead once its page has looked it up (with Destination forecast on)."
+      >
+        <SettingsRow
+          entryId="sunLocation"
+          icon="sunny-outline"
+          iconColor={colors.accent}
+          label="Location for sun times"
+          hint={sunLocationHint}
+          alwaysShowHint
+          value={sunLocation ? 'Saved' : 'Not set'}
+          busy={sunLocationStatus === 'asking'}
+          onPress={saveCurrentLocation}
+        />
+        {sunLocation && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="close-circle-outline"
+              label="Clear location"
+              hint="A window set to follow the sun keeps the last clock time it was set to."
+              onPress={() => { setSunLocation(null); setSunLocationStatus('idle'); }}
+            />
+          </>
+        )}
       </SettingsSection>
 
       <SettingsSection

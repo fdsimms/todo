@@ -229,6 +229,8 @@ export function newTaskFromDraft(
     timeSegments: seedFromCategory ? resolveTimeSegments(draft, defaults.timeSegment) : (draft.timeSegments ?? []),
     windowStart: draft.windowStart ?? null,
     windowEnd: draft.windowEnd ?? null,
+    windowStartSun: draft.windowStartSun ?? null,
+    windowEndSun: draft.windowEndSun ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],

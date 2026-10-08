@@ -37,6 +37,7 @@ import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
+import { formatSunAnchor, parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { localDateInput } from './timeZone';
 
 export const REPEAT_EVERY = ['never', 'hours', 'day', 'week', 'month', 'year'] as const;
@@ -143,6 +144,7 @@ export interface SupplyInput {
 }
 
 export interface WindowInput {
+  /** "HH:MM", or a sun anchor: "sunrise", "sunset", "sunset-30", "sunrise+45". */
   start?: string | null;
   end?: string | null;
 }
@@ -244,6 +246,12 @@ export interface ReminderRuleInput extends ReminderRule {
 export interface TaskFieldsDeps {
   newId(): string;
   emptyFollowUpDraft(): FollowUpTaskDraft;
+  /**
+   * The "HH:MM" a sun anchor resolves to on the task's day (its due date, else
+   * today), or null when it can't be worked out: no location saved, or no such
+   * event that day. Absent, a sun anchor is refused.
+   */
+  sunClockFor?(anchor: string, dueDate: string | null): string | null;
 }
 
 export interface TaskFieldsResult {
@@ -643,14 +651,40 @@ export function taskFieldsPatch(
   // ---- window ---------------------------------------------------------------
   if (input.window !== undefined) {
     if (input.window === null) {
-      Object.assign(patch, { windowStart: null, windowEnd: null });
+      Object.assign(patch, { windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null });
     } else {
+      // A bound is a clock time or a sun anchor. An anchor is written with the
+      // clock time it resolves to on the task's day beside it, the fallback
+      // every reader that isn't sun-aware keeps (see Task.windowStartSun), and
+      // a clock time clears any anchor the bound had.
+      const dueDate = patch.dueDate !== undefined ? patch.dueDate : current?.dueDate ?? null;
       for (const key of ['start', 'end'] as const) {
         const v = input.window[key];
-        if (v != null && !HHMM.test(v)) errors.push(`window.${key} must be a 24-hour "HH:MM" time.`);
+        if (v === undefined) continue;
+        const clockKey = key === 'start' ? 'windowStart' : 'windowEnd';
+        const sunKey = key === 'start' ? 'windowStartSun' : 'windowEndSun';
+        if (v === null) {
+          patch[clockKey] = null;
+          patch[sunKey] = null;
+        } else if (HHMM.test(v)) {
+          patch[clockKey] = v;
+          patch[sunKey] = null;
+        } else {
+          const anchor = parseSunAnchor(v);
+          if (!anchor) {
+            errors.push(`window.${key} must be a 24-hour "HH:MM" time, or "sunrise"/"sunset" with an optional minutes offset of up to ${SUN_OFFSET_LIMIT} ("sunset-30").`);
+            continue;
+          }
+          const text = formatSunAnchor(anchor);
+          const clock = deps.sunClockFor?.(text, dueDate) ?? null;
+          if (!clock) {
+            errors.push(`window.${key} can't follow the sun yet: no location is saved for sunrise and sunset times on that day. The person sets one in Settings, Day & time.`);
+            continue;
+          }
+          patch[clockKey] = clock;
+          patch[sunKey] = text;
+        }
       }
-      if (input.window.start !== undefined) patch.windowStart = input.window.start;
-      if (input.window.end !== undefined) patch.windowEnd = input.window.end;
     }
   }
 

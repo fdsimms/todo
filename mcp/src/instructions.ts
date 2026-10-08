@@ -23,6 +23,7 @@ How the app thinks about time:
 - The app's day starts at the person's own "day starts at" time, not midnight. Before then it is still yesterday. Every tool here already uses this; do not re-derive "today" from the clock.
 - Today, Later, Unscheduled and Inbox are four separate lists. Today is what is due and visible now. Later is scheduled for the future or snoozed (a defer). Unscheduled has no date on purpose. Inbox is untriaged (no date, no category, nothing). A task missing from Today is usually deferred or not due, not lost; get_task says why and until when. A task with weatherWait is held on purpose until a forecast day of that kind (the phone moves its defer date as the forecast changes), so do not defer it by hand; set or clear weatherWait instead.
 - Rescheduling goes through defer_task, never by editing dueDate. For a repeating task the two are different: a defer moves this occurrence only.
+- A time window bound can follow the sun ("sunset", "sunset-30", "sunrise+45"): get_task shows the times it comes to today, with startFollows/endFollows naming the anchor. The times are worked out on the phone from a saved location, or a trip's destination on the trip's days, so they move a little each day; set the anchor, not a clock time, when the person means "before dark".
 
 How tasks behave:
 - Completing a repeating task finishes this occurrence and creates the next one. Old occurrences stay as history, so one habit has many completed rows.

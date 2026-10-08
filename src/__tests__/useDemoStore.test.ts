@@ -937,6 +937,15 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds a time window that closes at sunset, with a location of its own', () => {
+    useDemoStore.getState().enterDemoMode();
+    const walk = useTaskStore.getState().tasks.find(t => t.title === 'Walk the dog before dark');
+    expect(walk?.windowEndSun).toBe('sunset');
+    expect(walk?.windowEnd).toMatch(/^\d{2}:\d{2}$/);
+    expect(useSettingsStore.getState().sunLocation).toEqual({ latitude: 40.68, longitude: -73.94 });
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // Same reasoning: nothing seeded carrying logCompletionToCalendar reads as
   // a feature the app doesn't have.
   it('seeds a task that logs its completion to the calendar', () => {
@@ -4332,6 +4341,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // in demo mode regardless.
     expect(trip!.destination).toBe('Lisbon');
     expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
+    // Where it is, so sun-timed windows follow the trip on those days.
+    expect([trip!.destinationLatitude, trip!.destinationLongitude]).toEqual([38.72, -9.14]);
     // And it buys from the away list, the other half of a nomination that is
     // invisible without one. Inert for awayPauses' reason: the trip is ahead,
     // so the demo opens on Groceries rather than on somebody else's trolley.

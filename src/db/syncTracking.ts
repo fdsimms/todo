@@ -540,6 +540,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Events kept for re-adding ("Optometrist"). The calendar is held by name,
   // not id, so an entry means the same on every device (`savedEvents.ts`).
   'savedEvents',
+  // Where sunrise and sunset are worked out for (sunTimes.ts). A sun-anchored
+  // window on a task syncs, so the place it is measured from has to as well,
+  // or one task would surface at two different times on two devices.
+  'sunLocation',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',

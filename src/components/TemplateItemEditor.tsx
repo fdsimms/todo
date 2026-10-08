@@ -46,7 +46,7 @@ import {
   RUN_PLACEHOLDER,
 } from '../utils/templateUtils';
 import { categoryLabel } from '../utils/categoryLabel';
-import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
+import { formatHHMM, hhmmToDate, dateToHHMM, getCurrentDayStart } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { deliverableMeta, deliverableOptionsFor, parseDeliverableOptions } from '../utils/deliverables';
 import { SortableList } from './SortableList';
@@ -62,7 +62,7 @@ import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { RecurrencePicker } from './RecurrencePicker';
-import { SegmentedControl } from './SegmentedControl';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -74,6 +74,12 @@ import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
+import { SunBoundPanel } from './SunBoundPanel';
+import {
+  formatSunAnchor, parseSunAnchor, shortSunAnchor, sunAnchorHHMM, roundSunLocation,
+  type SunAnchor, type SunEvent, type SunLocation,
+} from '../utils/sunTimes';
+import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { MAX_ROTATION_PER_WEEK, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { formatPhoneInput } from '../utils/phone';
@@ -122,6 +128,13 @@ interface Props {
  * optional flag, due/defer offsets relative to the anchor date, time of day,
  * category, tags, priority and effort.
  */
+// What a Start or End pill can follow: the clock, or the sun.
+const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
+  { value: 'time', label: 'Time' },
+  { value: 'sunrise', label: 'Sunrise' },
+  { value: 'sunset', label: 'Sunset' },
+];
+
 export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose, onCreated }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -230,6 +243,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [locationText, setLocationText] = useState('');
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
+  // A bound that follows the sun, beside the clock time it resolved to today
+  // (see Task.windowStartSun), and which of Time / Sunrise / Sunset the open
+  // pill is set to. Same controls as the task editor's.
+  const [windowStartSun, setWindowStartSun] = useState<string | null>(null);
+  const [windowEndSun, setWindowEndSun] = useState<string | null>(null);
+  const [windowPickerKind, setWindowPickerKind] = useState<'time' | SunEvent>('time');
+  const [sunLocationStatus, setSunLocationStatus] = useState<'idle' | 'asking' | 'failed'>('idle');
+  const [sunUnavailable, setSunUnavailable] = useState(false);
+  const sunLocation = useSettingsStore(s => s.sunLocation);
+  const setSunLocation = useSettingsStore(s => s.setSunLocation);
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [reminderOffsetMinutes, setReminderOffsetMinutes] = useState<number | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
@@ -330,6 +353,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setLinkText(item?.linkUrl ?? draft?.linkUrl ?? '');
     setLocationText(item?.location ?? draft?.location ?? '');
     setWindowEnd(item?.windowEnd ?? draft?.windowEnd ?? null);
+    setWindowStartSun(item?.windowStartSun ?? draft?.windowStartSun ?? null);
+    setWindowEndSun(item?.windowEndSun ?? draft?.windowEndSun ?? null);
     setReminderOffsetMinutes(item?.reminderOffsetMinutes ?? draft?.reminderOffsetMinutes ?? null);
     setTimeSegments(item?.timeSegments ?? draft?.timeSegments ?? []);
     setTags(item?.tags ?? draft?.tags ?? []);
@@ -442,18 +467,90 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeadlineTimePickerOpen(false);
   };
 
+  const windowSunOf = (which: 'start' | 'end') => (which === 'start' ? windowStartSun : windowEndSun);
+
   const openWindowPicker = (which: 'start' | 'end') => {
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
     setWindowPickerDate(hhmmToDate(current ?? fallback));
+    setWindowPickerKind(parseSunAnchor(windowSunOf(which))?.event ?? 'time');
+    setSunUnavailable(false);
+    setSunLocationStatus('idle');
     setWindowPickerMode(which);
   };
 
   const confirmWindowPicker = () => {
     const hhmm = dateToHHMM(windowPickerDate);
-    if (windowPickerMode === 'start') setWindowStart(hhmm);
-    else if (windowPickerMode === 'end') setWindowEnd(hhmm);
+    if (windowPickerMode === 'start') { setWindowStart(hhmm); setWindowStartSun(null); }
+    else if (windowPickerMode === 'end') { setWindowEnd(hhmm); setWindowEndSun(null); }
     setWindowPickerMode('none');
+  };
+
+  // A template has no day yet, so the clock fallback is the time the anchor
+  // comes to today; every task made from it resolves the anchor on its own day.
+  const commitWindowSun = (which: 'start' | 'end', anchor: SunAnchor, loc: SunLocation) => {
+    const text = formatSunAnchor(anchor);
+    const hhmm = sunAnchorHHMM(text, getCurrentDayStart(), loc);
+    if (!hhmm) { setSunUnavailable(true); return; }
+    setSunUnavailable(false);
+    if (which === 'start') { setWindowStartSun(text); setWindowStart(hhmm); }
+    else { setWindowEndSun(text); setWindowEnd(hhmm); }
+  };
+
+  const chooseWindowKind = (kind: 'time' | SunEvent) => {
+    if (windowPickerMode === 'none') return;
+    const which = windowPickerMode;
+    setWindowPickerKind(kind);
+    setSunUnavailable(false);
+    if (kind === 'time') {
+      const current = which === 'start' ? windowStart : windowEnd;
+      if (which === 'start') setWindowStartSun(null); else setWindowEndSun(null);
+      setWindowPickerDate(hhmmToDate(current ?? (which === 'start' ? '08:00' : '13:00')));
+      return;
+    }
+    if (!sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(which));
+    commitWindowSun(which, { event: kind, offsetMinutes: existing?.offsetMinutes ?? 0 }, sunLocation);
+  };
+
+  const setWindowSunSide = (side: 'before' | 'at' | 'after') => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const minutes = Math.abs(existing?.offsetMinutes ?? 0) || 30;
+    const offsetMinutes = side === 'at' ? 0 : side === 'before' ? -minutes : minutes;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes }, sunLocation);
+  };
+
+  const setWindowSunMinutes = (minutes: number) => {
+    if (windowPickerMode === 'none' || windowPickerKind === 'time' || !sunLocation) return;
+    const existing = parseSunAnchor(windowSunOf(windowPickerMode));
+    const sign = (existing?.offsetMinutes ?? 0) < 0 ? -1 : 1;
+    commitWindowSun(windowPickerMode, { event: windowPickerKind, offsetMinutes: sign * minutes }, sunLocation);
+  };
+
+  // What the location read was started for, so a late answer only lands on
+  // the pill it was asked from.
+  const sunPickRef = useRef({ visible, which: windowPickerMode, kind: windowPickerKind });
+  sunPickRef.current = { visible, which: windowPickerMode, kind: windowPickerKind };
+
+  const saveCurrentLocationForSun = async () => {
+    const asked = { which: windowPickerMode, kind: windowPickerKind };
+    setSunLocationStatus('asking');
+    const granted = await requestLocationPermission();
+    const loc = granted ? await getCurrentLocation() : null;
+    if (!loc) { setSunLocationStatus('failed'); return; }
+    setSunLocation(loc);
+    setSunLocationStatus('idle');
+    const now = sunPickRef.current;
+    if (!now.visible || now.which !== asked.which || now.kind !== asked.kind) return;
+    if (asked.which === 'none' || asked.kind === 'time') return;
+    commitWindowSun(asked.which, { event: asked.kind, offsetMinutes: 0 }, roundSunLocation(loc));
+  };
+
+  const windowBoundLabel = (hhmm: string | null, sun: string | null): string | null => {
+    const anchor = parseSunAnchor(sun);
+    if (anchor) return shortSunAnchor(anchor);
+    return hhmm ? formatHHMM(hhmm) : null;
   };
 
   // A step, subtask, tag or blank typed into its "add new" field but never
@@ -516,6 +613,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       deadlineTime: deadlineOffsetDays !== null ? deadlineTime : null,
       windowStart,
       windowEnd,
+      windowStartSun,
+      windowEndSun,
       linkUrl: parseLabelledLink(linkText)?.url ?? null,
       location: locationText.trim() || null,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
@@ -666,7 +765,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
   const timeWindowSummary = (windowStart || windowEnd)
-    ? `${windowStart ? formatHHMM(windowStart) : 'Any'}–${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    ? `${windowBoundLabel(windowStart, windowStartSun) ?? 'Any'}–${windowBoundLabel(windowEnd, windowEndSun) ?? 'Any'}`
     : undefined;
 
   // ==== render. Everything below is JSX ====
@@ -1048,7 +1147,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           expanded={showTimeWindow}
           onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
           onClear={(windowStart || windowEnd)
-            ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+            ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); }
             : undefined}
         />
         {showTimeWindow && (
@@ -1059,7 +1158,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onPress={() => openWindowPicker('start')}
               >
                 <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                  {windowStart ? formatHHMM(windowStart) : 'Start'}
+                  {windowBoundLabel(windowStart, windowStartSun) ?? 'Start'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1067,11 +1166,36 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onPress={() => openWindowPicker('end')}
               >
                 <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                  {windowBoundLabel(windowEnd, windowEndSun) ?? 'End'}
                 </Text>
               </TouchableOpacity>
             </View>
             {windowPickerMode !== 'none' && (
+              <View style={styles.windowKindRow}>
+                <SegmentedControl
+                  options={WINDOW_KIND_OPTIONS}
+                  value={windowPickerKind}
+                  onChange={chooseWindowKind}
+                  label={windowPickerMode === 'start' ? 'Start at' : 'End at'}
+                />
+              </View>
+            )}
+            {windowPickerMode !== 'none' && windowPickerKind !== 'time' && (
+              <SunBoundPanel
+                event={windowPickerKind}
+                anchor={parseSunAnchor(windowSunOf(windowPickerMode))}
+                resolved={windowPickerMode === 'start' ? windowStart : windowEnd}
+                dayLabel="Today"
+                hasLocation={!!sunLocation}
+                locationStatus={sunLocationStatus}
+                unavailable={sunUnavailable}
+                onSide={setWindowSunSide}
+                onMinutes={setWindowSunMinutes}
+                onUseLocation={saveCurrentLocationForSun}
+                onDone={() => setWindowPickerMode('none')}
+              />
+            )}
+            {windowPickerMode !== 'none' && windowPickerKind === 'time' && (
               <>
                 <DateTimePicker
                   value={windowPickerDate}
@@ -2677,6 +2801,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   conditionPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   conditionPillTextOn: { color: colors.onAccent, fontWeight: '600' },
   anchorRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  // Time / Sunrise / Sunset for the open pill, above whichever control it picks.
+  windowKindRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,

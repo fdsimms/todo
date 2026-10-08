@@ -7,6 +7,7 @@ import {
   MINUTES_IN_DAY,
   slotMinutesAt,
 } from '../utils/dayTimeline';
+import { sunAnchorHHMM } from '../utils/sunTimes';
 
 // A local minimum rather than a shared fixture, same as timeBlock.test.ts.
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -87,6 +88,18 @@ describe('buildDayTimeline placement', () => {
     expect(entries[0].startMinutes).toBe(22 * 60);
     expect(entries[0].endMinutes).toBe(22 * 60 + 30);
     expect(entries[0].endMinutes).toBeGreaterThan(entries[0].startMinutes);
+  });
+
+  it('places a window that follows the sun at that day\'s sunset, not the saved clock time', () => {
+    const longitude = ((-MIDNIGHT.getTimezoneOffset() / 60) * 15 + 540) % 360 - 180;
+    const here = { latitude: 0, longitude };
+    const task = makeTask({ windowStart: '08:00', windowStartSun: 'sunset', estimatedMinutes: 30 });
+    const sunset = sunAnchorHHMM('sunset', MIDNIGHT, here)!;
+    const { entries } = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [task], events: [], sunLocation: here });
+    expect(entries[0].startMinutes).toBe(clockToDayMinutes(sunset, MIDNIGHT));
+    // With no location it keeps the clock time it was saved with.
+    const fallback = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [task], events: [] });
+    expect(fallback.entries[0].startMinutes).toBe(8 * 60);
   });
 
   it('places a task at its reminder when it has no window', () => {
