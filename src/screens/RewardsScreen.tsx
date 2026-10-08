@@ -633,7 +633,7 @@ export function RewardsScreen() {
               accessible
               accessibilityLabel={`Saving for ${goalShown.title}: ${Math.max(0, Math.min(balance, goal.cost))} of ${formatCoins(goal.cost)}`}
             >
-              <Text style={styles.goalLabel}>{`Saving for ${goalShown.title}`}</Text>
+              <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
               <View style={styles.goalTrack}>
                 <View style={[styles.goalFill, { width: `${goalProgress(balance, goal.cost) * 100}%` }]} />
               </View>
