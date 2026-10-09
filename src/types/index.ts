@@ -2674,9 +2674,9 @@ export interface Task {
    * reads the *span* rather than the day: the pace ramp, the meter, the
    * completion that spawns the next occurrence. Only the span differs (see
    * `quotaWeekSpan`), which is the reason this is affordable at all. The one
-   * exception is hide-while-ahead: a weekly target never hides for being on
-   * pace (`quotaHidesWhenOnPace`), since a week-long ramp reads as ahead for
-   * most of the week and the row would sit in Later today. The pace across a week is linear rather than following active hours
+   * exception is hide-while-ahead: a weekly target ahead of pace leaves Today
+   * only for a later day, never for a later time today, so it stays up while
+   * its next unit falls due today (`quotaHidesWhenOnPace`). The pace across a week is linear rather than following active hours
    * each day — by Wednesday lunchtime you are owed about half of it — because a
    * week-long ramp is answering "am I going to run out of week", and the hour
    * of the day doesn't change that answer.

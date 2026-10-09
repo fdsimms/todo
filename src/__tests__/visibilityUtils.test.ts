@@ -2093,16 +2093,28 @@ describe('quota tasks', () => {
     });
 
     // NOW is Tue Jun 10 10:00; the week runs Mon Jun 9 to Mon Jun 16, so 3 of 5
-    // is ahead of pace and the fourth unit isn't owed until Friday. A weekly
-    // target never hides for being ahead, so it stays on Today and never lands
-    // in Later today.
-    it('keeps an ahead-of-pace weekly target on Today instead of Later today', () => {
+    // is ahead of pace and the fourth unit isn't owed until Friday.
+    it('is false for a weekly target whose next unit falls due on another day', () => {
       const weekly: Task = {
         ...quotaTask,
         recurrenceType: 'weekly',
         quotaPeriod: 'week',
         targetCount: 5,
         progressCount: 3,
+      };
+      expect(isOnPaceQuota(weekly)).toBe(true);
+      expect(isUpcomingToday(weekly)).toBe(false);
+    });
+
+    // 1 of 4 is on pace at Tue 10:00, and the second unit is owed Tue 18:00:
+    // later today, so the row stays on Today rather than waiting in Later today.
+    it('keeps a weekly target on Today when its next unit falls due later today', () => {
+      const weekly: Task = {
+        ...quotaTask,
+        recurrenceType: 'weekly',
+        quotaPeriod: 'week',
+        targetCount: 4,
+        progressCount: 1,
       };
       expect(quotaHidesWhenOnPace(weekly)).toBe(false);
       expect(isOnPaceQuota(weekly)).toBe(false);
