@@ -102,7 +102,7 @@ export type NavMenuRow =
 
 const KITCHEN_HUB: NavHub = {
   id: 'kitchen',
-  label: 'Groceries and meals',
+  label: 'Groceries & Meals',
   icon: 'cart-outline',
   kitchen: true,
   members: [

@@ -2678,7 +2678,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       </View>
 
       {/* Priority + Effort */}
-      <Text style={styles.groupLabel}>Priority and effort</Text>
+      <Text style={styles.groupLabel}>Priority & effort</Text>
       <View style={styles.sectionCard}>
         <CollapsibleField
           label="Priority"

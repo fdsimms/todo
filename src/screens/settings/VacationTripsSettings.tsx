@@ -14,9 +14,9 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
- * Vacation mode and the destination forecast, rendered at the end of Day and time.
+ * Vacation mode and the destination forecast, rendered at the end of Day & time.
  * Vacation is a span of days the app behaves differently on, which is the
- * subject of that group; it used to sit in Tasks and projects between expiry and
+ * subject of that group; it used to sit in Tasks & projects between expiry and
  * the forecast. Every row keeps its entry id, so search and the screen gears
  * resolve unchanged.
  */

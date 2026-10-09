@@ -21,7 +21,7 @@ import { alertPermissionOff } from '../../utils/permissionAlert';
 
 /**
  * Focus sessions, the apps that stay blocked around them, and the timers' Lock
- * Screen activity. Split out of Tasks and projects, which held 36 settings across
+ * Screen activity. Split out of Tasks & projects, which held 36 settings across
  * ten sections with this one alone at sixteen rows: a group named for what it
  * is about, rather than the rows' being found by scrolling past everything else.
  * Every row keeps its entry id, so search and the screen gears resolve unchanged.

@@ -215,7 +215,7 @@ type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item' | 'recipe'
 const entityKindColumns = (count: number) => (count > 4 ? 3 : 2);
 // The two pools that belong to the groceries/recipes/meal plan area, and so
 // leave with it — the same drop the Groceries tab and the drawer's own
-// "Groceries and meals" row already make. A queue walking the grocery catalog of
+// "Groceries & meals" row already make. A queue walking the grocery catalog of
 // an area you switched off is work the app is asking for on its own behalf.
 const KITCHEN_ENTITY_KINDS: ReadonlySet<EntityKind> = new Set<EntityKind>(['item', 'recipe']);
 const ENTITY_KIND_SEGMENTS = [

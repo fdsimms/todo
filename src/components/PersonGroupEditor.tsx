@@ -218,7 +218,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
         accessibilityRole="button"
         accessibilityLabel={`Add ${displayNameOf(person)} to a new group`}
       >
-        <Text style={styles.createButtonText}>Create and add {displayNameOf(person)}</Text>
+        <Text style={styles.createButtonText}>Create & add {displayNameOf(person)}</Text>
       </TouchableOpacity>
 
       {groups.length > 0 && (

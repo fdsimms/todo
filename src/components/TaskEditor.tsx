@@ -5,7 +5,7 @@
 //   ==== <name> ====        the section banners through the logic half
 //   <EditorGroup label=     the cards, in render order: Kind, Schedule,
 //                           Organize (the Subtasks card follows it),
-//                           Priority and effort, Relationships, On completion,
+//                           Priority & effort, Relationships, On completion,
 //                           Task actions, Streaks
 //   makeStyles              styles, at the bottom
 //
@@ -6043,7 +6043,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
 
 
       {/* Priority + Effort */}
-      {/* Subtasks — its own card rather than a row inside "Priority and effort", which it
+      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
           was never about — and a plain card rather than an EditorGroup,
           because a group caption reading SUBTASKS above a field also reading
           SUBTASKS is the same name twice. The field's own label is the
@@ -6162,12 +6162,12 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       )}
 
       {/* The heading has to answer for its own rows: simplified mode takes the
-          Effort row away, and a card headed "Priority and effort" with only a
+          Effort row away, and a card headed "Priority & effort" with only a
           Priority row in it names a field that isn't there. `EditorGroup` can
           drop a row but it can't rename the group around it, so the one group
           whose label lists its contents says so here. */}
       <EditorGroup
-        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority and effort' : 'Priority'}
+        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}

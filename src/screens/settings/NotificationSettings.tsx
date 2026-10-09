@@ -379,7 +379,7 @@ export function NotificationSettings() {
             entryId="quietHoursFromAwake"
             icon="speedometer-outline"
             label="Set from awake hours"
-            hint="Sets quiet hours to the hours outside your awake hours in Day and time."
+            hint="Sets quiet hours to the hours outside your awake hours in Day & time."
             onPress={matchAwakeHours}
           />
         </>

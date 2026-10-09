@@ -24,7 +24,7 @@ const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
  * `rewardsEnabled` (coins, bounties and the difficulty field), which had no way
  * off once the Rewards screen's own Turn on button was pressed.
  *
- * This used to be the last section of Tasks and projects, the group that was
+ * This used to be the last section of Tasks & projects, the group that was
  * already the widest in Settings — eleven sections deep, so the two controls
  * that decide what the rest of the app even shows sat behind more scrolling
  * than the housekeeping around them. A dedicated group puts them where their
@@ -71,7 +71,7 @@ export function FeatureAreasSettings() {
         entryId="kitchenEnabled"
         icon="cart-outline"
         iconColor={kitchenEnabled ? colors.accent : undefined}
-        label="Groceries and meals"
+        label="Groceries & meals"
         hint={!kitchenEnabled
           ? 'Hidden from the menu and the tab bar'
           : tabRoutes.includes('Groceries') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}

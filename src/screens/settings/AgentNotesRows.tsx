@@ -18,7 +18,7 @@ import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
- * What Claude is asked to keep in mind, in Settings › Data and reset › Sync,
+ * What Claude is asked to keep in mind, in Settings › Data & reset › Sync,
  * beside the server it reads them from. Claude adds notes when told to remember
  * something; this is where they are read, edited and removed, so nothing it
  * keeps about the person is out of their sight.

@@ -7822,7 +7822,7 @@ export interface EventPeopleLink {
  * **The third kind is why the mechanism was worth having.** The kitchen's front
  * door is the list the user already reads every day, not a screen they have to
  * go to: everything the groceries/meals area knows sits behind More →
- * Groceries and meals → a pill, and a bag of spinach nobody navigates to is a bag
+ * Groceries & meals → a pill, and a bag of spinach nobody navigates to is a bag
  * of spinach that rots. A context row is the opposite — the knowledge arrives
  * where the attention already is.
  *

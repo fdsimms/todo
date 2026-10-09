@@ -203,11 +203,11 @@ export function RecurrencePicker({
   const holidaySet = useSettingsStore(s => s.holidaySet);
   const customHolidays = useSettingsStore(s => s.customHolidays);
   const holidayHint = !hasAnyHolidays({ set: holidaySet, custom: customHolidays })
-    ? 'No holidays are set up, so this does nothing yet. Choose them in Settings, Day and time.'
+    ? 'No holidays are set up, so this does nothing yet. Choose them in Settings, Day & time.'
     : `Uses ${[
         holidaySet !== 'none' ? `${HOLIDAY_SET_LABELS[holidaySet]} holidays` : null,
         customHolidays.length > 0 ? `${customHolidays.length} day${customHolidays.length === 1 ? '' : 's'} off of your own` : null,
-      ].filter(Boolean).join(' and ')}, set in Settings, Day and time.`;
+      ].filter(Boolean).join(' and ')}, set in Settings, Day & time.`;
 
   // The rain thresholds in the user's own unit. A stored value that isn't a
   // preset (one picked under the other unit) keeps a segment of its own, so

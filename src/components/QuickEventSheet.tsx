@@ -1533,7 +1533,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         visible={pickerVisible}
         value={rawStart}
         mode={allDay ? 'date' : 'datetime'}
-        title={allDay ? 'Date' : 'Date and time'}
+        title={allDay ? 'Date' : 'Date & time'}
         onConfirm={pickStart}
         onCancel={() => setPickerVisible(false)}
       />

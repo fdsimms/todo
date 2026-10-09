@@ -108,7 +108,7 @@ export interface Overview {
   completedTasksKeptForDays: number | 'forever';
   /**
    * What the person has asked Claude to keep in mind, in their own words. Follow
-   * them. They can read and edit these in Settings › Data and reset › Sync.
+   * them. They can read and edit these in Settings › Data & reset › Sync.
    */
   notesForClaude: { id: string; text: string }[];
   lastSyncedAt?: string;
@@ -183,7 +183,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       mood,
       medication,
       ...(food + mood + medication === 0
-        ? { note: 'None in the last 30 days. They reach the server only with Settings › Data and reset › Sync › Include health logs turned on, so this may mean they were never sent.' }
+        ? { note: 'None in the last 30 days. They reach the server only with Settings › Data & reset › Sync › Include health logs turned on, so this may mean they were never sent.' }
         : {}),
     },
     completedTasksKeptForDays: settings.completedRetentionDays ?? 'forever',

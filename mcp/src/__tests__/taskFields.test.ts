@@ -263,7 +263,7 @@ describe('habit, window, follow-up, blockers', () => {
     // No sunClockFor at all, and one that answers null (no location saved).
     expect(errorsOf({ window: { end: 'sunset' } })).toMatch(/no location is saved/);
     const noPlace = { ...deps, sunClockFor: () => null };
-    expect(taskFieldsPatch({ window: { end: 'sunset' } }, null, noPlace).errors.join(' ')).toMatch(/Settings, Day and time/);
+    expect(taskFieldsPatch({ window: { end: 'sunset' } }, null, noPlace).errors.join(' ')).toMatch(/Settings, Day & time/);
     expect(errorsOf({ window: { end: 'dusk' } })).toMatch(/sunrise.*sunset/);
     expect(errorsOf({ window: { end: 'sunset-500' } })).toMatch(/up to 180/);
   });

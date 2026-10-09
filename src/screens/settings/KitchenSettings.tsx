@@ -24,7 +24,7 @@ import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
  * The groceries/recipes/meal-plan area's own settings — what it puts on Today,
  * how it states amounts, and what it swaps for you.
  *
- * These were five sections at the bottom of Tasks and projects, behind a
+ * These were five sections at the bottom of Tasks & projects, behind a
  * `{kitchenEnabled && …}` that hid a third of that screen in one go. They are
  * a group of their own now, gated at the group level the way `iosOnly` gates
  * Reminders & Calendar, so the master switch adds and removes a row on the
@@ -234,7 +234,7 @@ export function KitchenSettings() {
       </SettingsSection>
 
       <SettingsSection
-        label="Recipe and grocery amounts"
+        label="Recipe & grocery amounts"
         footer="Recipes and the grocery list keep the amounts as typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like “14 oz can”, and amounts with no number aren’t converted."
       >
         <SettingsRow

@@ -112,10 +112,10 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
           </Text>
 
           <View style={styles.question}>
-            <Text style={styles.label}>Groceries and meals</Text>
+            <Text style={styles.label}>Groceries & meals</Text>
             <Text style={styles.help}>A shopping list, recipes and a meal plan.</Text>
             <SegmentedControl
-              label="Groceries and meals"
+              label="Groceries & meals"
               options={YES_NO}
               value={answers.groceriesAndMeals}
               onChange={v => setAnswers(a => ({ ...a, groceriesAndMeals: v }))}

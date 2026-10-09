@@ -334,7 +334,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
         </CollapsibleField>
       </View>
 
-      <Text style={styles.groupLabel}>Priority and effort</Text>
+      <Text style={styles.groupLabel}>Priority &amp; effort</Text>
       <View style={styles.sectionCard}>
         <CollapsibleField
           label="Priority"

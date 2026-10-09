@@ -116,7 +116,7 @@ export function RecipeSortFilterSheet({
           </View>
 
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Sort and filter</Text>
+            <Text style={styles.sheetTitle}>Sort & filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
                 <TouchableOpacity onPress={reset} style={styles.resetBtn}>

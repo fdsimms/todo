@@ -362,12 +362,12 @@ export function LogMealPrompt() {
                   onPress={handleStopAsking}
                   accessibilityRole="button"
                   accessibilityLabel="Stop asking after meals"
-                  accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries and meals."
+                  accessibilityHint="Turn “Ask what you ate” back on in Settings, under Groceries & meals."
                 >
                   <Text style={styles.secondaryText}>Stop asking after meals</Text>
                 </TouchableOpacity>
                 <Text style={styles.hint}>
-                  {'Turn “Ask what you ate” back on in Settings, under Groceries and meals.'}
+                  {'Turn “Ask what you ate” back on in Settings, under Groceries & meals.'}
                 </Text>
               </>
             )}

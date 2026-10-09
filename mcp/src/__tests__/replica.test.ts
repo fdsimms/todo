@@ -187,7 +187,7 @@ describe('the replica', () => {
 
   it('finds a Settings row by a word that is not in its label, with the path to it', () => {
     const hits = replica.searchSettings('midnight');
-    expect(hits[0]).toMatchObject({ label: 'Day starts', path: 'Settings › Day and time › When the day turns over › Day starts' });
+    expect(hits[0]).toMatchObject({ label: 'Day starts', path: 'Settings › Day & time › When the day turns over › Day starts' });
   });
 
   it('reports the settings a reader needs to talk about the day', () => {

@@ -330,14 +330,14 @@ describe('tab slots', () => {
   it('offers every menu screen to pick from, grouped like the menu', () => {
     const groups = tabPickerGroups(FULL);
     expect(groups[0].label).toBeNull();
-    expect(groups.map(g => g.label)).toEqual([null, 'Groceries and meals', 'Organize', 'History', 'Health']);
+    expect(groups.map(g => g.label)).toEqual([null, 'Groceries & Meals', 'Organize', 'History', 'Health']);
     const offered = groups.flatMap(g => g.destinations.map(d => d.route)).sort();
     expect(offered).toEqual([...MENU_ROUTES].sort());
   });
 
   it('leaves the switched-off screens out of the picker', () => {
     const labels = tabPickerGroups({ ...FULL, kitchenEnabled: false }).map(g => g.label);
-    expect(labels).not.toContain('Groceries and meals');
+    expect(labels).not.toContain('Groceries & Meals');
   });
 
   it('keeps chosen tabs out of Recent, whatever they are', () => {

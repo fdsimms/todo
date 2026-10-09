@@ -298,7 +298,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const openSettings = () => {
     haptics.tap();
     // Lands on the group these settings actually live in ("Focus sessions"
-    // inside Tasks and projects), not the Settings index. The sheet's own
+    // inside Tasks & projects), not the Settings index. The sheet's own
     // dismiss animation runs same as Cancel; the pushed screen is behind it
     // and shows once the sheet is gone.
     (navigation as never as { navigate: (n: string, p: object) => void })

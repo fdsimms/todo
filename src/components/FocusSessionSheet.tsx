@@ -403,7 +403,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     haptics.tap();
     // Closes the sheet rather than ending the session — same as the chevron,
     // the session keeps running behind FocusBar. Lands on the group these
-    // settings actually live in ("Focus sessions" inside Tasks and projects),
+    // settings actually live in ("Focus sessions" inside Tasks & projects),
     // not the Settings index.
     handleClose();
     (navigation as never as { navigate: (n: string, p: object) => void })

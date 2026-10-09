@@ -47,10 +47,10 @@ describe('settingsSummaries', () => {
     });
 
     it('names each switch once it is off/on', () => {
-      expect(summarise({ kitchenEnabled: false }).featureAreas).toBe('Groceries and meals hidden');
+      expect(summarise({ kitchenEnabled: false }).featureAreas).toBe('Groceries & meals hidden');
       expect(summarise({ simpleMode: true }).featureAreas).toBe('Simplified mode on');
       expect(summarise({ kitchenEnabled: false, simpleMode: true }).featureAreas)
-        .toBe('Groceries and meals hidden · Simplified mode on');
+        .toBe('Groceries & meals hidden · Simplified mode on');
     });
   });
 

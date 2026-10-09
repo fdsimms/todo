@@ -120,7 +120,7 @@ import { alertPermissionOff } from '../../utils/permissionAlert';
  * Every task the app writes without being asked, in one section.
  *
  * These used to be four unrelated rows in four places — "Meals on Today",
- * "Use-up reminders" and "Leftovers" in Tasks and projects, and "Meal planning"
+ * "Use-up reminders" and "Leftovers" in Tasks & projects, and "Meal planning"
  * over in Notifications — each with its own header, its own footer paragraph
  * and its own copy of the same on/off + "file them under" pair. Nowhere did the
  * app answer the one question a person actually has about them, which is *what
@@ -190,7 +190,7 @@ export function GeneratedTasksSection() {
   const calendarsById = useCalendarStore(state => state.calendarsById);
 
   // Built here rather than handed down, now that this is a screen of its own
-  // rather than a section inside Tasks and projects. Not a segmented control: the
+  // rather than a section inside Tasks & projects. Not a segmented control: the
   // categories are the user's own and there can be fifteen, which is
   // `PillGroup`'s job (it caps and filters) and not a track's. `None` is
   // `pinned` — the option meaning "no choice" is never buried behind "N more".
@@ -215,7 +215,7 @@ export function GeneratedTasksSection() {
   // ==== listing ====
   // The kitchen's generators go with the area, the way every other kitchen row
   // does — but the other six stay, which is the whole point of the flag living
-  // on the registry. This section used to sit inside Tasks and projects' own
+  // on the registry. This section used to sit inside Tasks & projects' own
   // `{kitchenEnabled && …}` block, so switching the area off took all twelve
   // rows away while six of the generators behind them kept writing tasks.
   const listed = useMemo(() => listedGeneratedKinds(s.kitchenEnabled), [s.kitchenEnabled]);
@@ -825,8 +825,8 @@ export function GeneratedTasksSection() {
             label="Meals you eat"
             hint={
               s.mealSlotsEnabled.length === 0
-                ? "No meals picked, so no tasks are added. Planned meals still show as plain rows if Show the day’s meals is on under Groceries and meals."
-                : "A task each day for each of these, planned or not. Other planned meals still show as plain rows if Show the day’s meals is on under Groceries and meals."
+                ? "No meals picked, so no tasks are added. Planned meals still show as plain rows if Show the day’s meals is on under Groceries & meals."
+                : "A task each day for each of these, planned or not. Other planned meals still show as plain rows if Show the day’s meals is on under Groceries & meals."
             }
             tight
           />
