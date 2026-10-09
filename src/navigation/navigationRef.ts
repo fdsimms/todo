@@ -479,6 +479,11 @@ export function resetToLocateTask(taskId: string): void {
   });
 }
 
+/** The category list. There is no page for a single category, so Backfill's category card lands here. */
+export function resetToCategories(): void {
+  runWhenReady(() => navigateToTab('Categories'));
+}
+
 /** One project's own page (`dundundun://project?id=…`). */
 export function resetToProject(projectId: string): void {
   runWhenReady(() => {
