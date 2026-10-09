@@ -1408,10 +1408,10 @@ particular the one this generator would be worst to get wrong.
   to read any. The rules sheet renders a notice card when the read is off, and
   turns it on from there — nobody is left with a toggle that visibly does
   nothing.
-- **Its category is its own** (`healthTaskCategory`), defaulting to the same
-  name `ensureHealthCategory` uses. `addCategory` is idempotent by name, so out
-  of the box the Today reading and the health tasks share one "Health" section
-  while the two settings stay independently clearable. Reusing `healthCategory`
+- **Its category is its own** (`healthTaskCategory`), defaulting to "Health",
+  not the name `ensureHealthCategory` uses ("Biostats"). The Today reading's
+  section is information rows only, and no generated task files into it. The
+  two settings stay independently clearable. Reusing `healthCategory`
   outright — the `calendarReview` move — was the tempting version and is wrong
   here: "don't show my step count on Today" is not the same instruction as
   "don't add health tasks", and one setting could not tell them apart.

@@ -2293,7 +2293,8 @@ function seedFoodLog(today: Date): void {
   setNutritionTarget('satFatG', 20);
   useSettingsStore.getState().setNutritionLimits(['satFatG']);
   useSettingsStore.getState().setFoodLogPinnedNutrients(['calorieKcal', 'proteinG', 'satFatG']);
-  useSettingsStore.getState().setLimitsTodayCategory('Health');
+  useCategoryStore.getState().addCategory('Biostats');
+  useSettingsStore.getState().setLimitsTodayCategory('Biostats');
   const { items } = useGroceryStore.getState();
 
   /**

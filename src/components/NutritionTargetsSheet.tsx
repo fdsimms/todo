@@ -215,8 +215,9 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
     }
   };
 
-  // Files the rows under Health's own section when there is one, so the day's
-  // readings sit together, and otherwise under a "Health" category made for it.
+  // Files the rows under the Health reading's own section when there is one, so
+  // the day's readings sit together, and otherwise under a "Biostats" category
+  // made for it.
   const toggleLimitsOnToday = () => {
     haptics.tap();
     if (limitsTodayCategory !== null) { setLimitsTodayCategory(null); return; }

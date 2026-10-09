@@ -4669,7 +4669,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const settings = useSettingsStore.getState();
     expect(settings.nutritionLimits).toEqual(['satFatG']);
     expect(settings.nutritionTargets.satFatG).toBeGreaterThan(0);
-    expect(settings.limitsTodayCategory).toBe('Health');
+    expect(settings.limitsTodayCategory).toBe('Biostats');
     const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'limitWarning');
     expect(task?.category).toBe('Health');
     expect(task?.generatedSourceId).toBe('satFatG');

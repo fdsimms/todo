@@ -204,8 +204,12 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
 /** What the events category is called until the user renames it. */
 export const CALENDAR_EVENTS_CATEGORY = 'Calendar Events';
 
-/** Same, for the Apple Health reading. */
-export const HEALTH_CATEGORY = 'Health';
+/**
+ * Same, for the Apple Health reading. Not "Health": the generators that write
+ * health tasks file under that name (see `GENERATED_KIND_SPECS`), and a section
+ * holding both read as a readout with tasks mixed into it.
+ */
+export const HEALTH_CATEGORY = 'Biostats';
 
 /**
  * Give something the app files into a category one to file into (#1571).
