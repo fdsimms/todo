@@ -257,7 +257,7 @@ export function healthContextRows(
     /** Optional so a reading without the Activity rings still satisfies this. */
     rings?: ActivityRings | null;
   } | null,
-  opts: { todayKey: string; category: string | null },
+  opts: { todayKey: string; category: string | null; stepGoal?: number | null },
 ): ContextRow[] {
   if (!reading) return [];
   if (reading.dayKey !== opts.todayKey) return [];
@@ -281,6 +281,10 @@ export function healthContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
+      // Only against a goal the person typed in; there is none to borrow.
+      ...(opts.stepGoal
+        ? { visual: { type: 'bar' as const, fraction: clampFraction(steps / opts.stepGoal) } }
+        : {}),
     });
   }
 

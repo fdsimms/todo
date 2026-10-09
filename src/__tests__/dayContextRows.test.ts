@@ -453,7 +453,16 @@ describe('health row visuals', () => {
     moveByTime: false,
   };
 
-  it('puts the rings on the Activity row and nothing on steps', () => {
+  it('bars steps against a step goal, and not at all without one', () => {
+    const reading = { dayKey: TODAY, steps: 6000, activeEnergyKcal: null };
+    expect(healthContextRows(reading, { ...opts, stepGoal: 12000 })[0].visual).toEqual({ type: 'bar', fraction: 0.5 });
+    expect(healthContextRows({ ...reading, steps: 15000 }, { ...opts, stepGoal: 12000 })[0].visual)
+      .toEqual({ type: 'bar', fraction: 1 });
+    expect(healthContextRows(reading, opts)[0].visual).toBeUndefined();
+    expect(healthContextRows(reading, { ...opts, stepGoal: null })[0].visual).toBeUndefined();
+  });
+
+  it('puts the rings on the Activity row and no bar on steps without a goal', () => {
     const rows = healthContextRows({ dayKey: TODAY, steps: 4000, activeEnergyKcal: null, rings }, opts);
     expect(rows.map(r => [r.id, r.visual?.type ?? null])).toEqual([['health-steps', null], ['health-rings', 'rings']]);
   });

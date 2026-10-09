@@ -9,6 +9,8 @@ import { useDemoStore } from '../../store/useDemoStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
+import { CountStepper } from '../../components/CountStepper';
+import { STEP_GOAL_DEFAULT, STEP_GOAL_MAX, STEP_GOAL_MIN, STEP_GOAL_STEP } from '../../utils/stepGoal';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
@@ -96,6 +98,8 @@ export function HealthSettings() {
   const healthWriteNutrients = useSettingsStore(useShallow(s => s.healthWriteNutrients));
   const setHealthWriteNutrients = useSettingsStore(s => s.setHealthWriteNutrients);
   const healthCategory = useSettingsStore(s => s.healthCategory);
+  const stepGoal = useSettingsStore(s => s.stepGoal);
+  const setStepGoal = useSettingsStore(s => s.setStepGoal);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
   const weightUnit = useSettingsStore(s => s.weightUnit);
   const weightGoal = useSettingsStore(useShallow(s => s.weightGoal));
@@ -364,6 +368,32 @@ export function HealthSettings() {
               than three empty rings: HealthKit serves a refused read, a day
               with nothing recorded and a device with no rings alike. */}
           {reading?.rings ? <ActivityRingsCard rings={reading.rings} /> : null}
+
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="stepGoal"
+            icon="flag-outline"
+            label="Daily step goal"
+            hint={stepGoal
+              ? 'The steps row on Today shows a bar toward this number'
+              : 'No goal set. The steps row shows the count only'}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={stepGoal}
+              onChange={next => setStepGoal(next)}
+              allowNull
+              start={STEP_GOAL_DEFAULT}
+              min={STEP_GOAL_MIN}
+              max={STEP_GOAL_MAX}
+              step={STEP_GOAL_STEP}
+              emptyLabel="No goal"
+              format={n => `${n.toLocaleString()} steps`}
+              label="Daily step goal"
+              describeValue={n => (n === null ? 'No goal' : `${n} steps`)}
+            />
+          </View>
 
           <View style={styles.sep} />
           <SettingsRow
