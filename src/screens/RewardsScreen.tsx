@@ -474,8 +474,9 @@ export function RewardsScreen() {
           accessibilityLabel="Reward"
         />
       )}
-      <Text style={styles.fieldLabel}>How often do you want it?</Text>
-      {rate === null ? (
+      {/* How often you'd want it only prices a reward that comes back; a one-time one is claimed once. */}
+      {!draftOneTime && <Text style={styles.fieldLabel}>How often do you want it?</Text>}
+      {draftOneTime ? null : rate === null ? (
         <Text style={styles.hint}>
           After a week of completed tasks, this can suggest a price from how fast you earn coins.
         </Text>
@@ -671,10 +672,13 @@ export function RewardsScreen() {
     const pace = describeRewardPace(rate, reward.cost);
     const claimedAt = lastClaimedAt(entries, reward.id);
     const isGoal = goal?.id === reward.id;
+    const source = sourceOf(reward);
+    const sourceList = source ? projects.find(p => p.id === source.projectId) ?? list : null;
     return (
       <View key={reward.id} style={styles.card}>
         <View>
           <Text style={styles.rewardTitle}>{shown.title}</Text>
+          {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your list'}`}</Text>}
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
