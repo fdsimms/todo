@@ -289,6 +289,7 @@ export function ScanToLogFlow({
       <NutritionPanelSheet
         visible={panelSubject !== null}
         foodName={panelSubject?.name ?? ''}
+        openCamera={panelFor === null && !!labelName}
         nutrition={null}
         onClose={() => { setPanelFor(null); onLabelClose?.(); }}
         onSave={panel => {
