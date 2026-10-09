@@ -203,9 +203,24 @@ interface Props {
   onLogged: (label: string) => void;
   /** The × in the panel's own header. */
   onDismiss: () => void;
+  /**
+   * When given, the host draws the Log button (pinned, so a tall estimate can't
+   * push it off screen) and this panel doesn't. Called with what to draw while
+   * there is an estimate to log, and with null when there isn't or the panel
+   * goes away. `run` is stable; it always logs what the panel shows now.
+   */
+  onLogAction?: (action: EstimateLogAction | null) => void;
 }
 
-export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onDismiss }: Props) {
+/** What a host needs to draw the panel's Log button itself. */
+export interface EstimateLogAction {
+  label: string;
+  accessibilityLabel: string;
+  loading: boolean;
+  run: () => void;
+}
+
+export function EstimatePanel({ description: rawDescription, onDescriptionChange, slot, at, mealPlanEntryId, onPickRecipe, onLogged, onDismiss, onLogAction }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -540,6 +555,22 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     Keyboard.dismiss();
     onLogged(estimate.label);
   };
+
+  // The host's pinned Log button calls through a ref, so what it logs is always
+  // the latest render's estimate and meal while the action it holds stays put.
+  const handleLogRef = useRef(handleLog);
+  handleLogRef.current = handleLog;
+  const hasEstimate = !!estimate;
+  const logCal = estimate?.amounts.calorieKcal;
+  const logLabel = logCal !== undefined ? `Log ${Math.round(logCal).toLocaleString()} cal` : 'Log';
+  const logA11y = logCal !== undefined ? `Log ${Math.round(logCal)} calories` : 'Log this meal';
+  useEffect(() => {
+    if (!onLogAction) return;
+    onLogAction(hasEstimate
+      ? { label: logLabel, accessibilityLabel: logA11y, loading, run: () => handleLogRef.current() }
+      : null);
+  }, [onLogAction, hasEstimate, logLabel, logA11y, loading]);
+  useEffect(() => () => onLogAction?.(null), [onLogAction]);
 
   // ==== staged rows: the amount step and the one-tap + ====
   /**
@@ -1335,7 +1366,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
             </>
           )}
 
-        {estimate && (
+        {estimate && !onLogAction && (
           <View>
             <TouchableOpacity
               style={[styles.action, loading && styles.actionOff]}

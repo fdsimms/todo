@@ -84,7 +84,7 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
-import { EstimatePanel } from './EstimatePanel';
+import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
 import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import type { RankedFood } from '../utils/foodSearchMatch';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
@@ -505,6 +505,9 @@ export function FoodLogEntrySheet({
   // over (it resets by remounting; see `EstimatePanel`).
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [estimateKey, setEstimateKey] = useState(0);
+  // The open estimate's Log button, drawn at the foot of the sheet rather than
+  // at the end of the card, which a long estimate pushes below the fold.
+  const [estimateLog, setEstimateLog] = useState<EstimateLogAction | null>(null);
   // The earlier estimated helping whose amount is being changed before it is
   // logged again (`openHelping`).
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
@@ -1477,6 +1480,7 @@ export function FoodLogEntrySheet({
           }}
           onLogged={label => { setEstimateOpen(false); afterSave(label); }}
           onDismiss={() => setEstimateOpen(false)}
+          onLogAction={setEstimateLog}
         />
       )}
       {dbOpen && (
@@ -2034,6 +2038,20 @@ export function FoodLogEntrySheet({
                 other one-off affordances above. At the foot of the sheet
                 rather than among the ways to find a food, because it isn't
                 one: it says what happens after a save. */}
+            {estimateOpen && !!estimateLog && (
+              <View style={styles.estimateLogBar}>
+                <TouchableOpacity
+                  style={[styles.estimateLogButton, estimateLog.loading && styles.estimateLogOff]}
+                  activeOpacity={interaction.activeOpacity}
+                  disabled={estimateLog.loading}
+                  onPress={estimateLog.run}
+                  accessibilityRole="button"
+                  accessibilityLabel={estimateLog.accessibilityLabel}
+                >
+                  <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {!!allowBurst && !editing && (
               <View style={styles.burstFooter}>
                 <Text style={styles.burstLabel}>Log several</Text>
@@ -2251,6 +2269,22 @@ function makeStyles(colors: Colors) {
       paddingTop: spacing.xsm,
     },
     // The "Log several" switch, a bar across the foot of the search half.
+    estimateLogBar: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.smd,
+      paddingBottom: spacing.smd,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.bgSecondary,
+    },
+    estimateLogButton: {
+      backgroundColor: colors.accentFill,
+      borderRadius: radius.md,
+      paddingVertical: spacing.md,
+      alignItems: 'center',
+    },
+    estimateLogOff: { opacity: interaction.activeOpacity * 0.6 },
+    estimateLogText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
     burstFooter: {
       flexDirection: 'row',
       alignItems: 'center',
