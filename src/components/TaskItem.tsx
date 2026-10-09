@@ -38,6 +38,7 @@ import { CoinIcon } from './CoinIcon';
 import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
+import { useTrayRaised } from './TaskGroupTray';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { weatherWaitChipText } from '../utils/weatherWait';
@@ -563,7 +564,10 @@ export const TaskItem = React.memo(function TaskItem({
   };
   const colors = useColors();
   const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Inside a raised stack tray the card steps up a shade, or it would sit on
+  // a tray of its own colour.
+  const trayRaised = useTrayRaised();
+  const styles = useMemo(() => makeStyles(colors, trayRaised), [colors, trayRaised]);
   const reduceMotion = useReduceMotion();
   // ==== local state (expansion, completion animation, inline editing) ====
   const [showWhenPicker, setShowWhenPicker] = useState(false);
@@ -4799,12 +4803,12 @@ export const TaskItem = React.memo(function TaskItem({
   );
 });
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
     marginVertical: spacing.xxs,
     borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
   },
   // A group's children are inside TaskGroupTray, which already insets them by
   // its own padding — these rows drop their card margins entirely rather than
@@ -4833,7 +4837,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
     paddingVertical: 10,
     paddingRight: spacing.md,
     gap: spacing.sm,
@@ -5237,7 +5241,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
   },
   expandedPanel: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
     borderBottomLeftRadius: radius.md,
     borderBottomRightRadius: radius.md,
     paddingHorizontal: spacing.md,
