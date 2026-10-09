@@ -46,9 +46,9 @@ export async function runNegativeHold(task: Task, todayStart: Date, actions: Neg
       return;
     case 'reopen':
       await haptics.tap();
-      Alert.alert('Reopen today?', `Remove today from the streak for "${title}". It counts again if the day ends clean.`, [
+      Alert.alert('You counted today early', `Take that back for "${title}"?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reopen', style: 'destructive', onPress: () => actions.reopenDay(task.id) },
+        { text: 'Take back', style: 'destructive', onPress: () => actions.reopenDay(task.id) },
       ]);
       return;
     case 'undo-slip':
