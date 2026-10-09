@@ -38,6 +38,7 @@ export const TASK_DISMISS_LABELS: Record<BackfillFieldId, string> = {
   category: 'Leave uncategorized',
   streak: "Don't show streak chip",
   vacation: 'Keep visible on vacation',
+  holidays: 'Leave as usual',
   reminder: 'No reminder',
   suggestions: 'Keep in suggestions',
 };
@@ -65,6 +66,7 @@ export const ITEM_DISMISS_LABELS: Record<ItemBackfillFieldId, string> = {
   substitutes: 'No substitutes',
   variety: 'Mark as generic item',
   nutrition: 'No nutrition info',
+  nutritionDetail: 'Nothing more to add',
 };
 
 export const RECIPE_DISMISS_LABELS: Record<RecipeBackfillFieldId, string> = {

@@ -204,6 +204,45 @@ describe('isItemBackfillDismissed / dismissItemBackfillField', () => {
   });
 });
 
+describe('nutritionDetail', () => {
+  const withAmounts = (amounts: FoodNutrition['amounts'], source: FoodNutrition['source'] = 'openFoodFacts') =>
+    ({ ...butter, nutrition: { ...panel(), amounts, source } });
+
+  it('is missing on a saved panel that has none of the later label lines', () => {
+    expect(isItemFieldMissing(withAmounts({ calorieKcal: 717, fatG: 81 }), 'nutritionDetail')).toBe(true);
+  });
+
+  it('is answered once any one of the three is recorded, including a real zero', () => {
+    expect(isItemFieldMissing(withAmounts({ calorieKcal: 717, transFatG: 0 }), 'nutritionDetail')).toBe(false);
+    expect(isItemFieldMissing(withAmounts({ calorieKcal: 717, cholesterolMg: 215 }), 'nutritionDetail')).toBe(false);
+    expect(isItemFieldMissing(withAmounts({ calorieKcal: 717, addedSugarG: 0 }), 'nutritionDetail')).toBe(false);
+  });
+
+  it('leaves an item with no panel to the nutrition field', () => {
+    expect(isItemFieldMissing(butter, 'nutritionDetail')).toBe(false);
+    expect(isItemFieldMissing(butter, 'nutrition')).toBe(true);
+  });
+
+  it('leaves an estimate alone, since it was never read off a label', () => {
+    expect(isItemFieldMissing(withAmounts({ calorieKcal: 717 }, 'estimated'), 'nutritionDetail')).toBe(false);
+  });
+
+  it('skips a non-food aisle', () => {
+    const medicine = { ...withAmounts({ calorieKcal: 5 }), aisle: 'Medicine & Supplements' };
+    expect(isItemFieldMissing(medicine, 'nutritionDetail', [], [], ['Medicine & Supplements'])).toBe(false);
+  });
+
+  it('offers a redo only for a panel that could take the lines', () => {
+    const items = [
+      withAmounts({ calorieKcal: 717, transFatG: 3 }),
+      { ...margarine, nutrition: { ...panel(), source: 'estimated' as const } },
+      makeItem('Salt', { id: 'salt' }),
+    ];
+    expect(itemBackfillCandidates(items, 'nutritionDetail', [], [], { fromScratch: true }).map(i => i.name))
+      .toEqual(['Butter']);
+  });
+});
+
 describe('itemBackfillFieldCounts', () => {
   it('counts each field independently', () => {
     const items = [
@@ -211,24 +250,29 @@ describe('itemBackfillFieldCounts', () => {
       makeItem('B', { id: 'b' }),
     ];
     expect(itemBackfillFieldCounts(items)).toEqual({
-      variety: 1, substitutes: 2, nutrition: 2, scannedName: 0,
+      variety: 1, substitutes: 2, nutrition: 2, nutritionDetail: 0, scannedName: 0,
     });
   });
 
   // `scannedName` is the one field that queues on a value being *present*, so
   // an item with every other gap still has to be told it was named by a scan
   // for this to hold — which is the assertion, not a workaround for it.
+  // `nutrition` and `nutritionDetail` cannot both queue one item (the first is
+  // no panel, the second is a panel), so the pair is covered by two rows.
   it('covers every declared backfillable field', () => {
-    const counts = itemBackfillFieldCounts([{ ...butter, nameFromScan: true }]);
+    const counts = itemBackfillFieldCounts([
+      { ...butter, nameFromScan: true },
+      { ...margarine, nutrition: panel() },
+    ]);
     for (const field of ITEM_BACKFILL_FIELDS) {
-      expect(counts[field.id]).toBe(1);
+      expect(counts[field.id]).toBeGreaterThan(0);
     }
   });
 
   it('does not count an item dismissed for that field', () => {
     const item = { ...butter, backfillDismissedFields: ['variety'] };
     expect(itemBackfillFieldCounts([item])).toEqual({
-      variety: 0, substitutes: 1, nutrition: 1, scannedName: 0,
+      variety: 0, substitutes: 1, nutrition: 1, nutritionDetail: 0, scannedName: 0,
     });
   });
 });
