@@ -28,6 +28,7 @@ import {
   formatQuotaNextDue,
   isQuotaPartial,
   isOnPaceQuota,
+  quotaHidesWhenOnPace,
   isDismissedToday,
   isTaskBlocked,
   isWaitingTask,
@@ -2103,6 +2104,22 @@ describe('quota tasks', () => {
       };
       expect(isOnPaceQuota(weekly)).toBe(true);
       expect(isUpcomingToday(weekly)).toBe(false);
+    });
+
+    // 1 of 4 is on pace at Tue 10:00, and the second unit is owed Tue 18:00:
+    // later today, so the row stays on Today rather than waiting in Later today.
+    it('keeps a weekly target on Today when its next unit falls due later today', () => {
+      const weekly: Task = {
+        ...quotaTask,
+        recurrenceType: 'weekly',
+        quotaPeriod: 'week',
+        targetCount: 4,
+        progressCount: 1,
+      };
+      expect(quotaHidesWhenOnPace(weekly)).toBe(false);
+      expect(isOnPaceQuota(weekly)).toBe(false);
+      expect(isUpcomingToday(weekly)).toBe(false);
+      expect(isTaskVisible(weekly)).toBe(true);
     });
   });
 
