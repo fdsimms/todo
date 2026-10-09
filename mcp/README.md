@@ -85,9 +85,11 @@ only the fallback until the first sync.
 | `habit_patterns` | Each habit's streak, pace, how often done or missed, and when it actually gets done; how timed work compares with estimates. |
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `focus_history` | Finished focus sessions over a range, as the Stats screen reads them: minutes worked and rested, how stretches ran against their plan (once there are enough), breaks taken, and each session's steps. History only: a session in progress stays on the phone. |
+| `list_copy_flags` | Lines of on-screen copy the person flagged in the app as needing a manual pass (temporary dev tooling), with the text, screen and their note. |
 | `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |
 | `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind. Empty unless health logs reach the server. |
 | `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words. An entry's day is fixed once written. |
+| `resolve_copy_flag` | **Write.** Closes a copy flag once the copy has been changed in the source, with what it became. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `list_meter_readings` | The meters the person reads by hand, each with its readings, the rate they imply, and the open tasks due at a reading on it. |
 | `log_meter_reading` / `delete_meter_reading` | **Write.** A reading of a meter ("Car", 45,120). Every task on that meter uses it; the phone moves them on its next sync. |

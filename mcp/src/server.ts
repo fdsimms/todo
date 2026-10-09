@@ -105,6 +105,7 @@ import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, reque
 import { NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMoodTag, setMedicationArchived, logFood, logMedication, logMood, logWater, updateRecipe, deleteRecipe, updateFoodEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { deleteMeterReading, listMeterReadings, logMeterReading } from './meterTools';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, updateJournalEntry } from './journalTools';
 import { SAVED_VIEW_TASK_LIMIT, createSavedView, deleteSavedView, getSavedView, listSavedViews, updateSavedView } from './savedViewTools';
@@ -513,6 +514,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
     async () => json(await withFresh(() => listMilestones(replica)))
+  );
+
+  server.tool(
+    'list_copy_flags',
+    'Lines of on-screen copy the person long-pressed in the app to mark as needing a manual pass, each with the exact text, the screen it was on and their note. Open flags by default. This is how copy fixes are requested: find the text in the source, rewrite it, then call resolve_copy_flag. Temporary dev tooling.',
+    { status: z.enum(['open', 'resolved', 'all']).optional().describe('Default open.') },
+    async input => json(await withFresh(() => listCopyFlags(replica, input)))
   );
 
   server.tool(
@@ -1793,6 +1801,22 @@ function registerWriteTools(
         return json(await withWrite(() => addMilestone(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'resolve_copy_flag',
+    'Close a copy flag, by its id from list_copy_flags, once the copy has been changed in the source. Say what it became, or why it was left as it is. Temporary dev tooling.',
+    {
+      id: z.string().min(1),
+      resolution: z.string().min(1).max(500).describe('What the copy was changed to, or why it was left.'),
+    },
+    async ({ id, resolution }) => {
+      try {
+        return json(await withWrite(() => resolveCopyFlag(replica, id, resolution)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not resolve the flag.' });
       }
     }
   );

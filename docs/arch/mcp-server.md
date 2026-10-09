@@ -1341,6 +1341,14 @@ synced with the health record), and `rename_mood_tag` renames a context tag acro
 entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
 person's to set on the phone.
 
+### Copy flags: temporary dev tooling
+
+A way to mark on-screen copy as needing a manual pass and have Claude fix it. In the app, Settings › About › Flag copy turns on a session-only mode in which a long-press on any text opens a card (`FlagCopyHost`) that files a `CopyFlag`: the rendered string, the route it was on and a note. The long-press is attached by the global `Text` patch in `src/theme/AppFont.tsx`, only while the mode is on, so taps behave as usual otherwise. Flagged text is underlined while the mode is on.
+
+The flag is an ordinary synced row (`copy_flags`), so `list_copy_flags` reads it and `resolve_copy_flag` closes it from here. This server cannot see the repo: the string is a search key, and the edit is made wherever the source is checked out (a rendered string built from a template literal is found by its stable fragments). Resolving goes through the db layer, like `resolveCalendarRequest`, and is not recorded in Activity, since a flag is dev state and not the person's data.
+
+**Remove before real users.** Delete `copy_flags` (`database.ts`, `syncTracking.ts`, `BACKUP_TABLES`), `CopyFlag`, `useCopyFlagStore` (and its line in `useTaskStore`'s fan-out), `copyFlagMode.ts`, `FlagCopyHost` (and its mount in `App.tsx`), the `withCopyFlagging` hook in `AppFont.tsx`, the About row and its `settingsIndex` entry, `copyFlagTools.ts` and the two tools with their annotations and replica methods, and this section.
+
 ### Meters
 
 A task due at a reading (`meter` on a task write, `src/utils/meters.ts`) is written like any other
