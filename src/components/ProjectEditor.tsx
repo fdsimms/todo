@@ -14,10 +14,7 @@ import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
-import { useTemplateStore } from '../store/useTemplateStore';
-import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { templateFromProject } from '../utils/projectTemplate';
-import { useNavigation } from '@react-navigation/native';
+import { useProjectActions } from '../hooks/useProjectActions';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
@@ -112,14 +109,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const updateProject = useProjectStore(s => s.updateProject);
-  const archiveProject = useTaskStore(s => s.archiveProject);
-  const unarchiveProject = useTaskStore(s => s.unarchiveProject);
-  const completeProject = useTaskStore(s => s.completeProject);
-  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
-  const deleteProject = useTaskStore(s => s.deleteProject);
-  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
-  const addTemplateFromProject = useTemplateStore(s => s.addTemplateFromProject);
-  const navigation = useNavigation();
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
@@ -567,53 +556,20 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     );
   };
 
-  const handleDelete = () => {
-    if (!project) return;
-    Alert.alert(
-      `Delete "${displayTitle()}"?`,
-      isList
-        ? 'Its items can stay as tasks without a list, or be deleted with it.'
-        : 'Its tasks can stay in your list without a project, or be deleted with it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: isList ? 'Delete list only' : 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onClose(); } },
-        {
-          text: isList ? 'Delete list and items' : 'Delete project and tasks',
-          style: 'destructive',
-          onPress: () => { deleteProject(project.id, { cascade: true }); onClose(); },
-        },
-      ],
-    );
-  };
-
-  const handleComplete = () => {
-    if (!project) return;
-    // Read at the moment of asking rather than subscribed to: nothing else on
-    // the sheet needs the task list, and a subscription re-rendered the whole
-    // editor on every task write anywhere in the app.
-    const remaining = useTaskStore.getState().tasks.filter(
-      t => t.projectId === project.id && t.parentId === null && !t.completed && !t.archived
-    );
-    const finish = (archiveRemaining: boolean) => {
-      haptics.success();
-      commitEdits();
-      completeProject(project.id, { archiveRemaining });
-      onClose();
-    };
-    if (remaining.length === 0) {
-      finish(false);
-      return;
-    }
-    Alert.alert(
-      `Complete "${displayTitle()}"?`,
-      `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave remaining tasks', onPress: () => finish(false) },
-        { text: 'Archive remaining tasks', onPress: () => finish(true) },
-      ],
-    );
-  };
+  const {
+    complete: handleComplete,
+    archive: handleArchive,
+    reopen: handleReopen,
+    unarchive: handleUnarchive,
+    saveAsTemplate: handleSaveAsTemplate,
+    startFresh: handleStartFresh,
+    confirmDelete: handleDelete,
+  } = useProjectActions(project, {
+    displayTitle,
+    prepare: commitEdits,
+    onEnded: () => onClose(),
+    onDeleted: () => onClose(),
+  });
 
   const categoryOptions: PillGroupOption[] = [
     {
@@ -631,73 +587,6 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const createCategory = (name: string) => {
     setCategory(addCategory(name).name);
     closeCategory();
-  };
-
-  const handleArchive = () => {
-    if (!project) return;
-    haptics.success();
-    commitEdits();
-    archiveProject(project.id);
-    onClose();
-  };
-
-  // Reopening and unarchiving leave the sheet open, since the project is still
-  // the one being edited; only the flag underneath it changed.
-  const handleReopen = () => {
-    if (!project) return;
-    haptics.tap();
-    uncompleteProject(project.id);
-  };
-
-  // Reusing a project, for the next party or the next trip: as a template to
-  // apply whenever, or as a fresh copy straight away. Both save the sheet
-  // first, so what's reused is what's on screen.
-  const handleSaveAsTemplate = () => {
-    if (!project) return;
-    commitEdits();
-    const saved = useProjectStore.getState().getProjectById(project.id) ?? project;
-    const draft = templateFromProject(
-      saved,
-      useTaskStore.getState().tasks,
-      useTaskGroupStore.getState().groups,
-      useSettingsStore.getState().dayResetTime,
-    );
-    addTemplateFromProject(draft);
-    haptics.success();
-    Alert.alert(
-      'Saved as a template',
-      `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
-        saved.awayStart ? ', dated from the day you leave' : saved.eventDate ? ', dated from the event date' : saved.deadline ? ', dated from the deadline' : ''
-      }. Apply it from any project's add button, or from Templates.`,
-    );
-  };
-
-  const handleStartFresh = () => {
-    if (!project) return;
-    Alert.alert(
-      'Start a fresh copy?',
-      'Makes a new project with the same tasks and sections, all open again and with no dates. This one stays as it is.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Start fresh',
-          onPress: () => {
-            commitEdits();
-            const copy = startFreshFromProject(project.id);
-            if (!copy) return;
-            haptics.success();
-            onClose();
-            (navigation as any).navigate('ProjectDetail', { projectId: copy.id });
-          },
-        },
-      ],
-    );
-  };
-
-  const handleUnarchive = () => {
-    if (!project) return;
-    haptics.tap();
-    unarchiveProject(project.id);
   };
 
   if (!project) return null;

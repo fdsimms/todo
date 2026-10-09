@@ -550,6 +550,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
 - `src/hooks/usePlaceSuggestions.ts` — usePlaceSuggestions
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
+- `src/hooks/useProjectActions.ts` — useProjectActions
 - `src/hooks/usePullToSearch.tsx` — usePullToSearch
 - `src/hooks/useReachOutPrompt.ts` — useReachOutPrompt
 - `src/hooks/useRecipeComponentImports.ts` — useRecipeComponentImports
