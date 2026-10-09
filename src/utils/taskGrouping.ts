@@ -679,7 +679,8 @@ export type LaterTodaySectionData = {
 /**
  * Sub-groups Later Today's tasks/groups by time segment, mirroring the Later
  * screen's own segment sub-headers. A task with no timeSegments falls into
- * the 'none' bucket, which renders without a header. A group is assigned to
+ * the 'none' bucket, which renders without a header. A task with several
+ * segments appears once, under its earliest. A group is assigned to
  * every segment bucket any of its later-today children belong to, but only
  * once per bucket — with its full later-today children roster underneath,
  * not just the ones matching that segment — so a stack doesn't fragment into
@@ -700,9 +701,17 @@ export function laterTodaySections(
     return bucket;
   };
 
+  // A task is listed once, under its earliest segment. Unlike the Later screen,
+  // three identical rows for one "3 times a day" task read as duplicates here.
   upcomingUngroupedTasks.forEach(task => {
-    const segs = task.timeSegments.length > 0 ? task.timeSegments : ['none'];
-    segs.forEach(seg => ensure(seg).tasks.push(task));
+    const rank = (seg: string) => {
+      const i = (SEGMENT_ORDER as readonly string[]).indexOf(seg);
+      return i === -1 ? SEGMENT_ORDER.length : i;
+    };
+    const first = task.timeSegments.length > 0
+      ? task.timeSegments.reduce((a, b) => (rank(b) < rank(a) ? b : a))
+      : 'none';
+    ensure(first).tasks.push(task);
   });
 
   laterGroupItems.forEach(({ group, children }) => {
