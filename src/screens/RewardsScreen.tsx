@@ -474,8 +474,9 @@ export function RewardsScreen() {
           accessibilityLabel="Reward"
         />
       )}
-      <Text style={styles.fieldLabel}>How often do you want it?</Text>
-      {rate === null ? (
+      {/* How often you'd want it only prices a reward that comes back; a one-time one is claimed once. */}
+      {!draftOneTime && <Text style={styles.fieldLabel}>How often do you want it?</Text>}
+      {draftOneTime ? null : rate === null ? (
         <Text style={styles.hint}>
           After a week of completed tasks, this can suggest a price from how fast you earn coins.
         </Text>
