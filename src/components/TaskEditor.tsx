@@ -3672,7 +3672,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                 />
                 <Text style={styles.kindHint}>
                   {polarity === 'negative'
-                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count, or long press it to count today as clean early.'
+                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count, or long press it to count today early or log a slip.'
                     : 'Completed when you do it, like any other task.'}
                 </Text>
                 {polarity === 'negative' && (

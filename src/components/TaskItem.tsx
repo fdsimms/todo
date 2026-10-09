@@ -46,7 +46,8 @@ import { useMeterReadingStore } from '../store/useMeterReadingStore';
 import { MeterReadingSheet } from './MeterReadingSheet';
 import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, liveStreakCount, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel, getLogicalNow } from '../utils/dateUtils';
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
-import { negativeHoldOffered, runNegativeHold } from '../utils/negativeHold';
+import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
+import type { NegativeHold } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -108,6 +109,7 @@ import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallT
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
+import { NegativeHoldMenu } from './NegativeHoldMenu';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
@@ -1151,6 +1153,12 @@ export const TaskItem = React.memo(function TaskItem({
   const [completionMenuAnchor, setCompletionMenuAnchor] = useState<CardAnchor | null>(null);
   const [showCompletionMenu, setShowCompletionMenu] = useState(false);
   const mountCompletionMenu = useSheetMount(showCompletionMenu);
+  // Long-pressing an avoid-task's box: count today now, log a slip, or take one
+  // back. `negativeMenuHold` is what the day allowed when the press landed.
+  const [negativeMenuAnchor, setNegativeMenuAnchor] = useState<CardAnchor | null>(null);
+  const [negativeMenuHold, setNegativeMenuHold] = useState<NegativeHold>('close');
+  const [showNegativeMenu, setShowNegativeMenu] = useState(false);
+  const mountNegativeMenu = useSheetMount(showNegativeMenu);
   // iPhone Mirroring: Return on the inline rename takes the title offer.
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -2025,10 +2033,16 @@ export const TaskItem = React.memo(function TaskItem({
     confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
   };
 
-  // A long press on an avoid-task: take a slip back, or count today clean now
-  // (or reopen it). See runNegativeHold for which, and why.
-  const handleNegativeHold = () =>
-    runNegativeHold(task, getCurrentDayStart(), { undoSlip, closeDay: closeNegativeDay, reopenDay: reopenNegativeDay });
+  // A long press on an avoid-task opens the menu of what today allows
+  // (negativeHoldNow), anchored where the finger is like the completion menu.
+  const handleNegativeHold = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
+    const hold = negativeHoldNow(task, getCurrentDayStart());
+    if (!hold) return;
+    haptics.impactMedium();
+    setNegativeMenuHold(hold);
+    setNegativeMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+    setShowNegativeMenu(true);
+  };
 
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
@@ -2616,7 +2630,7 @@ export const TaskItem = React.memo(function TaskItem({
         }
         accessibilityHint={
           isNegative
-            ? (negativeHoldAvailable ? 'Double tap and hold to count today as clean, or take a slip back' : undefined)
+            ? (negativeHoldAvailable ? 'Double tap and hold for more options' : undefined)
             : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined
         }
       >
@@ -4624,6 +4638,18 @@ export const TaskItem = React.memo(function TaskItem({
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
           onMiss={completionMenuRepeats ? () => { markMissed(task.id); afterCompletionMenuChoice(); } : undefined}
           onSomeoneElse={() => { completeTask(task.id, { byOther: true }); afterCompletionMenuChoice(); }}
+        />
+      )}
+      {mountNegativeMenu && (
+        <NegativeHoldMenu
+          visible={showNegativeMenu}
+          anchor={negativeMenuAnchor}
+          hold={negativeMenuHold}
+          onClose={() => setShowNegativeMenu(false)}
+          onCount={() => closeNegativeDay(task.id)}
+          onReopen={() => reopenNegativeDay(task.id)}
+          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id))}
+          onUndoSlip={() => undoSlip(task.id)}
         />
       )}
       {mountWhenPicker && (
