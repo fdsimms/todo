@@ -62,6 +62,7 @@ import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
 } from '../utils/backfillSuggest';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { describeAIError, suggestBackfillValues } from '../services/aiSuggestions';
 import {
   CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField, isCategoryFieldMissing,
@@ -367,6 +368,7 @@ export function BackfillScreen() {
   // this screen and its height has to be cleared like any other hidden-tab
   // screen — insets.bottom alone leaves the CTA sitting under the tab bar.
   const tabBarHeight = useBottomTabBarHeight();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -2120,21 +2122,21 @@ export function BackfillScreen() {
     const name = scopeLabelFor(scope);
     switch (scope.kind) {
       case 'generated': return name ? `in ${name}` : 'of this kind';
-      case 'project': return name ? `in project ${name}` : 'in this project';
-      case 'category': return name ? `in category ${name}` : 'in this category';
-      case 'stack': return name ? `in stack ${name}` : 'in this stack';
-      case 'personGroup': return name ? `in group ${name}` : 'in this group';
+      case 'project': return name ? `in the ${name} project` : 'in this project';
+      case 'category': return name ? `in the ${name} category` : 'in this category';
+      case 'stack': return name ? `in the ${name} stack` : 'in this stack';
+      case 'personGroup': return name ? `in the ${name} group` : 'in this group';
       case 'aisle': return name ? `in the ${name} aisle` : 'in this aisle';
-      case 'cookbook': return name ? `in cookbook ${name}` : 'in this cookbook';
+      case 'cookbook': return name ? `in the ${name} cookbook` : 'in this cookbook';
     }
   };
   const batchToggle = batchOptions.length === 0 ? null : (
-    <>
+    <View style={styles.groupApplyList}>
       {batchOptions.map(option => {
         const armed = option.scope.key === batchScopeKey;
         const count = option.members.length;
         const title = batchAnswers
-          ? `Use the next answer for all ${count} ${scopePhrase(option.scope)}`
+          ? `Use this answer for all ${count} ${scopePhrase(option.scope)}`
           : `${active ? dismissLabelFor(active) : 'Skip'} for all ${count} ${scopePhrase(option.scope)}`;
         return (
           <PressableScale
@@ -2163,7 +2165,7 @@ export function BackfillScreen() {
           </PressableScale>
         );
       })}
-    </>
+    </View>
   );
 
   if (active.kind === 'task') {
@@ -2210,6 +2212,8 @@ export function BackfillScreen() {
 
         {currentTask ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
@@ -2373,6 +2377,8 @@ export function BackfillScreen() {
 
         {currentCategory ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
@@ -2494,6 +2500,8 @@ export function BackfillScreen() {
 
         {currentPerson ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
@@ -2800,6 +2808,8 @@ export function BackfillScreen() {
 
         {currentProject ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
@@ -2959,6 +2969,8 @@ export function BackfillScreen() {
 
         {currentRecipe ? (
           <ScrollView
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
@@ -3128,6 +3140,8 @@ export function BackfillScreen() {
 
       {currentItem ? (
         <ScrollView
+          ref={keyboardScroll.ref}
+          {...keyboardScroll.props}
           contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
@@ -3919,10 +3933,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.smd,
     paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
+  groupApplyList: { gap: spacing.sm },
   groupApplyBody: { flex: 1 },
   groupApplyTitle: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
   groupApplyHint: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
