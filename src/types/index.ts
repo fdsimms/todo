@@ -51,12 +51,24 @@ export type Difficulty = 'trivial' | 'easy' | 'normal' | 'hard';
  * priority, don't ask", and a task created under it is stamped as dismissed for
  * the priority backfill, since a priority of 0 otherwise reads as missing.
  * `effort: 0` is the same answer for the time estimate.
+ *
+ * The last three are the backfill screen's yes/no questions. `true` turns the
+ * setting on, `false` leaves it off and stamps the question as dismissed so
+ * Backfill never asks, and `null` is "no default, ask me". Streak chip and
+ * vacation pause only mean something on a repeating task, so a default for
+ * either is applied to repeating tasks only.
  */
 export interface TaskFieldDefaults {
   priority: Priority | null;
   difficulty: Difficulty | null;
   /** An estimate bucket, 1 to 6, or 0 for "no estimate, don't ask". The minutes come from `EFFORT_MINUTES`. */
   effort: Effort | null;
+  /** `Task.showStreak`, for repeating tasks. */
+  showStreak: boolean | null;
+  /** `Task.vacationPause`, for repeating tasks. */
+  vacationPause: boolean | null;
+  /** `Task.excludeFromSuggestions`. */
+  excludeFromSuggestions: boolean | null;
 }
 
 /**

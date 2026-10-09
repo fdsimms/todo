@@ -1352,7 +1352,7 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
     });
 
     it('seeds priority, difficulty and estimate from the project, beneath what the draft names', () => {
-      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } })] });
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: null } })] });
       const seeded = useTaskStore.getState().addTask({ title: 'A cast iron pan', projectId: 'proj1' });
       expect(seeded).toMatchObject({ priority: 0, difficulty: 'easy', effort: 2, estimatedMinutes: 15 });
       expect(seeded.backfillDismissedFields).toContain('priority');
@@ -1361,12 +1361,23 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
       expect(named.backfillDismissedFields).not.toContain('priority');
     });
 
+    it('seeds the yes/no defaults, with streak chip and vacation pause on repeating tasks only', () => {
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: null, difficulty: null, effort: null, showStreak: true, vacationPause: true, excludeFromSuggestions: false } })] });
+      const daily = useTaskStore.getState().addTask({ title: 'Stretch', projectId: 'proj1', recurrenceType: 'daily' });
+      expect(daily).toMatchObject({ showStreak: true, vacationPause: true, excludeFromSuggestions: false });
+      expect(daily.backfillDismissedFields).toEqual(['suggestions']);
+      const once = useTaskStore.getState().addTask({ title: 'Once', projectId: 'proj1' });
+      expect(once).toMatchObject({ showStreak: false, vacationPause: false });
+      const named = useTaskStore.getState().addTask({ title: 'Named', projectId: 'proj1', recurrenceType: 'daily', vacationPause: false });
+      expect(named.vacationPause).toBe(false);
+    });
+
     it('seeds a generated kind from Settings, ahead of its project', () => {
-      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 1, difficulty: null, effort: null } })] });
+      useProjectStore.setState({ projects: [makeProject({ id: 'proj1', taskDefaults: { priority: 1, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null } })] });
       useSettingsStore.getState.mockReturnValue({
         dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
         newTaskDefaults: { category: null, priority: null, effort: null, difficulty: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
-        generatedTaskDefaults: { birthdayGift: { priority: 3, difficulty: 'easy', effort: null } },
+        generatedTaskDefaults: { birthdayGift: { priority: 3, difficulty: 'easy', effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null } },
       });
       const gift = useTaskStore.getState().addTask({ title: 'Gift for Sam', projectId: 'proj1', generatedKind: 'birthdayGift' });
       expect(gift).toMatchObject({ priority: 3, difficulty: 'easy' });

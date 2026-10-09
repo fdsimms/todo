@@ -356,7 +356,7 @@ export function newTaskFromDraft(
     // every recurring row is noise (the reasoning behind the field), but the run
     // of clean days is the *only* feedback an avoid-task ever gives: it is never
     // completed, so without the chip the row never changes at all.
-    showStreak: draft.showStreak ?? resolvedPolarity === 'negative',
+    showStreak: draft.showStreak ?? seeded.showStreak ?? resolvedPolarity === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
@@ -393,8 +393,8 @@ export function newTaskFromDraft(
           followUpTaskOneAtATime: false,
           followUpTaskAtEnd: false,
         }),
-    vacationPause: draft.vacationPause ?? false,
-    excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
+    vacationPause: draft.vacationPause ?? seeded.vacationPause ?? false,
+    excludeFromSuggestions: draft.excludeFromSuggestions ?? seeded.excludeFromSuggestions ?? false,
     weatherWait: draft.weatherWait ?? null,
     // A meter rides in from the editor or quick add as typed; the hold is the
     // pass's to write, so a new row never starts with one.

@@ -35,7 +35,10 @@ export interface SerializedProjectDetail {
   category?: string;
   defaultTaskCategory?: string;
   /** Priority (0 means none on purpose), difficulty and estimate bucket new tasks in it start with. */
-  taskDefaults?: { priority: number | null; difficulty: string | null; effort: number | null };
+  taskDefaults?: {
+    priority: number | null; difficulty: string | null; effort: number | null;
+    showStreak?: boolean | null; vacationPause?: boolean | null; excludeFromSuggestions?: boolean | null;
+  };
   completed?: boolean;
   archived?: boolean;
   /**
