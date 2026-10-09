@@ -2224,6 +2224,9 @@ describe('demo seed — people', () => {
     const fromList = rewards.find(r => r.taskId);
     expect(useTaskStore.getState().tasks.find(t => t.id === fromList?.taskId)?.projectId).toBe(listId);
     expect(rewards.some(r => r.id === useSettingsStore.getState().rewardGoalId)).toBe(true);
+    // A reward guarding an avoid habit.
+    const guard = rewards.find(r => r.guardsTaskId);
+    expect(useTaskStore.getState().tasks.find(t => t.id === guard?.guardsTaskId)?.polarity).toBe('negative');
     // A bounty, on a task that has already been put off.
     const bounty = useTaskStore.getState().tasks.find(t => isBountyLive(t));
     expect(bounty?.title).toBe('Clear the gutters');

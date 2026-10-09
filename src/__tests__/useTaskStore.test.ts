@@ -19784,6 +19784,71 @@ describe('coins', () => {
     expect(balance()).toBe(-2);
   });
 
+  describe('a habit a reward guards', () => {
+    const dessert = {
+      id: 'dessert', title: 'A dessert', cost: 10, createdAt: '2025-01-01T00:00:00.000Z',
+      linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 'no-dessert',
+    };
+    const fund = (amount: number) => ({
+      id: `fund-${amount}`, kind: 'earn' as const, amount, at: '2025-06-01T10:00:00.000Z',
+      taskId: null, rewardId: null, label: 'Earned',
+    });
+    const seed = (coins: number, over: Partial<Task> = {}) => {
+      useRewardStore.setState({ entries: coins ? [fund(coins)] : [], rewards: [dessert], initialized: true });
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'no-dessert', title: 'No dessert unless claimed', polarity: 'negative', streakCount: 12, ...over })],
+      });
+    };
+    const habit = () => useTaskStore.getState().tasks.find(t => t.id === 'no-dessert')!;
+
+    it('claims the reward instead of logging a slip when the balance covers it', () => {
+      seed(25);
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(balance()).toBe(15);
+      expect(habit().slipCount).toBe(0);
+      expect(habit().streakCount).toBe(12);
+      const spend = useRewardStore.getState().entries.find(e => e.kind === 'spend');
+      expect(spend?.rewardId).toBe('dessert');
+      const action = useTaskStore.getState().lastAction!;
+      expect(action.label).toBe('Claimed A dessert');
+      action.undo();
+      expect(balance()).toBe(25);
+    });
+
+    it('charges what is left and breaks the streak when it falls short', () => {
+      seed(6);
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(balance()).toBe(0);
+      expect(habit().slipCount).toBe(1);
+      expect(habit().streakCount).toBe(0);
+      useTaskStore.getState().undoSlip('no-dessert');
+      expect(balance()).toBe(6);
+      expect(habit().streakCount).toBe(12);
+    });
+
+    // A charge floored to nothing writes no entry, so the undo of that slip
+    // must not take back an earlier slip's charge in its place.
+    it('takes back only its own slip’s charge', () => {
+      seed(6);
+      useTaskStore.getState().logSlip('no-dessert');
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(balance()).toBe(0);
+      useTaskStore.getState().undoSlip('no-dessert');
+      expect(balance()).toBe(0);
+      expect(habit().slipCount).toBe(1);
+      useTaskStore.getState().undoSlip('no-dessert');
+      expect(balance()).toBe(6);
+    });
+
+    it('is an ordinary slip once the link is gone', () => {
+      seed(25);
+      useRewardStore.setState({ rewards: [{ ...dessert, guardsTaskId: null }] });
+      useTaskStore.getState().logSlip('no-dessert');
+      expect(habit().slipCount).toBe(1);
+      expect(useRewardStore.getState().entries.some(e => e.kind === 'spend')).toBe(false);
+    });
+  });
+
   it('writes nothing while rewards are off', () => {
     settingsMock.mockImplementation(base);
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });

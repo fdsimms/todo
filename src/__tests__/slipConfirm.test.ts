@@ -75,4 +75,39 @@ describe('confirmSlip', () => {
     confirmSlip(spent, true, DAY, jest.fn());
     expect(Alert.alert).toHaveBeenCalledTimes(1);
   });
+
+  describe('on a habit a reward guards', () => {
+    const reward = {
+      id: 'dessert', title: 'A dessert', cost: 110, createdAt: '', linkUrl: null, note: null,
+      oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 't',
+    };
+
+    it('offers the claim, and blocks nothing since no slip is logged', () => {
+      const onConfirm = jest.fn();
+      confirmSlip(task(30), true, DAY, onConfirm, { plan: { kind: 'claim', reward }, balance: 207, claimedToday: false });
+      const [title, message] = (Alert.alert as jest.Mock).mock.calls[0];
+      expect(title).toBe('Claim A dessert?');
+      expect(message).not.toMatch(/blocks/);
+      tapButton('Claim it');
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks before a charge, naming the block too', () => {
+      const onConfirm = jest.fn();
+      confirmSlip(task(30), true, DAY, onConfirm, { plan: { kind: 'charge', reward, amount: 50 }, balance: 50, claimedToday: false });
+      const [title, message] = (Alert.alert as jest.Mock).mock.calls[0];
+      expect(title).toBe('Log a slip?');
+      expect(message).toMatch(/takes all of it\. This blocks the apps you picked/);
+      tapButton('Log it');
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks even with no penalty, and cancelling logs nothing', () => {
+      const onConfirm = jest.fn();
+      confirmSlip(task(null), false, DAY, onConfirm, { plan: { kind: 'charge', reward, amount: 0 }, balance: 0, claimedToday: false });
+      expect(Alert.alert).toHaveBeenCalledTimes(1);
+      tapButton('Cancel');
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+  });
 });

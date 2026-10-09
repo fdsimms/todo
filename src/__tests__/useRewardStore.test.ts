@@ -233,6 +233,46 @@ describe('rewards', () => {
   });
 });
 
+describe('a reward guarding a habit', () => {
+  it('stores the habit it guards', () => {
+    const r = state().addReward('A dessert', 110, { guardsTaskId: 'no-dessert' })!;
+    expect(r.guardsTaskId).toBe('no-dessert');
+    state().updateReward(r.id, { guardsTaskId: null });
+    expect(state().rewards[0].guardsTaskId).toBeNull();
+  });
+
+  it('never lets a one-time or list reward guard one', () => {
+    expect(state().addReward('Boots', 300, { oneTime: true, guardsTaskId: 'h' })!.guardsTaskId).toBeNull();
+    expect(state().addReward('Headphones', 300, { taskId: 't1', guardsTaskId: 'h' })!.guardsTaskId).toBeNull();
+  });
+
+  it('drops the habit when an edit makes the reward one-time', () => {
+    const r = state().addReward('A dessert', 110, { guardsTaskId: 'no-dessert' })!;
+    state().updateReward(r.id, { oneTime: true });
+    expect(state().rewards[0].guardsTaskId).toBeNull();
+  });
+
+  it('writes a guarded slip’s charge under its seed, and takes back only that', () => {
+    state().recordGuardCharge('no-dessert', 6, 'No dessert', 'seed-0');
+    state().recordGuardCharge('no-dessert', 0, 'No dessert', 'seed-1');
+    expect(state().balance()).toBe(-6);
+    state().takeBackGuardCharge('seed-1');
+    expect(state().balance()).toBe(-6);
+    state().takeBackGuardCharge('seed-0');
+    expect(state().balance()).toBe(0);
+  });
+
+  it('reads the plan a slip on the habit would follow', () => {
+    state().recordEarn('t1', 120, 'Run', AT);
+    state().addReward('A dessert', 110, { guardsTaskId: 'no-dessert' });
+    const habit = { id: 'no-dessert', polarity: 'negative' as const, slipCount: 0, slipDate: null, slipAllowance: null,
+      streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0 };
+    const guard = state().slipGuardFor(habit, new Date(2026, 0, 1))!;
+    expect(guard).toMatchObject({ balance: 120, claimedToday: false, plan: { kind: 'claim' } });
+    expect(state().slipGuardFor({ ...habit, id: 'other' }, new Date(2026, 0, 1))).toBeNull();
+  });
+});
+
 describe('dollar-priced rewards', () => {
   it('keeps the price beside the coin cost', () => {
     const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;

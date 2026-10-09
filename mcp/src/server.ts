@@ -3364,6 +3364,7 @@ function registerWriteTools(
       note: z.string().nullable().optional().describe('A line of context, e.g. "the Thai place on 5th".'),
       link: z.string().nullable().optional().describe('A URL to open for it.'),
       oneTime: z.boolean().optional().describe('Claimed once, then gone from the list.'),
+      guardsHabitId: z.string().min(1).optional().describe('A "don\'t do this" habit (task id) this reward is the honest way to have, e.g. "No dessert unless claimed" for a dessert. A slip logged on it claims this reward, or costs the balance up to its price when it falls short. Not on a oneTime reward.'),
     },
     async input => {
       try {
@@ -3376,7 +3377,7 @@ function registerWriteTools(
 
   server.tool(
     'update_reward',
-    "Change a reward's title, cost, note, link or one-time flag (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
+    "Change a reward's title, cost, note, link, one-time flag or guarded habit (ids from get_rewards). Coins already spent on it stay spent, and changing the cost never changes what was paid. A reward made from a wish-list item is refused: its title, note and link are the item's, so edit the item instead.",
     {
       id: z.string().min(1),
       title: z.string().min(1).optional(),
@@ -3385,6 +3386,7 @@ function registerWriteTools(
       note: z.string().nullable().optional(),
       link: z.string().nullable().optional(),
       oneTime: z.boolean().optional(),
+      guardsHabitId: z.string().min(1).nullable().optional().describe('The "don\'t do this" habit this reward guards, as on create_reward. Null unlinks it.'),
     },
     async ({ id, ...patch }) => {
       try {
@@ -3476,7 +3478,7 @@ function registerWriteTools(
 
   server.tool(
     'log_slip',
-    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on, unless the habit has a slip allowance and today is still inside it: then the slip is counted and nothing else changes. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
+    "Record that the person did the thing a \"don't do this\" habit is about, today. Only when they tell you they did. It resets the streak and costs coins when rewards are on, unless the habit has a slip allowance and today is still inside it: then the slip is counted and nothing else changes. On a habit a reward guards (get_rewards' guardsHabitId), a slip the balance covers claims that reward instead and leaves the streak alone (the result's claimed has the claimId for unclaim_reward), and one it doesn't costs the balance up to the reward's price, never below zero. A habit with a penalty is refused, because the slip also charges an app block that only the phone can set. undo_slip takes back today's latest slip and its coins.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

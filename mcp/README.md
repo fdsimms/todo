@@ -192,8 +192,8 @@ only the fallback until the first sync.
 | `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
 | `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
 | `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
-| `create_reward` | **Write.** Adds a reward at a cost in coins, or at a dollar `price` converted at the person's own rate (refused until they set a weekly reward budget). Refused while rewards are off. |
-| `update_reward` | **Write.** Changes a reward's title, cost, note, link or one-time flag. A wish-list reward is refused. |
+| `create_reward` | **Write.** Adds a reward at a cost in coins, or at a dollar `price` converted at the person's own rate (refused until they set a weekly reward budget). `guardsHabitId` links an avoid habit it guards. Refused while rewards are off. |
+| `update_reward` | **Write.** Changes a reward's title, cost, note, link, one-time flag or the avoid habit it guards. A wish-list reward is refused. |
 | `delete_reward` | **Write.** Deletes a reward. Coins already spent on it stay spent. |
 | `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its item off, with no extra coins. |
 | `unclaim_reward` | **Write.** Takes a claim back by its `claimId`, and reopens the wish-list item the claim checked off. |
@@ -201,7 +201,7 @@ only the fallback until the first sync.
 | `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a repeating task's occurrence missed: breaks the streak, creates the next occurrence, costs coins. `reopen_task` undoes it. |
-| `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. A habit with a penalty is refused. |
+| `log_slip` / `undo_slip` | **Write.** Logs or takes back today's slip on a "don't do this" habit. On a habit a reward guards, a slip the balance covers claims the reward instead, and one it doesn't costs the balance up to the reward's price. A habit with a penalty is refused. |
 | `update_recipe` | **Write.** Changes a recipe or moves it to another cookbook; ingredients, steps, components and prep tasks each replace the whole list. |
 | `delete_recipe` | **Write.** Deletes a recipe. Not undoable from here. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |

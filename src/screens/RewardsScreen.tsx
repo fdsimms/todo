@@ -26,6 +26,7 @@ import {
 } from '../utils/nudgeCadence';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
+import { HabitPickerSheet } from '../components/HabitPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useRewardStore } from '../store/useRewardStore';
@@ -41,6 +42,9 @@ import { COIN_ICON } from '../constants/coinIcon';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
+import { canGuard, describeGuard } from '../utils/rewardGuard';
+import { getCurrentDayStart } from '../utils/dateUtils';
+import { displayTitleFor } from '../utils/visibilityUtils';
 import { driftingTaskList } from '../utils/postpone';
 import {
   MAX_BOUNTY_LIMIT,
@@ -270,6 +274,15 @@ export function RewardsScreen() {
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
+  // The avoid habit this reward guards (Reward.guardsTaskId), picked in HabitPickerSheet.
+  const [draftGuard, setDraftGuard] = useState<string | null>(null);
+  const [habitPickerOpen, setHabitPickerOpen] = useState(false);
+  // Habits another reward already guards, kept out of the picker for the one being edited.
+  const editingId = draft?.mode === 'edit' ? draft.id : null;
+  const guardedElsewhere = useMemo(
+    () => new Set(rewards.filter(r => r.id !== editingId && r.guardsTaskId && canGuard(r)).map(r => r.guardsTaskId!)),
+    [rewards, editingId],
+  );
   // The "every N days/weeks/months" stepper beside the presets. It only fills
   // the cost field, the same as a preset does, so nothing about it is stored.
   const [customCount, setCustomCount] = useState<number | null>(null);
@@ -310,6 +323,7 @@ export function RewardsScreen() {
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
+    setDraftGuard(null);
     setCustomCount(null);
   }, []);
 
@@ -321,6 +335,7 @@ export function RewardsScreen() {
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
+    setDraftGuard(reward?.guardsTaskId ?? null);
     setCustomCount(null);
   }, []);
 
@@ -329,7 +344,7 @@ export function RewardsScreen() {
     haptics.tap();
     const store = useRewardStore.getState();
     const priceMinor = priceDriven ? parsedPrice : null;
-    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor };
+    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
@@ -342,7 +357,7 @@ export function RewardsScreen() {
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, parsedCost, parsedPrice, priceDriven, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGuard, parsedCost, parsedPrice, priceDriven, closeDraft]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {
@@ -641,6 +656,31 @@ export function RewardsScreen() {
               accessibilityLabel="One time only"
             />
           </View>
+          {!draftOneTime && (() => {
+            // A one-time reward can't guard a habit (see canGuard), so the
+            // field goes while the switch is on.
+            const habit = draftGuard ? taskById.get(draftGuard) : undefined;
+            return (
+              <>
+                <Text style={styles.fieldLabel}>Linked habit</Text>
+                <Text style={styles.hint}>
+                  An Avoid this habit for having this without claiming it. A slip on the habit claims this reward, or takes your coins up to its price if you can’t afford it.
+                </Text>
+                {habit && <Text style={styles.guardName}>{displayTitleFor(habit)}</Text>}
+                <View style={[styles.rewardActions, styles.guardActions]}>
+                  <InlineAction
+                    label={habit ? 'Change habit' : 'Choose a habit'}
+                    icon="shield-checkmark-outline"
+                    variant="neutral"
+                    onPress={() => setHabitPickerOpen(true)}
+                  />
+                  {habit && (
+                    <InlineAction label="Unlink" variant="neutral" onPress={() => setDraftGuard(null)} />
+                  )}
+                </View>
+              </>
+            );
+          })()}
         </>
       )}
       <View style={[styles.rewardActions, styles.draftActions]}>
@@ -677,6 +717,7 @@ export function RewardsScreen() {
     const isGoal = goal?.id === reward.id;
     const source = sourceOf(reward);
     const sourceList = source ? projects.find(p => p.id === source.projectId) ?? list : null;
+    const guardHabit = reward.guardsTaskId && canGuard(reward) ? taskById.get(reward.guardsTaskId) : undefined;
     return (
       <View key={reward.id} style={styles.card}>
         <View>
@@ -694,7 +735,8 @@ export function RewardsScreen() {
             </Text>
           </View>
           {pace && <Text style={styles.hint}>{sentence(pace)}</Text>}
-          {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, new Date())}</Text>}
+          {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, getCurrentDayStart())}</Text>}
+          {guardHabit && <Text style={styles.hint}>{describeGuard(displayTitleFor(guardHabit))}</Text>}
         </View>
         <View style={styles.rewardActions}>
           <InlineAction
@@ -1046,6 +1088,13 @@ export function RewardsScreen() {
         title="Rewards from a list"
         noneLabel="No list"
       />
+      <HabitPickerSheet
+        visible={habitPickerOpen}
+        onClose={() => setHabitPickerOpen(false)}
+        value={draftGuard}
+        onSelect={id => setDraftGuard(id)}
+        excludeIds={guardedElsewhere}
+      />
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
@@ -1142,6 +1191,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginTop: spacing.xs },
   switchText: { flex: 1 },
   switchLabel: { color: colors.text, fontSize: font.md },
+  guardName: { color: colors.text, fontSize: font.md, marginTop: spacing.xs },
+  guardActions: { marginTop: spacing.xs },
   costRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
   rewardCost: { color: colors.textSecondary, fontSize: font.sm },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

@@ -25,6 +25,13 @@ export interface SerializedReward {
   oneTime: boolean;
   /** The wish-list task this reward is. Claimed in the app only. */
   wishListTaskId?: string;
+  /**
+   * The "don't do this" habit this reward guards, and its title: a slip logged
+   * on it claims this reward when the balance covers it, and otherwise costs
+   * the balance up to its price.
+   */
+  guardsHabitId?: string;
+  guardsHabit?: string;
   /** Whether the balance covers it right now. */
   affordable: boolean;
   /** Coins still needed; 0 when affordable. */
@@ -94,6 +101,7 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
       ...(shown.linkUrl ? { link: shown.linkUrl } : {}),
       oneTime: reward.oneTime,
       ...(reward.taskId ? { wishListTaskId: reward.taskId } : {}),
+      ...guardOf(replica, reward),
       affordable: lib.canClaimReward(balance, reward.cost),
       shortBy: Math.max(0, reward.cost - balance),
       ...(last ? { lastClaimedAt: last } : {}),
@@ -130,6 +138,15 @@ export interface RewardInput {
   note?: string | null;
   link?: string | null;
   oneTime?: boolean;
+  /** The "don't do this" habit's task id this reward guards. Null on an update unlinks it. */
+  guardsHabitId?: string | null;
+}
+
+/** The habit a reward guards, as the serialized reward names it. */
+function guardOf(replica: Replica, reward: Reward): Pick<SerializedReward, 'guardsHabitId' | 'guardsHabit'> {
+  if (!reward.guardsTaskId || reward.oneTime || reward.taskId) return {};
+  const habit = replica.taskById(reward.guardsTaskId);
+  return habit ? { guardsHabitId: habit.id, guardsHabit: replica.displayTitle(habit) } : {};
 }
 
 /**
@@ -167,7 +184,7 @@ export function createReward(replica: Replica, input: RewardInput): SerializedRe
   }
   const priceMinor = input.price != null ? priceToMinor(input.price) : null;
   const cost = priceMinor !== null ? costForPrice(replica, priceMinor) : input.cost!;
-  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor });
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId });
   return rewardById(replica, reward.id);
 }
 
@@ -190,6 +207,7 @@ export function updateReward(
     ...(patch.note !== undefined ? { note: patch.note } : {}),
     ...(patch.link !== undefined ? { linkUrl: patch.link } : {}),
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
+    ...(patch.guardsHabitId !== undefined ? { guardsTaskId: patch.guardsHabitId } : {}),
   });
   return rewardById(replica, reward.id);
 }
@@ -239,7 +257,7 @@ function rewardById(replica: Replica, id: string): SerializedReward {
   if (found) return found;
   // A one-time reward claimed a moment ago is no longer on the list; say what it is.
   const raw = replica.rewardState().rewards.find(r => r.id === id)!;
-  return { id: raw.id, title: raw.title, cost: raw.cost, oneTime: raw.oneTime, affordable: false, shortBy: raw.cost };
+  return { id: raw.id, title: raw.title, cost: raw.cost, oneTime: raw.oneTime, ...guardOf(replica, raw), affordable: false, shortBy: raw.cost };
 }
 
 /** Post a coin bounty on a task, or withdraw the live one. */
@@ -278,8 +296,26 @@ export function markMissed(replica: Replica, id: string): MissedResult {
   };
 }
 
-/** Log a slip against a "don't do this" habit, or take back today's latest one. */
-export function setSlip(replica: Replica, id: string, logged: boolean): { task: SerializedTask } {
-  const task = logged ? replica.logSlip(id) : replica.undoSlip(id);
-  return { task: serializeTasks(replica, [task])[0] };
+/**
+ * Log a slip against a "don't do this" habit, or take back today's latest one.
+ * On a habit a reward guards, a slip the balance covers claims the reward
+ * instead: `claimed` says so, with the `claimId` unclaim_reward takes back.
+ */
+export function setSlip(replica: Replica, id: string, logged: boolean): {
+  task: SerializedTask;
+  claimed?: { claimId: string; reward: string; spent: number; balance: number };
+} {
+  if (!logged) return { task: serializeTasks(replica, [replica.undoSlip(id)])[0] };
+  const { task, claim } = replica.logSlip(id);
+  return {
+    task: serializeTasks(replica, [task])[0],
+    ...(claim ? {
+      claimed: {
+        claimId: claim.id,
+        reward: claim.label,
+        spent: claim.amount,
+        balance: replica.lib().rewards.coinBalance(replica.rewardState().entries),
+      },
+    } : {}),
+  };
 }

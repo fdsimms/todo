@@ -625,9 +625,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     },
 
     logSlip(id) {
-      const task = replica.logSlip(id);
-      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Log a slip on "${task.title}", which resets its streak and may cost coins` });
-      return task;
+      const result = replica.logSlip(id);
+      const { task, claim } = result;
+      // A slip a guarding reward's claim stood in for changed nothing on the
+      // habit, so it is recorded as the claim it was.
+      if (claim) log({ action: 'created', subject: 'reward', title: claim.label, taskId: null, note: `Claim "${claim.label}" for a slip on "${task.title}", spending ${claim.amount} coins` });
+      else log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Log a slip on "${task.title}", which resets its streak and may cost coins` });
+      return result;
     },
 
     undoSlip(id) {

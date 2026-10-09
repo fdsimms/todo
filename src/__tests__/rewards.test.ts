@@ -441,11 +441,20 @@ describe('a reward on the list', () => {
     expect(rewardDisplay(reward({ note: 'n', linkUrl: 'ubereats://' }), null)).toEqual({ title: 'Old title', note: 'n', linkUrl: 'ubereats://' });
   });
 
-  it('says when it was last claimed by calendar day', () => {
-    const now = new Date(2026, 9, 3, 9);
-    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), now)).toBe('Claimed today');
-    expect(describeLastClaimed(new Date(2026, 9, 2, 23).toISOString(), now)).toBe('Claimed yesterday');
-    expect(describeLastClaimed(new Date(2026, 8, 28, 12).toISOString(), now)).toBe('Last claimed 5 days ago');
+  it('says when it was last claimed by calendar day under a midnight day start', () => {
+    const today = new Date(2026, 9, 3);
+    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), today)).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 2, 23).toISOString(), today)).toBe('Claimed yesterday');
+    expect(describeLastClaimed(new Date(2026, 8, 28, 12).toISOString(), today)).toBe('Last claimed 5 days ago');
+  });
+
+  // Before the day start is still the day before, as everywhere else.
+  it('counts a claim made before the day start toward the day before', () => {
+    const today = new Date(2026, 9, 3, 2, 30);
+    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), today)).toBe('Claimed yesterday');
+    expect(describeLastClaimed(new Date(2026, 9, 3, 2, 30).toISOString(), today)).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 4, 1).toISOString(), new Date(2026, 9, 3, 2, 30))).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 2, 1).toISOString(), today)).toBe('Last claimed 2 days ago');
   });
 
   it('measures progress toward a goal, clamped', () => {
