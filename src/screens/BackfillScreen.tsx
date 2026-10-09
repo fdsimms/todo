@@ -38,6 +38,9 @@ import { BirthdayPicker } from '../components/BirthdayPicker';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import {
+  resetToTask, resetToProject, resetToPeople, resetToRecipeDetail, resetToGroceryItem, resetToCategories,
+} from '../navigation/navigationRef';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, activeChainStepTitle } from '../utils/visibilityUtils';
 import { activeMealSlotStepId } from '../utils/mealSlotTasks';
@@ -2169,7 +2172,14 @@ export function BackfillScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={3}>{displayTitleFor(currentTask)}</Text>
+              <SubjectTitle
+                text={displayTitleFor(currentTask)}
+                lines={3}
+                openLabel="Open this task"
+                onOpen={() => resetToTask(currentTask.id)}
+                colors={colors}
+                styles={styles}
+              />
               {!!currentTask.notes.trim() && (
                 <Text style={styles.itemNotes} numberOfLines={2}>{currentTask.notes.trim()}</Text>
               )}
@@ -2324,9 +2334,14 @@ export function BackfillScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>
-                {currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
-              </Text>
+              <SubjectTitle
+                text={currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
+                lines={2}
+                openLabel={`Open ${currentCategory.name}`}
+                onOpen={() => resetToCategories(currentCategory.name)}
+                colors={colors}
+                styles={styles}
+              />
               <View style={styles.metaRow}>
                 <View style={styles.metaChip}>
                   <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -2450,7 +2465,14 @@ export function BackfillScreen() {
                 birthday or a note already has, and it's what the cadence
                 offer and toggle below refer to by name. */}
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>{displayNameOf(currentPerson)}</Text>
+              <SubjectTitle
+                text={displayNameOf(currentPerson)}
+                lines={2}
+                openLabel={`Open ${displayNameOf(currentPerson)}`}
+                onOpen={() => resetToPeople(currentPerson.id)}
+                colors={colors}
+                styles={styles}
+              />
               {!!currentPersonGroup && (
                 <View style={styles.metaRow}>
                   <View style={styles.metaChip}>
@@ -2739,7 +2761,14 @@ export function BackfillScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>{currentProject.title}</Text>
+              <SubjectTitle
+                text={currentProject.title}
+                lines={2}
+                openLabel="Open this project"
+                onOpen={() => resetToProject(currentProject.id)}
+                colors={colors}
+                styles={styles}
+              />
               <View style={styles.metaRow}>
                 <View style={styles.metaChip}>
                   <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -2891,7 +2920,14 @@ export function BackfillScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <View style={[styles.itemCard, shadows.card]}>
-              <Text style={styles.itemTitle} numberOfLines={2}>{currentRecipe.name}</Text>
+              <SubjectTitle
+                text={currentRecipe.name}
+                lines={2}
+                openLabel="Open this recipe"
+                onOpen={() => resetToRecipeDetail(currentRecipe.id)}
+                colors={colors}
+                styles={styles}
+              />
               <View style={styles.metaRow}>
                 <View style={styles.metaChip}>
                   <Ionicons name="list-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -3053,7 +3089,14 @@ export function BackfillScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.itemCard, shadows.card]}>
-            <Text style={styles.itemTitle} numberOfLines={2}>{currentItem.name}</Text>
+            <SubjectTitle
+              text={currentItem.name}
+              lines={2}
+              openLabel={`Open ${currentItem.name}`}
+              onOpen={() => resetToGroceryItem(currentItem.id)}
+              colors={colors}
+              styles={styles}
+            />
             <View style={styles.metaRow}>
               <View style={styles.metaChip}>
                 <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -3323,6 +3366,37 @@ function SessionReview({
  * tapping a value on one and landing on an identical-looking card for the
  * next day reads as the tap having done nothing.
  */
+/**
+ * The title of the card being asked about, with a button that opens the thing
+ * itself. Every card has one, so a value can be checked against the real row
+ * before it's answered. The button is a fixed 34pt square beside a `flex: 1`
+ * title, so the name keeps the row.
+ */
+function SubjectTitle({
+  text, lines, openLabel, onOpen, colors, styles,
+}: {
+  text: string;
+  lines: number;
+  openLabel: string;
+  onOpen: () => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <View style={styles.subjectTitleRow}>
+      <Text style={[styles.itemTitle, styles.subjectTitleText]} numberOfLines={lines}>{text}</Text>
+      <PressableScale
+        style={styles.subjectOpenButton}
+        onPress={() => { haptics.tap(); onOpen(); }}
+        accessibilityRole="button"
+        accessibilityLabel={openLabel}
+      >
+        <Ionicons name="open-outline" size={iconSize.md} color={colors.accent} />
+      </PressableScale>
+    </View>
+  );
+}
+
 function TaskContextRow({
   task, categoryLabel, projectTitle, colors, styles,
 }: {
@@ -3707,6 +3781,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   itemTitle: { color: colors.text, fontSize: font.lg, lineHeight: lineHeight.lg, fontWeight: fontWeight.semibold },
+  subjectTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  subjectTitleText: { flex: 1 },
+  subjectOpenButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   itemNotes: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
   // Wraps rather than squeezing, same call ArchivedRow's own meta row makes —
   // a task carrying a schedule, a category and a project has more than fits

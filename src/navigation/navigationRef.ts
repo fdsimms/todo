@@ -479,6 +479,27 @@ export function resetToLocateTask(taskId: string): void {
   });
 }
 
+/**
+ * The category list, with one category's editor open when a name is given.
+ * There is no page for a single category, so its editor is the destination.
+ * Stamped like the other handoffs so the same category opened twice opens twice.
+ */
+export function resetToCategories(categoryName?: string | null): void {
+  runWhenReady(() => {
+    navigateToTab(
+      'Categories',
+      categoryName ? { openCategory: categoryName, openCategoryStamp: Date.now() } : undefined
+    );
+  });
+}
+
+/** One catalog item's sheet on the grocery screen (the param Search results use). */
+export function resetToGroceryItem(itemId: string): void {
+  runWhenReady(() => {
+    navigateToTab('Groceries', { openItem: itemId, openItemStamp: Date.now() });
+  });
+}
+
 /** One project's own page (`dundundun://project?id=…`). */
 export function resetToProject(projectId: string): void {
   runWhenReady(() => {

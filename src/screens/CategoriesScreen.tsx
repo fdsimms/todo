@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -47,6 +47,18 @@ export function CategoriesScreen() {
 
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+
+  // One category's editor, opened from a Backfill card. Stamped so the same
+  // category opened twice opens twice; a name that no longer exists is a shrug.
+  const route = useRoute();
+  const openCategoryName: string | undefined = (route.params as { openCategory?: string } | undefined)?.openCategory;
+  const openCategoryStamp: number | undefined = (route.params as { openCategoryStamp?: number } | undefined)?.openCategoryStamp;
+  const [handledCategoryStamp, setHandledCategoryStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openCategoryStamp === undefined || openCategoryStamp === handledCategoryStamp) return;
+    setHandledCategoryStamp(openCategoryStamp);
+    if (openCategoryName && allCategories.includes(openCategoryName)) setEditingCategory(openCategoryName);
+  }, [openCategoryStamp, handledCategoryStamp, openCategoryName, allCategories]);
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
 
