@@ -112,6 +112,11 @@ export function LogMealEntrySheet() {
   const [scan, setScan] = useState<
     { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
   >(null);
+  // The food whose nutrition label is being photographed, with what `scan`
+  // captures because `pending` is gone once the panel is saved.
+  const [label, setLabel] = useState<
+    { name: string; slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
+  >(null);
 
   return (
     <FoodLogEntrySheet
@@ -124,6 +129,9 @@ export function LogMealEntrySheet() {
         onScan={featureHidden('barcodeScanning', simpleMode) ? undefined : () => {
           setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
+        onPhotographLabel={featureHidden('barcodeScanning', simpleMode) ? undefined : name => {
+          setLabel({ name, slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
+        }}
         canEstimate={estimateRoute !== 'unavailable'}
         onDeclineMeal={mealPlanEntryId ? () => {
           setLogMeal(mealPlanEntryId, false);
@@ -133,11 +141,13 @@ export function LogMealEntrySheet() {
           <>
             <ScanToLogFlow
               visible={!!scan}
-              slot={scan?.slot ?? null}
-              at={scan ? mealInstant(scan.dayKey) : new Date()}
-              mealPlanEntryId={scan?.mealPlanEntryId ?? null}
+              slot={(scan ?? label)?.slot ?? null}
+              at={(scan ?? label) ? mealInstant((scan ?? label)!.dayKey) : new Date()}
+              mealPlanEntryId={(scan ?? label)?.mealPlanEntryId ?? null}
               onClose={() => setScan(null)}
               onLogged={() => setPending(null)}
+              labelName={label?.name ?? null}
+              onLabelClose={() => setLabel(null)}
             />
           </>
         }

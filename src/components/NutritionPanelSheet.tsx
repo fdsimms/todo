@@ -134,6 +134,14 @@ interface Props {
   onClose: () => void;
   /** Called with the typed panel, or null when every figure was cleared. */
   onSave: (nutrition: FoodNutrition | null) => void;
+  /**
+   * Opens the camera as soon as the sheet has presented, for a caller whose
+   * button already said "photograph": the person has just chosen the photo, so
+   * making them find "Read from a photo" is a second tap for the same decision.
+   * Cancelling the camera leaves the form to type into, as before. Ignored
+   * where Vision can't run, since there is nothing to read the photo with.
+   */
+  openCamera?: boolean;
 }
 
 const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value => ({
@@ -176,7 +184,7 @@ const PLACEHOLDER: Record<NutrientKey, string> = {
 /** What an unlabelled column is called, by position. A panel never prints more. */
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 
-export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave }: Props) {
+export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave, openCamera }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -319,6 +327,15 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       if (stillHere()) setReading(false);
     }
   }, []);
+
+  // After the modal's own presentation has finished: an image picker raised
+  // while it is still animating in is presented from the wrong controller.
+  useEffect(() => {
+    if (!visible || !openCamera || !canPhotograph) return;
+    const timer = setTimeout(() => { void handlePhoto('camera'); }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   /**
    * Moving to another of the panel's columns.

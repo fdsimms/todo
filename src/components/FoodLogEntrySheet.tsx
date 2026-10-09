@@ -245,6 +245,15 @@ interface Props {
    */
   onScan?: () => void;
   /**
+   * Photographs the nutrition panel of a packaged food that has no barcode
+   * entry, handing off to `ScanToLogFlow`'s label panel with the name to file
+   * it under. Takes the name from the search field, or asks for one when the
+   * field is empty, since the figures are saved against a catalog row and a
+   * row needs a name. Omitted by a caller with nowhere to send it, same split
+   * `onScan` draws.
+   */
+  onPhotographLabel?: (name: string) => void;
+  /**
    * Opens the saved-meals list — the fourth way in, beside searching,
    * describing and scanning. Logs several entries at once rather than one,
    * so unlike the other three it never hands control back to this sheet: the
@@ -398,7 +407,7 @@ const NO_RECIPES: Recipe[] = [];
 const NO_SUBS: ItemSubLink[] = [];
 
 export function FoodLogEntrySheet({
-  visible, slot, at, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, canEstimate, onScan, onSavedMeal, onDeclineMeal,
+  visible, slot, at, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, onDeclineMeal,
   overlays, ref,
 }: Props) {
   const colors = useColors();
@@ -1349,6 +1358,29 @@ export function FoodLogEntrySheet({
     setEstimateOpen(true);
   };
 
+  const startLabelPhoto = () => {
+    if (!onPhotographLabel) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    const typed = query.trim();
+    if (typed) { onPhotographLabel(typed); return; }
+    Alert.prompt(
+      'Name this food',
+      'What the food on the label is called. Its nutrition facts are saved under this name.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Next',
+          onPress: (text?: string) => {
+            const name = (text ?? '').trim();
+            if (name) onPhotographLabel(name);
+          },
+        },
+      ],
+      'plain-text',
+    );
+  };
+
   // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => (
     <TouchableOpacity
@@ -1912,8 +1944,16 @@ export function FoodLogEntrySheet({
                 />
               )}
             </View>
-            {!!onSavedMeal && (
+            {(!!onSavedMeal || !!onPhotographLabel) && (
             <View style={styles.actionRow}>
+              {!!onPhotographLabel && (
+                <InlineAction
+                  label="Photograph a label"
+                  icon="camera-outline"
+                  variant="neutral"
+                  onPress={startLabelPhoto}
+                />
+              )}
               {!!onSavedMeal && (
                 <InlineAction
                   label="Log a saved meal"
