@@ -56,8 +56,8 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       key: 'count',
       icon: 'checkmark-circle-outline',
       tone: 'accent',
-      label: 'Count today now',
-      detail: 'Adds today to your streak now instead of when the day ends.',
+      label: 'Mark today done',
+      detail: 'Counts today toward your streak now, before the day ends.',
       feedback: haptics.success,
       action: onCount,
     });
@@ -67,8 +67,8 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       key: 'reopen',
       icon: 'arrow-undo-outline',
       tone: 'accent',
-      label: 'Undo counting today',
-      detail: 'Removes today from your streak. It counts again when the day ends if you have not slipped.',
+      label: 'Undo',
+      detail: 'Today comes off your streak until the day ends.',
       feedback: haptics.tap,
       action: onReopen,
     });
@@ -87,8 +87,8 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       key: 'undo-slip',
       icon: 'arrow-undo-outline',
       tone: 'accent',
-      label: 'Undo a slip',
-      detail: 'Removes the most recent slip logged today.',
+      label: 'Undo last slip',
+      detail: 'Removes the latest slip from today.',
       feedback: haptics.tap,
       action: onUndoSlip,
     });
