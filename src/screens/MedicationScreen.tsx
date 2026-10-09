@@ -238,6 +238,29 @@ export function MedicationScreen() {
     completeTask(task.id);
   }, [completeTask, enqueue]);
 
+  // Today's taken rows whose task is a finished completion, which is the only
+  // kind a tap can reopen. A daily target's unit logs belong to a task that
+  // is still open, so they have no single check to take back here.
+  const undoableTaskIds = useMemo(() => {
+    const ids = new Set(takenToday.map(l => l.taskId).filter((id): id is string => id !== null));
+    const done = new Set<string>();
+    for (const t of useTaskStore.getState().tasks) {
+      if (t.completed && ids.has(t.id)) done.add(t.id);
+    }
+    return done;
+  }, [takenToday]);
+
+  /**
+   * Tapping a taken row reopens its task, which removes the dose it recorded
+   * (`uncompleteTask`), so a check made by mistake can always be taken back
+   * after the undo bar has gone.
+   */
+  const undoTaken = (log: MedicationLog) => {
+    if (log.taskId === null || !undoableTaskIds.has(log.taskId)) return;
+    haptics.tap();
+    useTaskStore.getState().uncompleteTask(log.taskId);
+  };
+
   const openDetail = (stat: MedicationStat) => {
     haptics.tap();
     navigation.navigate('MedicationDetail', { medicationKey: stat.key });
@@ -335,17 +358,29 @@ export function MedicationScreen() {
           <>
             <Text style={styles.sectionTitle}>TODAY</Text>
             <View style={styles.card}>
-              {takenToday.map((log, index) => (
-                <View key={log.id} style={[styles.todayRow, index === 0 && styles.firstRow]}>
-                  <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.done} />
-                  <View style={styles.doseText}>
-                    <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
-                    <Text style={styles.doseMeta} numberOfLines={1}>
-                      {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log)].filter(Boolean).join(' · ')}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+              {takenToday.map((log, index) => {
+                const undoable = log.taskId !== null && undoableTaskIds.has(log.taskId);
+                return (
+                  <TouchableOpacity
+                    key={log.id}
+                    style={[styles.todayRow, index === 0 && styles.firstRow]}
+                    activeOpacity={interaction.activeOpacity}
+                    disabled={!undoable}
+                    onPress={() => undoTaken(log)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: true, disabled: !undoable }}
+                    accessibilityLabel={`${log.name} taken. Double tap to mark not taken`}
+                  >
+                    <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.done} />
+                    <View style={styles.doseText}>
+                      <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
+                      <Text style={styles.doseMeta} numberOfLines={1}>
+                        {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log)].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
               {dueTasks.map((task, index) => {
                 const dose = medicationFor(task)!;
                 const amount = formatDose(dose);
