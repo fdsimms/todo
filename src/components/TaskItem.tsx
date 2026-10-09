@@ -99,7 +99,8 @@ import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
-import { isNoticeTask } from '../utils/generatedTasks';
+import { automationEntryIdFor, isNoticeTask } from '../utils/generatedTasks';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -3606,6 +3607,27 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityLabel={`Open link for ${task.title}`}
         >
           <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {/* Back to where the app was told to write this: the generator's row on
+          Automations, or its rule list. Its own button for the people-page
+          button's reason, since the row's link is usually the task's subject
+          (Apple Weather, the pantry) and this is a different place. */}
+      {!selectionMode && showActions && task.generatedKind && !task.completed && (
+        <TouchableOpacity
+          onPress={() => {
+            haptics.tap();
+            // `null`: Automations is a tab screen, which openSettingsTarget
+            // reaches through navigateToTab and so needs no navigation object.
+            navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
+          }}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Open automation settings for ${task.title}`}
+        >
+          <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 

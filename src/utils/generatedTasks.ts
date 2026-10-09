@@ -1372,6 +1372,33 @@ export function isNoticeTask(task: Pick<Task, 'generatedKind'>): boolean {
 }
 
 /**
+ * The generators whose tasks come from a list of rules the user wrote. Their
+ * Automations section is mostly that list, so a row about one opens at it
+ * rather than at the on/off switch above it.
+ */
+const RULE_LIST_ENTRY_IDS: Partial<Record<GeneratedKind, string>> = {
+  weather: 'weatherRules',
+  screenTime: 'screenTimeRules',
+  health: 'healthRules',
+  eventTask: 'eventRules',
+};
+
+/**
+ * The Settings entry a generated task's "where is this defined" button opens:
+ * the generator's own row on the Automations screen, or its rule list for the
+ * four that have one.
+ *
+ * `mealCook` is retired and folded into `mealSlot`, so it has no entry of its
+ * own; rows written before the fold still carry it and open the meal tasks row.
+ * Pure, so the test can check every kind in the registry resolves to a real
+ * entry (`settingsEntryTarget`) and a new generator can't ship with a dead button.
+ */
+export function automationEntryIdFor(kind: GeneratedKind): string {
+  if (kind === 'mealCook') return 'gen:mealSlot';
+  return RULE_LIST_ENTRY_IDS[kind] ?? `gen:${kind}`;
+}
+
+/**
  * Whether `kind` draws from the shared "use up" daily cap (#1675).
  *
  * Grocery and leftover use-up tasks are two independent producers of what a
