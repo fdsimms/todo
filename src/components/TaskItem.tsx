@@ -99,7 +99,8 @@ import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { useEventTaskContext } from '../hooks/useEventTaskContext';
-import { isNoticeTask } from '../utils/generatedTasks';
+import { automationEntryIdFor, isNoticeTask } from '../utils/generatedTasks';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -4484,6 +4485,26 @@ export const TaskItem = React.memo(function TaskItem({
                   >
                     <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
+                  {/* Back to where the app was told to write this: the
+                      generator's row on Automations, or its rule list. In the
+                      panel rather than on the collapsed row, which is already
+                      spending its width on the row's own link and the pin. */}
+                  {task.generatedKind && !task.completed && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        // `null`: Automations is a tab screen, which
+                        // openSettingsTarget reaches through navigateToTab and
+                        // so needs no navigation object.
+                        navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Open automation settings for ${task.title}`}
+                    >
+                      <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={() => onEdit(task.id)}

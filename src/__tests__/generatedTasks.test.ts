@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  automationEntryIdFor,
   GENERATED_KINDS,
   GENERATED_KIND_LIST,
   GENERATED_KIND_SPECS,
@@ -20,6 +21,7 @@ import {
   liveUseUpTaskCount,
   wantsGeneratedTask,
 } from '../utils/generatedTasks';
+import { settingsEntryTarget } from '../utils/settingsIndex';
 import type { GeneratedKind, Task } from '../types';
 
 type TaskShape = Pick<Task, 'id' | 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>;
@@ -533,5 +535,26 @@ describe('stoppableGenerator', () => {
 
   it('offers nothing on a notice, which has no delete to hang it on', () => {
     expect(stoppableGenerator({ generatedKind: 'calendarReview' }, flags())).toBeNull();
+  });
+});
+
+describe('automationEntryIdFor', () => {
+  it('resolves every kind in the registry to a real Automations entry', () => {
+    for (const kind of Object.keys(GENERATED_KIND_SPECS) as GeneratedKind[]) {
+      const target = settingsEntryTarget(automationEntryIdFor(kind));
+      expect(target).toMatchObject({ kind: 'screen', route: 'Automations', entryId: automationEntryIdFor(kind) });
+    }
+  });
+
+  it('opens the rule list for the generators that have one', () => {
+    expect(automationEntryIdFor('weather')).toBe('weatherRules');
+    expect(automationEntryIdFor('health')).toBe('healthRules');
+    expect(automationEntryIdFor('screenTime')).toBe('screenTimeRules');
+    expect(automationEntryIdFor('eventTask')).toBe('eventRules');
+  });
+
+  it('sends the retired mealCook kind to the meal tasks row', () => {
+    expect(automationEntryIdFor('mealCook')).toBe('gen:mealSlot');
+    expect(automationEntryIdFor('groceryUseUp')).toBe('gen:groceryUseUp');
   });
 });
