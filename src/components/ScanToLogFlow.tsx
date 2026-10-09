@@ -50,12 +50,23 @@ interface Props {
    * for why a caller wants this kept apart from `onClose`.
    */
   onLogged?: (labels: string[]) => void;
+  /**
+   * A food to photograph the label of, without scanning anything first: the
+   * caller's own "Photograph a label" action. Non-null opens the label panel
+   * for that name, the same panel the scanner's not-found row opens, and the
+   * rest of the flow (catalog row, then the amount sheet) is unchanged.
+   */
+  labelName?: string | null;
+  /** The label panel opened by `labelName` closed, saved or not. */
+  onLabelClose?: () => void;
 }
 
 /** A stable empty list, so a closed amount sheet doesn't remount on every render. */
 const EMPTY_FOODS: ScannedFood[] = [];
 
-export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onLogged }: Props) {
+export function ScanToLogFlow({
+  visible, slot, at, mealPlanEntryId, onClose, onLogged, labelName, onLabelClose,
+}: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const addProduct = useGroceryStore(s => s.addProduct);
@@ -110,6 +121,12 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
       mealPlanEntryId: string | null;
     } | null
   >(null);
+  // The panel's subject: one the scanner raised, else the caller's own label
+  // photo. Read at render time, which is safe for the second because the
+  // caller's props only change after the panel's `onSave`/`onClose` pair.
+  const panelSubject = panelFor ?? (labelName
+    ? { itemId: null, productId: null, name: labelName, slot, at, mealPlanEntryId: mealPlanEntryId ?? null }
+    : null);
 
   /**
    * A scan session, confirmed. Resolved to catalog rows, then handed on.
@@ -252,7 +269,7 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         // both present from the same view controller, which can only present
         // one. The second is refused silently. Same rule as the note on
         // `LogMealEntrySheet`.
-        visible={visible && session === null && panelFor === null}
+        visible={visible && session === null && panelSubject === null}
         context="log"
         onClose={onClose}
         onApply={handleScanApply}
@@ -270,20 +287,20 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         onLogged={onLogged}
       />
       <NutritionPanelSheet
-        visible={panelFor !== null}
-        foodName={panelFor?.name ?? ''}
+        visible={panelSubject !== null}
+        foodName={panelSubject?.name ?? ''}
         nutrition={null}
-        onClose={() => setPanelFor(null)}
+        onClose={() => { setPanelFor(null); onLabelClose?.(); }}
         onSave={panel => {
-          if (!panelFor) return;
+          if (!panelSubject) return;
           // No item yet means the photo came straight off the not-found row:
           // mint the catalog row now, the same name-keyed lookup every other
           // typed-name path in this app uses, so a name that already exists
           // resolves to it rather than duplicating it.
-          let itemId = panelFor.itemId;
-          const productId = panelFor.productId;
+          let itemId = panelSubject.itemId;
+          const productId = panelSubject.productId;
           if (!itemId) {
-            const item = ensureCatalogItem(panelFor.name);
+            const item = ensureCatalogItem(panelSubject.name);
             if (!item) return;
             itemId = item.id;
             setItemNutrition(itemId, panel);
@@ -305,10 +322,10 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
           // nothing logged and the figures just typed sitting unused on the
           // catalog row.
           setSession({
-            foods: [{ key: productId ?? itemId, label: panelFor.name, panel, packSize: null, itemId, productId }],
-            slot: panelFor.slot,
-            at: panelFor.at,
-            mealPlanEntryId: panelFor.mealPlanEntryId,
+            foods: [{ key: productId ?? itemId, label: panelSubject.name, panel, packSize: null, itemId, productId }],
+            slot: panelSubject.slot,
+            at: panelSubject.at,
+            mealPlanEntryId: panelSubject.mealPlanEntryId,
           });
         }}
       />

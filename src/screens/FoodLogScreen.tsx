@@ -262,6 +262,8 @@ export function FoodLogScreen() {
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  // The food whose nutrition label is being photographed from the picker.
+  const [labelName, setLabelName] = useState<string | null>(null);
   // The add sheet, so a log made from a sheet raised over it (scan, saved
   // meal) can apply "Add another" to it.
   const addSheetRef = useRef<FoodLogEntrySheetHandle>(null);
@@ -1419,6 +1421,7 @@ export function FoodLogScreen() {
           onClose={() => setAddOpen(false)}
           canEstimate={estimateRoute !== 'unavailable'}
           onScan={scanShown ? () => setScanOpen(true) : undefined}
+          onPhotographLabel={scanShown ? setLabelName : undefined}
           onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
           // Inside that sheet's own Modal, not beside it: as siblings these
           // presented from the root view controller, which was already
@@ -1432,6 +1435,8 @@ export function FoodLogScreen() {
                 visible={scanOpen}
                 slot={addingSlot}
                 at={loggingAt}
+                labelName={labelName}
+                onLabelClose={() => setLabelName(null)}
                 onClose={() => setScanOpen(false)}
                 // Closes the "What did you eat?" sheet underneath too, only once
                 // a scan actually logs something — cancelling leaves it open,
