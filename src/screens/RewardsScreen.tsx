@@ -672,10 +672,13 @@ export function RewardsScreen() {
     const pace = describeRewardPace(rate, reward.cost);
     const claimedAt = lastClaimedAt(entries, reward.id);
     const isGoal = goal?.id === reward.id;
+    const source = sourceOf(reward);
+    const sourceList = source ? projects.find(p => p.id === source.projectId) ?? list : null;
     return (
       <View key={reward.id} style={styles.card}>
         <View>
           <Text style={styles.rewardTitle}>{shown.title}</Text>
+          {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your list'}`}</Text>}
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
