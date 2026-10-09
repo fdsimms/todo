@@ -72,6 +72,7 @@ import {
 } from '../utils/healthTarget';
 import type { HealthTargetMetric } from '../types';
 import { featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
+import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
@@ -795,6 +796,10 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [slipAllowance, setSlipAllowance] = useState<number | null>(null);
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
+  // Ramp up (Task.quotaRampStep and friends). Step null = off.
+  const [quotaRampStep, setQuotaRampStep] = useState<number | null>(null);
+  const [quotaRampEvery, setQuotaRampEvery] = useState(1);
+  const [quotaRampGoal, setQuotaRampGoal] = useState<number | null>(null);
   // See Task.weatherWait. The row opens its picker in place, like the other
   // rows with controls of their own.
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
@@ -852,6 +857,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [rotationEnabled, setRotationEnabled] = useState(false);
   const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
+  // Whether "ramp up" can mean anything right now: a plain count that nothing
+  // else is writing (no cadence, no water goal, no overshoot, no rotation).
+  const offersRamp = canRampQuota({
+    targetCount, quotaIntervalMinutes, allowOvershoot,
+    followWaterTarget: followsWaterTarget && followWaterTarget,
+    rotationEnabled, rotationItems, recurrenceType: 'daily',
+  });
   // Which step's "ask on completion" sheet is open, by id rather than index —
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
@@ -1102,6 +1114,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       setPolarity(task.polarity ?? 'positive');
       setSlipAllowance(task.slipAllowance ?? null);
       setQuotaPeriod(task.quotaPeriod ?? 'day');
+      setQuotaRampStep(task.quotaRampStep ?? null);
+      setQuotaRampEvery(task.quotaRampEvery ?? 1);
+      setQuotaRampGoal(task.quotaRampGoal ?? null);
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
@@ -1139,7 +1154,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setMeterInput(meterInputFromDraft(initialDraft)); setMeterOpen(false); setMeterReadingText(''); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1256,6 +1271,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
       followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
+      quotaRampStep: task ? (task.quotaRampStep ?? null) : null,
+      quotaRampEvery: task ? (task.quotaRampStep ? (task.quotaRampEvery ?? 1) : null) : null,
+      quotaRampGoal: task ? (task.quotaRampStep ? (task.quotaRampGoal ?? null) : null) : null,
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
@@ -1741,6 +1759,13 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
       quotaPeriod: savesRotation ? 'week' : targetCount !== null ? quotaPeriod : 'day',
+      // Cleared with whatever stops a ramp being the target's writer (see
+      // canRampQuota): left behind it would fight the cadence, the water goal
+      // or the day's overshoot for the count.
+      quotaRampStep: offersRamp && !savesRotation ? quotaRampStep : null,
+      quotaRampEvery: offersRamp && !savesRotation && quotaRampStep ? quotaRampEvery : null,
+      quotaRampGoal: offersRamp && !savesRotation && quotaRampStep ? quotaRampGoal : null,
+      quotaRampHits: task?.quotaRampHits ?? 0,
       // A supply counts down by riding onto the successor a completion spawns,
       // so it means nothing on a one-off — cleared with the repeat rather than
       // left to sit at its starting number for ever, the same reset showStreak
@@ -2642,6 +2667,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
       quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
+      quotaRampStep: offersRamp ? quotaRampStep : null,
+      quotaRampEvery: offersRamp && quotaRampStep ? quotaRampEvery : null,
+      quotaRampGoal: offersRamp && quotaRampStep ? quotaRampGoal : null,
       supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt, supplyLeadDays, supplyGroceryItemId,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -4066,6 +4094,62 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
                       </View>
                     </TouchableOpacity>
+                  )}
+                  {offersRamp && (
+                    <>
+                      <View style={styles.sep} />
+                      <View style={styles.targetStepperRow}>
+                        <Text style={styles.stepperSentence}>Add</Text>
+                        <CountStepper
+                          value={quotaRampStep}
+                          onChange={next => setQuotaRampStep(next)}
+                          min={1}
+                          max={QUOTA_RAMP_MAX_STEP}
+                          allowNull
+                          emptyLabel="Off"
+                          format={n => `${n}`}
+                          label="Ramp up amount"
+                          describeValue={n => (n === null ? 'off' : `add ${n} each time`)}
+                        />
+                      </View>
+                      {quotaRampStep !== null && (
+                        <>
+                          <View style={styles.targetStepperRow}>
+                            <Text style={styles.stepperSentence}>
+                              After every
+                            </Text>
+                            <CountStepper
+                              value={quotaRampEvery}
+                              onChange={next => setQuotaRampEvery(next ?? 1)}
+                              min={1}
+                              max={QUOTA_RAMP_MAX_EVERY}
+                              format={n => `${n} ${quotaPeriod === 'week' ? (n === 1 ? 'week' : 'weeks') : (n === 1 ? 'day' : 'days')}`}
+                              label="Hits needed before each increase"
+                              describeValue={n => `${n ?? 1} ${quotaPeriod === 'week' ? 'weeks' : 'days'} you hit the target`}
+                            />
+                          </View>
+                          <View style={styles.targetStepperRow}>
+                            <Text style={styles.stepperSentence}>Up to</Text>
+                            <CountStepper
+                              value={quotaRampGoal}
+                              onChange={next => setQuotaRampGoal(next)}
+                              min={Math.max(MIN_TARGET_COUNT, (targetCount ?? 0) + 1)}
+                              max={QUOTA_RAMP_MAX_TARGET}
+                              allowNull
+                              emptyLabel="No limit"
+                              format={n => `${n}`}
+                              label="Ramp up goal"
+                              describeValue={n => (n === null ? 'no limit' : `stop at ${n}`)}
+                            />
+                          </View>
+                        </>
+                      )}
+                      <Text style={styles.targetStepperCaption}>
+                        {describeQuotaRamp({ quotaRampStep, quotaRampEvery, quotaRampGoal, quotaPeriod })
+                          ?? 'Ramp up: raise the target as you keep hitting it.'}
+                        {quotaRampStep !== null ? `. A missed or short ${quotaPeriod === 'week' ? 'week' : 'day'} doesn't count and doesn't reset it.` : ''}
+                      </Text>
+                    </>
                   )}
                   {targetCount !== null && (
                     <TouchableOpacity

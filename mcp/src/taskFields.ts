@@ -115,6 +115,8 @@ export interface TargetInput {
   per: 'day' | 'week';
   unit?: string | null;
   allowOvershoot?: boolean;
+  /** Raise the count as it keeps being met: add `add` after every `every` days (weeks, for a weekly target) it was hit, stopping at `upTo`. null clears it. */
+  rampUp?: { add: number; every: number; upTo?: number | null } | null;
   /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
   firstWeek?: 'fewer' | 'full';
 }
@@ -478,6 +480,10 @@ export function taskFieldsPatch(
         quotaReminders: false,
         quotaAlwaysVisible: false,
         quotaPeriod: 'day',
+        quotaRampStep: null,
+        quotaRampEvery: null,
+        quotaRampGoal: null,
+        quotaRampHits: 0,
       } satisfies Partial<Task>);
     } else {
       const t = input.target;
@@ -503,6 +509,22 @@ export function taskFieldsPatch(
       patch.targetCount = t.count;
       patch.quotaPeriod = t.per;
       if (t.unit !== undefined) patch.targetUnit = t.unit;
+      // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count
+      // can ramp, so going past the target is refused alongside it.
+      if (t.rampUp === null) {
+        Object.assign(patch, { quotaRampStep: null, quotaRampEvery: null, quotaRampGoal: null, quotaRampHits: 0 } satisfies Partial<Task>);
+      } else if (t.rampUp) {
+        const r = t.rampUp;
+        if (!Number.isInteger(r.add) || r.add < 1 || r.add > 20) errors.push('target.rampUp.add must be a whole number from 1 to 20.');
+        if (!Number.isInteger(r.every) || r.every < 1 || r.every > 60) errors.push('target.rampUp.every must be a whole number from 1 to 60.');
+        if (r.upTo != null && (!Number.isInteger(r.upTo) || r.upTo <= t.count || r.upTo > 99)) errors.push('target.rampUp.upTo must be a whole number above the count, at most 99.');
+        if (patch.allowOvershoot ?? t.allowOvershoot) errors.push('A target that ramps up cannot also allow going past the target.');
+        else {
+          Object.assign(patch, {
+            quotaRampStep: r.add, quotaRampEvery: r.every, quotaRampGoal: r.upTo ?? null, quotaRampHits: 0,
+          } satisfies Partial<Task>);
+        }
+      }
     }
   }
 

@@ -773,6 +773,23 @@ export function seedDemoData(): void {
   });
   updateTask(stretch.id, { progressCount: 3 });
 
+  // A target that raises itself (Task.quotaRampStep, src/utils/quotaRamp.ts):
+  // adds 2 after every 3 days it is hit, up to 30. Hidden on pace like any
+  // other target; the ramp shows up as the count growing when a day is closed.
+  addTask({
+    title: 'Push-ups',
+    notes: 'Starts at 10 a day and adds 2 after every 3 days you hit it, up to 30. A missed day waits instead of resetting it.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 10,
+    targetUnit: 'push-ups',
+    quotaRampStep: 2,
+    quotaRampEvery: 3,
+    quotaRampGoal: 30,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+
   // A daily target with a countdown for each unit (see docs/arch/timed-tasks.md):
   // `timedMinutes` is the length of one sit, and logging one restarts the clock.
   addTask({

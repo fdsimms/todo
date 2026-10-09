@@ -198,6 +198,25 @@ describe('target', () => {
     expect(errorsOf({ target: { count: 3, per: 'week' }, repeat: { every: 'day' } })).toMatch(/repeats weekly/);
   });
 
+  it('takes a ramp-up and starts its run of hits at zero', () => {
+    expect(ok({ target: { count: 10, per: 'day', rampUp: { add: 2, every: 3, upTo: 30 } } })).toMatchObject({
+      targetCount: 10, quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30, quotaRampHits: 0,
+    });
+    expect(ok({ target: { count: 10, per: 'day', rampUp: null } })).toMatchObject({
+      quotaRampStep: null, quotaRampEvery: null, quotaRampGoal: null,
+    });
+  });
+
+  it('refuses a ramp-up that cannot work', () => {
+    expect(errorsOf({ target: { count: 10, per: 'day', allowOvershoot: true, rampUp: { add: 1, every: 1 } } })).toMatch(/going past/);
+    expect(errorsOf({ target: { count: 10, per: 'day', rampUp: { add: 1, every: 1, upTo: 10 } } })).toMatch(/above the count/);
+    expect(errorsOf({ target: { count: 10, per: 'day', rampUp: { add: 0, every: 1 } } })).toMatch(/1 to 20/);
+  });
+
+  it('clears the ramp with the target', () => {
+    expect(ok({ target: null })).toMatchObject({ quotaRampStep: null, quotaRampHits: 0 });
+  });
+
   it('refuses a count outside the app\'s range', () => {
     expect(errorsOf({ target: { count: 1, per: 'day' } })).toMatch(/2 to 99/);
   });

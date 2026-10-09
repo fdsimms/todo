@@ -181,6 +181,11 @@ out to have one each, and the shape of each answer follows from what the field d
   overwritten with nothing said. `get_task` shows `followsWaterTarget` on the target and
   `taskFields.ts` refuses a `target` on such a task; `target: null` is still allowed and takes the
   flag with it, since a task with no target has nothing to follow.
+- **A count the app steps** (`quotaRampStep`). A target with `rampUp` has its `targetCount` raised
+  by `completeTask` (`src/utils/quotaRamp.ts`) when an occurrence that met it closes. Unlike the water
+  goal, the count is still the person's to set, so a write to `target.count` is accepted and becomes
+  the level the ramp climbs from; `rampUp` is refused beside `allowOvershoot`, the only combination
+  `canRampQuota` rules out that `target` can express. `get_task` shows `rampUp.hitsSoFar`.
 - **A date recomputed by rule** (`deadlineOffsetDays` / `deadlineMonthDay`, and
   `reminderOffsetDays` / `reminderTracksVisibility`). Shown as `deadlineRule` and `reminderRule`,
   read-only. A `deadline` written by `update_task` to a task with a rule clears the rule, which is
