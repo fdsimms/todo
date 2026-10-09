@@ -8,6 +8,8 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { effortTimeLabel } from '../utils/effort';
 import { ESTIMATE_EFFORTS } from '../utils/fieldBackfill';
+import { featureHidden } from '../utils/simpleMode';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { NO_TASK_FIELD_DEFAULTS, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
 
 interface Props {
@@ -43,8 +45,20 @@ const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
   })),
 ];
 
+// The yes/no questions. `true` and `false` are both answers (false means "leave
+// it off and don't ask"), so "Not set" is the only option that still lets
+// Backfill ask.
+const yesNoOptions = (yes: string, no: string): SegmentOption<boolean | null>[] => [
+  { value: null, label: 'Not set' },
+  { value: true, label: yes },
+  { value: false, label: no },
+];
+const STREAK_OPTIONS = yesNoOptions('Show', 'Don\u2019t show');
+const VACATION_OPTIONS = yesNoOptions('Pause', 'Don\u2019t pause');
+const SUGGESTION_OPTIONS = yesNoOptions('Skip', 'Allow');
+
 /**
- * The three answers the backfill screen asks about each task, as controls, for
+ * The answers the backfill screen asks about each task, as controls, for
  * a place that can answer them once for a whole group: a project's editor and a
  * kind of generated task in Settings. One component for both so the two can't
  * word or order them differently.
@@ -52,6 +66,7 @@ const ESTIMATE_OPTIONS: SegmentOption<Effort | null>[] = [
 export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const simpleMode = useSettingsStore(st => st.simpleMode);
   const current = value ?? NO_TASK_FIELD_DEFAULTS;
   const set = (patch: Partial<TaskFieldDefaults>) => {
     const next = { ...current, ...patch };
@@ -86,6 +101,38 @@ export function TaskFieldDefaultsFields({ value, onChange, showDifficulty }: Pro
         onChange={effort => set({ effort })}
         columns={3}
         options={ESTIMATE_OPTIONS}
+      />
+      {!featureHidden('streakOptions', simpleMode) && (
+        <>
+          <Text style={styles.label}>Streak chip (repeating tasks)</Text>
+          <SegmentedControl<boolean | null>
+            label="Default streak chip"
+            value={current.showStreak}
+            onChange={showStreak => set({ showStreak })}
+            columns={3}
+            options={STREAK_OPTIONS}
+          />
+        </>
+      )}
+      {!featureHidden('vacationPause', simpleMode) && (
+        <>
+          <Text style={styles.label}>Vacation pause (repeating tasks)</Text>
+          <SegmentedControl<boolean | null>
+            label="Default vacation pause"
+            value={current.vacationPause}
+            onChange={vacationPause => set({ vacationPause })}
+            columns={3}
+            options={VACATION_OPTIONS}
+          />
+        </>
+      )}
+      <Text style={styles.label}>Skip in suggestions</Text>
+      <SegmentedControl<boolean | null>
+        label="Default skip in suggestions"
+        value={current.excludeFromSuggestions}
+        onChange={excludeFromSuggestions => set({ excludeFromSuggestions })}
+        columns={3}
+        options={SUGGESTION_OPTIONS}
       />
     </View>
   );

@@ -1,4 +1,4 @@
-import type { Difficulty, Effort, Priority, Task, TaskFieldDefaults } from '../types';
+import type { Category, Difficulty, Effort, Priority, Task, TaskFieldDefaults } from '../types';
 import { PRIORITY_LABELS } from '../types';
 import { EFFORT_MINUTES, formatDuration } from './effort';
 import { dismissBackfillField, estimatePatchFor, isFieldMissing, isBackfillDismissed, type BackfillFieldId } from './fieldBackfill';
@@ -26,15 +26,45 @@ import { dismissBackfillField, estimatePatchFor, isFieldMissing, isBackfillDismi
  * exactly what the estimate backfill asks about, so "these need no estimate" is
  * stored as bucket 0 and a task created under it is stamped as dismissed for the
  * estimate field.
+ *
+ * **The three yes/no fields work the same way with `false` as the "none".**
+ * Streak chip, vacation pause and skip-in-suggestions are each a toggle that is
+ * off until someone turns it on, so `false` on a default means "leave it off and
+ * don't ask", stamped as dismissed, and `true` turns it on. Streak chip and
+ * vacation pause only apply to a repeating task (`isFieldMissing` never queues a
+ * one-off for either), so a default `true` for those is written to repeating
+ * tasks only and is ignored on a one-off.
  */
 
-export const NO_TASK_FIELD_DEFAULTS: TaskFieldDefaults = { priority: null, difficulty: null, effort: null };
+export const NO_TASK_FIELD_DEFAULTS: TaskFieldDefaults = {
+  priority: null, difficulty: null, effort: null,
+  showStreak: null, vacationPause: null, excludeFromSuggestions: null,
+};
+
+/**
+ * The yes/no answers, with the backfill field each one is asked under and
+ * whether it only means something on a repeating task.
+ */
+const TOGGLE_DEFAULTS = [
+  { key: 'showStreak', field: 'streak', repeatingOnly: true, on: 'Streak chip', off: 'No streak chip' },
+  { key: 'vacationPause', field: 'vacation', repeatingOnly: true, on: 'Pause on vacation', off: 'No vacation pause' },
+  { key: 'excludeFromSuggestions', field: 'suggestions', repeatingOnly: false, on: 'Skip in suggestions', off: 'Allow in suggestions' },
+] as const satisfies readonly {
+  key: 'showStreak' | 'vacationPause' | 'excludeFromSuggestions';
+  field: BackfillFieldId;
+  repeatingOnly: boolean;
+  on: string;
+  off: string;
+}[];
 
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
 
 /** Whether any of the three questions has an answer. */
 export function hasTaskFieldDefaults(d: TaskFieldDefaults | null | undefined): d is TaskFieldDefaults {
-  return !!d && (d.priority !== null || d.difficulty !== null || d.effort !== null);
+  return !!d && (
+    d.priority !== null || d.difficulty !== null || d.effort !== null ||
+    TOGGLE_DEFAULTS.some(t => d[t.key] !== null)
+  );
 }
 
 /**
@@ -57,6 +87,9 @@ export function parseTaskFieldDefaults(raw: unknown): TaskFieldDefaults | null {
   if (DIFFICULTIES.includes(o.difficulty as Difficulty)) result.difficulty = o.difficulty as Difficulty;
   if (typeof o.effort === 'number' && Number.isInteger(o.effort) && o.effort >= 0 && o.effort <= 6) {
     result.effort = o.effort as Effort;
+  }
+  for (const t of TOGGLE_DEFAULTS) {
+    if (typeof o[t.key] === 'boolean') result[t.key] = o[t.key] as boolean;
   }
   return hasTaskFieldDefaults(result) ? result : null;
 }
@@ -97,6 +130,9 @@ export function resolveFieldDefaults(
     if (result.priority === null) result.priority = s.priority;
     if (result.difficulty === null) result.difficulty = s.difficulty;
     if (result.effort === null) result.effort = s.effort;
+    for (const t of TOGGLE_DEFAULTS) {
+      if (result[t.key] === null) result[t.key] = s[t.key] ?? null;
+    }
   }
   return result;
 }
@@ -106,6 +142,10 @@ export interface SeededFieldsInput {
   effort?: Effort;
   estimatedMinutes?: number | null;
   difficulty?: Difficulty | null;
+  recurrenceType?: Task['recurrenceType'];
+  showStreak?: boolean;
+  vacationPause?: boolean;
+  excludeFromSuggestions?: boolean;
 }
 
 export interface SeededFields {
@@ -113,6 +153,15 @@ export interface SeededFields {
   effort: Effort;
   estimatedMinutes: number | null;
   difficulty: Difficulty | null;
+  /**
+   * Each toggle a group default turned on: `true`, or `undefined` for "the
+   * default has nothing to add". Never `false`, so a caller's own fallback (a
+   * streak chip is on for an avoid-habit) isn't overwritten by a default that
+   * only said "don't ask".
+   */
+  showStreak: boolean | undefined;
+  vacationPause: boolean | undefined;
+  excludeFromSuggestions: boolean | undefined;
   backfillDismissedFields: string[];
 }
 
@@ -142,11 +191,22 @@ export function seedTaskFields(
   const difficulty = negative ? (draft.difficulty ?? null) : draft.difficulty ?? group.difficulty ?? global.difficulty ?? null;
   // Only a group's own "none" counts: a priority or estimate of 0 with no group
   // answer behind it is exactly the unanswered state the queue is for.
+  const repeating = (draft.recurrenceType ?? 'none') !== 'none';
+  const toggles: Record<(typeof TOGGLE_DEFAULTS)[number]['key'], boolean | undefined> = {
+    showStreak: undefined, vacationPause: undefined, excludeFromSuggestions: undefined,
+  };
+  const toggleDismissed: string[] = [];
+  for (const t of TOGGLE_DEFAULTS) {
+    if (draft[t.key] === true) continue;
+    if (group[t.key] === true && (repeating || !t.repeatingOnly)) toggles[t.key] = true;
+    else if (group[t.key] === false) toggleDismissed.push(t.field);
+  }
   const dismissed = [
     ...(group.priority === 0 && priority === 0 ? ['priority'] : []),
     ...(group.effort === 0 && effort === 0 && estimatedMinutes === null ? ['estimate'] : []),
+    ...toggleDismissed,
   ];
-  return { priority, effort, estimatedMinutes, difficulty, backfillDismissedFields: dismissed };
+  return { priority, effort, estimatedMinutes, difficulty, ...toggles, backfillDismissedFields: dismissed };
 }
 
 /**
@@ -162,9 +222,19 @@ export function previewSeededFields(
   projectDefaults: TaskFieldDefaults | null | undefined,
   global: { priority: Priority | null; effort: Effort | null; difficulty: Difficulty | null },
   negative: boolean,
-): { priority: Priority; effort: Effort } {
-  const { priority, effort } = seedTaskFields({}, resolveFieldDefaults(projectDefaults), global, negative);
-  return { priority, effort };
+  recurrenceType: Task['recurrenceType'] = 'none',
+): {
+  priority: Priority; effort: Effort;
+  showStreak: boolean; vacationPause: boolean; excludeFromSuggestions: boolean;
+} {
+  const seeded = seedTaskFields({ recurrenceType }, resolveFieldDefaults(projectDefaults), global, negative);
+  return {
+    priority: seeded.priority,
+    effort: seeded.effort,
+    showStreak: seeded.showStreak === true,
+    vacationPause: seeded.vacationPause === true,
+    excludeFromSuggestions: seeded.excludeFromSuggestions === true,
+  };
 }
 
 /**
@@ -186,9 +256,15 @@ export function previewCategoryDefault(
  *
  * Goes through the backfill queue's own test (`isFieldMissing`, dismissals)
  * rather than a second definition of "unanswered", so a task this skips is
- * exactly a task the queue wasn't going to ask about.
+ * exactly a task the queue wasn't going to ask about. `categories` is that
+ * test's own input for vacation pause and skip-in-suggestions, which a
+ * category can already answer.
  */
-export function existingTaskPatch(task: Task, d: TaskFieldDefaults | null | undefined): Partial<Task> | null {
+export function existingTaskPatch(
+  task: Task,
+  d: TaskFieldDefaults | null | undefined,
+  categories?: Category[],
+): Partial<Task> | null {
   if (!hasTaskFieldDefaults(d)) return null;
   let patch: Partial<Task> = {};
   // Read through the patch so two "none" answers add to one dismissed list
@@ -207,12 +283,22 @@ export function existingTaskPatch(task: Task, d: TaskFieldDefaults | null | unde
       ? { ...patch, ...dismissing('estimate') }
       : { ...patch, ...estimatePatchFor(d.effort) };
   }
+  for (const t of TOGGLE_DEFAULTS) {
+    const answer = d[t.key];
+    if (answer === null || answer === undefined) continue;
+    if (!isFieldMissing(task, t.field, categories) || isBackfillDismissed(task, t.field)) continue;
+    patch = answer ? { ...patch, [t.key]: true } : { ...patch, ...dismissing(t.field) };
+  }
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
 /** The tasks a default would change, for the count on an "Apply to existing" button. */
-export function tasksNeedingDefaults(tasks: Task[], d: TaskFieldDefaults | null | undefined): Task[] {
-  return tasks.filter(t => !t.parentId && !t.completed && !t.archived && existingTaskPatch(t, d) !== null);
+export function tasksNeedingDefaults(
+  tasks: Task[],
+  d: TaskFieldDefaults | null | undefined,
+  categories?: Category[],
+): Task[] {
+  return tasks.filter(t => !t.parentId && !t.completed && !t.archived && existingTaskPatch(t, d, categories) !== null);
 }
 
 /** "No priority, Easy, 15m" for a row's current-value summary; null with no answers. */
@@ -226,6 +312,10 @@ export function describeTaskFieldDefaults(d: TaskFieldDefaults | null | undefine
     const mins = EFFORT_MINUTES[d.effort];
     if (mins != null) parts.push(formatDuration(mins));
   }
+  for (const t of TOGGLE_DEFAULTS) {
+    if (d[t.key] === true) parts.push(t.on);
+    else if (d[t.key] === false) parts.push(t.off);
+  }
   return parts.join(', ');
 }
 
@@ -234,7 +324,8 @@ export function describeTaskFieldDefaults(d: TaskFieldDefaults | null | undefine
  * tasks" offer after a whole-group apply. `patch` is what was written to each
  * task. Leaving priority unset implies "no priority" (0) and leaving an estimate
  * unset implies "no estimate" (0); leaving difficulty unset implies nothing,
- * since it has no "none" answer.
+ * since it has no "none" answer. The yes/no fields map directly: turning one on
+ * implies `true`, leaving it off implies `false`.
  */
 export function defaultsFromAnswer(
   fieldId: string,
@@ -246,6 +337,11 @@ export function defaultsFromAnswer(
     return patch.priority !== undefined ? { priority: patch.priority } : null;
   }
   if (fieldId === 'estimate' && dismissed) return { effort: 0 };
+  const toggle = TOGGLE_DEFAULTS.find(t => t.field === fieldId);
+  if (toggle) {
+    if (dismissed) return { [toggle.key]: false };
+    return patch[toggle.key] === true ? { [toggle.key]: true } : null;
+  }
   if (dismissed) return null;
   if (fieldId === 'difficulty') return patch.difficulty ? { difficulty: patch.difficulty } : null;
   if (fieldId === 'estimate') return patch.effort ? { effort: patch.effort } : null;

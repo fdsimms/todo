@@ -786,7 +786,10 @@ export interface ProjectPatch {
   category?: string | null;
   defaultTaskCategory?: string | null;
   /** Priority (0 to 4, 0 meaning deliberately none), difficulty and estimate bucket (0 to 6, 0 meaning deliberately none) new tasks start with; null clears. */
-  taskDefaults?: { priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null } | null;
+  taskDefaults?: {
+    priority?: number | null; difficulty?: 'easy' | 'normal' | 'hard' | null; effort?: number | null;
+    showStreak?: boolean | null; vacationPause?: boolean | null; excludeFromSuggestions?: boolean | null;
+  } | null;
   kind?: ProjectKind;
   completed?: boolean;
   archived?: boolean;
@@ -6178,7 +6181,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const content: Parameters<typeof store.updateProject>[1] = { ...rest } as never;
       if (taskDefaults !== undefined) {
         content.taskDefaults = taskDefaults === null ? null : parseTaskFieldDefaults(taskDefaults);
-        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, and effort is 0 to 6 (0 is no estimate).');
+        if (taskDefaults !== null && content.taskDefaults === null) throw new Error('taskDefaults: nothing in it is a value I can use. Priority is 0 to 4, difficulty is easy, normal or hard, effort is 0 to 6 (0 is no estimate), and showStreak, vacationPause and excludeFromSuggestions are true or false.');
       }
       if (content.defaultTaskCategory) {
         const errors: string[] = [];

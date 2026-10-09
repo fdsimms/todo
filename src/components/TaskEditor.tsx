@@ -654,6 +654,11 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   // beat every default behind it. Picking None is touching it.
   const [priorityTouched, setPriorityTouched] = useState(false);
   const [effortTouched, setEffortTouched] = useState(false);
+  // The same for the three toggles a project's defaults can turn on. An untouched
+  // one is left out of a new task's draft so the default can fill it.
+  const [streakTouched, setStreakTouched] = useState(false);
+  const [vacationTouched, setVacationTouched] = useState(false);
+  const [suggestionsTouched, setSuggestionsTouched] = useState(false);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
@@ -1985,6 +1990,9 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
           groupId,
           ...(priorityTouched ? {} : { priority: undefined }),
           ...(effortTouched ? {} : { effort: undefined }),
+          ...(streakTouched ? {} : { showStreak: undefined }),
+          ...(vacationTouched ? {} : { vacationPause: undefined }),
+          ...(suggestionsTouched ? {} : { excludeFromSuggestions: undefined }),
         };
         if (allDates.length >= 2) {
           const rows = addTaskSeries(newData, allDates, repeat);
@@ -2981,17 +2989,26 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
   const defaultsPreview = useMemo(() => {
     if (task) return null;
     const chosenProject = project ? projects.find(p => p.id === project) : undefined;
-    const seeded = previewSeededFields(chosenProject?.taskDefaults, newTaskDefaults, polarity === 'negative');
+    const seeded = previewSeededFields(chosenProject?.taskDefaults, newTaskDefaults, polarity === 'negative', recurrenceType);
     return {
       priority: seeded.priority,
       effort: seeded.effort,
+      showStreak: seeded.showStreak,
+      vacationPause: seeded.vacationPause,
+      excludeFromSuggestions: seeded.excludeFromSuggestions,
       category: previewCategoryDefault(chosenProject?.defaultTaskCategory, newTaskDefaults.category),
     };
-  }, [task, project, projects, newTaskDefaults, polarity]);
+  }, [task, project, projects, newTaskDefaults, polarity, recurrenceType]);
   const defaultPriorityLabel = defaultsPreview && !priorityTouched && defaultsPreview.priority > 0
     ? `Default: ${PRIORITY_LABELS[defaultsPreview.priority]}` : undefined;
   const defaultEffortLabel = defaultsPreview && !effortTouched && defaultsPreview.effort > 0
     ? `Default: ${effortTimeLabel(defaultsPreview.effort, EFFORT_LABELS[defaultsPreview.effort])}` : undefined;
+  // What each toggle shows: the default on a new task nobody has touched, else
+  // what was set. Read by the rows and by their taps, so a tap flips what is on
+  // screen rather than the untouched state underneath it.
+  const streakShown = streakTouched || !defaultsPreview ? showStreak : showStreak || defaultsPreview.showStreak;
+  const vacationShown = vacationTouched || !defaultsPreview ? vacationPause : defaultsPreview.vacationPause;
+  const suggestionsShown = suggestionsTouched || !defaultsPreview ? excludeFromSuggestions : defaultsPreview.excludeFromSuggestions;
   const defaultCategoryLabel = defaultsPreview && !category && selectedGroup === null && defaultsPreview.category
     ? `Default: ${categoryLabel(defaultsPreview.category, categories)}` : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
@@ -5997,25 +6014,25 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'vacation', label: 'Vacation pause', set: vacationPause,
+            key: 'vacation', label: 'Vacation pause', set: vacationShown,
             keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
             node: (
               <>
             <TouchableOpacity
               style={styles.optionRow}
-              onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
+              onPress={() => { haptics.tap(); setVacationTouched(true); setVacationPause(!vacationShown); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
               accessibilityLabel="Vacation pause"
-              accessibilityState={{ checked: vacationPause }}
+              accessibilityState={{ checked: vacationShown }}
             >
-              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+              <Ionicons name="airplane-outline" size={18} color={vacationShown ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
                 <Text style={styles.optionHint}>Hide and protect streak during vacation mode. Vacation mode is turned on in Settings.</Text>
               </View>
-              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+              <View style={[styles.toggle, vacationShown && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationShown && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
               </>
@@ -6378,19 +6395,19 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
               <>
             <TouchableOpacity
               style={styles.optionRow}
-              onPress={() => { haptics.tap(); setExcludeFromSuggestions(v => !v); }}
+              onPress={() => { haptics.tap(); setSuggestionsTouched(true); setExcludeFromSuggestions(!suggestionsShown); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
               accessibilityLabel="Skip in suggestions"
-              accessibilityState={{ checked: excludeFromSuggestions }}
+              accessibilityState={{ checked: suggestionsShown }}
             >
-              <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
+              <Ionicons name="color-wand-outline" size={18} color={suggestionsShown ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Skip in suggestions</Text>
                 <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
               </View>
-              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
+              <View style={[styles.toggle, suggestionsShown && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, suggestionsShown && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
               </>
@@ -7540,7 +7557,7 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           ...(recurrenceType !== 'none' ? [{
-            key: 'showStreak', label: 'Show streak on row', set: showStreak,
+            key: 'showStreak', label: 'Show streak on row', set: streakShown,
             keywords: ['badge', 'flame', 'display', 'hide'],
             node: (
               <>
@@ -7548,20 +7565,21 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                   style={styles.optionRow}
                   onPress={() => {
                     haptics.tap();
-                    setShowStreak(v => !v);
+                    setStreakTouched(true);
+                    setShowStreak(!streakShown);
                   }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="switch"
                   accessibilityLabel="Show streak on row"
-                  accessibilityState={{ checked: showStreak }}
+                  accessibilityState={{ checked: streakShown }}
                 >
-                  <Ionicons name="flame" size={18} color={showStreak ? colors.orangeText : colors.textSecondary} />
+                  <Ionicons name="flame" size={18} color={streakShown ? colors.orangeText : colors.textSecondary} />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Show streak on row</Text>
                     <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
                   </View>
-                  <View style={[styles.toggle, showStreak && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+                  <View style={[styles.toggle, streakShown && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, streakShown && styles.toggleKnobOn]} />
                   </View>
                 </TouchableOpacity>
               </>

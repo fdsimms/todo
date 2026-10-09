@@ -2035,11 +2035,11 @@ describe('Projects', () => {
   });
 
   it('round-trips task defaults on insert and update, and clears them', () => {
-    dbInsertProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2 } }));
-    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2 });
+    dbInsertProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: null } }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 0, difficulty: 'easy', effort: 2, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
 
-    dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 3, difficulty: null, effort: null } }));
-    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 3, difficulty: null, effort: null });
+    dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: { priority: 3, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null } }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toEqual({ priority: 3, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
 
     dbUpdateProject(makeProject({ id: 'p-defaults', taskDefaults: null }));
     expect(dbGetAllProjects().find(row => row.id === 'p-defaults')?.taskDefaults).toBeNull();

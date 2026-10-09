@@ -324,8 +324,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   // The tasks the staged defaults would still change: only a field still unset
   // is filled, so what someone already answered is never touched.
   const applyableTasks = useMemo(
-    () => (project ? tasksNeedingDefaults(projectTasks, taskDefaults) : []),
-    [project, projectTasks, taskDefaults],
+    () => (project ? tasksNeedingDefaults(projectTasks, taskDefaults, taskCategories) : []),
+    [project, projectTasks, taskDefaults, taskCategories],
   );
   const applyableCount = applyableTasks.length;
   const confirmApplyToExisting = () => {
@@ -341,7 +341,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
           onPress: () => {
             const snapshots = targets.map(t => ({ ...t }));
             for (const t of targets) {
-              const patch = existingTaskPatch(t, taskDefaults);
+              const patch = existingTaskPatch(t, taskDefaults, taskCategories);
               if (patch) updateTask(t.id, patch);
             }
             haptics.success();

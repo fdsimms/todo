@@ -1,0 +1,1 @@
+{ "message": "A project's task defaults can now also set the streak chip, vacation pause and skip in suggestions, so new tasks in it start with them and Backfill stops asking. Streak chip and vacation pause apply to repeating tasks only.", "date": "2026-10-09" }
