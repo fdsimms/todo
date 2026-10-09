@@ -13,7 +13,7 @@ import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
 import { SwipeActionButtons } from './SwipeActionButtons';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
-import { useTrayFold, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
+import { useTrayFold, useTrayRaised, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
 
@@ -135,7 +135,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   onPressPin,
 }: Props) {
   const { colors, shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const trayRaised = useTrayRaised();
+  const styles = useMemo(() => makeStyles(colors, trayRaised), [colors, trayRaised]);
   const isExpanded = expanded ?? !group.collapsed;
 
   // ==== Deck ====
@@ -413,7 +414,7 @@ const ICON_BTN_SIZE = iconSize.sm + spacing.sm * 2;
 // below the card is hidden behind it.
 const EDGE_HEIGHT = spacing.lg;
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, trayRaised: boolean) => StyleSheet.create({
   /**
    * A caption, not a card — the one row in the app that isn't one.
    *
@@ -445,7 +446,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // background — SwipeableRow renders its action panels *under* the row and
     // slides the row off them, so a truly transparent header would show the
     // orange panel straight through its own text. It matches the tray exactly.
-    backgroundColor: colors.bgSunken,
+    backgroundColor: trayRaised ? colors.bgSecondary : colors.bgSunken,
     // Matches cardClip's radius (below) so this view's own background paints
     // rounded too — same reasoning as TaskItem's itemWrapper/cardClip split.
     // cardClip only clips its *children* (the row content and SpotlightScrim)
@@ -476,8 +477,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // make room for the line under it; an expanded header is the same 48.
     alignItems: 'flex-start',
     minHeight: BAND_MIN_HEIGHT,
-    // bgSunken open; `rowCard` fades the card colour in over it when folded.
-    backgroundColor: colors.bgSunken,
+    // The tray's colour open; `rowCard` fades the card colour in over it when
+    // folded (the same colour in a raised tray, so nothing changes).
+    backgroundColor: trayRaised ? colors.bgSecondary : colors.bgSunken,
   },
   rowCard: {
     ...StyleSheet.absoluteFill,
@@ -492,7 +494,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: -border.sm,
     right: -border.sm,
     borderRadius: radius.sm,
-    backgroundColor: colors.bgSunken,
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSunken,
   },
   deck: {
     position: 'absolute',
@@ -548,8 +550,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // the one place the stack borrows the colour of the rows it owns, which
     // is what stops a card-less header from looking unfinished. Works in both
     // themes for once — bgSecondary is #1C1C1E on black and #FFFFFF on grey,
-    // legible against the page either way.
-    backgroundColor: colors.bgSecondary,
+    // legible against the page either way. In a raised tray (the same colour)
+    // it steps up a shade instead.
+    backgroundColor: trayRaised ? colors.bgTertiary : colors.bgSecondary,
     borderColor: colors.separator,
     alignItems: 'center',
     justifyContent: 'center',

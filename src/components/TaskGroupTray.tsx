@@ -7,7 +7,7 @@ import Reanimated, {
   Easing,
   type SharedValue,
 } from 'react-native-reanimated';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, animation, type Colors } from '../theme';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
@@ -32,6 +32,18 @@ export const STACK_EDGE_DEPTH = spacing.smd;
  */
 const TrayFoldContext = createContext<SharedValue<number> | null>(null);
 
+/**
+ * Whether the enclosing tray is drawn raised (one step lighter than the page).
+ * Rows and the header read it to step up a shade, or they would vanish into a
+ * tray of their own colour.
+ */
+const TrayRaisedContext = createContext(false);
+
+/** True inside a raised tray: cards use `bgTertiary` where they'd use `bgSecondary`. */
+export function useTrayRaised(): boolean {
+  return useContext(TrayRaisedContext);
+}
+
 /** The tray's fold progress, or null outside a tray. */
 export function useTrayFold(): SharedValue<number> | null {
   return useContext(TrayFoldContext);
@@ -47,9 +59,10 @@ interface Props {
   collapsed?: boolean;
   /**
    * Draw the tray one step lighter than the page instead of recessed. In the
-   * dark themes `bgSunken` is darker than the page, which on a screen with no
-   * stack header over it (Stuck's) reads as a black slab rather than a region.
-   * The cards inside must then step up again (`bgTertiary`) to stay visible.
+   * dark themes `bgSunken` is darker than the page and reads as a black slab
+   * rather than a region. The cards inside then step up again (`bgTertiary`)
+   * to stay visible, which task rows and the header do through
+   * `useTrayRaised`. Defaults to on in the dark themes, off in Light.
    */
   raised?: boolean;
   children: React.ReactNode;
@@ -87,8 +100,10 @@ interface Props {
  * hold them. Both run on AnimatedCollapsible's clock, so the deck forms as the
  * rows fold away under it.
  */
-export function TaskGroupTray({ collapsed = false, raised = false, children }: Props) {
+export function TaskGroupTray({ collapsed = false, raised: raisedProp, children }: Props) {
   const colors = useColors();
+  const { isDark } = useTheme();
+  const raised = raisedProp ?? isDark;
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fold = useSharedValue(collapsed ? 1 : 0);
 
@@ -103,6 +118,7 @@ export function TaskGroupTray({ collapsed = false, raised = false, children }: P
 
   return (
     <TrayFoldContext.Provider value={fold}>
+    <TrayRaisedContext.Provider value={raised}>
     <View style={styles.tray}>
       {/* Drawn *under* the children, so it dims only the tray surface they
           don't cover — its padding and the gaps between the cards. The header
@@ -126,6 +142,7 @@ export function TaskGroupTray({ collapsed = false, raised = false, children }: P
         <View style={styles.edgeRoom} />
       </AnimatedCollapsible>
     </View>
+    </TrayRaisedContext.Provider>
     </TrayFoldContext.Provider>
   );
 }
