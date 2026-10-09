@@ -1570,7 +1570,8 @@ describe('the replica', () => {
       const before = balance();
       const habit = replica.createTask({ title: 'No biting nails', polarity: 'negative' });
       const slipped = replica.logSlip(habit.id);
-      expect(slipped.slipCount).toBe(1);
+      expect(slipped.task.slipCount).toBe(1);
+      expect(slipped.claim).toBeNull();
       expect(balance()).toBeLessThan(before);
 
       expect(replica.undoSlip(habit.id).slipCount).toBe(0);
@@ -1579,6 +1580,31 @@ describe('the replica', () => {
 
       const guarded = replica.createTask({ title: 'No scrolling', polarity: 'negative', penaltyMinutes: 30 });
       expect(() => replica.logSlip(guarded.id)).toThrow(/penalty/);
+    });
+
+    it('claims a guarding reward for a slip it can pay for, and charges what is left when it can\'t', () => {
+      earn(90);
+      const have = balance();
+      const habit = replica.createTask({ title: 'No dessert unless claimed', polarity: 'negative' });
+      const reward = replica.addReward('A dessert', have, { guardsTaskId: habit.id });
+      expect(reward.guardsTaskId).toBe(habit.id);
+      expect(() => replica.addReward('Cake', 5, { guardsTaskId: habit.id })).toThrow(/already guards/);
+      expect(() => replica.addReward('Pie', 5, { guardsTaskId: habit.id, oneTime: true })).toThrow(/one-time/);
+
+      const claimed = replica.logSlip(habit.id);
+      expect(claimed.claim?.rewardId).toBe(reward.id);
+      expect(claimed.task.slipCount).toBe(0);
+      expect(balance()).toBe(0);
+      replica.unclaimReward(claimed.claim!.id);
+
+      replica.updateReward(reward.id, { cost: have + 5 });
+      const charged = replica.logSlip(habit.id);
+      expect(charged.claim).toBeNull();
+      expect(charged.task.slipCount).toBe(1);
+      expect(balance()).toBe(0);
+      replica.undoSlip(habit.id);
+      expect(balance()).toBe(have);
+      replica.deleteReward(reward.id);
     });
   });
 

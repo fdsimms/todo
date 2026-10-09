@@ -183,6 +183,7 @@ type MedicationModule = typeof import('../../src/utils/medicationLog');
 type MedicationSettingsModule = typeof import('../../src/utils/medicationSettings');
 type RewardsModule = typeof import('../../src/utils/rewards');
 type NegativeHabitsModule = typeof import('../../src/utils/negativeHabits');
+type RewardGuardModule = typeof import('../../src/utils/rewardGuard');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
@@ -1731,9 +1732,14 @@ export interface Replica {
    * sit on a screen the person cannot open. Never a wish-list reward: those
    * read their title off a list item and are made in the app.
    */
-  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null }): Reward;
-  /** Change a reward's cost, or its title, link, note or one-time flag. A wish-list reward is refused: its title, note and link live on the list item. */
-  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null }): Reward;
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null }): Reward;
+  /**
+   * Change a reward's cost, or its title, link, note, one-time flag or the
+   * habit it guards. A wish-list reward is refused: its title, note and link
+   * live on the list item. A guarded habit must be a live "don't do this"
+   * habit no other reward guards, on a reward that isn't one-time.
+   */
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
@@ -1775,8 +1781,13 @@ export interface Replica {
    * Log a slip against a "don't do this" habit, and take back today's latest one.
    * A habit with a penalty is refused: the slip charges an app block on the
    * phone, which only the phone can set.
+   *
+   * On a habit a reward guards (`src/utils/rewardGuard.ts`), a slip the balance
+   * covers claims the reward instead, records nothing on the habit and returns
+   * the spend as `claim` (`unclaimReward` takes it back); one it doesn't is
+   * charged the reward's price down to zero.
    */
-  logSlip(id: string): Task;
+  logSlip(id: string): { task: Task; claim: CoinEntry | null };
   undoSlip(id: string): Task;
   /**
    * Move a project's dated tasks by the days its event (or any date) moved,
@@ -1968,6 +1979,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const medicationSettings = require('../../src/utils/medicationSettings') as MedicationSettingsModule;
   const rewards = require('../../src/utils/rewards') as RewardsModule;
   const negativeHabits = require('../../src/utils/negativeHabits') as NegativeHabitsModule;
+  const rewardGuard = require('../../src/utils/rewardGuard') as RewardGuardModule;
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
@@ -2919,6 +2931,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     db.dbUpdateTask(updated);
     refresh();
     return updated;
+  };
+  // A reward can guard a live avoid habit no other reward guards, and only
+  // while it isn't one-time (rewardGuard.canGuard).
+  const requireGuardable = (taskId: string, rewardId: string | null, oneTime: boolean): void => {
+    const habit = tasks().find(t => t.id === taskId);
+    if (!habit || !rewardGuard.isGuardableHabit(habit)) throw new Error('A reward can only guard an active "don\'t do this" habit, and that task is not one.');
+    if (oneTime) throw new Error('A one-time reward cannot guard a habit: once claimed it is gone, and the habit would have nothing to claim.');
+    const other = useRewardStore.getState().rewards.find(r => r.id !== rewardId && r.guardsTaskId === taskId && rewardGuard.canGuard(r));
+    if (other) throw new Error(`"${other.title}" already guards that habit.`);
   };
   const requireNegativeHabit = (id: string): Task => {
     const task = tasks().find(t => t.id === id);
@@ -6712,6 +6733,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const name = title.trim();
       if (!name) throw new Error('A reward needs a title.');
       requireRewardCost(cost);
+      if (details.guardsTaskId) requireGuardable(details.guardsTaskId, null, !!details.oneTime);
       const reward = useRewardStore.getState().addReward(name, cost, details);
       if (!reward) throw new Error('Could not add the reward.');
       refresh();
@@ -6724,6 +6746,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (current.taskId) throw new Error('That reward is a wish-list item, so its title, note and link are the item\'s. Edit the item instead.');
       if (patch.title !== undefined && !patch.title.trim()) throw new Error('A reward needs a title.');
       if (patch.cost !== undefined) requireRewardCost(patch.cost);
+      if (patch.guardsTaskId) requireGuardable(patch.guardsTaskId, id, patch.oneTime ?? current.oneTime);
       useRewardStore.getState().updateReward(id, patch);
       refresh();
       return requireReward(id);
@@ -6820,15 +6843,31 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return setBountyPushes(task, rewards.BOUNTY_WITHDRAWN);
     },
 
-    logSlip(id): Task {
+    logSlip(id): { task: Task; claim: CoinEntry | null } {
       const task = requireNegativeHabit(id);
       const dayStart = dates.getCurrentDayStart();
+      // The app's logSlip, step for step: a guarded slip the balance covers is
+      // the claim instead, and leaves the habit as it was.
+      let guard = useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
+      if (guard?.kind === 'claim') {
+        const claim = useRewardStore.getState().claimReward(guard.reward.id);
+        if (claim) {
+          refresh();
+          return { task, claim };
+        }
+        guard = useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
+      }
       const free = negativeHabits.nextSlipIsFree(task, dayStart);
       const updated = { ...task, ...negativeHabits.slipPatch(task, dayStart) };
       db.dbUpdateTask(updated);
-      if (!free) useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      if (!free && guard?.kind === 'charge') {
+        useRewardStore.getState().recordGuardCharge(id, guard.amount, visibility.displayTitleFor(updated),
+          rewardGuard.guardChargeSeed(id, dayStart, negativeHabits.slipsToday(task, dayStart)));
+      } else if (!free) {
+        useRewardStore.getState().recordSlip(id, rewards.coinsForLoss(updated), visibility.displayTitleFor(updated));
+      }
       refresh();
-      return updated;
+      return { task: updated, claim: null };
     },
 
     undoSlip(id): Task {
@@ -6839,7 +6878,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const free = negativeHabits.lastSlipWasFree(task, dayStart);
       const updated = { ...task, ...patch };
       db.dbUpdateTask(updated);
-      if (!free) useRewardStore.getState().takeBackSlip(id);
+      if (!free) {
+        // As the app's undoSlip: a guarded slip's charge is named by its slip.
+        const store = useRewardStore.getState();
+        const seed = rewardGuard.guardChargeSeed(id, dayStart, negativeHabits.slipsToday(task, dayStart) - 1);
+        if (!store.takeBackGuardCharge(seed) && !rewardGuard.guardingReward(store.rewards, id)) store.takeBackSlip(id);
+      }
       refresh();
       return updated;
     },

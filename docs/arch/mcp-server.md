@@ -924,6 +924,11 @@ app's own passes (the sweeps, the rollover) still never charge anything.
   `missed: true` and `recordMiss`, a slip through `slipPatch` and `recordSlip`. The replica
   hydrates `useRewardStore` on open and on every refresh; before that it was never loaded here, so
   a claim would have judged the balance by what this process had earned since it started.
+- **A slip on a habit a reward guards claims or charges exactly as in the app.** `replica.logSlip`
+  runs `slipGuardFor` and returns the claim it made, if any, so `log_slip` says `claimed` with the
+  `claimId` `unclaim_reward` takes back; the ledger records it as a claim. `create_reward` and
+  `update_reward` take `guardsHabitId`, refused for a one-time reward, a task that isn't a live avoid
+  habit, or a habit another reward already guards.
 - **A wish-list claim checks its item off neutrally**, as `RewardsScreen`'s `claim` does (no coins on
   top of the spend), inside one transaction with the spend. `unclaim_reward` reopens the item only if
   it was checked off at or after the claim, so an item the person finished earlier is left alone.

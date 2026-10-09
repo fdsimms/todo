@@ -152,6 +152,7 @@ import { useMilestoneStore } from './useMilestoneStore';
 import { useMeterReadingStore } from './useMeterReadingStore';
 import { useMedicationStore } from './useMedicationStore';
 import { useRewardStore } from './useRewardStore';
+import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
 import {
   canPostBounty,
   coinsForCompletion,
@@ -1748,6 +1749,11 @@ interface TaskStore extends UndoHistoryActions {
    * the event. Repeated taps on the same day keep counting, which is how a
    * frequency-logged habit ("how many, not whether") works without needing a
    * second kind of task behind it. See src/utils/negativeHabits.ts.
+   *
+   * On a habit a reward guards (`Reward.guardsTaskId`), a slip the balance
+   * covers claims the reward instead and records nothing on the habit, and one
+   * it doesn't is charged the reward's price down to zero. See
+   * src/utils/rewardGuard.ts.
    */
   logSlip: (id: string) => void;
   /**
@@ -4329,6 +4335,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isNegativeTask(task) || task.archived) return;
     const dayStart = getCurrentDayStart();
+    // A habit a reward guards: a slip you can pay for is the claim instead,
+    // and leaves the habit untouched. See rewardGuard.ts.
+    const planGuard = () => useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
+    let guard = planGuard();
+    if (guard?.kind === 'claim') {
+      const reward = guard.reward;
+      const claim = useRewardStore.getState().claimReward(reward.id);
+      if (claim) {
+        get().setLastAction({
+          label: `Claimed ${reward.title}`,
+          undo: () => useRewardStore.getState().unclaim(claim.id),
+          redo: () => get().logSlip(id),
+        });
+        return;
+      }
+      // Refused after all (a claim synced in a moment ago): plan again, as a charge.
+      guard = planGuard();
+    }
     // A slip inside the day's allowance is recorded and nothing else: no block,
     // no coins, and slipPatch leaves the streak alone.
     const free = nextSlipIsFree(task, dayStart);
@@ -4352,7 +4376,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A slip costs coins too, when rewards are on. Unlike the block, this one
     // *is* refunded by undoSlip: the refund removes this slip's own entry, so
     // a log-and-undo round trip nets zero rather than buying anything back.
-    useRewardStore.getState().recordSlip(id, coinsForLoss(updated), displayTitleFor(updated));
+    // On a guarded habit the reward's price, floored at the balance, replaces it.
+    if (guard?.kind === 'charge') {
+      useRewardStore.getState().recordGuardCharge(id, guard.amount, displayTitleFor(updated), guardChargeSeed(id, dayStart, slipsToday(task, dayStart)));
+    } else {
+      useRewardStore.getState().recordSlip(id, coinsForLoss(updated), displayTitleFor(updated));
+    }
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
@@ -4375,7 +4404,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    if (!free) useRewardStore.getState().takeBackSlip(id);
+    if (free) return;
+    // A guarded slip's charge is named by its slip, and one floored to zero
+    // wrote nothing, so a guarded habit never falls back to "the newest loss".
+    const rewardStore = useRewardStore.getState();
+    const seed = guardChargeSeed(id, dayStart, slipsToday(task, dayStart) - 1);
+    if (!rewardStore.takeBackGuardCharge(seed) && !guardingReward(rewardStore.rewards, id)) rewardStore.takeBackSlip(id);
   },
 
   sweepTaskPenalties() {

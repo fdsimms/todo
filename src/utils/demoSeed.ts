@@ -3127,7 +3127,16 @@ function seedJournal(today: Date): void {
 function seedRewards(today: Date): void {
   useSettingsStore.getState().setRewardsEnabled(true);
   const rewards = useRewardStore.getState();
-  const episode = rewards.addReward('An episode of a show', 15);
+  // The cheap reward guards an avoid habit, so tapping that habit's shield
+  // offers to claim the episode rather than counting a slip.
+  const noShows = useTaskStore.getState().addTask({
+    title: 'No shows unless claimed',
+    notes: 'Linked to the episode reward. Logging a slip here claims it, or costs your coins up to its price if you can’t afford it.',
+    category: 'Health',
+    polarity: 'negative',
+    effort: 1,
+  });
+  const episode = rewards.addReward('An episode of a show', 15, { guardsTaskId: noShows.id });
   // Every optional field shows up once: a link and a note on takeout, and a
   // one-time reward. Takeout is also the goal, so the balance card has
   // progress to draw.

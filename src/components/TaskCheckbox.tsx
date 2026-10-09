@@ -6,6 +6,7 @@ import type { Task } from '../types';
 import type { DeliverableReasoning } from '../utils/deliverables';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useRewardStore } from '../store/useRewardStore';
 import { confirmSlip } from '../utils/slipConfirm';
 import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
 import type { NegativeHold } from '../utils/negativeHabits';
@@ -160,7 +161,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         // habit stays on the list either way — so the haptic and the box going
         // red are the whole of the feedback here.
         await haptics.warning();
-        confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
+        confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()));
         return;
       case 'ask':
         // The question comes first and the completion only follows an answer,
@@ -330,7 +331,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           onClose={() => setShowHoldMenu(false)}
           onCount={() => closeNegativeDay(task.id)}
           onReopen={() => reopenNegativeDay(task.id)}
-          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id))}
+          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()))}
           onUndoSlip={() => undoSlip(task.id)}
         />
       )}

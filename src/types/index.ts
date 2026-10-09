@@ -2136,6 +2136,14 @@ export interface Reward {
    * saves toward. Null for a reward priced in coins only.
    */
   priceMinor: number | null;
+  /**
+   * The "don't do this" habit this reward is the honest way to have ("No
+   * dessert unless claimed" for "A dessert"). A slip logged on it claims the
+   * reward when the balance covers it, and otherwise is charged the reward's
+   * price down to zero. Never set on a one-time or wish list reward. Rules in
+   * `src/utils/rewardGuard.ts`. No foreign key, like `taskId`.
+   */
+  guardsTaskId: string | null;
 }
 
 /**

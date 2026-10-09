@@ -31,6 +31,9 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **The balance can go below zero.** Losses are taken in full, and unticking a task whose coins
   were already spent still takes them back. Refusing the undo would overrule a correction, and
   flooring the balance would make a miss free once you were broke.
+- **One loss has a floor: a guarded slip's charge** (see "A reward guarding a habit" below) takes
+  the balance to zero and stops. That charge is the reward's whole price, often far more than a slip
+  costs, so the floor keeps it a price rather than a debt. Every other loss still goes below zero.
 - **Coins never touch the app shield.** See `penaltyCreditFor`: anything that hands out unblocked
   minutes is a rewards feature wearing the penalty's clothes. A reward is a note to yourself, and
   claiming one unlocks nothing in the app.
@@ -148,6 +151,28 @@ so the rate is never a number the app invented, and there is no rate until both 
   link, so editing it edits the reward. Claiming checks the item off with `{ neutral: true }`, or
   checking off the thing you just spent coins on would also earn coins; the undo takes both back.
   Checking it off by hand (you bought it without coins) retires the reward. Always one-time.
+
+## A reward guarding a habit
+
+A reward can name an "Avoid this" habit it is the honest way to have (`Reward.guardsTaskId`): "No
+dessert unless claimed" for "A dessert". Rules in `src/utils/rewardGuard.ts`, read by the slip's
+confirmation (`slipConfirm.ts`), `useTaskStore.logSlip` and the MCP replica through one function
+(`useRewardStore.slipGuardFor`), so what the prompt offers and what the tap does can't disagree.
+
+- **Claiming touches nothing on the habit.** You claim, then have it. The habit is only for having
+  it without claiming.
+- **A slip the balance covers is the claim.** It spends the reward's cost and records no slip, so
+  the streak stands; the undo is the claim's. Paying after is the same outcome as paying first; what
+  this exists to stop is never paying.
+- **A slip it doesn't cover is a real slip, charged the reward's price down to zero.** The streak
+  breaks and the charge replaces the habit's own slip cost. The charge is keyed by habit, day and
+  which slip of the day it was (`guardChargeSeed`), because a charge floored to nothing writes no
+  entry, and "the newest loss on this habit" would then undo an earlier slip's charge.
+- **The tap always asks first**, since either answer moves real coins. A slip inside the habit's own
+  allowance is free and asks nothing, as before.
+- **Only a repeatable, coin reward can guard.** A one-time reward would leave the habit charging a
+  price nobody can claim once it was gone, and a wish list item is bought once. Turning a reward
+  one-time drops its habit. One habit has one guarding reward; the picker leaves out the rest.
 
 ## Where it shows
 

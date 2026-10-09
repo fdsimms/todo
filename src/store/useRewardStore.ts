@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CoinEntry, Reward } from '../types';
+import type { CoinEntry, Reward, Task } from '../types';
 import {
   dbGetAllCoinEntries,
   dbUpsertCoinEntry,
@@ -19,6 +19,8 @@ import {
   latestLossFor,
   sortCoinEntries,
 } from '../utils/rewards';
+import { canGuard, claimedSince, planGuardedSlip, type GuardedSlip } from '../utils/rewardGuard';
+import type { NegativeHabitFields } from '../utils/negativeHabits';
 import { useSettingsStore } from './useSettingsStore';
 
 /**
@@ -57,6 +59,26 @@ interface RewardStore {
   takeBackTask: (taskId: string) => void;
   /** Undoing a slip: drop the newest slip entry for the task. */
   takeBackSlip: (taskId: string) => void;
+  /**
+   * A slip on a habit a reward guards cost `amount` (the reward's price, down
+   * to the balance). Keyed by `guardChargeSeed`, so its undo can name it.
+   */
+  recordGuardCharge: (taskId: string, amount: number, label: string, seed: string) => void;
+  /**
+   * Undoing a guarded slip: drop the charge `recordGuardCharge` wrote under
+   * `seed`. False when it wrote none (a charge floored to zero, or a slip
+   * logged before the reward guarded the habit).
+   */
+  takeBackGuardCharge: (seed: string) => boolean;
+  /**
+   * What the next slip on `task` does if a reward guards it, with what the
+   * confirmation needs to say so; null for an ordinary slip. The one reading
+   * both the slip's confirmation and `logSlip` act on.
+   */
+  slipGuardFor: (
+    task: NegativeHabitFields & Pick<Task, 'id'>,
+    todayStart: Date,
+  ) => { plan: GuardedSlip; balance: number; claimedToday: boolean } | null;
 
   /**
    * `details` carries the optional fields. A reward made from a wish list item
@@ -86,7 +108,7 @@ interface RewardStore {
 const ANNOUNCE_WINDOW_MS = 60_000;
 
 /** The optional half of a reward, as the form edits it. */
-export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor'>;
+export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId'>;
 
 /** Blank text is no value, so a cleared field stores null rather than "". */
 function cleanText(text: string | null | undefined): string | null {
@@ -167,10 +189,33 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       if (entry) remove([entry.id]);
     },
 
+    recordGuardCharge(taskId, amount, label, seed) {
+      if (!enabled() || amount <= 0) return;
+      const entry: CoinEntry = { id: derivedId(seed), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
+      write(entry);
+      announce(entry);
+    },
+
+    // Not gated, for the reason takeBackTask gives.
+    takeBackGuardCharge(seed) {
+      const id = derivedId(seed);
+      if (!get().entries.some(e => e.id === id)) return false;
+      remove([id]);
+      return true;
+    },
+
+    slipGuardFor(task, todayStart) {
+      const balance = get().balance();
+      const plan = planGuardedSlip({ task, rewards: get().rewards, balance, todayStart, rewardsEnabled: enabled() });
+      if (!plan) return null;
+      return { plan, balance, claimedToday: claimedSince(get().entries, plan.reward.id, todayStart) };
+    },
+
     addReward(title, cost, details) {
       const trimmed = title.trim();
       if (!trimmed || !(cost > 0)) return null;
       const taskId = details?.taskId ?? null;
+      const oneTime = !!taskId || !!details?.oneTime;
       const reward: Reward = {
         id: generateId(),
         title: trimmed,
@@ -178,9 +223,10 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         createdAt: new Date().toISOString(),
         linkUrl: cleanText(details?.linkUrl),
         note: cleanText(details?.note),
-        oneTime: !!taskId || !!details?.oneTime,
+        oneTime,
         taskId,
         priceMinor: details?.priceMinor ?? null,
+        guardsTaskId: canGuard({ oneTime, taskId }) ? details?.guardsTaskId ?? null : null,
       };
       dbInsertReward(reward);
       set(s => ({ rewards: sortRewards([...s.rewards, reward]) }));
@@ -194,15 +240,19 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       const cost = patch.cost !== undefined ? Math.round(patch.cost) : current.cost;
       if (!title || !(cost > 0)) return;
       const taskId = patch.taskId !== undefined ? patch.taskId : current.taskId;
+      const oneTime = !!taskId || (patch.oneTime !== undefined ? patch.oneTime : current.oneTime);
+      const guardsTaskId = patch.guardsTaskId !== undefined ? patch.guardsTaskId : current.guardsTaskId;
       const next: Reward = {
         ...current,
         title,
         cost,
         linkUrl: patch.linkUrl !== undefined ? cleanText(patch.linkUrl) : current.linkUrl,
         note: patch.note !== undefined ? cleanText(patch.note) : current.note,
-        oneTime: !!taskId || (patch.oneTime !== undefined ? patch.oneTime : current.oneTime),
+        oneTime,
         taskId,
         priceMinor: patch.priceMinor !== undefined ? patch.priceMinor : current.priceMinor,
+        // Turning a reward one-time drops the habit it guarded (see canGuard).
+        guardsTaskId: canGuard({ oneTime, taskId }) ? guardsTaskId : null,
       };
       dbUpdateReward(next);
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));

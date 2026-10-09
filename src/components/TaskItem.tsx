@@ -93,6 +93,7 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useRewardStore } from '../store/useRewardStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
@@ -2034,7 +2035,7 @@ export const TaskItem = React.memo(function TaskItem({
   // (handleSlipUndo), the same affordance a logged quota unit has.
   const handleSlip = async () => {
     await haptics.warning();
-    confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id));
+    confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()));
   };
 
   // A long press on an avoid-task opens the menu of what today allows
@@ -4652,7 +4653,7 @@ export const TaskItem = React.memo(function TaskItem({
           onClose={() => setShowNegativeMenu(false)}
           onCount={() => closeNegativeDay(task.id)}
           onReopen={() => reopenNegativeDay(task.id)}
-          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id))}
+          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()))}
           onUndoSlip={() => undoSlip(task.id)}
         />
       )}
