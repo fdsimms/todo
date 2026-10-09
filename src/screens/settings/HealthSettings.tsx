@@ -247,11 +247,12 @@ export function HealthSettings() {
   const todayKey = dayKeyOf(getCurrentDayStart());
   const reading = today?.dayKey === todayKey ? today : null;
 
+  const noSteps = reading?.steps == null && !(refreshing && !reading);
   const stepsValue = refreshing && !reading
     ? 'Reading…'
     : reading?.steps != null
       ? reading.steps.toLocaleString()
-      : 'No number';
+      : 'Open Health';
 
   if (!supported) {
     return (
@@ -364,7 +365,11 @@ export function HealthSettings() {
             alwaysShowHint
             value={stepsValue}
             busy={refreshing}
-            onPress={() => { haptics.tap(); void refresh(); }}
+            // With no number a re-read would only come back empty, so the tap
+            // goes to where sharing is changed instead.
+            onPress={noSteps
+              ? () => { haptics.tap(); void openHealthApp(); }
+              : () => { haptics.tap(); void refresh(); }}
             accessibilityLabel={`Steps today, ${stepsValue}`}
           />
 
