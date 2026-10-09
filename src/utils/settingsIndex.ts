@@ -853,6 +853,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
 
+  // The Today rows for Stay under limits sit below the generator loop and are
+  // not generators, so they have no `gen:` entry of their own.
+  { id: 'limitsToday', groupId: 'generated', label: 'Stay under limits on Today', section: 'Automations',
+    keywords: ['sat fat', 'sugar', 'sodium', 'nutrition', 'food log', 'health', 'budget', 'left'], kitchen: true },
+  { id: 'limitsTodayCategory', groupId: 'generated', label: 'Show them under', section: 'Stay under limits on Today',
+    keywords: ['category', 'where', 'section', 'limit', 'health'], kitchen: true },
+
   // `kitchen`-gated to match the row itself, which is hidden with the
   // groceries area: the only feature routed on-device today lives there, so a
   // result leading to a row that isn't rendered would be a dead end. The
