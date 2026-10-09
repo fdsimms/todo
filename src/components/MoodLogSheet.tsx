@@ -119,6 +119,13 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   // without this the pill you just created would vanish on the next render.
   const [drafted, setDrafted] = useState<string[]>([]);
   const [draftedContext, setDraftedContext] = useState<string[]>([]);
+  // The context tags the sheet opened with (an entry's saved ones, or the
+  // seed). They lead the grid so what was already picked is on screen without
+  // scrolling, and they are a snapshot rather than the live selection so a tap
+  // never moves a pill.
+  const [openedContext, setOpenedContext] = useState<string[]>([]);
+  // Same for symptoms: the names the sheet opened with lead the grid.
+  const [openedSymptoms, setOpenedSymptoms] = useState<string[]>([]);
   // Which day is being recorded. Today unless you say otherwise — the common
   // case by a mile, and the only one before this row existed.
   const [day, setDay] = useState<Date>(() => getLogicalToday());
@@ -133,7 +140,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     if (!visible) return;
     const offered = editing ? null : prefill;
     setMood(editing?.mood ?? offered?.mood ?? null);
-    setSymptoms(editing?.symptoms ?? (offered?.symptom ? withSymptom([], offered.symptom, 1) : []));
+    const openingSymptoms = editing?.symptoms ?? (offered?.symptom ? withSymptom([], offered.symptom, 1) : []);
+    setSymptoms(openingSymptoms);
+    setOpenedSymptoms(openingSymptoms.map(s => s.name));
     // Offered, not decided: a new entry opens with "Vacation" pre-picked
     // while vacation mode is on, exactly as if you had tapped the pill
     // yourself, and it comes right back off with one more tap. Only for a
@@ -151,7 +160,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       ? null
       : seededContextTags(logs, dayKeyOf(getCurrentDayStart()), { isToday: true, vacationMode });
     seedRef.current = seed;
-    setContextTags(editing?.contextTags ?? seed ?? []);
+    const openingTags = editing?.contextTags ?? seed ?? [];
+    setContextTags(openingTags);
+    setOpenedContext(openingTags);
     setNote(editing?.note ?? '');
     setNoteOpen(!!editing?.note);
     setDrafted([]);
@@ -185,13 +196,13 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const pillNames = useMemo(() => {
     const seen = new Set<string>();
     const names: string[] = [];
-    // What you have logged before, then what you have just typed, then
+    // What the sheet opened with, then what you have logged before, then what you have just typed, then
     // anything picked that is in neither (so a one-off can still be
     // un-picked). Picking must not reorder the grid: this used to put the
     // picked names first, so every tap moved the pill out from under the
     // finger and shuffled the rest. Nothing here changes while the sheet is
     // open except by adding to the end.
-    for (const source of [vocabulary, drafted, symptoms.map(s => s.name)]) {
+    for (const source of [openedSymptoms, vocabulary, drafted, symptoms.map(s => s.name)]) {
       for (const name of source) {
         const key = symptomKey(name);
         if (!key || seen.has(key)) continue;
@@ -200,18 +211,19 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       }
     }
     return names;
-  }, [symptoms, vocabulary, drafted]);
+  }, [symptoms, vocabulary, drafted, openedSymptoms]);
 
   const contextVocabulary = useMemo(() => contextTagVocabulary(logs), [logs]);
   const contextPillNames = useMemo(() => {
     const seen = new Set<string>();
     const names: string[] = [];
-    // Same order as pillNames above, with the starter suggestions slotted in
+    // The tags the sheet opened with come first (see openedContext), then the
+    // same order as pillNames above, with the starter suggestions slotted in
     // ahead of what you type this session and behind everything real: what
     // you have actually used before should always outrank a generic prompt.
     // Picked tags come last and only matter when they are in none of these,
     // for the same no-reorder reason.
-    for (const source of [contextVocabulary, DEFAULT_CONTEXT_TAGS, draftedContext, contextTags]) {
+    for (const source of [openedContext, contextVocabulary, DEFAULT_CONTEXT_TAGS, draftedContext, contextTags]) {
       for (const name of source) {
         const key = contextTagKey(name);
         if (!key || seen.has(key)) continue;
@@ -220,7 +232,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       }
     }
     return names;
-  }, [contextTags, contextVocabulary, draftedContext]);
+  }, [contextTags, contextVocabulary, draftedContext, openedContext]);
 
   const toggleContextTag = (name: string) => {
     haptics.tap();
