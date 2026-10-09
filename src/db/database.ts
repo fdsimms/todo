@@ -14,6 +14,7 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
+  CopyFlag,
   MeterReading,
   JournalEntry,
   EventPeopleLink,
@@ -464,6 +465,19 @@ export function initDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       label TEXT NOT NULL,
       date TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- A line of on-screen copy marked as needing a manual pass — see CopyFlag
+    -- in types/index.ts. Temporary dev tooling: drop this table with the rest
+    -- of the feature before the app opens to real users.
+    CREATE TABLE IF NOT EXISTS copy_flags (
+      id TEXT PRIMARY KEY NOT NULL,
+      text TEXT NOT NULL,
+      screen TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      resolution TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL
     );
 
@@ -2433,6 +2447,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // Copy flags point at nothing.
+  'copy_flags',
   // Meter readings point at nothing: the meter is a name, not a row.
   'meter_readings',
   // Journal and dream entries: standalone, beside the mood log they grew out of.
@@ -6901,6 +6917,44 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+function rowToCopyFlag(row: Record<string, unknown>): CopyFlag {
+  return {
+    id: row.id as string,
+    text: row.text as string,
+    screen: row.screen as string,
+    note: row.note as string,
+    status: row.status === 'resolved' ? 'resolved' : 'open',
+    resolution: row.resolution as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every copy flag, newest first. */
+export function dbGetAllCopyFlags(): CopyFlag[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM copy_flags ORDER BY created_at DESC'
+  );
+  return rows.map(rowToCopyFlag);
+}
+
+export function dbInsertCopyFlag(flag: CopyFlag): void {
+  db.runSync(
+    `INSERT INTO copy_flags (id, text, screen, note, status, resolution, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [flag.id, flag.text, flag.screen, flag.note, flag.status, flag.resolution, flag.createdAt]
+  );
+}
+
+export function dbUpdateCopyFlag(flag: CopyFlag): void {
+  db.runSync(
+    `UPDATE copy_flags SET note=?, status=?, resolution=? WHERE id=?`,
+    [flag.note, flag.status, flag.resolution, flag.id]
+  );
+}
+
+export function dbDeleteCopyFlag(id: string): void {
+  db.runSync('DELETE FROM copy_flags WHERE id = ?', [id]);
 }
 
 function rowToMeterReading(row: Record<string, unknown>): MeterReading {

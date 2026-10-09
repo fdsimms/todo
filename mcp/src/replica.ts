@@ -48,6 +48,7 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
+  CopyFlag,
   MeterReading,
   JournalEntry,
   JournalKind,
@@ -1049,6 +1050,10 @@ export interface Replica {
   /** Every mood check-in, unfiltered: the insights need the whole log. */
   allMoodLogs(): MoodLog[];
   milestones(): Milestone[];
+  /** Every copy flag, newest first. TEMPORARY dev tooling, see `CopyFlag`. */
+  copyFlags(): CopyFlag[];
+  /** Marks a flag resolved, with what the copy became. Written through the db layer, like `resolveCalendarRequest`. */
+  resolveCopyFlag(id: string, resolution: string): CopyFlag;
   /**
    * Milestones through `useMilestoneStore`'s own actions: a blank label is
    * refused as the sheet refuses it, and a date is stored as given (the tool
@@ -3550,6 +3555,14 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
     milestones: () => db.dbGetAllMilestones(),
+    copyFlags: () => db.dbGetAllCopyFlags(),
+    resolveCopyFlag(id: string, resolution: string): CopyFlag {
+      const flag = db.dbGetAllCopyFlags().find(f => f.id === id);
+      if (!flag) throw new Error(`No copy flag with id ${id}. list_copy_flags names them.`);
+      const next: CopyFlag = { ...flag, status: 'resolved', resolution: resolution.trim() };
+      db.dbUpdateCopyFlag(next);
+      return next;
+    },
     // The store, loaded per write and hydrated before acting: a handful of
     // rows, and a dry run's rollback must not leave it holding a milestone the
     // database no longer has.

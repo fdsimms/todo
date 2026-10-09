@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 import Constants from 'expo-constants';
 import { useColors } from '../../theme/ThemeContext';
@@ -6,6 +6,7 @@ import { PatchNotesModal } from '../../components/PatchNotesModal';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
+import { setFlagMode, getFlagModeVersion, isFlagMode, subscribeFlagMode } from '../../utils/copyFlagMode';
 import { setTabDiagEnabled, useTabDiagEnabled } from '../../components/FreezeWhenBlurred';
 
 export function AboutSettings() {
@@ -14,6 +15,9 @@ export function AboutSettings() {
   const [showPatchNotes, setShowPatchNotes] = useState(false);
   // TEMPORARY: the switch for the blank-tab diagnostic in FreezeWhenBlurred.
   const tabDiag = useTabDiagEnabled();
+  // TEMPORARY dev tooling (see CopyFlag): session-only, so it can't stay on.
+  useSyncExternalStore(subscribeFlagMode, getFlagModeVersion);
+  const flagMode = isFlagMode();
 
   return (
     <>
@@ -44,6 +48,18 @@ export function AboutSettings() {
             : 'Debug text for the blank screen bug is hidden'}
           toggle={tabDiag}
           onPress={() => setTabDiagEnabled(!tabDiag)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="flagCopy"
+          icon="flag-outline"
+          iconColor={flagMode ? colors.accent : undefined}
+          label="Flag copy"
+          hint={flagMode
+            ? 'Long-press any text to flag it for a rewrite'
+            : 'Turns on long-press flagging for text on every screen'}
+          toggle={flagMode}
+          onPress={() => setFlagMode(!flagMode)}
         />
       </SettingsSection>
 
