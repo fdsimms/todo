@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Reanimated, { useAnimatedStyle, useSharedValue, interpolateColor } from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import type { Task, TaskGroup } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
@@ -147,16 +147,12 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   const noFold = useSharedValue(0);
   const fold = trayFold ?? noFold;
   const deckStyle = useAnimatedStyle(() => ({ opacity: fold.value }));
-  // The row is opaque for the swipe panels behind it (see `band`), so it
-  // changes colour with the card rather than letting the card show through.
-  const rowStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(fold.value, [0, 1], [colors.bgSunken, colors.bgSecondary]),
-  }));
-  // The tile swaps surfaces with the row so it stays a filled tile on both.
-  const glyphStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(fold.value, [0, 1], [colors.bgSecondary, colors.bgSunken]),
-    borderColor: interpolateColor(fold.value, [0, 1], [colors.separator, colors.bgSunken]),
-  }));
+  // Only the opacity is animated. The two surfaces are plain styles stacked
+  // under it, because a colour read inside a worklet reached the UI thread a
+  // beat after a theme switch, leaving the header in the old theme's surface
+  // under the new theme's text. The row stays opaque for the swipe panels
+  // behind it (see `band`): the card layer fades in over a solid base.
+  const foldStyle = useAnimatedStyle(() => ({ opacity: fold.value }));
   const toggleCollapse = useCallback(() => onToggleCollapse(group.id), [onToggleCollapse, group.id]);
   const [showDefer, setShowDefer] = useState(false);
   // Mounted on first open and kept, so it closes through `visible` rather
@@ -236,7 +232,8 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
             selectAction={swipeSelect}
             whenAction={swipeWhen}
           >
-            <Reanimated.View style={[styles.row, rowStyle]}>
+            <Reanimated.View style={styles.row}>
+              <Reanimated.View style={[styles.rowCard, foldStyle]} pointerEvents="none" />
               {/* A filled tile, deliberately not the outlined box a task row
                   uses: this control cascades across the whole roster, and for
                   a while it wore the exact shape, size, position and colour of
@@ -268,9 +265,10 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 accessibilityElementsHidden
                 importantForAccessibility="no-hide-descendants"
               >
-                <Reanimated.View style={[styles.glyph, glyphStyle]}>
+                <View style={styles.glyph}>
+                  <Reanimated.View style={[styles.glyphFolded, foldStyle]} pointerEvents="none" />
                   <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
-                </Reanimated.View>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -478,7 +476,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // make room for the line under it; an expanded header is the same 48.
     alignItems: 'flex-start',
     minHeight: BAND_MIN_HEIGHT,
-    // Its colour is animated (rowStyle): bgSunken open, the card folded.
+    // bgSunken open; `rowCard` fades the card colour in over it when folded.
+    backgroundColor: colors.bgSunken,
+  },
+  rowCard: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.bgSecondary,
+  },
+  // The tile swaps surfaces with the row so it stays a filled tile on both.
+  // Pulled out by the border width so it covers the border too.
+  glyphFolded: {
+    position: 'absolute',
+    top: -border.sm,
+    bottom: -border.sm,
+    left: -border.sm,
+    right: -border.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgSunken,
   },
   deck: {
     position: 'absolute',
