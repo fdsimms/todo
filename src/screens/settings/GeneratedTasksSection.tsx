@@ -6,7 +6,7 @@ import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { setGeneratorEnabled } from '../../store/generatorSwitch';
 import { useCalendarStore } from '../../store/useCalendarStore';
-import { useCategoryStore } from '../../store/useCategoryStore';
+import { HEALTH_CATEGORY, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
@@ -233,6 +233,17 @@ export function GeneratedTasksSection() {
       if (next.has(kind)) next.delete(kind); else next.add(kind);
       return next;
     });
+  };
+  // Turning the Today rows on files them under the Health reading's own
+  // section when there is one, so the day's readings sit together, and
+  // otherwise under a category made for it. Same default the nutrition
+  // sheet's own toggle uses.
+  const toggleLimitsOnToday = (): void => {
+    haptics.tap();
+    if (s.limitsTodayCategory !== null) { s.setLimitsTodayCategory(null); return; }
+    const category = s.healthCategory ?? HEALTH_CATEGORY;
+    useCategoryStore.getState().addCategory(category);
+    s.setLimitsTodayCategory(category);
   };
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   // The saved places a leave-by trip can start from. A plain setting read on
@@ -1421,6 +1432,51 @@ export function GeneratedTasksSection() {
               describeValue={n => (n === null ? 'No limit' : `At most ${n}`)}
             />
           </View>
+        </>
+      )}
+      {s.kitchenEnabled && (
+        <>
+          {/* Not a generator: these are read-only rows computed from the food
+              log, so they have no registry entry and no task defaults. They
+              answer to their own switch (limitsTodayCategory, null = off),
+              independent of the "don't do" task above. */}
+          <View style={sectionStyles.groupBreak} />
+          <SettingsRow
+            entryId="limitsToday"
+            icon="nutrition-outline"
+            iconColor={s.limitsTodayCategory !== null ? colors.accent : undefined}
+            label="Stay under limits on Today"
+            hint={
+              s.limitsTodayCategory !== null
+                ? 'Shows how much of each Stay under limit is used so far today.'
+                : 'Shows nothing on Today for Stay under limits.'
+            }
+            toggle={s.limitsTodayCategory !== null}
+            onPress={toggleLimitsOnToday}
+          />
+          {s.limitsTodayCategory !== null && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="limitsTodayCategory"
+                icon="pricetag-outline"
+                label="Show them under"
+                hint="The category these rows sit in on Today."
+                value={categoryOptions.find(o => o.value === s.limitsTodayCategory)?.label ?? s.limitsTodayCategory}
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="category"
+                  options={categoryPills(
+                    s.limitsTodayCategory,
+                    category => { if (category !== null) s.setLimitsTodayCategory(category); },
+                    label => `Stay under limits category: ${label}`,
+                  ).filter(o => !o.pinned)}
+                />
+              </View>
+            </>
+          )}
         </>
       )}
     </SettingsSection>

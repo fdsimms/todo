@@ -400,6 +400,24 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                     {limitsTodayCategory !== null ? `Show on Today, under ${limitsTodayCategory}` : 'Show on Today'}
                   </Text>
                 </TouchableOpacity>
+                {limitsTodayCategory !== null && (
+                  <TouchableOpacity
+                    style={[styles.boostToggleRow, styles.limitToggleRule]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => {
+                      haptics.tap();
+                      onClose();
+                      navigateToSettingsEntry(navigation, 'limitsTodayCategory');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Change the category the limits show under on Today"
+                    accessibilityHint="Opens the Automations setting"
+                  >
+                    <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textSecondary} />
+                    <Text style={styles.boostToggleLabel}>Change category</Text>
+                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[styles.boostToggleRow, styles.limitToggleRule]}
                   activeOpacity={interaction.activeOpacity}
