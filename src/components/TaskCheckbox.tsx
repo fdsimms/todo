@@ -7,7 +7,8 @@ import type { DeliverableReasoning } from '../utils/deliverables';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { confirmSlip } from '../utils/slipConfirm';
-import { negativeHoldOffered, runNegativeHold } from '../utils/negativeHold';
+import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
+import type { NegativeHold } from '../utils/negativeHabits';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
@@ -26,6 +27,8 @@ import { dayKeyToDate } from '../utils/dateUtils';
 import { parseMealSlotSource } from '../utils/mealSlotTasks';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { RecipePickerSheet } from './RecipePickerSheet';
+import { NegativeHoldMenu } from './NegativeHoldMenu';
+import type { CardAnchor } from './CardSheet';
 
 export const TASK_CHECKBOX_SIZE = 20;
 
@@ -90,6 +93,11 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   // rather than by leaving the tree. See useSheetMount.
   const mountPrompt = useSheetMount(showPrompt);
   const mountMealPicker = useSheetMount(showMealPicker);
+  // An avoid-task's long press: the same menu the task row opens.
+  const [holdAnchor, setHoldAnchor] = useState<CardAnchor | null>(null);
+  const [holdKind, setHoldKind] = useState<NegativeHold>('close');
+  const [showHoldMenu, setShowHoldMenu] = useState(false);
+  const mountHoldMenu = useSheetMount(showHoldMenu);
   const scale = useRef(new Animated.Value(1)).current;
 
   const action = completionTapFor(task);
@@ -238,7 +246,14 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         onPress={handlePress}
         onLongPress={
           action === 'slip' && negativeHoldOffered(task, getCurrentDayStart())
-            ? () => { void runNegativeHold(task, getCurrentDayStart(), { undoSlip, closeDay: closeNegativeDay, reopenDay: reopenNegativeDay }); }
+            ? (e) => {
+                const hold = negativeHoldNow(task, getCurrentDayStart());
+                if (!hold) return;
+                haptics.impactMedium();
+                setHoldKind(hold);
+                setHoldAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                setShowHoldMenu(true);
+              }
             : undefined
         }
         delayLongPress={interaction.delayLongPress}
@@ -307,6 +322,18 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         </Animated.View>
       </TouchableOpacity>
 
+      {mountHoldMenu && (
+        <NegativeHoldMenu
+          visible={showHoldMenu}
+          anchor={holdAnchor}
+          hold={holdKind}
+          onClose={() => setShowHoldMenu(false)}
+          onCount={() => closeNegativeDay(task.id)}
+          onReopen={() => reopenNegativeDay(task.id)}
+          onSlip={() => confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id))}
+          onUndoSlip={() => undoSlip(task.id)}
+        />
+      )}
       {mountPrompt && (
         <DeliverablePromptSheet
           visible={showPrompt}
