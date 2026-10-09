@@ -698,12 +698,14 @@ export function quotaExpectedByNow(task: Task): number {
   return Math.min(target, Math.ceil((target * (+now - +start)) / (+end - +start)));
 }
 
-// Whether being on pace takes this target off Today. A rotation never does:
-// its members are a checklist for the week, so the row stays up until each is
-// done, and a day you don't want to do it is rescheduled by hand rather than
-// being decided for you by a pace ramp. Anything else follows its own opt-out.
+// Whether being on pace takes this target off Today. A weekly target never
+// does, and neither does a rotation (always weekly): the week-long pace ramp
+// says you are "ahead" for most of the week, which parked the row in Later
+// today with nothing to prompt you to log it. It stays up until the target is
+// met, and a day you don't want to do it is rescheduled by hand. A daily
+// target follows its own opt-out.
 export function quotaHidesWhenOnPace(task: Task): boolean {
-  return !task.quotaAlwaysVisible && !isRotationTask(task);
+  return !task.quotaAlwaysVisible && task.quotaPeriod !== 'week' && !isRotationTask(task);
 }
 
 export function isQuotaOnPace(task: Task): boolean {

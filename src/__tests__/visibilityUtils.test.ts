@@ -28,6 +28,7 @@ import {
   formatQuotaNextDue,
   isQuotaPartial,
   isOnPaceQuota,
+  quotaHidesWhenOnPace,
   isDismissedToday,
   isTaskBlocked,
   isWaitingTask,
@@ -2092,8 +2093,10 @@ describe('quota tasks', () => {
     });
 
     // NOW is Tue Jun 10 10:00; the week runs Mon Jun 9 to Mon Jun 16, so 3 of 5
-    // is ahead of pace and the fourth unit isn't owed until Friday.
-    it('is false for a weekly target whose next unit falls due on another day', () => {
+    // is ahead of pace and the fourth unit isn't owed until Friday. A weekly
+    // target never hides for being ahead, so it stays on Today and never lands
+    // in Later today.
+    it('keeps an ahead-of-pace weekly target on Today instead of Later today', () => {
       const weekly: Task = {
         ...quotaTask,
         recurrenceType: 'weekly',
@@ -2101,8 +2104,10 @@ describe('quota tasks', () => {
         targetCount: 5,
         progressCount: 3,
       };
-      expect(isOnPaceQuota(weekly)).toBe(true);
+      expect(quotaHidesWhenOnPace(weekly)).toBe(false);
+      expect(isOnPaceQuota(weekly)).toBe(false);
       expect(isUpcomingToday(weekly)).toBe(false);
+      expect(isTaskVisible(weekly)).toBe(true);
     });
   });
 
