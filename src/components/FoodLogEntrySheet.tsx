@@ -1850,11 +1850,16 @@ export function FoodLogEntrySheet({
                 keyboard away; the controls inside handle their own taps. */}
             <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
-              <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
+              <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={{ marginTop: spacing.xsm }} />
               <TextInput
                 key={searchFilter.fieldKey}
                 {...searchFilter.props}
                 style={styles.searchInput}
+                // A description is often a whole meal ("regular nacho fries and
+                // 2 cinna bon bites"), so the field wraps and grows rather than
+                // scrolling sideways. Return still puts the keyboard away.
+                multiline
+                submitBehavior="blurAndSubmit"
                 placeholder={canEstimate ? 'A food, a recipe, or what you ate' : 'Search foods and recipes'}
                 inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
@@ -2183,7 +2188,7 @@ function makeStyles(colors: Colors) {
     declineMealText: { color: colors.textSecondary, fontSize: font.sm },
     searchRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: spacing.sm,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
@@ -2193,7 +2198,18 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
     },
-    searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+    // Two lines tall at rest, growing to about five. Min/max heights rather than
+    // a fixed one so a larger system text size still fits its lines.
+    searchInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      padding: 0,
+      minHeight: 52,
+      maxHeight: 130,
+      textAlignVertical: 'top',
+      paddingTop: spacing.xsm,
+    },
     // The "Log several" switch, a bar across the foot of the search half.
     burstFooter: {
       flexDirection: 'row',
