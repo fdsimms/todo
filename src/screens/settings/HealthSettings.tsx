@@ -247,11 +247,12 @@ export function HealthSettings() {
   const todayKey = dayKeyOf(getCurrentDayStart());
   const reading = today?.dayKey === todayKey ? today : null;
 
+  const noSteps = reading?.steps == null && !(refreshing && !reading);
   const stepsValue = refreshing && !reading
     ? 'Reading…'
     : reading?.steps != null
       ? reading.steps.toLocaleString()
-      : 'No number';
+      : 'Open Health';
 
   if (!supported) {
     return (
@@ -354,13 +355,21 @@ export function HealthSettings() {
             // "No number" rather than 0: a refused read and a day with nothing
             // recorded are the same answer from HealthKit, and neither of them
             // is a day somebody took no steps.
-            hint={reading?.steps == null && !refreshing
-              ? 'Nothing recorded for today, or Health is not sharing steps with this app'
+            // Kept through a refresh when there is already a reading on screen:
+            // dropping it for the length of the read and putting it back
+            // resized the row and shook the card under it, for an answer that
+            // usually comes back the same.
+            hint={reading?.steps == null && !(refreshing && !reading)
+              ?'Nothing recorded for today, or Health is not sharing steps with this app'
               : undefined}
             alwaysShowHint
             value={stepsValue}
             busy={refreshing}
-            onPress={() => { haptics.tap(); void refresh(); }}
+            // With no number a re-read would only come back empty, so the tap
+            // goes to where sharing is changed instead.
+            onPress={noSteps
+              ? () => { haptics.tap(); void openHealthApp(); }
+              : () => { haptics.tap(); void refresh(); }}
             accessibilityLabel={`Steps today, ${stepsValue}`}
           />
 
