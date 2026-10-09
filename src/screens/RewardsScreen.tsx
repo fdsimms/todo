@@ -537,18 +537,21 @@ export function RewardsScreen() {
         </>
       )}
       <Text style={styles.fieldLabel}>Price</Text>
-      <TextField
-        style={styles.input}
-        value={draftPrice}
-        onChangeText={setDraftPrice}
-        placeholder={`e.g. ${currencySymbol}4.50`}
-        placeholderTextColor={colors.textTertiary}
-        keyboardType="decimal-pad"
-        returnKeyType="done"
-        accessibilityLabel="Price in dollars"
-      />
+      <View style={styles.priceField}>
+        <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+        <TextField
+          style={styles.priceInput}
+          value={draftPrice}
+          onChangeText={setDraftPrice}
+          placeholder="e.g. 4.50"
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="decimal-pad"
+          returnKeyType="done"
+          accessibilityLabel="Price in dollars"
+        />
+      </View>
       {priceTyped && parsedPrice === null && (
-        <Text style={styles.hint}>Enter an amount like 4.50.</Text>
+        <Text style={styles.hint}>{`Enter an amount like ${currencySymbol}4.50.`}</Text>
       )}
       {parsedPrice !== null && exchange === null && (
         <Text style={styles.hint}>Set a weekly budget under Exchange rate to price a reward in dollars.</Text>
@@ -824,21 +827,24 @@ export function RewardsScreen() {
         </Text>
         <View style={styles.bountyLimit}>
           <Text style={styles.historyLabel}>Weekly reward budget</Text>
-          <TextField
-            style={[styles.input, styles.budgetInput]}
-            value={budgetText}
-            onChangeText={setBudgetText}
-            onEndEditing={() => {
-              const minor = parsePriceInput(budgetText);
-              setBudgetMinor(minor);
-              setBudgetText(minor === null ? '' : priceToInput(minor));
-            }}
-            placeholder={`e.g. ${currencySymbol}20`}
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="decimal-pad"
-            returnKeyType="done"
-            accessibilityLabel="Weekly reward budget"
-          />
+          <View style={[styles.priceField, styles.budgetInput]}>
+            <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+            <TextField
+              style={styles.priceInput}
+              value={budgetText}
+              onChangeText={setBudgetText}
+              onEndEditing={() => {
+                const minor = parsePriceInput(budgetText);
+                setBudgetMinor(minor);
+                setBudgetText(minor === null ? '' : priceToInput(minor));
+              }}
+              placeholder="e.g. 20"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              accessibilityLabel="Weekly reward budget"
+            />
+          </View>
         </View>
         {budgetMinor !== null && (
           <Text style={styles.sectionHint}>
@@ -1150,9 +1156,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
   emptyNote: { marginHorizontal: spacing.md },
+  // The same box as `input`, with the currency symbol inside it so the field
+  // reads as money before anything is typed (the GroceryItemSheet price field).
+  priceField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+  },
+  priceSymbol: { color: colors.textSecondary, fontSize: font.md },
+  priceInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
   budgetInput: {
-    minWidth: 96,
-    textAlign: 'right',
+    minWidth: 120,
   },
   bountyLimit: {
     flexDirection: 'row',
