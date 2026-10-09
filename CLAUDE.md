@@ -346,6 +346,7 @@ file: the two maps are indexes, not write-ups.
 
 | Changing… | Start at |
 |---|---|
+| the Backfill screen, and whether a new field belongs on it | `src/utils/fieldBackfill.ts` (tasks) and the other `*Backfill.ts` pools + `src/screens/BackfillScreen.tsx` — see `docs/arch/backfill.md`. It opens with the bar a field has to clear and the ones left out on purpose; a task given several dates is one card (`backfillSeriesPeers`), except for `reminder` |
 | priority, difficulty, estimate, streak chip, vacation pause and skip-in-suggestions answered once for a group, so Backfill never asks (a project's list, or a kind of generated task) | `src/utils/taskFieldDefaults.ts` (the rules) + `Project.taskDefaults` + `generatedTaskDefaults` in `useSettingsStore`, read in `newTaskFromDraft`. A default fills a field nobody answered and never overrides one. `priority: 0` is an answer (stamps the priority backfill as dismissed), because a priority of 0 otherwise reads as missing; `false` is the same answer for the three yes/no fields, and streak chip and vacation pause apply to repeating tasks only. Backfill's whole-group toggle uses `backfillGroupMembers` |
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
@@ -645,6 +646,7 @@ decided, and the design system every screen is built from. Individual features a
 
 | Doc | Covers |
 |---|---|
+| `docs/arch/backfill.md` | The Backfill screen: what a field has to be to earn a card, and the rules its six pools share |
 | `docs/arch/groceries.md` | Aisles, stores, the active trip, the kitchen/pantry, either/or, substitutes, standing swaps |
 | `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
 | `docs/arch/generated-tasks.md` | The things that write a task unattended |

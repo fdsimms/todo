@@ -4,7 +4,7 @@ import { activeChainStep } from './chain';
 import { featureHidden, type SimpleFeatureId } from './simpleMode';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
-export type BackfillFieldId = 'estimate' | 'priority' | 'difficulty' | 'category' | 'streak' | 'vacation' | 'reminder' | 'suggestions';
+export type BackfillFieldId = 'estimate' | 'priority' | 'difficulty' | 'category' | 'streak' | 'vacation' | 'holidays' | 'reminder' | 'suggestions';
 
 export interface BackfillFieldDef {
   id: BackfillFieldId;
@@ -44,6 +44,11 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     id: 'vacation',
     label: 'Vacation pause',
     hint: 'Whether a recurring task hides (and keeps its streak safe) while vacation mode is on.',
+  },
+  {
+    id: 'holidays',
+    label: 'On a holiday',
+    hint: 'What a repeating task does when it lands on a holiday: skip that day, or move to the next one.',
   },
   {
     id: 'reminder',
@@ -91,8 +96,16 @@ const FIELD_SIMPLE_FEATURE: Partial<Record<BackfillFieldId, SimpleFeatureId>> = 
  * off brings the field back with its queue exactly as it was — the same call
  * `aiFeaturesFor` makes for the AI switches.
  */
-export function backfillFieldsFor(simpleMode: boolean, rewardsEnabled = false): BackfillFieldDef[] {
+export function backfillFieldsFor(
+  simpleMode: boolean,
+  rewardsEnabled = false,
+  holidaysConfigured = true,
+): BackfillFieldDef[] {
   return BACKFILL_FIELDS.filter(f => {
+    // With no holidays set up in Settings the rule has nothing to act on, so the
+    // card would ask a question whose answer changes nothing (the repeat picker
+    // says the same under its own "On a holiday" group).
+    if (f.id === 'holidays' && !holidaysConfigured) return false;
     // Only the coin rules read a difficulty, so with rewards off this field
     // asks a question whose answer changes nothing: the editor hides its row
     // on the same terms.
@@ -146,6 +159,9 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // chainIndex out of range — the raw index would then read undefined
       // and wrongly flag the task as missing an estimate the active step
       // (found via the modulo activeChainStep applies) already has.
+      // An avoid-habit is never completed, so there is no time to size. The same
+      // reasoning keeps `difficulty` from asking about one.
+      if (task.polarity === 'negative') return false;
       return (activeChainStep(task)?.estimatedMinutes ?? task.estimatedMinutes) == null;
     case 'priority':
       return task.priority === 0;
@@ -166,6 +182,10 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // for a value that changes nothing.
       if (task.category && categories?.some(c => c.name === task.category && c.hideOnVacation)) return false;
       return true;
+    case 'holidays':
+      // Null is "As usual", which is also what an unanswered task reads as, so
+      // a person who wants it left that way says so with the dismissal.
+      return repeatsOnDates(task) && task.recurrenceHolidays == null;
     case 'reminder':
       // A reminder is an absolute instant, and the only instant this wizard
       // has to offer one against is the task's own due date — a task with no
@@ -193,33 +213,108 @@ export function isBackfillDismissed(task: Task, fieldId: BackfillFieldId): boole
   return task.backfillDismissedFields.includes(fieldId);
 }
 
+/**
+ * Whether the task repeats on dates a holiday can land on. `hours` is left out
+ * for the reason the repeat picker leaves its holiday group out: a task every N
+ * hours has no day to skip.
+ */
+function repeatsOnDates(task: Task): boolean {
+  return task.recurrenceType !== 'none' && task.recurrenceType !== 'hours';
+}
+
+/**
+ * Whether the field is a question for this task at all, set or not. It is what
+ * a redo walks, so a one-off is never offered a holiday rule. Only `holidays`
+ * has a gate that is about the task rather than the value.
+ */
+function fieldApplies(task: Task, fieldId: BackfillFieldId): boolean {
+  return fieldId !== 'holidays' || repeatsOnDates(task);
+}
+
+/**
+ * The fields a task given several dates is asked about **per date**, not once.
+ * A reminder is an absolute instant measured against its own row's due date, so
+ * the 10th's answer is not the 15th's.
+ */
+const PER_DATE_FIELDS: readonly BackfillFieldId[] = ['reminder'];
+
 // Only live, top-level tasks are worth backfilling — a completed or archived
 // row is history, not something to fill in, and a subtask's own estimate/
 // priority/category rides on fields most lists don't even show it (see
 // estimatedMinutesFor's chain-step note and the module-map entry for
 // visibilityUtils on why subtasks are excluded from top-level task lists
 // throughout the app).
+function isQueued(task: Task, fieldId: BackfillFieldId, opts: BackfillCandidatesOptions): boolean {
+  if (task.parentId || task.completed || task.archived) return false;
+  return opts.fromScratch
+    ? fieldApplies(task, fieldId)
+    : isFieldMissing(task, fieldId, opts.categories) && !isBackfillDismissed(task, fieldId);
+}
+
+/** Earliest due date first, rows with no date last, then by id so the pick is stable. */
+function bySeriesOrder(a: Task, b: Task): number {
+  if (a.dueDate !== b.dueDate) {
+    if (a.dueDate === null) return 1;
+    if (b.dueDate === null) return -1;
+    return a.dueDate < b.dueDate ? -1 : 1;
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * Keeps one row per series, the earliest. A task given several dates is N real
+ * rows sharing a `seriesId` (see Series in CLAUDE.md), but it is one task to the
+ * person answering, so it gets one card and `backfillSeriesPeers` carries the
+ * answer to the rest. Without this a three-date series was asked about three
+ * times for every field.
+ */
+function onePerSeries(rows: Task[], fieldId: BackfillFieldId): Task[] {
+  if (PER_DATE_FIELDS.includes(fieldId)) return rows;
+  const first = new Map<string, Task>();
+  for (const t of rows) {
+    if (!t.seriesId) continue;
+    const seen = first.get(t.seriesId);
+    if (!seen || bySeriesOrder(t, seen) < 0) first.set(t.seriesId, t);
+  }
+  return rows.filter(t => !t.seriesId || first.get(t.seriesId) === t);
+}
+
+function queuedRows(tasks: Task[], fieldId: BackfillFieldId, opts: BackfillCandidatesOptions): Task[] {
+  return onePerSeries(tasks.filter(t => isQueued(t, fieldId, opts)), fieldId);
+}
+
 export function backfillCandidates(
   tasks: Task[],
   fieldId: BackfillFieldId,
   opts: BackfillCandidatesOptions = {}
 ): Task[] {
-  return tasks
-    .filter(t =>
-      !t.parentId && !t.completed && !t.archived &&
-      (opts.fromScratch || (isFieldMissing(t, fieldId, opts.categories) && !isBackfillDismissed(t, fieldId)))
-    )
-    .sort((a, b) => a.title.localeCompare(b.title));
+  return queuedRows(tasks, fieldId, opts).sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * The other dates of `task`'s series that an answer to this card should reach:
+ * the rows the field would have queued separately had the series not been
+ * collapsed. A date that already has its own answer (or was told never to be
+ * asked) is left as the person set it, the same rule a batch follows for the
+ * cards that are not in its queue.
+ */
+export function backfillSeriesPeers(
+  task: Task,
+  tasks: Task[],
+  fieldId: BackfillFieldId,
+  opts: BackfillCandidatesOptions = {}
+): Task[] {
+  if (!task.seriesId || PER_DATE_FIELDS.includes(fieldId)) return [];
+  return tasks.filter(t =>
+    t.id !== task.id && t.seriesId === task.seriesId && isQueued(t, fieldId, opts)
+  );
 }
 
 /** How many live tasks are missing each field, for the field-picker step's counts. */
 export function backfillFieldCounts(tasks: Task[], categories: Category[] = []): Record<BackfillFieldId, number> {
-  const counts = { estimate: 0, priority: 0, difficulty: 0, category: 0, streak: 0, vacation: 0, reminder: 0, suggestions: 0 } as Record<BackfillFieldId, number>;
-  for (const t of tasks) {
-    if (t.parentId || t.completed || t.archived) continue;
-    for (const field of BACKFILL_FIELDS) {
-      if (isFieldMissing(t, field.id, categories) && !isBackfillDismissed(t, field.id)) counts[field.id]++;
-    }
+  const counts = {} as Record<BackfillFieldId, number>;
+  for (const field of BACKFILL_FIELDS) {
+    counts[field.id] = queuedRows(tasks, field.id, { categories }).length;
   }
   return counts;
 }

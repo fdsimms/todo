@@ -53,8 +53,9 @@ import {
   NO_TASK_FIELD_DEFAULTS,
 } from '../utils/taskFieldDefaults';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
+import { hasAnyHolidays } from '../utils/holidays';
 import {
-  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
+  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, estimatePatchFor, dismissBackfillField,
   isFieldMissing, ESTIMATE_EFFORTS, backfillFieldsFor, type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import {
@@ -102,7 +103,7 @@ import { shorterNameSuggestions } from '../utils/scanResolve';
 import { describeFoodPanel } from '../utils/foodNutrition';
 import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
-  type Difficulty, type Effort, type FoodNutrition, type GroceryItem, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
+  type Difficulty, type Effort, type HolidayRule, type FoodNutrition, type GroceryItem, type Person, type Recipe, type ReminderKind, type Task, type TaskFieldDefaults,
 } from '../types';
 import { TextField } from '../components/TextField';
 
@@ -113,9 +114,18 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   category: 'folder-outline',
   streak: 'flame-outline',
   vacation: 'airplane-outline',
+  holidays: 'calendar-outline',
   reminder: 'notifications-outline',
   suggestions: 'color-wand-outline',
 };
+
+// The same two words the repeat picker's "On a holiday" group uses. "As usual"
+// is left off: it is the state a task is already in, and the dismissal below
+// the card ("Leave as usual") is how a person says so.
+const HOLIDAY_SEGMENTS: { value: HolidayRule | null; label: string }[] = [
+  { value: 'skip', label: 'Skip it' },
+  { value: 'move', label: 'Next day' },
+];
 
 // Filled counterparts of the row icons above, for the per-card CTA button —
 // same outline/filled split the task fields use (flame-outline in the list,
@@ -156,6 +166,7 @@ const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphM
   substitutes: 'swap-horizontal-outline',
   variety: 'layers-outline',
   nutrition: 'nutrition-outline',
+  nutritionDetail: 'water-outline',
 };
 
 // Every recipe field is a count somebody types, so there is no filled/outline
@@ -395,6 +406,8 @@ export function BackfillScreen() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const holidaySet = useSettingsStore(s => s.holidaySet);
+  const customHolidays = useSettingsStore(s => s.customHolidays);
   const [active, setActive] = useState<ActiveField | null>(null);
   // Redo-from-scratch (task fields only): widens the queue to every live
   // task for the field instead of just the ones missing a value — see
@@ -498,7 +511,11 @@ export function BackfillScreen() {
   // comment describes.
   const suggestRoute = useAiRoute('backfillSuggestions');
 
-  const taskFields = useMemo(() => backfillFieldsFor(simpleMode, rewardsEnabled), [simpleMode, rewardsEnabled]);
+  const holidaysConfigured = hasAnyHolidays({ set: holidaySet, custom: customHolidays });
+  const taskFields = useMemo(
+    () => backfillFieldsFor(simpleMode, rewardsEnabled, holidaysConfigured),
+    [simpleMode, rewardsEnabled, holidaysConfigured]
+  );
   const entitySegments = useMemo(
     () => ENTITY_KIND_SEGMENTS.filter(seg => kitchenEnabled || !KITCHEN_ENTITY_KINDS.has(seg.value)),
     [kitchenEnabled]
@@ -970,6 +987,28 @@ export function BackfillScreen() {
   // instead of a trip back into the task editor. Category and project fields
   // don't go through setLastAction/shake-to-undo yet — see applyCategory
   // and applyNudge below.
+  /**
+   * The other dates of a series this card stands for. The queue holds one card
+   * per series (`backfillCandidates`), so an answer has to reach the rest or
+   * they would come back as cards of their own. Empty for a task that is not in
+   * a series, and for a date that already has its own answer.
+   */
+  const seriesPeersOf = (task: Task): Task[] =>
+    active?.kind === 'task' ? backfillSeriesPeers(task, tasks, active.id, { fromScratch, categories }) : [];
+
+  /**
+   * Writes `patchFor(row)` to `task` and to the rest of its series, and returns
+   * every row as it was before, for the undo. A patch is built per row because a
+   * dismissal appends to that row's own list rather than copying this one's.
+   */
+  const writeWithPeers = (task: Task, patchFor: (row: Task) => Partial<Task>): Task[] => {
+    const rows = [task, ...seriesPeersOf(task)];
+    const snapshots = rows.map(row => ({ ...row }));
+    rows.forEach(row => updateTask(row.id, patchFor(row)));
+    return snapshots;
+  };
+  const restoreRows = (snapshots: Task[]) => () => snapshots.forEach(row => updateTask(row.id, row));
+
   const apply = (patch: Partial<Task>, valueText: string) => {
     if (!currentTask || active?.kind !== 'task') return;
     if (activeBatch && batchAnswers) { applyToGroup(task => patch, valueText); return; }
@@ -977,9 +1016,9 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    const snapshot = { ...currentTask };
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
-    updateTask(currentTask.id, patch);
+    const snapshots = writeWithPeers(currentTask, () => patch);
+    const undo = restoreRows(snapshots);
     // Choosing and eating a given meal take about the same time every day,
     // so a size given to "Choose breakfast" here is remembered under its
     // step id and carried onto every future "Choose breakfast" at creation
@@ -991,14 +1030,14 @@ export function BackfillScreen() {
     }
     setLastAction({
       label: `${fieldLabel} set`,
-      undo: () => updateTask(snapshot.id, snapshot),
-      redo: redoRestoringRows([snapshot.id]),
+      undo,
+      redo: redoRestoringRows(snapshots.map(row => row.id)),
     });
     logSession({
       itemId: currentTask.id,
       title: displayTitleFor(currentTask),
       valueText,
-      undo: () => updateTask(snapshot.id, snapshot),
+      undo,
     });
     advance(currentTask.id);
   };
@@ -1022,11 +1061,13 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     setBatchScopeKey(null);
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
-    const snapshots = batch.map(t => ({ ...t }));
-    batch.forEach((task, i) => {
+    // Each card with the rest of its series: the card is the unit the person
+    // counts, the rows behind it are what gets written.
+    const snapshots: Task[] = [];
+    batch.forEach(task => {
       const patch = patchFor(task);
-      const snapshot = snapshots[i];
-      updateTask(task.id, patch);
+      const rowSnapshots = writeWithPeers(task, patchFor);
+      snapshots.push(...rowSnapshots);
       // Same carry-forward the single-task apply does: see apply()'s note on
       // mealSlotStepEstimates.
       if (active.id === 'estimate' && patch.estimatedMinutes != null) {
@@ -1037,12 +1078,12 @@ export function BackfillScreen() {
         itemId: task.id,
         title: displayTitleFor(task),
         valueText,
-        undo: () => updateTask(snapshot.id, snapshot),
+        undo: restoreRows(rowSnapshots),
       });
     });
     setLastAction({
       label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
-      undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+      undo: restoreRows(snapshots),
       redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
     setSkippedIds(prev => {
@@ -1179,17 +1220,17 @@ export function BackfillScreen() {
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
     // One copy per task, shared by both recoveries below: the shake undo puts
     // the whole array back, each session-review row puts its own one back.
-    const snapshots = batch.map(t => ({ ...t }));
-    batch.forEach((task, i) => {
+    const snapshots: Task[] = [];
+    batch.forEach(task => {
       const suggestion = suggestions.get(task.id)!;
-      const snapshot = snapshots[i];
+      let rowSnapshots: Task[];
       let valueText: string;
       if (suggestion.field === 'category') {
-        updateTask(task.id, { category: suggestion.category });
+        rowSnapshots = writeWithPeers(task, () => ({ category: suggestion.category }));
         valueText = categoryLabel(suggestion.category, getCategoryByName);
       } else {
         const patch = estimatePatchFor(suggestion.effort);
-        updateTask(task.id, patch);
+        rowSnapshots = writeWithPeers(task, () => patch);
         // Same carry-forward the single-task apply does — see apply()'s note
         // on mealSlotStepEstimates.
         if (patch.estimatedMinutes != null) {
@@ -1200,16 +1241,17 @@ export function BackfillScreen() {
           ? formatDuration(patch.estimatedMinutes)
           : EFFORT_LABELS[suggestion.effort];
       }
+      snapshots.push(...rowSnapshots);
       logSession({
         itemId: task.id,
         title: displayTitleFor(task),
         valueText,
-        undo: () => updateTask(snapshot.id, snapshot),
+        undo: restoreRows(rowSnapshots),
       });
     });
     setLastAction({
       label: `${fieldLabel} set on ${batch.length} ${batch.length === 1 ? 'task' : 'tasks'}`,
-      undo: () => { for (const snapshot of snapshots) updateTask(snapshot.id, snapshot); },
+      undo: restoreRows(snapshots),
       redo: redoRestoringRows(snapshots.map(t => t.id)),
     });
     // One write rather than `advance` per task: in a from-scratch run the
@@ -1482,19 +1524,19 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     if (active.kind === 'task') {
       if (!currentTask) return;
-      const snapshot = { ...currentTask };
-      const wasMissing = isFieldMissing(currentTask, active.id, categories);
-      updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
+      const fieldId = active.id;
+      const wasMissing = isFieldMissing(currentTask, fieldId, categories);
+      const snapshots = writeWithPeers(currentTask, row => dismissBackfillField(row, fieldId));
       setLastAction({
         label: dismissedText,
-        undo: () => updateTask(snapshot.id, snapshot),
-        redo: redoRestoringRows([snapshot.id]),
+        undo: restoreRows(snapshots),
+        redo: redoRestoringRows(snapshots.map(row => row.id)),
       });
       logSession({
         itemId: currentTask.id,
         title: displayTitleFor(currentTask),
         valueText: wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
-        undo: () => updateTask(snapshot.id, snapshot),
+        undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
     } else if (active.kind === 'category') {
@@ -2220,6 +2262,7 @@ export function BackfillScreen() {
               onCategory={applyTaskCategory}
               onStreak={() => apply({ showStreak: true }, 'Streak shown')}
               onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
+              onHolidays={rule => apply({ recurrenceHolidays: rule }, rule === 'skip' ? 'Skips holidays' : 'Moves to the next day')}
               onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
               onSuggestions={() => apply({ excludeFromSuggestions: true }, 'Excluded from suggestions')}
               customOpen={customOpen}
@@ -3202,6 +3245,25 @@ export function BackfillScreen() {
             </View>
           )}
 
+          {active.id === 'nutritionDetail' && (
+            <View style={styles.nutritionField}>
+              <Text style={styles.renameHint}>
+                The saved figures stay as they are. Open the panel and add trans fat,
+                cholesterol or added sugars from the label. A food with none of them
+                stays in this list until you choose Nothing more to add.
+              </Text>
+              <PressableScale
+                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
+                onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Add fat and sugar detail for ${currentItem.name}`}
+              >
+                <Ionicons name="create-outline" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Open nutrition panel</Text>
+              </PressableScale>
+            </View>
+          )}
+
           {batchToggle}
 
           <View style={styles.actionRow}>
@@ -3461,6 +3523,7 @@ interface FieldControlProps {
   onCategory: (name: string | null) => void;
   onStreak: () => void;
   onVacation: () => void;
+  onHolidays: (rule: HolidayRule) => void;
   onReminder: () => void;
   onSuggestions: () => void;
   onDifficulty: (difficulty: Difficulty) => void;
@@ -3474,7 +3537,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onReminder, onSuggestions,
+  field, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -3600,6 +3663,20 @@ function FieldControl({
         <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
         <Text style={styles.toggleButtonText}>Turn on vacation pause</Text>
       </PressableScale>
+    );
+  }
+
+  // Both answers are real: the unanswered state is "As usual", which the
+  // dismissal below the card records, so neither segment is pre-selected.
+  if (field === 'holidays') {
+    return (
+      <SegmentedControl<HolidayRule | null>
+        label="On a holiday"
+        value={null}
+        onChange={rule => { if (rule) onHolidays(rule); }}
+        options={HOLIDAY_SEGMENTS}
+        surface="page"
+      />
     );
   }
 

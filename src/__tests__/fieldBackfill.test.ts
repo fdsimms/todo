@@ -1,6 +1,6 @@
 import {
   isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts,
-  dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS, backfillFieldsFor,
+  dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS, backfillFieldsFor, backfillSeriesPeers,
 } from '../utils/fieldBackfill';
 import type { Task, Category } from '../types';
 
@@ -421,7 +421,7 @@ describe('backfillFieldCounts', () => {
       { ...baseTask, id: 'f', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily' },
       { ...baseTask, id: 'g', estimatedMinutes: 30, priority: 2, category: 'Home', dueDate: new Date(2025, 0, 5).toISOString() },
     ];
-    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, difficulty: 6, category: 2, streak: 1, vacation: 1, reminder: 1, suggestions: 6 });
+    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, difficulty: 6, category: 2, streak: 1, vacation: 1, holidays: 2, reminder: 1, suggestions: 6 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -435,7 +435,7 @@ describe('backfillFieldCounts', () => {
 
   it('does not count a task dismissed for that field', () => {
     const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
-    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, difficulty: 1, category: 1, streak: 0, vacation: 0, reminder: 0, suggestions: 1 });
+    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, difficulty: 1, category: 1, streak: 0, vacation: 0, holidays: 0, reminder: 0, suggestions: 1 });
   });
 
   it('does not count a recurring task whose category already hides on vacation', () => {
@@ -487,6 +487,97 @@ describe('backfillFieldsFor', () => {
 
   it('keeps the fields the mode never touches, in their own order', () => {
     expect(backfillFieldsFor(true).map(f => f.id))
-      .toEqual(['priority', 'category', 'reminder', 'suggestions']);
+      .toEqual(['priority', 'category', 'holidays', 'reminder', 'suggestions']);
+  });
+
+  it('drops the holiday question when no holidays are set up', () => {
+    expect(backfillFieldsFor(false, true, true).map(f => f.id)).toContain('holidays');
+    expect(backfillFieldsFor(false, true, false).map(f => f.id)).not.toContain('holidays');
+  });
+});
+
+describe('holidays', () => {
+  const daily = { ...baseTask, recurrenceType: 'daily' as const };
+
+  it('is missing on a repeating task with no holiday rule', () => {
+    expect(isFieldMissing(daily, 'holidays')).toBe(true);
+    expect(isFieldMissing({ ...daily, recurrenceHolidays: 'skip' }, 'holidays')).toBe(false);
+    expect(isFieldMissing({ ...daily, recurrenceHolidays: 'move' }, 'holidays')).toBe(false);
+  });
+
+  it('never asks a one-off or an every-N-hours task', () => {
+    expect(isFieldMissing(baseTask, 'holidays')).toBe(false);
+    expect(isFieldMissing({ ...daily, recurrenceType: 'hours' }, 'holidays')).toBe(false);
+  });
+
+  it('keeps a one-off out of a redo as well', () => {
+    const tasks: Task[] = [{ ...baseTask, id: 'once' }, { ...daily, id: 'weekly' }];
+    expect(backfillCandidates(tasks, 'holidays', { fromScratch: true }).map(t => t.id)).toEqual(['weekly']);
+  });
+
+  it('stops asking once dismissed', () => {
+    const dismissed = { ...daily, backfillDismissedFields: ['holidays'] };
+    expect(backfillCandidates([dismissed], 'holidays')).toEqual([]);
+  });
+});
+
+describe('estimate on an avoid-habit', () => {
+  it('is not asked, since it is never completed', () => {
+    const avoid = { ...baseTask, polarity: 'negative' as const };
+    expect(isFieldMissing(avoid, 'estimate')).toBe(false);
+    expect(isFieldMissing(baseTask, 'estimate')).toBe(true);
+  });
+});
+
+describe('a task given several dates', () => {
+  const day = (d: number) => new Date(2025, 0, d).toISOString();
+  const series: Task[] = [
+    { ...baseTask, id: 'third', title: 'Walk the dog', seriesId: 's1', dueDate: day(20) },
+    { ...baseTask, id: 'first', title: 'Walk the dog', seriesId: 's1', dueDate: day(10) },
+    { ...baseTask, id: 'second', title: 'Walk the dog', seriesId: 's1', dueDate: day(15) },
+    { ...baseTask, id: 'other', title: 'Water plants' },
+  ];
+
+  it('gets one card, on its earliest date', () => {
+    expect(backfillCandidates(series, 'priority').map(t => t.id)).toEqual(['first', 'other']);
+  });
+
+  it('is counted once', () => {
+    expect(backfillFieldCounts(series).priority).toBe(2);
+  });
+
+  it('names the other dates an answer should reach', () => {
+    const first = series.find(t => t.id === 'first')!;
+    expect(backfillSeriesPeers(first, series, 'priority').map(t => t.id).sort()).toEqual(['second', 'third']);
+  });
+
+  it('leaves a date that already has its own answer alone', () => {
+    const withAnswer = series.map(t => (t.id === 'second' ? { ...t, priority: 3 as const } : t));
+    const first = withAnswer.find(t => t.id === 'first')!;
+    expect(backfillSeriesPeers(first, withAnswer, 'priority').map(t => t.id)).toEqual(['third']);
+  });
+
+  it('keeps the card when only a later date is missing the field', () => {
+    const answered = series.map(t => (t.id === 'first' ? { ...t, priority: 2 as const } : t));
+    expect(backfillCandidates(answered, 'priority').map(t => t.id)).toEqual(['second', 'other']);
+  });
+
+  it('asks a reminder per date, since each is an instant on its own day', () => {
+    expect(backfillCandidates(series, 'reminder').map(t => t.id).sort()).toEqual(['first', 'second', 'third']);
+    const first = series.find(t => t.id === 'first')!;
+    expect(backfillSeriesPeers(first, series, 'reminder')).toEqual([]);
+  });
+
+  it('reaches every date in a redo', () => {
+    const first = series.find(t => t.id === 'first')!;
+    const withAnswers = series.map(t => ({ ...t, priority: 2 as const }));
+    expect(backfillCandidates(withAnswers, 'priority', { fromScratch: true }).map(t => t.id)).toEqual(['first', 'other']);
+    expect(backfillSeriesPeers(first, withAnswers, 'priority', { fromScratch: true }).map(t => t.id).sort())
+      .toEqual(['second', 'third']);
+  });
+
+  it('has no peers when it is not a series', () => {
+    const other = series.find(t => t.id === 'other')!;
+    expect(backfillSeriesPeers(other, series, 'priority')).toEqual([]);
   });
 });
