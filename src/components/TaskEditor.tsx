@@ -4015,8 +4015,8 @@ function TaskEditorSheet({ visible, task, initialDraft, onClose }: Props) {
                       </View>
                       <Text style={styles.targetStepperCaption}>
                         {timedMinutes === null
-                          ? 'Time per unit: off'
-                          : `A ${formatDuration(timedMinutes)} countdown for each one. It restarts when you log a unit.`}
+                          ? 'Optional countdown timer for each unit, such as 10 minutes per round. Off means no timer.'
+                          : `A ${formatDuration(timedMinutes)} countdown timer for each unit. It restarts when you log a unit.`}
                       </Text>
                     </>
                   )}
