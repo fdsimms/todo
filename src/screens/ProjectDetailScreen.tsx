@@ -2645,16 +2645,16 @@ export function ProjectDetailScreen() {
         />
 
         <LazySheet open={pageMenuVisible}>
-          <ProjectPageMenu
+          {!!project && <ProjectPageMenu
             visible={pageMenuVisible}
             onClose={() => setPageMenuVisible(false)}
             anchor={pageMenuAnchor}
-            isList={isList}
+            project={project}
             // The store brings the kind's own defaults along (a list never
             // finishes and is never pulled; a project gets both back). See
             // kindSwitchFields.
-            onConvert={() => project && updateProject(project.id, { kind: isList ? 'project' : 'list' })}
-          />
+            onConvert={() => updateProject(project.id, { kind: isList ? 'project' : 'list' })}
+          />}
         </LazySheet>
         <ProjectEditor
           visible={editingProject !== null}
