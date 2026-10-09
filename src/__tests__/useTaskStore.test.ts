@@ -14337,13 +14337,13 @@ describe('quota tasks', () => {
       useTaskStore.setState({ tasks: [quota({ pinned: true, progressCount: 1 })] });
       const store = useTaskStore.getState();
       store.logQuotaUnit('water'); // 1 -> 2, catches up to pace
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(600);
       store.logQuotaUnit('water'); // 2 -> 3, still on pace — resets the window
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(600);
 
       expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
 
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(1000);
       expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
     });
 

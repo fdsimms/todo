@@ -1223,7 +1223,7 @@ let pendingUnpinIds: string[] = [];
 // a live burst (four glasses at once): unpinning instantly would drop the
 // pinned row out from under the next tap exactly as an unheld quota row used
 // to (see QUOTA_HOLD_BACKSTOP_MS above).
-const QUOTA_PACE_UNPIN_HOLD_MS = 4000;
+const QUOTA_PACE_UNPIN_HOLD_MS = COMPLETION_HOLD_MS;
 let quotaPaceUnpinTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPaceUnpinIds: string[] = [];
 
