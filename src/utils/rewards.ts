@@ -621,9 +621,18 @@ export function rewardDisplay(
   return { title: reward.title, note: reward.note, linkUrl: reward.linkUrl };
 }
 
-/** "Claimed today", "Claimed yesterday", "Last claimed 5 days ago", by calendar day. */
-export function describeLastClaimed(at: string, now: Date): string {
-  const days = differenceInCalendarDays(now, new Date(at));
+/**
+ * "Claimed today", "Claimed yesterday", "Last claimed 5 days ago", by logical
+ * day: `todayStart` is the start of the current one (`getCurrentDayStart`), so
+ * a claim at 1am under a 2am day start counts as the day before, as it does
+ * for a guarded slip's "already claimed it today" (`claimedSince`).
+ */
+export function describeLastClaimed(at: string, todayStart: Date): string {
+  // The claim's own logical day: its time pulled back by the day start's
+  // clock time, which rolls one made before the reset onto the date before.
+  const claimDay = new Date(at);
+  claimDay.setHours(claimDay.getHours() - todayStart.getHours(), claimDay.getMinutes() - todayStart.getMinutes());
+  const days = differenceInCalendarDays(todayStart, claimDay);
   if (days <= 0) return 'Claimed today';
   if (days === 1) return 'Claimed yesterday';
   return `Last claimed ${days} days ago`;

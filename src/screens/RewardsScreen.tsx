@@ -43,6 +43,7 @@ import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
 import { canGuard, describeGuard } from '../utils/rewardGuard';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { driftingTaskList } from '../utils/postpone';
 import {
@@ -731,7 +732,7 @@ export function RewardsScreen() {
             </Text>
           </View>
           {pace && <Text style={styles.hint}>{sentence(pace)}</Text>}
-          {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, new Date())}</Text>}
+          {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, getCurrentDayStart())}</Text>}
           {guardHabit && <Text style={styles.hint}>{describeGuard(displayTitleFor(guardHabit))}</Text>}
         </View>
         <View style={styles.rewardActions}>

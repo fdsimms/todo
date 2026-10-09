@@ -94,6 +94,7 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore, redoRestoringRows } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRewardStore } from '../store/useRewardStore';
+import { guardingReward } from '../utils/rewardGuard';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
@@ -1712,6 +1713,11 @@ export const TaskItem = React.memo(function TaskItem({
   // reason to do it today sits on the row you'd otherwise push.
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyCoins = rewardsEnabled && isBountyLive(task) ? bountyCoinsFor(task) : 0;
+  // The reward an avoid habit's slip claims (Reward.guardsTaskId), named on the
+  // row so the shield's tap isn't a surprise. A string, so the row only
+  // re-renders when it changes.
+  const guardTitle = useRewardStore(s =>
+    rewardsEnabled && isNegative ? guardingReward(s.rewards, task.id)?.title ?? null : null);
 
   const activeChainItem =
     !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
@@ -2946,7 +2952,7 @@ export const TaskItem = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || meterText !== null || reminderTimeLabel !== null || travelNote !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
             {showCategory && task.category && (
               onOpenCategory ? (
@@ -3482,6 +3488,14 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   Moved {task.postponeCount}×
+                </Text>
+              </View>
+            )}
+            {guardTitle !== null && (
+              <View style={styles.metaChip} accessibilityLabel={`Linked to the reward ${guardTitle}`}>
+                <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Linked to {guardTitle}
                 </Text>
               </View>
             )}

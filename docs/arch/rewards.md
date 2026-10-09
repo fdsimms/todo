@@ -173,6 +173,8 @@ confirmation (`slipConfirm.ts`), `useTaskStore.logSlip` and the MCP replica thro
 - **Only a repeatable, coin reward can guard.** A one-time reward would leave the habit charging a
   price nobody can claim once it was gone, and a wish list item is bought once. Turning a reward
   one-time drops its habit. One habit has one guarding reward; the picker leaves out the rest.
+- **Both ends name the link.** The reward's card says which habit pays for it, and the habit's row
+  carries a "Linked to A dessert" chip, so the shield's tap is never a surprise.
 
 ## Where it shows
 
