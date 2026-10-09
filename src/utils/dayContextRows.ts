@@ -56,6 +56,11 @@ const SLOT_RANK = new Map(MEAL_SLOTS.map((slot, i) => [slot, i]));
 
 const UNCATEGORIZED = '';
 
+/** A bar's fill: 0..1, and 0 for anything that isn't a finite number. */
+function clampFraction(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+}
+
 /** The caption an all-day event carries, named so a reader can tell it from a clock time. */
 export const ALL_DAY_CAPTION = 'All day';
 
@@ -280,6 +285,10 @@ export function healthContextRows(
   }
 
   if (activeEnergyKcal !== null && activeEnergyKcal > 0) {
+    // A bar against the Move goal the person set in Fitness, when there is one.
+    // No goal (or a Move ring counting minutes) means no bar: a fraction of
+    // nothing is not a number.
+    const moveGoal = rings && !rings.moveByTime ? rings.move.goal : null;
     rows.push({
       id: 'health-activeEnergy',
       sourceId: '',
@@ -289,6 +298,9 @@ export function healthContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
+      ...(moveGoal !== null && moveGoal !== undefined
+        ? { visual: { type: 'bar' as const, fraction: clampFraction(activeEnergyKcal / moveGoal), hue: 'move' as const } }
+        : {}),
     });
   }
 
@@ -306,6 +318,7 @@ export function healthContextRows(
       category: opts.category,
       now: false,
       calendarTag: null,
+      visual: { type: 'rings', rings: rings! },
     });
   }
 
@@ -348,6 +361,8 @@ export function limitContextRows(
       now: false,
       calendarTag: null,
       ...(status === 'within' ? {} : { tone: status }),
+      // Full once at or past the limit, so a day over reads as a solid red bar.
+      visual: { type: 'bar' as const, fraction: target > 0 ? clampFraction(total / target) : total > 0 ? 1 : 0 },
     };
   });
 }

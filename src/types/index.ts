@@ -7919,7 +7919,20 @@ export interface ContextRow {
    * Absent on every other row.
    */
   tone?: 'near' | 'over';
+  /**
+   * A drawing that goes with the figure, for a health reading that is measured
+   * against something: a bar for a limit or the Move goal, the three rings for
+   * the Activity summary. The title stays the full sentence either way, since
+   * it is what a screen reader and a collapsed section read. Absent on a row
+   * with nothing to measure against (steps, every event and meal).
+   */
+  visual?: ContextVisual;
 }
+
+export type ContextVisual =
+  /** `fraction` is clamped to 0..1; `move` draws it in the Move ring's red. */
+  | { type: 'bar'; fraction: number; hue?: 'move' }
+  | { type: 'rings'; rings: import('../utils/activityRings').ActivityRings };
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [

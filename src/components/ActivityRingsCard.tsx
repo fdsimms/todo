@@ -40,18 +40,75 @@ const GAP = 3;
 // Fitness's own colors for the three rings, fixed: a ring is recognized by its
 // color before its label, and this is one place where matching another app's
 // meaning is the point rather than a drift from the theme.
-function ringColor(id: RingId, colors: Colors): string {
+export function ringColor(id: RingId, colors: Colors): string {
   return id === 'move' ? colors.red : id === 'exercise' ? colors.green : colors.accent;
+}
+
+/**
+ * Just the arcs, at any size: the stroke and the gap between rings are given so
+ * a small copy (a row on Today) stays legible rather than being a scaled-down
+ * card. Decorative: the caller carries the spoken summary.
+ */
+export function ActivityRingsGlyph({
+  rings,
+  size = SIZE,
+  stroke = STROKE,
+  gap = GAP,
+}: {
+  rings: ActivityRings;
+  size?: number;
+  stroke?: number;
+  gap?: number;
+}) {
+  const colors = useColors();
+  const drawn = RING_ORDER.filter(id => {
+    const ring = rings[id];
+    return ring.value !== null && ring.goal !== null;
+  });
+  return (
+    <Svg width={size} height={size} importantForAccessibility="no-hide-descendants">
+      {drawn.map((id, index) => {
+        const radius = size / 2 - stroke / 2 - index * (stroke + gap);
+        const circumference = 2 * Math.PI * radius;
+        const fraction = Math.min(1, ringFraction(rings[id]) ?? 0);
+        const color = ringColor(id, colors);
+        return (
+          <React.Fragment key={id}>
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={color}
+              strokeOpacity={0.2}
+              strokeWidth={stroke}
+              fill="none"
+            />
+            {fraction > 0 && (
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                stroke={color}
+                strokeWidth={stroke}
+                strokeLinecap="round"
+                strokeDasharray={`${circumference * fraction} ${circumference}`}
+                // SVG circles start at three o'clock; Fitness starts at the top.
+                rotation={-90}
+                origin={`${size / 2}, ${size / 2}`}
+                fill="none"
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </Svg>
+  );
 }
 
 export function ActivityRingsCard({ rings }: { rings: ActivityRings }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const drawn = RING_ORDER.filter(id => {
-    const ring = rings[id];
-    return ring.value !== null && ring.goal !== null;
-  });
   const lines = RING_ORDER.filter(id => rings[id].value !== null);
   const label = ringsAccessibilityLabel(rings);
 
@@ -62,42 +119,7 @@ export function ActivityRingsCard({ rings }: { rings: ActivityRings }) {
       accessibilityLabel={label ? `Activity rings today. ${label}` : 'Activity rings today'}
     >
       <View style={styles.row}>
-        <Svg width={SIZE} height={SIZE} importantForAccessibility="no-hide-descendants">
-          {drawn.map((id, index) => {
-            const radius = SIZE / 2 - STROKE / 2 - index * (STROKE + GAP);
-            const circumference = 2 * Math.PI * radius;
-            const fraction = Math.min(1, ringFraction(rings[id]) ?? 0);
-            const color = ringColor(id, colors);
-            return (
-              <React.Fragment key={id}>
-                <Circle
-                  cx={SIZE / 2}
-                  cy={SIZE / 2}
-                  r={radius}
-                  stroke={color}
-                  strokeOpacity={0.2}
-                  strokeWidth={STROKE}
-                  fill="none"
-                />
-                {fraction > 0 && (
-                  <Circle
-                    cx={SIZE / 2}
-                    cy={SIZE / 2}
-                    r={radius}
-                    stroke={color}
-                    strokeWidth={STROKE}
-                    strokeLinecap="round"
-                    strokeDasharray={`${circumference * fraction} ${circumference}`}
-                    // SVG circles start at three o'clock; Fitness starts at the top.
-                    rotation={-90}
-                    origin={`${SIZE / 2}, ${SIZE / 2}`}
-                    fill="none"
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </Svg>
+        <ActivityRingsGlyph rings={rings} />
         <View style={styles.legend}>
           {lines.map(id => (
             <View key={id} style={styles.legendRow}>
