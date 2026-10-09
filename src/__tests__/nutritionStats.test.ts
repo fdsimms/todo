@@ -9,6 +9,8 @@ import {
   mostLoggedFoods,
   daysWithinLimits,
   nutrientAverages,
+  niceAxis,
+  nutrientDailySeries,
   nutritionCounts,
   produceAverage,
   sourceMix,
@@ -664,5 +666,56 @@ describe('daysWithinLimits', () => {
   it('says nothing for a goal, or a limit with nothing measured', () => {
     expect(daysWithinLimits(fullDay('2026-09-08', sat(4)), WINDOW, { satFatG: 16 }, [])).toEqual([]);
     expect(daysWithinLimits(fullDay('2026-09-08'), WINDOW, { sugarG: 35 }, ['sugarG'])).toEqual([]);
+  });
+});
+
+describe('nutrientDailySeries', () => {
+  const week = lastDaysOf(WINDOW, 7);
+
+  it('gives one slot per day up to yesterday, null where a day cannot speak', () => {
+    const rows = [...fullDay('2026-09-08'), entry('2026-09-09', { slot: 'breakfast' })];
+    const series = nutrientDailySeries(rows, week, 'calorieKcal');
+    expect(series.map(d => d.dayKey)).toEqual([
+      '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09',
+    ]);
+    // 2 x 300 on the full day; the breakfast-only day and the empty days are gaps, not zeros.
+    expect(series.map(d => d.amount)).toEqual([null, null, null, null, 600, null]);
+  });
+
+  it('agrees with the average it sits beside', () => {
+    const rows = [...fullDay('2026-09-07'), ...fullDay('2026-09-08', { amounts: { calorieKcal: 500 } })];
+    const amounts = nutrientDailySeries(rows, WINDOW, 'calorieKcal').flatMap(d => (d.amount === null ? [] : [d.amount]));
+    const avg = nutrientAverages(rows, WINDOW).find(r => r.key === 'calorieKcal')!;
+    expect(amounts).toHaveLength(avg.days);
+    expect(amounts.reduce((a, b) => a + b, 0) / amounts.length).toBe(avg.average);
+  });
+
+  it('leaves out a day that did not state the nutrient in every food entry', () => {
+    const rows = [
+      entry('2026-09-08', { slot: 'breakfast', amounts: { calorieKcal: 300, fiberG: 3 } }),
+      entry('2026-09-08', { slot: 'dinner', amounts: { calorieKcal: 700 } }),
+    ];
+    const at = (key: 'calorieKcal' | 'fiberG') =>
+      nutrientDailySeries(rows, week, key).find(d => d.dayKey === '2026-09-08')!.amount;
+    expect(at('calorieKcal')).toBe(1000);
+    expect(at('fiberG')).toBeNull();
+  });
+
+  it('never includes today', () => {
+    const rows = fullDay('2026-09-10');
+    const series = nutrientDailySeries(rows, week, 'calorieKcal');
+    expect(series.some(d => d.dayKey === '2026-09-10')).toBe(false);
+  });
+});
+
+describe('niceAxis', () => {
+  it('rounds the top up to a round step', () => {
+    expect(niceAxis(1850)).toEqual({ top: 2000, step: 1000 });
+    expect(niceAxis(62)).toEqual({ top: 100, step: 50 });
+    expect(niceAxis(7)).toEqual({ top: 10, step: 5 });
+  });
+
+  it('survives an empty or zero series', () => {
+    expect(niceAxis(0).top).toBeGreaterThan(0);
   });
 });

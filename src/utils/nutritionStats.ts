@@ -1,7 +1,8 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
-import { dayKeyToDate } from './dateUtils';
+import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { addDays } from 'date-fns/addDays';
 import type { CookingWindow } from './cookingStats';
 import type { FoodDayInput } from './moodInsights';
 import { isNutrientOnlyEntry } from './nutrientLog';
@@ -383,6 +384,54 @@ function countedDayTotals(
     counted.set(dayKey, kept);
   }
   return counted;
+}
+
+/** One day of a nutrient's daily series. `amount` is null where the day can't speak for it. */
+export interface NutrientDay {
+  dayKey: string;
+  amount: number | null;
+}
+
+/**
+ * Each day of the window up to yesterday, with one nutrient's total for it, for
+ * drawing a chart.
+ *
+ * **Same days as `nutrientAverages`**, taken from the same walk
+ * (`countedDayTotals`), so a bar here is exactly a number the average divides
+ * by. A day that wasn't logged past one meal, didn't state the nutrient in
+ * every food entry, or hasn't finished is `null` rather than zero: the chart
+ * draws it as a gap, because a zero bar would claim the person ate nothing.
+ * Today is left out for the same reason the averages leave it out.
+ */
+export function nutrientDailySeries(
+  entries: readonly FoodLogEntry[],
+  window: CookingWindow,
+  key: NutrientKey,
+): NutrientDay[] {
+  const counted = countedDayTotals(entries, window);
+  const out: NutrientDay[] = [];
+  const last = dayKeyToDate(window.endKey);
+  for (let day = dayKeyToDate(window.startKey); day <= last; day = addDays(day, 1)) {
+    const dayKey = dayKeyOf(day);
+    if (dayKey >= window.todayKey) break;
+    const amount = counted.get(dayKey)?.[key];
+    out.push({ dayKey, amount: amount === undefined ? null : round(amount) });
+  }
+  return out;
+}
+
+
+/** A chart axis top and tick step that land on round numbers: 1, 2 or 5 times a power of ten. */
+const AXIS_TICKS = 3;
+
+export function niceAxis(most: number): { top: number; step: number } {
+  if (!(most > 0)) return { top: AXIS_TICKS, step: 1 };
+  const rough = most / AXIS_TICKS;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+  const normalized = rough / magnitude;
+  const factor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  const step = factor * magnitude;
+  return { top: Math.ceil(most / step) * step, step };
 }
 
 /** How many counted days stayed within one Stay under limit. */

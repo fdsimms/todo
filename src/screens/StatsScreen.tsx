@@ -6,7 +6,7 @@ import {
   StyleSheet,
   Animated,
 } from 'react-native';
-import type { TimeOfDay } from '../types';
+import type { NutrientKey, TimeOfDay } from '../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
@@ -21,6 +21,8 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
+import { PillGroup, type PillGroupOption } from '../components/PillGroup';
+import { NutrientDayChart } from '../components/NutrientDayChart';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { rankStreaks } from '../utils/streakLeaderboard';
 import { useColors } from '../theme/ThemeContext';
@@ -80,6 +82,7 @@ import {
   hasNutritionData,
   mostLoggedFoods,
   nutrientAverages,
+  nutrientDailySeries,
   daysWithinLimits,
   nutritionCounts,
   produceAverage,
@@ -489,6 +492,28 @@ export function StatsScreen() {
       }),
     };
   }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, itemProducts, itemSubs, recipes, nutritionTargets, nutritionLimits]);
+  // Which nutrient the by-day chart draws. A choice the span can't honor (no
+  // day in a week stated it) falls back to the first nutrient with an average
+  // rather than an empty chart.
+  const [chartNutrient, setChartNutrient] = useState<NutrientKey>('calorieKcal');
+  const chartKey = eating?.averages.some(r => r.key === chartNutrient)
+    ? chartNutrient
+    : eating?.averages[0]?.key ?? null;
+  const nutrientChartDays = useMemo(
+    () => (chartKey && cookWindow
+      ? nutrientDailySeries(foodEntries, lastDaysOf(cookWindow, eatingDays), chartKey)
+      : []),
+    [chartKey, foodEntries, cookWindow, eatingDays],
+  );
+  const chartOptions = useMemo<PillGroupOption[]>(
+    () => (eating?.averages ?? []).map(row => ({
+      key: row.key,
+      label: NUTRIENT_LABEL[row.key].label,
+      selected: row.key === chartKey,
+      onPress: () => { haptics.tap(); setChartNutrient(row.key); },
+    })),
+    [eating, chartKey],
+  );
   // Asked of the whole month whichever span is showing, so a week with nothing
   // logged in it keeps the section, and with it the control that switches back.
   const hasEating = useMemo(
@@ -1120,6 +1145,19 @@ export function StatsScreen() {
                   </>
                 )}
               </View>
+              {/* One nutrient a day, beside the averages above it. Days that
+                  can't speak for it are gaps; see NutrientDayChart. */}
+              {chartKey !== null && (
+                <View style={[styles.card, { marginTop: spacing.md, padding: spacing.md, gap: spacing.md }]}>
+                  <Text style={styles.rowText}>{`${NUTRIENT_LABEL[chartKey].label} by day`}</Text>
+                  <PillGroup options={chartOptions} noun="nutrient" surface="card" />
+                  <NutrientDayChart
+                    days={nutrientChartDays}
+                    label={NUTRIENT_LABEL[chartKey].label}
+                    unit={NUTRIENT_LABEL[chartKey].unit}
+                  />
+                </View>
+              )}
             </View>
             </StaggerIn>
           )}
