@@ -707,6 +707,13 @@ describe('laterTodaySections', () => {
     expect(sections.map(s => s.tasks.map(t => t.id))).toEqual([['a'], ['b'], ['c']]);
   });
 
+  it('lists a multi-segment task once, under its earliest segment', () => {
+    const all = makeTask({ id: 'w', timeSegments: ['evening', 'morning', 'afternoon'] });
+    const sections = laterTodaySections([all], []);
+    expect(sections.map(s => s.key)).toEqual(['morning']);
+    expect(sections[0].tasks.map(t => t.id)).toEqual(['w']);
+  });
+
   // A stack with children split across segments must appear once per matching
   // bucket, carrying its FULL later-today roster each time — not fragment
   // into duplicate headers, and not drop the segment-mismatched sibling.
