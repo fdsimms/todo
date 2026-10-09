@@ -3,6 +3,7 @@
  * turning template items into task drafts at apply time. Kept free of store
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
+import { canRampQuota } from './quotaRamp';
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { canWaitForWeather } from './weatherCondition';
@@ -78,6 +79,9 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     targetCount: typeof raw.targetCount === 'number' && raw.targetCount >= 2 ? Math.round(raw.targetCount) : null,
     targetUnit: raw.targetUnit ?? null,
     quotaPeriod: raw.quotaPeriod === 'week' ? 'week' : 'day',
+    quotaRampStep: typeof raw.quotaRampStep === 'number' && raw.quotaRampStep > 0 ? Math.round(raw.quotaRampStep) : null,
+    quotaRampEvery: typeof raw.quotaRampEvery === 'number' && raw.quotaRampEvery > 0 ? Math.round(raw.quotaRampEvery) : null,
+    quotaRampGoal: typeof raw.quotaRampGoal === 'number' && raw.quotaRampGoal > 0 ? Math.round(raw.quotaRampGoal) : null,
     allowOvershoot: raw.allowOvershoot ?? false,
     quotaReminders: raw.quotaReminders ?? false,
     chainStepOnSchedule: raw.chainStepOnSchedule ?? false,
@@ -257,6 +261,17 @@ export function formatMinutesOffset(mins: number): string {
  * pinned to (`item.anchor`). With that anchor unset, offsets are ignored and
  * the task is created undated.
  */
+/** The ramp fields a draft carries: all three keys always, null unless a plain target can ramp. */
+function rampDraftFields(item: TemplateItem): Pick<TemplateItem, 'quotaRampStep' | 'quotaRampEvery' | 'quotaRampGoal'> {
+  const on = !!item.quotaRampStep
+    && canRampQuota({ targetCount: item.targetCount ?? null, allowOvershoot: item.allowOvershoot ?? false });
+  return {
+    quotaRampStep: on ? item.quotaRampStep! : null,
+    quotaRampEvery: on ? item.quotaRampEvery ?? 1 : null,
+    quotaRampGoal: on ? item.quotaRampGoal ?? null : null,
+  };
+}
+
 export function buildDraftsFromTemplate(
   items: TemplateItem[],
   anchors: TemplateAnchors,
@@ -319,6 +334,9 @@ export function buildDraftsFromTemplate(
       targetCount: item.targetCount ?? null,
       targetUnit: item.targetCount != null ? item.targetUnit ?? null : null,
       quotaPeriod: item.quotaPeriod ?? 'day',
+      // Only a plain count can ramp (canRampQuota): overshoot rides the day out
+      // in its own sweep, so the pair is not offered together.
+      ...rampDraftFields(item),
       allowOvershoot: item.targetCount != null && (item.allowOvershoot ?? false),
       quotaReminders: item.targetCount != null && (item.quotaReminders ?? false),
       // Only a repeating chain has a "next repeat" to wait for.

@@ -82,6 +82,7 @@ import {
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { MAX_ROTATION_PER_WEEK, rotationPerWeek, rotationTargetTotal, withPerWeek } from '../utils/rotation';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
+import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { formatPhoneInput } from '../utils/phone';
 import { capitalize } from '../utils/capitalize';
 import { TextField } from './TextField';
@@ -306,6 +307,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [targetUnitText, setTargetUnitText] = useState('');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   const [allowOvershoot, setAllowOvershoot] = useState(false);
+  const [quotaRampStep, setQuotaRampStep] = useState<number | null>(null);
+  const [quotaRampEvery, setQuotaRampEvery] = useState(1);
+  const [quotaRampGoal, setQuotaRampGoal] = useState<number | null>(null);
+  // Same rule as the task editor: only a plain count ramps.
+  const offersRamp = canRampQuota({ targetCount, allowOvershoot });
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [phoneText, setPhoneText] = useState('');
@@ -409,6 +415,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setTargetUnitText(item?.targetUnit ?? draft?.targetUnit ?? '');
     setQuotaPeriod(item?.quotaPeriod ?? draft?.quotaPeriod ?? 'day');
     setAllowOvershoot(item?.allowOvershoot ?? draft?.allowOvershoot ?? false);
+    setQuotaRampStep(item?.quotaRampStep ?? null);
+    setQuotaRampEvery(item?.quotaRampEvery ?? 1);
+    setQuotaRampGoal(item?.quotaRampGoal ?? null);
     setQuotaReminders(item?.quotaReminders ?? draft?.quotaReminders ?? false);
     setChainStepOnSchedule(item?.chainStepOnSchedule ?? draft?.chainStepOnSchedule ?? false);
     setPhoneText(item?.phoneNumber ?? draft?.phoneNumber ?? '');
@@ -718,6 +727,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnitText) : null,
       quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
       allowOvershoot: targetCount !== null && allowOvershoot,
+      quotaRampStep: offersRamp ? quotaRampStep : null,
+      quotaRampEvery: offersRamp && quotaRampStep ? quotaRampEvery : null,
+      quotaRampGoal: offersRamp && quotaRampStep ? quotaRampGoal : null,
       quotaReminders: targetCount !== null && quotaReminders,
       phoneNumber: phoneText.trim() || null,
       emailAddress: emailText.trim() || null,
@@ -1828,6 +1840,55 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
                 </View>
               </TouchableOpacity>
+              {offersRamp && (
+                <>
+                  <View style={styles.chainModeBlock}>
+                    <CountStepper
+                      value={quotaRampStep}
+                      onChange={setQuotaRampStep}
+                      min={1}
+                      max={QUOTA_RAMP_MAX_STEP}
+                      allowNull
+                      emptyLabel="Off"
+                      format={n => `Add ${n}`}
+                      label="Ramp up amount"
+                      describeValue={n => (n === null ? 'off' : `add ${n} each time`)}
+                    />
+                  </View>
+                  {quotaRampStep !== null && (
+                    <>
+                      <View style={styles.chainModeBlock}>
+                        <CountStepper
+                          value={quotaRampEvery}
+                          onChange={next => setQuotaRampEvery(next ?? 1)}
+                          min={1}
+                          max={QUOTA_RAMP_MAX_EVERY}
+                          format={n => `After every ${n} ${quotaPeriod === 'week' ? (n === 1 ? 'week' : 'weeks') : (n === 1 ? 'day' : 'days')}`}
+                          label="Hits needed before each increase"
+                          describeValue={n => `${n ?? 1} ${quotaPeriod === 'week' ? 'weeks' : 'days'} you hit the target`}
+                        />
+                      </View>
+                      <View style={styles.chainModeBlock}>
+                        <CountStepper
+                          value={quotaRampGoal}
+                          onChange={setQuotaRampGoal}
+                          min={Math.max(2, (targetCount ?? 0) + 1)}
+                          max={QUOTA_RAMP_MAX_TARGET}
+                          allowNull
+                          emptyLabel="No limit"
+                          format={n => `Up to ${n}`}
+                          label="Ramp up goal"
+                          describeValue={n => (n === null ? 'no limit' : `stop at ${n}`)}
+                        />
+                      </View>
+                    </>
+                  )}
+                  <Text style={styles.optionHint}>
+                    {describeQuotaRamp({ quotaRampStep, quotaRampEvery, quotaRampGoal, quotaPeriod })
+                      ?? 'Ramp up: raise the target as you keep hitting it.'}
+                  </Text>
+                </>
+              )}
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}

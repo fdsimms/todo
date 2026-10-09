@@ -309,6 +309,15 @@ describe('buildDraftsFromTemplate', () => {
     expect(weekly).toMatchObject({ recurrenceWeekOrdinal: null, quotaReminders: false, targetUnit: null, targetCount: null });
   });
 
+  it('seeds a ramp-up only on a plain counted target', () => {
+    const ramp = { targetCount: 10, quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30 };
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', ...ramp })], noAnchors)[0])
+      .toMatchObject({ quotaRampStep: 2, quotaRampEvery: 3, quotaRampGoal: 30 });
+    // No target, or one that rides the day out, has nothing for a ramp to move.
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', ...ramp, targetCount: null })], noAnchors)[0].quotaRampStep).toBeFalsy();
+    expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', ...ramp, allowOvershoot: true })], noAnchors)[0].quotaRampStep).toBeFalsy();
+  });
+
   it('seeds a rain skip only on a repeat with days to skip', () => {
     expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'daily', rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBe(5);
     expect(buildDraftsFromTemplate([makeItem({ recurrenceType: 'hours', rainSkipMm: 5 })], noAnchors)[0].rainSkipMm).toBeNull();

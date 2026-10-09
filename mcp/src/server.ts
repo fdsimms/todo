@@ -944,6 +944,9 @@ const itemSchema = z.object({
   targetUnit: z.string().nullable().optional().describe('What the target counts, e.g. "glasses".'),
   quotaPeriod: z.enum(['day', 'week']).optional().describe('What targetCount is per. Default day.'),
   allowOvershoot: z.boolean().optional().describe('With a target: let it be logged past the target.'),
+  quotaRampStep: z.number().int().min(1).max(20).nullable().optional().describe('With a plain target: raise targetCount by this much each time the ramp steps. null or absent: no ramp.'),
+  quotaRampEvery: z.number().int().min(1).max(60).nullable().optional().describe('With quotaRampStep: how many days (weeks, for a weekly target) the target has to be met before each increase. Default 1.'),
+  quotaRampGoal: z.number().int().min(2).max(99).nullable().optional().describe('With quotaRampStep: the count to stop at. null: climb to 99.'),
   quotaReminders: z.boolean().optional().describe('With a target: remind as each unit falls due.'),
   chainStepOnSchedule: z.boolean().optional().describe('On a repeating chain: each step waits for the next repeat instead of following straight away.'),
   phoneNumber: z.string().nullable().optional(),
@@ -1102,6 +1105,12 @@ const taskFieldsShape = {
     per: z.enum(['day', 'week']),
     unit: z.string().nullable().optional().describe('E.g. "glasses". Optional.'),
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
+    rampUp: z.object({
+      add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),
+      every: z.number().int().describe('How many days (weeks, for a weekly target) the target has to be met before each increase, 1 to 60.'),
+      upTo: z.number().int().nullable().optional().describe('The count to stop at, above the current count and at most 99. Omit to climb to 99.'),
+    }).nullable().optional()
+      .describe('Raise the count as it keeps being met: "10 push-ups a day, add 2 after every 3 days I hit it, up to 30". A missed or short day neither counts nor resets the run. Not with allowOvershoot. null turns it off.'),
     firstWeek: z.enum(['fewer', 'full']).optional()
       .describe('create_task, per week only: "fewer" (the default) scales the first week to the days left in it, as the app does (3 a week set on a Thursday asks for 2 that week, then 3). "full" asks for the whole count from the start.'),
   }).nullable().optional()

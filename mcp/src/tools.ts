@@ -173,7 +173,7 @@ export interface GetTaskResult {
    * food log's water goal divided by what one unit logs, worked out by the app
    * each day: update_task refuses to set it.
    */
-  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; followsWaterTarget?: true };
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; followsWaterTarget?: true; rampUp?: { add: number; every: number; upTo?: number; hitsSoFar: number } };
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
@@ -367,6 +367,16 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
           ...(task.followWaterTarget ? { followsWaterTarget: true as const } : {}),
+          ...(task.quotaRampStep
+            ? {
+                rampUp: {
+                  add: task.quotaRampStep,
+                  every: task.quotaRampEvery ?? 1,
+                  ...(task.quotaRampGoal != null ? { upTo: task.quotaRampGoal } : {}),
+                  hitsSoFar: task.quotaRampHits ?? 0,
+                },
+              }
+            : {}),
         }
       : undefined,
     timed: task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,

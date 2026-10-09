@@ -589,6 +589,11 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   }
   if (item.targetCount != null && item.targetCount < 2) errors.push(`item "${label}" targetCount must be 2 or more (one is just a task).`);
   if (item.quotaPeriod !== undefined && !['day', 'week'].includes(item.quotaPeriod)) errors.push(`item "${label}" quotaPeriod must be day or week.`);
+  if (item.quotaRampStep != null) {
+    if (item.targetCount == null) errors.push(`item "${label}" has quotaRampStep but no targetCount, so there is nothing to ramp.`);
+    if (item.allowOvershoot) errors.push(`item "${label}" cannot ramp up and allow going past the target.`);
+    if (item.quotaRampGoal != null && item.targetCount != null && item.quotaRampGoal <= item.targetCount) errors.push(`item "${label}" quotaRampGoal must be above targetCount.`);
+  }
   if (item.recurrenceMonthDay != null && (item.recurrenceMonthDay < 1 || item.recurrenceMonthDay > 31)) {
     errors.push(`item "${label}" recurrenceMonthDay must be 1 to 31.`);
   }

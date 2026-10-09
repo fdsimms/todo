@@ -4204,6 +4204,11 @@ export interface TemplateItem {
   targetCount?: number | null;
   targetUnit?: string | null;
   quotaPeriod?: QuotaPeriod;
+  // Task.quotaRampStep/Every/Goal, seeded: "push-ups, adding 2 every 3 days".
+  // The running hit count is per task and never seeded.
+  quotaRampStep?: number | null;
+  quotaRampEvery?: number | null;
+  quotaRampGoal?: number | null;
   allowOvershoot?: boolean;
   quotaReminders?: boolean;
 

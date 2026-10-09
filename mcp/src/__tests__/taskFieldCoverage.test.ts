@@ -50,7 +50,6 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'followUpTaskSourceTitle', 'generatedSourceId', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
     'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
     'reminderUtcOffsetMinutes', 'createdAt', 'archivedAt', 'previousOccurrenceId', 'rainSkippedOn',
-    'quotaRampHits',
   ],
 
   // Settings Claude has no reason to read or set per task, or that are only
@@ -59,7 +58,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // date answer filling a trip's departure (`deliverableSetsAway`) is a
   // template nomination, and complete_task's answer already lands it.
   'per-task settings with no MCP use yet': [
-    'deliverableSetsAway', 'seriesMonthDays', 'seriesRepeatMonths', 'quotaRampStep', 'quotaRampEvery', 'quotaRampGoal',
+    'deliverableSetsAway', 'seriesMonthDays', 'seriesRepeatMonths',
   ],
 };
 
