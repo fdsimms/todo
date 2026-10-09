@@ -39,9 +39,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
-  resetToTask, resetToProject, resetToPeople, resetToRecipeDetail, resetToKitchen, resetToCategories,
+  resetToTask, resetToProject, resetToPeople, resetToRecipeDetail, resetToGroceryItem, resetToCategories,
 } from '../navigation/navigationRef';
-import { kitchenEntryId } from '../utils/kitchenInventory';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, activeChainStepTitle } from '../utils/visibilityUtils';
 import { activeMealSlotStepId } from '../utils/mealSlotTasks';
@@ -2338,8 +2337,8 @@ export function BackfillScreen() {
               <SubjectTitle
                 text={currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
                 lines={2}
-                openLabel="Open categories"
-                onOpen={resetToCategories}
+                openLabel={`Open ${currentCategory.name}`}
+                onOpen={() => resetToCategories(currentCategory.name)}
                 colors={colors}
                 styles={styles}
               />
@@ -3093,8 +3092,8 @@ export function BackfillScreen() {
             <SubjectTitle
               text={currentItem.name}
               lines={2}
-              openLabel={`Open ${currentItem.name} in the kitchen`}
-              onOpen={() => resetToKitchen(kitchenEntryId('grocery', currentItem.id))}
+              openLabel={`Open ${currentItem.name}`}
+              onOpen={() => resetToGroceryItem(currentItem.id)}
               colors={colors}
               styles={styles}
             />
