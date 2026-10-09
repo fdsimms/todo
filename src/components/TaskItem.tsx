@@ -174,7 +174,12 @@ const QUOTA_TOPPING_MS = animation.duration.normal;
 // taps in one place, rather than one tap here and three more from Later once
 // the row has gone. Every further tap pushes this out again, so the window is
 // the gap between taps, not a budget for the whole burst.
-const QUOTA_LINGER_MS = 4000;
+//
+// Kept short on purpose: a normal completion leaves about a second after the
+// last tap (COMPLETION_HOLD_MS in useTaskStore), and the send-off adds about
+// half a second of fade and collapse on top of this, so 500 lands the row's
+// exit at the same point. A longer linger reads as the target being stuck.
+const QUOTA_LINGER_MS = 500;
 // Stable reference for every row that isn't a calendarReview task, so
 // subscribing to the calendar store below doesn't re-render rows it has
 // nothing to say about — see the reviewProject/quietDays comment further down
